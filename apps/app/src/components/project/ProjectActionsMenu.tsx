@@ -29,6 +29,7 @@ import { useProjectActions } from "./ProjectActionsProvider";
 
 interface ProjectActionsMenuBaseProps {
   project: ProjectResponse;
+  extraActions?: (surface: ProjectActionsMenuSurface) => ReactNode;
 }
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
@@ -53,6 +54,7 @@ function stopProjectActionsMenuClickPropagation(event: MouseEvent) {
 export function ProjectActionsMenuItems({
   project,
   surface,
+  extraActions,
 }: ProjectActionsMenuItemsProps) {
   const navigate = useNavigate();
   const { hostId: pickerHostId } = usePathPickerHost();
@@ -93,6 +95,7 @@ export function ProjectActionsMenuItems({
           Add local path
         </ActionMenuItem>
       ) : null}
+      {extraActions?.(surface)}
       <ActionMenuSeparator surface={surface} />
       <ActionMenuItem
         surface={surface}
@@ -111,6 +114,7 @@ export function ProjectActionsMenuItems({
 export function ProjectActionsMenu({
   project,
   triggerClassName,
+  extraActions,
 }: ProjectActionsMenuProps) {
   return (
     <DropdownMenu>
@@ -139,7 +143,11 @@ export function ProjectActionsMenu({
         align="end"
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="dropdown" />
+        <ProjectActionsMenuItems
+          project={project}
+          surface="dropdown"
+          extraActions={extraActions}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -159,12 +167,19 @@ function ProjectActionsCompactLongPressMenu({
   children,
   project,
   onOpenChange,
+  extraActions,
 }: ProjectActionsContextMenuProps) {
   return (
     <CompactLongPressMenu
       label={`${project.name} actions`}
       onOpenChange={onOpenChange}
-      items={<ProjectActionsMenuItems project={project} surface="dropdown" />}
+      items={
+        <ProjectActionsMenuItems
+          project={project}
+          surface="dropdown"
+          extraActions={extraActions}
+        />
+      }
     >
       {children}
     </CompactLongPressMenu>
@@ -175,6 +190,7 @@ function ProjectActionsDesktopContextMenu({
   children,
   project,
   onOpenChange,
+  extraActions,
 }: ProjectActionsContextMenuProps) {
   return (
     <ContextMenu onOpenChange={onOpenChange}>
@@ -183,7 +199,11 @@ function ProjectActionsDesktopContextMenu({
         aria-label={`${project.name} actions`}
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="context" />
+        <ProjectActionsMenuItems
+          project={project}
+          surface="context"
+          extraActions={extraActions}
+        />
       </ContextMenuContent>
     </ContextMenu>
   );

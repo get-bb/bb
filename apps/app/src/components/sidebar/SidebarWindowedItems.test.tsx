@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { createRef } from "react";
+import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sidebarMocks = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ vi.mock("@/components/ui/sidebar.js", async (importOriginal) => {
 import {
   SIDEBAR_CONTENT_SELECTOR,
   SidebarContent,
+  SidebarContentElementContext,
 } from "@/components/ui/sidebar.js";
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 
@@ -211,6 +213,33 @@ describe("SidebarWindowedItems", () => {
     expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(3);
     expect(
       document.querySelectorAll("[data-sidebar-windowed-nav]"),
+    ).toHaveLength(0);
+  });
+
+  it("keeps all overflow rows mounted when a portal opts out of sidebar windowing", () => {
+    sidebarMocks.scrollElementRef = null;
+    render(
+      <SidebarContent>
+        {createPortal(
+          <SidebarContentElementContext.Provider value={null}>
+            <SidebarWindowedItems
+              itemKeys={Array.from({ length: 40 }, (_, index) => `${index}`)}
+              estimateRows={() => 1}
+              renderItem={(index) => (
+                <span data-testid={`overflow-item-${index}`}>
+                  Thread {index}
+                </span>
+              )}
+            />
+          </SidebarContentElementContext.Provider>,
+          document.body,
+        )}
+      </SidebarContent>,
+    );
+
+    expect(screen.getAllByTestId(/^overflow-item-/)).toHaveLength(40);
+    expect(
+      document.querySelectorAll("[data-sidebar-windowed-item]:empty"),
     ).toHaveLength(0);
   });
 

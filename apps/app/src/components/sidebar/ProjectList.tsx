@@ -1,4 +1,10 @@
 import {
+  ThreadListVisibility,
+  ThreadListMore,
+  ThreadListVisibilityGroupScope,
+  type ThreadListVisibilityGroup,
+} from "./ThreadListVisibility";
+import {
   memo,
   useCallback,
   useEffect,
@@ -69,13 +75,11 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import { Icon } from "@bb/shared-ui/icon";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   SidebarGroupContent,
   SidebarStickyStack,
 } from "@/components/ui/sidebar.js";
-import { COARSE_POINTER_ROW_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
@@ -119,11 +123,7 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { useUiPreferencesReady } from "@/lib/ui-preferences/UiPreferencesSync";
-import {
-  SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-} from "./sidebarRowClasses";
+import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
 import {
   SidebarHeaderActionsProvider,
   SidebarHeaderControls,
@@ -180,14 +180,7 @@ interface LocalSourcePathTarget {
   projectId: string;
 }
 
-export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
-  SIDEBAR_ROW_BASE_CLASS,
-  LIST_HOVER_TRANSITION,
-  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-  COARSE_POINTER_ROW_HEIGHT_CLASS,
-  "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
-);
+export { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
 
 interface ProjectThreadListStateArgs {
   status: ConnectionAwareQueryStatus | undefined;
@@ -846,7 +839,7 @@ function ProjectModeSections({
     compareThreads,
     draftThreadIds,
     onToggleThreadCollapsed,
-    order: persistedOrder,
+    order,
     onOrderChange,
     pinned: {
       pinnedReorderPending,
@@ -886,47 +879,87 @@ function ProjectModeSections({
     },
   };
 
-  return (
-    <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
-      {(sectionId, consumeClickSuppression) => {
-        const builtInSection = renderBuiltInSidebarSection({
-          sectionId,
-          sections: builtInSections,
-          disabled: reorderDisabled,
-          collapsedSectionIds,
-          onToggleCollapsed,
-          consumeClickSuppression,
-          showPinnedSection,
-        });
-        if (builtInSection !== undefined) return builtInSection;
-        const row = projectRowsBySectionId.get(sectionId);
-        if (!row) return null;
-        return (
-          <SortableProjectRow
-            key={sectionId}
-            sortableId={sectionId}
-            project={row.project}
-            rootItems={projectItemsByProjectId.get(row.project.id)}
+  const visibilityGroups: ThreadListVisibilityGroup[] = projectRows.map(
+    (row) => {
+      const id = buildSidebarEntitySectionId("project", row.project.id);
+      const items = projectItemsByProjectId.get(row.project.id) ?? [];
+      return {
+        id,
+        title: row.project.name,
+        threads: getProjectThreadItemDescendants(items),
+        renderContent: (close) => (
+          <ProjectThreadTree
+            projectId={row.project.id}
+            rootItems={items}
             threadListState={row.threadListState}
             progressiveDisclosureEnabled={progressiveDisclosureEnabled}
             selectedThreadId={selectedThreadId}
-            isActive={row.isActive}
-            isCollapsed={collapsedProjectIds.has(row.project.id)}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             compareThreads={compareThreads}
-            isLocalPathInvalid={row.isLocalPathInvalid}
-            onProjectSelect={onProjectSelect}
-            onCreateProjectThread={onCreateProjectThread}
-            onToggleProjectCollapsed={toggleProjectCollapsed}
+            variant="section"
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
+            }}
             onToggleThreadCollapsed={onToggleThreadCollapsed}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            reorderDisabled={reorderDisabled}
-            consumeProjectClickSuppression={consumeClickSuppression}
           />
-        );
-      }}
-    </ReorderableSidebarSectionOrderList>
+        ),
+      };
+    },
+  );
+
+  return (
+    <ThreadListVisibility
+      groups={visibilityGroups}
+      order={persistedOrder}
+      onOrderChange={onOrderChange}
+      label="Projects"
+    >
+      <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
+        {(sectionId, consumeClickSuppression) => {
+          const builtInSection = renderBuiltInSidebarSection({
+            sectionId,
+            sections: builtInSections,
+            disabled: reorderDisabled,
+            collapsedSectionIds,
+            onToggleCollapsed,
+            consumeClickSuppression,
+            showPinnedSection,
+          });
+          if (builtInSection !== undefined) return builtInSection;
+          const row = projectRowsBySectionId.get(sectionId);
+          if (!row) return null;
+          return (
+            <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+              <SortableProjectRow
+                sortableId={sectionId}
+                project={row.project}
+                rootItems={projectItemsByProjectId.get(row.project.id)}
+                threadListState={row.threadListState}
+                progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+                selectedThreadId={selectedThreadId}
+                isActive={row.isActive}
+                isCollapsed={collapsedProjectIds.has(row.project.id)}
+                collapsedThreadIds={collapsedThreadIds}
+                collapsedEnvironmentIds={collapsedEnvironmentIds}
+                compareThreads={compareThreads}
+                isLocalPathInvalid={row.isLocalPathInvalid}
+                onProjectSelect={onProjectSelect}
+                onCreateProjectThread={onCreateProjectThread}
+                onToggleProjectCollapsed={toggleProjectCollapsed}
+                onToggleThreadCollapsed={onToggleThreadCollapsed}
+                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+                reorderDisabled={reorderDisabled}
+                consumeProjectClickSuppression={consumeClickSuppression}
+              />
+            </ThreadListVisibilityGroupScope>
+          );
+        }}
+      </ReorderableSidebarSectionOrderList>
+      <ThreadListMore />
+    </ThreadListVisibility>
   );
 }
 
@@ -995,7 +1028,7 @@ function SectionModeSections({
       ),
     [sections],
   );
-  const { onOrderChange, order } = useSidebarModeSectionOrder({
+  const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
     mode: "chronological",
     entitySectionIds: threadSectionIds,
     showPinnedSection,
@@ -1015,6 +1048,7 @@ function SectionModeSections({
       onRemoveSection={onRemoveSection}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      fullSectionOrder={persistedOrder}
       topLevelSectionOrder={order}
       onTopLevelSectionOrderChange={onOrderChange}
       pinnedReorderPending={pinnedReorderPending}
@@ -1201,7 +1235,7 @@ export function MachineModeSections({
     compareThreads,
     draftThreadIds,
     onToggleThreadCollapsed,
-    order: persistedOrder,
+    order,
     onOrderChange,
     pinned: {
       pinnedReorderPending,
@@ -1237,56 +1271,95 @@ export function MachineModeSections({
     },
   };
 
-  return (
-    <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
-      {(sectionId, consumeClickSuppression) => {
-        const builtInSection = renderBuiltInSidebarSection({
-          sectionId,
-          sections: builtInSections,
-          disabled: reorderDisabled,
-          collapsedSectionIds,
-          onToggleCollapsed,
-          consumeClickSuppression,
-          showPinnedSection,
-        });
-        if (builtInSection !== undefined) return builtInSection;
-        const section = machineSectionsById.get(sectionId);
-        if (!section) return null;
-        return (
-          <SortableSidebarSection
-            key={sectionId}
-            id={sectionId}
-            label={section.label}
-            disabled={reorderDisabled}
-            actions={renderSectionDisplayOptions(sectionId, section.label)}
-            actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
-            actionsMobileAlways
-            collapsedActivity={section.activity}
-            collapsedThreads={section.threadListState.threads}
-            collapseControl={{
-              isCollapsed: collapsedMachineKeys.has(section.key),
-              onToggleCollapsed: () => toggleMachineCollapsed(section.key),
+  const visibilityGroups: ThreadListVisibilityGroup[] = machineSections.map(
+    (section) => {
+      const id = buildSidebarEntitySectionId("machine", section.key);
+      const items = machineItemsBySectionId.get(id) ?? [];
+      return {
+        id,
+        title: section.label,
+        threads: getProjectThreadItemDescendants(items),
+        renderContent: (close) => (
+          <ProjectThreadTree
+            rootItems={items}
+            threadListState={section.threadListState}
+            progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            compareThreads={compareThreads}
+            variant="section"
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
             }}
-            consumeClickSuppression={consumeClickSuppression}
-          >
-            <ProjectThreadTree
-              dndParentKey={sectionId}
-              rootItems={machineItemsBySectionId.get(sectionId)}
-              threadListState={section.threadListState}
-              progressiveDisclosureEnabled={progressiveDisclosureEnabled}
-              compareThreads={compareThreads}
-              variant="section"
-              selectedThreadId={selectedThreadId}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              onProjectSelect={onProjectSelect}
-              onToggleThreadCollapsed={onToggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            />
-          </SortableSidebarSection>
-        );
-      }}
-    </ReorderableSidebarSectionOrderList>
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        ),
+      };
+    },
+  );
+
+  return (
+    <ThreadListVisibility
+      groups={visibilityGroups}
+      order={persistedOrder}
+      onOrderChange={onOrderChange}
+      label="Machines"
+    >
+      <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
+        {(sectionId, consumeClickSuppression) => {
+          const builtInSection = renderBuiltInSidebarSection({
+            sectionId,
+            sections: builtInSections,
+            disabled: reorderDisabled,
+            collapsedSectionIds,
+            onToggleCollapsed,
+            consumeClickSuppression,
+            showPinnedSection,
+          });
+          if (builtInSection !== undefined) return builtInSection;
+          const section = machineSectionsById.get(sectionId);
+          if (!section) return null;
+          return (
+            <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+              <SortableSidebarSection
+                id={sectionId}
+                label={section.label}
+                disabled={reorderDisabled}
+                actions={renderSectionDisplayOptions(sectionId, section.label)}
+                actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
+                actionsMobileAlways
+                collapsedActivity={section.activity}
+                collapsedThreads={section.threadListState.threads}
+                collapseControl={{
+                  isCollapsed: collapsedMachineKeys.has(section.key),
+                  onToggleCollapsed: () => toggleMachineCollapsed(section.key),
+                }}
+                consumeClickSuppression={consumeClickSuppression}
+              >
+                <ProjectThreadTree
+                  dndParentKey={sectionId}
+                  rootItems={machineItemsBySectionId.get(sectionId)}
+                  threadListState={section.threadListState}
+                  progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+                  compareThreads={compareThreads}
+                  variant="section"
+                  selectedThreadId={selectedThreadId}
+                  collapsedThreadIds={collapsedThreadIds}
+                  collapsedEnvironmentIds={collapsedEnvironmentIds}
+                  onProjectSelect={onProjectSelect}
+                  onToggleThreadCollapsed={onToggleThreadCollapsed}
+                  onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+                />
+              </SortableSidebarSection>
+            </ThreadListVisibilityGroupScope>
+          );
+        }}
+      </ReorderableSidebarSectionOrderList>
+      <ThreadListMore />
+    </ThreadListVisibility>
   );
 }
 
