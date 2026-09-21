@@ -509,7 +509,13 @@ function PluginSettingsPageSkeleton() {
   );
 }
 
-export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
+export function PluginSettingsPage({
+  pluginId,
+  onBackToDetails,
+}: {
+  pluginId: string;
+  onBackToDetails?: () => void;
+}) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(
@@ -532,7 +538,17 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
       </p>
     );
   }
-  return <PluginSettingsContent key={plugin.id} plugin={plugin} />;
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-4">
+      {onBackToDetails ? (
+        <Button variant="ghost" size="sm" onClick={onBackToDetails}>
+          <Icon name="ChevronLeft" className="mr-1.5 size-4" aria-hidden />
+          Back to details
+        </Button>
+      ) : null}
+      <PluginSettingsContent key={plugin.id} plugin={plugin} />
+    </div>
+  );
 }
 
 function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
@@ -545,7 +561,7 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div>
       <header className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-9 shrink-0">

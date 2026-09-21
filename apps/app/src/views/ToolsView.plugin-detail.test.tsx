@@ -33,6 +33,7 @@ import {
 } from "@/lib/plugin-slots";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginDetailPaneView, PluginsView } from "./ToolsView";
+import { SettingsView } from "./SettingsView";
 import { AppRoutes } from "../App";
 import {
   CatalogPluginDetail,
@@ -1177,6 +1178,101 @@ describe("BB Official plugin detail routing", () => {
     expect(
       await screen.findByRole("button", { name: "Close Automations" }),
     ).toBeTruthy();
+  });
+
+  it("keeps configuration and full details in Settings while preserving navigation history", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return Response.json({
+            enabled: true,
+            plugins: [
+              makeInstalledPlugin({
+                id: "github",
+                name: "GitHub",
+                source: "builtin:github",
+                provenance: "catalog",
+                catalogEntryId: "github",
+                catalogMarketplaceName: "bb-official",
+                hasSettings: true,
+              }),
+            ],
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return Response.json({
+            results: [GITHUB_CATALOG_ENTRY],
+            collections: [],
+          });
+        }
+        if (url === "/api/v1/plugins/github/settings") {
+          return Response.json({
+            ok: true,
+            schema: { repository: { type: "string", label: "Repository" } },
+            values: { repository: "get-bb/bb" },
+          });
+        }
+        return Response.json({ error: "not found" }, { status: 404 });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/settings/plugins/github?query=GitHub"]}>
+        <TooltipProvider>
+          <SettingsView />
+        </TooltipProvider>
+        <LocationProbe />
+        <HistoryBackButton />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("route-path").textContent).toBe(
+      "/settings/plugins/github",
+    );
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?query=GitHub&view=installed",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure" }),
+    );
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(
+      screen.getAllByRole("button", { name: "Back to details" }),
+    ).toHaveLength(1);
+    expect(screen.getByTestId("route-path").textContent).toBe(
+      "/settings/plugins/github",
+    );
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?query=GitHub&view=installed&configure=github",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(screen.getByTestId("route-path").textContent).toBe(
+      "/settings/plugins/github",
+    );
   });
 
   it("keeps two detail tabs and closes one without losing the other or the collection query", async () => {
