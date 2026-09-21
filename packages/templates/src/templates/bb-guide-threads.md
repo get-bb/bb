@@ -190,6 +190,7 @@ Sections:
 
 Inspecting:
 
+  bb thread image-metadata [id]            Read or record learned image dimensions (--self, --source, --width, --height, --etag, --json)
   bb thread context [id]                   Show recorded context usage and available breakdown (--self, --json)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
@@ -366,6 +367,11 @@ Queued messages:
   queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
+  Failed rows show their failure reason instead of their previous wait, followed
+  by a recovery command: `bb thread queue send <thread-id> <message-id>`.
+  Use it to retry immediately, including after automatic retries are exhausted.
+  Editing the message does not clear its failure or trigger a retry.
+
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an
   unanswered interaction) still apply, and a message that hits one simply queues
@@ -437,6 +443,12 @@ starting a provider request. Use `--self` for the current thread and `--json` fo
 breakdown after turns and compaction when its SDK supports context inspection.
 A later aggregate-only measurement replaces any older breakdown. Other providers
 continue to expose their available totals.
+
+`bb thread image-metadata [id]` returns persisted source, width, height, and ETag
+records. Set one with `--source <url> --width <pixels> --height <pixels>` and
+optional `--etag <etag>`. Dimensions belong to the thread and are returned with
+timeline responses; recording metadata does not fetch the image. The web client
+learns unknown Markdown image dimensions after their first successful load.
 
 Lifecycle ownership:
   spawn and fork accept --lifecycle-owner-thread <id>. SDK arguments use

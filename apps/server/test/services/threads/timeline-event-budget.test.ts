@@ -546,7 +546,7 @@ describe("timeline event budget", () => {
 
   it("preserves canonical rows through the client merge with tiny event windows", () => {
     const { db, thread } = setup();
-    insertTurns(db, thread, 3, [10, 400, 10]);
+    insertTurns(db, thread, 3, [10, 120, 10]);
     const options = {
       includeDiagnosticOperations: false,
       includeNestedRows: true,

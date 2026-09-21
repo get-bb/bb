@@ -9,7 +9,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -17,12 +20,13 @@ import {
   useAtomValue,
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
+import type { Host, ThreadListEntry } from "@bb/domain";
 import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
 import { buildMachineThreadGroups } from "@bb/client-core";
 import {
   collapsedSidebarSectionIdsAtom,
   sidebarCollapsedMachinesAtom,
+  sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarOrganizationModeAtom,
@@ -32,9 +36,19 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeHost,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 
-const mockUseHosts = vi.hoisted(() => vi.fn(() => ({ data: [] })));
+const mockUseHosts = vi.hoisted(() =>
+  vi.fn<() => { data: Host[] }>(() => ({ data: [] })),
+);
+const mockRenameHost = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock("@/hooks/mutations/host-mutations", () => ({
+  useRenameHost: () => ({ mutateAsync: mockRenameHost }),
+}));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: mockUseHosts,
@@ -43,6 +57,18 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: undefined }),
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => ({
+    renameThread: vi.fn(),
+    requestRename: vi.fn(),
+    requestDelete: vi.fn(),
+    archiveThreadAndChildren: vi.fn(),
+    unarchiveThread: vi.fn(),
+    togglePin: vi.fn(),
+    toggleRead: vi.fn(),
+  }),
 }));
 
 const queryClient = new QueryClient();
@@ -156,36 +182,41 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <MachineModeSections
-        threads={threads}
-        draftThreadIds={new Set()}
-        effectivePinnedThreadIds={new Set()}
-        status="ready"
-        showPinnedSection={false}
-        pinnedSection={{ label: "Pinned", content: null }}
-        pinnedReorderPending={false}
-        pinnedRootNodes={[]}
-        pinnedThreads={[]}
-        onReorderPinnedThread={vi.fn()}
-        threadsSection={{ label: "Threads" }}
-        collapsedSectionIds={collapsedSectionIdSet}
-        collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={new Set()}
-        compareThreads={() => 0}
-        renderSectionDisplayOptions={() => null}
-        isSectionDisplayOptionsOpen={() => false}
-        onToggleCollapsed={handleToggleCollapsed}
-        onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={vi.fn()}
-      />
-    </QueryClientProvider>
+    <TooltipProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MachineModeSections
+            threads={threads}
+            draftThreadIds={new Set()}
+            effectivePinnedThreadIds={new Set()}
+            status="ready"
+            showPinnedSection={false}
+            pinnedSection={{ label: "Pinned", content: null }}
+            pinnedReorderPending={false}
+            pinnedRootNodes={[]}
+            pinnedThreads={[]}
+            onReorderPinnedThread={vi.fn()}
+            threadsSection={{ label: "Threads" }}
+            collapsedSectionIds={collapsedSectionIdSet}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={new Set()}
+            compareThreads={() => 0}
+            renderSectionDisplayOptions={() => null}
+            isSectionDisplayOptionsOpen={() => false}
+            onToggleCollapsed={handleToggleCollapsed}
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={vi.fn()}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </TooltipProvider>
   );
 }
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mockUseHosts.mockReturnValue({ data: [] });
   window.localStorage.clear();
 });
 
@@ -278,6 +309,48 @@ describe("sidebar organization mode sections", () => {
     expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
   });
 
+  it("renames a resolved machine heading without expanding the group", async () => {
+    const store = createStore();
+    const host = makeHost({ id: "host_rename", name: "Work laptop" });
+    mockUseHosts.mockReturnValue({ data: [host] });
+    store.set(sidebarMachineSectionOrderAtom, ["machine:host_rename"]);
+    store.set(sidebarCollapsedMachinesAtom, ["host_rename"]);
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe
+          threads={[makeThread({ environmentHostId: host.id })]}
+        />
+      </JotaiProvider>,
+    );
+
+    fireEvent.doubleClick(screen.getByTitle("Work laptop"));
+    const input = await screen.findByRole("textbox", { name: "Machine name" });
+    expect(input.closest('[aria-disabled="true"]')).toBeNull();
+    fireEvent.change(input, { target: { value: "Studio" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockRenameHost).toHaveBeenCalledWith({
+        hostId: host.id,
+        name: "Studio",
+      }),
+    );
+    expect(store.get(sidebarCollapsedMachinesAtom)).toEqual([host.id]);
+  });
+
+  it("does not offer inline rename on fallback machine headings", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
+    store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={[makeThread()]} />
+      </JotaiProvider>,
+    );
+    fireEvent.doubleClick(screen.getByTitle("No machine"));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(mockRenameHost).not.toHaveBeenCalled();
+  });
+
   it("surfaces shared runtime activity for a collapsed machine section", () => {
     const store = createStore();
     store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
@@ -292,5 +365,72 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("keeps hidden machine activity in More and restores the saved collapse state", async () => {
+    const store = createStore();
+    const savedOrder = ["machine:no-machine", "pinned"];
+    store.set(sidebarMachineSectionOrderAtom, savedOrder);
+    store.set(sidebarHiddenGroupsAtom, ["machine:no-machine"]);
+    store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
+
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={[makeThread()]} />
+      </JotaiProvider>,
+    );
+
+    const more = screen.getByRole("button", { name: "More machines" });
+    expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByText("No machine")).toBeNull();
+    expect(screen.queryByText("Machine activity")).toBeNull();
+
+    fireEvent.click(more);
+    const hiddenMachines = await screen.findByRole("list", {
+      name: "Hidden machines",
+    });
+    expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
+    fireEvent.click(
+      within(hiddenMachines).getByRole("button", {
+        name: "Collapse No machine section",
+      }),
+    );
+    expect(within(hiddenMachines).queryByText("Machine activity")).toBeNull();
+    fireEvent.click(
+      within(hiddenMachines).getByRole("button", {
+        name: "Expand No machine section",
+      }),
+    );
+    expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
+    expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
+    fireEvent.keyDown(
+      within(hiddenMachines).getByRole("button", {
+        name: "No machine options",
+      }),
+      { key: "Enter" },
+    );
+    const restore = await screen.findByRole("menuitem", {
+      name: "Add to sidebar",
+    });
+    expect(
+      screen.getByRole("list", { name: "Hidden machines" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Customize list" }),
+    ).not.toBeNull();
+    fireEvent.click(restore);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "More machines" }),
+      ).toBeNull(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Expand No machine section" }),
+    ).not.toBeNull();
+    expect(screen.queryByText("Machine activity")).toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
+    expect(store.get(sidebarCollapsedMachinesAtom)).toEqual(["no-machine"]);
+    expect(store.get(sidebarMachineSectionOrderAtom)).toEqual(savedOrder);
   });
 });

@@ -1,3 +1,4 @@
+import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type {
   PromptMentionCommandTrigger,
@@ -139,6 +140,8 @@ import {
   modifierSubmitShortcutAria,
 } from "./modifier-submit-shortcut";
 
+import { ComposerSendMenu } from "./ComposerSendMenu";
+
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
 const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
@@ -235,10 +238,13 @@ export interface PromptBoxSubmissionConfig {
   isRunning?: boolean;
   onStop?: () => void;
   onModifierSubmit?: () => void;
+  swapSubmitActions?: boolean;
+  showModifierSubmitAction?: boolean;
 }
 
 interface PromptSubmitButtonProps {
   canSubmit: boolean;
+  hasInput: boolean;
   className: string;
   disabledReason: string | undefined;
   icon: IconName | undefined;
@@ -253,6 +259,7 @@ interface PromptSubmitButtonProps {
 
 function PromptSubmitButton({
   canSubmit,
+  hasInput,
   className,
   disabledReason,
   icon,
@@ -273,7 +280,7 @@ function PromptSubmitButton({
       data-promptbox-submit-action=""
       type="submit"
       size={isCompact ? "icon" : "sm"}
-      variant="default"
+      variant={hasInput ? "default" : "ghost"}
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
@@ -328,11 +335,13 @@ function PromptSubmitButton({
       }}
       className={cn(
         className,
+        !hasInput &&
+          "border border-border text-muted-foreground/50 disabled:opacity-100",
         label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
       {isBusy ? (
-        <Icon name="Spinner" className="size-4 animate-spin" />
+        <Icon name="Loading" className="size-4 animate-spin motion-reduce:animate-none" />
       ) : (
         <>
           <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
@@ -408,6 +417,7 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
 
 export interface AttachmentsConfig {
   items?: PromptDraftAttachment[];
+  pendingUploads?: readonly PendingAttachmentUpload[];
   isAttaching?: boolean;
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
@@ -1196,7 +1206,7 @@ export function PromptBoxInternal({
   value,
   mentionRanges,
   onChange,
-  onSubmit,
+  onSubmit: onDefaultSubmit,
   onEscape,
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
@@ -1234,8 +1244,20 @@ export function PromptBoxInternal({
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
-    onModifierSubmit,
+    onModifierSubmit: onDefaultModifierSubmit,
+    swapSubmitActions = false,
+    showModifierSubmitAction = false,
   } = submission;
+  const draftSubmitAction = { onSubmit: onDefaultSubmit, requiresInput: true };
+  const immediateSubmitAction = {
+    onSubmit: onDefaultModifierSubmit,
+    requiresInput: false,
+  };
+  const [primarySubmitAction, modifierSubmitAction] = swapSubmitActions
+    ? [immediateSubmitAction, draftSubmitAction]
+    : [draftSubmitAction, immediateSubmitAction];
+  const { onSubmit } = primarySubmitAction;
+  const { onSubmit: onModifierSubmit } = modifierSubmitAction;
   const {
     triggers: mentionTriggerChars = DEFAULT_TYPEAHEAD_MENTION_TRIGGERS,
     results: mentionResults,
@@ -1258,6 +1280,7 @@ export function PromptBoxInternal({
   }, [onCommandEditorFocus]);
   const {
     items: attachments = [],
+    pendingUploads,
     isAttaching = false,
     error: attachmentError = null,
     onAttachFiles,
@@ -1954,6 +1977,8 @@ export function PromptBoxInternal({
 
     const focusEditor = () => {
       if (editor.isDestroyed) return;
+      if (document.activeElement?.closest("[data-sidebar-rename-editor]"))
+        return;
       focusEditorAtEnd(editor);
       scheduleRevealEditorSelection();
     };
@@ -2635,18 +2660,16 @@ export function PromptBoxInternal({
     ],
   );
 
-  const canSubmit =
-    hasSubmittableInput &&
+  const canSubmitAction = (action: typeof immediateSubmitAction) =>
+    action.onSubmit !== undefined &&
+    (!action.requiresInput || hasSubmittableInput) &&
     !isAttaching &&
     !isSubmitting &&
     !submitDisabled &&
     !showVoiceActionGroup;
-  const canModifierSubmit =
-    onModifierSubmit !== undefined &&
-    !isAttaching &&
-    !isSubmitting &&
-    !submitDisabled &&
-    !showVoiceActionGroup;
+  const canPrimarySubmit = canSubmitAction(primarySubmitAction);
+  const canSubmit = hasSubmittableInput && canPrimarySubmit;
+  const canModifierSubmit = canSubmitAction(modifierSubmitAction);
   const showStop = Boolean(
     isRunning && onStop && !canSubmit && !isAttaching && !showVoiceActionGroup,
   );
@@ -2733,12 +2756,12 @@ export function PromptBoxInternal({
   const submitPrompt = useCallback(() => {
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
-    if (!canSubmit) return;
-    onSubmit();
+    if (!canPrimarySubmit) return;
+    onSubmit?.();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }
-  }, [canSubmit, onSubmit]);
+  }, [canPrimarySubmit, onSubmit]);
 
   const handleSubmitClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -3176,6 +3199,7 @@ export function PromptBoxInternal({
             <AttachmentPreview
               compact
               attachments={attachments}
+              pendingUploads={pendingUploads}
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3271,6 +3295,7 @@ export function PromptBoxInternal({
               >
                 <AttachmentPreview
                   attachments={attachments}
+                  pendingUploads={pendingUploads}
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3330,7 +3355,6 @@ export function PromptBoxInternal({
                 >
                   <ComposerPlusMenuSlot
                     actions={promptActions}
-                    isAttaching={isAttaching}
                     onAttach={
                       onAttachFiles
                         ? () => attachmentInputRef.current?.click()
@@ -3438,33 +3462,49 @@ export function PromptBoxInternal({
                         <Icon name="Mic" className="size-4" />
                       </Button>
                     ) : (
-                      <PromptSubmitButton
+                      <ComposerSendMenu
+                        isPointerCoarse={isPointerCoarse}
+                        includePluginContributions={
+                          !suppressPluginComposerCustomizations
+                        }
+                        queue={swapSubmitActions}
+                        hasInput={hasSubmittableInput}
                         canSubmit={canSubmit}
-                        icon={submitIcon}
-                        label={submitLabel}
-                        className={cn(
-                          showCompactLayout
-                            ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                            : [
-                                "ml-1",
-                                COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-                              ],
-                          "transition-colors",
-                        )}
-                        disabledReason={
-                          !canSubmit
-                            ? isAttaching
-                              ? attachmentUploadTitle
-                              : submitDisabledReason
+                        onSubmit={
+                          showModifierSubmitAction && onModifierSubmit
+                            ? submitModifierPrompt
                             : undefined
                         }
-                        isBusy={isSubmitting || isAttaching}
-                        isCompact={showCompactLayout}
-                        onPointerDown={handleSubmitPointerDown}
-                        onClick={handleSubmitClick}
-                        onTouchSubmit={handleTouchSubmit}
-                        title={effectiveSubmitTitle}
-                      />
+                      >
+                        <PromptSubmitButton
+                          canSubmit={canSubmit}
+                          hasInput={hasSubmittableInput}
+                          icon={submitIcon}
+                          label={submitLabel}
+                          className={cn(
+                            showCompactLayout
+                              ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                              : [
+                                  "ml-1",
+                                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                                ],
+                            "transition-colors",
+                          )}
+                          disabledReason={
+                            !canSubmit
+                              ? isAttaching
+                                ? attachmentUploadTitle
+                                : submitDisabledReason
+                              : undefined
+                          }
+                          isBusy={isSubmitting || isAttaching}
+                          isCompact={showCompactLayout}
+                          onPointerDown={handleSubmitPointerDown}
+                          onClick={handleSubmitClick}
+                          onTouchSubmit={handleTouchSubmit}
+                          title={effectiveSubmitTitle}
+                        />
+                      </ComposerSendMenu>
                     )}
                   </div>
                 </ComposerActionsSlot>

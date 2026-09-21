@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
@@ -182,7 +183,7 @@ export function ManualMachineSetup({
       setCommand(null);
       const controller = new AbortController();
       createController.current = controller;
-      createKey.current ??= crypto.randomUUID();
+      createKey.current ??= nanoid();
       try {
         let host = await sdk.hosts.experimental_create({
           key: createKey.current,

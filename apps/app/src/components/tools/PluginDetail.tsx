@@ -6,7 +6,6 @@ import {
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
-  ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
   type ResourceOverflowMenuItem,
@@ -22,7 +21,6 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Link } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -41,6 +39,7 @@ import {
   PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -52,9 +51,9 @@ import {
   PluginDetailTable,
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
-import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import {
   usePluginSource,
+  usePluginUpdateCheck,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -65,13 +64,6 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
-
-export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
-  const label = plugin.publisherLabel;
-  return label === null || label === "BB Official" ? null : (
-    <ProvenancePill label={label} />
-  );
-}
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
@@ -140,11 +132,13 @@ export function CatalogPluginDetail({
       titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
       metadata={<PluginCardAuthor entry={entry} />}
       actions={
-        <ResourceInstallControl
-          accessibleLabel={`Install ${entry.displayName}`}
+        <PluginCatalogInstallControl
+          displayName={entry.displayName}
+          installed={false}
+          showLabel
           disabled={!entry.compatible}
           count={count}
-          onAction={() => onInstall(entry)}
+          onInstall={() => onInstall(entry)}
         />
       }
     >
@@ -247,6 +241,9 @@ export function PluginDetail({
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
     enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
   });
+  usePluginUpdateCheck(plugin?.id ?? null, {
+    enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
+  });
   if (isLoading) {
     return (
       <ResourceListState
@@ -330,12 +327,9 @@ export function PluginDetail({
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
       titleMeta={
-        <span className="flex flex-wrap items-center gap-1.5">
-          <PluginProvenancePill plugin={plugin} />
-          {catalogEntry === undefined ? null : (
-            <PluginMarketplaceCategoryPill entry={catalogEntry} />
-          )}
-        </span>
+        catalogEntry === undefined ? null : (
+          <PluginMarketplaceCategoryPill entry={catalogEntry} />
+        )
       }
       metadata={
         <div className="space-y-1">
@@ -415,11 +409,6 @@ export function PluginDetail({
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
-            ) : hasUpdateManagement ? (
-              <CheckPluginUpdatesButton
-                pluginId={plugin.id}
-                appearance="inline"
-              />
             ) : undefined
           }
         >

@@ -1,5 +1,10 @@
+import {
+  pluginSourceFilterId,
+  pluginSourceFilterOptions,
+} from "./plugin-provenance";
+import { usePluginCollectionParams } from "./management/usePluginCollectionParams";
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -9,12 +14,9 @@ import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListState,
-  ResourceMultiSelectMenu,
-  ResourceSortMenu,
-  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
+import { PluginCreateButton } from "./PluginCreateButton";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import {
@@ -22,13 +24,24 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
 import {
-  pluginPublisherFilterId,
-  pluginPublisherFilterOptions,
-} from "@/components/plugin/plugin-provenance";
+  usePluginCatalogSearch,
+  usePluginUpdateCheck,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
+import {
+  usePluginRemoval,
+  PluginRemovalDialog,
+} from "./management/usePluginRemoval";
+import { installedPluginCatalogEntry } from "./management/installed-plugin-catalog";
+import { PluginCollectionToolbar } from "./management/PluginBrowseControls";
+import {
+  pluginCategoryFilterId,
+  pluginCategoryFilterOptions,
+  sortPluginEntries,
+} from "./management/plugin-browse-discovery";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
@@ -44,7 +57,15 @@ export function PluginsOverview({
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const removal = usePluginRemoval();
+  const {
+    searchParams,
+    query: installedQuery,
+    requestedSort,
+    sortDirection: installedSortDirection,
+    selectedCategories,
+    changeSearchParams,
+  } = usePluginCollectionParams();
   const listQuery = usePluginList({ enabled: true });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
@@ -52,78 +73,118 @@ export function PluginsOverview({
   );
   const activeMode =
     mode ?? (searchParams.get("view") === "installed" ? "installed" : "browse");
+  usePluginUpdateCheck(null, { enabled: activeMode === "installed" });
   const authorKey = searchParams.get("author");
-  const [installedQuery, setInstalledQuery] = useState("");
-  const [installedSortDirection, setInstalledSortDirection] = useState<
-    "asc" | "desc"
-  >("asc");
-  const [typeFilters, setTypeFilters] = useState<string[]>([]);
-  const typeFilterOptions = useMemo(
-    () => pluginPublisherFilterOptions(plugins),
+  const catalogQuery = usePluginCatalogSearch("", {
+    enabled: activeMode === "installed",
+  });
+  const installedEntries = useMemo(
+    () =>
+      plugins.map((plugin) => {
+        const entry = installedPluginCatalogEntry(
+          plugin,
+          catalogQuery.data?.entries ?? [],
+        );
+        const isLocal = plugin.source.startsWith("path:");
+        return {
+          plugin,
+          entryId: plugin.id,
+          displayName: plugin.name ?? plugin.id,
+          categoryId: isLocal
+            ? "local"
+            : (entry?.categoryId ?? plugin.categoryId),
+          category: isLocal ? "Local" : (entry?.category ?? plugin.category),
+          publishedAt: entry?.publishedAt,
+          installs: entry?.installs ?? null,
+        };
+      }),
+    [plugins, catalogQuery.data?.entries],
+  );
+  const sourceFilterOptions = useMemo(
+    () => pluginSourceFilterOptions(plugins),
     [plugins],
   );
-  const activeTypeFilters = useMemo(() => {
-    const offered = new Set(typeFilterOptions.map((option) => option.id));
-    return typeFilters.filter((value) => offered.has(value));
-  }, [typeFilterOptions, typeFilters]);
+  const sourceFilters = searchParams.getAll("source");
+  const activeSourceFilters = sourceFilters.filter((value) =>
+    sourceFilterOptions.some((option) => option.id === value),
+  );
+  const categoryOptions = useMemo(
+    () => pluginCategoryFilterOptions(installedEntries, selectedCategories),
+    [installedEntries, selectedCategories],
+  );
+  const installsKnown = installedEntries.some(
+    (entry) => entry.installs !== null,
+  );
+  const installedSort =
+    requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const installedResetKey = [
     normalizedInstalledQuery,
+    [...activeSourceFilters].sort().join(","),
+    installedSort,
     installedSortDirection,
-    [...activeTypeFilters].sort().join(","),
+    [...selectedCategories].sort().join(","),
   ].join("\u0000");
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
 
-  const visiblePlugins = useMemo(
-    () =>
-      plugins
-        .filter((plugin) => {
-          if (
-            activeTypeFilters.length > 0 &&
-            !activeTypeFilters.includes(pluginPublisherFilterId(plugin))
-          ) {
-            return false;
-          }
-          if (normalizedInstalledQuery.length === 0) return true;
-          return [
-            plugin.id,
-            plugin.name ?? "",
-            plugin.description ?? "",
-            plugin.version,
-            plugin.sourceDisplay,
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(normalizedInstalledQuery);
-        })
-        .sort((left, right) => {
-          const enabledResult = Number(!left.enabled) - Number(!right.enabled);
-          if (enabledResult !== 0) return enabledResult;
-          if (left.enabled) {
-            const leftPublisher = left.publisherLabel;
-            const rightPublisher = right.publisherLabel;
-            const publisherResult =
-              Number(leftPublisher === null) - Number(rightPublisher === null);
-            if (publisherResult !== 0) return publisherResult;
-          }
-          const result = (left.name ?? left.id).localeCompare(
-            right.name ?? right.id,
-          );
-          if (result !== 0) {
-            return installedSortDirection === "asc" ? result : -result;
-          }
-          return left.id.localeCompare(right.id);
-        }),
-    [
-      activeTypeFilters,
-      installedSortDirection,
-      normalizedInstalledQuery,
-      plugins,
-    ],
-  );
+  const visiblePlugins = useMemo(() => {
+    const filtered = installedEntries.filter((entry) => {
+      if (
+        activeSourceFilters.length > 0 &&
+        !activeSourceFilters.includes(pluginSourceFilterId(entry.plugin))
+      )
+        return false;
+      if (
+        selectedCategories.length > 0 &&
+        !selectedCategories.includes(pluginCategoryFilterId(entry))
+      )
+        return false;
+      if (normalizedInstalledQuery.length === 0) return true;
+      const plugin = entry.plugin;
+      return [
+        plugin.id,
+        plugin.name ?? "",
+        plugin.description ?? "",
+        plugin.version,
+        plugin.sourceDisplay,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedInstalledQuery);
+    });
+    if (installedSort !== null)
+      return sortPluginEntries(
+        filtered,
+        installedSort,
+        installedSortDirection,
+      ).map((entry) => entry.plugin);
+    return filtered
+      .map((entry) => entry.plugin)
+      .sort((left, right) => {
+        const enabledResult = Number(!left.enabled) - Number(!right.enabled);
+        if (enabledResult !== 0) return enabledResult;
+        if (left.enabled) {
+          const publisherResult =
+            Number(left.publisherLabel === null) -
+            Number(right.publisherLabel === null);
+          if (publisherResult !== 0) return publisherResult;
+        }
+        return (
+          (left.name ?? left.id).localeCompare(right.name ?? right.id) ||
+          left.id.localeCompare(right.id)
+        );
+      });
+  }, [
+    installedEntries,
+    activeSourceFilters,
+    selectedCategories,
+    normalizedInstalledQuery,
+    installedSort,
+    installedSortDirection,
+  ]);
   const installedList = useResourceInfiniteItems(visiblePlugins, {
     pageSize: RESOURCE_GRID_PAGE_SIZE,
     resetKey: installedResetKey,
@@ -139,21 +200,19 @@ export function PluginsOverview({
     });
   };
 
+  const uninstallCatalogEntry = (entry: PluginCatalogSearchEntry) => {
+    const plugin = plugins.find(
+      (candidate) =>
+        installedPluginCatalogEntry(candidate, [entry]) !== undefined,
+    );
+    if (plugin !== undefined) removal.open(plugin);
+  };
+
   const installedActions = (
-    <>
-      <CreateWithTemplatesButton
-        kind="plugin"
-        label="New plugin"
-        menuActions={[
-          {
-            label: "Install from source",
-            icon: "Download",
-            onSelect: () => setAddDialog({ open: true, initial: null }),
-          },
-        ]}
-        onCreate={startCreatePlugin}
-      />
-    </>
+    <PluginCreateButton
+      onCreate={startCreatePlugin}
+      onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
+    />
   );
 
   const openPlugin =
@@ -171,6 +230,7 @@ export function PluginsOverview({
       authorKey === null ? (
         <BrowsePluginsTab
           onInstall={(initial) => setAddDialog({ open: true, initial })}
+          onUninstall={uninstallCatalogEntry}
           onOpenPlugin={openPlugin}
           onInstallFromSource={() =>
             setAddDialog({ open: true, initial: null })
@@ -180,6 +240,7 @@ export function PluginsOverview({
         <PluginAuthorPage
           authorKey={authorKey}
           onInstall={(initial) => setAddDialog({ open: true, initial })}
+          onUninstall={uninstallCatalogEntry}
           onOpenPlugin={openPlugin}
         />
       );
@@ -189,35 +250,25 @@ export function PluginsOverview({
         scrollId="plugins-installed-results"
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
         toolbar={
-          <ResourceToolbar
-            searchValue={installedQuery}
+          <PluginCollectionToolbar
+            query={installedQuery}
             searchPlaceholder="Search installed plugins"
-            onSearchChange={setInstalledQuery}
+            selectedCategories={selectedCategories}
+            categoryOptions={categoryOptions}
+            sort={installedSort}
+            sortDirection={installedSortDirection}
+            installsKnown={installsKnown}
+            changeSearchParams={changeSearchParams}
             action={installedActions}
-            controls={
-              <>
-                <ResourceMultiSelectMenu
-                  label="Type"
-                  icon="SlidersHorizontal"
-                  compact
-                  selectedValues={activeTypeFilters}
-                  options={typeFilterOptions}
-                  onChange={setTypeFilters}
-                />
-                <ResourceSortMenu
-                  value="alpha"
-                  direction={installedSortDirection}
-                  compact
-                  options={[{ id: "alpha", label: "Plugin name" }]}
-                  onChange={() =>
-                    setInstalledSortDirection((current) =>
-                      current === "asc" ? "desc" : "asc",
-                    )
-                  }
-                />
-                {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
-              </>
-            }
+            sourceFilter={{
+              options: sourceFilterOptions,
+              selectedValues: activeSourceFilters,
+              onChange: (values) =>
+                changeSearchParams((next) => {
+                  next.delete("source");
+                  for (const value of values) next.append("source", value);
+                }),
+            }}
           />
         }
       >
@@ -236,7 +287,8 @@ export function PluginsOverview({
               message={
                 normalizedInstalledQuery === ""
                   ? "No plugins match these filters."
-                  : activeTypeFilters.length > 0
+                  : selectedCategories.length > 0 ||
+                      activeSourceFilters.length > 0
                     ? `No plugins match "${installedQuery}" with these filters.`
                     : `No plugins match "${installedQuery}"`
               }
@@ -271,6 +323,7 @@ export function PluginsOverview({
           {content}
         </ResourceCollectionPage>
       )}
+      <PluginRemovalDialog removal={removal} />
       <AddPluginDialog
         open={addDialog.open}
         initial={addDialog.initial}

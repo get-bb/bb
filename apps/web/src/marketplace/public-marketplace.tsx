@@ -1,39 +1,37 @@
-import {
-  AiContentGenerator01Icon,
-  AlertCircleIcon,
-  Archive03Icon,
-  ArrowDown01Icon,
-  ArrowUpRight01Icon,
-  AudioWave01Icon,
-  Cancel01Icon,
-  ChartColumnIcon,
-  CheckListIcon,
-  Clock01Icon,
-  CloudIcon,
-  ComputerTerminal01Icon,
-  Copy01Icon,
-  Database01Icon,
-  Download01Icon,
-  File01Icon,
-  Folder02Icon,
-  FolderGitTwoIcon,
-  GithubIcon,
-  GitBranchIcon,
-  GridViewIcon,
-  Layers01Icon,
-  LockIcon,
-  Mail02Icon,
-  PackageIcon,
-  PuzzleIcon,
-  Search01Icon,
-  SentIcon,
-  SidebarLeftIcon,
-  SlidersHorizontalIcon,
-  UserSwitchIcon,
-  WorkflowCircle03Icon,
-  ZapIcon,
-  ZoomInAreaIcon,
-} from "@hugeicons/core-free-icons";
+import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
+import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
+import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import ArrowUpRight01Icon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
+import AudioWave01Icon from "@hugeicons/core-free-icons/AudioWave01Icon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
+import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
+import Database01Icon from "@hugeicons/core-free-icons/Database01Icon";
+import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import Folder02Icon from "@hugeicons/core-free-icons/Folder02Icon";
+import FolderGitTwoIcon from "@hugeicons/core-free-icons/FolderGit2Icon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
+import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
+import LockIcon from "@hugeicons/core-free-icons/LockIcon";
+import Mail02Icon from "@hugeicons/core-free-icons/Mail02Icon";
+import PackageIcon from "@hugeicons/core-free-icons/PackageIcon";
+import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
+import SentIcon from "@hugeicons/core-free-icons/SentIcon";
+import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import UserSwitchIcon from "@hugeicons/core-free-icons/UserSwitchIcon";
+import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
+import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   createContext,

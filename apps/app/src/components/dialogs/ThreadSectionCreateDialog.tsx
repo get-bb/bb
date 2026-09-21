@@ -18,26 +18,9 @@ interface ThreadSectionCreateDialogProps {
   onCreate: (name: string) => void;
 }
 
-export interface ThreadSectionRenameDialogTarget {
-  id: string;
-  name: string;
-}
-
-interface ThreadSectionRenameDialogProps {
-  errorMessage?: string | null;
-  target: ThreadSectionRenameDialogTarget | null;
-  pending?: boolean;
-  onOpenChange: (open: boolean) => void;
-  onRename: (id: string, name: string) => void;
-}
-
 interface ThreadSectionDialogContentProps {
-  description: string;
   errorMessage?: string | null;
-  initialName: string;
   pending: boolean;
-  submitLabel: string;
-  title: string;
   onSubmit: (name: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
@@ -54,12 +37,8 @@ export function ThreadSectionCreateDialog({
       {(inputRef) =>
         open ? (
           <ThreadSectionDialogContent
-            description="Create a section for threads."
             errorMessage={errorMessage}
-            initialName=""
             pending={pending}
-            submitLabel="Create section"
-            title="New section"
             onSubmit={onCreate}
             inputRef={inputRef}
           />
@@ -69,46 +48,14 @@ export function ThreadSectionCreateDialog({
   );
 }
 
-export function ThreadSectionRenameDialog({
-  errorMessage,
-  target,
-  pending = false,
-  onOpenChange,
-  onRename,
-}: ThreadSectionRenameDialogProps) {
-  return (
-    <RenameDialog open={target !== null} onOpenChange={onOpenChange}>
-      {(inputRef) =>
-        target ? (
-          <ThreadSectionDialogContent
-            key={target.id}
-            description="Choose a new name for this section."
-            errorMessage={errorMessage}
-            initialName={target.name}
-            pending={pending}
-            submitLabel="Rename section"
-            title="Rename section"
-            onSubmit={(name) => onRename(target.id, name)}
-            inputRef={inputRef}
-          />
-        ) : null
-      }
-    </RenameDialog>
-  );
-}
-
 function ThreadSectionDialogContent({
-  description,
   errorMessage,
-  initialName,
   pending,
-  submitLabel,
-  title,
   onSubmit,
   inputRef,
 }: ThreadSectionDialogContentProps) {
   const inputId = useId();
-  const [name, setName] = useState(initialName);
+  const [name, setName] = useState("");
   const [hiddenErrorMessage, setHiddenErrorMessage] = useState<string | null>(
     null,
   );
@@ -133,8 +80,8 @@ function ThreadSectionDialogContent({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
+        <DialogTitle>New section</DialogTitle>
+        <DialogDescription>Create a section for threads.</DialogDescription>
       </DialogHeader>
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
@@ -159,7 +106,7 @@ function ThreadSectionDialogContent({
         </div>
         <DialogFooter>
           <Button type="submit" disabled={pending}>
-            {submitLabel}
+            Create section
           </Button>
         </DialogFooter>
       </form>

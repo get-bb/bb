@@ -101,6 +101,7 @@ Read the installed declarations for exact current signatures.
 - `PluginHooks`
 - `PluginTurnFailedEvent`
 - `ExperimentalComposerSubmitOptions`
+- `ExperimentalComposerSelection`
 - `PluginAgentConfiguration`
 - `PluginAgentConfigurationContext`
 - `PluginAgentToolContentPart`

@@ -150,10 +150,12 @@ function ThirdPartySourceDisclosure({
   plan,
   pending,
   error,
+  onRetry,
 }: {
   plan: PluginCatalogInstallPlan | undefined;
   pending: boolean;
   error: unknown;
+  onRetry: () => void;
 }) {
   if (pending) {
     return (
@@ -163,11 +165,47 @@ function ThirdPartySourceDisclosure({
     );
   }
   if (error !== null && error !== undefined) {
+    const status =
+      error instanceof Error &&
+      "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : null;
+    const retryable =
+      status === null || status === 408 || status === 429 || status >= 500;
+    const message =
+      status === 401 || status === 403
+        ? "Source access denied. Check repository permissions."
+        : status === 404
+          ? "Source not found. Check the marketplace listing."
+          : retryable
+            ? "Source unavailable. Try again."
+            : "Invalid source. Check the marketplace listing.";
     return (
-      <p className="text-2xs text-warning-text" role="status">
-        Could not resolve this listing&rsquo;s source:{" "}
-        {pluginAdminErrorMessage(error)}
-      </p>
+      <div
+        className="flex items-center gap-3 rounded-md border border-warning/20 bg-warning/5 p-3"
+        role="alert"
+      >
+        <Icon
+          name="AlertTriangle"
+          className="size-4 shrink-0 text-warning-text"
+          aria-hidden
+        />
+        <p className="min-w-0 flex-1 text-xs leading-normal text-foreground">
+          {message}
+        </p>
+        {retryable ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-xs"
+            onClick={onRetry}
+          >
+            Retry
+          </Button>
+        ) : null}
+      </div>
     );
   }
   if (plan === undefined || plan.kind !== "marketplace" || plan.official) {
@@ -338,6 +376,7 @@ function AddPluginDialogContent({
             plan={plan}
             pending={planQuery.isPending}
             error={planQuery.error}
+            onRetry={() => void planQuery.refetch()}
           />
         ) : null}
 
@@ -362,7 +401,7 @@ function AddPluginDialogContent({
           <FullTrustWarning />
         )}
       </div>
-      <DialogFooter>
+      <DialogFooter className="gap-2">
         <Button
           type="button"
           variant="outline"

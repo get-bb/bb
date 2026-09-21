@@ -460,6 +460,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       claimPolicy: {
         kind: "automatic",
         isGroupEligible: () => true,
+        retryingFailure: false,
       },
       threadId: thread.id,
       queuedMessageId: queued.id,

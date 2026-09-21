@@ -11,9 +11,7 @@ import { PluginCategoryLabel } from "./plugin-ui";
 
 export function PluginCardGrid({ children }: { children: ReactNode }) {
   return (
-    <ResourceBrowseGrid
-      className="w-full grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2"
-    >
+    <ResourceBrowseGrid className="w-full grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
       {children}
     </ResourceBrowseGrid>
   );
@@ -37,8 +35,11 @@ export function PluginCard({ badge, ...props }: PluginCardProps) {
   return (
     <ResourceBrowseCard
       {...props}
-      className="min-h-28 gap-x-2 gap-y-2 p-3"
+      className="h-full min-h-28 gap-x-2 gap-y-2 p-3"
       leadingClassName="size-6"
+      description={
+        <span className="block min-h-[2lh]">{props.description}</span>
+      }
       title={
         <span className="line-clamp-2 whitespace-normal">{props.title}</span>
       }

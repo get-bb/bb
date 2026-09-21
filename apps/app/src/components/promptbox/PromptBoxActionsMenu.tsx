@@ -31,7 +31,6 @@ export interface PromptBoxAction {
 
 interface PromptBoxActionsMenuProps {
   actions?: readonly PromptBoxAction[];
-  isAttaching?: boolean;
   onAttach?: () => void;
   onAction: (action: PromptBoxAction) => void;
   pluginItems?: readonly PluginComposerPlusMenuContribution[];
@@ -118,7 +117,6 @@ function orderedPromptActions(
 
 export function PromptBoxActionsMenu({
   actions = [],
-  isAttaching = false,
   onAttach,
   onAction,
   pluginItems = [],
@@ -207,18 +205,14 @@ export function PromptBoxActionsMenu({
         {onAttach ? (
           <>
             <DropdownMenuItem
-              disabled={isAttaching}
               onSelect={() => {
                 selectedItemRef.current = true;
                 onAttach();
               }}
             >
               <Icon
-                name={isAttaching ? "Spinner" : "Paperclip"}
-                className={cn(
-                  "size-4 text-muted-foreground",
-                  isAttaching && "animate-spin",
-                )}
+                name="Paperclip"
+                className="size-4 text-muted-foreground"
                 aria-hidden
               />
               Attach files

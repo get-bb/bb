@@ -196,6 +196,7 @@ async function resumeThreadRuntimeIfMissing(
   );
   await entry.runtime.resumeThread({
     bridgeLaunch,
+    skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -236,6 +237,7 @@ export async function startThread(
     );
     const result = await entry.runtime.startThread({
       bridgeLaunch,
+      skillRoots: entry.skillRoots,
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
@@ -268,6 +270,7 @@ export async function prepareThreadRewind(
   );
   return entry.runtime.prepareThreadRewind({
     bridgeLaunch,
+    skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
     threadId: command.threadId,
     leaseId: command.leaseId,

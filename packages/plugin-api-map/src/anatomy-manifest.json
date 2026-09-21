@@ -180,6 +180,65 @@
           ]
         }
       ]
+    },
+    "declarative-settings": {
+      "groupId": "settings",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Configuration", "[set]", "Case-sensitive search"]
+      },
+      "fixtureClassAnchors": ["bg-surface-recessed-solid p-3"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginSettings.tsx",
+          "anchors": [
+            "<Switch",
+            "placeholder={isSecret ? (secretIsSet ? \"[set]\" : \"[not set]\") : undefined}",
+            "<ResourceDetailConfigurationSection label=\"Configuration\">"
+          ]
+        }
+      ]
+    },
+    "plugin-status": {
+      "groupId": "extensions",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": [
+          "Needs configuration",
+          "Open settings",
+          "Release",
+          "Capabilities"
+        ]
+      },
+      "fixtureClassAnchors": ["bg-surface-recessed/55"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/tools/PluginCapabilities.tsx",
+          "anchors": [
+            "plugin.status === \"needs-configuration\" && hasSettingsPage",
+            "Open settings",
+            "name=\"ChevronRight\""
+          ]
+        },
+        {
+          "path": "apps/app/src/components/plugin/management/plugin-status.ts",
+          "anchors": [
+            "Complete the Configuration section; bb reloads the plugin after you save."
+          ]
+        },
+        {
+          "path": "apps/app/src/components/tools/PluginDetail.tsx",
+          "anchors": [
+            "label=\"Release\"",
+            "label={updatesWithBb ? \"Delivery\" : \"Installed\"}",
+            "<PluginIncludes plugin={plugin} />"
+          ]
+        }
+      ]
     }
   }
 }

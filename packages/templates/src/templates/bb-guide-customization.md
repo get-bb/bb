@@ -201,6 +201,25 @@ same resolved bindings. The complete default table is in docs/configuration.md.
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
 
+On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
+`Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
+tabs and each pane's New tab button in displayed order across the active
+chat's right-panel groups. Press Enter or Space on New tab to open the picker.
+On the selected New tab page, `panel.previousNewTabItem` /
+`panel.nextNewTabItem` use `Command+Control+ArrowUp` / `Command+Control+ArrowDown` to
+move through search, enabled actions, and recent items in displayed order.
+Search results replace actions and recents while searching. Enter activates
+the focused item.
+Chat splits use `pane.focus.left` / `right` / `up` / `down` with
+`Command+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+spatially to the adjacent chat pane, including stacked splits, and stop at the
+layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
+commands still cycle in reading order. On Windows/Linux, these arrow navigation
+commands start unassigned to preserve native Control-arrow editing shortcuts.
+Rebind any of these commands in Settings → Keyboard, via
+`bb settings keyboard set <command> <shortcut|disabled>`, or SDK
+`system.updateKeyboardSettings`; read bindings with `system.config`.
+
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
 `bb settings keyboard reset plugin:example/open-issue` restores the plugin's
@@ -265,9 +284,9 @@ Server-backed sidebar preferences
 Sidebar layout lives on the server in a keyed, revisioned registry so every
 window, device, and the CLI share it: organization mode, chronological sort,
 section orders, collapsed rows and sections, navigation entry order and
-visibility, and the navigation and thread-list provider pickers. The sidebar
-waits for them alongside the project list, and an upgrade uploads the old
-browser-stored layout once.
+visibility, hidden thread-list groups, and the navigation and thread-list
+provider pickers. The sidebar waits for them alongside the project list, and
+an upgrade uploads the old browser-stored layout once.
 
   bb settings ui list [--json]
   bb settings ui get <key> [--json]
@@ -280,8 +299,11 @@ lists and `null`; it reads the current revision, writes with it, and retries
 once on a conflict. `reset` writes the default. The SDK offers
 `sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
 
-Custom (`chronological`) is the default for `sidebar.organizationMode` when no
-value is saved. Existing server and legacy browser choices are preserved.
+New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
+Migrated installations with existing projects, threads, or UI preferences fall back
+to By project (`project`). Explicit server choices take precedence over legacy
+browser choices, which take precedence over this installation fallback. Reset
+saves the installation fallback as an explicit choice.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, and Sort by. Organize selects By project, By machine, or Custom, and
@@ -294,6 +316,29 @@ Sort by selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
+
+Thread-list visibility
+
+A project, custom section, or machine's menu offers Hide from list; its menu
+inside More offers Add to sidebar. Customize list manages visibility and
+order for the current organization. Hiding preserves the group's threads, order,
+and collapse state. Pinned threads remain in Pinned; More carries hidden activity.
+
+`sidebar.hiddenGroups` defaults to `[]`. Its keys are `project:<projectId>`,
+`section:<sectionId>`, and `machine:<hostId>` (`machine:no-machine` for the
+unassigned group). Each organization uses its own keys. Pinned and Threads cannot
+be hidden. Duplicate keys are deduplicated, and unavailable IDs remain saved
+without producing rows. New groups default visible.
+
+  bb settings ui get sidebar.hiddenGroups
+  bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
+  bb settings ui reset sidebar.hiddenGroups
+
+`set` replaces the entire list across organizations; include existing keys you
+want to keep hidden. `reset` shows all groups. SDK callers use
+`sdk.system.uiPreferences.list()` to read the current revision, then
+`.set({ key: "sidebar.hiddenGroups", value, expectedRevision })` or
+`.reset({ key: "sidebar.hiddenGroups" })`.
 
 Sidebar footer actions
 

@@ -174,6 +174,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ComposerPlusMenuItem`
 - `ComposerView`
 - `ExperimentalComposerSubmitOptions`
+- `ExperimentalComposerSelection`
 - `ComposerRichTextSpec`
 - `ComposerStructuredDraft`
 - `PluginComposerTextEffect`

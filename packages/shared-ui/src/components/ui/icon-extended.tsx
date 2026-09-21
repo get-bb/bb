@@ -1,106 +1,113 @@
 import type { IconSvgElement } from "@hugeicons/react";
-import {
-  AiBrain01Icon,
-  AiBrowserIcon,
-  AiContentGenerator01Icon,
-  ArrowDown02Icon,
-  ArrowDownDoubleIcon,
-  ArrowMoveDownLeftIcon,
-  ArrowMoveDownRightIcon,
-  ArrowReloadHorizontalIcon,
-  ArrowRight02Icon,
-  ArrowTurnBackwardIcon,
-  ArrowTurnForwardIcon,
-  ArrowUp01Icon,
-  ArrowUp02Icon,
-  ArrowUpDoubleIcon,
-  ArrowUpDownIcon,
-  ArrowUpRight01Icon,
-  AttachmentIcon,
-  BellDotIcon,
-  Book02Icon,
-  BrainIcon,
-  BrowserIcon,
-  Calendar03Icon,
-  CalendarCheckOut02Icon,
-  ChartColumnIcon,
-  CircleArrowShrink01Icon,
-  CleanIcon,
-  Clock01Icon,
-  CloudIcon,
-  CloudOffIcon,
-  Coffee02Icon,
-  CollapseIcon,
-  DashedLine02Icon,
-  DateTimeIcon,
-  DiscordIcon,
-  DragDropHorizontalIcon,
-  DragDropVerticalIcon,
-  Edit04Icon,
-  ElectricPlugsIcon,
-  ExpandIcon,
-  File01Icon,
-  FileAttachmentIcon,
-  FileEmpty02Icon,
-  FileQuestionMarkIcon,
-  Folder02Icon,
-  FolderEditIcon,
-  FolderRemoveIcon,
-  GitBranchIcon,
-  GitForkIcon,
-  GithubIcon,
-  GitMergeIcon,
-  GitPullRequestArrow,
-  GitPullRequestClosedIcon,
-  GitPullRequestDraftIcon,
-  GitPullRequestIcon,
-  GridViewIcon,
-  InternetIcon,
-  LaptopIcon,
-  Layers01Icon,
-  LayoutTwoColumnIcon,
-  LayoutTwoRowIcon,
-  LimitationIcon,
-  LinkSquare02Icon,
-  ListViewIcon,
-  LockIcon,
-  Mail02Icon,
-  MailOpen01Icon,
-  Menu02Icon,
-  MessageAdd02Icon,
-  Mic02Icon,
-  MoveToIcon,
-  News01Icon,
-  PackageReceiveIcon,
-  PauseIcon,
-  PinIcon,
-  PinOffIcon,
-  PlayIcon,
-  Plug02Icon,
-  PlusMinusSquare01Icon,
-  PlusSignIcon,
-  PuzzleIcon,
-  Refresh01Icon,
-  RepeatIcon,
-  SecurityCheckIcon,
-  SentIcon,
-  SidebarBottomIcon,
-  SidebarRightIcon,
-  SmartPhone01Icon,
-  Sorting01Icon,
-  SquareIcon,
-  SquareUnlock02Icon,
-  StarIcon,
-  TestTube01Icon,
-  TextWrapIcon,
-  TimeScheduleIcon,
-  Unarchive03Icon,
-  UserIcon,
-  ViewIcon,
-  ViewOffIcon,
-  ZoomInAreaIcon,
-  ZoomOutAreaIcon,
-} from "@hugeicons/core-free-icons";
+import AiBrain01Icon from "@hugeicons/core-free-icons/AiBrain01Icon";
+import AiBrowserIcon from "@hugeicons/core-free-icons/AiBrowserIcon";
+import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
+import ArrowDown02Icon from "@hugeicons/core-free-icons/ArrowDown02Icon";
+import ArrowDownDoubleIcon from "@hugeicons/core-free-icons/ArrowDownDoubleIcon";
+import ArrowLeft02Icon from "@hugeicons/core-free-icons/ArrowLeft02Icon";
+import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
+import ArrowMoveDownRightIcon from "@hugeicons/core-free-icons/ArrowMoveDownRightIcon";
+import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
+import ArrowRight02Icon from "@hugeicons/core-free-icons/ArrowRight02Icon";
+import ArrowTurnBackwardIcon from "@hugeicons/core-free-icons/ArrowTurnBackwardIcon";
+import ArrowTurnForwardIcon from "@hugeicons/core-free-icons/ArrowTurnForwardIcon";
+import ArrowUp01Icon from "@hugeicons/core-free-icons/ArrowUp01Icon";
+import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
+import ArrowUpDoubleIcon from "@hugeicons/core-free-icons/ArrowUpDoubleIcon";
+import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+import ArrowUpRight01Icon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
+import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import BellDotIcon from "@hugeicons/core-free-icons/BellDotIcon";
+import Book02Icon from "@hugeicons/core-free-icons/Book02Icon";
+import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
+import BrowserIcon from "@hugeicons/core-free-icons/BrowserIcon";
+import Calendar03Icon from "@hugeicons/core-free-icons/Calendar03Icon";
+import CalendarCheckOut02Icon from "@hugeicons/core-free-icons/CalendarCheckOut02Icon";
+import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
+import CircleArrowShrink01Icon from "@hugeicons/core-free-icons/CircleArrowShrink01Icon";
+import CleanIcon from "@hugeicons/core-free-icons/CleanIcon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import ClockArrowDownIcon from "@hugeicons/core-free-icons/ClockArrowDownIcon";
+import ClockArrowUpIcon from "@hugeicons/core-free-icons/ClockArrowUpIcon";
+import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
+import CloudOffIcon from "@hugeicons/core-free-icons/CloudOffIcon";
+import Coffee02Icon from "@hugeicons/core-free-icons/Coffee02Icon";
+import CollapseIcon from "@hugeicons/core-free-icons/CollapseIcon";
+import DashedLine02Icon from "@hugeicons/core-free-icons/DashedLine02Icon";
+import DateTimeIcon from "@hugeicons/core-free-icons/DateTimeIcon";
+import DiscordIcon from "@hugeicons/core-free-icons/DiscordIcon";
+import DragDropHorizontalIcon from "@hugeicons/core-free-icons/DragDropHorizontalIcon";
+import DragDropVerticalIcon from "@hugeicons/core-free-icons/DragDropVerticalIcon";
+import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
+import ElectricPlugsIcon from "@hugeicons/core-free-icons/ElectricPlugsIcon";
+import ExpandIcon from "@hugeicons/core-free-icons/ExpandIcon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import FileAttachmentIcon from "@hugeicons/core-free-icons/FileAttachmentIcon";
+import FileEmpty02Icon from "@hugeicons/core-free-icons/FileEmpty02Icon";
+import FileQuestionMarkIcon from "@hugeicons/core-free-icons/FileQuestionMarkIcon";
+import Folder02Icon from "@hugeicons/core-free-icons/Folder02Icon";
+import FolderEditIcon from "@hugeicons/core-free-icons/FolderEditIcon";
+import FolderRemoveIcon from "@hugeicons/core-free-icons/FolderRemoveIcon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import GitForkIcon from "@hugeicons/core-free-icons/GitForkIcon";
+import GitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
+import GitPullRequestArrow from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import GitPullRequestClosedIcon from "@hugeicons/core-free-icons/GitPullRequestClosedIcon";
+import GitPullRequestDraftIcon from "@hugeicons/core-free-icons/GitPullRequestDraftIcon";
+import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
+import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
+import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
+import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
+import LayoutTwoColumnIcon from "@hugeicons/core-free-icons/Layout2ColumnIcon";
+import LayoutTwoRowIcon from "@hugeicons/core-free-icons/Layout2RowIcon";
+import LimitationIcon from "@hugeicons/core-free-icons/LimitationIcon";
+import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
+import ListEndIcon from "@hugeicons/core-free-icons/ListEndIcon";
+import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
+import LockIcon from "@hugeicons/core-free-icons/LockIcon";
+import Mail02Icon from "@hugeicons/core-free-icons/Mail02Icon";
+import MailOpen01Icon from "@hugeicons/core-free-icons/MailOpen01Icon";
+import Menu02Icon from "@hugeicons/core-free-icons/Menu02Icon";
+import MessageAdd02Icon from "@hugeicons/core-free-icons/MessageAdd02Icon";
+import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
+import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
+import MoveToIcon from "@hugeicons/core-free-icons/MoveToIcon";
+import News01Icon from "@hugeicons/core-free-icons/News01Icon";
+import PackageReceiveIcon from "@hugeicons/core-free-icons/PackageReceiveIcon";
+import PauseIcon from "@hugeicons/core-free-icons/PauseIcon";
+import PinIcon from "@hugeicons/core-free-icons/PinIcon";
+import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
+import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
+import PlusMinusSquare01Icon from "@hugeicons/core-free-icons/PlusMinusSquare01Icon";
+import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
+import Refresh01Icon from "@hugeicons/core-free-icons/Refresh01Icon";
+import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
+import SecurityCheckIcon from "@hugeicons/core-free-icons/SecurityCheckIcon";
+import SentIcon from "@hugeicons/core-free-icons/SentIcon";
+import SidebarBottomIcon from "@hugeicons/core-free-icons/SidebarBottomIcon";
+import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import Sorting01Icon from "@hugeicons/core-free-icons/Sorting01Icon";
+import SortingAZ02Icon from "@hugeicons/core-free-icons/SortingAZ02Icon";
+import SortingNineOneIcon from "@hugeicons/core-free-icons/SortingNineOneIcon";
+import SortingOneNineIcon from "@hugeicons/core-free-icons/SortingOneNineIcon";
+import SortingZA01Icon from "@hugeicons/core-free-icons/SortingZA01Icon";
+import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
+import SquareUnlock02Icon from "@hugeicons/core-free-icons/SquareUnlock02Icon";
+import StarIcon from "@hugeicons/core-free-icons/StarIcon";
+import TestTube01Icon from "@hugeicons/core-free-icons/TestTube01Icon";
+import TextWrapIcon from "@hugeicons/core-free-icons/TextWrapIcon";
+import TimeScheduleIcon from "@hugeicons/core-free-icons/TimeScheduleIcon";
+import Unarchive03Icon from "@hugeicons/core-free-icons/Unarchive03Icon";
+import UserIcon from "@hugeicons/core-free-icons/UserIcon";
+import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
+import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
+import ZoomOutAreaIcon from "@hugeicons/core-free-icons/ZoomOutAreaIcon";
 import { type ExtendedIconMap, registerExtendedIcons } from "./icon-registry";
 
 const PaletteStrokeRoundedIcon: IconSvgElement = [
@@ -215,6 +222,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   AppWindow: BrowserIcon,
   ArchiveRestore: Unarchive03Icon,
   ArrowDown: ArrowDown02Icon,
+  ArrowLeft: ArrowLeft02Icon,
   ArrowRight: ArrowRight02Icon,
   ArrowReloadHorizontal: ArrowReloadHorizontalIcon,
   ArrowUp: ArrowUp02Icon,
@@ -235,6 +243,8 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   CircleArrowShrink: CircleArrowShrink01Icon,
   Clean: CleanIcon,
   Clock: Clock01Icon,
+  ClockArrowUp: ClockArrowUpIcon,
+  ClockArrowDown: ClockArrowDownIcon,
   Cloud: CloudIcon,
   CloudOff: CloudOffIcon,
   Coffee: Coffee02Icon,
@@ -274,12 +284,14 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
   Limitation: LimitationIcon,
+  ListEnd: ListEndIcon,
   ListView: ListViewIcon,
   Lock: LockIcon,
   Mail: Mail02Icon,
   MailOpen: MailOpen01Icon,
   Maximize2: ExpandIcon,
   Mic: Mic02Icon,
+  Minus: MinusSignIcon,
   Minimize2: CollapseIcon,
   MoveTo: MoveToIcon,
   NewTab: DashedLine02Icon,
@@ -304,6 +316,10 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   SideChat: MessageAdd02Icon,
   Smartphone: SmartPhone01Icon,
   Sort: Sorting01Icon,
+  SortingAZ02: SortingAZ02Icon,
+  SortingZA01: SortingZA01Icon,
+  SortingOneNine: SortingOneNineIcon,
+  SortingNineOne: SortingNineOneIcon,
   Square: SquareIcon,
   SquareUnlock02: SquareUnlock02Icon,
   Star: StarIcon,

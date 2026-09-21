@@ -92,11 +92,13 @@ function drainLivePruning(
   args: Parameters<typeof pruneThreadEventHistoryBestEffort>[1],
 ) {
   let totalRemoved = 0;
-  for (let i = 0; i < 1000; i++) {
+  let passesSinceRemoval = 0;
+  for (let i = 0; i < 1000 && passesSinceRemoval < 256; i++) {
     const result = pruneThreadEventHistoryBestEffort(deps, args);
     if (result === null) throw new Error("Live cleanup failed");
     expect(result.scanned).toBeLessThanOrEqual(32);
     totalRemoved += result.totalRemoved;
+    passesSinceRemoval = result.totalRemoved > 0 ? 0 : passesSinceRemoval + 1;
   }
   return { totalRemoved };
 }
