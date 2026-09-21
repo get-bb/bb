@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { threadLifecycleSchema } from "./thread.js";
 
 const UI_PREFERENCE_STRING_MAX_LENGTH = 1_024;
 const UI_PREFERENCE_LIST_MAX_LENGTH = 10_000;
@@ -35,6 +34,8 @@ const uiPreferenceStringSchema = z
 const uiPreferenceStringListSchema = z
   .array(uiPreferenceStringSchema)
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
+
+export type ThreadArchiveFilter = "active" | "archived";
 
 export const UI_PREFERENCE_KEYS = [
   "sidebar.threadLifecycles",
@@ -82,15 +83,21 @@ function defineUiPreference<Schema extends z.ZodTypeAny>(
 export const uiPreferenceDefinitions = {
   "sidebar.threadLifecycles": defineUiPreference(
     z
-      .array(threadLifecycleSchema)
+      .array(z.enum(["active", "draft", "archived"]))
       .min(1)
       .max(3)
       .refine(
         (values) => new Set(values).size === values.length,
-        "Thread lifecycles must be unique.",
-      ),
+        "Thread filters must be unique.",
+      )
+      .transform((values): ThreadArchiveFilter[] => [
+        ...(values.includes("active") || values.includes("draft")
+          ? ["active" as const]
+          : []),
+        ...(values.includes("archived") ? ["archived" as const] : []),
+      ]),
     ["active"],
-    "Thread lifecycles shown in the built-in sidebar: active, draft, and archived. Select at least one; defaults to active.",
+    "Threads shown in the built-in sidebar: active and archived. Select at least one; defaults to active.",
   ),
   "sidebar.organizationMode": defineUiPreference(
     sidebarOrganizationModeSchema,

@@ -14,14 +14,12 @@ import {
   or,
   sql,
   type SQL,
-  type SQLWrapper,
 } from "drizzle-orm";
 import type {
   JsonObject,
   ReasoningLevel,
   ThreadChangeKind,
   ThreadLifecycleEvent,
-  ThreadLifecycle,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
   ThreadSearchSourceKind,
@@ -108,14 +106,12 @@ export interface ThreadSearchResultGroup {
 
 export interface ThreadSearchResults {
   active: ThreadSearchResultGroup;
-  draft?: ThreadSearchResultGroup;
   archived: ThreadSearchResultGroup;
 }
 
 export interface SearchThreadsWithPendingInteractionStateArgs {
   query: string;
   limitPerGroup: number;
-  lifecycles?: readonly ThreadLifecycle[];
 }
 
 export interface UpsertThreadTitleSearchSegmentsArgs {
@@ -147,11 +143,10 @@ interface ListThreadSearchMatchRowsArgs {
   anyTokenMatchQuery: string;
   limitPerGroup: number;
   tokenMatchQueries: readonly string[];
-  lifecycles?: readonly ThreadLifecycle[];
 }
 
 interface ThreadSearchMatchRow {
-  lifecycle: ThreadLifecycle;
+  archived: number;
   segmentOrder: number;
   sourceKind: string;
   sourceSeq: number | null;
@@ -418,7 +413,6 @@ export interface ListThreadsOptions {
   projectId?: string;
   environmentId?: string;
   archived?: boolean;
-  lifecycles?: readonly ThreadLifecycle[];
   sectionId?: string;
   unsectioned?: boolean;
   parentThreadId?: string;
@@ -682,27 +676,8 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
   return args.currentStatus === "active" || args.currentStatus === "starting";
 }
 
-function threadLifecycleSql(thread: {
-  id: SQLWrapper;
-  archivedAt: SQLWrapper;
-  status: SQLWrapper;
-} = threads): SQL<ThreadLifecycle> {
-  return sql<ThreadLifecycle>`CASE
-    WHEN ${thread.archivedAt} IS NOT NULL THEN 'archived'
-    WHEN ${thread.status} = 'pending' AND ${thread.id} IN (
-      SELECT thread_id FROM queued_thread_messages
-      WHERE wait_holder = 'plugin:drafts'
-        AND claimed_at IS NULL AND claim_token IS NULL
-    ) THEN 'draft'
-    ELSE 'active'
-  END`;
-}
-
 function buildListThreadsFilters(options: ListThreadsOptions) {
   return [
-    options.lifecycles === undefined
-      ? undefined
-      : inArray(threadLifecycleSql(), [...options.lifecycles]),
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     options.environmentId
       ? eq(threads.environmentId, options.environmentId)
@@ -769,9 +744,6 @@ function buildPinnedThreadOrderBy() {
 }
 
 function buildListThreadsOrderBy(options: ListThreadsOptions) {
-  if (options.lifecycles !== undefined) {
-    return [desc(threads.updatedAt), desc(threads.id)];
-  }
   if (options.archived === true) {
     return [desc(threads.archivedAt), desc(threads.id)];
   }
@@ -1021,17 +993,6 @@ function listThreadSearchMatchRows(
   );
   const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
 
-  const lifecycle = args.lifecycles === undefined
-    ? sql`CASE WHEN t.archived_at IS NOT NULL THEN 'archived' ELSE 'active' END`
-    : threadLifecycleSql({
-        id: sql`t.id`,
-        archivedAt: sql`t.archived_at`,
-        status: sql`t.status`,
-      });
-  const lifecycleFilter = args.lifecycles === undefined
-    ? sql`1 = 1`
-    : inArray(sql`lifecycle`, [...args.lifecycles]);
-
   return db.all<ThreadSearchMatchRow>(sql`
     WITH token_matches AS (
       ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
@@ -1041,7 +1002,7 @@ function listThreadSearchMatchRows(
         token_matches.threadId AS threadId,
         MIN(token_matches.tokenRank) AS bestRank,
         MAX(t.updated_at) AS threadUpdatedAt,
-        ${lifecycle} AS lifecycle
+        MAX(t.archived_at IS NOT NULL) AS archived
       FROM token_matches
       JOIN threads AS t ON t.id = token_matches.threadId
       WHERE t.deleted_at IS NULL
@@ -1052,23 +1013,22 @@ function listThreadSearchMatchRows(
     ordered_threads AS (
       SELECT
         threadId,
-        lifecycle,
+        archived,
         ROW_NUMBER() OVER (
-          PARTITION BY lifecycle
+          PARTITION BY archived
           ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
         ) AS threadOrder,
-        COUNT(*) OVER (PARTITION BY lifecycle) AS total
+        COUNT(*) OVER (PARTITION BY archived) AS total
       FROM ranked_threads
-      WHERE ${lifecycleFilter}
     ),
     limited_threads AS (
-      SELECT threadId, lifecycle, threadOrder, total
+      SELECT threadId, archived, threadOrder, total
       FROM ordered_threads
       WHERE threadOrder <= ${args.limitPerGroup}
     ),
     ranked_segments AS (
       SELECT
-        limited_threads.lifecycle AS lifecycle,
+        limited_threads.archived AS archived,
         limited_threads.threadOrder AS threadOrder,
         limited_threads.total AS total,
         ROW_NUMBER() OVER (
@@ -1091,7 +1051,7 @@ function listThreadSearchMatchRows(
       WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
     )
     SELECT
-      lifecycle,
+      archived,
       threadOrder,
       total,
       segmentOrder,
@@ -1103,7 +1063,7 @@ function listThreadSearchMatchRows(
     FROM ranked_segments
     WHERE isTitle = 1
       OR segmentOrder <= ${THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD}
-    ORDER BY lifecycle ASC, threadOrder ASC, isTitle DESC, segmentOrder ASC
+    ORDER BY archived ASC, threadOrder ASC, isTitle DESC, segmentOrder ASC
   `);
 }
 
@@ -1176,7 +1136,6 @@ export function searchThreadsWithPendingInteractionState(
   if (anyTokenMatchQuery === null) {
     return {
       active: { total: 0, results: [] },
-      ...(args.lifecycles === undefined ? {} : { draft: { total: 0, results: [] } }),
       archived: { total: 0, results: [] },
     };
   }
@@ -1189,23 +1148,16 @@ export function searchThreadsWithPendingInteractionState(
     anyTokenMatchQuery,
     limitPerGroup,
     tokenMatchQueries,
-    ...(args.lifecycles === undefined ? {} : { lifecycles: args.lifecycles }),
   });
 
   return {
     active: hydrateThreadSearchGroup(db, {
       tokens,
-      rows: rows.filter((row) => row.lifecycle === "active"),
-    }),
-    ...(args.lifecycles === undefined ? {} : {
-      draft: hydrateThreadSearchGroup(db, {
-        tokens,
-        rows: rows.filter((row) => row.lifecycle === "draft"),
-      }),
+      rows: rows.filter((row) => row.archived === 0),
     }),
     archived: hydrateThreadSearchGroup(db, {
       tokens,
-      rows: rows.filter((row) => row.lifecycle === "archived"),
+      rows: rows.filter((row) => row.archived === 1),
     }),
   };
 }

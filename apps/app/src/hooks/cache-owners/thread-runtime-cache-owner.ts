@@ -890,19 +890,7 @@ export function applyCreateThreadResult({
   thread,
 }: CreateThreadSuccessArgs): void {
   queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
-  const submission = request.pluginSubmission;
-  const savedDraft =
-    thread.status === "pending" &&
-    submission?.pluginId === "drafts" &&
-    submission.data !== null &&
-    typeof submission.data === "object" &&
-    !Array.isArray(submission.data) &&
-    submission.data.kind === "draft";
-  optimisticallyInsertThread(
-    queryClient,
-    thread,
-    savedDraft ? "draft" : "active",
-  );
+  optimisticallyInsertThread(queryClient, thread);
   prependProjectPromptHistory(
     queryClient,
     request.projectId,
@@ -1538,7 +1526,6 @@ export function applyQueuedMessageDeleteResult({
   threadId,
 }: ThreadIdCacheArgs): void {
   invalidateThreadQueueQueries({ queryClient, threadId });
-  invalidateThreadListMembershipQueries({ queryClient, threadId });
 }
 
 export async function beginStopThreadTransaction({

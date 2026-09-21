@@ -11,7 +11,6 @@ import {
   type QueuedMessageWaitHolder,
   type ThreadQueuedMessage,
   type ThreadStatus,
-  type ThreadLifecycle,
   validatePluginMetadata,
 } from "@bb/domain";
 import {
@@ -86,7 +85,6 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
   archived?: boolean;
-  lifecycles?: readonly ThreadLifecycle[];
   environmentId?: string;
   sectionId?: string;
   hasParent?: boolean;
@@ -102,11 +100,7 @@ export interface ThreadListArgs {
   unsectioned?: boolean;
 }
 
-export interface ThreadSearchArgs extends Omit<
-  ThreadSearchQuery,
-  "lifecycles"
-> {
-  lifecycles?: readonly ThreadLifecycle[];
+export interface ThreadSearchArgs extends ThreadSearchQuery {
   signal?: AbortSignal;
 }
 
@@ -643,9 +637,6 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.archived === undefined
       ? {}
       : { archived: args.archived ? "true" : "false" }),
-    ...(args?.lifecycles === undefined
-      ? {}
-      : { lifecycles: args.lifecycles.join(",") }),
     ...(args?.unsectioned === undefined
       ? {}
       : { unsectioned: args.unsectioned ? "true" : "false" }),
@@ -782,9 +773,6 @@ function searchQuery(args: ThreadSearchArgs): ThreadSearchQuery {
   return {
     limitPerGroup: args.limitPerGroup,
     query: args.query,
-    ...(args.lifecycles === undefined
-      ? {}
-      : { lifecycles: args.lifecycles.join(",") }),
   };
 }
 

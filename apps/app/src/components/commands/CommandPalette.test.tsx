@@ -308,7 +308,6 @@ function makeThread(
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     queuedWork: "none",
-    lifecycle: overrides.archivedAt != null ? "archived" : "active",
     ...overrides,
   };
 }

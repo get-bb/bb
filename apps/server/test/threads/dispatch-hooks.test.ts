@@ -7,7 +7,6 @@ import {
   listQueuedThreadMessages,
   listQueuedThreadMessagesForApi,
   listRunningThreads,
-  listThreadsWithPendingInteractionState,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
@@ -492,11 +491,7 @@ describe("message.dispatch hook context", () => {
       });
 
       expect(seen).toEqual([pluginSubmission]);
-      expect(
-        listThreadsWithPendingInteractionState(harness.db, {
-          lifecycles: ["draft"],
-        }).map((thread) => thread.id),
-      ).toEqual([created.id]);
+      expect(getThread(harness.db, created.id)?.status).toBe("pending");
       const saved = onlyQueuedRow(harness, created.id);
       await sendQueuedMessage(harness.deps, {
         threadId: created.id,
@@ -505,16 +500,7 @@ describe("message.dispatch hook context", () => {
         claimPolicy: { kind: "explicit-send" },
       });
       expect(seen).toEqual([pluginSubmission]);
-      expect(
-        listThreadsWithPendingInteractionState(harness.db, {
-          lifecycles: ["draft"],
-        }),
-      ).toEqual([]);
-      expect(
-        listThreadsWithPendingInteractionState(harness.db, {
-          lifecycles: ["active"],
-        }).map((thread) => thread.id),
-      ).toContain(created.id);
+      expect(getThread(harness.db, created.id)?.status).not.toBe("pending");
       expect(queuedRows(harness, created.id)).toEqual([]);
     });
   });

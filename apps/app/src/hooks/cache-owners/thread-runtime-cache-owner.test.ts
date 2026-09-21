@@ -15,10 +15,7 @@ import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
 } from "@/test/fixtures/projects";
-import {
-  makeThreadResponse,
-  makeThreadTimelineResponse as makeTimelineResponse,
-} from "@/test/fixtures/thread-responses";
+import { makeThreadTimelineResponse as makeTimelineResponse } from "@/test/fixtures/thread-responses";
 import {
   sidebarNavigationQueryKey,
   threadListQueryKey,
@@ -30,7 +27,6 @@ import {
 } from "../queries/query-keys";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
-  applyCreateThreadResult,
   applyQueuedMessageCreateResult,
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
@@ -116,35 +112,6 @@ function makeQueuedMessage(
 }
 
 describe("thread runtime cache owner", () => {
-  it("keeps a newly saved draft classified while the list refreshes", () => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
-      showMutationErrorToasts: false,
-    });
-    const key = threadListQueryKey({ archived: false, projectId: "project-1" });
-    queryClient.setQueryData(key, []);
-
-    applyCreateThreadResult({
-      queryClient,
-      request: {
-        projectId: "project-1",
-        input: [{ type: "text", text: "Save for later", mentions: [] }],
-        environment: { type: "project-default" },
-        pluginSubmission: { pluginId: "drafts", data: { kind: "draft" } },
-      },
-      thread: makeThreadResponse({
-        id: "thread-draft",
-        projectId: "project-1",
-        status: "pending",
-        queuedMessageCount: 1,
-      }),
-    });
-
-    expect(queryClient.getQueryData<ThreadListEntry[]>(key)).toEqual([
-      expect.objectContaining({ id: "thread-draft", lifecycle: "draft" }),
-    ]);
-  });
-
   it.each([
     ["Plan", applyThreadPlanCancellationResult, "activePlanModeCount"],
     ["Goal", applyThreadGoalClearResult, "activeGoalCount"],

@@ -9,14 +9,12 @@ import {
   truncateCell,
 } from "../../table.js";
 import { outputJson } from "../helpers.js";
-import { parseThreadLifecycles } from "./helpers.js";
 
 interface ThreadListCommandOptions {
   environment?: string;
   project?: string;
   parentThread?: string;
   archived?: boolean;
-  lifecycle?: string;
   section?: string;
   unsectioned?: boolean;
   json?: boolean;
@@ -36,10 +34,6 @@ export function registerListCommand(
     .option("--section <id>", "Filter by thread section ID")
     .option("--unsectioned", "Show only threads outside sections")
     .option("--archived", "Show only archived threads")
-    .option(
-      "--lifecycle <values>",
-      "Filter by active, draft, or archived (comma-separated)",
-    )
     .option("--include-hidden", "Include hidden threads")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -64,9 +58,7 @@ export function registerListCommand(
           flagName: "--section",
           value: opts.section,
         });
-        const lifecycles = parseThreadLifecycles(opts.lifecycle);
         const threads = await sdk.threads.list({
-          ...(lifecycles === undefined ? {} : { lifecycles }),
           ...(projectId ? { projectId } : {}),
           ...(environmentId ? { environmentId } : {}),
           ...(parentThreadId ? { parentThreadId } : {}),

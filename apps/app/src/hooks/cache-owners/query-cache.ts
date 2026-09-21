@@ -2,7 +2,6 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   Thread,
   ThreadListEntry,
-  ThreadLifecycle,
   ThreadStatusChangeMetadata,
 } from "@bb/domain";
 import {
@@ -573,14 +572,10 @@ function threadMatchesListFilters(
 export function optimisticallyInsertThread(
   queryClient: QueryClient,
   thread: ThreadResponse,
-  lifecycle: ThreadLifecycle = thread.archivedAt !== null
-    ? "archived"
-    : "active",
 ): void {
   const queuedWork = thread.queuedMessageCount > 0 ? "waiting" : "none";
   const insertedThread: ThreadListEntry = {
     ...thread,
-    lifecycle,
     activity: {
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,
@@ -611,10 +606,6 @@ export function optimisticallyInsertThread(
       index === existingIndex
         ? {
             ...candidate,
-            lifecycle:
-              candidate.status === "pending" && lifecycle === "draft"
-                ? "draft"
-                : candidate.lifecycle,
             queuedWork:
               candidate.queuedWork === "none"
                 ? queuedWork
@@ -750,18 +741,7 @@ export function updateCachedThreadListStatusState(
       return list;
     }
     return list.map((thread) =>
-      thread.id === threadId
-        ? {
-            ...thread,
-            ...statusChange,
-            lifecycle:
-              thread.archivedAt !== null
-                ? "archived"
-                : statusChange.status === "pending"
-                  ? thread.lifecycle
-                  : "active",
-          }
-        : thread,
+      thread.id === threadId ? { ...thread, ...statusChange } : thread,
     );
   });
 }

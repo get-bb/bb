@@ -349,7 +349,6 @@ describe("useArchivedThreads", () => {
         Array.from({ length: ARCHIVED_THREADS_PAGE_SIZE }, (_, index) =>
           makeThreadListEntry({
             id: `archived-${index}`,
-            lifecycle: "archived",
             archivedAt: 1,
           }),
         ),

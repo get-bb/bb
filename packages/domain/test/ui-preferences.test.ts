@@ -13,7 +13,7 @@ describe("sidebar lifecycle preference", () => {
       parseUiPreferenceValue("sidebar.threadLifecycles", ["draft", "archived"]),
     ).toEqual({
       success: true,
-      value: ["draft", "archived"],
+      value: ["active", "archived"],
     });
   });
 

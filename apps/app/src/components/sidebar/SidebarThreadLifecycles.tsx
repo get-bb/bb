@@ -30,7 +30,7 @@ export function useSidebarThreadLifecycles(
     const selected = new Map<string, ThreadListEntry>();
     if (value.includes("archived")) {
       for (const thread of archived.data?.pages.flat() ?? []) {
-        if (thread.lifecycle === "archived") selected.set(thread.id, thread);
+        if (thread.archivedAt !== null) selected.set(thread.id, thread);
       }
     }
     if (value.includes("active")) {
