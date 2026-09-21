@@ -1179,7 +1179,7 @@ function NewTabButton({
         compact
           ? PANEL_TAB_CONTROL_CLASS
           : SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-        "text-muted-foreground/70 hover:text-foreground",
+        "text-muted-foreground/70 hover:text-foreground focus:ring-1 focus:ring-ring",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}
