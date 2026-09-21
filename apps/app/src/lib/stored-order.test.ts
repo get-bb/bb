@@ -75,6 +75,33 @@ describe("reorderStoredOrder", () => {
     ).toEqual(["side-chat", "quickstart", "browser"]);
   });
 
+  it("applies a full visible order while retaining hidden and absent slots", () => {
+    expect(
+      reorderStoredOrder({
+        order: ["pinned", "browser", "quickstart", "terminal", "side-chat"],
+        visibleIds: ["browser", "terminal", "side-chat"],
+        nextVisibleIds: ["side-chat", "browser", "terminal"],
+      }),
+    ).toEqual(["pinned", "side-chat", "quickstart", "browser", "terminal"]);
+  });
+
+  it.each([
+    { nextVisibleIds: ["browser"] },
+    { nextVisibleIds: ["browser", "browser"] },
+    { nextVisibleIds: ["browser", "unknown"] },
+  ])(
+    "rejects a replacement order with changed membership: $nextVisibleIds",
+    ({ nextVisibleIds }) => {
+      expect(
+        reorderStoredOrder({
+          order: ["browser", "quickstart", "terminal"],
+          visibleIds: ["browser", "terminal"],
+          nextVisibleIds,
+        }),
+      ).toBeNull();
+    },
+  );
+
   it("declines a drag that ends where it started or outside the list", () => {
     expect(
       reorderStoredOrder({

@@ -1,4 +1,6 @@
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   COARSE_POINTER_DOT_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -74,6 +76,7 @@ export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
   "bb-sidebar-open-in-split-row";
 
 export const SIDEBAR_FOOTER_ACTION_CLASS = cn(
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>[data-icon-root]]:opacity-80",
 );
@@ -83,3 +86,12 @@ export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
 
 export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
   "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-70 before:content-[''] max-md:pointer-coarse:before:left-5";
+
+export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
+  SIDEBAR_ROW_BASE_CLASS,
+  LIST_HOVER_TRANSITION,
+  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
+  "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
+);
