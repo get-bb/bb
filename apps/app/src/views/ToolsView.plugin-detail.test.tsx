@@ -1188,7 +1188,17 @@ describe("BB Official plugin detail routing", () => {
         if (url === "/api/v1/plugins") {
           return Response.json({
             enabled: true,
-            plugins: [{ ...GITHUB_PLUGIN, hasSettings: true }],
+            plugins: [
+              makeInstalledPlugin({
+                id: "github",
+                name: "GitHub",
+                source: "builtin:github",
+                provenance: "catalog",
+                catalogEntryId: "github",
+                catalogMarketplaceName: "bb-official",
+                hasSettings: true,
+              }),
+            ],
           });
         }
         if (url.startsWith("/api/v1/plugin-catalog/search")) {
