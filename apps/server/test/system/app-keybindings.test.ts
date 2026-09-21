@@ -88,6 +88,8 @@ describe("app keybindings", () => {
     for (const [command, key] of [
       ["panel.previousTab", "ArrowLeft"],
       ["panel.nextTab", "ArrowRight"],
+      ["panel.previousNewTabItem", "ArrowUp"],
+      ["panel.nextNewTabItem", "ArrowDown"],
     ] as const) {
       const binding = DEFAULT_APP_KEYBINDINGS.find(
         (item) => item.command === command,

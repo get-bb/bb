@@ -56,6 +56,8 @@ export const APP_COMMAND_IDS = [
   "sidebar.toggle",
   "panel.previousTab",
   "panel.nextTab",
+  "panel.previousNewTabItem",
+  "panel.nextNewTabItem",
   "panel.newTab",
   "panel.reopenClosedTab",
   "panel.close",

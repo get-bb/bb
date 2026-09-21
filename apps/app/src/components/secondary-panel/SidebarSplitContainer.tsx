@@ -129,6 +129,7 @@ export function SidebarSplitContainer({
   renderPane,
   tabs,
 }: SidebarSplitContainerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const availableTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const storageKey = sidebarSplitStorageKey(panelStateId);
   const [initialStorageValue] = useState<string | null>(() =>
@@ -344,6 +345,33 @@ export function SidebarSplitContainer({
     navigateTab(-1, target),
   );
   useAppCommandHandler("panel.nextTab", ({ target }) => navigateTab(1, target));
+
+  const navigateNewTabItem = (direction: -1 | 1) => {
+    if (!canNavigateTabs) return false;
+    const page = containerRef.current?.querySelector<HTMLElement>(
+      '[data-split-pane-id][data-focused="true"]:not([aria-hidden="true"]) [data-panel-new-tab-page]',
+    );
+    if (!page) return false;
+    const items = Array.from(
+      page.querySelectorAll<HTMLElement>(
+        "[data-panel-new-tab-item]:not(:disabled)",
+      ),
+    );
+    if (items.length === 0) return false;
+    const index = items.findIndex((item) => item === document.activeElement);
+    const nextIndex =
+      index < 0
+        ? direction === 1
+          ? 0
+          : items.length - 1
+        : (index + direction + items.length) % items.length;
+    const next = items[nextIndex];
+    next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: "nearest" });
+    return true;
+  };
+  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(
     (paneId: string) => {
@@ -571,6 +599,7 @@ export function SidebarSplitContainer({
   return (
     <div
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      ref={containerRef}
       data-sidebar-split-container=""
       data-sidebar-split-root-direction={
         presentedLayout.root.type === "split"

@@ -203,6 +203,18 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     { mod: true, shift: true },
     mainWithoutModal,
   ),
+  binding(
+    "panel.previousNewTabItem",
+    "ArrowUp",
+    { mod: true, shift: true },
+    mainWithoutModal,
+  ),
+  binding(
+    "panel.nextNewTabItem",
+    "ArrowDown",
+    { mod: true, shift: true },
+    mainWithoutModal,
+  ),
   binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
   binding(
     "panel.reopenClosedTab",

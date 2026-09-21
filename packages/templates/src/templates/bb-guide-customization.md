@@ -205,8 +205,13 @@ Right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Mod+Shift+ArrowLeft` / `Mod+Shift+ArrowRight`. They wrap through visible
 tabs and each pane's New tab button in displayed order across the active
 chat's right-panel groups. Press Enter or Space on New tab to open the picker.
+On the selected New tab page, `panel.previousNewTabItem` /
+`panel.nextNewTabItem` use `Mod+Shift+ArrowUp` / `Mod+Shift+ArrowDown` to
+move through search, enabled actions, and recent items in displayed order.
+Search results replace actions and recents while searching. Enter activates
+the focused item.
 Chat splits use separate, initially unassigned `pane.focus.previous` /
-`pane.focus.next` commands. Rebind either pair in Settings → Keyboard, via
+`pane.focus.next` commands. Rebind these commands in Settings → Keyboard, via
 `bb settings keyboard set <command> <shortcut|disabled>`, or SDK
 `system.updateKeyboardSettings`; read bindings with `system.config`.
 

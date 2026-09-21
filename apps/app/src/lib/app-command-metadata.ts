@@ -108,6 +108,16 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Select the next visible right-panel tab, wrapping across panel splits.",
       ),
       command(
+        "panel.previousNewTabItem",
+        "Previous New tab item",
+        "Focus the previous search, action, or recent item on the selected New tab page.",
+      ),
+      command(
+        "panel.nextNewTabItem",
+        "Next New tab item",
+        "Focus the next search, action, or recent item on the selected New tab page.",
+      ),
+      command(
         "panel.newTab",
         "New panel tab",
         "Open a tab in the secondary panel.",

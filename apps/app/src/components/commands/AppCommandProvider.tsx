@@ -359,6 +359,8 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         getShortcutCommand(event, [
           "panel.previousTab",
           "panel.nextTab",
+          "panel.previousNewTabItem",
+          "panel.nextNewTabItem",
           "pane.focus.previous",
           "pane.focus.next",
         ]) !== null
