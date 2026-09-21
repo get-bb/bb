@@ -88,6 +88,7 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     act(() => next.click());
     expect(visiblePage()).toBe("Side panel");
     expect(current().querySelector('[data-guide-mobile-scene="panel"]')).not.toBeNull();
+    expect([...current().querySelectorAll("[data-guide-badge]")].map((badge) => badge.textContent)).toEqual(["7", "12", "13", "14"]);
     openAnnotation("browser-toolbar");
     for (const [id, number, title] of [
       ["browser-toolbar", "7", "Browser toolbar"],
