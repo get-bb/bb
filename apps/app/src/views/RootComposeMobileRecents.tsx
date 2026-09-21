@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
@@ -55,6 +55,7 @@ interface GetMobileRecentThreadsArgs {
   collapsedThreadIds: ReadonlySet<string>;
   draftThreadIds: ReadonlySet<string>;
   threads: readonly ThreadListEntry[];
+  visibleLimit?: number;
 }
 
 interface MobileRecentThreadRowProps {
@@ -138,6 +139,7 @@ export interface MobileRecentThreadRow {
   hasUnsubmittedDraft: boolean;
   hasChildren: boolean;
   isCollapsed: boolean;
+  hasHiddenChildren: boolean;
 }
 
 function flattenMobileRecentNodes({
@@ -163,6 +165,7 @@ function flattenMobileRecentNodes({
       hasUnsubmittedDraft: draftThreadIds.has(node.thread.id),
       hasChildren,
       isCollapsed,
+      hasHiddenChildren: isCollapsed,
     });
     if (hasChildren && !isCollapsed) {
       flattenMobileRecentNodes({
@@ -207,7 +210,11 @@ export function getMobileRecentThreads({
   collapsedThreadIds,
   draftThreadIds,
   threads,
-}: GetMobileRecentThreadsArgs): MobileRecentThreadRow[] {
+  visibleLimit = RECENT_THREAD_LIMIT,
+}: GetMobileRecentThreadsArgs): {
+  rows: MobileRecentThreadRow[];
+  hasMore: boolean;
+} {
   const rows: MobileRecentThreadRow[] = [];
   flattenMobileRecentNodes({
     collapsedThreadIds,
@@ -219,7 +226,15 @@ export function getMobileRecentThreads({
     ),
     rows,
   });
-  return rows.slice(0, RECENT_THREAD_LIMIT);
+  const visibleRows = rows.slice(0, visibleLimit);
+  let truncatedDepth = rows[visibleLimit]?.depth ?? 0;
+  for (const row of [...visibleRows].reverse()) {
+    if (row.depth < truncatedDepth) {
+      row.hasHiddenChildren = true;
+      truncatedDepth = row.depth;
+    }
+  }
+  return { rows: visibleRows, hasMore: rows.length > visibleLimit };
 }
 
 function MobileRecentThreadRow({
@@ -236,13 +251,13 @@ function MobileRecentThreadRow({
     hasUnsubmittedDraft,
     hasChildren,
     isCollapsed,
+    hasHiddenChildren,
   } = row;
   const touchStartedBeforeLink = useRef(false);
   const { providers: environmentProviders } = useSystemEnvironmentProviders();
   const threadTitle = getThreadDisplayTitle(thread);
   const indicatorState: ThreadListIndicatorState =
     threadListIndicatorStateForThread(thread, hasUnsubmittedDraft);
-  const hasHiddenChildren = hasChildren && isCollapsed;
   const trailingIndicatorState: ThreadListIndicatorState = hasHiddenChildren
     ? {
         hasPendingInteraction:
@@ -420,6 +435,7 @@ export function RootComposeMobileRecents({
   showCreatingRow,
   threads,
 }: RootComposeMobileRecentsProps) {
+  const [visibleLimit, setVisibleLimit] = useState(RECENT_THREAD_LIMIT);
   const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
     collapsedThreadIdsAtom,
   );
@@ -450,14 +466,15 @@ export function RootComposeMobileRecents({
       return next.length === current.length ? current : next;
     });
   }, [highlightedThreadId, setCollapsedThreadIdList, threads]);
-  const recentThreads = useMemo(
+  const { rows: recentThreads, hasMore } = useMemo(
     () =>
       getMobileRecentThreads({
         collapsedThreadIds,
         draftThreadIds,
         threads,
+        visibleLimit,
       }),
-    [collapsedThreadIds, draftThreadIds, threads],
+    [collapsedThreadIds, draftThreadIds, threads, visibleLimit],
   );
 
   if (!showCreatingRow && recentThreads.length === 0) {
@@ -518,6 +535,17 @@ export function RootComposeMobileRecents({
             />
           ))}
         </ul>
+      ) : null}
+      {hasMore ? (
+        <button
+          type="button"
+          className="mt-2 min-h-11 w-full rounded-md px-2 text-sm text-muted-foreground hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() =>
+            setVisibleLimit((current) => current + RECENT_THREAD_LIMIT)
+          }
+        >
+          Show more recent threads
+        </button>
       ) : null}
     </section>
   );

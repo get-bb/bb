@@ -124,7 +124,7 @@ describe("getMobileRecentThreads", () => {
       }),
     );
 
-    const rows = getMobileRecentThreads({
+    const { rows } = getMobileRecentThreads({
       collapsedThreadIds: NONE,
       draftThreadIds: NONE,
       threads,
@@ -151,8 +151,42 @@ describe("getMobileRecentThreads", () => {
     expect(rows.every((row) => row.depth === 0)).toBe(true);
   });
 
+  it("marks only ancestors of omitted rows as having hidden children", () => {
+    const { rows, hasMore } = getMobileRecentThreads({
+      collapsedThreadIds: NONE,
+      draftThreadIds: NONE,
+      visibleLimit: 3,
+      threads: [
+        makeIdleThread({ id: "parent" }),
+        makeIdleThread({
+          id: "child",
+          parentThreadId: "parent",
+          latestAttentionAt: 10,
+        }),
+        makeIdleThread({ id: "grandchild", parentThreadId: "child" }),
+        makeIdleThread({
+          id: "sibling",
+          parentThreadId: "parent",
+          latestAttentionAt: 1,
+          hasPendingInteraction: true,
+        }),
+      ],
+    });
+    expect(hasMore).toBe(true);
+    expect(
+      rows.map(({ thread, hasHiddenChildren }) => [
+        thread.id,
+        hasHiddenChildren,
+      ]),
+    ).toEqual([
+      ["parent", true],
+      ["child", false],
+      ["grandchild", false],
+    ]);
+  });
+
   it("nests a child under its parent instead of listing it as a peer", () => {
-    const rows = getMobileRecentThreads({
+    const { rows } = getMobileRecentThreads({
       collapsedThreadIds: NONE,
       draftThreadIds: NONE,
       threads: [
@@ -190,7 +224,7 @@ describe("getMobileRecentThreads", () => {
       }),
     ];
 
-    const rows = getMobileRecentThreads({
+    const { rows } = getMobileRecentThreads({
       collapsedThreadIds: new Set(["thr_parent"]),
       draftThreadIds: NONE,
       threads,
@@ -202,7 +236,7 @@ describe("getMobileRecentThreads", () => {
   });
 
   it("promotes a child whose parent is absent to the top level", () => {
-    const rows = getMobileRecentThreads({
+    const { rows } = getMobileRecentThreads({
       collapsedThreadIds: NONE,
       draftThreadIds: NONE,
       threads: [
@@ -220,7 +254,7 @@ describe("getMobileRecentThreads", () => {
   });
 
   it("does not group worktree threads into environment rows", () => {
-    const rows = getMobileRecentThreads({
+    const { rows } = getMobileRecentThreads({
       collapsedThreadIds: NONE,
       draftThreadIds: NONE,
       threads: [
@@ -689,6 +723,102 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
+  it("retains cutoff child activity after expansion and reveals the child with show more", () => {
+    const threads = [
+      ...Array.from({ length: 14 }, (_, index) =>
+        makeIdleThread({
+          id: `thr_recent_${index}`,
+          latestAttentionAt: 100 - index,
+        }),
+      ),
+      makeIdleThread({
+        id: "thr_parent",
+        title: "Boundary parent",
+        latestAttentionAt: 50,
+      }),
+      makeIdleThread({
+        id: "thr_child",
+        title: "Waiting child",
+        parentThreadId: "thr_parent",
+        latestAttentionAt: 200,
+        hasPendingInteraction: true,
+      }),
+    ];
+    render(
+      <TestProviders store={storeWithCollapsedThreads(["thr_parent"])}>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={threads}
+        />
+      </TestProviders>,
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(15);
+    expect(
+      screen.queryByRole("button", { name: "Show more recent threads" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show threads under Boundary parent",
+      }),
+    );
+    expect(
+      screen.getByRole("link", {
+        name: "Open Boundary parent — Thread needs user input",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: /Open Waiting child/ }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show more recent threads" }),
+    );
+    expect(
+      screen.getByRole("link", {
+        name: "Open Waiting child — Thread needs user input",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: /^Open Boundary parent/ })
+        .getAttribute("aria-label"),
+    ).not.toContain("Thread needs user input");
+    expect(screen.getAllByRole("link")).toHaveLength(16);
+    expect(
+      screen.queryByRole("button", { name: "Show more recent threads" }),
+    ).toBeNull();
+  });
+
+  it("reveals additional recent threads in bounded batches", () => {
+    render(
+      <TestProviders>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={Array.from({ length: 32 }, (_, index) =>
+            makeIdleThread({ id: `thr_${index}` }),
+          )}
+        />
+      </TestProviders>,
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(15);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show more recent threads" }),
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(30);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show more recent threads" }),
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(32);
+    expect(
+      screen.queryByRole("button", { name: "Show more recent threads" }),
+    ).toBeNull();
+  });
+
   it("remains visible in the desktop compose layout", () => {
     const { container } = render(
       <TestProviders>

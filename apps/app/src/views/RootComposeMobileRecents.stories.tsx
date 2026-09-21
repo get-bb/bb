@@ -299,3 +299,44 @@ export function Overview() {
     </StoryCard>
   );
 }
+
+export function CutoffHierarchy() {
+  const threads = [
+    ...Array.from({ length: 14 }, (_, index) =>
+      makeRecentThread({
+        overrides: {
+          id: `thr_cutoff_recent_${index}`,
+          title: `Recent thread ${index + 1}`,
+          latestAttentionAt: 100 - index,
+        },
+      }),
+    ),
+    makeRecentThread({
+      overrides: {
+        id: "thr_cutoff_parent",
+        title: "Boundary parent",
+        latestAttentionAt: 50,
+      },
+    }),
+    makeRecentThread({
+      overrides: {
+        id: "thr_cutoff_child",
+        title: "Waiting child",
+        parentThreadId: "thr_cutoff_parent",
+        latestAttentionAt: 200,
+        hasPendingInteraction: true,
+      },
+    }),
+  ];
+  return (
+    <div className="mx-auto w-full max-w-[760px] bg-background p-4">
+      <RootComposeMobileRecents
+        highlightedThreadId={null}
+        projectNamesById={projectNamesById}
+        providersById={providersById}
+        showCreatingRow={false}
+        threads={threads}
+      />
+    </div>
+  );
+}
