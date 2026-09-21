@@ -5,6 +5,7 @@ import type {
   UpdateThreadSectionRequest,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import { applyThreadSectionRenameResult } from "../cache-owners/project-cache-owner";
 import {
   invalidateProjectListQueries,
   invalidateThreadListQueries,
@@ -43,7 +44,8 @@ export function useUpdateThreadSection() {
     },
     mutationFn: (request: UpdateThreadSectionRequest) =>
       sdk.threadSections.update(request),
-    onSuccess: () => {
+    onSuccess: (section) => {
+      applyThreadSectionRenameResult({ section, queryClient });
       invalidateThreadSectionQueries(queryClient);
     },
   });

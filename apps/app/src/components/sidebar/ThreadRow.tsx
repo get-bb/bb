@@ -23,7 +23,7 @@ import {
   ThreadArchiveQuickAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
-import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
+import { useSidebarRename } from "./SidebarInlineRename";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -181,6 +181,7 @@ function renderThreadRowContainer({
   style,
 }: ThreadRowContainerArgs) {
   const containerProps = {
+    "data-sidebar-rename-row": "",
     className,
     style,
     "data-sidebar-nest-target": nestTargetState ?? undefined,
@@ -275,7 +276,7 @@ function ThreadRowComponent({
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
-  const { renameThread } = useThreadActions();
+  const { renameThreadAsync } = useThreadActions();
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
@@ -296,16 +297,17 @@ function ThreadRowComponent({
         ? `In project ${crossProjectName}`
         : "In another project";
   const handleRename = useCallback(
-    (nextTitle: string) => {
-      renameThread(thread.id, nextTitle);
-    },
-    [renameThread, thread.id],
+    (nextTitle: string) => renameThreadAsync(thread.id, nextTitle),
+    [renameThreadAsync, thread.id],
   );
-  const { editor, isEditing, startEditing } = useInlineThreadTitle({
-    onCommit: handleRename,
-    resetKey: thread.id,
-    title: threadTitle,
+  const rename = useSidebarRename({
+    kind: "thread",
+    id: thread.id,
+    name: threadTitle,
+    label: "Thread name",
+    onSave: handleRename,
   });
+  const { editor, isEditing, startEditing } = rename;
   const startTitleEditing = useCallback(
     (event: { preventDefault: () => void; stopPropagation: () => void }) => {
       event.preventDefault();
@@ -380,7 +382,7 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
-  const rowDragBindings = options.dragBindings;
+  const rowDragBindings = isEditing ? undefined : options.dragBindings;
   const nestTargetState = options.nestDrop?.state ?? null;
   const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
   const containerRef = useComposedRefs<HTMLDivElement>(
@@ -389,8 +391,12 @@ function ThreadRowComponent({
   );
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-    "group/thread-row",
+    "group/thread-row cursor-pointer",
     SIDEBAR_ROW_BASE_CLASS,
+    !shortcut &&
+      parentOptions &&
+      hasChildren &&
+      "gap-0.5 max-md:pointer-coarse:gap-2",
     LIST_HOVER_TRANSITION,
     parentOptions?.stickyLevel === undefined && "relative",
     options.isCompact
@@ -402,7 +408,8 @@ function ThreadRowComponent({
     !showActive &&
       splitIndicator.isOpenInSplit &&
       SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
-    !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
+    !showActive &&
+      "has-[[data-state=open]]:bg-sidebar-accent has-[[data-sidebar-rename-anchor]:focus-visible]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
@@ -475,15 +482,23 @@ function ThreadRowComponent({
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           !shortcut &&
-            (parentOptions && hasChildren
-              ? "pr-7.5 max-md:pointer-coarse:pr-0"
-              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
+            parentOptions &&
+            hasChildren &&
+            "gap-0.5 max-md:pointer-coarse:gap-1.5",
+          !shortcut &&
+            !isEditing &&
+            !(parentOptions && hasChildren) &&
+            SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
         )}
       >
         <span
           className={cn(
             "relative flex min-w-0 items-center self-stretch",
             (!parentOptions || !hasChildren || isEditing) && "flex-1",
+            !shortcut &&
+              parentOptions &&
+              hasChildren &&
+              "md:flex-1 pointer-fine:flex-1",
           )}
         >
           <NavLink
@@ -491,6 +506,7 @@ function ThreadRowComponent({
             to={getThreadRoutePath({ projectId, threadId: thread.id })}
             data-sidebar-thread-shortcut-target=""
             data-sidebar-thread-id={thread.id}
+            data-sidebar-rename-anchor=""
             onClick={(event) => {
               if (isEditing) {
                 event.preventDefault();
@@ -514,7 +530,7 @@ function ThreadRowComponent({
             onDoubleClick={isEditing ? undefined : startTitleEditing}
             aria-label={linkLabel}
             aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-            className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+            className="absolute inset-0 rounded-md outline-none"
           />
           {isEditing ? (
             <span className="relative z-10 min-w-0 flex-1 overflow-visible">
@@ -530,8 +546,25 @@ function ThreadRowComponent({
             </span>
           )}
         </span>
+        {!shortcut && !isEditing && parentOptions && hasChildren ? (
+          <span
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "relative z-10 shrink-0 max-md:pointer-coarse:hidden",
+            )}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <ThreadArchiveQuickAction
+              thread={thread}
+              className={SIDEBAR_CONTROL_BUTTON_CLASS}
+            />
+          </span>
+        ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
+            disabled={isEditing}
+            className={isEditing ? "hidden" : undefined}
             isCollapsed={isParentCollapsed}
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
@@ -540,7 +573,12 @@ function ThreadRowComponent({
           />
         ) : null}
       </span>
-      <span className="flex shrink-0 items-center gap-0.5">
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-0.5",
+          isEditing && "hidden",
+        )}
+      >
         {shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
         ) : (
@@ -596,14 +634,17 @@ function ThreadRowComponent({
                 className={cn(
                   SIDEBAR_HOVER_ACTIONS_CLASS,
                   "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+                  isEditing && "invisible pointer-events-none",
                 )}
               >
                 <SidebarRowControls
                   primaryAction={
-                    <ThreadArchiveQuickAction
-                      thread={thread}
-                      className={SIDEBAR_CONTROL_BUTTON_CLASS}
-                    />
+                    parentOptions && hasChildren ? null : (
+                      <ThreadArchiveQuickAction
+                        thread={thread}
+                        className={SIDEBAR_CONTROL_BUTTON_CLASS}
+                      />
+                    )
                   }
                 >
                   <ThreadActionsMenu
@@ -611,6 +652,8 @@ function ThreadRowComponent({
                     triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
                     onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
+                    onRename={rename.startEditingFromMenu}
+                    onCloseAutoFocus={rename.onCloseAutoFocus}
                   />
                 </SidebarRowControls>
               </div>
@@ -628,10 +671,11 @@ function ThreadRowComponent({
     dragBindings: rowDragBindings,
     nestTargetState,
     reorderPlacement,
-    onClickCapture: options.consumeClickSuppression
-      ? handleRowClickCapture
-      : undefined,
-    onSplitDragPointerDown,
+    onClickCapture:
+      !isEditing && options.consumeClickSuppression
+        ? handleRowClickCapture
+        : undefined,
+    onSplitDragPointerDown: isEditing ? undefined : onSplitDragPointerDown,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });
@@ -641,6 +685,9 @@ function ThreadRowComponent({
       thread={thread}
       onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
+      disabled={isEditing}
     >
       {row}
     </ThreadActionsContextMenu>

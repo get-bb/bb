@@ -34,6 +34,10 @@ const uiPreferenceStringSchema = z
 const uiPreferenceStringListSchema = z
   .array(uiPreferenceStringSchema)
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
+const sidebarHiddenGroupsSchema = z
+  .array(uiPreferenceStringSchema.regex(/^(project|section|machine):\S+$/))
+  .max(UI_PREFERENCE_LIST_MAX_LENGTH)
+  .transform((value) => [...new Set(value)]);
 
 export const UI_PREFERENCE_KEYS = [
   "sidebar.organizationMode",
@@ -43,6 +47,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.sectionOrder",
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
+  "sidebar.hiddenGroups",
   "sidebar.collapsedSections",
   "sidebar.collapsedProjects",
   "sidebar.collapsedThreads",
@@ -112,6 +117,11 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringListSchema,
     ["pinned", "machines", "threads"],
     "Top-level section order when the sidebar is organized by machine.",
+  ),
+  "sidebar.hiddenGroups": defineUiPreference(
+    sidebarHiddenGroupsSchema,
+    [],
+    "Project, custom section, and machine groups moved into More, using project:<id>, section:<id>, or machine:<id>. Setting this list replaces the hidden groups across all sidebar organizations; reset shows every group.",
   ),
   "sidebar.collapsedSections": defineUiPreference(
     z

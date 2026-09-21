@@ -1,11 +1,8 @@
-import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
+import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
-import { appToast } from "@/components/ui/app-toast.js";
-import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -88,22 +85,7 @@ export function InstalledPluginRow({
   onUpdateClick: () => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
-  const queryClient = useQueryClient();
-  const setEnabled = useSetPluginEnabled();
-  const toggle = useMutation({
-    meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
-    onError: (error, enabled) => {
-      appToast.error(
-        `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
-        {
-          description: error instanceof Error ? error.message : String(error),
-        },
-      );
-    },
-    onSettled: () => invalidatePluginList({ queryClient }),
-  });
-  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
+  const { toggle, enabled } = usePluginEnabledMutation(plugin);
   const isLocal = plugin.source.startsWith("path:");
   const category = catalogEntry?.category ?? plugin.category;
   const signal = pluginRowSignal(plugin);

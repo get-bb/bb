@@ -2,6 +2,7 @@ import {
   Suspense,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -24,6 +25,9 @@ import {
 } from "../../../.ladle/story-fixtures";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "./AppSidebar";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ProjectList,
@@ -59,9 +63,11 @@ import {
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   sidebarOrganizationModeAtom,
+  sidebarHiddenGroupsAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { installSidebarRenameStoryApi } from "../../../.ladle/sidebar-rename-fixtures";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
@@ -94,6 +100,11 @@ const personalProject = makeProject({
 });
 
 const loadedSidebarNavigation = makeSidebarBootstrapResponse({
+  sections: [
+    { id: "sec_story_build", name: "In progress", createdAt: 0, updatedAt: 0 },
+    { id: "sec_story_review", name: "Review", createdAt: 0, updatedAt: 0 },
+    { id: "sec_story_later", name: "Later", createdAt: 0, updatedAt: 0 },
+  ],
   personalProject: makeProjectWithThreadsResponse({
     ...personalProject,
     threads: [
@@ -154,6 +165,7 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
         }),
         makeThreadListEntry({
           id: "thr_story_active",
+          sectionId: "sec_story_build",
           projectId: bbProject.id,
           title: "Ship realtime sidebar updates",
           titleFallback: "Ship realtime sidebar updates",
@@ -191,6 +203,7 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
           environmentBranchName: BRANCH_NAMES.feature,
+          environmentIsWorktree: true,
           environmentProviderId: "git-worktree",
           queuedWork: "none",
           title: "Tighten loading skeleton",
@@ -201,10 +214,12 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
         }),
         makeThreadListEntry({
           id: "thr_story_worktree_b",
+          sectionId: "sec_story_review",
           projectId: bbProject.id,
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
           environmentBranchName: BRANCH_NAMES.feature,
+          environmentIsWorktree: true,
           environmentProviderId: "git-worktree",
           queuedWork: "none",
           title: "Audit sidebar stories",
@@ -221,12 +236,34 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
       threads: [
         makeThreadListEntry({
           id: "thr_story_docs",
+          sectionId: "sec_story_review",
           projectId: docsProject.id,
           title: "Refresh onboarding docs",
           titleFallback: "Refresh onboarding docs",
           latestAttentionAt: 120,
           createdAt: 120,
           updatedAt: 120,
+        }),
+        ...Array.from({ length: 40 }, (_, index) => {
+          const title = [
+            "Review keyboard navigation",
+            "Clarify the onboarding checklist",
+            "Update screenshots for the release guide",
+            "Verify nested thread actions",
+          ][index % 4];
+          return makeThreadListEntry({
+            id: `thr_story_docs_${index}`,
+            projectId: docsProject.id,
+            sectionId: "sec_story_review",
+            title: `${title} ${index + 1}`,
+            titleFallback: `${title} ${index + 1}`,
+            parentThreadId:
+              index % 8 === 1 ? `thr_story_docs_${index - 1}` : null,
+            latestAttentionAt: 110 - index,
+            createdAt: 110 - index,
+            updatedAt: 110 - index,
+            lastReadAt: index % 3 === 0 ? 0 : 120,
+          });
         }),
       ],
     }),
@@ -268,6 +305,62 @@ const machineSidebarNavigation = {
     })),
   })),
 } satisfies SidebarBootstrapResponse;
+
+const renameSidebarNavigation: SidebarBootstrapResponse = {
+  ...machineSidebarNavigation,
+  sections: [
+    { id: "sec_story_review", name: "Review", createdAt: 1, updatedAt: 1 },
+    { id: "sec_story_planning", name: "Planning", createdAt: 1, updatedAt: 1 },
+  ],
+  personalProject: {
+    ...machineSidebarNavigation.personalProject,
+    threads: machineSidebarNavigation.personalProject.threads.map(
+      (thread, index) => ({
+        ...thread,
+        sectionId: index === 0 ? "sec_story_review" : "sec_story_planning",
+      }),
+    ),
+  },
+};
+
+function RenameSidebar() {
+  const [ready, setReady] = useState(false);
+  const failureRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const cleanup = installSidebarRenameStoryApi({
+      navigation: renameSidebarNavigation,
+      hosts: machineStoryHosts,
+      failNextSave: () => {
+        const input = failureRef.current;
+        const fail = input?.checked ?? false;
+        if (input) input.checked = false;
+        return fail;
+      },
+    });
+    setReady(true);
+    return cleanup;
+  }, []);
+  return (
+    <div className="flex max-w-80 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label className="inline-flex items-center gap-2">
+          <input type="checkbox" ref={failureRef} />
+          Fail next save
+        </label>
+      </div>
+      {ready ? (
+        <OrganizationSidebar
+          mode="chronological"
+          hosts={machineStoryHosts}
+          navigation={renameSidebarNavigation}
+          fullSidebar
+        />
+      ) : (
+        <LoadingSidebar />
+      )}
+    </div>
+  );
+}
 
 function SidebarFrame({ children, navigation }: SidebarFrameProps) {
   return (
@@ -313,9 +406,11 @@ function LoadingSidebar() {
 function LoadedSidebar({
   hosts,
   navigation = loadedSidebarNavigation,
+  fullSidebar = false,
 }: {
   hosts?: typeof machineStoryHosts;
   navigation?: SidebarBootstrapResponse;
+  fullSidebar?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [isSeeded, setIsSeeded] = useState(false);
@@ -347,7 +442,24 @@ function LoadedSidebar({
 
   return (
     <Suspense fallback={<LoadingSidebar />}>
-      <ProjectList onNewProject={noop} onProjectSelect={noop} />
+      {fullSidebar ? (
+        <QuickCreateProjectProvider>
+          <ProjectActionsProvider>
+            <ThreadActionsProvider>
+              <SidebarProvider className="h-[680px] min-h-0 w-80 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground">
+                <AppSidebar
+                  onResizeMouseDown={noop}
+                  isResizing={false}
+                  settingsRoutePath="/settings"
+                  mobileHosted={{ hidden: false }}
+                />
+              </SidebarProvider>
+            </ThreadActionsProvider>
+          </ProjectActionsProvider>
+        </QuickCreateProjectProvider>
+      ) : (
+        <ProjectList onNewProject={noop} onProjectSelect={noop} />
+      )}
     </Suspense>
   );
 }
@@ -452,28 +564,39 @@ function OrganizationSidebar({
   hosts,
   mode,
   navigation,
+  fullSidebar = false,
 }: {
   hosts?: typeof machineStoryHosts;
   mode: SidebarOrganizationMode;
   navigation?: SidebarBootstrapResponse;
+  fullSidebar?: boolean;
 }) {
   const [store] = useState(() => createStore());
   const [isModeSeeded, setIsModeSeeded] = useState(false);
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: false,
-          },
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnMount: false,
+          refetchOnWindowFocus: false,
+          refetchOnReconnect: false,
         },
-      }),
-  );
+      },
+    });
+    client.setQueryData(hostsQueryKey(), hosts ?? machineStoryHosts);
+    return client;
+  });
 
   useLayoutEffect(() => {
     setIsModeSeeded(false);
     const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
     store.set(sidebarOrganizationModeAtom, mode);
+    store.set(sidebarHiddenGroupsAtom, [
+      `project:${docsProject.id}`,
+      "section:sec_story_review",
+      `machine:${HOST_IDS.remote}`,
+    ]);
 
     setIsModeSeeded(true);
 
@@ -483,13 +606,21 @@ function OrganizationSidebar({
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <SidebarFrame>
-          {isModeSeeded ? (
-            <LoadedSidebar hosts={hosts} navigation={navigation} />
+        {fullSidebar ? (
+          isModeSeeded ? (
+            <LoadedSidebar hosts={hosts} navigation={navigation} fullSidebar />
           ) : (
             <LoadingSidebar />
-          )}
-        </SidebarFrame>
+          )
+        ) : (
+          <SidebarFrame>
+            {isModeSeeded ? (
+              <LoadedSidebar hosts={hosts} navigation={navigation} />
+            ) : (
+              <LoadingSidebar />
+            )}
+          </SidebarFrame>
+        )}
       </QueryClientProvider>
     </Provider>
   );
@@ -498,14 +629,15 @@ function OrganizationSidebar({
 export function Overview() {
   return (
     <StoryCard labelWidth="120px">
+      <StoryRow
+        label="interactive"
+        hint="Review or Planning → Rename. Use a section menu’s Organize options to switch to projects or machines."
+      >
+        <RenameSidebar />
+      </StoryRow>
       <StoryRow label="loading">
         <SidebarFrame>
           <LoadingSidebar />
-        </SidebarFrame>
-      </StoryRow>
-      <StoryRow label="loaded">
-        <SidebarFrame>
-          <LoadedSidebar />
         </SidebarFrame>
       </StoryRow>
     </StoryCard>
@@ -539,7 +671,7 @@ export function OrganizationModes() {
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-      <StoryRow label="Manually">
+      <StoryRow label="Custom">
         <OrganizationSidebar
           mode="chronological"
           navigation={loadedSidebarNavigation}
