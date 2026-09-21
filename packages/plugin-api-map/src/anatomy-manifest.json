@@ -210,7 +210,7 @@
         "anchor": [
           "Needs configuration",
           "Open settings",
-          "Release",
+          "Details",
           "Capabilities"
         ]
       },
@@ -233,9 +233,9 @@
         {
           "path": "apps/app/src/components/tools/PluginDetail.tsx",
           "anchors": [
-            "label=\"Release\"",
+            "label=\"Details\"",
             "label={updatesWithBb ? \"Delivery\" : \"Installed\"}",
-            "<PluginIncludes plugin={plugin} />"
+            "<PluginIncludes plugin={plugin} configurationPath={configurationPath} />"
           ]
         }
       ]
