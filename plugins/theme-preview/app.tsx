@@ -656,7 +656,6 @@ function MobileFrame({ view, themeName, mode }: { view: View; themeName: string;
           <Icon name="MoreHorizontal" className="size-5 shrink-0" />
           <BbButton variant="ghost" className={headerButton} aria-label="Show right panel preview" onClick={() => setSurface(panel ? "conversation" : "panel")}><Icon name="PanelRight" /></BbButton>
         </div>
-        {view === "split" ? <p className="px-4 py-2 text-xs text-muted-foreground">On mobile, threads open one at a time. Widen the preview to see split panes.</p> : null}
         {view === "settings" ? <SettingsPage narrow themeName={themeName} mode={mode} /> : view === "new" ? (
           <div className="flex min-h-0 flex-1 flex-col justify-end gap-4 p-4">
             <div className="text-xs text-subtle-foreground">Recent threads</div>
@@ -1594,7 +1593,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const catalogLoadPending = useRef(false);
   const catalogLoadQueued = useRef(false);
 
-  const view = useMemo<View>(() => {
+  const requestedView = useMemo<View>(() => {
     const first = subPath.split("/").filter(Boolean)[0] ?? "";
     return (VIEWS as readonly string[]).includes(first) ? (first as View) : "thread";
   }, [subPath]);
@@ -1710,6 +1709,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const computed = useComputedTokens(ALL_TOKENS, revision);
   const radii = useResolvedRadii(revision);
   const mobile = layout.band === "mobile";
+  const view = mobile && requestedView === "split" ? "thread" : requestedView;
   const railWidth = SURFACE_RAIL_WIDTH;
   const showRail = layout.band === "desktop";
   const contentInset = contentInsetForWidth(layout.width);
@@ -1721,8 +1721,8 @@ function PreviewPage({ subPath }: { subPath: string }) {
       <div ref={headerRef} style={{ position: "sticky", top: 0, zIndex: 20, borderBottom: `1px solid ${v("border-seam", v("border"))}`, background: v("canvas", v("background")) }}>
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
           <Tabs className={cn("min-w-0 flex-1", mobile && "basis-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
-            <TabsList data-tp-view-control="" aria-label="Preview view" className={cn(mobile && "grid w-full grid-cols-4")}>
-              {VIEWS.map((item) => (
+            <TabsList data-tp-view-control="" aria-label="Preview view" className={cn(mobile && "grid w-full grid-cols-3")}>
+              {VIEWS.filter((item) => !mobile || item !== "split").map((item) => (
                 <TabsTrigger key={item} value={item} className={cn("min-w-0 cursor-pointer", mobile && "text-xs")}>
                   {VIEW_LABEL[item]}
                 </TabsTrigger>

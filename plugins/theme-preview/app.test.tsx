@@ -183,23 +183,30 @@ describe("Theme Preview", () => {
     }
   });
 
-  it("navigates views with bb's tabs and offers themes with bb's select", async () => {
-    renderPreview({
-      themeCatalog: () => DEFAULT_CATALOG,
-      setTheme: () => DEFAULT_CATALOG,
-    });
+  it.each([390, 1280])("offers supported views in bb's tabs and themes in bb's select at %ipx", async (panelWidth) => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(panelWidth);
+    try {
+      renderPreview({
+        themeCatalog: () => DEFAULT_CATALOG,
+        setTheme: () => DEFAULT_CATALOG,
+      });
 
-    const tabs = within(screen.getByRole("tablist", { name: "Preview view" })).getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Thread", "New thread", "Split", "Settings"]);
-    const threadTab = screen.getByRole("tab", { name: "Thread" });
-    expect(threadTab.className).toContain("focus-visible:outline-none");
-    expect(threadTab.className).toContain("focus-visible:ring-2");
-    expect(threadTab.className).toContain("cursor-pointer");
+      const tabs = within(screen.getByRole("tablist", { name: "Preview view" })).getAllByRole("tab");
+      expect(tabs.map((tab) => tab.textContent)).toEqual(panelWidth === 390
+        ? ["Thread", "New thread", "Settings"]
+        : ["Thread", "New thread", "Split", "Settings"]);
+      const threadTab = screen.getByRole("tab", { name: "Thread" });
+      expect(threadTab.className).toContain("focus-visible:outline-none");
+      expect(threadTab.className).toContain("focus-visible:ring-2");
+      expect(threadTab.className).toContain("cursor-pointer");
 
-    const control = themeControl();
-    expect(control.getAttribute("role")).toBe("combobox");
-    expect(control.className).toContain("focus:outline-none");
-    expect(control.className).toContain("focus:ring-1");
+      const control = themeControl();
+      expect(control.getAttribute("role")).toBe("combobox");
+      expect(control.className).toContain("focus:outline-none");
+      expect(control.className).toContain("focus:ring-1");
+    } finally {
+      width.mockRestore();
+    }
   });
 
   it("keeps the thread table of contents open and interactive", async () => {
@@ -541,7 +548,12 @@ describe("Theme Preview", () => {
       expect(screen.getByText("Recent threads")).toBeDefined();
       expect(screen.getByText("Ask anything…")).toBeDefined();
       mounted.rerender(<Component subPath="split" />);
-      expect(screen.getByText(/On mobile, threads open one at a time/)).toBeDefined();
+      expect(screen.getByRole("tab", { name: "Thread" }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByRole("tab", { name: "Split" })).toBeNull();
+      expect(document.querySelector("[data-tp-split-pane]")).toBeNull();
+      width.mockReturnValue(1280);
+      fireEvent(window, new Event("resize"));
+      expect(screen.getByRole("tab", { name: "Split" }).getAttribute("aria-selected")).toBe("true");
     } finally {
       width.mockRestore();
     }
