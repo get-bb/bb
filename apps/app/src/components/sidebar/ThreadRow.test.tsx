@@ -59,7 +59,7 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
     <>{children}</>
   ),
   ThreadActionsMenu: () => null,
-  ThreadArchiveQuickAction: () => <button aria-label="Archive thread" />,
+  ThreadArchiveQuickAction: () => null,
 }));
 
 function createThread(
@@ -999,9 +999,10 @@ describe("ThreadRow", () => {
       expect(
         titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
       ).toBe(false);
-      expect(toggle.previousElementSibling).toBe(
-        screen.getByRole("button", { name: "Archive thread" }).parentElement,
-      );
+      expect(titleContainer?.classList.contains("pr-7.5")).toBe(true);
+      expect(
+        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+      ).toBe(true);
       fireEvent.click(toggle);
       expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
     },
