@@ -2307,7 +2307,6 @@ describe("createRealtimeCacheEffects", () => {
     const idleRow = {
       activity: NO_THREAD_ACTIVITY,
       archivedAt: null,
-      lifecycle: "active",
       id: "thr_1",
       latestAttentionAt: 100,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
