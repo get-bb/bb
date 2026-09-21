@@ -102,22 +102,6 @@ describe("app keybindings", () => {
     }
   });
 
-  it("assigns spatial split shortcuts without changing sequential overrides", () => {
-    for (const [command, key] of [
-      ["pane.focus.left", "ArrowLeft"],
-      ["pane.focus.right", "ArrowRight"],
-      ["pane.focus.up", "ArrowUp"],
-      ["pane.focus.down", "ArrowDown"],
-    ] as const) {
-      expect(
-        DEFAULT_APP_KEYBINDINGS.find((item) => item.command === command),
-      ).toMatchObject({
-        shortcut: { key, mod: true, shift: true, control: false, alt: false },
-        when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-      });
-    }
-  });
-
   it("limits overlapping default chords to intentional scoped navigation", () => {
     const assignedDefaults = applyAppKeybindingOverrides(
       DEFAULT_APP_KEYBINDINGS,
@@ -478,6 +462,22 @@ describe("app keybindings", () => {
             when: binding.when,
           })),
       ).toEqual([
+        ...(
+          [
+            ["pane.focus.left", "ArrowLeft"],
+            ["pane.focus.right", "ArrowRight"],
+            ["pane.focus.up", "ArrowUp"],
+            ["pane.focus.down", "ArrowDown"],
+          ] as const
+        ).map(([command, key]) => ({
+          command,
+          key,
+          desktopOnly: false,
+          mod: true,
+          control: false,
+          shift: true,
+          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+        })),
         ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
           {
             command,
