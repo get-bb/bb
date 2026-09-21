@@ -1,4 +1,3 @@
-import { truncateToWidth } from "@bb/text-utils";
 import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type {
@@ -22,6 +21,7 @@ import {
   type ThreadsChangedEvent,
 } from "../shared/contract";
 import { errorMessage } from "../shared/errors";
+import { truncateToWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 
 const MAX_DELEGATED_THREAD_TITLE_WIDTH = 120;

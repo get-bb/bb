@@ -1,6 +1,6 @@
-import { displayWidth, truncateToWidth } from "@bb/text-utils";
 import { parseWorkflowSource } from "./parser.js";
 import type { WorkflowRunInspection } from "./service.js";
+import { displayWidth, truncateToWidth } from "./text-measure.js";
 import type {
   WorkflowCallView,
   WorkflowPhaseView,

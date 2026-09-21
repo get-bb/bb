@@ -2,10 +2,10 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { displayWidth } from "@bb/text-utils";
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
+import { displayWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 import { buildSeedPrompt, registerDelegation } from ".";
 

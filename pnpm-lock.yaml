@@ -4391,9 +4391,6 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
-      '@bb/text-utils':
-        specifier: workspace:*
-        version: link:../../packages/text-utils
       '@hugeicons/core-free-icons':
         specifier: ^4.3.4
         version: 4.3.4
@@ -4567,9 +4564,6 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
-      '@bb/text-utils':
-        specifier: workspace:*
-        version: link:../../packages/text-utils
       '@jitl/quickjs-singlefile-cjs-release-sync':
         specifier: ^0.32.0
         version: 0.32.0
