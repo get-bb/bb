@@ -86,6 +86,11 @@ export function ThreadLifecycleFilter({
           className="min-w-0 max-w-full justify-start"
           aria-label={`Filter: ${label}`}
         >
+          <Icon
+            name="SlidersHorizontal"
+            className="size-3.5 shrink-0"
+            aria-hidden
+          />
           <span className="truncate">{label}</span>
           <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
