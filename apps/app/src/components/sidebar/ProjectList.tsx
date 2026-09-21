@@ -780,13 +780,12 @@ function ProjectModeSections({
         ?.filter(isSidebarProjectThread) ?? EMPTY_THREAD_LIST,
     [threadsByProject],
   );
-  const { onOrderChange, onFullOrderChange, order, persistedOrder } =
-    useSidebarModeSectionOrder({
-      mode: "project",
-      entitySectionIds: projectSectionIds,
-      hasThreadsSection: personalThreads.length > 0 || projectRows.length === 0,
-      showPinnedSection,
-    });
+  const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
+    mode: "project",
+    entitySectionIds: projectSectionIds,
+    hasThreadsSection: personalThreads.length > 0 || projectRows.length === 0,
+    showPinnedSection,
+  });
   const reorderDisabled = order.length < 2;
   const personalItems = useMemo(
     () =>
@@ -915,7 +914,7 @@ function ProjectModeSections({
     <ThreadListVisibility
       groups={visibilityGroups}
       order={persistedOrder}
-      onOrderChange={onFullOrderChange}
+      onOrderChange={onOrderChange}
       label="Projects"
     >
       <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
@@ -1029,12 +1028,11 @@ function SectionModeSections({
       ),
     [sections],
   );
-  const { onOrderChange, onFullOrderChange, order, persistedOrder } =
-    useSidebarModeSectionOrder({
-      mode: "chronological",
-      entitySectionIds: threadSectionIds,
-      showPinnedSection,
-    });
+  const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
+    mode: "chronological",
+    entitySectionIds: threadSectionIds,
+    showPinnedSection,
+  });
 
   return (
     <ChronologicalSectionThreadSections
@@ -1051,7 +1049,6 @@ function SectionModeSections({
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       fullSectionOrder={persistedOrder}
-      onFullSectionOrderChange={onFullOrderChange}
       topLevelSectionOrder={order}
       onTopLevelSectionOrderChange={onOrderChange}
       pinnedReorderPending={pinnedReorderPending}
@@ -1177,13 +1174,12 @@ export function MachineModeSections({
       ),
     [machineSections],
   );
-  const { onOrderChange, onFullOrderChange, order, persistedOrder } =
-    useSidebarModeSectionOrder({
-      mode: "machine",
-      entitySectionIds: machineSectionIds,
-      hasThreadsSection: machineSections.length === 0,
-      showPinnedSection,
-    });
+  const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
+    mode: "machine",
+    entitySectionIds: machineSectionIds,
+    hasThreadsSection: machineSections.length === 0,
+    showPinnedSection,
+  });
   const reorderDisabled = order.length < 2;
   const allThreadItems = useMemo(
     () =>
@@ -1309,7 +1305,7 @@ export function MachineModeSections({
     <ThreadListVisibility
       groups={visibilityGroups}
       order={persistedOrder}
-      onOrderChange={onFullOrderChange}
+      onOrderChange={onOrderChange}
       label="Machines"
     >
       <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>

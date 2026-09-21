@@ -256,7 +256,6 @@ interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps
   builtInSections: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
   fullSectionOrder: readonly SidebarSectionId[];
-  onFullSectionOrderChange: (order: SidebarSectionId[]) => void;
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
   pinnedRootNodes?: readonly ProjectThreadNode[];
@@ -2153,7 +2152,6 @@ export const ChronologicalSectionThreadSections = memo(
     builtInSections,
     topLevelSectionOrder,
     fullSectionOrder,
-    onFullSectionOrderChange,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
@@ -2391,7 +2389,7 @@ export const ChronologicalSectionThreadSections = memo(
       <ThreadListVisibility
         groups={visibilityGroups}
         order={fullSectionOrder}
-        onOrderChange={onFullSectionOrderChange}
+        onOrderChange={onTopLevelSectionOrderChange}
         label="Sections"
       >
         {sectionDnd ? (

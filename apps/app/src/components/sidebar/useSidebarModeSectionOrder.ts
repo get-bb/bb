@@ -48,7 +48,6 @@ interface UseSidebarModeSectionOrderArgs {
 }
 
 interface UseSidebarModeSectionOrderResult {
-  onFullOrderChange: (order: SidebarSectionId[]) => void;
   onOrderChange: (order: SidebarSectionId[]) => void;
   order: SidebarSectionId[];
   persistedOrder: SidebarSectionId[];
@@ -92,8 +91,9 @@ export function useSidebarModeSectionOrder({
       ),
     [hiddenGroupIds, persistedOrder, showPinnedSection],
   );
-  const saveOrder = useCallback(
-    (nextOrder: SidebarSectionId[], visibleIds: SidebarSectionId[]) =>
+  const onOrderChange = useCallback(
+    (nextOrder: SidebarSectionId[]) => {
+      const nextIds = new Set(nextOrder);
       setStoredOrder((current) => {
         const storedEntityIds = current
           .filter((id) => id.startsWith(`${config.entityKind}:`))
@@ -114,21 +114,13 @@ export function useSidebarModeSectionOrder({
         return (
           reorderStoredOrder({
             order: fullOrder,
-            visibleIds,
+            visibleIds: fullOrder.filter((id) => nextIds.has(id)),
             nextVisibleIds: nextOrder,
           }) ?? current
         );
-      }),
+      });
+    },
     [config, entitySectionIds, hasThreadsSection, setStoredOrder],
   );
-  const onOrderChange = useCallback(
-    (nextOrder: SidebarSectionId[]) => saveOrder(nextOrder, order),
-    [order, saveOrder],
-  );
-  const onFullOrderChange = useCallback(
-    (nextOrder: SidebarSectionId[]) => saveOrder(nextOrder, persistedOrder),
-    [persistedOrder, saveOrder],
-  );
-
-  return { onFullOrderChange, onOrderChange, order, persistedOrder };
+  return { onOrderChange, order, persistedOrder };
 }

@@ -188,7 +188,6 @@ export function ChronologicalSections() {
               ),
               "threads",
             ]}
-            onFullSectionOrderChange={noop}
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
@@ -239,7 +238,6 @@ function WorktreeGroupingStage({
             ),
             "threads",
           ]}
-          onFullSectionOrderChange={noop}
           collapsedThreadIds={new Set()}
           collapsedEnvironmentIds={new Set()}
           onToggleThreadCollapsed={noop}

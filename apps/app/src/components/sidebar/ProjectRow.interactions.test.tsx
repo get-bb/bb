@@ -155,12 +155,11 @@ function CustomSectionsVisibilityProbe({
   threads: ThreadListEntry[];
   onProjectSelect: () => void;
 }) {
-  const { order, persistedOrder, onOrderChange, onFullOrderChange } =
-    useSidebarModeSectionOrder({
-      mode: "chronological",
-      entitySectionIds: ["section:sec_building", "section:sec_review"],
-      showPinnedSection: false,
-    });
+  const { order, persistedOrder, onOrderChange } = useSidebarModeSectionOrder({
+    mode: "chronological",
+    entitySectionIds: ["section:sec_building", "section:sec_review"],
+    showPinnedSection: false,
+  });
 
   return (
     <ChronologicalSectionThreadSections
@@ -177,7 +176,6 @@ function CustomSectionsVisibilityProbe({
       onToggleEnvironmentCollapsed={vi.fn()}
       topLevelSectionOrder={order}
       fullSectionOrder={persistedOrder}
-      onFullSectionOrderChange={onFullOrderChange}
       onTopLevelSectionOrderChange={onOrderChange}
       pinnedReorderPending={false}
       pinnedThreads={[]}
@@ -412,7 +410,6 @@ describe("ProjectRow interactions", () => {
                 fullSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
-                onFullSectionOrderChange={vi.fn()}
                 onTopLevelSectionOrderChange={vi.fn()}
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
@@ -484,7 +481,6 @@ describe("ProjectRow interactions", () => {
                 fullSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
-                onFullSectionOrderChange={vi.fn()}
                 onTopLevelSectionOrderChange={vi.fn()}
                 pinnedReorderPending={false}
                 pinnedThreads={[]}

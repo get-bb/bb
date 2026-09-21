@@ -39,8 +39,7 @@ export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
 }
 
 interface ThreadListVisibilityState {
-  groups: readonly ThreadListVisibilityGroup[];
-  hiddenIds: ReadonlySet<string>;
+  hiddenGroups: readonly ThreadListVisibilityGroup[];
   hide: (id: string) => void;
   restore: (id: string) => void;
   customize: () => void;
@@ -108,8 +107,7 @@ export function ThreadListVisibility({
     return () => cancelAnimationFrame(frame);
   }, [hidden, customizing]);
   const value: ThreadListVisibilityState = {
-    groups: orderedGroups,
-    hiddenIds,
+    hiddenGroups: orderedGroups.filter((group) => hiddenIds.has(group.id)),
     label,
     customize: () => setCustomizing(true),
     hide: (id) => {
@@ -132,19 +130,16 @@ export function ThreadListVisibility({
               .map((group) => group.id)}
             onVisibleChange={setVisible}
             onReorder={(activeId, overId) => {
+              const groupIds = orderedGroups.map((group) => group.id);
               const next = reorderStoredOrder({
                 activeId,
                 overId,
-                order,
-                visibleIds: orderedGroups.map((group) => group.id),
+                order: groupIds,
+                visibleIds: groupIds,
               });
               if (next) onOrderChange(next);
             }}
             onDone={() => {
-              focusTarget.current = "more";
-              setCustomizing(false);
-            }}
-            onExit={() => {
               focusTarget.current = "more";
               setCustomizing(false);
             }}
@@ -237,21 +232,15 @@ function HiddenGroup({
 
 export function ThreadListMore() {
   const state = useContext(VisibilityContext);
-  const groups = useMemo(
-    () => state?.groups.filter((group) => state.hiddenIds.has(group.id)) ?? [],
-    [state],
-  );
-  const threads = useMemo(
-    () => [
-      ...new Map(
-        groups
-          .flatMap((group) => group.threads)
-          .map((thread) => [thread.id, thread]),
-      ).values(),
-    ],
-    [groups],
-  );
-  if (!state || groups.length === 0) return null;
+  if (!state || state.hiddenGroups.length === 0) return null;
+  const groups = state.hiddenGroups;
+  const threads = [
+    ...new Map(
+      groups
+        .flatMap((group) => group.threads)
+        .map((thread) => [thread.id, thread]),
+    ).values(),
+  ];
   return (
     <div className="mt-4">
       <SidebarMore

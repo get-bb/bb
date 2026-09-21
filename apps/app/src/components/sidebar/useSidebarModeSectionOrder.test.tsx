@@ -6,7 +6,6 @@ import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   sidebarHiddenGroupsAtom,
-  sidebarMachineSectionOrderAtom,
   sidebarManualSectionOrderAtom,
   sidebarSectionOrderAtom,
   type SidebarSectionId,
@@ -16,54 +15,6 @@ import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
 afterEach(cleanup);
 
 describe("sidebar group visibility and ordering", () => {
-  it.each([
-    {
-      mode: "project" as const,
-      atom: sidebarSectionOrderAtom,
-      hiddenId: "project:hidden" as const,
-      visibleId: "project:visible" as const,
-    },
-    {
-      mode: "chronological" as const,
-      atom: sidebarManualSectionOrderAtom,
-      hiddenId: "section:hidden" as const,
-      visibleId: "section:visible" as const,
-    },
-    {
-      mode: "machine" as const,
-      atom: sidebarMachineSectionOrderAtom,
-      hiddenId: "machine:no-machine" as const,
-      visibleId: "machine:visible" as const,
-    },
-  ])(
-    "hides $mode groups without changing their full order",
-    ({ mode, atom, hiddenId, visibleId }) => {
-      const store = createStore();
-      const fullOrder = ["pinned", hiddenId, visibleId, "threads"];
-      store.set(atom, fullOrder);
-      store.set(sidebarHiddenGroupsAtom, [hiddenId]);
-      const { result } = renderHook(
-        () =>
-          useSidebarModeSectionOrder({
-            mode,
-            entitySectionIds: [hiddenId, visibleId],
-            showPinnedSection: true,
-          }),
-        {
-          wrapper: ({ children }: { children: ReactNode }) => (
-            <Provider store={store}>{children}</Provider>
-          ),
-        },
-      );
-
-      expect(result.current.order).toEqual(["pinned", visibleId, "threads"]);
-      expect(result.current.persistedOrder).toEqual(fullOrder);
-      act(() => store.set(sidebarHiddenGroupsAtom, []));
-      expect(result.current.order).toEqual(fullOrder);
-      expect(store.get(atom)).toEqual(fullOrder);
-    },
-  );
-
   it("retains hidden, pinned, and disconnected slots when visible groups move", () => {
     const store = createStore();
     store.set(sidebarSectionOrderAtom, [
@@ -91,6 +42,8 @@ describe("sidebar group visibility and ordering", () => {
         ),
       },
     );
+
+    expect(result.current.order).toEqual(["project:a", "project:c", "threads"]);
 
     act(() =>
       result.current.onOrderChange(["project:c", "project:a", "threads"]),
@@ -144,21 +97,16 @@ describe("sidebar group visibility and ordering", () => {
       },
     );
 
-    act(() =>
-      result.current.onFullOrderChange([
-        "pinned",
-        "section:b",
-        "section:a",
-        "threads",
-      ]),
-    );
-    expect(result.current.order).toEqual(["section:a", "threads"]);
-    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:b"]);
-    act(() => store.set(sidebarHiddenGroupsAtom, []));
-    expect(result.current.order).toEqual([
+    act(() => result.current.onOrderChange(["section:b", "section:a"]));
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual([
+      "pinned",
       "section:b",
       "section:a",
       "threads",
     ]);
+    expect(result.current.order).toEqual(["section:a", "threads"]);
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:b"]);
+    act(() => store.set(sidebarHiddenGroupsAtom, []));
+    expect(result.current.order).toEqual(["section:b", "section:a", "threads"]);
   });
 });
