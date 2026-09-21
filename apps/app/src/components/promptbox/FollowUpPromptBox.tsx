@@ -722,6 +722,7 @@ function FollowUpPromptBoxWithComposer({
             (steerOnPrimarySubmit && !composer.canModifierSubmit),
           onModifierSubmit,
           swapSubmitActions: steerOnPrimarySubmit,
+          showModifierSubmitAction: submitMode.kind === "queue",
           title: composer.isFollowUpSubmitting
             ? "Submitting..."
             : canSubmit && composer.submitTitle !== undefined

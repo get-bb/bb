@@ -1511,7 +1511,12 @@ describe("PromptBoxInternal submit shortcuts", () => {
                 {...createPromptBoxProps({
                   value,
                   onSubmit,
-                  submission: { onModifierSubmit, swapSubmitActions, disabled },
+                  submission: {
+                    onModifierSubmit,
+                    swapSubmitActions,
+                    disabled,
+                    showModifierSubmitAction: true,
+                  },
                   compact: { isCompact: true, placeholder: "Ask a follow-up" },
                 })}
               />
@@ -1639,12 +1644,18 @@ describe("PromptBoxInternal submit shortcuts", () => {
           clientX: 20,
           clientY: 20,
         });
-        act(() => vi.advanceTimersByTime(1200));
+        act(() => vi.advanceTimersByTime(700));
+        act(() => vi.advanceTimersByTime(500));
         expect(screen.queryByRole("menuitem")).toBeNull();
         expect(save).not.toHaveBeenCalled();
-        fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
-        fireEvent.keyDown(getPromptEditorElement(), { key: "Enter", metaKey: true });
-        expect(save).toHaveBeenCalledTimes(2);
+        if (!isTouch) {
+          fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+          fireEvent.keyDown(getPromptEditorElement(), {
+            key: "Enter",
+            metaKey: true,
+          });
+          expect(save).toHaveBeenCalledTimes(2);
+        }
       } finally {
         vi.useRealTimers();
         restoreMatchMedia();

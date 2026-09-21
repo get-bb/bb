@@ -239,6 +239,7 @@ export interface PromptBoxSubmissionConfig {
   onStop?: () => void;
   onModifierSubmit?: () => void;
   swapSubmitActions?: boolean;
+  showModifierSubmitAction?: boolean;
 }
 
 interface PromptSubmitButtonProps {
@@ -1245,6 +1246,7 @@ export function PromptBoxInternal({
     onStop,
     onModifierSubmit: onDefaultModifierSubmit,
     swapSubmitActions = false,
+    showModifierSubmitAction = false,
   } = submission;
   const draftSubmitAction = { onSubmit: onDefaultSubmit, requiresInput: true };
   const immediateSubmitAction = {
@@ -3467,7 +3469,9 @@ export function PromptBoxInternal({
                         hasInput={hasSubmittableInput}
                         canSubmit={canSubmit}
                         onSubmit={
-                          onModifierSubmit ? submitModifierPrompt : undefined
+                          showModifierSubmitAction && onModifierSubmit
+                            ? submitModifierPrompt
+                            : undefined
                         }
                       >
                         <PromptSubmitButton
