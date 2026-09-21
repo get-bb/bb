@@ -1692,7 +1692,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-[126px]")}>
+      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-36")}>
         {plus.outlined ? (
           <div
             aria-hidden
