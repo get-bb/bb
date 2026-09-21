@@ -15,7 +15,8 @@ import {
   ResourceListState,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PluginCreateButton, useCreatePlugin } from "./PluginCreateButton";
+import { PluginCreateButton } from "./PluginCreateButton";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import {
   AddPluginDialog,
@@ -42,7 +43,10 @@ import {
 } from "./management/plugin-browse-discovery";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
-import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import {
+  getPluginDetailRoutePath,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 
 export function PluginsOverview({
   onOpenPlugin,
@@ -54,7 +58,6 @@ export function PluginsOverview({
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
-  const startCreatePlugin = useCreatePlugin();
   const removal = usePluginRemoval();
   const {
     searchParams,
@@ -187,6 +190,16 @@ export function PluginsOverview({
     pageSize: RESOURCE_GRID_PAGE_SIZE,
     resetKey: installedResetKey,
   });
+
+  const startCreatePlugin = (prompt?: string) => {
+    navigate(getRootComposeRoutePath(), {
+      state: {
+        focusPrompt: true,
+        initialPrompt: prompt ?? CREATE_PLUGIN_PROMPT,
+        replaceInitialPrompt: prompt !== undefined,
+      },
+    });
+  };
 
   const uninstallCatalogEntry = (entry: PluginCatalogSearchEntry) => {
     const plugin = plugins.find(

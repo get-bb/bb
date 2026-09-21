@@ -749,8 +749,8 @@ Everything else (zod included) bundles from the plugin's node_modules (`npm inst
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Manage installed plugins under Plugins → Installed
-plugins. Configurable plugins also have entries in Settings → Plugins; each
-opens configuration first, with full plugin details available in place.
+plugins or Settings → Plugins. Every installed plugin has a Settings entry that
+opens Details. Configure opens its settings in place when available.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed
