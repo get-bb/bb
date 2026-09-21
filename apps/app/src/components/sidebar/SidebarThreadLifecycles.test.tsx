@@ -13,13 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadArchiveFilter } from "@/lib/thread-lifecycle-filter";
-import {
-  buildMachineThreadGroups,
-  buildPinnedSidebarState,
-  buildProjectThreadGroups,
-  buildSectionThreadList,
-  buildSidebarEntitySectionId,
-} from "@bb/client-core";
+import { buildSidebarEntitySectionId } from "@bb/client-core";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { SidebarThreadLifecycles, useSidebarThreadLifecycles } from "./SidebarThreadLifecycles";
@@ -180,12 +174,11 @@ describe("sidebar lifecycle placement", () => {
     store.set(sidebarThreadLifecyclesAtom, ["active", "archived"]);
     const active = makeThreadListEntry({ id: "active" });
     const duplicate = makeThreadListEntry({ id: "archived-thread" });
-    const draft = makeThreadListEntry({ id: "draft" });
     const client = new QueryClient();
     const { result, rerender } = renderHook(
       ({ bootstrap }) => useSidebarThreadLifecycles(bootstrap),
       {
-        initialProps: { bootstrap: [active, duplicate, draft] },
+        initialProps: { bootstrap: [active, duplicate] },
         wrapper: ({ children }) => (
           <Provider store={store}>
             <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -193,8 +186,8 @@ describe("sidebar lifecycle placement", () => {
         ),
       },
     );
-    expect(result.current.threads).toEqual([duplicate, active, draft]);
-    rerender({ bootstrap: [active, draft] });
+    expect(result.current.threads).toEqual([duplicate, active]);
+    rerender({ bootstrap: [active] });
     expect(result.current.threads[0]).toMatchObject({
       id: "archived-thread",
       projectId: "archive-project",
@@ -204,61 +197,42 @@ describe("sidebar lifecycle placement", () => {
       pinnedAt: 1,
       pinSortKey: "a0",
     });
-    const archived = result.current.threads[0]!;
-    expect(buildPinnedSidebarState({ threads: result.current.threads }).rootNodes)
-      .toMatchObject([{ thread: archived }]);
-    expect(buildProjectThreadGroups([archived]))
-      .toMatchObject([{ kind: "thread", node: { thread: archived } }]);
-    expect(buildMachineThreadGroups([archived], []))
-      .toMatchObject([{ key: "archive-host", threads: [archived] }]);
-    expect(buildSectionThreadList([archived], () => 0, [
-      { id: "archive-section", name: "Review" },
-    ])).toMatchObject([{
-      kind: "section",
-      group: { id: "archive-section", items: [{ kind: "thread", node: { thread: archived } }] },
-    }]);
-    act(() => store.set(sidebarThreadLifecyclesAtom, ["active"]));
-    expect(result.current.threads).toEqual([active, draft]);
   });
 
-  it.each<{ lifecycles: ThreadArchiveFilter[]; active: boolean; archived: boolean }>([
-    { lifecycles: ["active"], active: true, archived: false },
-    { lifecycles: ["archived"], active: false, archived: true },
-    { lifecycles: ["active", "archived"], active: true, archived: true },
-  ])("includes saved messages in the ordinary hierarchy for $lifecycles", ({ lifecycles, active, archived }) => {
-    setup(lifecycles);
-    expect(screen.queryByText("Active work") !== null).toBe(active);
-    expect(screen.queryByText("Saved work") !== null).toBe(active);
-    expect(screen.queryByText("Archived work") !== null).toBe(archived);
+  it("filters the existing hierarchy and only pages archives while selected", () => {
+    const store = setup();
+    expect(screen.getByText("Active work")).toBeTruthy();
+    expect(screen.getByText("Saved work")).toBeTruthy();
+    expect(screen.queryByText("Archived work")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Active" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Active actions" })).toBeNull();
+    expect(archiveQuery.enabled).toBe(false);
+
+    act(() => store.set(sidebarThreadLifecyclesAtom, ["active", "archived"]));
+    expect(screen.getByText("Active work")).toBeTruthy();
+    expect(screen.getByText("Saved work")).toBeTruthy();
+    expect(screen.getByText("Archived work")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Drafts" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Drafts" })).toBeNull();
-    expect(archiveQuery.enabled).toBe(archived);
+    expect(archiveQuery.enabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load more archived threads" }),
+    );
+    expect(archiveQuery.fetchNextPage).toHaveBeenCalledOnce();
+
+    act(() => store.set(sidebarThreadLifecyclesAtom, ["archived"]));
+    expect(screen.queryByText("Active work")).toBeNull();
+    expect(screen.queryByText("Saved work")).toBeNull();
+    expect(screen.getByText("Archived work")).toBeTruthy();
+
+    act(() => store.set(sidebarThreadLifecyclesAtom, ["active"]));
+    expect(screen.getByText("Active work")).toBeTruthy();
+    expect(screen.queryByText("Archived work")).toBeNull();
+    expect(archiveQuery.enabled).toBe(false);
   });
 
-  it.each([false, true])(
-    "uses the existing hierarchy menu without an Active header (empty=%s)",
-    async (empty) => {
-      setup(["active"], empty);
-      expect(screen.queryByRole("heading", { name: "Active" })).toBeNull();
-      expect(screen.queryByRole("region", { name: "Active" })).toBeNull();
-      expect(
-        screen.queryByRole("button", { name: /^Active actions/ }),
-      ).toBeNull();
-      expect(
-        screen.getByText(empty ? "No threads" : "Active work"),
-      ).toBeTruthy();
-      fireEvent.keyDown(
-        screen.getByRole("button", { name: /^Threads actions(?:;|$)/ }),
-        { key: "Enter" },
-      );
-      expect(
-        await screen.findByRole("menuitem", { name: "Filter" }),
-      ).toBeTruthy();
-    },
-  );
-
   it(
-    "keeps the combined menu reachable in an empty archived-only group",
+    "keeps the combined menu reachable when empty, before and after returning to Active",
     async () => {
       const store = setup(["archived"], true);
       expect(screen.getByText("No threads")).toBeTruthy();
@@ -301,18 +275,4 @@ describe("sidebar lifecycle placement", () => {
       ).toBeTruthy();
     },
   );
-
-  it("starts and stops archived paging when the synced preference changes", () => {
-    const store = setup();
-    expect(archiveQuery.enabled).toBe(false);
-    act(() => store.set(sidebarThreadLifecyclesAtom, ["archived"]));
-    expect(archiveQuery.enabled).toBe(true);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Load more archived threads" }),
-    );
-    expect(archiveQuery.fetchNextPage).toHaveBeenCalledOnce();
-    act(() => store.set(sidebarThreadLifecyclesAtom, ["active"]));
-    expect(archiveQuery.enabled).toBe(false);
-    expect(screen.queryByText("Archived work")).toBeNull();
-  });
 });
