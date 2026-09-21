@@ -2342,6 +2342,7 @@ export const ChronologicalSectionThreadSections = memo(
         renderContent: (close) => (
           <ProjectThreadTree
             rootItems={item.group.items}
+            progressiveDisclosureEnabled={false}
             threadListState={{
               status: "ready",
               threads: getProjectThreadItemDescendants(item.group.items),

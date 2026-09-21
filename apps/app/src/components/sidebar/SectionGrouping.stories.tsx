@@ -182,6 +182,13 @@ export function ChronologicalSections() {
             threadListState={projectTree(sectionThreads)}
             compareThreads={compareStandardThreads}
             sections={STORY_SECTIONS}
+            fullSectionOrder={[
+              ...STORY_SECTIONS.map((section) =>
+                buildSidebarEntitySectionId("section", section.id),
+              ),
+              "threads",
+            ]}
+            onFullSectionOrderChange={noop}
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
@@ -226,6 +233,13 @@ function WorktreeGroupingStage({
           threadListState={projectTree(worktreeSectionThreads)}
           compareThreads={compareStandardThreads}
           sections={WORKTREE_SECTIONS}
+          fullSectionOrder={[
+            ...WORKTREE_SECTIONS.map((section) =>
+              buildSidebarEntitySectionId("section", section.id),
+            ),
+            "threads",
+          ]}
+          onFullSectionOrderChange={noop}
           collapsedThreadIds={new Set()}
           collapsedEnvironmentIds={new Set()}
           onToggleThreadCollapsed={noop}
