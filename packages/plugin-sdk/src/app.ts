@@ -93,6 +93,8 @@ export const useSidebarThreadRowStatus = runtime.useSidebarThreadRowStatus;
 export const useSidebarThreadShortcut = runtime.useSidebarThreadShortcut;
 export const ThreadTitle = runtime.ThreadTitle;
 export const useEnvironmentProviders = runtime.useEnvironmentProviders;
+// bb's public API client bound to the calling plugin.
+export const useSdk = runtime.useSdk;
 // The provider directory (experimental — see docs/api_to_audit.md).
 export const experimental_useProviders = runtime.experimental_useProviders;
 // The live code theme, for plugins that render code with their own engine

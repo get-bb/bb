@@ -271,9 +271,11 @@ const actions = experimental_useSidebarThreadActions();
 // sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
 // server order. A thread's `sectionId` names one of these or is null for the
 // loose "Threads" bucket. Create, rename, and delete sections and move
-// threads between them through the public API from your server, the
-// `threadSections` area and `threads.update({ id, sectionId })` on the
-// backend client; the sidebar refreshes over realtime.
+// threads between them through the public API client; the sidebar refreshes
+// over realtime:
+const sdk = useSdk();
+await sdk.threadSections.create({ name: "Later" });
+await sdk.threads.update({ id: thread.id, sectionId });
 
 // threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
 // displayTitle, parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,

@@ -150,6 +150,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadTitleProps",
           "useEnvironmentProviders",
           "PluginEnvironmentProvidersState",
+          "useSdk",
+          "PluginBrowserBbSdk",
         ],
         experimental: true,
       },

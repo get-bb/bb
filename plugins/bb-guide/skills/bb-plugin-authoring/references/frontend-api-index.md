@@ -51,6 +51,8 @@ Read the installed SDK declarations for the exact current signatures.
   and `@thread:` mentions rendered as bb's chips
 - `useEnvironmentProviders` — bb's environment provider catalog, for naming
   and drawing the environment a thread runs in
+- `useSdk` — bb's public API client bound to this plugin, the same areas the
+  `bb` CLI and the backend `bb.sdk` expose
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
 
@@ -153,6 +155,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadTitleProps`
 - `PluginEnvironmentProvider`
 - `PluginEnvironmentProvidersState`
+- `PluginBoundThreadsArea`
+- `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`

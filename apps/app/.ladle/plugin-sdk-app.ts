@@ -38,6 +38,7 @@ export const {
   useSidebarThreadShortcut,
   ThreadTitle,
   useEnvironmentProviders,
+  useSdk,
   experimental_useProviders,
   experimental_useCodeTheme,
 } = pluginSdkAppImplementation;

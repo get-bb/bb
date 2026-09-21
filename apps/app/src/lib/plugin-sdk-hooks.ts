@@ -24,6 +24,7 @@ import type {
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
+  PluginBrowserBbSdk,
   PluginEnvironmentProvider,
   PluginEnvironmentProvidersState,
   PluginProvidersState,
@@ -52,6 +53,7 @@ import {
   usePluginComposerHostDraft,
 } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
+import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
@@ -287,6 +289,11 @@ export function useProviders(): PluginProvidersState {
         : { status: "ready", providers },
     [providers, query.isError],
   );
+}
+
+export function useSdk(): PluginBrowserBbSdk {
+  const pluginId = usePluginId();
+  return getPluginBoundSdk(sdk, pluginId);
 }
 
 const EMPTY_ENVIRONMENT_PROVIDERS: readonly PluginEnvironmentProvider[] = [];

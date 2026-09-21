@@ -48,6 +48,7 @@ import {
   type ExperimentalSidebarNavigationRegistration,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
+  type PluginBrowserBbSdk,
   type PluginEnvironmentProvidersState,
   type PluginSidebarThreadDraftState,
   type PluginSidebarThreadPullRequestState,
@@ -128,6 +129,19 @@ export interface RpcCall {
   method: string;
   input: unknown;
 }
+/** One recorded `useSdk()` call, as `"<area>.<method>"` plus its arguments. */
+export interface SdkCall {
+  method: string;
+  args: unknown[];
+}
+/**
+ * Per-area partial fakes for `useSdk()`. Provide only the methods the slot
+ * calls; a call to anything else throws with the missing path so the test
+ * fails loudly instead of returning undefined.
+ */
+export type PluginSdkTestFakes = {
+  [Area in keyof PluginBrowserBbSdk]?: Partial<PluginBrowserBbSdk[Area]>;
+};
 export type NavigateCall =
   | { method: "toThread"; threadId: string }
   | { method: "toProject"; projectId: string }
@@ -224,6 +238,8 @@ interface SlotEnv {
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
   environmentProviders: PluginEnvironmentProvidersState;
+  sdk: PluginBrowserBbSdk;
+  sdkCalls: SdkCall[];
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
   branchesState: BranchesState;
@@ -249,6 +265,38 @@ export interface SidebarActionCall {
   title?: string;
   pinned?: boolean;
   read?: boolean;
+}
+
+function createSdkFake(
+  fakes: PluginSdkTestFakes,
+  calls: SdkCall[],
+): PluginBrowserBbSdk {
+  const areas = fakes as Record<string, Record<string, unknown> | undefined>;
+  return new Proxy({} as PluginBrowserBbSdk, {
+    get(_target, area) {
+      if (typeof area !== "string") return undefined;
+      const provided = areas[area];
+      return new Proxy(
+        {},
+        {
+          get(_areaTarget, method) {
+            if (typeof method !== "string") return undefined;
+            const path = `${area}.${method}`;
+            const handler = provided?.[method];
+            return (...args: unknown[]) => {
+              calls.push({ method: path, args });
+              if (typeof handler !== "function") {
+                throw new Error(
+                  `no sdk fake for "${path}" — add it to renderSlot options.sdk`,
+                );
+              }
+              return handler(...args);
+            };
+          },
+        },
+      );
+    },
+  });
 }
 
 function TestThreadTitle({ threadId }: { threadId: string }) {
@@ -964,6 +1012,9 @@ const testPluginSdkApp = {
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;
   },
+  useSdk(): PluginBrowserBbSdk {
+    return useSlotEnv("useSdk").sdk;
+  },
   experimental_useSidebarThreadPullRequest(
     threadId,
   ): PluginSidebarThreadPullRequestState {
@@ -1294,6 +1345,11 @@ export interface RenderSlotOptions<
    * branch.
    */
   environmentProviders?: Partial<PluginEnvironmentProvidersState>;
+  /**
+   * Fakes for `useSdk()`, one partial object per area. Calls are recorded
+   * in `inspection.sdkCalls`; a call to a method you did not provide throws.
+   */
+  sdk?: PluginSdkTestFakes;
   /** Host acceptance for `useBbNavigate().openThreadPanel`. */
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
@@ -1341,6 +1397,8 @@ export interface RenderedSlotInspectionState {
   readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
+  /** Every `useSdk()` call, in order, as `"<area>.<method>"`. */
+  readonly sdkCalls: SdkCall[];
   /** Everything written through `useComposer()`. */
   readonly composer: ComposerLog;
 }
@@ -1554,6 +1612,8 @@ export function renderSlot<
     status: options.environmentProviders?.status ?? "ready",
     providers: options.environmentProviders?.providers ?? [],
   };
+  const sdkCalls: SdkCall[] = [];
+  const sdk = createSdkFake(options.sdk ?? {}, sdkCalls);
   const codeTheme: PluginCodeThemeState = {
     mode: options.codeTheme?.mode ?? "light",
     name: options.codeTheme?.name ?? "pierre-light",
@@ -1814,6 +1874,8 @@ export function renderSlot<
     sidebarRowStatuses,
     sidebarShortcuts,
     environmentProviders,
+    sdk,
+    sdkCalls,
     providers,
     codeTheme,
     branchesState: {
@@ -1901,6 +1963,7 @@ export function renderSlot<
     navigateCalls,
     experimental_fixedTabOpenCalls,
     sidebarActionCalls,
+    sdkCalls,
     composer: composerLog,
     behavior: {
       emitRealtime,
@@ -1913,6 +1976,7 @@ export function renderSlot<
       navigateCalls,
       experimental_fixedTabOpenCalls,
       sidebarActionCalls,
+      sdkCalls,
       composer: composerLog,
     },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },

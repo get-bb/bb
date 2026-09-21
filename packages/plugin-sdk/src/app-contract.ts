@@ -20,6 +20,12 @@ import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,
 } from "@bb/server-contract";
+import type {
+  BbSdkAreas,
+  ThreadPluginMetadataArgs,
+  ThreadPluginMetadataResult,
+  ThreadPluginMetadataUpdateArgs,
+} from "@bb/sdk";
 import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
@@ -1130,6 +1136,39 @@ export interface PluginCodeThemeState {
   /** null only before the first theme file resolves. */
   theme: PluginCodeThemeData | null;
 }
+
+/**
+ * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
+ * with the calling plugin's identity filled in. `spawn` and `fork` stamp
+ * `origin: "plugin"` and `originPluginId` unless the call names another
+ * origin, and the plugin-metadata calls default `pluginId`. The same
+ * narrowing the backend `bb.sdk` applies.
+ */
+export type PluginBoundThreadsArea = Omit<
+  BbSdkAreas["threads"],
+  "getPluginMetadata" | "updatePluginMetadata"
+> & {
+  getPluginMetadata(
+    args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
+  ): Promise<ThreadPluginMetadataResult>;
+  updatePluginMetadata(
+    args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
+      pluginId?: string;
+    },
+  ): Promise<ThreadPluginMetadataResult>;
+};
+
+/**
+ * bb's public API client, bound to the calling plugin, for plugin frontends
+ * (see {@link PluginSdkApp.useSdk}). The same areas the `bb` CLI and the
+ * backend `bb.sdk` expose: threads, thread sections, projects, environments,
+ * hosts, files, and the rest. Requests carry the signed-in user's session on
+ * the app origin, so every call runs with the user's own authority; there
+ * is no narrower plugin scope.
+ */
+export type PluginBrowserBbSdk = Omit<BbSdkAreas, "threads"> & {
+  threads: PluginBoundThreadsArea;
+};
 
 /** Props for {@link PluginSdkApp.ThreadTitle}. */
 export interface PluginThreadTitleProps {
@@ -2937,6 +2976,23 @@ export interface PluginSdkApp {
    * catalog, so it costs no extra request.
    */
   useEnvironmentProviders(): PluginEnvironmentProvidersState;
+  /**
+   * bb's public API client bound to this plugin (see
+   * {@link PluginBrowserBbSdk}). The first choice for reading and mutating
+   * bb state from a frontend: creating or renaming thread sections, moving a
+   * thread into one, pinning, unarchiving, spawning a thread. The host's own
+   * caches refresh over realtime, so a mutation made here shows up in bb's
+   * surfaces without further work. Reserve `useRpc` for work that needs your
+   * server: secrets, host files, or your plugin's own storage.
+   *
+   * Writes made here are not optimistic in bb's surfaces; they land when the
+   * realtime update does. `experimental_useSidebarThreadActions()` stays the
+   * optimistic path for pin, read state, rename, and archive.
+   *
+   * The client is stable for the plugin's lifetime, so it is safe in effect
+   * and callback dependency lists.
+   */
+  useSdk(): PluginBrowserBbSdk;
   /**
    * The provider directory (see {@link PluginProvidersState}). Reads the
    * host's own cached provider roster, so a plugin that shows a thread's
