@@ -1106,6 +1106,8 @@ describe("CommandPalette", () => {
     act(() => archived.focus());
     fireEvent.keyDown(archived, { key: "Enter" });
     expect(store.get(paletteThreadLifecyclesAtom)).toEqual(["active", "archived"]);
+    expectText(trigger, "All");
+    expect(trigger.getAttribute("aria-label")).toBe("Filter: All");
     expect(routeNavigateMock).not.toHaveBeenCalled();
     fireEvent.keyDown(archived, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
