@@ -49,6 +49,7 @@ export function ResourceToolbar({
   compact?: boolean;
   expandSearchOnFocus?: boolean;
 }) {
+  const isCompactViewport = useIsCompactViewport();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const individualControlsRef = useRef<HTMLDivElement>(null);
@@ -56,7 +57,6 @@ export function ResourceToolbar({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const restoreSearchFocus = useRef(false);
-  const isCompactViewport = useIsCompactViewport();
   const actionRef = useRef<HTMLDivElement>(null);
   const [combined, setCombined] = useState(false);
   const [searchCondensed, setSearchCondensed] = useState(false);
@@ -115,7 +115,7 @@ export function ResourceToolbar({
         : individualControls.getBoundingClientRect().width;
       setSearchCondensed(
         expandSearchOnFocus &&
-          (isCompactViewport ||
+          (next ||
             width -
               controlsWidth -
               actionWidth -
@@ -156,7 +156,6 @@ export function ResourceToolbar({
     compact,
     expandSearchOnFocus,
     hasCombinedControls,
-    isCompactViewport,
     showCombined,
   ]);
 
@@ -177,8 +176,9 @@ export function ResourceToolbar({
       data-search-expanded={searchExpanded || undefined}
       className={cn(
         "flex w-full min-w-0 items-center gap-2",
-        compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
-        showSearchButton && "gap-1",
+        compact
+          ? "@container/resource-toolbar flex-nowrap max-md:gap-1"
+          : "flex-wrap",
       )}
     >
       <form
@@ -187,7 +187,8 @@ export function ResourceToolbar({
         aria-label={searchLabel ?? searchPlaceholder}
         onSubmit={(event) => {
           event.preventDefault();
-          if (searchExpanded) collapseSearch();
+          if (searchExpanded || (expandSearchOnFocus && isCompactViewport))
+            collapseSearch();
           else searchInputRef.current?.focus();
         }}
         onBlur={(event) => {
@@ -199,7 +200,7 @@ export function ResourceToolbar({
           compact
             ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
-          showSearchButton && "max-w-8",
+          showSearchButton && "min-w-8 max-w-8 grow-0 shrink-0",
         )}
       >
         {showSearchButton ? (
@@ -272,19 +273,14 @@ export function ResourceToolbar({
           inert={searchExpanded || undefined}
           aria-hidden={searchExpanded || undefined}
           className={cn(
-            "flex items-center",
-            showSearchButton ? "min-w-0 flex-1" : "shrink-0",
+            "flex shrink-0 items-center",
             compact ? "gap-2" : "gap-1.5",
             searchExpanded && "invisible absolute pointer-events-none",
           )}
         >
           <div
             className={
-              showCombined
-                ? "absolute size-0 overflow-hidden"
-                : showSearchButton && !hasCombinedControls
-                  ? "w-full"
-                  : undefined
+              showCombined ? "absolute size-0 overflow-hidden" : undefined
             }
             aria-hidden={showCombined || undefined}
             inert={showCombined || undefined}
@@ -294,10 +290,7 @@ export function ResourceToolbar({
               ref={individualControlsRef}
               data-resource-individual-controls
               className={cn(
-                "flex items-center",
-                showSearchButton && !hasCombinedControls
-                  ? "w-full [&>button]:flex-1"
-                  : "w-max",
+                "flex w-max items-center",
                 compact ? "gap-2" : "gap-1.5",
               )}
             >
@@ -305,12 +298,7 @@ export function ResourceToolbar({
             </div>
           </div>
           {showCombined ? (
-            <div
-              data-resource-combined-controls
-              className={
-                showSearchButton ? "w-full [&>button]:w-full" : undefined
-              }
-            >
+            <div data-resource-combined-controls>
               {combinedControls}
             </div>
           ) : null}
@@ -323,8 +311,7 @@ export function ResourceToolbar({
           inert={searchExpanded || undefined}
           aria-hidden={searchExpanded || undefined}
           className={cn(
-            "flex shrink-0 items-center gap-1.5",
-            !compact && "ml-auto",
+            "ml-auto flex shrink-0 items-center gap-1.5",
             searchExpanded && "invisible absolute pointer-events-none",
           )}
         >
@@ -932,8 +919,7 @@ export function ResourceCreateButton({
       size="sm"
       className={cn(
         "rounded-r-none",
-        compactWhenNarrow &&
-          "pl-2 pr-1 @max-[19rem]/resource-toolbar:gap-1 @max-[19rem]/resource-toolbar:px-1",
+        compactWhenNarrow && "pl-2 pr-1",
       )}
       onClick={() => onCreate()}
     >
@@ -961,8 +947,7 @@ export function ResourceCreateButton({
             aria-label={`${label} options`}
             className={cn(
               "rounded-l-none px-1.5",
-              compactWhenNarrow &&
-                "pl-1 pr-2 @max-[19rem]/resource-toolbar:px-1",
+              compactWhenNarrow && "pl-1 pr-2",
             )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
