@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -110,6 +110,91 @@ describe("usePluginContributions", () => {
 });
 
 describe("usePluginMentionSearch", () => {
+  it("shows fast providers while slow providers load and isolates superseded queries", async () => {
+    let finishSlow: (response: Response) => void = () => {};
+    let slowSignal: AbortSignal | undefined;
+    const group = (providerId: string, title: string) => ({
+      pluginId: "fixture",
+      providerId,
+      label: providerId,
+      items: [
+        { itemId: `${providerId}:${title}`, title, subtitle: null, icon: null },
+      ],
+    });
+    const response = (providerId: string, title: string) =>
+      new Response(JSON.stringify({ groups: [group(providerId, title)] }));
+    const fetchMock = vi.fn((url: string, options: { signal: AbortSignal }) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const providerId = params.get("providerId")!;
+      const query = params.get("q")!;
+      if (providerId === "slow" && query === "first") {
+        slowSignal = options.signal;
+        return new Promise<Response>((resolve) => {
+          finishSlow = resolve;
+        });
+      }
+      return Promise.resolve(response(providerId, query));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, rerender } = renderHook(
+      ({ query }) =>
+        usePluginMentionSearch(
+          {
+            trigger: "#",
+            query,
+            projectId: null,
+            threadId: null,
+          },
+          {
+            enabled: true,
+            providers: [
+              {
+                pluginId: "fixture",
+                id: "slow",
+                label: "slow",
+                triggers: ["#"],
+              },
+              {
+                pluginId: "fixture",
+                id: "fast",
+                label: "fast",
+                triggers: ["#"],
+              },
+              {
+                pluginId: "fixture",
+                id: "other",
+                label: "other",
+                triggers: ["@"],
+              },
+            ],
+          },
+        ),
+      { wrapper, initialProps: { query: "first" } },
+    );
+    await waitFor(() =>
+      expect(result.current.data).toEqual([group("fast", "first")]),
+    );
+    expect(result.current.isFetching).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    rerender({ query: "second" });
+    await waitFor(() =>
+      expect(result.current.data).toEqual([
+        group("slow", "second"),
+        group("fast", "second"),
+      ]),
+    );
+    expect(slowSignal?.aborted).toBe(true);
+    await act(async () => {
+      finishSlow(response("slow", "first"));
+    });
+    expect(result.current.data).toEqual([
+      group("slow", "second"),
+      group("fast", "second"),
+    ]);
+    expect(result.current.isFetching).toBe(false);
+  });
+
   it("includes the active trigger in the search request", async () => {
     const fetchMock = mockFetchJsonOnce({
       ok: true,
@@ -140,7 +225,17 @@ describe("usePluginMentionSearch", () => {
             projectId: "proj_1",
             threadId: null,
           },
-          { enabled: true },
+          {
+            enabled: true,
+            providers: [
+              {
+                pluginId: "github",
+                id: "issue",
+                label: "GitHub issues",
+                triggers: ["#"],
+              },
+            ],
+          },
         ),
       { wrapper },
     );
@@ -163,7 +258,7 @@ describe("usePluginMentionSearch", () => {
       ]);
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/mentions/search?q=42&trigger=%23&projectId=proj_1",
+      "/api/v1/plugins/mentions/search?q=42&trigger=%23&pluginId=github&providerId=issue&projectId=proj_1",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
