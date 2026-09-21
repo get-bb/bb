@@ -1489,8 +1489,9 @@ function ProjectListComponent({
     },
     [reorderPinnedThreadMutate],
   );
-  const openRootCompose = useCallback(
-    (sectionId?: string) => {
+  const openRootComposeForProject = useCallback(
+    (projectId: string, sectionId?: string) => {
+      setRootComposeProjectId(projectId);
       onProjectSelect?.();
       navigate(getRootComposeRoutePath(), {
         state: {
@@ -1499,14 +1500,7 @@ function ProjectListComponent({
         },
       });
     },
-    [navigate, onProjectSelect],
-  );
-  const openRootComposeForProject = useCallback(
-    (projectId: string) => {
-      setRootComposeProjectId(projectId);
-      openRootCompose();
-    },
-    [openRootCompose, setRootComposeProjectId],
+    [navigate, onProjectSelect, setRootComposeProjectId],
   );
   const handleCreateProjectThread = useCallback(
     (projectId: string) => {
@@ -1519,9 +1513,9 @@ function ProjectListComponent({
   }, [openRootComposeForProject]);
   const handleCreateThreadInSection = useCallback(
     (sectionId: string) => {
-      openRootCompose(sectionId);
+      openRootComposeForProject(PERSONAL_PROJECT_ID, sectionId);
     },
-    [openRootCompose],
+    [openRootComposeForProject],
   );
   const [isSectionCreateDialogOpen, setIsSectionCreateDialogOpen] =
     useState(false);

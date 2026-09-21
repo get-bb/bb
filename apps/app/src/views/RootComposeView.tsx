@@ -1,7 +1,6 @@
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAtomValue } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   findCachedProviderInfo,
@@ -19,14 +18,12 @@ import {
 import type {
   SidebarBootstrapResponse,
   TerminalSession,
-  ThreadSectionResponse,
 } from "@bb/server-contract";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
   type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
-import { ComposerSectionChip } from "@/components/promptbox/ComposerSectionChip";
 import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
 import {
   buildProviderCliIssue,
@@ -45,7 +42,6 @@ import {
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
@@ -58,7 +54,7 @@ import {
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Icon, type BuiltinIconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { Button } from "@bb/shared-ui/button";
@@ -200,7 +196,6 @@ const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-const EMPTY_SECTIONS: readonly ThreadSectionResponse[] = [];
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
@@ -626,7 +621,6 @@ export function RootComposeView() {
           forkSeed={forkSeed}
           lastCreatedThreadId={lastCreatedThreadId}
           rootComposeProjectId={rootComposeProjectId}
-          rootComposeSectionId={rootComposeSectionId}
           setForkSeed={setForkSeed}
           setRootComposeProjectId={setRootComposeProjectId}
           setRootComposeSectionId={setRootComposeSectionId}
@@ -638,44 +632,11 @@ export function RootComposeView() {
   );
 }
 
-interface ComposerTargetChipProps {
-  label: string;
-  iconName: BuiltinIconName;
-  clearLabel: string;
-  onClear: () => void;
-}
-
-function ComposerTargetChip({
-  label,
-  iconName,
-  clearLabel,
-  onClear,
-}: ComposerTargetChipProps) {
-  return (
-    <div
-      aria-label={label}
-      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
-    >
-      <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{label}</span>
-      <button
-        type="button"
-        aria-label={clearLabel}
-        className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onClear}
-      >
-        <Icon name="X" className="size-3" aria-hidden />
-      </button>
-    </div>
-  );
-}
-
 interface RootComposeSurfaceProps {
   composer: NewThreadComposerState;
   forkSeed: ForkThreadCreateSeed | null;
   lastCreatedThreadId: string | null;
   rootComposeProjectId: string;
-  rootComposeSectionId: string | null;
   setForkSeed: (seed: ForkThreadCreateSeed | null) => void;
   setRootComposeProjectId: (projectId: string) => void;
   setRootComposeSectionId: (sectionId: string | null) => void;
@@ -688,7 +649,6 @@ function RootComposeSurface({
   forkSeed,
   lastCreatedThreadId,
   rootComposeProjectId,
-  rootComposeSectionId,
   setForkSeed,
   setRootComposeProjectId,
   setRootComposeSectionId,
@@ -1894,47 +1854,37 @@ function RootComposeSurface({
     },
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
-  const sidebarOrganizationMode = useAtomValue(sidebarOrganizationModeAtom);
-  const sections = sidebarNavigation?.sections ?? EMPTY_SECTIONS;
-  const showSectionChip =
-    sidebarOrganizationMode === "chronological" && sections.length > 0;
-
   const handleCancelForkDraft = useCallback(() => {
     setForkSeed(null);
     window.requestAnimationFrame(focusPromptBox);
   }, [focusPromptBox, setForkSeed]);
 
   const promptHeader = useMemo(() => {
-    if (forkSeed === null && !showSectionChip) {
+    if (forkSeed === null) {
       return null;
     }
     return (
-      <div className="-ml-1.5 flex flex-wrap items-center gap-1.5">
-        {forkSeed === null ? null : (
-          <ComposerTargetChip
-            label={`Forking ${forkSeed.sourceThreadTitle}`}
-            iconName="Fork"
-            clearLabel="Cancel fork"
-            onClear={handleCancelForkDraft}
-          />
-        )}
-        {showSectionChip ? (
-          <ComposerSectionChip
-            sections={sections}
-            value={rootComposeSectionId}
-            onChange={setRootComposeSectionId}
-          />
-        ) : null}
+      <div className="flex">
+        <div
+          aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
+          className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
+        >
+          <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">
+            Forking {forkSeed.sourceThreadTitle}
+          </span>
+          <button
+            type="button"
+            aria-label="Cancel fork"
+            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={handleCancelForkDraft}
+          >
+            <Icon name="X" className="size-3" aria-hidden />
+          </button>
+        </div>
       </div>
     );
-  }, [
-    forkSeed,
-    handleCancelForkDraft,
-    rootComposeSectionId,
-    sections,
-    setRootComposeSectionId,
-    showSectionChip,
-  ]);
+  }, [forkSeed, handleCancelForkDraft]);
 
   const promptBanner = useMemo(() => {
     if (!isProviderCliVersionBlocked || selectedProviderCliStatus === null) {
