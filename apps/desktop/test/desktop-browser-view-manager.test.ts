@@ -13,6 +13,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
+import { resolveDesktopBrowserAppCommand } from "../src/desktop-browser-shortcuts.js";
 import { createDesktopBrowserCdpAdapter } from "../src/desktop-browser-cdp-adapter.js";
 import { createDesktopBrowserBroker } from "../src/desktop-browser-broker.js";
 import { createDesktopBrowserBrokerClient } from "../src/desktop-browser-broker-client.js";
@@ -2527,6 +2528,46 @@ describe("DesktopBrowserViewManager", () => {
         command,
         hostWebContentsId: 51,
       });
+    },
+  );
+
+  it.each(["pane.focus.previous", "pane.focus.next"] as const)(
+    "leaves native page focus and input untouched when %s is unavailable",
+    (command) => {
+      const dispatchAppCommand = vi.fn();
+      const focusHostWebContents = vi.fn();
+      const manager = createDesktopBrowserViewManager({
+        dispatchAppCommand,
+        focusHostWebContents,
+        partition: "persist:test",
+        resolveAppCommand: (input) => resolveDesktopBrowserAppCommand({
+          input,
+          isMac: true,
+          keybindings: [{
+            command,
+            desktopOnly: false,
+            shortcut: {
+              key: "ArrowRight", mod: true, control: true,
+              meta: false, alt: false, shift: false,
+            },
+            when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+          }],
+        }),
+      });
+      const hostWindow = new FakeHostWindow({
+        contentBounds: { width: 700, height: 450 },
+        webContentsId: 51,
+      });
+      attachBrowserTab({
+        manager, hostWindow, tabId: "browser:a", url: "https://example.com",
+      });
+      const webContents = requireFakeView(0).webContents;
+
+      expect(webContents.emitBeforeInput({
+        key: "ArrowRight", meta: true, control: true,
+      })).toBe(false);
+      expect(focusHostWebContents).not.toHaveBeenCalled();
+      expect(dispatchAppCommand).not.toHaveBeenCalled();
     },
   );
 
