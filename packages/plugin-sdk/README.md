@@ -110,7 +110,7 @@ with the test stack used by your plugin (the peer dependencies are optional so
 headless plugins do not install a browser harness):
 
 ```sh
-npm install --save-dev @get-bb/plugin-sdk vitest better-sqlite3 zod cron-parser hono
+npm install --save-dev @get-bb/plugin-sdk vitest better-sqlite3 cron-parser hono
 npm install --save-dev react react-dom @testing-library/react jsdom # frontend tests
 ```
 
@@ -210,8 +210,9 @@ multi-plugin arbitration; use a live BB test for those boundaries.
 The complete root declaration flattens the unpublished BB workspace contracts.
 The testing declarations reuse that public `@get-bb/plugin-sdk` root instead of
 embedding a second copy, and no declaration depends on unpublished `@bb/*`
-packages. Genuine npm types (`hono`, `better-sqlite3`, `zod`, React, and Testing
-Library) remain peer imports. Scaffolded plugins depend on this package —
+packages. Genuine npm types (`hono`, `better-sqlite3`, React, and Testing
+Library) remain peer imports. Zod is a runtime dependency of the SDK, so
+plugins only declare it when their own source imports it. Scaffolded plugins depend on this package —
 `bb plugin new` pins it exactly in `devDependencies` — and read the root/app
 declarations straight from `node_modules/@get-bb/plugin-sdk/bundled-types/`,
 the same files the testing subpaths reuse. Plugins scaffolded before that

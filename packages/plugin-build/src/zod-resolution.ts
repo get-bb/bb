@@ -12,9 +12,12 @@ export function describeUnresolvedZod(args: {
 }): string {
   const viaSdk = SDK_IMPORTER.test(args.importer);
   const cause = viaSdk
-    ? `the ${PLUGIN_SDK_PACKAGE_NAME} subpath this ${args.entryKind} entry imports declares zod as a peer dependency and never bundles its own copy`
+    ? `the ${PLUGIN_SDK_PACKAGE_NAME} installation is missing its required zod dependency`
     : `this ${args.entryKind} entry imports it`;
-  return `could not resolve "${args.specifier}": ${cause}, so the plugin needs zod in its dependencies. Marking zod external instead would leave an unresolvable import in the built bundle.`;
+  const remedy = viaSdk
+    ? `reinstall ${PLUGIN_SDK_PACKAGE_NAME} before building the plugin`
+    : `add zod to the plugin's dependencies`;
+  return `could not resolve "${args.specifier}": ${cause}; ${remedy}. Marking zod external instead would leave an unresolvable import in the built bundle.`;
 }
 
 export function zodResolutionPlugin(
