@@ -11,6 +11,9 @@ import type {
   ReasoningLevel,
   ServiceTier,
   EnvironmentWorkspaceDisplayKind,
+  ThreadQueuedWork,
+  ThreadRuntimeDisplayStatus,
+  ThreadStatus,
   WorkspaceGitOperation,
 } from "@bb/domain";
 import type {
@@ -854,7 +857,9 @@ export interface ExperimentalSidebarFooter {
  * "draft" and "working-draft" are never reported here: an unsubmitted composer
  * draft is per-client state the host reads per row, which an array-wide view
  * cannot. A thread holding a draft reports whatever it would report without
- * one.
+ * one. "queued-failed" and "queued-waiting" are reported, with the same
+ * precedence bb's list uses (a failed send outranks the unread dot; a waiting
+ * message ranks just below it).
  */
 export type PluginSidebarThreadIndicator =
   | "unread-error"
@@ -866,8 +871,10 @@ export type PluginSidebarThreadIndicator =
   | "plan-mode"
   | "goal"
   | "runtime"
+  | "queued-failed"
   | "draft"
   | "unread-success"
+  | "queued-waiting"
   | "none";
 
 /** Live work counts on a thread. All zero means nothing is running. */
@@ -894,6 +901,13 @@ export interface PluginSidebarThread {
   titleFallback: string | null;
   /** The thread this one was forked from or spawned under; null at the root. */
   parentThreadId: string | null;
+  /**
+   * The thread whose lifecycle this one follows (a delegated child stops
+   * when its owner stops); null when the thread owns its own lifecycle.
+   */
+  lifecycleOwnerThreadId: string | null;
+  /** The thread this one was forked from; null unless `originKind` is "fork". */
+  sourceThreadId: string | null;
   sectionId: string | null;
   /** How this thread came to exist under its parent; null for root threads. */
   originKind: "fork" | null;
@@ -903,6 +917,22 @@ export interface PluginSidebarThread {
    * {@link PluginSdkApp.experimental_useProviders} for a name and icon. */
   providerId: string;
 
+  /**
+   * The thread's execution status. bb's list sorts busy threads ("starting",
+   * "active", "stopping") above idle ones. Treat an unknown value as "idle".
+   */
+  status: ThreadStatus;
+  /**
+   * `status` refined by host and environment state: adds "provisioning",
+   * "host-reconnecting", and "waiting-for-host" for a thread whose machine is
+   * not ready. Treat an unknown value as `status`.
+   */
+  runtimeStatus: ThreadRuntimeDisplayStatus;
+  /**
+   * Whether a message is queued behind the running turn ("waiting") or a
+   * queued message failed to send ("failed"). "none" otherwise.
+   */
+  queuedWork: ThreadQueuedWork;
   /** The agent is blocked on the user: an approval or a question. */
   hasPendingInteraction: boolean;
   activity: PluginSidebarThreadActivity;
@@ -916,12 +946,32 @@ export interface PluginSidebarThread {
 
   isUnread: boolean;
   isPinned: boolean;
+  /**
+   * The user's manual order among pinned threads (lexicographic, ascending);
+   * null for an unpinned thread or a pin that has never been reordered, which
+   * bb's list sorts after keyed pins by `createdAt`.
+   */
+  pinSortKey: string | null;
   isArchived: boolean;
+  /**
+   * True for threads bb keeps out of its own list (internal helper threads a
+   * plugin spawned with `visibility: "hidden"`). The array includes them so a
+   * list that wants them can show them; bb's list filters them out.
+   */
+  isHidden: boolean;
 
   environment: {
     id: string | null;
     name: string | null;
     branchName: string | null;
+    /** The checkout's absolute path on its host; null when unknown. */
+    path: string | null;
+    /**
+     * True when the environment is a git worktree, which is what bb's
+     * "group by environment" clusters; false for a plain checkout; null when
+     * unknown.
+     */
+    isWorktree: boolean | null;
     /**
      * The id of the environment provider that produced this environment, or
      * null for a project's own checkout. Resolve it against

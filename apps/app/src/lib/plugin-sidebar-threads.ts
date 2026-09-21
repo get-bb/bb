@@ -1,8 +1,5 @@
 import type { ThreadListEntry } from "@bb/domain";
-import type {
-  PluginSidebarThread,
-  PluginSidebarThreadIndicator,
-} from "@get-bb/plugin-sdk";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
 import {
   getThreadListIndicatorLabel,
   resolveThreadListIndicator,
@@ -14,14 +11,9 @@ export function toPluginSidebarThread(
   entry: ThreadListEntry,
   hostNamesById: ReadonlyMap<string, string> = new Map(),
 ): PluginSidebarThread {
-  const resolvedIndicator = resolveThreadListIndicator(
+  const indicator = resolveThreadListIndicator(
     threadListIndicatorStateForThread(entry, false),
   );
-  const indicator: PluginSidebarThreadIndicator =
-    resolvedIndicator === "queued-waiting" ||
-    resolvedIndicator === "queued-failed"
-      ? "none"
-      : resolvedIndicator;
 
   return {
     id: entry.id,
@@ -29,10 +21,15 @@ export function toPluginSidebarThread(
     title: entry.title,
     titleFallback: entry.titleFallback,
     parentThreadId: entry.parentThreadId,
+    lifecycleOwnerThreadId: entry.lifecycleOwnerThreadId,
+    sourceThreadId: entry.sourceThreadId,
     sectionId: entry.sectionId,
     originKind: entry.originKind,
     originPluginId: entry.originPluginId,
     providerId: entry.providerId,
+    status: entry.status,
+    runtimeStatus: entry.runtime.displayStatus,
+    queuedWork: entry.queuedWork,
     hasPendingInteraction: entry.hasPendingInteraction,
     activity: {
       workflows: entry.activity.activeWorkflowCount,
@@ -45,7 +42,9 @@ export function toPluginSidebarThread(
     indicatorLabel: getThreadListIndicatorLabel(indicator),
     isUnread: !isThreadRead(entry),
     isPinned: entry.pinnedAt !== null,
+    pinSortKey: entry.pinSortKey,
     isArchived: entry.archivedAt !== null,
+    isHidden: entry.visibility === "hidden",
     environment:
       entry.environmentId === null
         ? null
@@ -53,6 +52,8 @@ export function toPluginSidebarThread(
             id: entry.environmentId,
             name: entry.environmentName,
             branchName: entry.environmentBranchName,
+            path: entry.environmentPath,
+            isWorktree: entry.environmentIsWorktree,
             providerId: entry.environmentProviderId,
             workspaceDisplayKind: entry.environmentWorkspaceDisplayKind,
           },

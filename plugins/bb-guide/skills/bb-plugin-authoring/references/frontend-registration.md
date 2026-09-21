@@ -269,14 +269,19 @@ const { status, threads, projects } = experimental_useSidebarThreads();
 const actions = experimental_useSidebarThreadActions();
 
 // threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
-// parentThreadId, sectionId, originKind, originPluginId, providerId,
-// hasPendingInteraction, activity, isUnread/isPinned/isArchived,
-// environment { id, name, branchName, providerId, workspaceDisplayKind },
-// where workspaceDisplayKind is deprecated compatibility data; host { id, name },
-// createdAt, updatedAt, lastReadAt, latestAttentionAt, and
-// `indicator` (bb's resolved status kind) + `indicatorLabel` (its a11y string).
-// Draw your own glyph for `indicator`; the SDK ships no status component.
-// Treat an unknown indicator value as "none" — bb adds kinds over time.
+// parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
+// originKind, originPluginId, providerId, status (execution status; busy
+// threads sort first in bb's list), runtimeStatus (status refined by host
+// readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
+// activity, isUnread/isPinned/isArchived, pinSortKey (manual pin order),
+// isHidden (bb's list filters these out; the array keeps them),
+// environment { id, name, branchName, path, isWorktree, providerId,
+// workspaceDisplayKind }, where workspaceDisplayKind is deprecated
+// compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
+// latestAttentionAt, and `indicator` (bb's resolved status kind) +
+// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`;
+// the SDK ships no status component. Treat an unknown indicator, status, or
+// runtimeStatus value as its documented fallback — bb adds kinds over time.
 
 // Pull requests are per row and opt-in — a lookup hits the git host, so it is
 // deliberately NOT on the thread payload every sidebar loads:

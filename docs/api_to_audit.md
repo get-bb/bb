@@ -2497,7 +2497,14 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
 1. **DTO scope.** Confirm every field earns its place and that the copy stays
    worth its maintenance over `ThreadListEntry`. `hasUnsubmittedDraft` is
    deliberately absent (client-local composer state); confirm plugins do not
-   need it. `host` is resolved host-side to `{ id, name }` because a plugin
+   need it. **Widened (Sep 2026)** with the columns bb's own list reads that
+   the copy had dropped: `status`, `runtimeStatus`, `queuedWork`,
+   `pinSortKey`, `isHidden`, `lifecycleOwnerThreadId`, `sourceThreadId`, and
+   `environment.path` / `environment.isWorktree`; `indicator` now reports
+   `queued-failed` and `queued-waiting` instead of coercing them to `none`.
+   `status` and `runtimeStatus` freeze the domain enums into the contract the
+   way `indicator` already does; the same treat-unknown-as-fallback rule
+   applies. `host` is resolved host-side to `{ id, name }` because a plugin
    cannot turn a host id into a machine name — confirm resolution belongs here
    rather than in a separate hosts hook, and that falling back to the id for an
    unknown host is the right failure.
