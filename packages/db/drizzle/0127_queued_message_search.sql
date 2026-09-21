@@ -7,7 +7,7 @@ SELECT
   NULL,
   trim(COALESCE((
     SELECT group_concat(json_extract(part.value, '$.text'), char(10))
-    FROM json_each(q.content) AS part
+    FROM json_each(CASE WHEN json_valid(q.content) THEN q.content ELSE '[]' END) AS part
     WHERE json_extract(part.value, '$.type') = 'text'
       AND COALESCE(json_extract(part.value, '$.visibility'), '') <> 'agent-only'
   ), '')),
@@ -16,7 +16,7 @@ SELECT
 FROM queued_thread_messages AS q
 WHERE q.system_notice IS NULL
   AND EXISTS (
-    SELECT 1 FROM json_each(q.content) AS part
+    SELECT 1 FROM json_each(CASE WHEN json_valid(q.content) THEN q.content ELSE '[]' END) AS part
     WHERE json_extract(part.value, '$.type') = 'text'
       AND COALESCE(json_extract(part.value, '$.visibility'), '') <> 'agent-only'
       AND trim(json_extract(part.value, '$.text')) <> ''
@@ -35,14 +35,14 @@ BEGIN
   NULL,
   trim(COALESCE((
     SELECT group_concat(json_extract(part.value, '$.text'), char(10))
-    FROM json_each(NEW.content) AS part
+    FROM json_each(CASE WHEN json_valid(NEW.content) THEN NEW.content ELSE '[]' END) AS part
     WHERE json_extract(part.value, '$.type') = 'text'
       AND COALESCE(json_extract(part.value, '$.visibility'), '') <> 'agent-only'
   ), '')),
   NEW.created_at,
   NEW.updated_at
   WHERE EXISTS (
-    SELECT 1 FROM json_each(NEW.content) AS part
+    SELECT 1 FROM json_each(CASE WHEN json_valid(NEW.content) THEN NEW.content ELSE '[]' END) AS part
     WHERE json_extract(part.value, '$.type') = 'text'
       AND COALESCE(json_extract(part.value, '$.visibility'), '') <> 'agent-only'
       AND trim(json_extract(part.value, '$.text')) <> ''
@@ -63,7 +63,7 @@ BEGIN
   NULL,
   trim(COALESCE((
     SELECT group_concat(json_extract(part.value, '$.text'), char(10))
-    FROM json_each(NEW.content) AS part
+    FROM json_each(CASE WHEN json_valid(NEW.content) THEN NEW.content ELSE '[]' END) AS part
     WHERE json_extract(part.value, '$.type') = 'text'
       AND COALESCE(json_extract(part.value, '$.visibility'), '') <> 'agent-only'
   ), '')),
@@ -71,7 +71,7 @@ BEGIN
   NEW.updated_at
   WHERE NEW.system_notice IS NULL
     AND EXISTS (
-      SELECT 1 FROM json_each(NEW.content) AS part
+      SELECT 1 FROM json_each(CASE WHEN json_valid(NEW.content) THEN NEW.content ELSE '[]' END) AS part
       WHERE json_extract(part.value, '$.type') = 'text'
         AND COALESCE(json_extract(part.value, '$.visibility'), '') <> 'agent-only'
         AND trim(json_extract(part.value, '$.text')) <> ''
