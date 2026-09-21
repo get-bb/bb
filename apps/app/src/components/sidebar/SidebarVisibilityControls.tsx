@@ -41,7 +41,11 @@ import {
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
+import {
+  PROJECT_LIST_ACTION_BUTTON_CLASS,
+  SIDEBAR_CONTROL_BUTTON_CLASS,
+} from "./sidebarRowClasses";
+import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import { useSidebarSortable } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 
@@ -71,13 +75,15 @@ export function SidebarCustomizeActionContent({ label }: { label: string }) {
 
 export function SidebarVisibilityActionContent({
   visible,
+  label,
 }: {
   visible: boolean;
+  label?: string;
 }) {
   return (
     <>
       <Icon name={visible ? "EyeOff" : "Eye"} aria-hidden="true" />
-      {visible ? "Hide from sidebar" : "Add to sidebar"}
+      {label ?? (visible ? "Hide from sidebar" : "Add to sidebar")}
     </>
   );
 }
@@ -205,6 +211,74 @@ export function SidebarOverflowItem({
 }) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
 
+  const actions = (
+    <DropdownMenu
+      modal={false}
+      open={isActionsOpen}
+      onOpenChange={setIsActionsOpen}
+    >
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`${item.title} options`}
+          className={
+            onExpandedChange
+              ? SIDEBAR_CONTROL_BUTTON_CLASS
+              : cn(
+                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  "rounded-sm p-0 hover:bg-state-hover",
+                )
+          }
+        >
+          <Icon
+            name="MoreHorizontal"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="right"
+        align="start"
+        sideOffset={4}
+        aria-label={`${item.title} options`}
+      >
+        {additionalActions}
+        <DropdownMenuItem
+          className="cursor-pointer"
+          onSelect={() => {
+            onClose();
+            onAddToSidebar(item.id);
+          }}
+        >
+          <SidebarVisibilityActionContent visible={false} />
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  if (onExpandedChange) {
+    return (
+      <div role="listitem" data-sidebar-overflow-item={item.id}>
+        <TopLevelSidebarSection
+          label={item.title}
+          stickyHeader={false}
+          collapseControl={{
+            isCollapsed: !expanded,
+            onToggleCollapsed: () => onExpandedChange(!expanded),
+          }}
+          status={!expanded ? activity : undefined}
+          actions={actions}
+          actionsOpen={isActionsOpen}
+          actionsMobileAlways
+        >
+          {children}
+        </TopLevelSidebarSection>
+      </div>
+    );
+  }
+
   return (
     <div role="listitem">
       <div className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}>
@@ -218,32 +292,17 @@ export function SidebarOverflowItem({
             "pr-9 max-md:pointer-coarse:pr-11",
           )}
           disabled={item.disabled}
-          aria-expanded={onExpandedChange ? expanded : undefined}
           data-sidebar-overflow-item={item.id}
           data-sidebar-navigation-more-item={
             testIdPrefix === "sidebar-navigation" ? item.id : undefined
           }
           onPointerDown={onPointerDown}
           onClick={(event) => {
-            if (onExpandedChange) {
-              onExpandedChange(!expanded);
-              return;
-            }
             if (!onActivate) return;
             onClose();
             onActivate({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
           }}
         >
-          {onExpandedChange ? (
-            <Icon
-              name="ChevronRight"
-              className={cn(
-                "size-3 transition-transform duration-150",
-                expanded && "rotate-90",
-              )}
-              aria-hidden="true"
-            />
-          ) : null}
           {item.icon ? (
             <span className="flex size-4 shrink-0 items-center justify-center">
               {item.icon}
@@ -264,49 +323,9 @@ export function SidebarOverflowItem({
             "absolute inset-y-0 right-0 flex items-center pointer-coarse:opacity-100 pointer-coarse:pointer-events-auto",
           )}
         >
-          <DropdownMenu
-            modal={false}
-            open={isActionsOpen}
-            onOpenChange={setIsActionsOpen}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`${item.title} options`}
-                className={cn(
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                  "rounded-sm p-0 hover:bg-state-hover",
-                )}
-              >
-                <Icon
-                  name="MoreHorizontal"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="right"
-              align="start"
-              sideOffset={4}
-              aria-label={`${item.title} options`}
-            >
-              {additionalActions}
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onSelect={() => {
-                  onClose();
-                  onAddToSidebar(item.id);
-                }}
-              >
-                <SidebarVisibilityActionContent visible={false} />
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {actions}
         </div>
       </div>
-      {expanded ? children : null}
     </div>
   );
 }

@@ -38,8 +38,8 @@ every window and client sees the same value.
 
 ### Thread-list visibility
 
-- A project, custom section, or machine's menu offers **Hide from sidebar**;
-  its menu inside **More** offers **Add to sidebar**. **Customize thread list**
+- A project, custom section, or machine's menu offers **Hide from list**;
+  its menu inside **More** offers **Add to sidebar**. **Customize list**
   manages visibility and order for the current organization. Hidden groups keep
   their threads, saved order, and collapse state; pinned threads remain in Pinned.
   More carries hidden activity without automatically restoring groups.

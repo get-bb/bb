@@ -561,7 +561,7 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      await screen.findByRole("menuitem", { name: "Hide from list" }),
     );
 
     expect(screen.queryByText("Review parent")).toBeNull();
@@ -574,10 +574,14 @@ describe("ProjectRow interactions", () => {
     });
     expect(within(hiddenSections).getByText("Review parent")).not.toBeNull();
     fireEvent.click(
-      within(hiddenSections).getByRole("link", { name: "Open Inherited child" }),
+      within(hiddenSections).getByRole("link", {
+        name: "Open Inherited child",
+      }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("list", { name: "Hidden sections" })).toBeNull(),
+      expect(
+        screen.queryByRole("list", { name: "Hidden sections" }),
+      ).toBeNull(),
     );
     expect(onProjectSelect).toHaveBeenCalledOnce();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
@@ -595,14 +599,18 @@ describe("ProjectRow interactions", () => {
     );
 
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "More sections" })).toBeNull(),
+      expect(
+        screen.queryByRole("button", { name: "More sections" }),
+      ).toBeNull(),
     );
     expect(screen.getByText("Inherited child")).not.toBeNull();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
     expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
     expect(
       Array.from(
-        container.querySelectorAll<HTMLElement>("[data-sidebar-visibility-group]"),
+        container.querySelectorAll<HTMLElement>(
+          "[data-sidebar-visibility-group]",
+        ),
         (element) => element.dataset.sidebarVisibilityGroup,
       ),
     ).toEqual(["section:sec_review", "section:sec_building"]);

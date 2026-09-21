@@ -297,8 +297,8 @@ A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascend
 
 Thread-list visibility
 
-A project, custom section, or machine's menu offers Hide from sidebar; its menu
-inside More offers Add to sidebar. Customize thread list manages visibility and
+A project, custom section, or machine's menu offers Hide from list; its menu
+inside More offers Add to sidebar. Customize list manages visibility and
 order for the current organization. Hiding preserves the group's threads, order,
 and collapse state. Pinned threads remain in Pinned; More carries hidden activity.
 

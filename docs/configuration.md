@@ -747,9 +747,9 @@ window size.
 
 ### Thread-list visibility
 
-Choose **Hide from sidebar** in a project, custom section, or machine's menu to
+Choose **Hide from list** in a project, custom section, or machine's menu to
 move it into **More**. Its menu in More offers **Add to sidebar** to restore it.
-**Customize thread list** manages visibility and order for the current
+**Customize list** manages visibility and order for the current
 organization. Hiding a group preserves its threads, saved order, and collapse
 state; pinned threads stay in Pinned. Hidden work remains reachable through More,
 search, and direct links. More shows activity without automatically restoring

@@ -23,7 +23,7 @@ function HiddenProject({ onRestore }: { onRestore: (id: string) => void }) {
     <SidebarMore
       ariaLabel="More projects"
       listLabel="Hidden projects"
-      customizeLabel="Customize thread list"
+      customizeLabel="Customize list"
       testIdPrefix="sidebar-thread-list"
       activity={<span aria-label="Running hidden work">Running</span>}
       onCustomize={() => {}}
@@ -56,10 +56,12 @@ describe("shared sidebar visibility controls", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "More projects" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Moss" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Expand Moss section" }),
+    );
     expect(
       screen
-        .getByRole("button", { name: "Moss" })
+        .getByRole("button", { name: "Collapse Moss section" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
     expect(
@@ -74,9 +76,7 @@ describe("shared sidebar visibility controls", () => {
       name: "Add to sidebar",
     });
     expect(screen.getByRole("list", { name: "Hidden projects" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Customize thread list" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Customize list" })).toBeTruthy();
     fireEvent.click(restore);
 
     expect(onRestore).toHaveBeenCalledWith("project:moss");
@@ -95,7 +95,7 @@ describe("shared sidebar visibility controls", () => {
         <SidebarVisibilityCustomize
           items={[{ id: "section:review", title: "Review" }]}
           visibleIds={[]}
-          title="Customize thread list"
+          title="Customize list"
           listLabel="Sections"
           testIdPrefix="sidebar-thread-list"
           variant="card"

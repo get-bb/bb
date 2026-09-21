@@ -26,11 +26,7 @@ import {
 } from "./sidebarCollapsedAtoms";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
-import {
-  ThreadListGroupVisibilityMenuItem,
-  useThreadListCustomization,
-} from "./ThreadListVisibility";
-import { SidebarCustomizeActionContent } from "./SidebarVisibilityControls";
+import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility";
 
 interface HeaderCreationActions {
   onNewProject?: () => void;
@@ -169,7 +165,6 @@ export function SidebarHeaderControls({
   onOpenChange?: (open: boolean) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
-  const customize = useThreadListCustomization();
   const compact = useIsCompactViewport();
   const [page, setPage] = useState<"organize" | "sort" | null>(null);
   const changeOpen = (next: boolean) => {
@@ -277,18 +272,13 @@ export function SidebarHeaderControls({
                   </DropdownMenuSub>
                 ),
               )}
-              {customize && (
-                <DropdownMenuItem onSelect={customize}>
-                  <SidebarCustomizeActionContent label="Customize thread list" />
-                </DropdownMenuItem>
-              )}
               {children ? (
                 <>
                   <DropdownMenuSeparator />
                   {children}
                 </>
               ) : (
-                <ThreadListGroupVisibilityMenuItem />
+                <ThreadListVisibilityMenuItems />
               )}
             </>
           )}
@@ -313,7 +303,7 @@ export function SidebarSectionMenuItems({
           Rename
         </DropdownMenuItem>
       )}
-      <ThreadListGroupVisibilityMenuItem />
+      <ThreadListVisibilityMenuItems />
       {onRemove && (
         <>
           <DropdownMenuSeparator />

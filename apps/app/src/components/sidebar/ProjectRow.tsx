@@ -2,7 +2,7 @@ import {
   ThreadListVisibility,
   ThreadListMore,
   ThreadListVisibilityGroupScope,
-  ThreadListGroupVisibilityMenuItem,
+  ThreadListVisibilityMenuItems,
   type ThreadListVisibilityGroup,
 } from "./ThreadListVisibility";
 import {
@@ -2483,7 +2483,7 @@ function ProjectRowComponent({
         project={project}
         surface="dropdown"
         extraActions={(surface) => (
-          <ThreadListGroupVisibilityMenuItem surface={surface} />
+          <ThreadListVisibilityMenuItems surface={surface} />
         )}
       />
     </SidebarHeaderControls>
@@ -2492,7 +2492,7 @@ function ProjectRowComponent({
   return (
     <ProjectActionsContextMenu
       extraActions={(surface) => (
-        <ThreadListGroupVisibilityMenuItem surface={surface} />
+        <ThreadListVisibilityMenuItems surface={surface} />
       )}
       project={project}
       onOpenChange={setIsContextActionsOpen}

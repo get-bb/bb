@@ -13,6 +13,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import { getCollapsedChildActivity } from "@bb/client-core";
 import { DropdownMenuItem } from "@bb/shared-ui/dropdown-menu";
 import { ContextMenuItem } from "@bb/shared-ui/context-menu";
+import { ActionMenuSeparator } from "@/components/ui/action-menu-items";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
 import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
@@ -27,6 +28,7 @@ import {
   SidebarOverflowItem,
   SidebarVisibilityCustomize,
   SidebarVisibilityActionContent,
+  SidebarCustomizeActionContent,
   type SidebarVisibilityItem,
 } from "./SidebarVisibilityControls";
 
@@ -47,10 +49,6 @@ interface ThreadListVisibilityState {
 
 const VisibilityContext = createContext<ThreadListVisibilityState | null>(null);
 const GroupContext = createContext<string | null>(null);
-
-export function useThreadListCustomization() {
-  return useContext(VisibilityContext)?.customize;
-}
 
 export function ThreadListVisibility({
   groups,
@@ -150,7 +148,7 @@ export function ThreadListVisibility({
               focusTarget.current = "more";
               setCustomizing(false);
             }}
-            title="Customize thread list"
+            title="Customize list"
             listLabel={label}
             variant={compact ? "compact" : "card"}
             testIdPrefix="sidebar-thread-list"
@@ -177,19 +175,27 @@ export function ThreadListVisibilityGroupScope({
   );
 }
 
-export function ThreadListGroupVisibilityMenuItem({
+export function ThreadListVisibilityMenuItems({
   surface = "dropdown",
 }: {
   surface?: "dropdown" | "context";
 }) {
   const state = useContext(VisibilityContext);
   const id = useContext(GroupContext);
-  if (!state || id === null) return null;
+  if (!state) return null;
   const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
   return (
-    <Item onSelect={() => state.hide(id)}>
-      <SidebarVisibilityActionContent visible />
-    </Item>
+    <>
+      <ActionMenuSeparator surface={surface} />
+      {id !== null && (
+        <Item onSelect={() => state.hide(id)}>
+          <SidebarVisibilityActionContent visible label="Hide from list" />
+        </Item>
+      )}
+      <Item onSelect={state.customize}>
+        <SidebarCustomizeActionContent label="Customize list" />
+      </Item>
+    </>
   );
 }
 
@@ -251,7 +257,7 @@ export function ThreadListMore() {
       <SidebarMore
         ariaLabel={`More ${state.label.toLowerCase()}`}
         listLabel={`Hidden ${state.label.toLowerCase()}`}
-        customizeLabel="Customize thread list"
+        customizeLabel="Customize list"
         onCustomize={state.customize}
         activity={<GroupActivity threads={threads} />}
         testIdPrefix="sidebar-thread-list"
