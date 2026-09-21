@@ -39,7 +39,6 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
-import { MarkdownImage as DeferredMarkdownImage } from "./markdown-image.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import {
   markdownMayContainMath,
@@ -947,12 +946,12 @@ function MarkdownRenderedImage({
   const imageUrl = typeof src === "string" ? src : "";
   if (!imageUrl) return null;
   return (
-    <DeferredMarkdownImage
-      key={JSON.stringify([imageUrl, imageAttributes.srcSet])}
+    <img
       {...imageAttributes}
       src={imageUrl}
       alt={typeof alt === "string" ? alt : "Image"}
       className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
+      loading="lazy"
       data-markdown-image=""
       data-markdown-image-offset={sourceOffset}
       onClick={(event) => {
@@ -968,7 +967,7 @@ function MarkdownRenderedImage({
         );
         const imageIndex = images.indexOf(event.currentTarget);
         const imageSources = images.map(
-          (image) => image.currentSrc || image.src || image.getAttribute("data-markdown-image-src") || "",
+          (image) => image.getAttribute("src") ?? image.src,
         );
         setExpandedImage({
           imageSources,

@@ -40,7 +40,6 @@ import type {
 import { threadConversationOutlineItemSchema } from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
-  listThreadImageMetadata,
   findTimelineWindowBudgetFloorSequence,
   hydrateRetainedEventOutputRows,
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
@@ -1479,7 +1478,6 @@ function buildThreadTimelineInternal(
   profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
 
   const response: ThreadTimelineResponse = {
-    imageMetadata: listThreadImageMetadata(db, thread.id),
     maxSeq: snapshot.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
     contextBoundarySeq,
