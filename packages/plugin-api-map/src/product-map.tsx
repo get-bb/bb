@@ -254,9 +254,11 @@ const FIXTURE_WIDTH_BANDS: Record<
 
 function SpatialFixture({
   band,
+  maxScale = MAX_FIXTURE_SCALE,
   children,
 }: {
   band?: { min: number; max: number };
+  maxScale?: number;
   children: ReactNode;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -316,11 +318,14 @@ function SpatialFixture({
             cardFootprint -
             8
           : undefined;
-      const scale = spatialFixtureScale(
-        frame.clientWidth,
-        authoredWidth,
-        availableHeight,
-        authoredHeight,
+      const scale = Math.min(
+        maxScale,
+        spatialFixtureScale(
+          frame.clientWidth,
+          authoredWidth,
+          availableHeight,
+          authoredHeight,
+        ),
       );
       const scaled = Math.abs(scale - 1) >= 0.0001;
       const height = scaled ? authoredHeight * scale : null;
@@ -364,7 +369,7 @@ function SpatialFixture({
       observer.disconnect();
       cardObserver?.disconnect();
     };
-  }, []);
+  }, [maxScale]);
 
   const scaled = geometry.height !== null;
   return (
@@ -372,12 +377,12 @@ function SpatialFixture({
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
-      className="w-full overflow-x-clip"
+      className="w-full overflow-x-clip transition-[height] duration-300 ease-out"
       style={scaled ? { height: geometry.height ?? undefined } : undefined}
     >
       <div
         ref={fixtureRef}
-        className="mx-auto w-full origin-top"
+        className="mx-auto w-full origin-top transition-transform duration-300 ease-out"
         style={
           {
             minWidth: band?.min,
@@ -461,8 +466,16 @@ function CardReserveProbe({ group }: { group: GuideSlide }) {
   );
 }
 
-function Slide({ group, mobile }: { group: GuideSlide; mobile: boolean }) {
-  if (mobile && group.id !== "headless") {
+function Slide({
+  group,
+  mobile,
+  viewportMobile,
+}: {
+  group: GuideSlide;
+  mobile: boolean;
+  viewportMobile: boolean;
+}) {
+  if (mobile && viewportMobile && group.id !== "headless") {
     return (
       <div
         data-guide-responsive-strategy="mobile"
@@ -481,8 +494,11 @@ function Slide({ group, mobile }: { group: GuideSlide; mobile: boolean }) {
   }
   return (
     <>
-      <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.groupId]}>
-        <SlideContent group={group} />
+      <SpatialFixture
+        band={mobile ? { min: 430, max: 430 } : FIXTURE_WIDTH_BANDS[group.groupId]}
+        maxScale={mobile ? 1 : MAX_FIXTURE_SCALE}
+      >
+        <SlideContent group={group} mobile={mobile} />
       </SpatialFixture>
       <CardReserveProbe group={group} />
     </>
@@ -927,7 +943,7 @@ export function ProductMap({
                     }
                     className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
-                    <Slide group={entry} mobile={mobile} />
+                    <Slide group={entry} mobile={mobile} viewportMobile={viewportMobile} />
                   </div>
                 ))}
               </div>
