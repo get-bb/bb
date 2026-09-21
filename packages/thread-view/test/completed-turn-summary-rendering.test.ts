@@ -1,7 +1,9 @@
 import type { TimelineRow } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import { buildThreadTimelineTurnDetailsFromEvents } from "../src/index.js";
 import {
   createTimelineEventFactory,
+  fromRows,
   renderTimelineFixture,
 } from "./timeline-test-harness.js";
 import type { TimelineEventFactory } from "./timeline-test-harness.js";
@@ -735,5 +737,140 @@ describe("completed turn summary rendering", () => {
       "conversation:assistant",
     ]);
     expect(turnRows(timeline.rows)).toHaveLength(0);
+  });
+});
+
+describe("flat completed turn display", () => {
+  function narratedTurn() {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Is the daemon command blob pruning durable?",
+    });
+    const liveEvents = [
+      request,
+      event.turnStarted(),
+      event.inputAccepted({ clientRequestId: request.data.requestId }),
+      event.assistantCompleted({
+        itemId: "assistant-1",
+        text: "Let me check the pruning code.",
+      }),
+      event.commandCompleted({ itemId: "tool-1", command: "rg prune" }),
+      event.assistantCompleted({
+        itemId: "assistant-2",
+        text: "Yes: pruning runs inside the daemon transaction.",
+      }),
+    ];
+    return {
+      liveEvents,
+      finishedEvents: [...liveEvents, event.turnCompleted()],
+    };
+  }
+
+  it("keeps a finished turn's rows exactly as they rendered while it ran", () => {
+    const { liveEvents, finishedEvents } = narratedTurn();
+
+    const live = renderTimelineFixture({
+      completedTurnDisplay: "flat",
+      events: liveEvents,
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "active",
+        turnMessageDetail: "summary",
+      },
+    });
+    const finished = renderTimelineFixture({
+      completedTurnDisplay: "flat",
+      events: finishedEvents,
+      includeNestedRows: false,
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "summary" },
+    });
+
+    expect(rowSignatures(finished.rows)).toEqual([
+      "conversation:user",
+      "conversation:assistant",
+      "work:command",
+      "conversation:assistant",
+    ]);
+    expect(finished.rows.map((row) => row.id)).toEqual(
+      live.rows.map((row) => row.id),
+    );
+    expect(turnRows(finished.rows)).toHaveLength(0);
+    expect(finished.text).not.toContain("Worked for");
+  });
+
+  it("keeps the work of a finished turn that summary detail would drop", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+
+    const finished = renderTimelineFixture({
+      completedTurnDisplay: "flat",
+      events: [
+        event.turnStarted(),
+        event.commandCompleted({ itemId: "tool-1", command: "pnpm test" }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: "All tests pass.",
+        }),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "summary" },
+    });
+
+    expect(rowSignatures(finished.rows)).toEqual([
+      "work:command",
+      "conversation:assistant",
+    ]);
+  });
+
+  it("folds the same finished turn when the display is collapse", () => {
+    const { finishedEvents } = narratedTurn();
+
+    const collapsed = renderTimelineFixture({
+      completedTurnDisplay: "collapse",
+      events: finishedEvents,
+      includeNestedRows: false,
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "summary" },
+    });
+
+    expect(rowSignatures(collapsed.rows)).toEqual([
+      "conversation:user",
+      "turn:4-5",
+      "conversation:assistant",
+    ]);
+  });
+
+  it("answers a turn details request with the flat rows instead of a missing match", () => {
+    const { finishedEvents } = narratedTurn();
+    const events = fromRows(finishedEvents);
+    const detailOptions = {
+      includeDiagnosticOperations: false,
+      sourceSeqEnd: 5,
+      sourceSeqStart: 4,
+      threadName: "",
+      threadStatus: "idle" as const,
+      workspaceRoot: null,
+    };
+
+    const flat = buildThreadTimelineTurnDetailsFromEvents({
+      events,
+      options: { ...detailOptions, completedTurnDisplay: "flat" },
+    });
+    const collapsed = buildThreadTimelineTurnDetailsFromEvents({
+      events,
+      options: { ...detailOptions, completedTurnDisplay: "collapse" },
+    });
+
+    expect(flat.kind).toBe("ungrouped");
+    expect(flat.kind === "ungrouped" ? rowSignatures(flat.rows) : []).toEqual([
+      "conversation:user",
+      "conversation:assistant",
+      "work:command",
+      "conversation:assistant",
+    ]);
+    expect(collapsed.kind).toBe("matched");
+    expect(
+      collapsed.kind === "matched" ? rowSignatures(collapsed.rows) : [],
+    ).toEqual(["conversation:assistant", "work:command"]);
   });
 });

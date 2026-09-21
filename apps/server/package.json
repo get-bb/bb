@@ -25,6 +25,7 @@
     "@bb/process-utils": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/secret-storage": "workspace:*",
+    "@bb/server-archive": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",

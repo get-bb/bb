@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Render Typst documents inline in messages and in the file viewer, and export them as PDF, SVG, or PNG.",
+  "description": "Render Typst documents inline in messages, in the thread side panel, and in the file viewer, and export them as PDF, SVG, PNG, or Word.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Typst inline",
-    "description": "Render Typst documents inline in messages and in the file viewer, and export them as PDF, SVG, or PNG.",
+    "description": "Render Typst documents inline in messages, in the thread side panel, and in the file viewer, and export them as PDF, SVG, PNG, or Word.",
     "branding": {
       "icon": "TextWrap"
     },

@@ -56,6 +56,10 @@ import {
   validatePendingInteractionResolution,
 } from "./pending-interaction-validation.js";
 import { emitPluginInteractionPending } from "../plugins/plugin-thread-events.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  isServerMoveFrozen,
+} from "../server-move/freeze-state.js";
 
 type RegisterPendingInteractionResult =
   | {
@@ -499,13 +503,19 @@ export class PendingInteractionLifecycle {
         });
       };
       args.signal?.addEventListener("abort", abort, { once: true });
-      const timer = setTimeout(() => {
+      const expire = () => {
+        const waiter = this.pluginWaiters.get(interaction.id);
+        if (waiter !== undefined && isServerMoveFrozen(this.deps.db)) {
+          waiter.timer = setTimeout(expire, SERVER_MOVE_FROZEN_RETRY_MS);
+          return;
+        }
         this.cancelPluginInteractionFromCallback({
           interactionId: interaction.id,
           threadId: interaction.threadId,
           reason: "timeout",
         });
-      }, args.timeoutMs);
+      };
+      const timer = setTimeout(expire, args.timeoutMs);
       this.pluginWaiters.set(interaction.id, {
         resolve,
         timer,

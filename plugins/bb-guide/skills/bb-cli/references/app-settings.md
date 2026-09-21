@@ -18,6 +18,8 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
   `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
+- `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
+  existing server and legacy browser choices are preserved.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.
 - `bb settings ui set <key> <value> [--json]` takes a plain string for enum
@@ -100,6 +102,23 @@ every window and client sees the same value.
 - `defaultProviderId` defaults to `null`. Set a provider ID or use `null` to
   clear it.
 
+## Finished turns
+
+- When a turn finishes, bb can collapse its work into one `Worked for` row
+  and leave the final answer visible (`collapse`), or keep every step visible
+  (`flat`). Each provider declares a default: Claude Code is `flat`; every
+  other first-party provider is `collapse`.
+- `bb settings completed-turns [--json]` lists every provider with its current
+  display and whether it comes from your setting or the provider default.
+- `bb settings completed-turns <provider-id> <collapse|flat|default>` sets the
+  display for one provider; `default` removes your setting so the provider
+  default applies again. Settings → Providers has the same switch per
+  provider.
+- The overrides are stored in `providerCompletedTurnDisplay`, a map of provider
+  ID to `collapse` or `flat`. The setting applies to every thread of that
+  provider, including finished turns in existing threads, the conversation
+  outline, and `bb thread log`.
+
 ## Message edits
 
 - Eligible accepted root user messages can be edited without enabling an
@@ -138,6 +157,13 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment timelineWindowing true`.
 - It keeps stable timeline wrappers while mounting only rows near the active
   main or nested detail scrollport.
+
+## Server move
+
+- The `serverMove` experiment defaults to false.
+- Enable it with `bb settings experiment serverMove true`.
+- It shows Move server here in Settings → Machines and lets the server run
+  `bb server move`, `bb server export`, and old server copy deletion.
 
 ## Multi-machine picker
 

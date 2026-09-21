@@ -41,6 +41,15 @@ export function readPrimaryHostIdFromDataDir(
   }
 }
 
+export function isServerMachineHost(
+  deps: Pick<AppDeps, "config">,
+  hostId: string,
+): boolean {
+  return (
+    readPrimaryHostIdFromDataDir({ dataDir: deps.config.dataDir }) === hostId
+  );
+}
+
 function resolveSinglePublicHostId(
   db: DbConnection,
   include: (host: ReturnType<typeof listPublicHosts>[number]) => boolean = () =>

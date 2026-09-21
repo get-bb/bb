@@ -1002,7 +1002,7 @@ export default async function plugin(
         source.experimental_hostId ??
         (await bb.sdk.system.config()).primaryHostId;
       if (!hostId) {
-        throw new Error("This project has no primary host");
+        throw new Error("This bb has no server machine yet");
       }
       const project = await bb.sdk.projects.get({
         projectId: source.projectId,
@@ -1015,7 +1015,7 @@ export default async function plugin(
         throw new Error(
           source.experimental_hostId
             ? "This project has no workspace on the selected host"
-            : "This project has no workspace on the primary host",
+            : "This project has no workspace on the server machine",
         );
       }
       if (matchingSources.length > 1) {

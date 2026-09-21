@@ -50,6 +50,7 @@ export function AddMachineContent({
   onOpenChange: (open: boolean) => void;
 }) {
   const config = useSystemConfig();
+  const hosts = useHosts();
   const accessReady = machineServerAccessReady(config.data?.serverAccess);
   if (!accessReady) {
     return (
@@ -66,7 +67,21 @@ export function AddMachineContent({
       </MachineAccessGate>
     );
   }
-  return <ManualMachineSetup onOpenChange={onOpenChange} />;
+  const serverPrimaryHostId = config.data?.primaryHostId ?? null;
+  const serverMachineName =
+    hosts.data?.find((host) => host.id === serverPrimaryHostId)?.name ?? null;
+  return (
+    <ManualMachineSetup
+      serverMachineName={serverMachineName}
+      onOpenChange={onOpenChange}
+    />
+  );
+}
+
+function serverMachineNotice(serverMachineName: string | null): string {
+  return serverMachineName === null
+    ? "The new machine will connect to your bb server. Keep the server machine on so the new machine can keep working."
+    : `The new machine will connect to the bb server on ${serverMachineName}. Keep that computer on so the new machine can keep working.`;
 }
 
 export type MachineAccessGateState =
@@ -128,8 +143,10 @@ export interface EnrollmentCommand {
 }
 
 export function ManualMachineSetup({
+  serverMachineName,
   onOpenChange,
 }: {
+  serverMachineName: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
   const createController = useRef<AbortController | null>(null);
@@ -231,6 +248,7 @@ export function ManualMachineSetup({
     <ManualMachineSetupView
       command={command}
       connectedHost={connectedHost}
+      serverMachineName={serverMachineName}
       errorMessage={
         createMachine.isError
           ? getMutationErrorMessage({
@@ -249,6 +267,7 @@ export function ManualMachineSetup({
 export function ManualMachineSetupView({
   command,
   connectedHost,
+  serverMachineName,
   errorMessage,
   onRetry,
   onRegenerate,
@@ -256,6 +275,7 @@ export function ManualMachineSetupView({
 }: {
   command: EnrollmentCommand | null;
   connectedHost: Host | null;
+  serverMachineName: string | null;
   errorMessage: string | null;
   onRetry: () => void;
   onRegenerate: () => void;
@@ -329,6 +349,11 @@ export function ManualMachineSetupView({
             </>
           )}
         </div>
+      ) : null}
+      {errorMessage === null ? (
+        <p className="text-xs text-subtle-foreground">
+          {serverMachineNotice(serverMachineName)}
+        </p>
       ) : null}
     </>
   );

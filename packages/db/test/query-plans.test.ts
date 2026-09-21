@@ -1,3 +1,4 @@
+import { advanceThreadPruning } from "../src/data/thread-pruning.js";
 import { findEnvironmentPathClaim } from "../src/data/environments.js";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
@@ -18,6 +19,7 @@ import {
   getFirstParentedTimelineBoundarySequence,
   hasTimelineGroupingContextRowsInRange,
   listStoredEventRowsInSequenceRange,
+  getLastStoredProviderThreadId,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
@@ -29,7 +31,7 @@ import {
   listStoredEventRowsByParentToolCallIds,
   listStoredTurnCompletedKeys,
   listTodoSnapshotEventRowsForThread,
-  pruneContextWindowUsageEventsBeforeSequence,
+  pruneContextWindowUsageEvents,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
 import {
@@ -240,6 +242,42 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("resolves a provider session with two indexed lookups regardless of history length", () => {
+    const { db, thread } = setup();
+    try {
+      insertEvents(
+        db,
+        noopNotifier,
+        Array.from({ length: 50 }, (_, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          scope: threadScope(),
+          providerThreadId: "provider-owner-plan",
+          type: "thread/identity" as const,
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: "provider-owner-plan" }),
+        })),
+      );
+      const captured = captureStatements(db, () => {
+        expect(getLastStoredProviderThreadId(db, thread.id)).toBe(
+          "provider-owner-plan",
+        );
+      });
+      expect(captured).toHaveLength(2);
+      const [identityQuery, ownerQuery] = captured;
+      expect(queryPlanDetails({ db, ...identityQuery! })).toContain(
+        "USING INDEX events_thread_type_sequence_idx",
+      );
+      expect(queryPlanDetails({ db, ...ownerQuery! })).toContain(
+        "USING INDEX events_provider_identity_idx",
+      );
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("seeks accepted inputs past each thread's latest interruption", () => {
     const { db, thread } = setup();
     try {
@@ -927,7 +965,6 @@ describe("slow query index plans", () => {
 
   it("uses the thread/type/sequence index for emitted context-window prune SQL", () => {
     const { db, logger, thread } = setup();
-    const sequenceCutoff = 3;
     insertEvents(db, noopNotifier, [
       {
         data: JSON.stringify({
@@ -980,8 +1017,7 @@ describe("slow query index plans", () => {
     }
     logger.clear();
 
-    pruneContextWindowUsageEventsBeforeSequence(db, {
-      sequenceCutoff,
+    pruneContextWindowUsageEvents(db, {
       threadId: thread.id,
     });
 
@@ -989,8 +1025,7 @@ describe("slow query index plans", () => {
       logger,
       predicate: (fields) =>
         fields.operation === "run" &&
-        fields.sql.includes("DELETE FROM events") &&
-        fields.sql.includes("root_usage"),
+        fields.sql.startsWith("DELETE FROM events"),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
@@ -999,10 +1034,12 @@ describe("slow query index plans", () => {
       params: [
         thread.id,
         "thread/contextWindowUsage/updated",
+        500,
         thread.id,
         "thread/contextWindowUsage/updated",
-        sequenceCutoff,
-        "$.contextWindowUsage.modelContextWindow",
+        thread.id,
+        2,
+        1,
       ],
     });
 
@@ -1398,7 +1435,26 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses materialized parent ids and the consolidated index for delta pruning", () => {
+  it("pins maintenance discovery to the typed sequence index", () => {
+    const { db } = setup();
+    const statements = captureStatements(db, () => {
+      advanceThreadPruning(db, "turn-diffs");
+    });
+    const discovery = statements.find((statement) =>
+      statement.sql.includes(
+        "FROM events INDEXED BY events_thread_type_sequence_idx",
+      ),
+    );
+    expect(discovery).toBeDefined();
+    if (!discovery) throw new Error("Missing maintenance discovery query");
+    expect(queryPlanDetails({ db, ...discovery })).toContain(
+      "USING INDEX events_thread_type_sequence_idx",
+    );
+    expect(discovery.sql).toContain("LIMIT ?");
+    db.$client.close();
+  });
+
+  it("bounds delta support probes with the consolidated scope index", () => {
     const { db, logger, thread } = setup();
     const turnId = "turn_resolved_delta_query_plan";
     const itemId = "call_resolved_delta_query_plan";
@@ -1443,14 +1499,39 @@ describe("slow query index plans", () => {
     ]);
     logger.clear();
 
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    const statements = captureStatements(db, () => {
+      expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    });
+    const discovery = statements.find((statement) =>
+      statement.sql.includes("WITH candidate_ids AS MATERIALIZED"),
+    );
+    if (!discovery) throw new Error("Missing typed delta candidate discovery");
+    const discoveryPlan = queryPlanDetails({ db, ...discovery });
+    expect(
+      discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
+    ).toHaveLength(4);
+    expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
+    expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
+    const supportQueries = statements.filter((statement) =>
+      statement.sql.includes(
+        "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+      ),
+    );
+    expect(supportQueries.length).toBeGreaterThan(0);
+    for (const statement of supportQueries) {
+      expect(queryPlanDetails({ db, ...statement })).toContain(
+        "USING INDEX events_thread_turn_type_item_sequence_idx",
+      );
+      expect(statement.sql).toContain("LIMIT ?");
+    }
     const pruneQuery = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
         fields.operation === "run" &&
         fields.sql.startsWith("DELETE FROM events"),
     });
-    expect(pruneQuery.fields.sql).toContain("parent_tool_call_id IS");
+    expect(pruneQuery.fields.sql).toContain("WHERE id IN");
+    expect(pruneQuery.fields.bindingArgumentCount).toBeLessThanOrEqual(500);
     expect(pruneQuery.fields.sql).not.toContain("json_extract");
 
     const completedLookupPlan = queryPlanDetails({

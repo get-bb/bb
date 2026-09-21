@@ -57,6 +57,7 @@ export function PluginBrowseToolbar({
   query,
   selectedCategories,
   categoryOptions,
+  showCategoryFilter = true,
   sort,
   sortDirection,
   installsKnown,
@@ -65,6 +66,7 @@ export function PluginBrowseToolbar({
   query: string;
   selectedCategories: readonly string[];
   categoryOptions: readonly PluginBrowseCategoryOption[];
+  showCategoryFilter?: boolean;
   sort: PluginBrowseSort | null;
   sortDirection: PluginBrowseSortDirection;
   installsKnown: boolean;
@@ -83,18 +85,20 @@ export function PluginBrowseToolbar({
         }
         controls={
           <>
-            <PluginBrowseCategoryFilter
-              value={selectedCategories}
-              options={categoryOptions}
-              onChange={(values) =>
-                changeSearchParams((next) => {
-                  next.delete("category");
-                  for (const value of values) {
-                    next.append("category", value);
-                  }
-                })
-              }
-            />
+            {showCategoryFilter ? (
+              <PluginBrowseCategoryFilter
+                value={selectedCategories}
+                options={categoryOptions}
+                onChange={(values) =>
+                  changeSearchParams((next) => {
+                    next.delete("category");
+                    for (const value of values) {
+                      next.append("category", value);
+                    }
+                  })
+                }
+              />
+            ) : null}
             <ResourceSortMenu
               value={sort}
               direction={sortDirection}

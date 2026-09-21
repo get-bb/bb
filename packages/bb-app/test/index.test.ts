@@ -53,6 +53,7 @@ import type {
   ManagedProcessRun,
   NamedProcessExitResult,
   ProcessExitResult,
+  ReadServerMovedFileFn,
 } from "../src/launcher.js";
 
 interface DelayArgs {
@@ -246,11 +247,18 @@ const immediateDelay: DelayMillisecondsFn = () => {
   return Promise.resolve();
 };
 
+// bb-fork(windows): Windows does not report POSIX file modes.
 function expectRestrictedFileMode(filePath: string): void {
   if (process.platform === "win32") {
     return;
   }
   expect(statSync(filePath).mode & 0o777).toBe(0o600);
+}
+
+const noServerMovedFile: ReadServerMovedFileFn = async () => null;
+
+async function unexpectedServerMove(): Promise<FullStackSupervisionResult> {
+  throw new Error("Unexpected server move");
 }
 
 function createTestStartContext(): BbAppStartContext {
@@ -1981,7 +1989,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2014,7 +2024,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2047,7 +2059,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2075,7 +2089,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2111,7 +2127,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });

@@ -65,6 +65,8 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
     composerActions: [
       ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
     ],
+    completedTurnDisplay:
+      provider.value === "claude-code" ? "flat" : "collapse",
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,

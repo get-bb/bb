@@ -4,12 +4,14 @@ import {
   renderTypstSvg,
   type TypstCompileRequest,
 } from "./typst-engine.js";
+import { splitTypstPages, type TypstPage } from "./typst-pages.js";
 
 const MAX_CACHED_DOCUMENTS = 24;
 
 const cache = new Map<string, TypstDocument>();
 
 export interface TypstDocument {
+  pages: () => Promise<readonly TypstPage[]>;
   pdf: () => Promise<Uint8Array>;
   svg: Promise<string>;
   vector: Promise<Uint8Array>;
@@ -45,9 +47,14 @@ export function loadTypstDocument(
   const vector = compileTypstVector(request);
   const svg = vector.then((artifactContent) => renderTypstSvg(artifactContent));
   let pdf: Promise<Uint8Array> | null = null;
+  let pages: Promise<readonly TypstPage[]> | null = null;
   const document: TypstDocument = {
     vector,
     svg,
+    pages: () => {
+      pages ??= svg.then((value) => splitTypstPages(value));
+      return pages;
+    },
     pdf: () => {
       pdf ??= compileTypstPdf(request).catch((error: unknown) => {
         pdf = null;

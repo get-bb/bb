@@ -10,8 +10,10 @@ import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonProjectAttachmentContentQuerySchema,
   hostDaemonSessionOpenRequestSchema,
+  SERVER_MOVED_ERROR_CODE,
   typedRoutes,
   type HostDaemonInternalSchema,
+  type ServerMovedErrorDetails,
 } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import { z } from "zod";
@@ -37,6 +39,12 @@ const sessionOpenCompatibilitySchema = z
   })
   .passthrough();
 
+export interface ServerMoveSessionGate {
+  movedTo(): ServerMovedErrorDetails | null;
+  pendingMoveId(): string | null;
+  sessionOpened(hostId: string): Promise<void>;
+}
+
 function invalidSessionOpenRequest(message: string): ApiError {
   return new ApiError(400, "invalid_request", message);
 }
@@ -53,6 +61,7 @@ export function registerInternalSessionRoutes(
   app: Hono,
   deps: AppDeps,
   plugins: PluginService,
+  serverMove: ServerMoveSessionGate,
 ): void {
   const machineEnvironment = new HostEnvironmentSync(deps);
   const { get } = typedRoutes<HostDaemonInternalSchema>(app, {
@@ -60,6 +69,24 @@ export function registerInternalSessionRoutes(
   });
 
   app.post("/session/open", async (context) => {
+    const pendingMoveId = serverMove.pendingMoveId();
+    if (pendingMoveId !== null) {
+      throw new ApiError(
+        503,
+        "server_move_pending",
+        "This server is finishing a move and doesn't accept machines yet",
+        { details: { moveId: pendingMoveId }, retryable: true },
+      );
+    }
+    const movedTo = serverMove.movedTo();
+    if (movedTo !== null) {
+      throw new ApiError(
+        410,
+        SERVER_MOVED_ERROR_CODE,
+        `This bb server moved to ${movedTo.toHostName} (${movedTo.serverUrl})`,
+        { details: movedTo, retryable: false },
+      );
+    }
     const input: unknown = await context.req.json().catch(() => {
       throw invalidSessionOpenRequest("Invalid JSON request body");
     });
@@ -153,6 +180,7 @@ export function registerInternalSessionRoutes(
       openedSession: session,
       previousSession,
     });
+    await serverMove.sessionOpened(daemon.hostId);
 
     const retiredEnvironmentIds = listRetiredLoadedEnvironmentIdsOnHost(
       deps.db,

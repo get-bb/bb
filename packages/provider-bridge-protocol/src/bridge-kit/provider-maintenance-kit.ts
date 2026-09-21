@@ -3,6 +3,8 @@ import { constants as fsConstants } from "node:fs";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import semverCompare from "semver/functions/compare.js";
+import semverValid from "semver/functions/valid.js";
 import { z } from "zod";
 import type {
   ProviderInstallationCommand,
@@ -58,9 +60,10 @@ export async function commandOutput(
 }
 
 export function versionFrom(value: string | null): string | null {
-  return (
-    value?.match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/u)?.[1] ?? null
-  );
+  const candidate = value?.match(/\bv?(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)/u)?.[1];
+  return candidate !== undefined && semverValid(candidate) !== null
+    ? candidate
+    : null;
 }
 
 export async function readCliVersion(command: string): Promise<string | null> {
@@ -70,37 +73,14 @@ export async function readCliVersion(command: string): Promise<string | null> {
     });
     probe.child.stdin?.end();
     const { stdout, stderr } = await probe;
-    return (
-      `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/u)?.[0] ??
-      null
-    );
+    return versionFrom(`${stdout}\n${stderr}`);
   } catch {
     return null;
   }
 }
 
 export function compareVersions(left: string, right: string): number {
-  const parse = (value: string) => {
-    const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/u);
-    return match === null
-      ? { core: [0, 0, 0], prerelease: null }
-      : {
-          core: [Number(match[1]), Number(match[2]), Number(match[3])],
-          prerelease: match[4] ?? null,
-        };
-  };
-  const a = parse(left);
-  const b = parse(right);
-  for (let index = 0; index < 3; index += 1) {
-    const delta = (a.core[index] ?? 0) - (b.core[index] ?? 0);
-    if (delta !== 0) return delta;
-  }
-  if (a.prerelease === null && b.prerelease !== null) return 1;
-  if (a.prerelease !== null && b.prerelease === null) return -1;
-  if (a.prerelease !== null && b.prerelease !== null) {
-    return a.prerelease.localeCompare(b.prerelease);
-  }
-  return 0;
+  return semverCompare(left, right);
 }
 
 export function npmCommand(): string {

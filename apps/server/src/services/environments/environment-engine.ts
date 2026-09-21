@@ -629,6 +629,7 @@ async function runRemove(
     try {
       if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
         await runEnvironmentHook(deps, {
+          projectId: row.projectId,
           id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
           hostId: row.hostId,
           path: row.path,

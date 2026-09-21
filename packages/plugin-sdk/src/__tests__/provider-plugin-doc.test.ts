@@ -61,6 +61,7 @@ const REGISTRATION_FIELDS = {
   supportsServiceTier: "capabilities.supportsServiceTier",
   maintenance: "maintenance",
   composerActions: "composerActions",
+  completedTurnDisplay: "completedTurnDisplay",
   extensionKinds: "extensionKinds",
   models: "models",
   env: "env",

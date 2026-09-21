@@ -18,6 +18,12 @@ streaming does not unload history. Otherwise a later event changed a row the
 page omitted, and loaded rows are replaced. A row that keeps changing while
 omitted, such as a long-running item before a content cut, therefore replaces
 loaded rows on each refresh.
+`completedTurnDisplay` reports whether the page projected finished turns as
+collapsed "Worked for" rows or flat rows. It is part of the display surface: a
+cursor from one display returns HTTP 400 under the other, and
+`resolveLoadedTimelineSurfaceKey` folds it into the loaded surface key, so a
+client whose pages were loaded under another display replaces them from the
+latest page instead of mixing the two.
 Discard older responses whose request cursor is no longer the loaded
 `olderCursor`. A group's cursor is its message row even when rows recorded after
 the request display before it. A legacy cursor or incompatible

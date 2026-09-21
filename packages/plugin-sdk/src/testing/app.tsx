@@ -1595,6 +1595,7 @@ export function renderSlot<
     submits: [],
   };
   const composerOwnership = { active: true };
+  const submissionListeners = new Set<() => void>();
   const composer: TestComposerStore = {
     getAttachmentCount: () => composerAttachmentCount,
     getScope: () => composerScope,
@@ -1638,6 +1639,25 @@ export function renderSlot<
         }
         composerLog.focusCount += 1;
       },
+      experimental_onSubmitted(listener) {
+        submissionListeners.add(listener);
+        return () => {
+          submissionListeners.delete(listener);
+        };
+      },
+      experimental_removeMention({ provider, id }) {
+        for (
+          let index = composerLog.mentions.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          const mention = composerLog.mentions[index];
+          if (mention?.provider === provider && mention.id === id) {
+            commitComposerText(composerText.replace(mention.label, ""));
+            composerLog.mentions.splice(index, 1);
+          }
+        }
+      },
       insertMention(mention) {
         const label = mention.label.trim() || mention.id;
         const separator =
@@ -1664,6 +1684,7 @@ export function renderSlot<
         }
         composerLog.submits.push(options);
         commitComposerText("");
+        for (const listener of submissionListeners) listener();
       },
     },
   };

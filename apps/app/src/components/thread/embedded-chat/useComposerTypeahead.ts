@@ -41,7 +41,10 @@ export function useComposerTypeahead({
     environmentId,
     threadStorageThreadId: currentThreadId,
   });
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const [commandState, setCommandState] = useState<{
+    query: string | null;
+    trigger: import("@bb/domain").PromptMentionCommandTrigger | null;
+  }>({ query: null, trigger: null });
   const [hasComposerFocused, setHasComposerFocused] = useState(false);
   const handleEditorFocus = useCallback(() => {
     setHasComposerFocused(true);
@@ -58,10 +61,11 @@ export function useComposerTypeahead({
     projectId,
     providerId,
     commandScope,
-    skillsTrigger: providerPromptActions.skillsTrigger,
+    skillsTriggers: providerPromptActions.skillsTriggers,
+    activeTrigger: commandState.trigger,
     promptActions,
     environmentId,
-    query: commandQuery,
+    query: commandState.query,
     composerFocused: hasComposerFocused,
   });
 
@@ -76,14 +80,14 @@ export function useComposerTypeahead({
         resolveLink: resolveMentionLink,
       },
       command: {
-        trigger: commandSuggestions.trigger,
+        triggers: commandSuggestions.triggers,
         suggestions: commandSuggestions.suggestions,
         isLoading: commandSuggestions.isLoading,
         isError: commandSuggestions.isError,
         hasMore: commandSuggestions.hasMore,
         isLoadingMore: commandSuggestions.isLoadingMore,
         loadMore: commandSuggestions.loadMore,
-        onQueryChange: setCommandQuery,
+        onQueryChange: (query, trigger) => setCommandState({ query, trigger }),
         onEditorFocus: handleEditorFocus,
       },
     }),
@@ -94,7 +98,7 @@ export function useComposerTypeahead({
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
       commandSuggestions.suggestions,
-      commandSuggestions.trigger,
+      commandSuggestions.triggers,
       handleEditorFocus,
       promptMentions.isError,
       promptMentions.isLoading,

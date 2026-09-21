@@ -9,6 +9,8 @@ import {
   listQueuedThreadMessages,
   RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
+  threads,
+  threadPruningCursors,
 } from "@bb/db";
 import { threadScope } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
@@ -636,6 +638,84 @@ describe("runPeriodicSweeps", () => {
         ).toBe(true);
       } finally {
         resetEventLoopWorkForTests();
+      }
+    });
+  });
+
+  it("retries pruning on the next tick after a busy skip and continues without an hourly delay", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+        pluginService: harness.pluginService,
+        pluginCatalogService: harness.pluginCatalogService,
+      };
+      for (const sequence of [1, 2])
+        harness.db
+          .insert(events)
+          .values({
+            id: `pruning-tick-${sequence}`,
+            threadId: thread.id,
+            sequence,
+            type: "turn/diff/updated",
+            scopeKind: "turn",
+            turnId: "turn",
+            data: "{}",
+            createdAt: 1,
+          })
+          .run();
+      harness.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      try {
+        await runPeriodicSweeps(deps);
+        expect(harness.db.select().from(threadPruningCursors).all()).toEqual(
+          [],
+        );
+        harness.db
+          .update(threads)
+          .set({ status: "idle" })
+          .where(eq(threads.id, thread.id))
+          .run();
+        clock.mockReturnValue(now + 10_000);
+        await runPeriodicSweeps(deps);
+        expect(
+          harness.db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toEqual([{ sequence: 2 }]);
+        harness.db
+          .insert(events)
+          .values({
+            id: "pruning-tick-3",
+            threadId: thread.id,
+            sequence: 3,
+            type: "turn/completed",
+            scopeKind: "turn",
+            turnId: "turn",
+            data: "{}",
+            createdAt: now,
+          })
+          .run();
+        clock.mockReturnValue(now + 20_000);
+        await runPeriodicSweeps(deps);
+        expect(
+          harness.db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toEqual([{ sequence: 3 }]);
+      } finally {
+        clock.mockRestore();
       }
     });
   });

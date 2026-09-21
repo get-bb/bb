@@ -30,7 +30,7 @@ can run
 `bb modal image show > Dockerfile`, edit the file, then run `bb modal image set
 --file ./Dockerfile`. `bb modal image reset` restores the bundled default.
 Append `--json` for structured output. File paths resolve from the CLI directory
-on the current thread's host, or the server primary host without thread context.
+on the current thread's host, or the server machine without thread context.
 Typed RPCs `image.definition`, `image.set({dockerfile})`, and `image.reset`
 return `{dockerfile, customized}` through `sdk.plugins.callRpc`.
 
@@ -124,3 +124,23 @@ The same option appears once in the environment picker. Existing sandbox hosts
 retain their normal checkout/worktree choices. Machine creation, checkout setup
 and environment setup report into the thread's provisioning details. A clone
 failure keeps the machine for retry or explicit removal.
+
+## Allocation cleanup
+
+The plugin persists each machine allocation before requesting it from Modal,
+then records its sandbox ID when creation returns. This includes resumed
+allocations. Debug sandboxes retain their separate ownership and expiry policy.
+The once-per-minute plugin sweep checks only these tracked allocations and
+imports existing machine sandbox IDs when the plugin starts. Confirmed stopped
+allocations are removed from the list; lookup failures and account changes do
+not discard ownership. Pending creates can be rediscovered by their saved name;
+absent pending entries expire after the requested sandbox lifetime.
+
+When compute is running for a machine core marks suspended, the plugin calls
+`hosts.experimental_reconcile` (`bb machine reconcile MACHINE --json`). Core
+checks its current state and starts save-and-stop, returning acceptance immediately;
+the CLI polls until completion. Core does not poll Modal. Tracking cleanup failures
+after a successful stop retain the entry for the next sweep without failing pause.
+The idle policy separately calls `hosts.experimental_suspend`. Allocation cleanup
+continues when idle pausing is disabled. Allocations without a matching machine
+are reported and retained until Modal confirms they are gone.

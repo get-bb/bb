@@ -318,6 +318,7 @@ export function useUnarchiveThread() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ["unarchive-thread"],
     meta: {
       errorMessage: "Failed to unarchive thread.",
     },

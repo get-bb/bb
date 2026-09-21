@@ -10,6 +10,7 @@ import {
   mergeLoadedTimelineWithLatest,
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
+  resolveLoadedTimelineSurfaceKey,
   type LoadedTimelineState,
 } from "@bb/client-core";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
@@ -122,14 +123,11 @@ export function useThreadTimelineController({
     notifyOnChangeProps,
     refetchOnMount: true,
   });
-  const baseSurfaceKey = explicitSurfaceKey ?? threadId;
-  const contextBoundarySeq =
-    latestTimelineQuery.data?.contextBoundarySeq ?? null;
-  const surfaceKey =
-    contextBoundarySeq === null
-      ? baseSurfaceKey
-      : `${baseSurfaceKey}:context-boundary:${contextBoundarySeq}`;
   const latestTimeline = latestTimelineQuery.data;
+  const surfaceKey = resolveLoadedTimelineSurfaceKey(
+    explicitSurfaceKey ?? threadId,
+    latestTimeline,
+  );
   const [loadedTimelineTracker, setLoadedTimelineTracker] =
     useState<LoadedTimelineTracker>(() => ({
       latestTimeline,
@@ -271,7 +269,7 @@ export function useThreadTimelineController({
     activeThinking: latestTimeline?.activeThinking ?? null,
     activeWorkflows: latestTimeline?.activeWorkflows ?? [],
     activeBackgroundCommands: latestTimeline?.activeBackgroundCommands ?? [],
-    contextBoundarySeq,
+    contextBoundarySeq: latestTimeline?.contextBoundarySeq ?? null,
     contextWindowUsage: latestTimeline?.contextWindowUsage,
     goal: latestTimeline?.goal ?? null,
     modelFallback: latestTimeline?.modelFallback ?? null,

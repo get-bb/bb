@@ -8,15 +8,9 @@ import {
   type ToolResult,
   type ToolResultAnnotation,
 } from "./contracts.js";
-import {
-  NOT_UNIQUE_MESSAGE,
-  TOO_FEW_OPTIONS_MESSAGE,
-} from "./tool-definition.js";
+import { NOT_UNIQUE_MESSAGE } from "./tool-definition.js";
 
 export function validateToolInput(input: ToolInput): string | null {
-  if (input.questions.some((question) => question.options.length < 2)) {
-    return TOO_FEW_OPTIONS_MESSAGE;
-  }
   const prompts = input.questions.map((question) => question.question);
   if (new Set(prompts).size !== prompts.length) return NOT_UNIQUE_MESSAGE;
   for (const question of input.questions) {

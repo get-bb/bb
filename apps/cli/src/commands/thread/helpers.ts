@@ -53,7 +53,7 @@ export function buildPromptInputs(args: {
   ];
 }
 
-function resolveClientImagePath(pathOrToken: string): string | null {
+function resolveClientAttachmentPath(pathOrToken: string): string | null {
   if (isAbsolute(pathOrToken) || win32.isAbsolute(pathOrToken)) {
     return pathOrToken;
   }
@@ -63,7 +63,7 @@ function resolveClientImagePath(pathOrToken: string): string | null {
   try {
     return fileURLToPath(pathOrToken);
   } catch {
-    throw new Error(`Invalid client image URL '${pathOrToken}'.`);
+    throw new Error(`Invalid client attachment URL '${pathOrToken}'.`);
   }
 }
 
@@ -72,7 +72,7 @@ function clientAttachmentFilename(clientPath: string): string {
     ? win32.basename(clientPath)
     : basename(clientPath);
   if (filename.length === 0) {
-    throw new Error(`Image path '${clientPath}' has no filename.`);
+    throw new Error(`Attachment path '${clientPath}' has no filename.`);
   }
   return filename;
 }
@@ -91,7 +91,7 @@ function inferPngMimeType(bytes: Uint8Array): "image/png" | undefined {
     : undefined;
 }
 
-async function clientImageMimeType(
+async function clientAttachmentMimeType(
   clientPath: string,
   bytes: Uint8Array,
 ): Promise<string> {
@@ -102,13 +102,15 @@ async function clientImageMimeType(
     : (inferPngMimeType(bytes) ?? "application/octet-stream");
 }
 
-export async function uploadClientImageInputs(args: {
+export async function uploadClientAttachmentInputs(args: {
   input: PromptInput[];
   resolveProjectId: () => Promise<string>;
   sdk: BbSdk;
 }): Promise<PromptInput[]> {
   const clientPaths = args.input.map((item) =>
-    item.type === "localImage" ? resolveClientImagePath(item.path) : null,
+    item.type === "localImage" || item.type === "localFile"
+      ? resolveClientAttachmentPath(item.path)
+      : null,
   );
   if (clientPaths.every((path) => path === null)) {
     return args.input;
@@ -125,7 +127,7 @@ export async function uploadClientImageInputs(args: {
       const uploaded = await args.sdk.projects.attachments.upload({
         clientFile: bytes,
         filename,
-        mimeType: await clientImageMimeType(clientPath, bytes),
+        mimeType: await clientAttachmentMimeType(clientPath, bytes),
         projectId,
       });
       return uploaded.path;
@@ -137,7 +139,8 @@ export async function uploadClientImageInputs(args: {
   return Promise.all(
     args.input.map(async (item, index) => {
       const clientPath = clientPaths[index];
-      return item.type === "localImage" && clientPath
+      return (item.type === "localImage" || item.type === "localFile") &&
+        clientPath
         ? { ...item, path: await upload(clientPath) }
         : item;
     }),

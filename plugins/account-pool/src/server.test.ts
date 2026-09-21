@@ -370,6 +370,37 @@ describe("Account Pool config schema", () => {
 });
 
 describe("Account Pool plugin", () => {
+  it("removes persisted cache debugging settings while preserving pool configuration across reloads", async () => {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-config-upgrade-"),
+    );
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    const expected = accountPoolConfigSchema.parse({
+      anthropicUpstreamBaseUrl: "http://127.0.0.1:9000",
+      switchThreshold: 0.75,
+      parentMode: "isolate",
+    });
+    await host.bb.storage.kv.set("config", {
+      ...expected,
+      cacheMissDebug: true,
+      cacheMissMinTokens: 20_000,
+    });
+    const plugin = createAccountPoolPlugin();
+    await plugin(host.bb);
+    expect(await host.bb.storage.kv.get("config")).toEqual(expected);
+    expect(await host.harness.behavior.callRpc("config.get", null)).toEqual(expected);
+    await host.harness.lifecycle.reload(plugin);
+    expect(await host.harness.behavior.callRpc("config.get", null)).toEqual(expected);
+  });
+
   it("reads and updates one full config record through RPC and CLI", async () => {
     const dataDir = await mkdtemp(
       path.join(tmpdir(), "bb-account-pool-config-"),

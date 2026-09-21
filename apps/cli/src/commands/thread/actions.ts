@@ -29,7 +29,7 @@ import {
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   buildPromptInputs,
-  uploadClientImageInputs,
+  uploadClientAttachmentInputs,
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 
@@ -442,13 +442,13 @@ export function registerActionsCommands(
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
-      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -564,7 +564,7 @@ async function postThreadMessage(
   args: PostThreadMessageArgs,
 ): Promise<PostThreadMessageResult> {
   const sdk = createCliBbSdk(args.getUrl());
-  const input = await uploadClientImageInputs({
+  const input = await uploadClientAttachmentInputs({
     input: buildPromptInputs({
       message: args.message,
       plan: args.plan,

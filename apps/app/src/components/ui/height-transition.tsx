@@ -214,6 +214,7 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
 interface AutoHeightContainerProps {
   children: ReactNode;
   snapRevision?: string;
+  animateGrowth?: boolean;
 }
 
 const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
@@ -228,9 +229,11 @@ function useSnapHeightGrowth(): boolean {
 export function AutoHeightContainer({
   children,
   snapRevision,
+  animateGrowth = true,
 }: AutoHeightContainerProps) {
   const snapGrowth = useSnapHeightGrowth();
-  const durationMs = snapGrowth ? 0 : HEIGHT_TRANSITION_DURATION_MS;
+  const durationMs =
+    snapGrowth || !animateGrowth ? 0 : HEIGHT_TRANSITION_DURATION_MS;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const snapToCurrentHeightRef = useRef<(() => void) | null>(null);

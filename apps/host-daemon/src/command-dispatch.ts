@@ -87,6 +87,7 @@ import {
   workspaceResolutionFailureFromError,
 } from "./workspace-resolution.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
+import type { ServerMoveService } from "./server-move/service.js";
 
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
 
@@ -97,7 +98,7 @@ type RuntimeStopCommand =
 async function stopThreadRuntime(
   command: RuntimeStopCommand,
   options: CommandDispatchOptions,
-): Promise<{ providerCheckpointId: string | null }> {
+): Promise<HostDaemonCommandResult<"thread.stop">> {
   const released =
     await options.runtimeManager.releaseThreadFromOtherEnvironments({
       activeTurn: "interrupt",
@@ -117,7 +118,7 @@ async function stopThreadRuntime(
       entry.runtime.getActiveTurnId(command.threadId) !== null
     ) {
       await options.eventSink.flush();
-      return { providerCheckpointId };
+      return { providerCheckpointId, activeTurnRetained: true };
     }
     if (command.type !== "thread.stop" || command.intent !== "release") {
       await entry.runtime.waitForActiveTurn(command.threadId, {
@@ -363,6 +364,13 @@ async function withRetainedThreadEnvironment<TResult>(
   } finally {
     release();
   }
+}
+
+function requireServerMove(options: CommandDispatchOptions): ServerMoveService {
+  if (!options.serverMove) {
+    throw new Error("Server move is unavailable on this daemon");
+  }
+  return options.serverMove;
 }
 
 async function forwardDesktopBrowserCommand<
@@ -735,6 +743,18 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         return { outcome: "unavailable", message: lookup.message };
     }
   },
+  "server_move.inspect": (command, options) =>
+    requireServerMove(options).inspect(command),
+  "server_move.probe": (command, options) =>
+    requireServerMove(options).probe(command),
+  "server_move.prepare": (command, options) =>
+    requireServerMove(options).prepare(command),
+  "server_move.activate": (command, options) =>
+    requireServerMove(options).activate(command),
+  "server_move.abort": (command, options) =>
+    requireServerMove(options).abort(command),
+  "server_move.delete_old_copy": (_command, options) =>
+    requireServerMove(options).deleteOldCopy(),
 };
 
 export async function dispatchCommand<

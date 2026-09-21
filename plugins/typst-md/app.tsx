@@ -229,7 +229,7 @@ function TypstMdDocumentView({
           </div>
         ) : (
           <TypstSheet
-            svg={state.svg}
+            pages={state.pages}
             style={height === null ? undefined : { height }}
             viewportClassName={
               panel

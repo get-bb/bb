@@ -4,7 +4,6 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
-import type { ExistingThreadExecutionInputSources } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "../api-types.js";
 import { promptDraftToInput, type PromptDraftState } from "./prompt-draft.js";
 
@@ -44,7 +43,6 @@ export interface ThreadHandoffExecutionSelection {
   serviceTier: ServiceTier | undefined;
   supportsServiceTier: boolean;
   permissionMode: PermissionMode;
-  executionInputSources: ExistingThreadExecutionInputSources;
 }
 
 interface BuildThreadHandoffCreateRequestArgs {
@@ -145,7 +143,12 @@ export function buildThreadHandoffCreateRequest({
         : { type: "reuse", environmentId: seed.environmentId },
     executionInputSources: {
       providerId: "explicit",
-      ...execution.executionInputSources,
+      model: "explicit",
+      reasoningLevel: "explicit",
+      permissionMode: "explicit",
+      ...(execution.supportsServiceTier && execution.serviceTier
+        ? { serviceTier: "explicit" as const }
+        : {}),
     },
     input,
     model: execution.model,

@@ -215,6 +215,22 @@ export const migrations = [
   `UPDATE workflow_runs SET replay_barrier_index = NULL
      WHERE replay_safety_version = 1;`,
   `ALTER TABLE workflow_calls ADD COLUMN provider_retry_attempts INTEGER NOT NULL DEFAULT 0;`,
+  `CREATE TABLE workflow_workers (
+     thread_id TEXT PRIMARY KEY,
+     run_id TEXT NOT NULL,
+     call_id TEXT NOT NULL,
+     origin_thread_id TEXT NOT NULL,
+     archived_at INTEGER,
+     next_cleanup_at INTEGER NOT NULL DEFAULT 0
+   );
+   CREATE INDEX workflow_workers_cleanup_idx ON workflow_workers(archived_at, next_cleanup_at);
+   INSERT INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id, next_cleanup_at)
+     SELECT calls.child_thread_id, calls.run_id, calls.id, runs.origin_thread_id,
+       CAST(strftime('%s', 'now') AS INTEGER) * 1000
+         + (ROW_NUMBER() OVER (ORDER BY calls.id) - 1) / 100 * 1000
+     FROM workflow_calls calls JOIN workflow_runs runs ON runs.id = calls.run_id
+     WHERE calls.child_thread_id IS NOT NULL;`,
+  `ALTER TABLE workflow_workers ADD COLUMN cleanup_attempts INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function createRun(
@@ -620,6 +636,12 @@ export function attachCallThread(
   callId: string,
   threadId: string,
 ): boolean {
+  db.prepare(`INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
+    SELECT ?, calls.run_id, calls.id, runs.origin_thread_id FROM workflow_calls calls
+    JOIN workflow_runs runs ON runs.id = calls.run_id WHERE calls.id = ?`).run(
+    threadId,
+    callId,
+  );
   return (
     db
       .prepare(
@@ -827,7 +849,6 @@ const EXPIRED_TERMINAL_RUN_IDS_SQL = `WITH RECURSIVE retained(id, resumed_from_r
 
 export interface ExpiredTerminalRuns {
   runIds: string[];
-  childThreadIds: string[];
 }
 
 export function listExpiredTerminalRuns(
@@ -840,23 +861,87 @@ export function listExpiredTerminalRuns(
       id: string;
     }>
   ).map((row) => row.id);
-  if (runIds.length === 0) return { runIds: [], childThreadIds: [] };
-  const placeholders = runIds.map(() => "?").join(", ");
-  const childThreadIds = (
-    db
-      .prepare(
-        `SELECT DISTINCT child_thread_id AS childThreadId FROM workflow_calls
-         WHERE run_id IN (${placeholders}) AND child_thread_id IS NOT NULL`,
-      )
-      .all(...runIds) as Array<{ childThreadId: string }>
-  ).map((row) => row.childThreadId);
-  return { runIds, childThreadIds };
+  return { runIds };
 }
 
 export function deleteTerminalRuns(db: Db, runIds: readonly string[]): number {
   if (runIds.length === 0) return 0;
   const placeholders = runIds.map(() => "?").join(", ");
+  return db.transaction(() => {
+    const deleted = db
+      .prepare(`DELETE FROM workflow_runs WHERE id IN (${placeholders})`)
+      .run(...runIds).changes;
+    db.prepare(
+      `DELETE FROM workflow_workers WHERE archived_at IS NOT NULL AND run_id IN (${placeholders})`,
+    ).run(...runIds);
+    return deleted;
+  })();
+}
+
+export function ownWorker(
+  db: Db,
+  threadId: string,
+  runId: string,
+  callId: string,
+  originThreadId: string,
+): void {
+  db.prepare(`INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
+    VALUES (?, ?, ?, ?)`).run(threadId, runId, callId, originThreadId);
+}
+
+export function workerOrigins(db: Db, now: number): string[] {
+  return (
+    db
+      .prepare(`SELECT origin_thread_id AS id FROM workflow_runs WHERE status IN ('queued', 'running')
+    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE archived_at IS NULL AND next_cleanup_at <= ?`)
+      .all(now) as Array<{ id: string }>
+  ).map((row) => row.id);
+}
+
+export function retiredWorkers(
+  db: Db,
+  now: number,
+): Array<{ threadId: string; callId: string }> {
   return db
-    .prepare(`DELETE FROM workflow_runs WHERE id IN (${placeholders})`)
-    .run(...runIds).changes;
+    .prepare(`SELECT workers.thread_id AS threadId, workers.call_id AS callId
+    FROM workflow_workers workers
+    LEFT JOIN workflow_calls calls ON calls.id = workers.call_id
+    LEFT JOIN workflow_runs runs ON runs.id = workers.run_id
+    WHERE workers.archived_at IS NULL AND workers.next_cleanup_at <= ?
+      AND (calls.id IS NULL OR calls.status NOT IN ('queued', 'running')
+        OR calls.child_thread_id IS NOT workers.thread_id OR runs.status NOT IN ('queued', 'running'))
+    ORDER BY workers.next_cleanup_at, workers.thread_id LIMIT 100`)
+    .all(now) as Array<{ threadId: string; callId: string }>;
+}
+
+export function recordWorkerCleanup(
+  db: Db,
+  threadId: string,
+  archived: boolean,
+): void {
+  db.prepare(
+    `UPDATE workflow_workers SET archived_at = ?,
+      next_cleanup_at = ? + min(60000, 1000 << min(cleanup_attempts, 6)),
+      cleanup_attempts = cleanup_attempts + 1 WHERE thread_id = ?`,
+  ).run(archived ? Date.now() : null, Date.now(), threadId);
+  db.prepare(`DELETE FROM workflow_workers WHERE archived_at IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM workflow_runs WHERE id = workflow_workers.run_id)`).run();
+}
+
+export function hasWorker(db: Db, threadId: string): boolean {
+  return (
+    db
+      .prepare(`SELECT 1 FROM workflow_workers WHERE thread_id = ?`)
+      .get(threadId) !== undefined
+  );
+}
+
+export function abandonOriginNotifications(
+  db: Db,
+  originThreadId: string,
+): void {
+  db.prepare(`UPDATE workflow_runs SET notification_sent = 1,
+    notification_outcome = 'abandoned', notification_next_attempt_at = NULL,
+    notification_error = 'Origin thread is archived or deleted'
+    WHERE origin_thread_id = ? AND notification_sent = 0`).run(originThreadId);
 }

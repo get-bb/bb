@@ -80,6 +80,17 @@ export function resolveShellScreenState(
   }
 }
 
+export function resolveShellLoadPath(input: {
+  visitedPath: string | null;
+  requestedPath: string | undefined;
+}): string {
+  if (input.visitedPath !== null) return input.visitedPath;
+  if (input.requestedPath !== undefined && input.requestedPath.length > 0) {
+    return input.requestedPath;
+  }
+  return "/";
+}
+
 export function shouldReloadForSession(
   previous: SessionState,
   next: SessionState,

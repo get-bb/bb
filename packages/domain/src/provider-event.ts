@@ -649,7 +649,13 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
             z.literal("shell"),
             z.object({ plugin: z.string() }).strict(),
             z
-              .object({ core: z.enum(["machine-git", "machine-environment"]) })
+              .object({
+                core: z.enum([
+                  "machine-git",
+                  "machine-environment",
+                  "project-environment",
+                ]),
+              })
               .strict(),
           ]),
           value: z.union([

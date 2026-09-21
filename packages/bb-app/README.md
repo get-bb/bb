@@ -106,6 +106,10 @@ block service logging. To follow output with the default data directory:
 tail -F ~/.bb/logs/server-stdio.log ~/.bb/logs/host-daemon-stdio.log
 ```
 
+Launcher status output is plain when stdout is redirected, including in CI.
+Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
+takes precedence. In-place progress updates require a stdout TTY.
+
 The same output capture applies to `bb-server` and `bb-host-daemon`.
 
 To stop a bb that runs in another terminal or in the background:
@@ -117,6 +121,17 @@ npx bb-app stop
 `stop` reads `bb-app-runtime.json` from the data directory, confirms that the
 recorded process really is that launcher, then stops it. Pass `--data-dir` when
 the bb you want to stop does not use the default `~/.bb/`.
+
+After the server moves to another machine, the old data directory keeps
+`server-moved.json`. `bb-app` there starts no server: it runs this computer's
+host daemon against the new server address in `config.json`, restarting it when
+it exits, and answers the old server port. API requests get `410 server_moved`
+with the new address; browser pages redirect to it for a direct address or link
+to it for bb connect. While a move back to this computer is in progress
+(`server-import.json`), it frees that port for the incoming server. When
+`server-moved.json` goes away, after that move completes or `bb server unlock`,
+it starts the server and co-located daemon again. `bb-server` exits with status
+`3` instead of starting, except for the incoming server of a move back.
 
 From the app, add or open a project, start a thread, and choose the provider
 you want that thread to use.

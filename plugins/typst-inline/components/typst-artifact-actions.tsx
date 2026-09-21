@@ -18,6 +18,7 @@ import { splitTypstPages } from "../lib/typst-pages.js";
 
 export interface TypstArtifactActionsProps {
   fileName: string;
+  loadDocx?: () => Promise<Blob>;
   loadPdf: () => Promise<Uint8Array>;
   loadPngs: () => Promise<readonly Blob[]>;
   svg: string;
@@ -29,6 +30,7 @@ function reportError(error: unknown): void {
 
 export function TypstArtifactActions({
   fileName,
+  loadDocx,
   loadPdf,
   loadPngs,
   svg,
@@ -44,6 +46,12 @@ export function TypstArtifactActions({
         setBusy(false);
       });
   };
+
+  const saveWord = () =>
+    run(async () => {
+      if (loadDocx === undefined) return;
+      downloadBlob(await loadDocx(), `${baseName}.docx`);
+    });
 
   const savePdf = () =>
     run(async () => {
@@ -77,9 +85,7 @@ export function TypstArtifactActions({
 
   const print = () =>
     run(async () => {
-      printHtmlDocument(
-        buildTypstPrintHtml(splitTypstPages(svg), fileName),
-      );
+      printHtmlDocument(buildTypstPrintHtml(splitTypstPages(svg), fileName));
     });
 
   return (
@@ -97,6 +103,9 @@ export function TypstArtifactActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {loadDocx === undefined ? null : (
+          <DropdownMenuItem onSelect={saveWord}>Word (.docx)</DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={savePdf}>Save PDF</DropdownMenuItem>
         <DropdownMenuItem onSelect={saveSvg}>Save SVG</DropdownMenuItem>
         <DropdownMenuItem onSelect={savePng}>Save PNG</DropdownMenuItem>

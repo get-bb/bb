@@ -304,6 +304,27 @@ describe("provider declaration target-state fields", () => {
       "workspace",
     );
   });
+
+  it("defaults the finished turn display to collapse and carries flat", () => {
+    expect(
+      validatePluginProviderDeclaration(declaration()).completedTurnDisplay,
+    ).toBe("collapse");
+    expect(
+      validatePluginProviderDeclaration(
+        declaration({ completedTurnDisplay: "flat" }),
+      ).completedTurnDisplay,
+    ).toBe("flat");
+  });
+
+  it("rejects a finished turn display outside collapse and flat", () => {
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({ completedTurnDisplay: "expanded" as never }),
+      ),
+    ).toThrow(
+      /provider "my-agent" completedTurnDisplay must be one of collapse, flat/u,
+    );
+  });
 });
 
 describe("provider declaration fields renamed in SDK 0.4.16", () => {

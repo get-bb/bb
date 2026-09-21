@@ -184,6 +184,28 @@ portalled popover. `title` names the host wrapper; icon-only controls still need
 their own accessible name. A component instance belongs to one Browser tab and
 must release tab-scoped resources when it unmounts.
 
+`experimental_page` scripts the tab's top-level document in the desktop app and
+is `null` elsewhere. It does not take a CDP control lease, so no control banner
+appears and agent automation can keep its debugger.
+
+```tsx
+component: ({ experimental_page: page }) => {
+  useEffect(() => page?.onMessage((data) => console.log(data)), [page]);
+  const pick = () =>
+    page?.evaluate(
+      "(document.addEventListener('click', (e) => bb.postMessage(e.target.tagName), { once: true }), true)",
+    );
+  ...
+}
+```
+
+`evaluate(expression, { world })` awaits the expression and resolves its
+JSON-cloned value. The default `isolated` world shares the DOM but not page
+globals and binds `bb.postMessage(data)`; `onMessage` receives those values for
+this plugin and tab. `world: "main"` runs beside page scripts (for example to
+read framework state on DOM nodes) and binds `bb` to `null`. Anything installed
+is lost when the document navigates; check again when `url` changes.
+
 ### Replacing the sidebar navigation
 
 `app.slots.experimental_sidebarNavigation` replaces the navigation controls
