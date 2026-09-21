@@ -505,9 +505,8 @@ function ThreadRowComponent({
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5",
           !shortcut &&
-            (parentOptions && hasChildren
-              ? "pr-7.5 max-md:pointer-coarse:pr-0"
-              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
+            !(parentOptions && hasChildren) &&
+            SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
         )}
       >
         {isEditing ? (
@@ -523,6 +522,21 @@ function ThreadRowComponent({
             <ThreadTitleMentions title={threadTitle} />
           </span>
         )}
+        {!shortcut && parentOptions && hasChildren ? (
+          <span
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "relative z-10 shrink-0 max-md:pointer-coarse:hidden",
+            )}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <ThreadArchiveQuickAction
+              thread={thread}
+              className={SIDEBAR_CONTROL_BUTTON_CLASS}
+            />
+          </span>
+        ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
@@ -593,10 +607,12 @@ function ThreadRowComponent({
               >
                 <SidebarRowControls
                   primaryAction={
-                    <ThreadArchiveQuickAction
-                      thread={thread}
-                      className={SIDEBAR_CONTROL_BUTTON_CLASS}
-                    />
+                    parentOptions && hasChildren ? null : (
+                      <ThreadArchiveQuickAction
+                        thread={thread}
+                        className={SIDEBAR_CONTROL_BUTTON_CLASS}
+                      />
+                    )
                   }
                 >
                   <ThreadActionsMenu
