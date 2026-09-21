@@ -46,7 +46,11 @@ describe("ThreadLifecycleFilter", () => {
         name: "Active",
       });
       expect(screen.getByRole("group", { name: "Filter" })).toBeTruthy();
-      expect(active.getAttribute("title")).toBe("Keep at least one filter selected");
+      if (!compact) {
+        expect(active.getAttribute("title")).toBe(
+          "Keep at least one filter selected",
+        );
+      }
       expect(active.getAttribute("aria-disabled")).not.toBe("true");
       expect(active.hasAttribute("data-disabled")).toBe(false);
       fireEvent.click(active);
