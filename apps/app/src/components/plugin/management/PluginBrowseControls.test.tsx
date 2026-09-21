@@ -541,23 +541,41 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: /^Sort:/u })).toBeTruthy();
   });
 
-  it("keeps mobile search inline when combining filters frees enough width", () => {
+  it("pairs combined controls with square search until separate controls fit", () => {
     viewport.compact = true;
     const resize = mockToolbarWidth(354);
     render(<ToolbarHarness installed createAction />);
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
-    expect(
-      screen.getByRole("textbox", { name: "Search plugins" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Search plugins" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Search plugins" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
     resize(320);
     expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
     resize(328);
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
+    resize(800);
+    expect(screen.queryByRole("button", { name: "Filter & sort" })).toBeNull();
     expect(
       screen.getByRole<HTMLInputElement>("textbox", { name: "Search plugins" })
         .value,
     ).toBe("Memory");
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+  });
+
+  it("dismisses inline mobile search on Enter while preserving the query", () => {
+    viewport.compact = true;
+    mockToolbarWidth(400);
+    render(<ToolbarHarness categoryShelf />);
+    const search = screen.getByRole<HTMLInputElement>("textbox", {
+      name: "Search plugins",
+    });
+    act(() => search.focus());
+    fireEvent.change(search, { target: { value: "Notes" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(document.activeElement).not.toBe(search);
+    expect(search.value).toBe("Notes");
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "query=Notes",
+    );
   });
 
   it.each([

@@ -19,6 +19,7 @@ import {
 } from "../dropdown-menu";
 import { Icon, type IconName } from "../icon";
 import { Input } from "../input";
+import { useIsCompactViewport } from "../hooks/use-compact-viewport";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +49,7 @@ export function ResourceToolbar({
   compact?: boolean;
   expandSearchOnFocus?: boolean;
 }) {
+  const isCompactViewport = useIsCompactViewport();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const individualControlsRef = useRef<HTMLDivElement>(null);
@@ -113,11 +115,12 @@ export function ResourceToolbar({
         : individualControls.getBoundingClientRect().width;
       setSearchCondensed(
         expandSearchOnFocus &&
-          width -
-            controlsWidth -
-            actionWidth -
-            gap * (actionRef.current ? 2 : 1) <
-            searchWidth,
+          (next ||
+            width -
+              controlsWidth -
+              actionWidth -
+              gap * (actionRef.current ? 2 : 1) <
+              searchWidth),
       );
       if (combinedRef.current === next) return;
       restoreControlFocus.current = Boolean(
@@ -184,7 +187,8 @@ export function ResourceToolbar({
         aria-label={searchLabel ?? searchPlaceholder}
         onSubmit={(event) => {
           event.preventDefault();
-          if (searchExpanded) collapseSearch();
+          if (searchExpanded || (expandSearchOnFocus && isCompactViewport))
+            collapseSearch();
           else searchInputRef.current?.focus();
         }}
         onBlur={(event) => {
@@ -915,8 +919,7 @@ export function ResourceCreateButton({
       size="sm"
       className={cn(
         "rounded-r-none",
-        compactWhenNarrow &&
-          "pl-2 pr-1 @max-[19rem]/resource-toolbar:gap-1 @max-[19rem]/resource-toolbar:px-1",
+        compactWhenNarrow && "pl-2 pr-1",
       )}
       onClick={() => onCreate()}
     >
@@ -944,8 +947,7 @@ export function ResourceCreateButton({
             aria-label={`${label} options`}
             className={cn(
               "rounded-l-none px-1.5",
-              compactWhenNarrow &&
-                "pl-1 pr-2 @max-[19rem]/resource-toolbar:px-1",
+              compactWhenNarrow && "pl-1 pr-2",
             )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
