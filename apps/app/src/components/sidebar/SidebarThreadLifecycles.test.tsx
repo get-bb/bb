@@ -12,7 +12,7 @@ import { createStore, Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadArchiveFilter } from "@bb/domain";
+import type { ThreadArchiveFilter } from "@/lib/thread-lifecycle-filter";
 import {
   buildMachineThreadGroups,
   buildPinnedSidebarState,

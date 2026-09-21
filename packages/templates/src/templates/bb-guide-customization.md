@@ -305,20 +305,18 @@ to By project (`project`). Explicit server choices take precedence over legacy
 browser choices, which take precedence over this installation fallback. Reset
 saves the installation fallback as an explicit choice.
 
-`sidebar.threadLifecycles` selects `active` and `archived`, defaulting to
-`["active"]`. Active includes threads with saved messages; there is no separate
+The built-in sidebar's Filter selects Active and Archived, defaulting to Active.
+The selection is browser-local, not a server-backed preference or SDK/CLI setting.
+Active includes threads with saved messages; there is no separate
 Drafts section or filter. Archived threads use their preserved placement and a
-restore action. Archived pages load only while selected. For example:
-`bb settings ui set sidebar.threadLifecycles '["active","archived"]'`.
-Previously saved `draft` selections display as Active.
+restore action. Archived pages load only while selected.
 Plugin sidebar replacements own their filters.
 
-`palette.threadLifecycles` uses Active and Archived independently of the
-sidebar. Active includes threads with saved messages; Search threads also
+The palette's Filter uses Active and Archived independently of the
+sidebar, defaulting to Active. Its selection is browser-local, not configurable
+through SDK/CLI. Active includes threads with saved messages; Search threads also
 matches their saved content. Archived fetches bounded recent rows only when
-selected. Use `bb settings ui set palette.threadLifecycles
-'["active","archived"]'` to include archived results. Older `draft` selections
-display as Active.
+selected.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, Sort by, and Filter. Organize selects By project,

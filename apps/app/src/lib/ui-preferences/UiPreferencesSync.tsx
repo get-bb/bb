@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
-import "@/lib/command-palette/palette-preferences";
 import { useUiPreferences } from "@/hooks/queries/system-queries";
 import {
   reconcileUiPreferences,

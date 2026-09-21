@@ -1,5 +1,5 @@
-import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
+import { createThreadArchiveFilterAtom } from "@/lib/thread-lifecycle-filter";
 
-export const paletteThreadLifecyclesAtom = createSyncedPreferenceAtom(
-  "palette.threadLifecycles",
+export const paletteThreadLifecyclesAtom = createThreadArchiveFilterAtom(
+  "bb.palette.threadArchiveFilter",
 );

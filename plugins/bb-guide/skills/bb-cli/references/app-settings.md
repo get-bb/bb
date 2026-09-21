@@ -19,19 +19,16 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.hiddenGroups`,
   `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
-- `sidebar.threadLifecycles` selects `active` and `archived` in the built-in
-  sidebar. Default is `["active"]`, including threads with saved messages.
-  Previously saved `draft` selections display as Active.
-  Use `bb settings ui set sidebar.threadLifecycles '["active","archived"]'`
-  to include archived threads. Selected archived rows
+- The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
+  including threads with saved messages. This selection is browser-local, not
+  a server-backed preference or SDK/CLI setting. Selected archived rows
   retain their hierarchy placement and offer a restore action. Archived pages load only while selected;
   plugin sidebar replacements keep ownership of their rendering.
-- `palette.threadLifecycles` selects Active and Archived independently of the
-  sidebar. Active includes threads with saved messages, whose content is
-  matched by Search threads. Use `bb settings ui set palette.threadLifecycles
-  '["active","archived"]'` to include archived results. Archived recents load
-  only while selected and are bounded at the server. Older `draft` selections
-  display as Active.
+- The palette's Filter selects Active and Archived independently of the
+  sidebar, defaulting to Active. This selection is browser-local, not configurable
+  through SDK/CLI. Active includes threads with saved messages, whose content is
+  matched by Search threads. Archived recents load only while selected and are
+  bounded at the server.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) on new installs.
   Migrated installs with existing projects, threads, or UI preferences fall back to
   By project (`project`). Saved server choices win over legacy browser choices,

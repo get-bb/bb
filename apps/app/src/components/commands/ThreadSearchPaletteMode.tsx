@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtom, useAtomValue, useStore } from "jotai";
-import { isMacKeyboardPlatform, type ThreadArchiveFilter } from "@bb/domain";
+import { isMacKeyboardPlatform } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -28,7 +28,10 @@ import {
   THREAD_LIFECYCLE_OPTIONS,
 } from "@/components/thread/ThreadLifecycleFilter";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
-import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
+import {
+  normalizeThreadLifecycleFilter,
+  type ThreadArchiveFilter,
+} from "@/lib/thread-lifecycle-filter";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePaletteRecentArchivedThreads } from "@/hooks/queries/palette-thread-queries";
 import {

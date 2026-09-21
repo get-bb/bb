@@ -1,6 +1,5 @@
 import {
   PERSONAL_PROJECT_ID,
-  type ThreadArchiveFilter,
   type ThreadListEntry,
 } from "@bb/domain";
 import type {
@@ -9,7 +8,10 @@ import type {
 } from "@bb/server-contract";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
+import {
+  normalizeThreadLifecycleFilter,
+  type ThreadArchiveFilter,
+} from "@/lib/thread-lifecycle-filter";
 
 export interface PaletteThreadSearchRow {
   id: string;

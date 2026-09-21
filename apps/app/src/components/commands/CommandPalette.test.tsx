@@ -22,10 +22,10 @@ import {
   type AppDefaultKeybinding,
   type AppKeybinding,
   type AppKeybindingOverrides,
-  type ThreadArchiveFilter,
   type ThreadListEntry,
 } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
+import type { ThreadArchiveFilter } from "@/lib/thread-lifecycle-filter";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import {

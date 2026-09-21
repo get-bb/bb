@@ -1,4 +1,26 @@
-import type { ThreadArchiveFilter } from "@bb/domain";
+import { atomWithStorage } from "jotai/utils";
+import { createJsonLocalStorage } from "@/lib/browser-storage";
+
+export type ThreadArchiveFilter = "active" | "archived";
+
+function isThreadArchiveFilter(value: unknown): value is ThreadArchiveFilter[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 2 &&
+    new Set(value).size === value.length &&
+    value.every((item) => item === "active" || item === "archived")
+  );
+}
+
+export function createThreadArchiveFilterAtom(storageKey: string) {
+  return atomWithStorage<ThreadArchiveFilter[]>(
+    storageKey,
+    ["active"],
+    createJsonLocalStorage(isThreadArchiveFilter),
+    { getOnInit: true },
+  );
+}
 
 export function normalizeThreadLifecycleFilter(
   value: readonly ThreadArchiveFilter[],
