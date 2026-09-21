@@ -443,6 +443,9 @@ describe("ProjectRow interactions", () => {
                 topLevelSectionOrder={[
                   buildSidebarEntitySectionId("section", "sec_rename"),
                 ]}
+                fullSectionOrder={[
+                  buildSidebarEntitySectionId("section", "sec_rename"),
+                ]}
                 onTopLevelSectionOrderChange={vi.fn()}
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
