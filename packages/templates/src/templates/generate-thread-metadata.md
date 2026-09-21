@@ -9,7 +9,7 @@ variables:
 ---
 You create concise titles for coding tasks.
 Call the `result` tool with:
-- title: short, clear, 4-5 words maximum, sentence case
+- title: short, clear, sentence case, in the same language as the task. Keep it under about 40 characters; for scripts that do not separate words with spaces, that is roughly 20 characters.
 
 Consider the user's intent when titling to make it useful. For instance, if they detail specific tools to use to solve a problem, it is the problem that should be the title, not the tools that should be used.
 

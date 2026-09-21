@@ -8,9 +8,17 @@ import {
   InferenceTimeoutError,
   inferenceCompleteWithFallback,
 } from "../ai/inference.js";
+import {
+  countWords,
+  displayWidth,
+  truncateToWidth,
+  truncateToWidthAtWordBoundary,
+} from "../lib/text-measure.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
-const MAX_GENERATED_TITLE_WORDS = 5;
+const MAX_GENERATED_TITLE_WIDTH = 48;
+const MAX_TITLE_FALLBACK_WIDTH = 80;
+const TITLE_FALLBACK_ELLIPSIS = "...";
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
 interface ApplyGeneratedThreadTitleArgs {
@@ -60,7 +68,14 @@ export function deriveTitleFallback(input: PromptInput[]): string | null {
   if (text.length === 0) {
     return null;
   }
-  return text.length <= 80 ? text : `${text.slice(0, 77)}...`;
+  if (displayWidth(text) <= MAX_TITLE_FALLBACK_WIDTH) {
+    return text;
+  }
+  const body = truncateToWidth(
+    text,
+    MAX_TITLE_FALLBACK_WIDTH - TITLE_FALLBACK_ELLIPSIS.length,
+  );
+  return `${body}${TITLE_FALLBACK_ELLIPSIS}`;
 }
 
 export function shouldGenerateThreadTitle(input: PromptInput[]): boolean {
@@ -69,17 +84,15 @@ export function shouldGenerateThreadTitle(input: PromptInput[]): boolean {
     return false;
   }
 
-  return text.split(/\s+/u).length >= MIN_TITLE_GENERATION_WORDS;
+  return countWords(text) >= MIN_TITLE_GENERATION_WORDS;
 }
 
 export function sanitizeGeneratedTitle(value: string): string | null {
-  const words = value
-    .trim()
-    .replace(/\s+/gu, " ")
-    .split(" ")
-    .filter((word) => word.length > 0);
-
-  const title = words.slice(0, MAX_GENERATED_TITLE_WORDS).join(" ");
+  const normalized = value.trim().replace(/\s+/gu, " ");
+  const title = truncateToWidthAtWordBoundary(
+    normalized,
+    MAX_GENERATED_TITLE_WIDTH,
+  ).trim();
   return title.length > 0 ? title : null;
 }
 
