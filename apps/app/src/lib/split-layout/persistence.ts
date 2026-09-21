@@ -8,6 +8,12 @@ export const SPLIT_LAYOUT_STORAGE_KEY = "bb.splitLayout";
 const paneContentSchema = z.discriminatedUnion("kind", [
   z
     .object({
+      kind: z.literal("resource"),
+      path: z.string().regex(/^\/(?:plugins|skills(?:\/[^?#]*)?)$/),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("thread"),
       projectId: z.string().min(1),
       threadId: z.string().min(1),

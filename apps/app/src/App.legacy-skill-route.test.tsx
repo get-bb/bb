@@ -19,7 +19,17 @@ vi.mock("./views/ToolsView", () => ({
   SkillsView: () => <h1>Skills</h1>,
 }));
 vi.mock("./views/SplitWorkspaceRoute", () => ({
-  default: () => <h1>App workspace</h1>,
+  default: () => {
+    const { pathname } = useLocation();
+    const match = /^\/plugins\/([^/]+)$/.exec(pathname);
+    return (
+      <h1>
+        {match
+          ? `Plugin detail: ${decodeURIComponent(match[1]!)}`
+          : "App workspace"}
+      </h1>
+    );
+  },
 }));
 
 function HistoryBackButton() {

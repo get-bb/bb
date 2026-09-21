@@ -123,6 +123,8 @@ const LazyPluginPanelRightPanelHost = lazy(() =>
   ),
 );
 
+const ResourcePaneView = lazy(() => import("./ResourcePaneView"));
+
 const LazyPluginDetailPaneView = lazy(() =>
   import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
     default: PluginDetailPaneView,
@@ -974,6 +976,13 @@ function StandalonePaneContent({
   if (content.kind === "new-thread") {
     return <RootComposeView />;
   }
+  if (content.kind === "resource") {
+    return (
+      <Suspense fallback={null}>
+        <ResourcePaneView path={content.path} />
+      </Suspense>
+    );
+  }
   if (content.kind === "plugin-detail") {
     return <PluginDetailPaneView pluginId={content.pluginId} />;
   }
@@ -1067,7 +1076,13 @@ function NonThreadPaneContent({
       : null;
   const label =
     panelChrome?.title ??
-    (content.kind === "plugin-detail" ? "Extension" : "New thread");
+    (content.kind === "resource"
+      ? content.path === "/plugins"
+        ? "Plugins"
+        : "Skills"
+      : content.kind === "plugin-detail"
+        ? "Extension"
+        : "New thread");
   const handlePointerDown = (event: ReactPointerEvent) => {
     if (
       event.target instanceof Element &&
@@ -1159,9 +1174,7 @@ function NonThreadPaneContent({
                       CONTEXT_INACTIVE_TEXT_CLASS,
                   )}
                 >
-                  {content.kind === "plugin-detail"
-                    ? "Extension"
-                    : "New thread"}
+                  {label}
                 </p>
               )}
             </div>
@@ -1179,6 +1192,10 @@ function NonThreadPaneContent({
           <RootComposeView />
         ) : content.kind === "plugin-detail" ? (
           <PluginDetailPaneView pluginId={content.pluginId} />
+        ) : content.kind === "resource" ? (
+          <Suspense fallback={null}>
+            <ResourcePaneView path={content.path} />
+          </Suspense>
         ) : (
           <PluginPanelView
             pluginId={content.pluginId}
@@ -1466,7 +1483,13 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     ) {
       onStaleRef.current();
     }
-  }, [isConfirmedArchived, isDeleted, isGone, isUnarchived, unarchivesInFlight]);
+  }, [
+    isConfirmedArchived,
+    isDeleted,
+    isGone,
+    isUnarchived,
+    unarchivesInFlight,
+  ]);
 
   return null;
 }

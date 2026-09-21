@@ -186,9 +186,18 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
             current.props.onSearchThreads?.();
             current.commandRunner.dispatch("thread.search", null);
           },
-          openResourceWorkspace: (itemId) => {
+          openResourceWorkspace: (itemId, openInSplit) => {
             const routePath = getResourceNavigationItemRoutePath(itemId);
             if (routePath === null) return;
+            if (openInSplit) {
+              current.splitActions.openInSplit({
+                content: { kind: "resource", path: routePath },
+                enabled: current.props.splitEnabled ?? false,
+                label: itemId === "skills" ? "Skills" : "Plugins",
+                onNavigate: current.props.onNavigate,
+              });
+              return;
+            }
             current.props.onNavigate?.();
             void current.navigate(routePath);
           },

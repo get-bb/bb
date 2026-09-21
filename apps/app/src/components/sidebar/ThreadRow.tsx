@@ -1,3 +1,4 @@
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { SidebarRowControls } from "./SidebarRowControls";
 import {
   memo,
@@ -409,9 +410,7 @@ function ThreadRowComponent({
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const parentGuideLeft =
-    options.depth > 0
-      ? getSidebarThreadGroupLineLeft(options.depth - 1)
-      : null;
+    options.depth > 0 ? getSidebarThreadGroupLineLeft(options.depth - 1) : null;
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
@@ -438,6 +437,8 @@ function ThreadRowComponent({
             event.stopPropagation();
             return;
           }
+          if ((event.metaKey || event.ctrlKey) && getBbDesktopInfo() === null)
+            return;
           setConversationCollapsed(false);
           if (splitAvailable && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
@@ -476,8 +477,7 @@ function ThreadRowComponent({
                 parentGuideLeft === null
                   ? "relative"
                   : "absolute top-1/2 -translate-x-1/2 -translate-y-1/2",
-                !showActive &&
-                  "group-hover/thread-row:bg-sidebar-accent",
+                !showActive && "group-hover/thread-row:bg-sidebar-accent",
                 !showActive && isActionsOpen && "bg-sidebar-accent",
                 !showActive &&
                   splitIndicator.isOpenInSplit &&

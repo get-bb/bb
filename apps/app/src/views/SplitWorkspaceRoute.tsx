@@ -11,7 +11,8 @@ import {
   PLUGIN_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
 } from "@/lib/route-paths";
-import type { PaneContent } from "@/lib/split-layout";
+import { countPanes, type PaneContent } from "@/lib/split-layout";
+import { paneContentForPathname } from "./thread-detail/splitThreadNavigation";
 import { useRouteState } from "@/hooks/useRouteState";
 import { LegacyProjectComposeRedirect } from "./RootComposeView";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
@@ -59,7 +60,7 @@ export default function SplitWorkspaceRoute() {
         subPath: pluginSubPath,
       };
     }
-    return null;
+    return paneContentForPathname(location.pathname);
   }, [
     detailPluginId,
     isThreadView,
@@ -82,7 +83,8 @@ export default function SplitWorkspaceRoute() {
   }
   if (
     routeContent.kind === "plugin-detail" &&
-    !holdsPluginDetailPane(layout, routeContent.pluginId)
+    !holdsPluginDetailPane(layout, routeContent.pluginId) &&
+    (layout === null || countPanes(layout.root) < 2)
   ) {
     return <PluginsView pluginId={routeContent.pluginId} />;
   }

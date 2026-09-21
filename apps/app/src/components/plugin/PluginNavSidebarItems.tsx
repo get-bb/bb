@@ -1,3 +1,4 @@
+import { activateNavigationDestination } from "@/components/sidebar/activateNavigationDestination";
 import {
   useCallback,
   useEffect,
@@ -402,27 +403,30 @@ function PluginNavSidebarItemList({
         row.onActivate(event);
         return;
       }
-      if (event.metaKey || event.ctrlKey) {
-        splitActions.openInSplit({
-          content: {
-            kind: "plugin-panel",
-            pluginId: row.chrome.pluginId,
-            panelPath: row.chrome.path,
-            subPath: "",
-          },
-          enabled: splitEnabled,
-          label: row.title,
-          onNavigate,
-        });
-        return;
-      }
-      onNavigate?.();
-      void navigate(
-        getPluginPanelRoutePath({
-          pluginId: row.chrome.pluginId,
-          path: row.chrome.path,
-        }),
-      );
+      const path = getPluginPanelRoutePath({
+        pluginId: row.chrome.pluginId,
+        path: row.chrome.path,
+      });
+      activateNavigationDestination({
+        event,
+        path,
+        navigate: () => {
+          onNavigate?.();
+          void navigate(path);
+        },
+        openInSplit: () =>
+          splitActions.openInSplit({
+            content: {
+              kind: "plugin-panel",
+              pluginId: row.chrome.pluginId,
+              panelPath: row.chrome.path,
+              subPath: "",
+            },
+            enabled: splitEnabled,
+            label: row.title,
+            onNavigate,
+          }),
+      });
     },
     [navigate, onNavigate, splitActions, splitEnabled],
   );
@@ -1128,23 +1132,39 @@ export function ResourceNavSidebarItem({
   title,
   routePath,
   onNavigate,
+  splitEnabled = false,
 }: {
   icon: IconName;
   title: string;
   routePath: string;
   onNavigate?: () => void;
+  splitEnabled?: boolean;
 }) {
   const navigate = useNavigate();
+  const { openInSplit, onPointerDown } = usePaneContentSplitDrag({
+    content: { kind: "resource", path: routePath },
+    enabled: splitEnabled,
+    label: title,
+    onNavigate,
+  });
   return (
     <Button
       type="button"
       size="sm"
       variant="ghost"
       className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-      onClick={() => {
-        onNavigate?.();
-        void navigate(routePath);
-      }}
+      onPointerDown={onPointerDown}
+      onClick={(event) =>
+        activateNavigationDestination({
+          event,
+          path: routePath,
+          navigate: () => {
+            onNavigate?.();
+            void navigate(routePath);
+          },
+          openInSplit,
+        })
+      }
     >
       <Icon name={icon} aria-hidden="true" />
       <span className="min-w-0 truncate text-left">{title}</span>
@@ -1221,12 +1241,18 @@ function PluginNavSidebarItem({
       }}
       onDisable={() => onDisable(row)}
       onSelect={(event) => {
-        onNavigate?.();
-        if (event.metaKey || event.ctrlKey) {
-          openInSplit();
-          return;
-        }
-        void navigate(path);
+        activateNavigationDestination({
+          event,
+          path,
+          navigate: () => {
+            onNavigate?.();
+            void navigate(path);
+          },
+          openInSplit: () => {
+            onNavigate?.();
+            openInSplit();
+          },
+        });
       }}
     />
   );

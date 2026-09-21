@@ -21,6 +21,8 @@ import {
   getThreadRoutePath,
   PLUGIN_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
+  PLUGINS_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 const FIRST_PANE_ID = "pane-1";
@@ -55,6 +57,7 @@ function createSinglePaneContentLayout(content: PaneContent): SplitLayout {
 }
 
 export function paneContentRoute(content: PaneContent): string {
+  if (content.kind === "resource") return content.path;
   if (content.kind === "thread") {
     return getThreadRoutePath(content);
   }
@@ -72,6 +75,13 @@ export function paneContentRoute(content: PaneContent): string {
 }
 
 export function paneContentForPathname(pathname: string): PaneContent | null {
+  if (
+    pathname === PLUGINS_ROUTE_PATH ||
+    pathname === SKILLS_ROUTE_PATH ||
+    pathname.startsWith(`${SKILLS_ROUTE_PATH}/`)
+  ) {
+    return { kind: "resource", path: pathname };
+  }
   if (pathname === APP_ROOT_ROUTE_PATH) {
     return { kind: "new-thread" };
   }

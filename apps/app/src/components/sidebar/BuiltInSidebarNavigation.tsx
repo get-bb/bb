@@ -1,3 +1,5 @@
+import { activateNavigationDestination } from "./activateNavigationDestination";
+import { usePaneContentSplitActions } from "./usePaneContentSplitDrag";
 import type { ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -38,6 +40,7 @@ export function BuiltInSidebarNavigation({
 }: BuiltInSidebarNavigationProps) {
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
+  const splitActions = usePaneContentSplitActions();
   const pluginsRoutePath = getPluginsRoutePath();
   const skillsRoutePath = getSkillsRoutePath();
   const builtInEntries: BuiltInSidebarNavEntry[] = [
@@ -57,11 +60,12 @@ export function BuiltInSidebarNavigation({
       disabled: onNewChat === undefined,
       splitContent: { kind: "new-thread" },
       onActivate: (event: SidebarNavActivationModifiers) => {
-        if (event.metaKey || event.ctrlKey) {
-          newThreadSplit?.openInSplit();
-          return;
-        }
-        onNewChat?.();
+        activateNavigationDestination({
+          event,
+          path: "/",
+          navigate: () => onNewChat?.(),
+          openInSplit: () => newThreadSplit?.openInSplit(),
+        });
       },
     },
     {
@@ -90,13 +94,27 @@ export function BuiltInSidebarNavigation({
           icon="Plug02"
           title="Plugins"
           routePath={pluginsRoutePath}
+          splitEnabled={splitEnabled}
           onNavigate={onNavigate}
         />
       ),
-      onActivate: () => {
-        onNavigate?.();
-        void navigate(pluginsRoutePath);
-      },
+      splitContent: { kind: "resource", path: pluginsRoutePath },
+      onActivate: (event) =>
+        activateNavigationDestination({
+          event,
+          path: pluginsRoutePath,
+          navigate: () => {
+            onNavigate?.();
+            void navigate(pluginsRoutePath);
+          },
+          openInSplit: () =>
+            splitActions.openInSplit({
+              content: { kind: "resource", path: pluginsRoutePath },
+              enabled: splitEnabled ?? false,
+              label: "Plugins",
+              onNavigate,
+            }),
+        }),
     },
     {
       kind: "built-in",
@@ -109,13 +127,27 @@ export function BuiltInSidebarNavigation({
           icon="Zap"
           title="Skills"
           routePath={skillsRoutePath}
+          splitEnabled={splitEnabled}
           onNavigate={onNavigate}
         />
       ),
-      onActivate: () => {
-        onNavigate?.();
-        void navigate(skillsRoutePath);
-      },
+      splitContent: { kind: "resource", path: skillsRoutePath },
+      onActivate: (event) =>
+        activateNavigationDestination({
+          event,
+          path: skillsRoutePath,
+          navigate: () => {
+            onNavigate?.();
+            void navigate(skillsRoutePath);
+          },
+          openInSplit: () =>
+            splitActions.openInSplit({
+              content: { kind: "resource", path: skillsRoutePath },
+              enabled: splitEnabled ?? false,
+              label: "Skills",
+              onNavigate,
+            }),
+        }),
     },
   ];
 

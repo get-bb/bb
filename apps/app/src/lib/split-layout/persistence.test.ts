@@ -56,6 +56,26 @@ const layout: SplitLayout = {
 };
 
 describe("split layout persistence", () => {
+  it("restores resource panes alongside a previously supported pane", () => {
+    const mixed: SplitLayout = {
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          { type: "pane", paneId: "pane-1", content: { kind: "new-thread" } },
+          {
+            type: "pane",
+            paneId: "pane-2",
+            content: { kind: "resource", path: "/skills/library/demo" },
+          },
+        ],
+      },
+      focusedPaneId: "pane-2",
+    };
+    expect(deserializeSplitLayout(serializeSplitLayout(mixed))).toEqual(mixed);
+  });
+
   it("round-trips a versioned split layout", () => {
     const serialized = serializeSplitLayout(layout);
 

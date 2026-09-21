@@ -37,17 +37,13 @@ import {
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
-  PLUGIN_DETAIL_ROUTE_PATH,
   PLUGINS_ROUTE_PATH,
-  REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-  REGISTRY_SKILLS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
-  SKILL_DETAIL_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
@@ -72,16 +68,6 @@ import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
     default: m.SettingsView,
-  })),
-);
-const PluginsView = lazy(() =>
-  import("./views/ToolsView").then((m) => ({
-    default: m.PluginsView,
-  })),
-);
-const SkillsView = lazy(() =>
-  import("./views/ToolsView").then((m) => ({
-    default: m.SkillsView,
   })),
 );
 const ProjectDetailSettingsView = lazy(() =>
@@ -377,15 +363,6 @@ export function AppRoutes() {
             path={LEGACY_TOOLS_SPLAT_ROUTE_PATH}
             element={<LegacyToolsPathRedirect />}
           />
-          <Route path={SKILLS_ROUTE_PATH} element={<SkillsView />} />
-          <Route path={SKILL_DETAIL_ROUTE_PATH} element={<SkillsView />} />
-          <Route path={REGISTRY_SKILLS_ROUTE_PATH} element={<SkillsView />} />
-          <Route
-            path={REGISTRY_SKILL_DETAIL_ROUTE_PATH}
-            element={<SkillsView />}
-          />
-          <Route path={PLUGINS_ROUTE_PATH} element={<PluginsRoute />} />
-          <Route path={PLUGIN_DETAIL_ROUTE_PATH} element={<PluginsRoute />} />
           <Route
             path="*"
             element={
@@ -408,11 +385,6 @@ function RouteContentPaintSignal() {
     markRouteContentPainted();
   }, []);
   return null;
-}
-
-function PluginsRoute() {
-  const { pluginId } = useParams<{ pluginId?: string }>();
-  return <PluginsView pluginId={pluginId} />;
 }
 
 export function App() {

@@ -58,6 +58,11 @@ import {
   type SplitLayout,
 } from "@/lib/split-layout";
 import { usePublishPluginDetailOpener } from "./plugin-detail-opener";
+vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
+  getBbDesktopInfo: vi.fn(() => ({ platform: "macos" })),
+}));
+
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -1771,6 +1776,48 @@ describe("PluginNavSidebarItems", () => {
 });
 
 describe("ResourceNavSidebarItem", () => {
+  it.each(["/plugins", "/skills"])(
+    "opens %s in a split and reuses its existing pane",
+    (routePath) => {
+      const store = createStore();
+      store.set(splitLayoutAtom, {
+        root: {
+          type: "pane",
+          paneId: "pane-1",
+          content: { kind: "new-thread" },
+        },
+        focusedPaneId: "pane-1",
+      });
+      render(
+        <Provider store={store}>
+          <MemoryRouter>
+            <ResourceNavSidebarItem
+              icon="Zap"
+              title="Destination"
+              routePath={routePath}
+              splitEnabled
+            />
+            <LocationProbe />
+          </MemoryRouter>
+        </Provider>,
+      );
+      const row = screen.getByRole("button", { name: "Destination" });
+      fireEvent.click(row, { metaKey: true });
+      expect(screen.getByTestId("location-path").textContent).toBe(routePath);
+      const layout = store.get(splitLayoutAtom)!;
+      expect(countPanes(layout.root)).toBe(2);
+      expect(
+        findPaneByContent(layout.root, { kind: "new-thread" }),
+      ).not.toBeNull();
+      expect(
+        findPaneByContent(layout.root, { kind: "resource", path: routePath })
+          ?.paneId,
+      ).toBe(layout.focusedPaneId);
+      fireEvent.click(row, { metaKey: true });
+      expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
+    },
+  );
+
   it.each([
     ["Plugins", "Plug02", "/plugins"],
     ["Skills", "Zap", "/skills"],

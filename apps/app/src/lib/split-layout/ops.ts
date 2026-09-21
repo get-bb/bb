@@ -69,6 +69,9 @@ export function findPaneByContent(
       const candidate = pane.content;
       if (candidate.kind !== content.kind) return false;
       if (content.kind === "new-thread") return true;
+      if (content.kind === "resource") {
+        return candidate.kind === "resource" && candidate.path === content.path;
+      }
       if (content.kind === "thread") {
         return (
           candidate.kind === "thread" &&

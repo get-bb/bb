@@ -25,6 +25,11 @@ const mocks = vi.hoisted(() => ({
   onSearchThreads: vi.fn(),
 }));
 
+vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
+  getBbDesktopInfo: vi.fn(() => ({ platform: "macos" })),
+}));
+
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandRunner: () => ({
     dispatch: mocks.dispatch,

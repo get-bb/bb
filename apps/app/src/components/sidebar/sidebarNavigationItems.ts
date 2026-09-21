@@ -148,7 +148,7 @@ export function resolveActiveSidebarNavigationItemId({
 export interface SidebarNavigationActivationHandlers {
   newThread(openInSplit: boolean): void;
   searchThreads(): void;
-  openResourceWorkspace(itemId: string): void;
+  openResourceWorkspace(itemId: string, openInSplit: boolean): void;
   openPluginPanel(
     action: Extract<
       ExperimentalSidebarNavigationAction,
@@ -175,7 +175,7 @@ export function activateSidebarNavigationItem(
       handlers.searchThreads();
       return;
     case "open-extensions":
-      handlers.openResourceWorkspace(item.id);
+      handlers.openResourceWorkspace(item.id, openInSplit);
       return;
     case "open-plugin-panel":
       handlers.openPluginPanel(item.action, openInSplit);

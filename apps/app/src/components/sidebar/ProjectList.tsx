@@ -1,3 +1,4 @@
+import { activateNavigationDestination } from "./activateNavigationDestination";
 import {
   memo,
   useCallback,
@@ -436,11 +437,12 @@ export function ProjectListNewThreadAction({
       className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
       onPointerDown={newThreadSplit?.onPointerDown}
       onClick={(event) => {
-        if (event.metaKey || event.ctrlKey) {
-          newThreadSplit?.openInSplit();
-          return;
-        }
-        onNewChat?.();
+        activateNavigationDestination({
+          event,
+          path: "/",
+          navigate: () => onNewChat?.(),
+          openInSplit: () => newThreadSplit?.openInSplit(),
+        });
       }}
       disabled={isNewChatDisabled}
       aria-label={

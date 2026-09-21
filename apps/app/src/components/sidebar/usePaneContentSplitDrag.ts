@@ -37,6 +37,7 @@ const SIDEBAR_SELECTOR = '[data-sidebar="sidebar"]';
 const MAIN_CONTENT_SELECTOR = "main";
 
 function routeForContent(content: PaneContent): string {
+  if (content.kind === "resource") return content.path;
   if (content.kind === "thread") return getThreadRoutePath(content);
   if (content.kind === "new-thread") return getRootComposeRoutePath();
   if (content.kind === "plugin-detail") {

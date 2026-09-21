@@ -1,5 +1,9 @@
 export type PaneContent =
   | {
+      kind: "resource";
+      path: string;
+    }
+  | {
       kind: "thread";
       projectId: string;
       threadId: string;
