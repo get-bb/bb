@@ -1982,7 +1982,7 @@ export default async function plugin(
     },
     async saveOpenedFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
-      return bb.sdk.files.write({
+      const result = await bb.sdk.files.write({
         ...hostIdArgs(target.hostId),
         path: target.path,
         rootPath: target.rootPath,
@@ -1992,6 +1992,8 @@ export default async function plugin(
           ? { expectedSha256: input.expectedSha256 }
           : {}),
       });
+      if (result.outcome === "written") mentionSummaries.clear();
+      return result;
     },
   };
 

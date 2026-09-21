@@ -414,6 +414,17 @@ describe("Docs mention provider", () => {
     expect(await search()).toMatchObject([{ title: "Original" }]);
     await harness.callRpc("saveNote", { path: "plan.md", content: "# Saved" });
     expect(await search()).toMatchObject([{ title: "Saved" }]);
+    await harness.callRpc("saveOpenedFile", {
+      source: {
+        kind: "host",
+        threadId: null,
+        projectId: null,
+        environmentId: null,
+      },
+      path: "/vault/plan.md",
+      content: "# Edited in file opener",
+    });
+    expect(await search()).toMatchObject([{ title: "Edited in file opener" }]);
     await harness.callRpc("movePath", { from: "plan.md", to: "renamed.md" });
     expect(await search()).toMatchObject([{ id: "personal:renamed.md" }]);
 
