@@ -16,16 +16,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
 } from "@bb/shared-ui/dropdown-menu";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility";
 
-interface HeaderCreationActions {
+export interface HeaderCreationActions {
   onNewProject?: () => void;
   onNewSection?: () => void;
   isCreatingProject?: boolean;
@@ -35,9 +31,9 @@ interface HeaderCreationActions {
 const HeaderCreationContext = createContext<HeaderCreationActions>({});
 export const SidebarHeaderActionsProvider = HeaderCreationContext.Provider;
 
-const LazySidebarViewItems = lazy(() =>
-  import("./SidebarViewItems").then(({ SidebarViewItems }) => ({
-    default: SidebarViewItems,
+const LazySidebarHeaderMenuContents = lazy(() =>
+  import("./SidebarViewItems").then(({ SidebarHeaderMenuContents }) => ({
+    default: SidebarHeaderMenuContents,
   })),
 );
 
@@ -103,100 +99,18 @@ export function SidebarHeaderControls({
                   : `${label} actions`
           }
         >
-          {compact && page ? (
-            <>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  setPage(null);
-                }}
-              >
-                <Icon name="ChevronLeft" />
-                Back
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <Suspense
-                fallback={<DropdownMenuItem disabled>Loading…</DropdownMenuItem>}
-              >
-                <LazySidebarViewItems page={page} />
-              </Suspense>
-            </>
-          ) : (
-            <>
-              <DropdownMenuItem
-                disabled={!creation.onNewProject || creation.isCreatingProject}
-                onSelect={creation.onNewProject}
-              >
-                <Icon name="FolderPlus" />
-                New project
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!creation.onNewSection || creation.isCreatingSection}
-                onSelect={creation.onNewSection}
-              >
-                <Icon name="SectionAdd" />
-                New section
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {(
-                [
-                  { page: "organize", label: "Organize", icon: "Layers" },
-                  { page: "sort", label: "Sort by", icon: "ArrowUpDown" },
-                  {
-                    page: "filter",
-                    label: "Filter",
-                    icon: "SlidersHorizontal",
-                  },
-                ] as const
-              ).map((item) =>
-                compact ? (
-                  <DropdownMenuItem
-                    key={item.page}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setPage(item.page);
-                    }}
-                  >
-                    <Icon name={item.icon} />
-                    {item.label}
-                    <Icon name="ChevronRight" className="ml-auto" />
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuSub key={item.page}>
-                    <DropdownMenuSubTrigger>
-                      <Icon name={item.icon} />
-                      {item.label}
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuPortal>
-                      <DropdownMenuSubContent
-                        className={
-                          item.page === "organize"
-                            ? "min-w-32"
-                            : "w-max min-w-28 max-w-64"
-                        }
-                      >
-                        <Suspense
-                          fallback={
-                            <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
-                          }
-                        >
-                          <LazySidebarViewItems page={item.page} />
-                        </Suspense>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuPortal>
-                  </DropdownMenuSub>
-                ),
-              )}
-              {children ? (
-                <>
-                  <DropdownMenuSeparator />
-                  {children}
-                </>
-              ) : (
-                <ThreadListVisibilityMenuItems />
-              )}
-            </>
-          )}
+          <Suspense
+            fallback={<DropdownMenuItem disabled>Loading…</DropdownMenuItem>}
+          >
+            <LazySidebarHeaderMenuContents
+              creation={creation}
+              compact={compact}
+              page={page}
+              onPageChange={setPage}
+            >
+              {children}
+            </LazySidebarHeaderMenuContents>
+          </Suspense>
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarRowControls>
