@@ -21,6 +21,8 @@ const MAX_TREE_ENTRIES = 5_000;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const SYNC_STATE_FILE = ".bb-docs-state.json";
 const SYNC_STATE_VERSION = 1;
+const MENTION_SUMMARY_TTL_MS = 10_000;
+const SUMMARY_READ_CONCURRENCY = 8;
 
 class CliUsageError extends PluginCliError {
   constructor(message: string) {
@@ -795,7 +797,7 @@ export default async function plugin(
     }
   }
 
-  function listVaultPaths(vault: Vault) {
+  function listVaultPaths(vault: Vault, signal?: AbortSignal) {
     return bb.sdk.files.listPaths({
       ...hostArgs(vault),
       path: vault.rootPath,
@@ -803,13 +805,15 @@ export default async function plugin(
       includeDirectories: true,
       includeHidden: false,
       limit: MAX_TREE_ENTRIES,
+      ...(signal ? { signal } : {}),
     });
   }
 
   async function listEntries(
     vault: Vault,
+    signal?: AbortSignal,
   ): Promise<{ entries: VaultEntry[]; truncated: boolean }> {
-    const result = await listVaultPaths(vault);
+    const result = await listVaultPaths(vault, signal);
     return {
       entries: result.paths
         .filter(
@@ -827,30 +831,102 @@ export default async function plugin(
   async function listNoteSummaries(
     vault: Vault,
     knownEntries?: VaultEntry[],
+    signal?: AbortSignal,
   ): Promise<NoteSummary[]> {
-    const entries = knownEntries ?? (await listEntries(vault)).entries;
-    const notes: NoteSummary[] = [];
+    const entries = knownEntries ?? (await listEntries(vault, signal)).entries;
     const markdownPaths = entries
       .filter((entry) => entry.kind === "file" && /\.md$/i.test(entry.path))
       .map((entry) => entry.path);
-    for (const notePath of markdownPaths) {
-      try {
-        const file = await bb.sdk.files.read({
-          ...hostArgs(vault),
-          path: absolutePath(vault, notePath),
-          rootPath: vault.rootPath,
-        });
-        const fallback = path.posix.basename(notePath).replace(/\.md$/i, "");
-        const summary = summarizeMarkdown(file.content, fallback);
-        notes.push({
-          path: notePath,
-          title: summary.title,
-          preview: summary.preview,
-          modifiedAtMs: file.modifiedAtMs ?? 0,
-        });
-      } catch {}
+    const notes: Array<NoteSummary | null> = markdownPaths.map(() => null);
+    let nextIndex = 0;
+    await Promise.all(
+      Array.from(
+        { length: Math.min(SUMMARY_READ_CONCURRENCY, markdownPaths.length) },
+        async () => {
+          while (nextIndex < markdownPaths.length) {
+            signal?.throwIfAborted();
+            const index = nextIndex++;
+            const notePath = markdownPaths[index]!;
+            try {
+              const file = await bb.sdk.files.read({
+                ...hostArgs(vault),
+                path: absolutePath(vault, notePath),
+                rootPath: vault.rootPath,
+                ...(signal ? { signal } : {}),
+              });
+              const fallback = path.posix
+                .basename(notePath)
+                .replace(/\.md$/i, "");
+              const summary = summarizeMarkdown(file.content, fallback);
+              notes[index] = {
+                path: notePath,
+                title: summary.title,
+                preview: summary.preview,
+                modifiedAtMs: file.modifiedAtMs ?? 0,
+              };
+            } catch {}
+          }
+        },
+      ),
+    );
+    signal?.throwIfAborted();
+    return notes
+      .filter((note): note is NoteSummary => note !== null)
+      .sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
+  }
+
+  const mentionSummaries = new Map<
+    string,
+    {
+      rootPath: string;
+      hostId: string | null;
+      expiresAt: number;
+      notes: Promise<NoteSummary[]>;
     }
-    return notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
+  >();
+  const mentionLifetime = new AbortController();
+  bb.onDispose(() => {
+    mentionLifetime.abort();
+    mentionSummaries.clear();
+  });
+
+  function mentionNoteSummaries(vault: Vault): Promise<NoteSummary[]> {
+    const cached = mentionSummaries.get(vault.id);
+    if (
+      cached &&
+      cached.rootPath === vault.rootPath &&
+      cached.hostId === vault.hostId &&
+      cached.expiresAt > Date.now()
+    ) {
+      return cached.notes;
+    }
+    const entry = {
+      rootPath: vault.rootPath,
+      hostId: vault.hostId,
+      expiresAt: Infinity,
+      notes: listNoteSummaries(
+        vault,
+        undefined,
+        AbortSignal.any([
+          mentionLifetime.signal,
+          AbortSignal.timeout(MENTION_SUMMARY_TTL_MS),
+        ]),
+      ),
+    };
+    entry.notes = entry.notes.then(
+      (notes) => {
+        entry.expiresAt = Date.now() + MENTION_SUMMARY_TTL_MS;
+        return notes;
+      },
+      (error: unknown) => {
+        if (mentionSummaries.get(vault.id) === entry) {
+          mentionSummaries.delete(vault.id);
+        }
+        throw error;
+      },
+    );
+    mentionSummaries.set(vault.id, entry);
+    return entry.notes;
   }
 
   async function notebookData(vaultId?: string) {
@@ -924,6 +1000,7 @@ export default async function plugin(
           : {}),
     });
     if (result.outcome === "written") {
+      mentionSummaries.delete(vault.id);
       bb.realtime.publish("vault-changed", {
         vaultId: vault.id,
         path: relativePath,
@@ -1146,6 +1223,7 @@ export default async function plugin(
           insert.run(vault.id, proposal.path, JSON.stringify(proposal));
         }
       })();
+      mentionSummaries.delete(vault.id);
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { path: to };
     });
@@ -1172,6 +1250,7 @@ export default async function plugin(
         recursive,
       });
       deleteProposals(vault.id, relativePath);
+      mentionSummaries.delete(vault.id);
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { ok: true };
     });
@@ -1821,6 +1900,7 @@ export default async function plugin(
           db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
           db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
         })();
+        mentionSummaries.delete(id);
         bb.realtime.publish("vault-changed", { vaultId: id });
         return { ok: true as const };
       });
@@ -3378,7 +3458,7 @@ export default async function plugin(
       const needle = query.trim().toLowerCase();
       const matches = [];
       for (const vault of listVaults()) {
-        for (const note of await listNoteSummaries(vault)) {
+        for (const note of await mentionNoteSummaries(vault)) {
           if (
             needle &&
             !`${vault.name} ${note.title} ${note.preview} ${note.path}`
@@ -3436,6 +3516,7 @@ export default async function plugin(
             if (vault.hostId || watchers.has(vault.id)) continue;
             try {
               const watcher = watchVault(vault.rootPath, () => {
+                mentionSummaries.delete(vault.id);
                 if (debounce) clearTimeout(debounce);
                 debounce = setTimeout(() => {
                   bb.realtime.publish("vault-changed", {

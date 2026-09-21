@@ -395,6 +395,108 @@ describe("Docs mention provider", () => {
     expect(harness.sdk.callsTo("files.read")).toHaveLength(2);
   });
 
+  it("refreshes cached mentions after saves, moves, deletions, and external edits", async () => {
+    const { harness, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "# Original",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    const search = () =>
+      provider.search({
+        trigger: "@",
+        query: "",
+        projectId: null,
+        threadId: null,
+      });
+    expect(await search()).toMatchObject([{ title: "Original" }]);
+    await harness.callRpc("saveNote", { path: "plan.md", content: "# Saved" });
+    expect(await search()).toMatchObject([{ title: "Saved" }]);
+    await harness.callRpc("movePath", { from: "plan.md", to: "renamed.md" });
+    expect(await search()).toMatchObject([{ id: "personal:renamed.md" }]);
+
+    setUtf8("/vault/renamed.md", "# External edit");
+    expect(await provider.resolve("personal:renamed.md")).toMatchObject({
+      context: expect.stringContaining("# External edit"),
+    });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 10_001);
+    try {
+      expect(await search()).toMatchObject([{ title: "External edit" }]);
+    } finally {
+      clock.mockRestore();
+    }
+    await harness.callRpc("deletePath", { path: "renamed.md" });
+    expect(await search()).toEqual([]);
+  });
+
+  it("retries a failed vault scan instead of caching the failure", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const listPaths = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Host offline"))
+      .mockResolvedValue({
+        paths: [
+          {
+            kind: "file",
+            path: "plan.md",
+            name: "plan.md",
+            score: 0,
+            positions: [],
+          },
+        ],
+        truncated: false,
+      });
+    harness.sdk.stub("files.listPaths", listPaths);
+    const provider = harness.registrations.mentionProviders[0]!;
+    const context = {
+      trigger: "@" as const,
+      query: "plan",
+      projectId: null,
+      threadId: null,
+    };
+    await expect(provider.search(context)).rejects.toThrow("Host offline");
+    expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+    expect(listPaths).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds parallel summary reads while preserving tied result order", async () => {
+    const { harness } = await loadNotebook(
+      Object.fromEntries(
+        Array.from({ length: 20 }, (_, i) => [`plan-${i}.md`, "# Plan"]),
+      ),
+    );
+    let active = 0;
+    let peak = 0;
+    harness.sdk.stub("files.read", async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return {
+        path: "/plan.md",
+        content: "# Plan",
+        contentEncoding: "utf8",
+        sizeBytes: 6,
+        modifiedAtMs: 1,
+        sha256: "test-sha",
+      };
+    });
+    const rows = await harness.registrations.mentionProviders[0]!.search({
+      trigger: "@",
+      query: "plan",
+      projectId: null,
+      threadId: null,
+    });
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(rows.map((row) => row.id)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `personal:plan-${i}.md`),
+    );
+  });
+
   it("searches note titles, previews, and filenames", async () => {
     const { harness } = await loadNotebook({
       "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
@@ -1545,7 +1647,22 @@ describe("Docs vault operations", () => {
       if (!notifyChange) {
         throw new Error("Expected vault watcher callback");
       }
+      const provider = harness.registrations.mentionProviders[0]!;
+      const context = {
+        trigger: "@" as const,
+        query: "",
+        projectId: null,
+        threadId: null,
+      };
+      expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+      await writeFile(
+        path.join(temporaryDirectories[0]!, "plan.md"),
+        "# Updated",
+      );
       notifyChange();
+      expect(await provider.search(context)).toMatchObject([
+        { title: "Updated" },
+      ]);
       await waitForSignal(
         () =>
           harness.realtimeSignals.some(
