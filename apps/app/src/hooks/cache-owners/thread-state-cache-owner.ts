@@ -600,7 +600,22 @@ export function beginUnarchiveThreadTransaction({
   threadId,
 }: ThreadIdCacheArgs): Promise<ThreadListMutationTransaction> {
   return runOptimisticThreadFieldTransaction({
-    applyToLists: removeThreadFromLists,
+    applyToLists: (queryClient, threadId) => {
+      const thread = getCachedThreadLists(queryClient, {
+        queryKey: threadsQueryKey(),
+      })
+        .flatMap(({ data }) => [...iterateThreadListCacheEntries(data)])
+        .find((candidate) => candidate.id === threadId);
+      removeThreadFromLists(queryClient, threadId);
+      if (!thread) return;
+      applyToCachedSidebarNavigationThreads({
+        queryClient,
+        mapper: (list, projectId) =>
+          projectId === thread.projectId
+            ? [...list, { ...thread, archivedAt: null }]
+            : list,
+      });
+    },
     patch: { archivedAt: null },
     queryClient,
     threadId,
