@@ -34,12 +34,12 @@ describe("product-map surfaces", () => {
       "thread-list",
       "sidebar-footer",
       "thread-header",
-      "browser-toolbar",
       "timeline-renderers",
       "message-directives",
       "message-actions",
       "pending-interaction",
       "code-renderers",
+      "browser-toolbar",
       "thread-panel",
       "file-opener",
       "app-overlay",
@@ -52,6 +52,20 @@ describe("product-map surfaces", () => {
   it("gives command palette actions their own numbered page", () => {
     expect(surfaceIds("command-palette")).toEqual(["command-palette-actions"]);
     expect([...COMMAND_PALETTE_MARKS]).toEqual(["command-palette-actions"]);
+  });
+
+  it("reads composer annotations from the banner through the draft and action row", () => {
+    const ordered = [
+      "composer-banners",
+      "composer-state",
+      "mention-provider",
+      "composer-rich-text",
+      "composer-plus-menu",
+      "provider-picker",
+      "composer-actions",
+    ];
+    expect(surfaceIds("composer")).toEqual(ordered);
+    expect([...COMPOSER_MARKS]).toEqual(ordered);
   });
 
   it("has globally unique surface ids", () => {

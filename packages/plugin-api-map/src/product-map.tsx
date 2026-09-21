@@ -101,7 +101,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         blurb: "Explore plugin controls and content in the side panel’s tabs.",
         appShellScene: "panel" as const,
         surfaces: group.surfaces.filter((surface) => [
-          "browser-toolbar", "code-renderers", "thread-panel", "file-opener",
+          "code-renderers", "browser-toolbar", "thread-panel", "file-opener",
         ].includes(surface.id)),
       },
     ];
@@ -431,6 +431,7 @@ const PROBE_NOOP = () => {};
 const PROBE_COPY = async () => false;
 
 function CardReserveProbe({ group }: { group: GuideSlide }) {
+  const { numberOf } = useSurfaceMap();
   return (
     <div
       inert
@@ -446,7 +447,7 @@ function CardReserveProbe({ group }: { group: GuideSlide }) {
           <SurfaceCard
             probe
             surface={surface}
-            number={SURFACE_NUMBERS.get(surface.id) ?? null}
+            number={numberOf(surface.id)}
             onDismiss={PROBE_NOOP}
             onCopyForAgent={PROBE_COPY}
             navigation={{
@@ -603,6 +604,11 @@ export function ProductMap({
   const mobile =
     displayMode === null ? viewportMobile : displayMode === "mobile";
   const slides = mobile ? MOBILE_SLIDES : DESKTOP_SLIDES;
+  const numbers = useMemo(() => new Map(
+    slides.filter((slide) => slide.groupId !== "headless").flatMap((slide) =>
+      slide.surfaces.map((surface, index) => [surface.id, index + 1] as const),
+    ),
+  ), [slides]);
   useEffect(() => {
     const query = window.matchMedia?.("(max-width: 767px)");
     if (!query) return;
@@ -679,7 +685,7 @@ export function ProductMap({
       activeId: hoverId,
       setActiveId: setHoverId,
       expandedId: card.openId ?? selectedId,
-      numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
+      numberOf: (id: string) => numbers.get(id) ?? null,
       onSelect: selectSurface,
       pluginPageHref,
       renderPluginIcon,
@@ -696,6 +702,7 @@ export function ProductMap({
       selectedId,
       mobile,
       slides,
+      numbers,
     ],
   );
 
@@ -703,7 +710,7 @@ export function ProductMap({
     <SurfaceCard
       surface={openSurface}
       mobile={viewportMobile}
-      number={SURFACE_NUMBERS.get(openSurface.id) ?? null}
+      number={numbers.get(openSurface.id) ?? null}
       onDismiss={card.close}
       onCopyForAgent={onCopyForAgent}
       navigation={{

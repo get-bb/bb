@@ -179,27 +179,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
-        id: "browser-toolbar",
-        title: "Browser toolbar controls",
-        summary:
-          "Adds a plugin control to the toolbar of each open Browser tab. With this, a plugin can:",
-        bullets: [
-          "Act on the Browser tab currently in front of the user",
-          "Receive the owning thread id, tab id, and current URL",
-          "Render beside the Browser address bar and native controls",
-          "Use experimental_page on desktop to run scripts and receive messages without a CDP lease; it is null in the web app",
-          "Evaluate in an isolated world by default, with bb.postMessage for replies; the main world shares page globals and has no message bridge. Navigation removes installed scripts",
-        ],
-        apiSymbols: [
-          "ExperimentalPluginBrowserToolbarActionRegistration",
-          "ExperimentalPluginBrowserToolbarActionProps",
-          "ExperimentalPluginBrowserPage",
-          "ExperimentalPluginBrowserPageEvaluateOptions",
-          "ExperimentalPluginBrowserPageWorld",
-        ],
-        experimental: true,
-      },
-      {
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:
@@ -275,6 +254,27 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSourceCodeRendererProps",
           "PluginDiffRendererRegistration",
           "PluginDiffRendererProps",
+        ],
+        experimental: true,
+      },
+      {
+        id: "browser-toolbar",
+        title: "Browser toolbar controls",
+        summary:
+          "Adds a plugin control to the toolbar of each open Browser tab. With this, a plugin can:",
+        bullets: [
+          "Act on the Browser tab currently in front of the user",
+          "Receive the owning thread id, tab id, and current URL",
+          "Render beside the Browser address bar and native controls",
+          "Use experimental_page on desktop to run scripts and receive messages without a CDP lease; it is null in the web app",
+          "Evaluate in an isolated world by default, with bb.postMessage for replies; the main world shares page globals and has no message bridge. Navigation removes installed scripts",
+        ],
+        apiSymbols: [
+          "ExperimentalPluginBrowserToolbarActionRegistration",
+          "ExperimentalPluginBrowserToolbarActionProps",
+          "ExperimentalPluginBrowserPage",
+          "ExperimentalPluginBrowserPageEvaluateOptions",
+          "ExperimentalPluginBrowserPageWorld",
         ],
         experimental: true,
       },
@@ -398,6 +398,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Provider retry", "Workflows"],
       },
       {
+        id: "composer-state",
+        title: "Draft prompt state & locking",
+        summary:
+          "Reads the draft prompt, and can block typing while the plugin works. With this, a plugin can:",
+        bullets: [
+          "Read the draft prompt's text, whether it is empty, and how many files are attached",
+          "Read the prompt box's layout and whether the thread is already running a turn",
+          "Lock the input and release it again, so the draft prompt cannot change mid-operation",
+          "Release locks and text effects automatically when the slot unmounts or its composer scope changes; persistent [thread row status](thread-row-status) requires an app-wide script",
+        ],
+        apiSymbols: [
+          "useComposer",
+          "useComposerView",
+          "ComposerView",
+          "PluginComposerApi",
+        ],
+      },
+      {
         id: "mention-provider",
         title: "Mentions",
         summary:
@@ -432,24 +450,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ComposerStructuredDraft",
           "PluginComposerApi.experimental_removeMention",
           "PluginComposerApi.experimental_onSubmitted",
-        ],
-      },
-      {
-        id: "composer-state",
-        title: "Draft prompt state & locking",
-        summary:
-          "Reads the draft prompt, and can block typing while the plugin works. With this, a plugin can:",
-        bullets: [
-          "Read the draft prompt's text, whether it is empty, and how many files are attached",
-          "Read the prompt box's layout and whether the thread is already running a turn",
-          "Lock the input and release it again, so the draft prompt cannot change mid-operation",
-          "Release locks and text effects automatically when the slot unmounts or its composer scope changes; persistent [thread row status](thread-row-status) requires an app-wide script",
-        ],
-        apiSymbols: [
-          "useComposer",
-          "useComposerView",
-          "ComposerView",
-          "PluginComposerApi",
         ],
       },
       {

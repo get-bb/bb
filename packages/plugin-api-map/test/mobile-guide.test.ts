@@ -88,13 +88,13 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     act(() => next.click());
     expect(visiblePage()).toBe("Side panel");
     expect(current().querySelector('[data-guide-mobile-scene="panel"]')).not.toBeNull();
-    expect([...current().querySelectorAll("[data-guide-badge]")].map((badge) => badge.textContent)).toEqual(["7", "12", "13", "14"]);
-    openAnnotation("browser-toolbar");
+    expect([...current().querySelectorAll("[data-guide-badge]")].map((badge) => badge.textContent)).toEqual(["1", "2", "3", "4"]);
+    openAnnotation("code-renderers");
     for (const [id, number, title] of [
-      ["browser-toolbar", "7", "Browser toolbar"],
-      ["code-renderers", "12", "Code & diff renderers"],
-      ["thread-panel", "13", "Thread side-panel tabs"],
-      ["file-opener", "14", "File viewers & editors"],
+      ["code-renderers", "1", "Code & diff renderers"],
+      ["browser-toolbar", "2", "Browser toolbar"],
+      ["thread-panel", "3", "Thread side-panel tabs"],
+      ["file-opener", "4", "File viewers & editors"],
     ]) {
       expect(current().querySelector(`[data-guide-tab-body="${id}"]`), title).not.toBeNull();
       expect(current().querySelector(`[data-guide-badge="${id}"]`)?.textContent).toBe(number);

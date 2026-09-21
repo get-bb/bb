@@ -51,12 +51,12 @@ export const APP_SHELL_MARKS = [
   "thread-list",
   "sidebar-footer",
   "thread-header",
-  "browser-toolbar",
   "timeline-renderers",
   "message-directives",
   "message-actions",
   "pending-interaction",
   "code-renderers",
+  "browser-toolbar",
   "thread-panel",
   "file-opener",
   "app-overlay",
@@ -67,9 +67,9 @@ export const COMMAND_PALETTE_MARKS = ["command-palette-actions"] as const;
 
 export const COMPOSER_MARKS = [
   "composer-banners",
+  "composer-state",
   "mention-provider",
   "composer-rich-text",
-  "composer-state",
   "composer-plus-menu",
   "provider-picker",
   "composer-actions",
@@ -151,6 +151,7 @@ function Mark({
   className,
   chip = "corner",
   showChip = true,
+  target = false,
   onActivate,
   children,
 }: {
@@ -159,6 +160,7 @@ function Mark({
   className?: string;
   chip?: AnnotationChipPlacement;
   showChip?: boolean;
+  target?: boolean;
   onActivate?: () => void;
   children?: ReactNode;
 }) {
@@ -168,6 +170,7 @@ function Mark({
   return (
     <a
       data-guide-region={id}
+      data-guide-target={target ? id : undefined}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
       onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
@@ -191,6 +194,7 @@ const RELEASE_DEMO_MS = 2400;
 
 function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
   const id = "command-palette-actions";
+  const { onSelect } = useSurfaceMap();
   const { outlined } = useEngagement(id);
   const hover = useAnnotationHover(id);
 
@@ -200,7 +204,10 @@ function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
       type="button"
       role="option"
       aria-selected="true"
-      onClick={onRun}
+      onClick={() => {
+        onRun();
+        onSelect?.(id);
+      }}
       {...hover}
       data-guide-fixture="command-palette-action"
       className={cn(
@@ -242,6 +249,7 @@ function RegionMark({
           onSelect
             ? (event) => {
                 event.preventDefault();
+                event.stopPropagation();
                 onSelect(id);
               }
             : undefined
@@ -687,16 +695,16 @@ function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
   return (
     <>
       <MeasuredBadge
-        id="browser-toolbar"
-        label="Plugin controls beside the Browser address bar"
-        anchor='[data-guide-tab="browser-toolbar"]'
+        id="code-renderers"
+        label="Plugin code and diff renderers on bb's Diff tab"
+        anchor='[data-guide-region="code-renderers"]'
         clipTo={clipTo}
         at="lane"
       />
       <MeasuredBadge
-        id="code-renderers"
-        label="Plugin code and diff renderers on bb's Diff tab"
-        anchor='[data-guide-region="code-renderers"]'
+        id="browser-toolbar"
+        label="Plugin controls beside the Browser address bar"
+        anchor='[data-guide-tab="browser-toolbar"]'
         clipTo={clipTo}
         at="lane"
       />
@@ -1055,7 +1063,7 @@ function AppShellWireframeBody({
   const contentScripts = useEngagement("content-scripts");
   const messageActionsSelected = expandedId === "message-actions";
   const messageActionRowVisible =
-    assistantMessageHovered || messageActionsSelected;
+    scene === "conversation" || assistantMessageHovered || messageActionsSelected;
 
   if (scene === "navigation") {
     return (
@@ -1299,7 +1307,10 @@ function AppShellWireframeBody({
       <Mark
         id="app-overlay"
         label="App-wide floating plugin interface"
-        className="absolute bottom-24 right-12 z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md"
+        className={cn(
+          "z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md",
+          mobile ? "relative ml-auto mr-4 mb-4" : "absolute bottom-24 right-12",
+        )}
       >
         <PluginGlyph className="size-4 shrink-0" />
         <span className="min-w-0">
@@ -1396,17 +1407,18 @@ export function AppShellRightPanel({
             compact ? "shrink-0" : "min-w-0",
           )}
         >
-          <button
-            type="button"
-            data-guide-tab="browser-toolbar"
+          <Mark
+            id="browser-toolbar"
+            label="Plugin controls beside the Browser address bar"
             className={cn(
               tabClass("browser-toolbar"),
               "gap-1.5 whitespace-nowrap px-2 text-foreground",
             )}
-            onClick={() => onTabSelect("browser-toolbar")}
+            showChip={false}
+            onActivate={() => onTabSelect("browser-toolbar")}
           >
-            Browser
-          </button>
+            <span data-guide-tab="browser-toolbar">Browser</span>
+          </Mark>
           <Mark
             id="thread-panel"
             label="A plugin tab in the thread side panel"
@@ -1582,13 +1594,13 @@ export function RealComposerAnnotated({
             id="composer-state"
             label="The draft prompt a plugin can read and lock"
             anchor='[data-guide-target="composer-state"]'
-            at="start"
+            at="above"
           />
           <MeasuredBadge
             id="composer-plus-menu"
             label="Plugin rows in the composer's + menu"
             anchor='[data-guide-target="composer-plus-menu"]'
-            at="start"
+            at="above"
           />
           <MeasuredBadge
             id="provider-picker"
@@ -1600,7 +1612,7 @@ export function RealComposerAnnotated({
             id="composer-actions"
             label="Plugin composer actions, before voice and send"
             anchor='[data-guide-target="composer-actions"]'
-            at={mobile ? "end" : "above"}
+            at="above"
           />
         </div>
         <WindowFrame>
@@ -1631,8 +1643,11 @@ export function RealComposerAnnotated({
             </div>
 
             <div className="px-4 pb-4">
-              <div
-                data-guide-target="composer-banners"
+              <Mark
+                id="composer-banners"
+                label="Plugin composer banners, above the prompt box"
+                showChip={false}
+                target
                 className={cn(
                   "relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
                   engagedRingClass(banners.outlined),
@@ -1659,7 +1674,7 @@ export function RealComposerAnnotated({
                 ) : null}
                 <PluginGlyph className="size-3.5" />
                 <span className="text-foreground">Your banner</span>
-              </div>
+              </Mark>
 
               <StaticEmbeddedComposer mobile={mobile} />
             </div>
@@ -1677,7 +1692,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 shadow-lift", mobile ? "min-h-48 gap-7 pt-7" : "h-[126px] pt-3")}>
+      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-[126px]")}>
         {plus.outlined ? (
           <div
             aria-hidden
@@ -1700,16 +1715,21 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
         ) : null}
 
         <div
-          data-guide-target="composer-state"
           className={cn(
             "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
             mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
             engagedRingClass(draft.outlined),
           )}
         >
-          <span aria-hidden className="whitespace-pre">
+          <Mark
+            id="composer-state"
+            label="The draft prompt a plugin can read and lock"
+            showChip={false}
+            target
+            className="whitespace-pre"
+          >
             Summarize{" "}
-          </span>
+          </Mark>
           <RegionMark
             id="mention-provider"
             label="Plugin mention results in the @ typeahead"
@@ -1739,17 +1759,23 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
         </div>
 
         <div className="mt-auto flex h-10 items-center gap-1">
-          <span
-            data-guide-target="composer-plus-menu"
+          <Mark
+            id="composer-plus-menu"
+            label="Plugin rows in the composer's + menu"
+            showChip={false}
+            target
             className={cn(
               "flex size-10 items-center justify-center rounded-md",
               engagedRingClass(plus.outlined),
             )}
           >
             <MiniIcon icon="Plus" className="size-4" />
-          </span>
-          <span
-            data-guide-target="provider-picker"
+          </Mark>
+          <Mark
+            id="provider-picker"
+            label="Your agent provider and its mark, in the model picker"
+            showChip={false}
+            target
             className={cn(
               "flex h-10 items-center gap-1.5 rounded-md px-2 text-foreground",
               engagedRingClass(picker.outlined),
@@ -1760,18 +1786,22 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             {mobile ? null : (
               <span className="text-subtle-foreground">High</span>
             )}
-          </span>
+          </Mark>
           <span className="flex-1" />
-          <span
-            data-guide-target="composer-actions"
-            data-guide-fixture="plugin-composer-action"
+          <Mark
+            id="composer-actions"
+            label="Plugin composer actions, before voice and send"
+            showChip={false}
+            target
             className={cn(
               "flex size-9 items-center justify-center rounded-md bg-state-hover",
               engagedRingClass(actions.outlined),
             )}
           >
-            <PluginGlyph className="size-3.5" />
-          </span>
+            <span data-guide-fixture="plugin-composer-action">
+              <PluginGlyph className="size-3.5" />
+            </span>
+          </Mark>
           <span className="flex size-9 items-center justify-center">
             <MiniIcon icon="Mic" className="size-4" />
           </span>
