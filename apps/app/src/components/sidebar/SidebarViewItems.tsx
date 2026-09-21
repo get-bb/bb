@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -247,4 +248,3 @@ function SidebarViewItems({
     </DropdownMenuGroup>
   );
 }
-import type { ReactNode } from "react";
