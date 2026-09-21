@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -22,14 +21,6 @@ import {
   DropdownMenuSubContent,
   DropdownMenuPortal,
 } from "@bb/shared-ui/dropdown-menu";
-import {
-  sidebarOrganizationModeAtom,
-  sidebarChronologicalSortAtom,
-  sidebarSortDirectionAtom,
-  sidebarThreadLifecyclesAtom,
-  sidebarGroupThreadsByEnvironmentAtom,
-  sidebarEnvironmentGroupingAtom,
-} from "./sidebarCollapsedAtoms";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 
@@ -43,52 +34,12 @@ interface HeaderCreationActions {
 const HeaderCreationContext = createContext<HeaderCreationActions>({});
 export const SidebarHeaderActionsProvider = HeaderCreationContext.Provider;
 
-const SIDEBAR_ORGANIZE_OPTIONS = [
-  { label: "By project", mode: "project" },
-  { label: "By machine", mode: "machine" },
-  { label: "Custom", mode: "chronological" },
-] as const;
-
-const SIDEBAR_SORT_OPTIONS = [
-  { label: "Updated at", sort: "updated", direction: "descending" },
-  { label: "Created at", sort: "created", direction: "descending" },
-  { label: "Alphabetical", sort: "alpha", direction: "ascending" },
-] as const;
-
 const LazySidebarViewItems = lazy(() =>
   import("./SidebarViewItems").then(({ SidebarViewItems }) => ({
     default: SidebarViewItems,
   })),
 );
 
-export interface SidebarViewItemsProps {
-  page: "organize" | "sort" | "filter";
-  settings: ReturnType<typeof useSidebarViewSettings>;
-  organizeOptions: typeof SIDEBAR_ORGANIZE_OPTIONS;
-  sortOptions: typeof SIDEBAR_SORT_OPTIONS;
-}
-
-function useSidebarViewSettings() {
-  const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
-  const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
-  const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
-  const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
-  const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
-  const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
-  const selectedSort = sort === "none" ? "updated" : sort;
-  return {
-    lifecycles,
-    setLifecycles,
-    organization,
-    setOrganization,
-    groupByEnvironment,
-    setEnvironmentGrouping,
-    setSort,
-    savedDirection,
-    setDirection,
-    selectedSort,
-  };
-}
 export function SidebarHeaderControls({
   label,
   onNewThread,
@@ -105,7 +56,6 @@ export function SidebarHeaderControls({
   onOpenChange?: (open: boolean) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
-  const settings = useSidebarViewSettings();
   const compact = useIsCompactViewport();
   const [page, setPage] = useState<"organize" | "sort" | "filter" | null>(null);
   const changeOpen = (next: boolean) => {
@@ -167,12 +117,7 @@ export function SidebarHeaderControls({
               <Suspense
                 fallback={<DropdownMenuItem disabled>Loading…</DropdownMenuItem>}
               >
-                <LazySidebarViewItems
-                  page={page}
-                  settings={settings}
-                  organizeOptions={SIDEBAR_ORGANIZE_OPTIONS}
-                  sortOptions={SIDEBAR_SORT_OPTIONS}
-                />
+                <LazySidebarViewItems page={page} />
               </Suspense>
             </>
           ) : (
@@ -234,12 +179,7 @@ export function SidebarHeaderControls({
                             <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
                           }
                         >
-                          <LazySidebarViewItems
-                            page={item.page}
-                            settings={settings}
-                            organizeOptions={SIDEBAR_ORGANIZE_OPTIONS}
-                            sortOptions={SIDEBAR_SORT_OPTIONS}
-                          />
+                          <LazySidebarViewItems page={item.page} />
                         </Suspense>
                       </DropdownMenuSubContent>
                     </DropdownMenuPortal>
