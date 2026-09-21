@@ -233,7 +233,7 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
-  it("keeps one restore action visible and blocks row pointer, keyboard, and click propagation", () => {
+  it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", () => {
     const thread = createThread({ archivedAt: 1 });
     const rowEvent = vi.fn();
     const client = new QueryClient();
@@ -249,6 +249,7 @@ describe("ThreadRow", () => {
     expect(restore.classList.contains("bg-state-hover")).toBe(false);
     expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
+    expect(restore.closest(".max-md\\:pointer-coarse\\:hidden")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
     fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
     fireEvent.keyDown(restore, { key: "Enter" });
