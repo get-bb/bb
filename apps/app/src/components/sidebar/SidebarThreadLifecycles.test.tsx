@@ -133,6 +133,10 @@ function LifecycleContents({ empty }: { empty: boolean }) {
           "threads",
           buildSidebarEntitySectionId("section", "archive-section"),
         ]}
+        fullSectionOrder={[
+          "threads",
+          buildSidebarEntitySectionId("section", "archive-section"),
+        ]}
         onTopLevelSectionOrderChange={vi.fn()}
         pinnedReorderPending={false}
         pinnedThreads={[]}
