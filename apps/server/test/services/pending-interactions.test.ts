@@ -30,6 +30,7 @@ import {
   createUserAnswerResolution,
   createUserQuestionPayload,
 } from "../helpers/pending-interactions.js";
+import { advanceUntilSettled } from "../helpers/fake-timers.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -153,8 +154,9 @@ describe("pending interaction lifecycle", () => {
         expect(listPending()).toMatchObject([{ status: "pending" }]);
 
         setServerMoveFrozen(harness.db, false);
-        await vi.advanceTimersByTimeAsync(SERVER_MOVE_FROZEN_RETRY_MS);
-        await expect(pending).resolves.toEqual({
+        await expect(
+          advanceUntilSettled(pending, SERVER_MOVE_FROZEN_RETRY_MS),
+        ).resolves.toEqual({
           outcome: "cancelled",
           reason: "timeout",
         });

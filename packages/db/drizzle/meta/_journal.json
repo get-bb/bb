@@ -894,8 +894,15 @@
     {
       "idx": 127,
       "version": "6",
-      "when": 1789952709078,
-      "tag": "0127_queued_message_search",
+      "when": 1789925496816,
+      "tag": "0127_thread_image_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "6",
+      "when": 1789956746482,
+      "tag": "0128_queued_message_search",
       "breakpoints": true
     }
   ]

@@ -15,7 +15,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
-import { resolvePluginNpmCli } from "@bb/plugin-build";
+import { resolveBundledNpmCli } from "@bb/plugin-build";
 import {
   omitNpmScriptPolicyEnv,
   spawnPortableOutputProcess,
@@ -588,7 +588,7 @@ export async function runInstallCommand(
   },
 ): Promise<string> {
   const timeoutMs = 5 * 60_000;
-  const npmCliPath = command === "npm" ? resolvePluginNpmCli() : null;
+  const npmCliPath = command === "npm" ? resolveBundledNpmCli() : null;
   const child = spawnPortableOutputProcess({
     command: npmCliPath === null ? command : process.execPath,
     args: npmCliPath === null ? args : [npmCliPath, ...args],

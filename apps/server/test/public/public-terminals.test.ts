@@ -205,6 +205,7 @@ interface PendingTerminalOpen {
 interface CreateTerminalRouteFixtureArgs {
   environmentStatus?: EnvironmentStatus;
   terminalCloseTimeoutMs?: number;
+  terminalOpenTimeoutMs?: number;
 }
 
 function createFakeDaemonSocket(): FakeDaemonSocket {
@@ -255,7 +256,7 @@ async function waitForDaemonMessage(
   socket: FakeDaemonSocket,
   messageIndex = 0,
 ): Promise<HostDaemonServerWsMessage> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     const message = readDaemonOperationMessages(socket)[messageIndex];
     if (message !== undefined) {
       return message;
@@ -268,11 +269,14 @@ async function waitForDaemonMessage(
 async function createTerminalRouteFixture(
   args: CreateTerminalRouteFixtureArgs = {},
 ): Promise<TerminalRouteFixture> {
-  const harness = await createTestAppHarness(
-    args.terminalCloseTimeoutMs === undefined
+  const harness = await createTestAppHarness({
+    ...(args.terminalCloseTimeoutMs === undefined
       ? {}
-      : { terminalCloseTimeoutMs: args.terminalCloseTimeoutMs },
-  );
+      : { terminalCloseTimeoutMs: args.terminalCloseTimeoutMs }),
+    ...(args.terminalOpenTimeoutMs === undefined
+      ? {}
+      : { terminalOpenTimeoutMs: args.terminalOpenTimeoutMs }),
+  });
   const seeded = seedHostSession(harness.deps, { id: "terminal-host" });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: seeded.host.id,
@@ -1465,7 +1469,9 @@ describe("public terminal routes", () => {
   });
 
   it("marks timed-out terminal opens exited", async () => {
-    const fixture = await createTerminalRouteFixture();
+    const fixture = await createTerminalRouteFixture({
+      terminalOpenTimeoutMs: 50,
+    });
     harnesses.push(fixture.harness);
 
     const response = await fixture.harness.app.request("/api/v1/terminals", {

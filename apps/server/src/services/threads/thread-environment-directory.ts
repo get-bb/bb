@@ -16,7 +16,7 @@ import { runLiveHostCommand } from "../hosts/live-command.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
-import { foreignProviderOwnedPathRefusal } from "./workspace-path-claims.js";
+import { suppliedWorkspacePathRefusal } from "./workspace-path-claims.js";
 
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME =
   "update_environment_directory";
@@ -316,7 +316,7 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     targetEnvironment = ready;
   } else {
     const dataDir = findHostDataDir(deps, args.currentEnvironment.hostId);
-    const refusal = foreignProviderOwnedPathRefusal(deps.db, {
+    const refusal = suppliedWorkspacePathRefusal(deps.db, {
       dataDir,
       hostId: args.currentEnvironment.hostId,
       path: normalizedPath,

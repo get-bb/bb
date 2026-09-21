@@ -56,6 +56,7 @@ import {
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_STATUS_GLYPH_BOX_CLASS,
   getSidebarThreadRowPaddingLeft,
+  getSidebarThreadGroupLineLeft,
 } from "./sidebarRowClasses";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
@@ -437,6 +438,10 @@ function ThreadRowComponent({
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
   const rowStyle = getThreadRowStyle(options.depth);
+  const parentGuideLeft =
+    options.depth > 0
+      ? getSidebarThreadGroupLineLeft(options.depth - 1)
+      : null;
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
@@ -482,6 +487,50 @@ function ThreadRowComponent({
         aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
+      {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline opacity-70"
+          style={{ left: parentGuideLeft }}
+        />
+      ) : null}
+      {crossProjectLabel !== null ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              data-sidebar-thread-cross-project=""
+              role="img"
+              aria-label={crossProjectLabel}
+              className={cn(
+                "z-[31] flex size-5 shrink-0 items-center justify-center rounded-sm bg-sidebar text-muted-foreground",
+                parentGuideLeft === null
+                  ? "relative"
+                  : "absolute top-1/2 -translate-x-1/2 -translate-y-1/2",
+                !showActive &&
+                  "group-hover/thread-row:bg-sidebar-accent",
+                !showActive && isActionsOpen && "bg-sidebar-accent",
+                !showActive &&
+                  splitIndicator.isOpenInSplit &&
+                  SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
+              )}
+              style={{
+                left: parentGuideLeft ?? undefined,
+                backgroundImage: showActive
+                  ? "linear-gradient(var(--state-active), var(--state-active))"
+                  : undefined,
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                rowLinkRef.current?.click();
+              }}
+            >
+              <Icon name="FolderExport" className="size-3.5" aria-hidden />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
+        </Tooltip>
+      ) : null}
       <span
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5",
@@ -504,26 +553,6 @@ function ThreadRowComponent({
             <ThreadTitleMentions title={threadTitle} />
           </span>
         )}
-        {crossProjectLabel !== null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                data-sidebar-thread-cross-project=""
-                role="img"
-                aria-label={crossProjectLabel}
-                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  rowLinkRef.current?.click();
-                }}
-              >
-                <Icon name="FolderExport" className="size-3.5" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
-          </Tooltip>
-        ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}

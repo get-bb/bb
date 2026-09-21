@@ -379,6 +379,35 @@ export function Overview() {
         </PreviewStage>
       </StoryRow>
       <StoryRow
+        label="failed to load with a reason"
+        hint="Preview fetch failed and the response explained why"
+      >
+        <PreviewStage>
+          <FilePreview
+            path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
+            onOpenInEditor={noopOpenInEditor}
+            state={{ kind: "error", message: "Host is not connected" }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="preview not available"
+        hint="The file loaded but its media type has no preview renderer"
+      >
+        <PreviewStage>
+          <FilePreview
+            path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
+            onOpenInEditor={noopOpenInEditor}
+            state={{
+              kind: "unsupported",
+              message: "Preview not available for application/zip.",
+            }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
         label="loading"
         hint="Skeleton lines while file contents are being fetched"
       >

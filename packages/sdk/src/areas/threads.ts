@@ -49,6 +49,7 @@ import type {
   ThreadStoragePathListResponse,
   ThreadTabsResponse,
   ThreadTimelineResponse,
+  ThreadImageMetadata,
   ThreadContextResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsResponse,
@@ -615,6 +616,9 @@ export interface ThreadsArea {
   tabs: ThreadTabsArea;
   context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+  saveImageMetadata(
+    args: ThreadImageMetadata & ThreadStatusArgs,
+  ): Promise<{ ok: true }>;
   timelineTurnSummaryDetails(
     args: ThreadTimelineTurnSummaryDetailsArgs,
   ): Promise<ThreadTimelineTurnSummaryDetailsResult>;
@@ -1367,6 +1371,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].context.$get(
           { param: { id: input.threadId } },
           ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async saveImageMetadata({ threadId, signal, ...metadata }) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].timeline["image-metadata"].$put(
+          { param: { id: threadId }, json: metadata },
+          ...signalRequestArgs(signal),
         ),
       );
     },

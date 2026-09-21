@@ -3,17 +3,15 @@ import { Editor, isNodeSelection, type ChainedCommands } from "@tiptap/core";
 import { BubbleMenuPlugin } from "@tiptap/extension-bubble-menu";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  BubbleChatIcon,
-  CheckListIcon,
-  CodeIcon,
-  Heading02Icon,
-  LeftToRightBlockQuoteIcon,
-  LeftToRightListBulletIcon,
-  SourceCodeIcon,
-  TextBoldIcon,
-  TextItalicIcon,
-} from "@hugeicons/core-free-icons";
+import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
+import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
+import CodeIcon from "@hugeicons/core-free-icons/CodeIcon";
+import Heading02Icon from "@hugeicons/core-free-icons/Heading02Icon";
+import LeftToRightBlockQuoteIcon from "@hugeicons/core-free-icons/LeftToRightBlockQuoteIcon";
+import LeftToRightListBulletIcon from "@hugeicons/core-free-icons/LeftToRightListBulletIcon";
+import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
+import TextBoldIcon from "@hugeicons/core-free-icons/TextBoldIcon";
+import TextItalicIcon from "@hugeicons/core-free-icons/TextItalicIcon";
 import type { SuggestionProps } from "@tiptap/suggestion";
 import { Button } from "@bb/shared-ui/button";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";

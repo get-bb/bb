@@ -590,17 +590,17 @@ schema accepts. Inputs are persisted and readable by every plugin, so they
 must contain no secrets; credentials belong in plugin settings and inputs
 carry non-secret references. `experimental_BranchPicker` is the host's branch
 picker with its branch-options loading (`{ hostId, projectId, value, onChange,
-label?, placeholder?, disabled }` — `label` is text before the branch, omitted
-means the branch alone; `placeholder` replaces the muted default base shown
-while nothing is picked), exported so a provider that runs on an enrolled
-machine can render bb's own branch control inside its inputs control — the
-worktree plugin's `app.tsx` does exactly that, emitting `{ branch: { kind:
-"named", name } }` for a pick, `{ branch: { kind: "default" } }` for a
-cleared pick and on mount — the same additive-versioning exception as
+label?, placeholder?, disabled }` — `label` prefixes the branch on the trigger
+and supplies the menu heading; omitted means the branch alone on the trigger
+and a neutral "Branches" menu heading; `placeholder` supplies the complete
+empty-selection text, defaulting to "Select branch"). A null selection does
+not resolve or imply a worktree base. The caller owns what picking a branch
+means. The component retains the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
-loading state, and a `refresh()` operation that performs a blocking remote
-refresh. `experimental_BranchPicker` is built on this hook.
+loading state, and a `refresh()` operation
+that performs a blocking remote refresh. `experimental_BranchPicker` is built
+on this hook.
 `experimental_useCheckoutState({ hostId, projectId })` exposes the checkout's
 git, unborn, detached, dirty, current-branch, and operation facts. The checkout
 plugin combines the two hooks into its own chip, menu, search, and branch list,
@@ -3188,3 +3188,17 @@ new unprefixed public API member is introduced. Audit before stabilization:
 immutable cross-project ownership, cross-host cleanup, archive/delete retries,
 creation races, and preservation of existing unowned threads. The Plugin Guide SDK card
 describes the public behavior.
+
+## Environment provider existing-path selection
+
+`PluginEnvironmentProviderDefinition.experimental_existingPath(inputs)` returns
+an absolute path or null from parsed inputs without performing mutations. On an
+existing machine, core checks that project's environment at the path after
+selection validation. A usable environment follows the normal reuse flow,
+preserving its provider, ownership, resource, merge base, and cleanup identity.
+An unusable environment is refused; a missing record follows normal creation,
+where the provider still validates the directory. Other projects' managed paths
+remain forbidden. New-machine selections continue through creation.
+
+Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
+progress, cross-project ownership, and concurrent creation before binding.

@@ -1,3 +1,4 @@
+import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type {
   PromptMentionCommandTrigger,
@@ -332,7 +333,7 @@ function PromptSubmitButton({
       )}
     >
       {isBusy ? (
-        <Icon name="Spinner" className="size-4 animate-spin" />
+        <Icon name="Loading" className="size-4 animate-spin motion-reduce:animate-none" />
       ) : (
         <>
           <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
@@ -408,6 +409,7 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
 
 export interface AttachmentsConfig {
   items?: PromptDraftAttachment[];
+  pendingUploads?: readonly PendingAttachmentUpload[];
   isAttaching?: boolean;
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
@@ -1258,6 +1260,7 @@ export function PromptBoxInternal({
   }, [onCommandEditorFocus]);
   const {
     items: attachments = [],
+    pendingUploads,
     isAttaching = false,
     error: attachmentError = null,
     onAttachFiles,
@@ -3176,6 +3179,7 @@ export function PromptBoxInternal({
             <AttachmentPreview
               compact
               attachments={attachments}
+              pendingUploads={pendingUploads}
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3271,6 +3275,7 @@ export function PromptBoxInternal({
               >
                 <AttachmentPreview
                   attachments={attachments}
+                  pendingUploads={pendingUploads}
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3330,7 +3335,6 @@ export function PromptBoxInternal({
                 >
                   <ComposerPlusMenuSlot
                     actions={promptActions}
-                    isAttaching={isAttaching}
                     onAttach={
                       onAttachFiles
                         ? () => attachmentInputRef.current?.click()

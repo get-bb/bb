@@ -2122,7 +2122,7 @@ describe("PromptBoxInternal compact layout", () => {
         name: "Uploading attachments...",
       });
       expect(submit.hasAttribute("disabled")).toBe(true);
-      expect(submit.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+      expect(submit.querySelector('[data-icon="Loading"]')).not.toBeNull();
       expect(
         screen.getByRole("button", { name: "Start voice input" }),
       ).toBeTruthy();

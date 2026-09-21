@@ -1,12 +1,9 @@
+import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
-import {
-  PluginCompactIconMask,
-  PluginIcon,
-  pluginIconName,
-} from "@/components/plugin/PluginIcon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -162,25 +159,18 @@ export function CatalogEntryIcon({
   };
   className: string;
 }) {
-  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
   return (
     <span
       aria-hidden="true"
       data-catalog-entry-icon-glyph=""
       className={cn("grid shrink-0 place-items-center", className)}
     >
-      {entry.iconUrl !== null && entry.iconTinted ? (
-        <PluginCompactIconMask url={entry.iconUrl} className="size-full" />
-      ) : entry.iconUrl === null || entry.iconUrl === failedIconUrl ? (
-        <Icon name={pluginIconName(entry.icon)} className="size-full" />
-      ) : (
-        <img
-          src={entry.iconUrl}
-          alt=""
-          className="size-full rounded-sm object-contain"
-          onError={() => setFailedIconUrl(entry.iconUrl)}
-        />
-      )}
+      <PluginBrandIcon
+        icon={entry.icon}
+        iconUrl={entry.iconUrl}
+        iconTinted={entry.iconTinted}
+        className="size-full"
+      />
     </span>
   );
 }
