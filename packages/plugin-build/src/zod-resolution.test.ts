@@ -1,6 +1,8 @@
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { buildPluginHost } from "./build-plugin-host.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
@@ -13,11 +15,6 @@ afterEach(async () => {
   );
 });
 
-/**
- * An SDK install with no zod reachable from it. A symlink into the workspace
- * would not reproduce the failure: esbuild resolves through the real path and
- * finds the SDK's own dev copy of zod.
- */
 async function installSdkWithoutZod(pluginDir: string): Promise<void> {
   const sdkSource = resolve(import.meta.dirname, "../../plugin-sdk");
   const target = join(pluginDir, "node_modules", "@get-bb", "plugin-sdk");
@@ -27,7 +24,7 @@ async function installSdkWithoutZod(pluginDir: string): Promise<void> {
   }
 }
 
-it("names zod as the plugin's missing dependency when a host entry cannot resolve it", async () => {
+it("requires Zod at build time and bundles it for a host without node_modules", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bb-host-zod-"));
   tempDirs.push(dir);
   await writeFile(
@@ -53,22 +50,38 @@ it("names zod as the plugin's missing dependency when a host entry cannot resolv
       '} from "@get-bb/plugin-sdk/host";',
       "export default experimental_defineHostEntry({",
       "  contract: experimental_nativeRootsHostContract,",
-      "  handlers: { resolveNativeRoots: async () => ({ roots: [] }) },",
+      "  handlers: { resolveNativeRoots: async () => ({ skills: [], commands: [] }) },",
       "});",
+      'export const invalidInput = experimental_nativeRootsHostContract.resolveNativeRoots.input["~standard"].validate({ providerId: "", cwd: null });',
       "",
     ].join("\n"),
   );
   await installSdkWithoutZod(dir);
 
-  const built = buildPluginHost(
-    dir,
-    "0.0.0-test",
-    await resolvePluginBuildToolchain(join(process.cwd(), ".unused-toolchain")),
+  const toolchain = await resolvePluginBuildToolchain(
+    join(process.cwd(), ".unused-toolchain"),
   );
+  const built = buildPluginHost(dir, "0.0.0-test", toolchain);
 
-  // esbuild's own text points at a file inside node_modules and recommends
-  // marking zod external, which would emit a bundle the host worker cannot
-  // import. The plugin author's actual fix is a dependency.
   await expect(built).rejects.toThrow(/needs zod in its dependencies/);
   await expect(built).rejects.not.toThrow(/^Could not resolve "zod"$/);
+
+  const sdkRequire = createRequire(
+    resolve(import.meta.dirname, "../../plugin-sdk/package.json"),
+  );
+  await cp(
+    dirname(sdkRequire.resolve("zod/package.json")),
+    join(dir, "node_modules", "zod"),
+    { recursive: true },
+  );
+  const { jsPath } = await buildPluginHost(dir, "0.0.0-test", toolchain);
+  await rm(join(dir, "node_modules"), { recursive: true });
+  const module = await import(pathToFileURL(jsPath).href);
+  expect(module.invalidInput).toMatchObject({
+    issues: [expect.objectContaining({ path: ["providerId"] })],
+  });
+  expect(await module.default.handlers.resolveNativeRoots()).toEqual({
+    skills: [],
+    commands: [],
+  });
 });

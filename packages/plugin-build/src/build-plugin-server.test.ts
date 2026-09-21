@@ -74,7 +74,6 @@ describe("plugin server build", () => {
     );
 
     const bundle = await readFile(jsPath, "utf8");
-    // Minified output drops the space after `from`.
     expect(bundle).toMatch(/from\s*"@bb\/plugin-sdk"/);
   });
 
@@ -122,10 +121,6 @@ describe("plugin server build", () => {
       return readFile(jsPath, "utf8");
     }
 
-    // The server resolves the bare specifier through a jiti alias, which
-    // substitutes a prefix: an externalised "zod/mini" would be looked up as
-    // ".../zod-runtime.js/mini" and fail to load. esbuild's own `external`
-    // option cannot express "the bare specifier only".
     it("externalises the bare specifier and keeps subpaths bundled", async () => {
       const bundle = await buildFixture({ hostProvidedZod: true });
       expect(bundle).toMatch(/from\s*"zod"/);
@@ -186,7 +181,6 @@ describe("plugin server build", () => {
       const bundle = await readFile(jsPath, "utf8");
       expect(bundle).toMatch(/from\s*"@get-bb\/plugin-sdk"/);
       expect(bundle).not.toContain('"@get-bb/plugin-sdk/host"');
-      // A contract method name, which survives minification as a property key.
       expect(bundle).toContain("resolveNativeRoots:");
     });
 

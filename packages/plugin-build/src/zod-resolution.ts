@@ -17,12 +17,6 @@ export function describeUnresolvedZod(args: {
   return `could not resolve "${args.specifier}": ${cause}, so the plugin needs zod in its dependencies. Marking zod external instead would leave an unresolvable import in the built bundle.`;
 }
 
-/**
- * Turns esbuild's bare `Could not resolve "zod"` — which points at a file
- * inside `node_modules/@get-bb/plugin-sdk` and suggests marking zod external,
- * the one fix that produces a bundle that cannot load — into a message naming
- * the plugin's missing dependency.
- */
 export function zodResolutionPlugin(
   entryKind: "host" | "server",
   options: { hostProvidedBareZod?: boolean } = {},
@@ -31,11 +25,6 @@ export function zodResolutionPlugin(
     name: "bb-zod-resolution",
     setup(build) {
       build.onResolve({ filter: ZOD_FILTER }, async (args) => {
-        // Externalising zod is decided here rather than through esbuild's
-        // `external` option, which matches a bare package name against its
-        // subpaths too. The host runtime alias substitutes a prefix, so an
-        // externalised `zod/mini` would resolve to `.../zod-runtime.js/mini`.
-        // Subpaths stay bundled.
         if (options.hostProvidedBareZod === true && args.path === "zod") {
           return { path: args.path, external: true };
         }

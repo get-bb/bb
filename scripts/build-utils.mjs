@@ -205,8 +205,6 @@ export async function buildNodeEsmEntry({
     format: "esm",
     legalComments: "none",
     ...(split ? split.esbuild : { outfile }),
-    // Every Node entry here pays for zod's ~49 translated locale modules
-    // otherwise; see the plugin's own docs for why esbuild cannot shake them.
     plugins: [zodLocaleStubPlugin()],
     platform: "node",
     sourcemap,

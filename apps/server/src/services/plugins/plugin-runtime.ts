@@ -129,14 +129,19 @@ export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
   };
 }
 
-/**
- * Bundled builtins leave zod to the server rather than each inlining a copy,
- * so their prebuilt `dist/server.js` needs the server's zod at load time. It
- * is deliberately not added for plugins loaded from source: a plugin being
- * developed against its own checkout keeps the zod it installed.
- */
-export function zodAliasFor(runtimePath: string): Record<string, string> {
-  return { [ZOD_SPECIFIER]: runtimePath };
+export function zodAliasFor(args: {
+  runtimePath: string | undefined;
+  sourceKind: InstalledPluginRow["sourceKind"];
+  serverEntry: string;
+}): Record<string, string> | undefined {
+  if (
+    args.runtimePath === undefined ||
+    args.sourceKind !== "builtin" ||
+    !args.serverEntry.endsWith(`${sep}dist${sep}server.js`)
+  ) {
+    return undefined;
+  }
+  return { [ZOD_SPECIFIER]: args.runtimePath };
 }
 
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
@@ -145,8 +150,8 @@ const pluginSdkAlias: Record<string, string> | undefined = existsSync(
   ? pluginSdkAliasFor(pluginSdkRuntimePath)
   : undefined;
 
-const zodAlias: Record<string, string> | undefined = existsSync(zodRuntimePath)
-  ? zodAliasFor(zodRuntimePath)
+const availableZodRuntimePath = existsSync(zodRuntimePath)
+  ? zodRuntimePath
   : undefined;
 
 interface MutableRoot {
@@ -1624,10 +1629,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     try {
       const serverEntry = await resolveServerEntry(row, manifest);
-      const prebuilt = serverEntry.endsWith(`${sep}dist${sep}server.js`);
       const alias = {
         ...pluginSdkAlias,
-        ...(prebuilt ? zodAlias : undefined),
+        ...zodAliasFor({
+          runtimePath: availableZodRuntimePath,
+          sourceKind: row.sourceKind,
+          serverEntry,
+        }),
       };
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,

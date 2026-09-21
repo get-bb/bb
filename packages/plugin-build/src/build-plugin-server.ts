@@ -70,13 +70,6 @@ interface PluginServerBuildResult {
 }
 
 export interface PluginServerBuildOptions {
-  /**
-   * Leave the bare `zod` specifier to the server's own copy instead of
-   * bundling one. Only the bundled-builtin build may: a builtin is built from
-   * this repository and ships inside the same package as the server, so the
-   * lockfile pins both to one zod. An installed plugin resolves zod from
-   * whatever it declared, which need not match, so it keeps its own copy.
-   */
   hostProvidedZod: boolean;
 }
 

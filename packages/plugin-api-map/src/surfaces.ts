@@ -1020,6 +1020,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Ship a Node entry point bb starts on demand on the machine it calls",
           "Call that worker from its server code over typed RPC",
+          "Declare zod in dependencies when server or host code uses SDK runtime exports that require it; SDK entries leave Zod external, and bb plugin build bundles the installed dependency into the plugin artifact",
+          "Ship self-contained host bundles to enrolled machines; the daemon does not supply Zod at runtime",
           "Do work that has to happen on the machine itself, such as watching files or holding a wake lock",
           "Declare desired loopback ports once and let bb deliver retained declarations when an enrolled machine reconnects",
           "Kill whatever is still running under a directory it is about to delete, SIGTERM then SIGKILL, so a torn-down workspace leaves nothing behind",

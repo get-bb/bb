@@ -48,7 +48,6 @@ async function buildFixture(): Promise<string> {
     }),
   );
   await writeFile(join(dir, "server.ts"), SERVER_SOURCE);
-  // plugin-build has no zod of its own; borrow the SDK's, which declares it.
   const zodDir = dirname(
     createRequire(
       resolve(import.meta.dirname, "../../plugin-sdk/package.json"),
@@ -66,8 +65,6 @@ async function buildFixture(): Promise<string> {
 
 it("drops zod's translated locales from a plugin bundle", async () => {
   const bundle = await readFile(await buildFixture(), "utf8");
-  // Markers from zod's de/nl locale modules. Their presence is what the
-  // esbuild namespace re-export used to guarantee in every plugin bundle.
   expect(bundle).not.toContain("E-Mail-Adresse");
   expect(bundle).not.toContain("Ongeldige invoer");
 });
@@ -85,6 +82,5 @@ it("leaves parse results and English messages untouched", async () => {
     "Invalid input: expected string, received number",
     "Too small: expected number to be >=3",
   ]);
-  // The entire observable difference: `z.locales` keeps only the default map.
   expect(module.localeNames).toEqual(["en"]);
 });
