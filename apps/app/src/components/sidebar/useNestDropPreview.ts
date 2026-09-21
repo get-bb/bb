@@ -1,0 +1,42 @@
+import type { ThreadListEntry } from "@bb/domain";
+import type {
+  ProjectThreadNode,
+  SidebarSectionDefinition,
+  ThreadComparator,
+} from "@bb/client-core";
+import { resolveSidebarNestPreviewBeforeKey } from "./sidebarNestPreviewPlacement";
+import type { SectionThreadDndState } from "./useSectionThreadDnd";
+
+interface UseNestDropPreviewArgs {
+  compareThreads: ThreadComparator | undefined;
+  draftThreadIds: ReadonlySet<string>;
+  pinnedRootNodes: readonly ProjectThreadNode[];
+  sectionDnd: SectionThreadDndState | null;
+  sections: readonly SidebarSectionDefinition[];
+  threads: readonly ThreadListEntry[];
+}
+
+export function useNestDropPreview({
+  compareThreads,
+  draftThreadIds,
+  pinnedRootNodes,
+  sectionDnd,
+  sections,
+  threads,
+}: UseNestDropPreviewArgs): SectionThreadDndState | null {
+  if (!sectionDnd) return null;
+  const { activeThread, nestTarget } = sectionDnd;
+  if (!activeThread || nestTarget?.state !== "valid") return sectionDnd;
+  return {
+    ...sectionDnd,
+    nestPreviewBeforeKey: resolveSidebarNestPreviewBeforeKey({
+      activeThread,
+      compareThreads,
+      draftThreadIds,
+      parentThreadId: nestTarget.threadId,
+      pinnedRootNodes,
+      sections,
+      threads,
+    }),
+  };
+}

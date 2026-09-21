@@ -201,6 +201,7 @@ function draggingOverSection(): SectionThreadDndState {
     unchangedParentKey: null,
     itemIdsByParentKey: new Map(),
     nestTarget: null,
+    nestPreviewBeforeKey: null,
     onClickCapture: noop,
     pinnedItemIds: [],
     pinnedReorderPending: false,

@@ -159,25 +159,17 @@ interface ThreadRowContainerArgs {
 const NEST_TARGET_STATE_CLASS: Record<SidebarNestTargetState, string> = {
   valid:
     "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-ring",
-  blocked: "opacity-60 ring-1 ring-inset ring-destructive/60",
+  blocked: "ring-1 ring-inset ring-destructive/60",
   unchanged: "ring-1 ring-inset ring-sidebar-border",
 };
 
-const NEST_UNDERLINE_STATE_CLASS: Record<SidebarNestTargetState, string> = {
-  valid: "bg-sidebar-ring",
-  blocked: "bg-destructive/70",
-  unchanged: "bg-sidebar-border",
-};
-
-const NEST_UNDERLINE_OFFSET_PX = 2;
-const NEST_UNDERLINE_CORNER_INSET_PX = 6;
-
-export const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
-  before:
-    "before:pointer-events-none before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-sidebar-ring before:content-['']",
-  after:
-    "after:pointer-events-none after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-sidebar-ring after:content-['']",
-};
+export const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> =
+  {
+    before:
+      "before:pointer-events-none before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-sidebar-ring before:content-['']",
+    after:
+      "after:pointer-events-none after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-sidebar-ring after:content-['']",
+  };
 
 const WORKING_ACTIVITY_ICONS = {
   workflow: "Workflow",
@@ -645,27 +637,10 @@ function ThreadRowComponent({
       SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
-    nestTargetState
-      ? NEST_TARGET_STATE_CLASS[nestTargetState]
-      : reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
+    nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
+    reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
   const rowStyle = getThreadRowStyle(options.depth);
-  const nestUnderline = nestTargetState ? (
-    <span
-      aria-hidden="true"
-      data-sidebar-nest-underline=""
-      style={{
-        left: getSidebarThreadRowPaddingLeft(options.depth + 1),
-        right: NEST_UNDERLINE_CORNER_INSET_PX,
-        bottom: -NEST_UNDERLINE_OFFSET_PX,
-        height: NEST_UNDERLINE_OFFSET_PX,
-      }}
-      className={cn(
-        "pointer-events-none absolute rounded-full",
-        NEST_UNDERLINE_STATE_CLASS[nestTargetState],
-      )}
-    />
-  ) : null;
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
@@ -842,12 +817,7 @@ function ThreadRowComponent({
   );
 
   const row = renderThreadRowContainer({
-    children: (
-      <>
-        {rowContent}
-        {nestUnderline}
-      </>
-    ),
+    children: rowContent,
     className: rowClassName,
     containerRef,
     dragBindings: rowDragBindings,

@@ -94,6 +94,7 @@ export interface SectionThreadDndState {
   dragOverParentKey: string | null;
   unchangedParentKey: string | null;
   nestTarget: SectionThreadNestTarget | null;
+  nestPreviewBeforeKey: string | null;
   reorderTarget: SectionThreadReorderTarget | null;
   pinnedItemIds: readonly string[];
   pinnedReorderPending: boolean;
@@ -1316,6 +1317,7 @@ export function useSectionThreadDnd({
     unchangedParentKey:
       dropDecisionLanded || reorderTarget !== null ? null : unchangedParentKey,
     nestTarget: dropDecisionLanded ? null : rowDrop,
+    nestPreviewBeforeKey: null,
     reorderTarget: dropDecisionLanded ? null : reorderTarget,
     pinnedItemIds,
     pinnedReorderPending,

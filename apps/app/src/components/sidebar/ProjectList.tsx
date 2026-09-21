@@ -47,6 +47,7 @@ import {
   type ProjectThreadNode,
 } from "@bb/client-core";
 import { useSectionThreadDnd } from "./useSectionThreadDnd";
+import { useNestDropPreview } from "./useNestDropPreview";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -650,18 +651,24 @@ function buildGroupSectionItem(
 
 function useGroupedModeThreadDnd({
   collapsedThreadIds,
+  compareThreads,
+  draftThreadIds,
   onToggleThreadCollapsed,
   order,
   onOrderChange,
   pinned,
   rootItems,
+  threads,
 }: {
   collapsedThreadIds: Set<string>;
+  compareThreads: ThreadComparator;
+  draftThreadIds: ReadonlySet<string>;
   onToggleThreadCollapsed: ToggleCollapsedId;
   order: readonly SidebarSectionId[];
   onOrderChange: (order: SidebarSectionId[]) => void;
   pinned: GroupedModePinnedProps;
   rootItems: readonly ProjectThreadItem[];
+  threads: readonly ThreadListEntry[];
 }) {
   const expandThread = useCallback(
     (threadId: string) => {
@@ -671,7 +678,7 @@ function useGroupedModeThreadDnd({
     },
     [collapsedThreadIds, onToggleThreadCollapsed],
   );
-  return useSectionThreadDnd({
+  const threadDnd = useSectionThreadDnd({
     containerId: CHRONOLOGICAL_CONTAINER_ID,
     enabled: true,
     rootItems,
@@ -683,6 +690,14 @@ function useGroupedModeThreadDnd({
     pinnedThreads: pinned.pinnedThreads,
     pinnedRootNodes: pinned.pinnedRootNodes,
     onReorderPinnedThread: pinned.onReorderPinnedThread,
+  });
+  return useNestDropPreview({
+    compareThreads,
+    draftThreadIds,
+    pinnedRootNodes: pinned.pinnedRootNodes,
+    sectionDnd: threadDnd,
+    sections: EMPTY_SECTION_DEFINITIONS,
+    threads,
   });
 }
 
@@ -873,8 +888,14 @@ function ProjectModeSections({
     () => [...personalItems, ...projectGroups],
     [personalItems, projectGroups],
   );
+  const nonPinnedThreads = useMemo(
+    () => threads.filter((thread) => !effectivePinnedThreadIds.has(thread.id)),
+    [effectivePinnedThreadIds, threads],
+  );
   const threadDnd = useGroupedModeThreadDnd({
     collapsedThreadIds,
+    compareThreads,
+    draftThreadIds,
     onToggleThreadCollapsed,
     order: persistedOrder,
     onOrderChange,
@@ -885,6 +906,7 @@ function ProjectModeSections({
       onReorderPinnedThread,
     },
     rootItems: groupRootItems,
+    threads: nonPinnedThreads,
   });
   const builtInSections: BuiltInSidebarSectionOptionsById = {
     pinned: pinnedSection,
@@ -1228,6 +1250,8 @@ export function MachineModeSections({
   );
   const threadDnd = useGroupedModeThreadDnd({
     collapsedThreadIds,
+    compareThreads,
+    draftThreadIds,
     onToggleThreadCollapsed,
     order: persistedOrder,
     onOrderChange,
@@ -1238,6 +1262,7 @@ export function MachineModeSections({
       onReorderPinnedThread,
     },
     rootItems: groupRootItems,
+    threads: nonPinnedThreads,
   });
   const builtInSections: BuiltInSidebarSectionOptionsById = {
     pinned: pinnedSection,

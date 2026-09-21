@@ -37,6 +37,7 @@ function dndState(
     itemIdsByParentKey: new Map(),
     onClickCapture: () => undefined,
     nestTarget: null,
+    nestPreviewBeforeKey: null,
     reorderTarget: null,
     pinnedItemIds: [],
     pinnedReorderPending: false,
@@ -161,7 +162,9 @@ describe("TopLevelSidebarSection", () => {
     const dragged = makeThreadListEntry({ id: "dragged" });
 
     expect(renderSectionWithDrag(dndState(null, dragged))).toBeNull();
-    expect(renderSectionWithDrag(dndState("section:other", dragged))).toBeNull();
+    expect(
+      renderSectionWithDrag(dndState("section:other", dragged)),
+    ).toBeNull();
     expect(renderSectionWithDrag(dndState("section:design", dragged))).toBe(
       "active",
     );

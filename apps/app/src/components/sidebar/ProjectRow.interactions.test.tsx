@@ -97,10 +97,36 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   });
 }
 
+function makeSectionDnd(
+  overrides: Partial<SectionThreadDndState> = {},
+): SectionThreadDndState {
+  return {
+    activeThread: makeThread({
+      id: "thr_dragged",
+      title: "Dragged",
+      titleFallback: "Dragged",
+    }),
+    consumeClickSuppression: () => false,
+    dndContextProps: {},
+    dragOverParentKey: null,
+    unchangedParentKey: null,
+    itemIdsByParentKey: new Map(),
+    nestTarget: null,
+    nestPreviewBeforeKey: null,
+    onClickCapture: () => undefined,
+    pinnedItemIds: [],
+    pinnedReorderPending: false,
+    reorderTarget: null,
+    ...overrides,
+  };
+}
+
 function renderPinnedParentWithChild({
   isCollapsed,
+  sectionDnd,
 }: {
   isCollapsed: boolean;
+  sectionDnd: SectionThreadDndState;
 }) {
   const parent = makeThread({
     id: "thr_parent",
@@ -116,19 +142,6 @@ function renderPinnedParentWithChild({
   });
   const node = buildPinnedSidebarState({ threads: [parent, child] })
     .rootNodes[0];
-  const sectionDnd: SectionThreadDndState = {
-    activeThread: makeThread({ id: "thr_dragged" }),
-    consumeClickSuppression: () => false,
-    dndContextProps: {},
-    dragOverParentKey: null,
-    unchangedParentKey: null,
-    itemIdsByParentKey: new Map(),
-    nestTarget: null,
-    onClickCapture: () => undefined,
-    pinnedItemIds: [],
-    pinnedReorderPending: false,
-    reorderTarget: { threadId: "thr_parent", placement: "after" },
-  };
   const { container } = render(
     <TooltipProvider>
       <Provider store={createStore()}>
@@ -202,8 +215,69 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
 }
 
 describe("ProjectRow interactions", () => {
+  it("previews the dragged thread as a child of a valid nest target", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        nestTarget: { threadId: "thr_parent", state: "valid" },
+        nestPreviewBeforeKey: "thread:thr_child",
+      }),
+    });
+
+    const rows = [
+      ...container.querySelectorAll(
+        "[data-sidebar-thread-id], [data-sidebar-nest-drop-preview]",
+      ),
+    ];
+    expect(
+      rows.map(
+        (row) => row.getAttribute("data-sidebar-thread-id") ?? row.textContent,
+      ),
+    ).toEqual(["thr_parent", "Dragged", "thr_child"]);
+  });
+
+  it("previews the dragged thread after the last child when it sorts last", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        nestTarget: { threadId: "thr_parent", state: "valid" },
+        nestPreviewBeforeKey: null,
+      }),
+    });
+
+    const rows = [
+      ...container.querySelectorAll(
+        "[data-sidebar-thread-id], [data-sidebar-nest-drop-preview]",
+      ),
+    ];
+    expect(
+      rows.map(
+        (row) => row.getAttribute("data-sidebar-thread-id") ?? row.textContent,
+      ),
+    ).toEqual(["thr_parent", "thr_child", "Dragged"]);
+  });
+
+  it("leaves a blocked nest target without a child preview", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        nestTarget: { threadId: "thr_parent", state: "blocked" },
+        nestPreviewBeforeKey: null,
+      }),
+    });
+
+    expect(
+      container.querySelector("[data-sidebar-nest-drop-preview]"),
+    ).toBeNull();
+  });
+
   it("anchors a pinned insert line below the subtree, not between parent and child", () => {
-    const container = renderPinnedParentWithChild({ isCollapsed: false });
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        reorderTarget: { threadId: "thr_parent", placement: "after" },
+      }),
+    });
 
     expect(screen.getByText("Child")).not.toBeNull();
     expect(
@@ -217,7 +291,12 @@ describe("ProjectRow interactions", () => {
   });
 
   it("anchors a pinned insert line on the row when the subtree is collapsed", () => {
-    const container = renderPinnedParentWithChild({ isCollapsed: true });
+    const container = renderPinnedParentWithChild({
+      isCollapsed: true,
+      sectionDnd: makeSectionDnd({
+        reorderTarget: { threadId: "thr_parent", placement: "after" },
+      }),
+    });
 
     expect(screen.queryByText("Child")).toBeNull();
     expect(

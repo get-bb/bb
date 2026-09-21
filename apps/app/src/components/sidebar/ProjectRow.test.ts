@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatArchivedEnvironmentThreadsToastTitle } from "./ProjectRow";
 
-
 describe("formatArchivedEnvironmentThreadsToastTitle", () => {
   it("uses the thread title when archiving one thread", () => {
     expect(
