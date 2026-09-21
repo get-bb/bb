@@ -15,7 +15,7 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import { getToolsOwnedCollectionRoutePath } from "@/lib/route-paths";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { getPluginSettingsEntryRoutePath } from "./plugin-settings-entries";
 import { useCloseMobileSidebar } from "@/components/ui/sidebar";
 import { useSettingsNavState } from "./settings-nav";
