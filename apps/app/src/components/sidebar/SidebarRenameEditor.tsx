@@ -133,7 +133,7 @@ export default function SidebarRenameEditor({
         aria-describedby={session.error ? errorId : undefined}
         autoCapitalize="sentences"
         autoCorrect="off"
-        className="min-w-0 flex-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 [font:inherit] outline-none ring-1 ring-ring"
+        className="min-w-0 flex-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 [font:inherit] outline-none"
         spellCheck={false}
         value={session.draft}
         placeholder={session.placeholder}
