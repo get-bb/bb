@@ -328,7 +328,7 @@ function SpatialFixture({
         ),
       );
       const scaled = Math.abs(scale - 1) >= 0.0001;
-      const height = scaled ? authoredHeight * scale : null;
+      const height = authoredHeight * scale;
       const width = scaled ? authoredWidth : null;
       const offsetX = scaled ? (frame.clientWidth - authoredWidth) / 2 : 0;
       setGeometry((current) =>
@@ -371,14 +371,14 @@ function SpatialFixture({
     };
   }, [maxScale]);
 
-  const scaled = geometry.height !== null;
+  const scaled = geometry.width !== null;
   return (
     <div
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
       className="w-full overflow-x-clip transition-[height] duration-300 ease-out"
-      style={scaled ? { height: geometry.height ?? undefined } : undefined}
+      style={{ height: geometry.height ?? undefined }}
     >
       <div
         ref={fixtureRef}
