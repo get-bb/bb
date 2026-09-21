@@ -45,7 +45,7 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
 afterEach(cleanup);
 
 describe("plugin marketplace author links", () => {
-  it("preserves Overview and listing metadata as peers of Description", () => {
+  it("preserves the description, Overview, and listing metadata", () => {
     const overview =
       "## Requirements\n\nKeep the complete instructions.\n\n```sh\nbb secret request TOKEN\n```";
     render(
@@ -60,9 +60,10 @@ describe("plugin marketplace author links", () => {
         }}
       />,
     );
+    expect(screen.getByText("Securely request credentials.")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Description", level: 2 }),
-    ).toBeTruthy();
+      screen.queryByRole("heading", { name: /^(About|Description)$/u }),
+    ).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Overview", level: 2 }),
     ).toBeTruthy();
@@ -88,7 +89,7 @@ describe("plugin marketplace author links", () => {
 
   it("does not create an empty Overview for a description-only plugin", () => {
     render(<PluginMarketplaceListingSections entry={catalogEntry("Local")} />);
-    expect(screen.getByRole("heading", { name: "Description" })).toBeTruthy();
+    expect(screen.getByText("Local description")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
   });
 
