@@ -38,7 +38,10 @@ export function NewTabPage({
   startTerminalTrailing,
 }: NewTabPageProps) {
   return (
-    <div className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1">
+    <div
+      data-panel-new-tab-page=""
+      className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1"
+    >
       <NewTabFileSearch
         projectId={projectId}
         environmentId={environmentId}

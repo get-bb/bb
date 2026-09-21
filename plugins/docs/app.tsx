@@ -10,6 +10,7 @@ import {
   definePluginApp,
   experimental_FileLink as FileLink,
   useBbNavigate,
+  useComposer,
   useRpc,
   useRealtime,
   type PluginFileOpenerProps,
@@ -18,6 +19,23 @@ import {
   type PluginThreadPanelProps,
   type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
+import {
+  DOMParser as ProseMirrorDOMParser,
+  type Node as ProseMirrorNode,
+} from "@tiptap/pm/model";
+import { createProposalDiff, proposalDiffKey } from "./proposal-diff.js";
+import {
+  useDocumentSession,
+  useSavedDocument,
+  type DocumentIO,
+} from "./document-session.js";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import type { docsRpcContract } from "./server.js";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
@@ -306,6 +324,7 @@ const EDITOR_CSS = `
   font-size: 15px; line-height: 1.75; color: var(--foreground); caret-color: var(--foreground);
   overflow-wrap: break-word; -webkit-font-smoothing: antialiased;
 }
+.bb-simple-notes-editor[data-inline="true"] .tiptap { padding: 1.25rem 1.5rem; max-width: none; min-height: 8rem; font-size: inherit; }
 .bb-simple-notes-editor .tiptap > :first-child,
 .bb-simple-notes-editor .tiptap li > :first-child,
 .bb-simple-notes-editor .tiptap blockquote > :first-child { margin-top: 0; }
@@ -395,40 +414,63 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function TiptapEditor({
-  initialValue,
-  previewBaseUrl,
-  notePath,
-  onUpload,
-  onFirstRender,
-  onMarkdownChange,
-}: {
+function TiptapEditor(props: {
   initialValue: string;
   previewBaseUrl: string;
   notePath: string;
   onUpload(file: File): Promise<{ markdownPath: string }>;
   onFirstRender(markdown: string): void;
   onMarkdownChange(markdown: string): void;
+  value?: string;
+  baseMarkdown?: string | null;
+  inline?: boolean;
+  disabled?: boolean;
+  onFocusChange?(focused: boolean): void;
 }) {
+  const {
+    initialValue,
+    previewBaseUrl,
+    notePath,
+    value,
+    baseMarkdown = null,
+    inline = false,
+    disabled = false,
+  } = props;
   const rootRef = useRef<HTMLDivElement>(null);
-  const uploadRef = useRef(onUpload);
-  uploadRef.current = onUpload;
-  const firstRef = useRef(onFirstRender);
-  firstRef.current = onFirstRender;
-  const changeRef = useRef(onMarkdownChange);
-  changeRef.current = onMarkdownChange;
+  const editorRef = useRef<Editor | null>(null);
+  const baselineRef = useRef<ProseMirrorNode | null>(null);
+  const sourceRef = useRef(initialValue);
+  const latest = useRef(props);
+  latest.current = props;
+  const serializeRef = useRef<() => string>(() => "");
+  const setBase = (editor: Editor) => {
+    if (latest.current.baseMarkdown == null) baselineRef.current = null;
+    else {
+      const body = parseMarkdownDocument(latest.current.baseMarkdown).body;
+      const root = new window.DOMParser().parseFromString(
+        editor.storage.markdown.parser.parse(
+          displayMarkdown(body, previewBaseUrl, notePath),
+        ),
+        "text/html",
+      ).body;
+      baselineRef.current = ProseMirrorDOMParser.fromSchema(
+        editor.schema,
+      ).parse(root);
+    }
+    editor.view.dispatch(
+      editor.state.tr.setMeta(proposalDiffKey, { refresh: true }),
+    );
+  };
 
   useEffect(() => {
     ensureEditorStyles();
     if (!rootRef.current) return;
-    const markdownDocument = parseMarkdownDocument(initialValue);
-    const bodyLeadingBreaks = markdownDocument.frontmatter
-      ? (/^(?:\r?\n)*/.exec(markdownDocument.body)?.[0] ?? "")
-      : "";
+    sourceRef.current = latest.current.value ?? initialValue;
+    const markdownDocument = parseMarkdownDocument(sourceRef.current);
     let editor: Editor;
     const upload = async (file: File) => {
       if (!file.type.startsWith("image/")) return false;
-      const result = await uploadRef.current(file);
+      const result = await latest.current.onUpload(file);
       editor
         .chain()
         .focus()
@@ -443,6 +485,7 @@ function TiptapEditor({
       element: rootRef.current,
       extensions: [
         StarterKit,
+        createProposalDiff({ getBaseDocument: () => baselineRef.current }),
         Link.configure({ openOnClick: false, autolink: true }),
         Image.configure({ allowBase64: false }),
         TaskList,
@@ -462,8 +505,21 @@ function TiptapEditor({
         }),
       ],
       content: displayMarkdown(markdownDocument.body, previewBaseUrl, notePath),
-      autofocus: "end",
+      autofocus: inline ? false : "end",
+      editable: !disabled,
+      onFocus: () => latest.current.onFocusChange?.(true),
+      onBlur: () => latest.current.onFocusChange?.(false),
       editorProps: {
+        attributes: {
+          role: "textbox",
+          "aria-label": "Document content",
+          "aria-multiline": "true",
+        },
+        handleKeyDown(view, event) {
+          if (!inline || event.key !== "Escape") return false;
+          view.dom.blur();
+          return true;
+        },
         handlePaste(_view, event) {
           const file = [...(event.clipboardData?.files ?? [])].find(
             (candidate) => candidate.type.startsWith("image/"),
@@ -483,25 +539,66 @@ function TiptapEditor({
         },
       },
     });
-    const getMarkdown = () =>
-      markdownDocument.frontmatter +
-      bodyLeadingBreaks +
-      storedMarkdown(
-        editor.storage.markdown.getMarkdown(),
-        previewBaseUrl,
-        notePath,
+    editorRef.current = editor;
+    setBase(editor);
+    const getMarkdown = () => {
+      const current = parseMarkdownDocument(sourceRef.current);
+      const leadingBreaks = current.frontmatter
+        ? (/^(?:\r?\n)*/.exec(current.body)?.[0] ?? "")
+        : "";
+      return (
+        current.frontmatter +
+        leadingBreaks +
+        storedMarkdown(
+          editor.storage.markdown.getMarkdown(),
+          previewBaseUrl,
+          notePath,
+        )
       );
-    firstRef.current(getMarkdown());
-    editor.on("update", () => changeRef.current(getMarkdown()));
+    };
+    serializeRef.current = getMarkdown;
+    latest.current.onFirstRender(getMarkdown());
+    editor.on("update", () => latest.current.onMarkdownChange(getMarkdown()));
     return () => {
       editor.destroy();
+      editorRef.current = null;
     };
-  }, [initialValue, notePath, previewBaseUrl]);
+  }, [initialValue, notePath, previewBaseUrl, inline]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || value === undefined) return;
+    if (value !== sourceRef.current && value !== serializeRef.current()) {
+      const { from, to } = editor.state.selection;
+      const focused = editor.isFocused;
+      editor.commands.setContent(
+        displayMarkdown(
+          parseMarkdownDocument(value).body,
+          previewBaseUrl,
+          notePath,
+        ),
+        false,
+      );
+      if (focused)
+        editor.commands.setTextSelection({
+          from: Math.min(from, editor.state.doc.content.size),
+          to: Math.min(to, editor.state.doc.content.size),
+        });
+    }
+    sourceRef.current = value;
+  }, [value, notePath, previewBaseUrl]);
+  useEffect(() => {
+    if (editorRef.current) setBase(editorRef.current);
+  }, [baseMarkdown]);
+  useEffect(() => {
+    editorRef.current?.setEditable(!disabled, false);
+  }, [disabled]);
 
   return (
     <div
       ref={rootRef}
-      className="bb-simple-notes-editor min-h-0 flex-1 overflow-y-auto"
+      data-inline={inline}
+      className="bb-simple-notes-editor min-h-0 flex-1 overflow-y-auto text-sm"
     />
   );
 }
@@ -732,6 +829,283 @@ function parseDocumentRef(value: unknown): DocumentRef | null {
   return { vaultId, path, title };
 }
 
+function DocumentAction({
+  label,
+  icon,
+  disabled = false,
+  onClick,
+}: {
+  label: string;
+  icon: string;
+  disabled?: boolean;
+  onClick(): void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <button
+            type="button"
+            aria-label={label}
+            disabled={disabled}
+            onClick={onClick}
+            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-40"
+          >
+            <Icon name={icon} className="size-3" />
+          </button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function InlineDocument({
+  document,
+  openInTab,
+}: {
+  document: DocumentRef;
+  openInTab?(): void;
+}) {
+  const { state, session } = useDocumentSession(
+    document.vaultId,
+    document.path,
+  );
+  const rpc = useRpc<typeof docsRpcContract>();
+  const composer = useComposer();
+  const [editing, setEditing] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [truncated, setTruncated] = useState(false);
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!openInTab || !content) return;
+    const measure = () =>
+      setTruncated(content.getBoundingClientRect().height > 400);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [state.loaded, openInTab]);
+  const pending = state.proposal?.status === "pending" ? state.proposal : null;
+  const stale = pending !== null && pending.baseSha256 !== state.sha256;
+  const undo =
+    state.proposal &&
+    ((state.proposal.status === "accepted" &&
+      state.proposal.resolvedSha256 === state.sha256) ||
+      (state.proposal.status === "rejected" &&
+        state.proposal.baseSha256 === state.sha256));
+  const redo =
+    state.proposal?.status === "undone" &&
+    state.proposal.baseSha256 === state.sha256;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(state.draft);
+      toast.success("Document copied");
+    } catch {
+      toast.error("Could not copy the document");
+    }
+  };
+  const ask = async () => {
+    setAsking(true);
+    setAskError(null);
+    try {
+      await session.flush();
+      composer.updateText(
+        (current) => `${current}${current.trim() ? "\n\n" : ""}Update `,
+      );
+      composer.insertMention({
+        provider: "note",
+        id: `${document.vaultId}:${document.path}`,
+        label: document.title,
+      });
+      composer.focus();
+    } catch (error) {
+      setAskError(errorMessage(error));
+    } finally {
+      setAsking(false);
+    }
+  };
+  const baseMetadata = pending
+    ? parseMarkdownDocument(pending.baseContent).frontmatter
+    : "";
+  const candidateMetadata = pending
+    ? parseMarkdownDocument(state.draft).frontmatter
+    : "";
+  return (
+    <TooltipProvider delayDuration={200}>
+      <section
+        aria-label={document.title}
+        className="my-2 min-w-0 overflow-hidden rounded-lg border border-border bg-background"
+      >
+        <header className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-semibold">Docs</span>
+            <span className="truncate opacity-70">{document.title}</span>
+          </div>
+          {(state.busy || state.saving || asking) && (
+            <span
+              role="status"
+              className="inline-flex size-5 shrink-0 items-center justify-center"
+            >
+              <Icon name="Loading" className="size-3 animate-spin" />
+              <span className="sr-only">Updating document…</span>
+            </span>
+          )}
+          <div
+            className="flex shrink-0 items-center gap-0.5"
+            role="group"
+            aria-label="Document actions"
+          >
+            {pending && (
+              <>
+                <DocumentAction
+                  label="Accept"
+                  icon="Check"
+                  disabled={state.busy || state.saving || stale}
+                  onClick={() => void session.resolve("accept")}
+                />
+                <DocumentAction
+                  label="Reject"
+                  icon="X"
+                  disabled={state.busy}
+                  onClick={() => void session.resolve("reject")}
+                />
+              </>
+            )}
+            {undo && !state.dirty && (
+              <DocumentAction
+                label="Undo"
+                icon="ArrowTurnBackward"
+                disabled={state.busy}
+                onClick={() => void session.resolve("undo")}
+              />
+            )}
+            {redo && !state.dirty && (
+              <DocumentAction
+                label="Redo"
+                icon="ArrowTurnForward"
+                disabled={state.busy}
+                onClick={() => void session.resolve("redo")}
+              />
+            )}
+            <DocumentAction
+              label="Ask for changes"
+              icon="MessageSquare"
+              disabled={!state.loaded || state.busy || asking}
+              onClick={() => void ask()}
+            />
+            <DocumentAction
+              label="Copy"
+              icon="Copy"
+              disabled={!state.loaded}
+              onClick={() => void copy()}
+            />
+            {openInTab && (
+              <>
+                <span className="mx-1 h-4 border-l border-border" />
+                <DocumentAction
+                  label="Open in tab"
+                  icon="ExternalLink"
+                  onClick={openInTab}
+                />
+              </>
+            )}
+          </div>
+        </header>
+        {(state.error || askError) && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 text-xs text-destructive"
+            role="alert"
+          >
+            <span>{state.error || askError}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void (state.dirty ? session.flush() : session.refresh()).catch(
+                  () => undefined,
+                )
+              }
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+        {stale && (
+          <p className="px-4 py-2 text-xs text-muted-foreground">
+            This document changed. Ask for an updated proposal before accepting.
+          </p>
+        )}
+        <div
+          className="relative"
+          style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
+        >
+          {!state.loaded ? (
+            <DocumentSkeleton />
+          ) : (
+            <>
+              <div
+                ref={contentRef}
+                data-editing={editing && !truncated}
+                className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
+              >
+                {pending && baseMetadata !== candidateMetadata && (
+                  <div className="px-6 pt-4 text-xs">
+                    <p className="mb-2 font-medium">Document metadata</p>
+                    {baseMetadata && (
+                      <pre className="whitespace-pre-wrap bg-diff-removed/10 text-diff-removed">
+                        <del>{baseMetadata}</del>
+                      </pre>
+                    )}
+                    {candidateMetadata && (
+                      <pre className="whitespace-pre-wrap bg-diff-added/10 text-diff-added">
+                        {candidateMetadata}
+                      </pre>
+                    )}
+                  </div>
+                )}
+                <TiptapEditor
+                  initialValue=""
+                  value={state.draft}
+                  baseMarkdown={pending?.baseContent ?? null}
+                  inline
+                  disabled={state.busy || truncated}
+                  previewBaseUrl={state.previewBaseUrl}
+                  notePath={document.path}
+                  onFocusChange={setEditing}
+                  onFirstRender={() => undefined}
+                  onMarkdownChange={session.edit}
+                  onUpload={async (file) => {
+                    const result = await rpc.call("uploadAttachment", {
+                      vaultId: document.vaultId,
+                      notePath: document.path,
+                      name: file.name,
+                      content: await fileToBase64(file),
+                    });
+                    return { markdownPath: result.markdownPath };
+                  }}
+                />
+              </div>
+              {truncated && openInTab && (
+                <button
+                  type="button"
+                  aria-label={`Open ${document.title} in tab`}
+                  className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                  onClick={openInTab}
+                >
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background via-background/95 to-transparent" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+    </TooltipProvider>
+  );
+}
+
 function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   const navigate = useBbNavigate();
   const document = parseDocumentRef(attributes);
@@ -758,6 +1132,8 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
     });
     if (!opened) openInDocs();
   };
+  if (!/\.html?$/i.test(document.path))
+    return <InlineDocument document={document} openInTab={openPreview} />;
   return (
     <div className="my-3 flex h-11 items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm transition-colors hover:bg-state-hover">
       <button
@@ -766,10 +1142,7 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
         onClick={openPreview}
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <HugeiconsIcon
-            icon={/\.html?$/i.test(document.path) ? HtmlFile01Icon : File01Icon}
-            className="size-4"
-          />
+          <HugeiconsIcon icon={HtmlFile01Icon} className="size-4" />
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {document.title}
@@ -788,7 +1161,12 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   );
 }
 
-function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
+function HtmlPreview({
+  vaultId,
+  path,
+  title,
+  panel = false,
+}: DocumentRef & { panel?: boolean }) {
   const rpc = useRpc<typeof docsRpcContract>();
   const [state, setState] = useState<PreviewLease | { error: string } | null>(
     null,
@@ -798,8 +1176,8 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
     setState(null);
     rpc
       .call("preparePreview", {
-        vaultId: document.vaultId,
-        path: document.path,
+        vaultId,
+        path,
       })
       .then((lease) => {
         if (active) setState(lease);
@@ -813,29 +1191,63 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
     return () => {
       active = false;
     };
-  }, [document.path, document.vaultId, rpc]);
+  }, [path, vaultId, rpc]);
   if (!state) return <DocumentSkeleton />;
   if ("error" in state)
-    return <div className="text-sm text-destructive">{state.error}</div>;
+    return (
+      <div
+        className={`text-sm text-destructive ${panel ? "" : "min-w-0 flex-1 p-6"}`}
+      >
+        {state.error}
+      </div>
+    );
   return (
     <iframe
-      className="min-h-[32rem] flex-1 border-0 bg-white"
+      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-white`}
       sandbox="allow-scripts"
-      title={document.title}
-      src={`${state.baseUrl}/${encodePath(document.path)}`}
+      title={title}
+      src={`${state.baseUrl}/${encodePath(path)}`}
     />
+  );
+}
+
+function DocumentPicker() {
+  const [subPath, setSubPath] = useState("");
+  const navigate = useBbNavigate();
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Choose a document to open.
+      </p>
+      <NotesWorkspace
+        subPath={subPath}
+        navigationOnly
+        onNavigate={(next) => {
+          const [vaultId, ...parts] = next.split("/");
+          const filePath = parts.join("/");
+          if (vaultId && filePath) {
+            const title = (filePath.split("/").pop() ?? filePath).replace(
+              /\.(md|html?)$/i,
+              "",
+            );
+            navigate.openThreadPanel({
+              actionId: "document",
+              title,
+              params: { vaultId, path: filePath, title },
+            });
+          } else setSubPath(next);
+        }}
+      />
+    </div>
   );
 }
 
 function DocumentPanel({ params }: PluginThreadPanelProps) {
   const document = parseDocumentRef(params);
   const navigate = useBbNavigate();
-  if (!document)
-    return (
-      <div className="text-sm text-muted-foreground">
-        Open a Docs card from a message to edit it here.
-      </div>
-    );
+  if (!document) return <DocumentPicker />;
+  if (!/\.html?$/i.test(document.path))
+    return <InlineDocument document={document} />;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2">
@@ -856,17 +1268,67 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
           <HugeiconsIcon icon={ArrowUpRight01Icon} />
         </Button>
       </div>
-      {/\.html?$/i.test(document.path) ? (
-        <HtmlDocumentPanelBody document={document} />
-      ) : (
-        <NotePane
-          vaultId={document.vaultId}
-          notePath={document.path}
-          onChanged={() => undefined}
-          onRenamed={() => undefined}
-          renameToTitle={false}
-        />
+      <HtmlPreview {...document} panel />
+    </div>
+  );
+}
+
+function SavedDocumentEditor({
+  io,
+  onUpload,
+  onReload,
+  errorHint = "",
+}: {
+  io: DocumentIO;
+  onUpload(file: File): Promise<{ markdownPath: string }>;
+  onReload?(): void;
+  errorHint?: string;
+}) {
+  const { state, session } = useSavedDocument(io);
+  if (!state.loaded)
+    return state.error ? (
+      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
+        {state.error}
+        {errorHint}
+      </div>
+    ) : (
+      <DocumentSkeleton />
+    );
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {state.conflict && (
+        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
+          Changed on disk.
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => (onReload ? onReload() : void session.reload())}
+          >
+            Reload
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void session.flush(true).catch(() => undefined)}
+          >
+            Overwrite
+          </Button>
+        </div>
       )}
+      {state.error && !state.conflict && (
+        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
+          {state.error}
+        </div>
+      )}
+      <TiptapEditor
+        initialValue={state.initialContent}
+        value={state.draft}
+        previewBaseUrl={state.previewBaseUrl}
+        notePath={state.previewPath}
+        onUpload={onUpload}
+        onFirstRender={session.initialize}
+        onMarkdownChange={session.edit}
+      />
     </div>
   );
 }
@@ -876,166 +1338,65 @@ function NotePane({
   notePath,
   onChanged,
   onRenamed,
-  renameToTitle = true,
 }: {
   vaultId: string;
   notePath: string;
   onChanged(): void;
   onRenamed(path: string): void;
-  renameToTitle?: boolean;
 }) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const [state, setState] = useState<
-    { content: string; lease: PreviewLease } | { error: string } | null
-  >(null);
-  const [conflict, setConflict] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const markdownRef = useRef("");
-  const savedRef = useRef("");
-  const shaRef = useRef<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savingRef = useRef(false);
-  const pathRef = useRef(notePath);
-  const changedRef = useRef(onChanged);
-  changedRef.current = onChanged;
-  const renamedRef = useRef(onRenamed);
-  renamedRef.current = onRenamed;
-
-  useEffect(() => {
-    let active = true;
-    setState(null);
-    Promise.all([
-      rpc.call("readNote", { vaultId, path: notePath }),
-      rpc.call("preparePreview", { vaultId, path: notePath }),
-    ])
-      .then(([file, lease]) => {
-        if (!active) return;
-        pathRef.current = notePath;
-        markdownRef.current = file.content;
-        savedRef.current = file.content;
-        shaRef.current = file.sha256;
-        setState({ content: file.content, lease });
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setState({
-            error: errorMessage(error),
-          });
-      });
-    return () => {
-      active = false;
-    };
-  }, [notePath, rpc, vaultId]);
-
-  const save = useCallback(
-    async (force = false) => {
-      if (
-        savingRef.current ||
-        (!force && markdownRef.current === savedRef.current)
-      )
-        return;
-      savingRef.current = true;
-      setSaveError(null);
-      const content = markdownRef.current;
-      try {
-        const result = await rpc.call("saveNote", {
+  const callbacks = useRef({ onChanged, onRenamed });
+  callbacks.current = { onChanged, onRenamed };
+  const { io, upload } = useMemo(() => {
+    let path = notePath;
+    const io: DocumentIO = {
+      delay: 700,
+      read: async () => {
+        const [file, lease] = await Promise.all([
+          rpc.call("readNote", { vaultId, path }),
+          rpc.call("preparePreview", { vaultId, path }),
+        ]);
+        return {
+          content: file.content,
+          sha256: file.sha256,
+          previewBaseUrl: lease.baseUrl,
+          previewPath: path,
+          proposal: null,
+        };
+      },
+      write: (content, expectedSha256) =>
+        rpc.call("saveNote", {
           vaultId,
-          path: pathRef.current,
+          path,
           content,
-          ...(!force && shaRef.current
-            ? { expectedSha256: shaRef.current }
-            : {}),
-        });
-        if (result.outcome === "conflict") {
-          setConflict(true);
-          return;
+          ...(expectedSha256 === null ? {} : { expectedSha256 }),
+        }),
+      afterSave: async () => {
+        callbacks.current.onChanged();
+        const renamed = await rpc.call("renameToTitle", { vaultId, path });
+        if (renamed.path !== path) {
+          path = renamed.path;
+          callbacks.current.onRenamed(path);
         }
-        savedRef.current = content;
-        shaRef.current = result.sha256;
-        setConflict(false);
-        changedRef.current();
-        if (renameToTitle) {
-          const renamed = await rpc.call("renameToTitle", {
-            vaultId,
-            path: pathRef.current,
-          });
-          if (renamed.path !== pathRef.current) {
-            pathRef.current = renamed.path;
-            renamedRef.current(renamed.path);
-          }
-        }
-      } catch (error) {
-        setSaveError(errorMessage(error));
-      } finally {
-        savingRef.current = false;
-      }
-    },
-    [renameToTitle, rpc, vaultId],
-  );
-
-  const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void save(), 700);
-  }, [save]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      void save();
-    },
-    [save],
-  );
-
-  if (!state) return <DocumentSkeleton />;
-  if ("error" in state)
-    return (
-      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
-        {state.error}
-      </div>
-    );
-
+      },
+    };
+    const upload = async (file: File) => {
+      const result = await rpc.call("uploadAttachment", {
+        vaultId,
+        notePath: path,
+        name: file.name,
+        content: await fileToBase64(file),
+      });
+      return { markdownPath: result.markdownPath };
+    };
+    return { io, upload };
+  }, [rpc, vaultId, notePath]);
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {conflict ? (
-        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
-          Changed on disk.
-          <Button size="sm" variant="ghost" onClick={() => location.reload()}>
-            Reload
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void save(true)}>
-            Overwrite
-          </Button>
-        </div>
-      ) : null}
-      {saveError ? (
-        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
-          {saveError}
-        </div>
-      ) : null}
-      <TiptapEditor
-        initialValue={state.content}
-        previewBaseUrl={state.lease.baseUrl}
-        notePath={notePath}
-        onUpload={async (file) => {
-          const content = await fileToBase64(file);
-          const value = await rpc.call("uploadAttachment", {
-            vaultId,
-            notePath: pathRef.current,
-            name: file.name,
-            content,
-          });
-          return { markdownPath: value.markdownPath };
-        }}
-        onFirstRender={(markdown) => {
-          markdownRef.current = markdown;
-          savedRef.current = markdown;
-        }}
-        onMarkdownChange={(markdown) => {
-          markdownRef.current = markdown;
-          scheduleSave();
-        }}
-      />
-    </div>
+    <SavedDocumentEditor
+      io={io}
+      onUpload={upload}
+      onReload={() => location.reload()}
+    />
   );
 }
 
@@ -1084,103 +1445,32 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       source.threadId,
     ],
   );
-  const [state, setState] = useState<
-    | { content: string; lease: PreviewLease; previewPath: string }
-    | { error: string }
-    | null
-  >(null);
-  const [conflict, setConflict] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
-  const markdownRef = useRef("");
-  const savedRef = useRef("");
-  const shaRef = useRef<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savingRef = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-    setState(null);
-    setConflict(false);
-    setSaveError(null);
-    void rpc
-      .call("openFile", { source: openerSource, path: filePath })
-      .then(({ file, preview, previewPath }) => {
-        if (!active) return;
-        markdownRef.current = file.content;
-        savedRef.current = file.content;
-        shaRef.current = file.sha256;
-        setState({ content: file.content, lease: preview, previewPath });
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setState({
-            error: errorMessage(error),
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [filePath, openerSource, reloadNonce, rpc]);
-
-  const save = useCallback(
-    async (force = false) => {
-      if (
-        savingRef.current ||
-        (!force && markdownRef.current === savedRef.current)
-      )
-        return;
-      savingRef.current = true;
-      setSaveError(null);
-      const content = markdownRef.current;
-      try {
-        const result = await rpc.call("saveOpenedFile", {
+  const io = useMemo<DocumentIO>(
+    () => ({
+      delay: 700,
+      read: async () => {
+        const { file, preview, previewPath } = await rpc.call("openFile", {
+          source: openerSource,
+          path: filePath,
+        });
+        return {
+          content: file.content,
+          sha256: file.sha256,
+          previewBaseUrl: preview.baseUrl,
+          previewPath,
+          proposal: null,
+        };
+      },
+      write: (content, expectedSha256) =>
+        rpc.call("saveOpenedFile", {
           source: openerSource,
           path: filePath,
           content,
-          ...(!force && shaRef.current
-            ? { expectedSha256: shaRef.current }
-            : {}),
-        });
-        if (result.outcome === "conflict") {
-          setConflict(true);
-          return;
-        }
-        savedRef.current = content;
-        shaRef.current = result.sha256;
-        setConflict(false);
-      } catch (error) {
-        setSaveError(errorMessage(error));
-      } finally {
-        savingRef.current = false;
-      }
-    },
-    [filePath, openerSource, rpc],
+          ...(expectedSha256 === null ? {} : { expectedSha256 }),
+        }),
+    }),
+    [rpc, openerSource, filePath],
   );
-
-  const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void save(), 700);
-  }, [save]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      void save();
-    },
-    [save],
-  );
-
-  if (!state) return <DocumentSkeleton />;
-  if ("error" in state) {
-    return (
-      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
-        {state.error} — use the tab&apos;s Open with menu to choose another
-        viewer.
-      </div>
-    );
-  }
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {liveFileTarget === null ? null : (
@@ -1205,78 +1495,16 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
           </Button>
         </div>
       )}
-      {conflict ? (
-        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
-          Changed on disk.
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setReloadNonce((value) => value + 1)}
-          >
-            Reload
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void save(true)}>
-            Overwrite
-          </Button>
-        </div>
-      ) : null}
-      {saveError ? (
-        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
-          {saveError}
-        </div>
-      ) : null}
-      <TiptapEditor
-        initialValue={state.content}
-        previewBaseUrl={state.lease.baseUrl}
-        notePath={state.previewPath}
+      <SavedDocumentEditor
+        io={io}
+        errorHint=" — use the tab's Open with menu to choose another viewer."
         onUpload={async () => {
           throw new Error(
             "Add this file to a Docs vault before uploading images",
           );
         }}
-        onFirstRender={(markdown) => {
-          markdownRef.current = markdown;
-          savedRef.current = markdown;
-        }}
-        onMarkdownChange={(markdown) => {
-          markdownRef.current = markdown;
-          scheduleSave();
-        }}
       />
     </div>
-  );
-}
-
-function HtmlPane({
-  vaultId,
-  filePath,
-}: {
-  vaultId: string;
-  filePath: string;
-}) {
-  const rpc = useRpc<typeof docsRpcContract>();
-  const [lease, setLease] = useState<PreviewLease | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLease(null);
-    setError(null);
-    void rpc
-      .call("preparePreview", { vaultId, path: filePath })
-      .then((value) => setLease(value))
-      .catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [filePath, rpc, vaultId]);
-  if (error)
-    return (
-      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">{error}</div>
-    );
-  if (!lease) return <DocumentSkeleton />;
-  return (
-    <iframe
-      className="min-h-0 flex-1 border-0 bg-white"
-      sandbox="allow-scripts"
-      title={filePath}
-      src={`${lease.baseUrl}/${encodePath(filePath)}`}
-    />
   );
 }
 
@@ -1371,7 +1599,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
               props.onSearchOpenChange(false);
             }}
           >
-            <HugeiconsIcon icon={Cancel01Icon} />
+            <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
           </Button>
         </>
       ) : null}
@@ -1384,7 +1612,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
             aria-label="Search notes"
             onClick={() => props.onSearchOpenChange(true)}
           >
-            <HugeiconsIcon icon={Search01Icon} />
+            <HugeiconsIcon icon={Search01Icon} className="size-4" />
           </Button>
           <Button
             className="size-8"
@@ -1393,7 +1621,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
             aria-label="New note"
             onClick={props.onNewNote}
           >
-            <HugeiconsIcon icon={FileAddIcon} />
+            <HugeiconsIcon icon={FileAddIcon} className="size-4" />
           </Button>
           <Button
             className="size-8"
@@ -1402,7 +1630,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
             aria-label="New folder"
             onClick={props.onNewFolder}
           >
-            <HugeiconsIcon icon={FolderAddIcon} />
+            <HugeiconsIcon icon={FolderAddIcon} className="size-4" />
           </Button>
           <span className="min-w-0 flex-1" />
         </>
@@ -1753,7 +1981,7 @@ function Tree({
             aria-label="Add vault"
             onClick={onAddVault}
           >
-            <HugeiconsIcon icon={PlusSignIcon} />
+            <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
           </Button>
         </div>
         {hostUnavailable ? (
@@ -1788,9 +2016,24 @@ function parseRoute(subPath: string): {
 function NotesWorkspace({
   subPath,
   navigationOnly,
-}: PluginNavPanelProps & { navigationOnly: boolean }) {
+  onNavigate,
+}: PluginNavPanelProps & {
+  navigationOnly: boolean;
+  onNavigate?(subPath: string, replace?: boolean): void;
+}) {
   const rpc = useRpc<typeof docsRpcContract>();
   const navigate = useBbNavigate();
+  const navigateTo = useCallback(
+    (next: string, replace?: boolean) => {
+      if (onNavigate) onNavigate(next, replace);
+      else
+        navigate.toPluginPanel("docs", {
+          subPath: next,
+          ...(replace === undefined ? {} : { replace }),
+        });
+    },
+    [navigate, onNavigate],
+  );
   const route = parseRoute(subPath);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -1813,12 +2056,9 @@ function NotesWorkspace({
   const open = useCallback(
     (path: string, replace = false) => {
       if (!activeVaultId || !isCurrentVault(activeVaultId)) return;
-      navigate.toPluginPanel("docs", {
-        subPath: `${activeVaultId}/${path}`,
-        replace,
-      });
+      navigateTo(`${activeVaultId}/${path}`, replace);
     },
-    [activeVaultId, isCurrentVault, navigate],
+    [activeVaultId, isCurrentVault, navigateTo],
   );
 
   if (!data || !activeVaultId) {
@@ -1889,9 +2129,7 @@ function NotesWorkspace({
       setVaultRootPath("");
       setVaultHostId("primary");
       setVaultDialogOpen(false);
-      navigate.toPluginPanel("docs", {
-        subPath: value.id,
-      });
+      navigateTo(value.id);
     } catch (error) {
       setVaultError(errorMessage(error));
     }
@@ -1906,10 +2144,7 @@ function NotesWorkspace({
       if (!isCurrentVault(activeVaultId)) return;
       refresh();
       if (filePath === path) {
-        navigate.toPluginPanel("docs", {
-          subPath: activeVaultId,
-          replace: true,
-        });
+        navigateTo(activeVaultId, true);
       }
       toast.success(`Deleted ${path}`);
     } catch (error) {
@@ -1991,11 +2226,7 @@ function NotesWorkspace({
             onMoveFile={(sourcePath, targetFolder, targetOrder) =>
               void moveFile(sourcePath, targetFolder, targetOrder)
             }
-            onVaultChange={(value) => {
-              navigate.toPluginPanel("docs", {
-                subPath: value,
-              });
-            }}
+            onVaultChange={(value) => navigateTo(value)}
             onAddVault={() => setVaultDialogOpen(true)}
           />
         ) : filePath && /\.md$/i.test(filePath) ? (
@@ -2010,10 +2241,11 @@ function NotesWorkspace({
             }}
           />
         ) : filePath && /\.html?$/i.test(filePath) ? (
-          <HtmlPane
+          <HtmlPreview
             key={`${activeVaultId}:${filePath}`}
             vaultId={activeVaultId}
-            filePath={filePath}
+            path={filePath}
+            title={filePath}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">

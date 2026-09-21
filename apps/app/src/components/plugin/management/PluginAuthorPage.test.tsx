@@ -218,12 +218,10 @@ describe("PluginAuthorPage", () => {
       "Open Alpha details",
     ]);
     const sort = screen.getByRole("button", {
-      name: "Sort: Most installed, descending",
+      name: "Sort: Installs, descending",
     });
     fireEvent.pointerDown(sort);
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Most installed" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Installs" }));
     expect(cardOrder()).toEqual([
       "Open Beta details",
       "Open Gamma details",

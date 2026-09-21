@@ -358,6 +358,7 @@ export default definePluginApp((app) => {
     plusMenu: [
       {
         id: "send-later",
+        experimental_sendMenu: true,
         label: "Send later…",
         icon: "Calendar",
         description: "Schedule the current draft to send at a time you pick.",

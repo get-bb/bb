@@ -59,6 +59,7 @@ import {
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   sidebarOrganizationModeAtom,
+  sidebarHiddenGroupsAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -94,6 +95,11 @@ const personalProject = makeProject({
 });
 
 const loadedSidebarNavigation = makeSidebarBootstrapResponse({
+  sections: [
+    { id: "sec_story_build", name: "In progress", createdAt: 0, updatedAt: 0 },
+    { id: "sec_story_review", name: "Review", createdAt: 0, updatedAt: 0 },
+    { id: "sec_story_later", name: "Later", createdAt: 0, updatedAt: 0 },
+  ],
   personalProject: makeProjectWithThreadsResponse({
     ...personalProject,
     threads: [
@@ -154,6 +160,7 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
         }),
         makeThreadListEntry({
           id: "thr_story_active",
+          sectionId: "sec_story_build",
           projectId: bbProject.id,
           title: "Ship realtime sidebar updates",
           titleFallback: "Ship realtime sidebar updates",
@@ -201,6 +208,7 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
         }),
         makeThreadListEntry({
           id: "thr_story_worktree_b",
+          sectionId: "sec_story_review",
           projectId: bbProject.id,
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
@@ -221,12 +229,34 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
       threads: [
         makeThreadListEntry({
           id: "thr_story_docs",
+          sectionId: "sec_story_review",
           projectId: docsProject.id,
           title: "Refresh onboarding docs",
           titleFallback: "Refresh onboarding docs",
           latestAttentionAt: 120,
           createdAt: 120,
           updatedAt: 120,
+        }),
+        ...Array.from({ length: 40 }, (_, index) => {
+          const title = [
+            "Review keyboard navigation",
+            "Clarify the onboarding checklist",
+            "Update screenshots for the release guide",
+            "Verify nested thread actions",
+          ][index % 4];
+          return makeThreadListEntry({
+            id: `thr_story_docs_${index}`,
+            projectId: docsProject.id,
+            sectionId: "sec_story_review",
+            title: `${title} ${index + 1}`,
+            titleFallback: `${title} ${index + 1}`,
+            parentThreadId:
+              index % 8 === 1 ? `thr_story_docs_${index - 1}` : null,
+            latestAttentionAt: 110 - index,
+            createdAt: 110 - index,
+            updatedAt: 110 - index,
+            lastReadAt: index % 3 === 0 ? 0 : 120,
+          });
         }),
       ],
     }),
@@ -459,21 +489,30 @@ function OrganizationSidebar({
 }) {
   const [store] = useState(() => createStore());
   const [isModeSeeded, setIsModeSeeded] = useState(false);
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: false,
-          },
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnMount: false,
+          refetchOnWindowFocus: false,
+          refetchOnReconnect: false,
         },
-      }),
-  );
+      },
+    });
+    client.setQueryData(hostsQueryKey(), hosts ?? machineStoryHosts);
+    return client;
+  });
 
   useLayoutEffect(() => {
     setIsModeSeeded(false);
     const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
     store.set(sidebarOrganizationModeAtom, mode);
+    store.set(sidebarHiddenGroupsAtom, [
+      `project:${docsProject.id}`,
+      "section:sec_story_review",
+      `machine:${HOST_IDS.remote}`,
+    ]);
 
     setIsModeSeeded(true);
 
@@ -539,7 +578,7 @@ export function OrganizationModes() {
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-      <StoryRow label="Manually">
+      <StoryRow label="Custom">
         <OrganizationSidebar
           mode="chronological"
           navigation={loadedSidebarNavigation}

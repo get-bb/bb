@@ -68,7 +68,7 @@ export function AppThreadSectionMoveProvider({
       ),
     [sections],
   );
-  const { order } = useSidebarModeSectionOrder({
+  const { persistedOrder: order } = useSidebarModeSectionOrder({
     mode: "chronological",
     entitySectionIds,
     showPinnedSection: false,

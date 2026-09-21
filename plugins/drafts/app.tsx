@@ -10,6 +10,7 @@ export default definePluginApp((app) => {
         id: "drafts",
         label: "Save draft…",
         icon: "EditFile",
+        experimental_sendMenu: true,
         description:
           "Keep this message in the queue until you send it manually.",
         disabled: (view) => view.draft.isEmpty || view.run.isSubmitting,

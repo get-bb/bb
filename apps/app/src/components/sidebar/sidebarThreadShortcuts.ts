@@ -55,6 +55,9 @@ function collectSidebarThreadTargets(
   const targets: SidebarThreadShortcutTarget[] = [];
 
   for (const element of elements) {
+    if (element.closest("[data-sidebar-overflow='true']")) {
+      continue;
+    }
     if (element instanceof HTMLAnchorElement) {
       const threadId = element.dataset.sidebarThreadId;
       if (!threadId) {

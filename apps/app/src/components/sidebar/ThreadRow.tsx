@@ -419,7 +419,7 @@ function ThreadRowComponent({
   );
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-    "group/thread-row",
+    "group/thread-row cursor-pointer",
     SIDEBAR_ROW_BASE_CLASS,
     LIST_HOVER_TRANSITION,
     parentOptions?.stickyLevel === undefined && "relative",

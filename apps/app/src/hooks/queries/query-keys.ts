@@ -1248,6 +1248,10 @@ export function allPluginSettingsQueryKeyPrefix() {
   return [PLUGIN_SDK_SETTINGS_QUERY_KEY] as const;
 }
 
+export function pluginUpdateCheckQueryKey(pluginId: string | null) {
+  return ["plugins", "update-check", pluginId] as const;
+}
+
 export function pluginSourceQueryKey(pluginId: string) {
   return [PLUGIN_SOURCE_QUERY_KEY, pluginId] as const;
 }
