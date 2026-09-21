@@ -30,6 +30,7 @@ import {
   getDatabaseMaintenanceActivity,
   getEnvironment,
   isDatabaseMaintenanceIdle,
+  listArchivedThreadsPendingTeardown,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
@@ -56,9 +57,13 @@ import {
 import {
   finalizeStoppedThread,
   hasLiveThreadStartInFlight,
-  requestThreadStorageDeletion,
   requestThreadStopForCurrentState,
+  requestThreadStorageDeletion,
 } from "../threads/thread-lifecycle.js";
+import {
+  archiveUndoGraceKeepsTerminals,
+  archiveUndoGraceKeepsTurnRunning,
+} from "../threads/archive-undo-grace.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   runQueuedMessageDispatch,
@@ -302,6 +307,7 @@ export async function runEnvironmentProvisioningSweep(
 
 async function runThreadProvisioningOrphanCleanupSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
 ): Promise<void> {
   const provisioningThreads = deps.db
     .select({
@@ -330,19 +336,15 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
-  const archivedThreads = deps.db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        isNotNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        inArray(threads.status, ["pending", "starting", "active", "stopping"]),
-      ),
-    )
-    .all();
-  for (const thread of archivedThreads) {
-    deps.terminalSessions.closeArchivedThreadTerminals({ threadId: thread.id });
+  for (const thread of listArchivedThreadsPendingTeardown(deps.db)) {
+    if (!archiveUndoGraceKeepsTerminals(thread, now)) {
+      deps.terminalSessions.closeArchivedThreadTerminals({
+        threadId: thread.id,
+      });
+    }
+    if (archiveUndoGraceKeepsTurnRunning(thread, now)) {
+      continue;
+    }
     requestThreadStopForCurrentState(
       deps,
       thread,
@@ -376,7 +378,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
 export async function runThreadLifecycleSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  await runThreadProvisioningOrphanCleanupSweep(deps);
+  await runThreadProvisioningOrphanCleanupSweep(deps, Date.now());
   await sweepProviderLifecycles(deps);
   await sweepMachineLifecycles(deps);
 }

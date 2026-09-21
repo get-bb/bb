@@ -30,6 +30,10 @@ import {
   dispatchSettledArchivedThreadProviderArchiveCommand,
   requestThreadStopForCurrentState,
 } from "./thread-lifecycle.js";
+import {
+  archiveUndoGraceKeepsTerminals,
+  archiveUndoGraceKeepsTurnRunning,
+} from "./archive-undo-grace.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
 import { getThreadProvisionContext } from "./thread-startup-store.js";
@@ -90,10 +94,15 @@ function archiveThreadWithLifecycleEffects(
     return null;
   }
 
-  deps.terminalSessions.closeArchivedThreadTerminals({
-    threadId: archivedThread.id,
-  });
-  requestThreadStopForCurrentState(deps, archivedThread, args.environment);
+  const now = Date.now();
+  if (!archiveUndoGraceKeepsTerminals(archivedThread, now)) {
+    deps.terminalSessions.closeArchivedThreadTerminals({
+      threadId: archivedThread.id,
+    });
+  }
+  if (!archiveUndoGraceKeepsTurnRunning(archivedThread, now)) {
+    requestThreadStopForCurrentState(deps, archivedThread, args.environment);
+  }
   dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
     threadId: archivedThread.id,
   });
@@ -204,11 +213,12 @@ function archiveThreadTrees(
   for (const thread of threads) {
     if (thread.deletedAt !== null) continue;
     if (thread.archivedAt !== null) {
-      requestThreadStopForCurrentState(
-        deps,
-        thread,
-        thread.environmentId === null ? null : resolveEnvironment(thread),
-      );
+      if (!archiveUndoGraceKeepsTurnRunning(thread, Date.now()))
+        requestThreadStopForCurrentState(
+          deps,
+          thread,
+          thread.environmentId === null ? null : resolveEnvironment(thread),
+        );
       continue;
     }
     const environment = resolveEnvironment(thread);

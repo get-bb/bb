@@ -97,6 +97,11 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
 <thread-id>`. `--json` reports `delivery` as `sent` or `queued`. If the thread
   fails while the message is queued (its provider exited), the message waits
   until somebody retries the thread.
+- `bb thread archive` is not a hard stop. For 30 seconds after archiving, a
+  thread keeps its terminals and a mid-turn thread keeps running, so
+  `bb thread unarchive` inside that window leaves everything in place; bb stops
+  the thread and closes its terminals once the grace elapses. Use
+  `bb thread stop <thread-id>` when the run must end now.
 
 ## Inspecting Results
 
