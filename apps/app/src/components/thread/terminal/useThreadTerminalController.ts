@@ -15,6 +15,8 @@ import {
   useTerminals,
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
+// bb-fork(windows): start payload for the shell picked beside Start terminal.
+import { terminalShellStart } from "@/components/secondary-panel/terminalShellStart";
 import {
   useActiveFixedRightTerminalId,
   useRemoveFixedRightTerminalTab,
@@ -47,6 +49,8 @@ export interface ThreadTerminalControllerArgs {
   isPanelPersistedOpen: boolean;
   panelStateId?: string;
   preferredTerminalId?: string;
+  // bb-fork(windows): shell the Start terminal picker selected, if any.
+  shellIdForLaunch?: string | null;
   syncThreadId: string | null;
   fixedPanelTarget?: TerminalCreateTarget;
   fixedTerminalId?: string;
@@ -143,6 +147,7 @@ export function useThreadTerminalController({
   isPanelPersistedOpen,
   panelStateId,
   preferredTerminalId,
+  shellIdForLaunch = null,
   syncThreadId,
   fixedPanelTarget,
   fixedTerminalId,
@@ -353,6 +358,8 @@ export function useThreadTerminalController({
     const request = {
       cols: DEFAULT_TERMINAL_COLS,
       rows: DEFAULT_TERMINAL_ROWS,
+      // bb-fork(windows): launch the shell picked beside the action.
+      ...terminalShellStart(shellIdForLaunch),
     };
     const created =
       target.kind === "thread"
@@ -386,6 +393,7 @@ export function useThreadTerminalController({
     createThreadTerminal,
     isCreateTerminalPending,
     setActiveFixedTerminal,
+    shellIdForLaunch,
     target,
   ]);
 

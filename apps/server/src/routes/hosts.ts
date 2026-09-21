@@ -47,6 +47,8 @@ import {
 } from "../services/machines/provider-orchestration.js";
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
 import { manualHostCommand } from "../services/machines/manual-provider.js";
+// bb-fork(windows): shell enumeration for the Start terminal picker.
+import { registerHostTerminalShellsRoute } from "./hosts-terminal-shells.js";
 
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -122,6 +124,9 @@ export function registerHostRoutes(
       new ApiError(400, "invalid_request", message),
   });
   const routes = publicApiRoutes.hosts;
+
+  // bb-fork(windows): shell enumeration for the Start terminal picker.
+  registerHostTerminalShellsRoute({ deps, get, route: routes.terminalShells });
 
   post(routes.create, async (context, payload) => {
     assertHostManagementAllowed(context);

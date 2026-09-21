@@ -1815,6 +1815,67 @@ describe("TerminalManager", () => {
     ]);
   });
 
+  // bb-fork(windows): the Start terminal picker's shell id must reach resolution.
+  it("passes a requested shell id to shell resolution", async () => {
+    const requestedShellIds: Array<string | undefined> = [];
+    const harness = createHarnessWithShell({
+      resolveShell: async (shellId) => {
+        requestedShellIds.push(shellId);
+        return "C:\\Program Files\\Git\\bin\\bash.exe";
+      },
+    });
+    const workspacePath = await makeTempDir("bb-terminal-manager-shellid-");
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      contributedEnv: [],
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: { workspacePath },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "shell", shellId: "git-bash" },
+    });
+
+    expect(requestedShellIds).toEqual(["git-bash"]);
+    expect(harness.adapter.spawned[0]!.args.args).toEqual(["--login", "-i"]);
+  });
+
+  it("keeps a default shell start and a command start free of a shell id", async () => {
+    const requestedShellIds: Array<string | undefined> = [];
+    const harness = createHarnessWithShell({
+      resolveShell: async (shellId) => {
+        requestedShellIds.push(shellId);
+        return "/bin/zsh";
+      },
+    });
+    const workspacePath = await makeTempDir("bb-terminal-manager-noshellid-");
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      contributedEnv: [],
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: { workspacePath },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: "echo hi" },
+    });
+
+    expect(requestedShellIds).toEqual([undefined]);
+    expect(harness.adapter.spawned[0]!.args.args).toEqual(["-lc", "echo hi"]);
+  });
+
   it("runs commands in one persistent shell from the workspace cwd", async () => {
     if (process.platform === "win32") {
       return;

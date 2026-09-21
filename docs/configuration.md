@@ -698,29 +698,38 @@ schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                               | Value                                               |
-| --------------------------------- | --------------------------------------------------- |
-| `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
-| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
-| `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
-| `sidebar.sectionOrder`            | Section id list for **By project**                  |
-| `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
-| `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
-| `sidebar.hiddenGroups`            | Project, custom section, and machine ids moved into More |
-| `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
-| `sidebar.collapsedProjects`       | Collapsed project ids                               |
-| `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
-| `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
-| `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
-| `sidebar.collapsedMachines`       | Collapsed machine ids                               |
-| `sidebar.footerOrder`             | Footer action order                                 |
-| `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
-| `sidebar.pluginPanelOrder`        | Navigation entry order                              |
-| `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
-| `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
-| `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+| Key                                  | Value                                                    |
+| ------------------------------------ | -------------------------------------------------------- |
+| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                 |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                               |
+| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                 |
+| `sidebar.sectionOrder`               | Section id list for **By project**                       |
+| `sidebar.manualSectionOrder`         | Section id list for **Manually**                         |
+| `sidebar.machineSectionOrder`        | Section id list for **By machine**                       |
+| `sidebar.hiddenGroups`               | Project, custom section, and machine ids moved into More |
+| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)        |
+| `sidebar.collapsedProjects`          | Collapsed project ids                                    |
+| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                  |
+| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                |
+| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                             |
+| `sidebar.collapsedMachines`          | Collapsed machine ids                                    |
+| `sidebar.footerOrder`                | Footer action order                                      |
+| `sidebar.hiddenFooterItems`          | Footer actions moved into More                           |
+| `sidebar.pluginPanelOrder`           | Navigation entry order                                   |
+| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry      |
+| `sidebar.navigationProvider`         | Plugin key, `__automatic__`, or `__builtin__`            |
+| `sidebar.threadListProvider`         | Plugin key, `__automatic__`, or `__builtin__`            |
+| `terminal.shellId`                   | Shell id from `bb terminal shells`, or `__automatic__`   |
+
+<!-- bb-fork(windows): the fork adds the terminal shell preference; see docs/windows.md. -->
+
+`terminal.shellId` is the fork's preferred shell for a machine that reports a
+choice. It defaults to `__automatic__`, which leaves the launch to the machine's
+own default shell; unknown ids also fall back to that default. Read and write it
+with the commands below, or pick a shell in the Start terminal row in the app.
 
 <!-- bb-fork(windows): the fork defaults an unset organization to By project; see docs/windows.md. -->
+
 By project (`project`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 

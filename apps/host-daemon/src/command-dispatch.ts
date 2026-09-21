@@ -51,6 +51,8 @@ import {
   readHostFileMetadata,
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
+// bb-fork(windows): shell enumeration for the Start terminal picker.
+import { listHostTerminalShells } from "./command-handlers/terminal-shells.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
 import {
   mkdirHostPath,
@@ -629,6 +631,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
+  // bb-fork(windows): shell enumeration for the Start terminal picker.
+  "host.list_terminal_shells": listHostTerminalShells,
   "project.inspect": async (command, options) =>
     inspectProjectPath(
       command.path,

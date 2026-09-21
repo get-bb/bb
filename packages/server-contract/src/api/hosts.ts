@@ -11,6 +11,8 @@ import {
   type ProviderCliInstallRequest,
   type ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract/local";
+// bb-fork(windows): shell enumeration for the Start terminal picker.
+import { type TerminalShellListResponse } from "@bb/host-daemon-contract";
 
 export const hostDirectoryQuerySchema = z.object({
   path: z.string().min(1).optional(),
@@ -107,6 +109,9 @@ export const hostPathsExistRequestSchema = pathsExistRequestSchema;
 export type HostPathsExistRequest = PathsExistRequest;
 
 export type HostPathsExistResponse = PathsExistResponse;
+
+// bb-fork(windows): shells the host can launch from the Start terminal picker.
+export type HostTerminalShellsResponse = TerminalShellListResponse;
 
 export const hostPickFolderRequestSchema = z
   .object({

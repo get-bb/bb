@@ -126,6 +126,7 @@ server.
 - `bb terminal list`
 - `bb terminal create`
 - `bb terminal start`
+- `bb terminal shells`
 - `bb terminal show`
 - `bb terminal attach`
 - `bb terminal send`

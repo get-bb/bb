@@ -253,6 +253,10 @@ import type {
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
+// bb-fork(windows): shell picked beside the Start terminal action.
+import { useTerminalShellChoice } from "@/components/secondary-panel/useTerminalShellChoice";
+import { TerminalShellSelector } from "@/components/secondary-panel/TerminalShellSelector";
+import { terminalShellStart } from "@/components/secondary-panel/terminalShellStart";
 import { useThreadGitActions } from "./useThreadGitActions";
 import { useSendSideChatMessageToMain } from "./useSendSideChatMessageToMain";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
@@ -1210,6 +1214,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     thread?.environmentId !== undefined &&
     environment?.status === "ready" &&
     connectedHostIds.has(environment.hostId);
+  // bb-fork(windows): the shell this thread's terminals launch.
+  const terminalShellChoice = useTerminalShellChoice(
+    environment?.hostId ?? null,
+  );
   const createThreadInEnvironment = useCreateThreadInEnvironment({
     projectId,
     environmentId: thread?.environmentId ?? "",
@@ -1620,6 +1628,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         threadId,
         cols: DEFAULT_TERMINAL_COLS,
         rows: DEFAULT_TERMINAL_ROWS,
+        // bb-fork(windows): launch the shell picked beside the action.
+        ...terminalShellStart(terminalShellChoice.shellIdForLaunch),
       })
       .then((session) => {
         closeTab(newTab.id);
@@ -1634,6 +1644,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     createTerminal,
     openCompactDrawer,
     setActiveFixedTerminal,
+    terminalShellChoice.shellIdForLaunch,
     threadId,
   ]);
   useAppCommandHandler("terminal.open", () => {
@@ -2604,6 +2615,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             onAutoFocusHandled={handleTerminalAutoFocusHandled}
             onOpenLink={handleOpenTimelineLink}
             onSelectionAddToChat={handleSelectionAddToChat}
+            // bb-fork(windows): replacement terminals use the picked shell.
+            shellIdForLaunch={terminalShellChoice.shellIdForLaunch}
             syncThreadId={thread.id}
             target={{ kind: "thread", threadId: thread.id }}
             terminalId={tab.terminalId}
@@ -2633,6 +2646,17 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
                 : undefined
             }
             pluginActions={pluginPanelActions}
+            // bb-fork(windows): the shell picker beside Start terminal.
+            startTerminalTrailing={
+              <TerminalShellSelector
+                defaultShell={terminalShellChoice.defaultShell}
+                disabled={createTerminal.isPending}
+                isLoading={terminalShellChoice.isLoading}
+                onChange={terminalShellChoice.setSelectedShellId}
+                selectedShellId={terminalShellChoice.selectedShellId}
+                shells={terminalShellChoice.shells}
+              />
+            }
           />
         );
       case "workspace-file-preview": {

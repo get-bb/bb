@@ -24,11 +24,45 @@ List and create require exactly one explicit scope:
     --title <title>                       Display title
     --cols <n>                            Initial terminal columns
     --rows <n>                            Initial terminal rows
+    --shell <id>                          Interactive shell to launch (see below)
     --attach                              Attach after creating
     --json                                Print machine-readable output
 
 Machine names are resolved to an explicit machine ID. No scope defaults to the
 server machine, and --cwd is valid only with --machine or --host.
+
+<!-- bb-fork(windows): the shell choice is a fork feature; see docs/windows.md. -->
+Some machines offer more than one shell. Ask the machine what it can launch,
+then pick one for an interactive terminal:
+
+  bb terminal shells --machine <id-or-name>
+    --host <id-or-name>                   Alias for --machine
+    --json                                Print shell ids, labels, paths, and the default
+
+  bb terminal create --machine <id-or-name> --shell <shell-id>
+
+Only a native Windows machine reports a list today: PowerShell 7, Windows
+PowerShell, and Git Bash, each installed copy. The id marked default is what a
+terminal launches without --shell. `--shell` is valid only for an interactive
+shell, so combining it with --command or a positional command is rejected. An
+unknown or removed shell id falls back to the machine default instead of
+failing the launch.
+
+Some machines offer more than one shell. Ask the machine what it can launch,
+then pick one for an interactive terminal:
+
+  bb terminal shells --machine <id-or-name>
+    --host <id-or-name>                   Alias for --machine
+    --json                                Print shell ids, labels, paths, and the default
+
+  bb terminal create --machine <id-or-name> --shell <shell-id>
+
+Only a native Windows machine reports a list today: PowerShell 7, Windows
+PowerShell, and Git Bash, each installed copy. The id marked default is what a
+terminal launches without --shell. `--shell` is valid only for an interactive
+shell, so combining it with --command or a positional command is rejected. An
+unknown or removed shell id falls back to the machine default instead of
+failing the launch.
 
 All other operations need only the terminal ID. They also accept the scope
 flags above and ignore them, so a command built for `list` or `create` still

@@ -1,4 +1,6 @@
 import { z } from "zod";
+// bb-fork(windows): the automatic-shell sentinel is shared with the picker UI.
+import { AUTOMATIC_TERMINAL_SHELL_ID } from "./terminal-shell.js";
 
 const UI_PREFERENCE_STRING_MAX_LENGTH = 1_024;
 const UI_PREFERENCE_LIST_MAX_LENGTH = 10_000;
@@ -60,6 +62,8 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
   "sidebar.threadListProvider",
+  // bb-fork(windows): shell used by Start terminal when the host offers a choice.
+  "terminal.shellId",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -186,6 +190,13 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringSchema,
     "__automatic__",
     "Plugin that renders the sidebar thread list, or __automatic__ / __builtin__.",
+  ),
+  // bb-fork(windows): shell id the Start terminal action launches on a host that
+  // offers a choice; the sentinel keeps the host's own default.
+  "terminal.shellId": defineUiPreference(
+    uiPreferenceStringSchema,
+    AUTOMATIC_TERMINAL_SHELL_ID,
+    "Shell the Start terminal action launches when the host reports more than one; __automatic__ uses the host default.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

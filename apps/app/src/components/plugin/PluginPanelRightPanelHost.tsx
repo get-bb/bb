@@ -87,6 +87,10 @@ import {
   resolveTerminalHost,
   TerminalHostSelector,
 } from "@/components/secondary-panel/TerminalHostSelector";
+// bb-fork(windows): shell picker beside Start terminal on plugin pages.
+import { TerminalShellSelector } from "@/components/secondary-panel/TerminalShellSelector";
+import { useTerminalShellChoice } from "@/components/secondary-panel/useTerminalShellChoice";
+import { terminalShellStart } from "@/components/secondary-panel/terminalShellStart";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelTabContent } from "./PluginPanelActions";
 import { PluginDetailRouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -379,6 +383,10 @@ export function PluginPanelRightPanelHost({
       }),
     [preferredTerminalHostId, primaryHostId, terminalHosts],
   );
+  // bb-fork(windows): the shell plugin-page terminals launch.
+  const terminalShellChoice = useTerminalShellChoice(
+    selectedTerminalHost?.id ?? null,
+  );
 
   useEffect(() => {
     if (
@@ -631,6 +639,8 @@ export function PluginPanelRightPanelHost({
           cols: TERMINAL_COLS,
           rows: TERMINAL_ROWS,
           target,
+          // bb-fork(windows): launch the shell picked beside the action.
+          ...terminalShellStart(terminalShellChoice.shellIdForLaunch),
         })
         .then((session) => {
           selectPersistedPanelTab();
@@ -664,6 +674,7 @@ export function PluginPanelRightPanelHost({
       isCompactViewport,
       revealPanel,
       selectPersistedPanelTab,
+      terminalShellChoice.shellIdForLaunch,
       updatePanelState,
     ],
   );
@@ -857,6 +868,8 @@ export function PluginPanelRightPanelHost({
               isPanelOpen={isOpen}
               isPanelPersistedOpen={panelState.secondary.isOpen}
               panelStateId={panelStateId}
+              // bb-fork(windows): replacement terminals use the picked shell.
+              shellIdForLaunch={terminalShellChoice.shellIdForLaunch}
               syncThreadId={null}
               target={tab.target}
             />
@@ -888,13 +901,23 @@ export function PluginPanelRightPanelHost({
                 selectedTerminalHost?.status !== "connected"
               }
               startTerminalTrailing={
-                <TerminalHostSelector
-                  disabled={createTerminal.isPending}
-                  hosts={terminalHosts}
-                  isLoading={hostsQuery.isLoading}
-                  onChange={setPreferredTerminalHostId}
-                  selectedHostId={selectedTerminalHost?.id ?? null}
-                />
+                <div className="flex min-w-0 items-center gap-1">
+                  <TerminalHostSelector
+                    disabled={createTerminal.isPending}
+                    hosts={terminalHosts}
+                    isLoading={hostsQuery.isLoading}
+                    onChange={setPreferredTerminalHostId}
+                    selectedHostId={selectedTerminalHost?.id ?? null}
+                  />
+                  <TerminalShellSelector
+                    defaultShell={terminalShellChoice.defaultShell}
+                    disabled={createTerminal.isPending}
+                    isLoading={terminalShellChoice.isLoading}
+                    onChange={terminalShellChoice.setSelectedShellId}
+                    selectedShellId={terminalShellChoice.selectedShellId}
+                    shells={terminalShellChoice.shells}
+                  />
+                </div>
               }
             />
           );
@@ -952,6 +975,7 @@ export function PluginPanelRightPanelHost({
       selectedTerminalHost,
       startSelectedTerminal,
       terminalHosts,
+      terminalShellChoice,
     ],
   );
   const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(

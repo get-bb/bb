@@ -145,6 +145,8 @@ import type {
   HostPickFolderResponse,
   HostPathsExistRequest,
   HostPathsExistResponse,
+  // bb-fork(windows): shell enumeration for the Start terminal picker.
+  HostTerminalShellsResponse,
   HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
@@ -931,6 +933,13 @@ export const publicApiRoutes = {
         hostPickFolderRequestSchema,
       ),
       response: jsonResponse<HostPickFolderResponse>(),
+    }),
+    // bb-fork(windows): shells this host can launch from Start terminal.
+    terminalShells: defineRoute({
+      path: "/hosts/:id/terminal-shells",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostTerminalShellsResponse>(),
     }),
     providerCliStatus: defineRoute({
       path: "/hosts/:id/provider-clis/status",

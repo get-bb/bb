@@ -71,6 +71,9 @@ interface RootComposePanelTabContentProps {
   rootProjectHostId: string | null;
   shouldAutoFocusNewTab: boolean;
   shouldAutoFocusTerminal: boolean;
+  // bb-fork(windows): shell picker rendered beside the Start terminal action.
+  shellIdForLaunch?: string | null;
+  startTerminalTrailing?: ReactNode;
   tab: SecondaryFileFixedPanelTab;
   terminalTarget: RootComposeTerminalTarget | null;
 }
@@ -156,6 +159,8 @@ export function RootComposePanelTabContent({
   rootProjectHostId,
   shouldAutoFocusNewTab,
   shouldAutoFocusTerminal,
+  shellIdForLaunch,
+  startTerminalTrailing,
   tab,
   terminalTarget,
 }: RootComposePanelTabContentProps) {
@@ -175,6 +180,8 @@ export function RootComposePanelTabContent({
           onOpenLink={onOpenPanelLink}
           onSelectionAddToChat={onSelectionAddToChat}
           panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
+          // bb-fork(windows): replacement terminals use the picked shell.
+          shellIdForLaunch={shellIdForLaunch}
           syncThreadId={null}
           target={terminalTarget}
           terminalId={tab.terminalId}
@@ -214,6 +221,7 @@ export function RootComposePanelTabContent({
           }
           pluginActions={pluginActions}
           showFileSearch={!isProjectless}
+          startTerminalTrailing={startTerminalTrailing}
         />
       );
     case "workspace-file-preview":

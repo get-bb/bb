@@ -13,7 +13,7 @@ import {
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { terminals: { list: vi.fn() } },
+  sdk: { terminals: { create: vi.fn(), list: vi.fn() } },
 }));
 
 const session: TerminalSession = makeTerminalSession({
@@ -124,5 +124,52 @@ describe("useThreadTerminalController terminal view mounting", () => {
     expect(result.current.shouldMountTerminalView).toBe(false);
     rerender({ isPanelOpen: true, isPanelPersistedOpen: true });
     expect(result.current.shouldMountTerminalView).toBe(true);
+  });
+
+  // bb-fork(windows): a replacement terminal launches the picked shell.
+  it("creates a replacement terminal with the requested shell", async () => {
+    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [session] });
+    vi.mocked(sdk.terminals.create).mockResolvedValue(session);
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadTerminalController({
+          ...controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: true }),
+          shellIdForLaunch: "git-bash",
+        }),
+      { wrapper },
+    );
+
+    result.current.handleCreateTerminal();
+
+    await waitFor(() => {
+      expect(sdk.terminals.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: { kind: "thread", threadId: "thr_1" },
+          start: { mode: "shell", shellId: "git-bash" },
+        }),
+      );
+    });
+  });
+
+  it("leaves the shell to the host without a picked shell", async () => {
+    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [session] });
+    vi.mocked(sdk.terminals.create).mockResolvedValue(session);
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadTerminalController(
+          controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: true }),
+        ),
+      { wrapper },
+    );
+
+    result.current.handleCreateTerminal();
+
+    await waitFor(() => {
+      expect(sdk.terminals.create).toHaveBeenCalled();
+    });
+    const request = vi.mocked(sdk.terminals.create).mock.calls[0]?.[0];
+    expect(request).not.toHaveProperty("start");
   });
 });

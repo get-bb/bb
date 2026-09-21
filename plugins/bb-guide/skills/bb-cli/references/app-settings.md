@@ -31,6 +31,11 @@ every window and client sees the same value.
   toggles one grouping dimension independently.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.
+- <!-- bb-fork(windows): the fork adds the terminal shell preference; see docs/windows.md. -->
+  `terminal.shellId` holds the shell the Start terminal action launches on a
+  machine that reports a choice (`bb terminal shells`); `__automatic__` (the
+  default) leaves the launch to the machine's own default shell, and so does an
+  id that machine no longer offers.
 - `bb settings ui set <key> <value> [--json]` takes a plain string for enum
   and provider keys and JSON for lists or `null`; it reads the current
   revision, writes with it, and retries once on a conflict.

@@ -278,6 +278,23 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       "/home/me/missing": false,
     },
   },
+  // bb-fork(windows): shell enumeration for the Start terminal picker.
+  "host.list_terminal_shells": {
+    shells: [
+      {
+        id: "pwsh",
+        isDefault: true,
+        label: "PowerShell 7",
+        path: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      },
+      {
+        id: "git-bash",
+        isDefault: false,
+        label: "Git Bash",
+        path: "C:\\Program Files\\Git\\bin\\bash.exe",
+      },
+    ],
+  },
   "project.inspect": {
     path: "/home/me/project",
     gitRemoteUrl: "git@example.com:me/project.git",
@@ -1136,7 +1153,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(216);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(217);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -4014,6 +4031,43 @@ describe("host-daemon session schemas", () => {
         start: { mode: "shell" },
       }).success,
     ).toBe(true);
+    // bb-fork(windows): the Start terminal picker sends a host shell id.
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.open",
+        contributedEnv: [],
+        requestId: "request-1",
+        terminalId: "term_123",
+        target: {
+          kind: "workspace",
+          environmentId: "env_123",
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+          },
+        },
+        cols: TERMINAL_COLS_MAX,
+        rows: TERMINAL_ROWS_MAX,
+        start: { mode: "shell", shellId: "git-bash" },
+      }).success,
+    ).toBe(true);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.open",
+        contributedEnv: [],
+        requestId: "request-1",
+        terminalId: "term_123",
+        target: {
+          kind: "workspace",
+          environmentId: "env_123",
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+          },
+        },
+        cols: TERMINAL_COLS_MAX,
+        rows: TERMINAL_ROWS_MAX,
+        start: { mode: "shell", shellId: "" },
+      }).success,
+    ).toBe(false);
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.resize",

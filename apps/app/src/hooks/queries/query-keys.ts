@@ -14,6 +14,8 @@ const HOSTS_QUERY_KEY = "hosts";
 const HOST_QUERY_KEY = "host";
 const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
 const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
+// bb-fork(windows): shells a machine offers the Start terminal picker.
+const TERMINAL_SHELLS_QUERY_KEY = "terminalShells";
 const PROJECTS_QUERY_KEY = "projects";
 const PROJECT_PATHS_QUERY_KEY = "projectPaths";
 const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
@@ -119,6 +121,11 @@ type HostCloneDefaultPathQueryKey = readonly [
   typeof HOST_CLONE_DEFAULT_PATH_QUERY_KEY,
   HostQueryId,
   string | null,
+];
+// bb-fork(windows): keyed by the host whose shells are listed.
+type TerminalShellsQueryKey = readonly [
+  typeof TERMINAL_SHELLS_QUERY_KEY,
+  HostQueryId,
 ];
 type ProjectsQueryKey = readonly [typeof PROJECTS_QUERY_KEY];
 type AllProjectPathsQueryKeyPrefix = readonly [typeof PROJECT_PATHS_QUERY_KEY];
@@ -534,6 +541,13 @@ export function hostCloneDefaultPathQueryKey(
   projectId: string | null,
 ): HostCloneDefaultPathQueryKey {
   return [HOST_CLONE_DEFAULT_PATH_QUERY_KEY, hostId, projectId];
+}
+
+// bb-fork(windows): shells a machine offers the Start terminal picker.
+export function terminalShellsQueryKey(
+  hostId: string | null,
+): TerminalShellsQueryKey {
+  return [TERMINAL_SHELLS_QUERY_KEY, hostId];
 }
 
 export function projectsQueryKey(): ProjectsQueryKey {

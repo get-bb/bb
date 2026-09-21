@@ -5,6 +5,7 @@ import {
   terminalRowsSchema,
   terminalSessionCloseReasonSchema,
   terminalSessionStatusSchema,
+  terminalShellIdSchema,
 } from "@bb/domain";
 
 export const terminalSessionSchema = z.object({
@@ -92,6 +93,8 @@ export const createTerminalRequestSchema = z
         z
           .object({
             mode: z.literal("shell"),
+            // bb-fork(windows): host shell id offered by the host's shell list.
+            shellId: terminalShellIdSchema.optional(),
           })
           .strict(),
         z

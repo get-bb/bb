@@ -284,6 +284,8 @@ type ExpectedHostsKey =
   | "get"
   | "installProviderCli"
   | "list"
+  // bb-fork(windows): shells this host can launch from Start terminal.
+  | "listTerminalShells"
   | "experimental_listProviders"
   | "pathsExist"
   | "pickFolder"

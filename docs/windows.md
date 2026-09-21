@@ -84,6 +84,31 @@ Two fork-owned deltas change app behavior on every platform:
   keeps the active chat across dev-instance reloads, which upstream loses
   because it keeps the route only in the URL and in-memory history.
 
+## Terminal shells
+
+On native Windows the fork starts terminals in a shell the machine actually has,
+and lets you choose among them:
+
+- Detection order is PowerShell 7 (`pwsh.exe`, from `PATH` then
+  `%ProgramFiles%\PowerShell\7` and the `WindowsApps` alias), Windows
+  PowerShell, then Git Bash (`<Git install>\bin\bash.exe`, found beside a
+  `git.exe` on `PATH` or under the standard Git for Windows locations). The
+  first detected shell is the machine default; a machine with none fails the
+  launch with one clear message.
+- The Start terminal row in the side panel carries a **Shell** picker once the
+  machine reports more than one shell, and the last choice is remembered as the
+  `terminal.shellId` UI preference. A stored id that the current machine no
+  longer offers falls back to that machine's default instead of failing.
+- Git Bash starts as its own launcher does (`bash.exe --login -i`); PowerShell
+  keeps `-NoLogo` and `-NoLogo -Command`. A command terminal on Git Bash uses the
+  generic posix `-lc` arguments.
+- `bb terminal shells --machine <id-or-name>` prints the ids, labels, paths, and
+  the default; `bb terminal create --shell <id>` picks one. `terminal restart`
+  still replaces a terminal with the machine default shell.
+- Non-Windows hosts report no shell list, so the picker stays hidden and the
+  existing posix resolution (`SHELL`, `/bin/zsh`, `/bin/bash`, `/bin/sh`) is
+  unchanged.
+
 ## Source development on native Windows
 
 `pnpm dev` runs the whole stack natively: Vite serves the app with hot module

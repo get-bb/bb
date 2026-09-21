@@ -53,6 +53,8 @@ const hostCommandWakePolicy = {
   "connect-tunnel.ensure-identity": "work",
   "host.list_commands": "work",
   "host.list_skills": "work",
+  // bb-fork(windows): shell enumeration for the Start terminal picker.
+  "host.list_terminal_shells": "never",
   "host.delete_skill": "work",
   "host.write_skill": "work",
   "host.install_global_skills": "work",

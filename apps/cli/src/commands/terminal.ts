@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Command, Option } from "commander";
-import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { TERMINAL_DATA_MAX_BYTES, type TerminalShellOption } from "@bb/domain";
 import type { TerminalCreateScope, TerminalListScope } from "@bb/sdk";
 import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
 import {
@@ -40,7 +40,15 @@ interface TerminalStartOptions
   command?: string;
   cols?: string;
   rows?: string;
+  // bb-fork(windows): host shell id from `bb terminal shells`.
+  shell?: string;
   title?: string;
+}
+
+// bb-fork(windows): `bb terminal shells` lists a machine's selectable shells.
+interface TerminalShellsOptions extends TerminalJsonOptions {
+  host?: string;
+  machine?: string;
 }
 
 interface TerminalSendOptions extends TerminalJsonOptions {
@@ -75,6 +83,8 @@ interface TerminalCloseOptions extends TerminalJsonOptions {
 
 interface TerminalStartResolution {
   command: string | null;
+  // bb-fork(windows): the requested shell id, or null for the host default.
+  shellId: string | null;
 }
 
 export function registerTerminalCommands(
@@ -113,6 +123,11 @@ export function registerTerminalCommands(
         "--command <command>",
         "Command to run instead of an interactive shell",
       )
+      // bb-fork(windows): choose a shell reported by `bb terminal shells`.
+      .option(
+        "--shell <id>",
+        "Shell id to launch instead of the machine default",
+      )
       .option("--cols <n>", "Initial terminal columns")
       .option("--rows <n>", "Initial terminal rows")
       .option("--attach", "Attach after creating")
@@ -123,6 +138,7 @@ export function registerTerminalCommands(
       const resolvedStart = resolveTerminalStart({
         commandOption: opts.command,
         commandParts,
+        shellOption: opts.shell,
       });
       const session = await sdk.terminals.create({
         cols: parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols"),
@@ -131,7 +147,12 @@ export function registerTerminalCommands(
         title: opts.title,
         start:
           resolvedStart.command === null
-            ? { mode: "shell" }
+            ? {
+                mode: "shell",
+                ...(resolvedStart.shellId === null
+                  ? {}
+                  : { shellId: resolvedStart.shellId }),
+              }
             : { mode: "command", command: resolvedStart.command },
       });
       if (outputJson(opts, session)) return;
@@ -144,6 +165,40 @@ export function registerTerminalCommands(
       }
     }),
   );
+
+  // bb-fork(windows): list the shells a machine can launch, for --shell.
+  terminal
+    .command("shells")
+    .description("List the shells a machine can launch for a terminal")
+    .option("--machine <id-or-name>", "Machine whose shells are listed")
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: TerminalShellsOptions) => {
+        const machine = resolveMachineTargetOption({
+          host: opts.host,
+          machine: opts.machine,
+        });
+        if (machine === undefined) {
+          throw new CliUsageError({
+            code: "missing_required",
+            hint: "For example: bb terminal shells --machine <id-or-name>.",
+            message: "Provide --machine or --host",
+          });
+        }
+        const serverUrl = getUrl();
+        const result = await createCliBbSdk(serverUrl).hosts.listTerminalShells(
+          {
+            hostId: await resolveMachineHostId({
+              serverUrl,
+              target: machine,
+            }),
+          },
+        );
+        if (outputJson(opts, result)) return;
+        printTerminalShellTable(result.shells);
+      }),
+    );
 
   terminal
     .command("show <terminalId>")
@@ -432,25 +487,44 @@ function assertExactlyOneTerminalScope(args: {
 function resolveTerminalStart(args: {
   commandOption?: string;
   commandParts: readonly string[];
+  shellOption?: string;
 }): TerminalStartResolution {
   if (args.commandOption !== undefined && args.commandParts.length > 0) {
     throw new Error(
       "Provide either --command or positional command args, not both",
     );
   }
+  // bb-fork(windows): a shell choice only applies to an interactive shell.
+  const hasCommand =
+    args.commandOption !== undefined || args.commandParts.length > 0;
+  if (args.shellOption !== undefined && hasCommand) {
+    throw new CliUsageError({
+      code: "invalid_value",
+      hint: "Run `bb terminal shells --machine <id-or-name>` to see shell ids.",
+      message: "Provide either --shell or a command, not both.",
+    });
+  }
+  if (args.shellOption !== undefined) {
+    const shellId = args.shellOption.trim();
+    if (shellId.length === 0) {
+      throw new Error("--shell must not be empty");
+    }
+    return { command: null, shellId };
+  }
   if (args.commandOption !== undefined) {
     const command = args.commandOption.trim();
     if (command.length === 0) {
       throw new Error("--command must not be empty");
     }
-    return { command };
+    return { command, shellId: null };
   }
   if (args.commandParts.length > 0) {
     return {
       command: args.commandParts.map(shellQuoteArg).join(" "),
+      shellId: null,
     };
   }
-  return { command: null };
+  return { command: null, shellId: null };
 }
 
 function shellQuoteArg(value: string): string {
@@ -530,6 +604,28 @@ function parseNonNegativeInteger(value: string, label: string): number {
     throw new Error(`${label} must be a non-negative integer`);
   }
   return parsed;
+}
+
+// bb-fork(windows): `bb terminal shells` output.
+function printTerminalShellTable(shells: readonly TerminalShellOption[]): void {
+  if (shells.length === 0) {
+    console.log(
+      "This machine reports no selectable shells; terminals use its default shell",
+    );
+    return;
+  }
+  const rows = shells.map((shell) => [
+    shell.isDefault ? `${shell.id} (default)` : shell.id,
+    shell.label,
+    shell.path,
+  ]);
+  printBorderlessTable(
+    {
+      head: ["ID", "Shell", "Path"],
+      colWidths: columnWidths(rows, [22, 22, 60]),
+    },
+    rows,
+  );
 }
 
 function printTerminalTable(sessions: TerminalSession[]): void {

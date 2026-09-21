@@ -45,6 +45,8 @@ import {
   providerCliInstallActionKindSchema,
 } from "./local.js";
 import { workspaceResolutionFailureSchema } from "./workspace.js";
+// bb-fork(windows): response schema for host terminal shell enumeration.
+import { terminalShellListResponseSchema } from "./terminal-shells.js";
 import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 import {
   providerHealthSchema,
@@ -565,6 +567,13 @@ const hostBrowseDirectoryCommandSchema = z.object({
 const hostPathsExistCommandSchema = pathsExistRequestSchema
   .extend({
     type: z.literal("host.paths_exist"),
+  })
+  .strict();
+
+// bb-fork(windows): list the shells this host can launch from Start terminal.
+const hostListTerminalShellsCommandSchema = z
+  .object({
+    type: z.literal("host.list_terminal_shells"),
   })
   .strict();
 
@@ -1628,6 +1637,16 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // bb-fork(windows): shell enumeration for the Start terminal picker.
+  "host.list_terminal_shells": defineHostDaemonCommandDescriptor({
+    type: "host.list_terminal_shells",
+    schema: hostListTerminalShellsCommandSchema,
+    resultSchema: terminalShellListResponseSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

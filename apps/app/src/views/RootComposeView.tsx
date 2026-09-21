@@ -114,6 +114,10 @@ import {
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+// bb-fork(windows): shell picked beside the Start terminal action.
+import { useTerminalShellChoice } from "@/components/secondary-panel/useTerminalShellChoice";
+import { TerminalShellSelector } from "@/components/secondary-panel/TerminalShellSelector";
+import { terminalShellStart } from "@/components/secondary-panel/terminalShellStart";
 import type {
   HostFileTabState,
   ThreadStorageFileTabState,
@@ -981,6 +985,14 @@ function RootComposeSurface({
         : rootPanelHostPathTerminalTarget,
     [rootPanelEnvironmentId, rootPanelHostPathTerminalTarget],
   );
+  // bb-fork(windows): the shell root-panel terminals launch.
+  const terminalShellChoice = useTerminalShellChoice(
+    rootPanelTerminalTarget === null
+      ? null
+      : rootPanelTerminalTarget.kind === "host_path"
+        ? rootPanelTerminalTarget.hostId
+        : (rootPanelEnvironmentQuery.data?.hostId ?? null),
+  );
   const {
     checkThreadStorageFileExists: checkRootThreadStorageFileExists,
     threadStorageFiles: rootThreadStorageFiles,
@@ -1435,11 +1447,15 @@ function RootComposeSurface({
             environmentId: rootPanelTerminalTarget.environmentId,
             cols: DEFAULT_TERMINAL_COLS,
             rows: DEFAULT_TERMINAL_ROWS,
+            // bb-fork(windows): launch the shell picked beside the action.
+            ...terminalShellStart(terminalShellChoice.shellIdForLaunch),
           })
         : createHostPathTerminalMutation.mutateAsync({
             cols: DEFAULT_TERMINAL_COLS,
             rows: DEFAULT_TERMINAL_ROWS,
             target: rootPanelTerminalTarget,
+            // bb-fork(windows): launch the shell picked beside the action.
+            ...terminalShellStart(terminalShellChoice.shellIdForLaunch),
           });
     void createTerminal
       .then((session) => {
@@ -1457,6 +1473,7 @@ function RootComposeSurface({
     openCompactDrawer,
     rootPanelTerminalTarget,
     setActiveFixedTerminal,
+    terminalShellChoice.shellIdForLaunch,
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
@@ -1596,8 +1613,24 @@ function RootComposeSurface({
         rootProjectHostId={rootProjectHostId}
         shouldAutoFocusNewTab={shouldAutoFocusNewTab}
         shouldAutoFocusTerminal={shouldAutoFocusTerminal}
+        // bb-fork(windows): the shell picked beside Start terminal.
+        shellIdForLaunch={terminalShellChoice.shellIdForLaunch}
         tab={tab}
         terminalTarget={rootPanelTerminalTarget}
+        // bb-fork(windows): the shell picker beside Start terminal.
+        startTerminalTrailing={
+          <TerminalShellSelector
+            defaultShell={terminalShellChoice.defaultShell}
+            disabled={
+              createEnvironmentTerminalMutation.isPending ||
+              createHostPathTerminalMutation.isPending
+            }
+            isLoading={terminalShellChoice.isLoading}
+            onChange={terminalShellChoice.setSelectedShellId}
+            selectedShellId={terminalShellChoice.selectedShellId}
+            shells={terminalShellChoice.shells}
+          />
+        }
       />
     ),
     [
@@ -1616,6 +1649,8 @@ function RootComposeSurface({
       openBrowserTabAndReveal,
       projectId,
       primaryHostId,
+      createEnvironmentTerminalMutation.isPending,
+      createHostPathTerminalMutation.isPending,
       projectSources,
       projects,
       rootPanelEnvironmentId,
@@ -1625,6 +1660,8 @@ function RootComposeSurface({
       rootProjectHostId,
       shouldAutoFocusNewTab,
       shouldAutoFocusTerminal,
+      // bb-fork(windows): the shell picker beside the Start terminal action.
+      terminalShellChoice,
     ],
   );
   const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(() => {

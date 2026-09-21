@@ -17,6 +17,8 @@ interface ThreadTerminalPanelProps {
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
+  // bb-fork(windows): shell the Start terminal picker selected, if any.
+  shellIdForLaunch?: string | null;
   syncThreadId: string | null;
   terminalId?: string;
   target: ThreadTerminalTarget;
@@ -33,6 +35,7 @@ export function ThreadTerminalPanel({
   onOpenLink,
   onSelectionAddToChat,
   panelStateId,
+  shellIdForLaunch,
   syncThreadId,
   terminalId,
   target,
@@ -45,6 +48,7 @@ export function ThreadTerminalPanel({
     fixedTerminalId,
     panelStateId,
     preferredTerminalId: terminalId,
+    shellIdForLaunch,
     syncThreadId,
     target,
   });

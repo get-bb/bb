@@ -15,6 +15,7 @@ import {
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
+  terminalShellIdSchema,
   threadEventSchema,
   toolCallRequestSchema,
   toolCallResponseSchema,
@@ -422,6 +423,8 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.remove_path"),
     onlineRpcResponseSuccessSchemaFor("host.browse_directory"),
     onlineRpcResponseSuccessSchemaFor("host.paths_exist"),
+    // bb-fork(windows): shell enumeration for the Start terminal picker.
+    onlineRpcResponseSuccessSchemaFor("host.list_terminal_shells"),
     onlineRpcResponseSuccessSchemaFor("project.inspect"),
     onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
@@ -540,6 +543,9 @@ const hostDaemonTerminalOpenMessageSchema = z
         z
           .object({
             mode: z.literal("shell"),
+            // bb-fork(windows): optional host shell id resolved by the daemon; a
+            // missing or stale id falls back to the daemon default shell.
+            shellId: terminalShellIdSchema.optional(),
           })
           .strict(),
         z

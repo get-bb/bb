@@ -53,6 +53,8 @@ export * from "./server-move.js";
 export * from "./shared-types.js";
 export * from "./stored-thread-event.js";
 export * from "./terminal.js";
+// bb-fork(windows): terminal shell selection is a fork feature.
+export * from "./terminal-shell.js";
 export * from "./thread-dynamic-context.js";
 export * from "./thread-event-scope.js";
 export * from "./thread-events.js";
