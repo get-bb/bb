@@ -248,7 +248,7 @@ export function PluginComposerPlusMenuEntry({
   onSelected,
 }: {
   contribution: PluginComposerPlusMenuContribution;
-  onSelected?(selection: PluginComposerPlusMenuSelection): void;
+  onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
   const { key, pluginId, customizationId, item } = contribution;
   return (
@@ -275,7 +275,7 @@ function PluginComposerPlusMenuEntryContent({
 }: {
   pluginId: string;
   item: ComposerPlusMenuItem;
-  onSelected?(selection: PluginComposerPlusMenuSelection): void;
+  onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
   const composer = useComposer();
   const view = useComposerView();
@@ -300,7 +300,7 @@ function PluginComposerPlusMenuEntryContent({
       disabled={disabled}
       aria-description={item.description}
       onSelect={() => {
-        onSelected?.({
+        onSelected({
           restoreComposerFocus: () => composer.focus(),
           selectedElement: document.activeElement,
         });

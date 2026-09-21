@@ -252,12 +252,6 @@ function parseRegions(
         "description",
         entry?.description,
       );
-      const sendMenu = entry?.experimental_sendMenu;
-      if (sendMenu !== undefined && typeof sendMenu !== "boolean") {
-        throw new Error(
-          `${entryKind}: "experimental_sendMenu" must be a boolean when set`,
-        );
-      }
       const disabled = entry?.disabled;
       if (
         disabled !== undefined &&
@@ -271,7 +265,6 @@ function parseRegions(
       return {
         id,
         label: requireNonEmptyString(entryKind, "label", entry?.label),
-        ...(sendMenu !== undefined ? { experimental_sendMenu: sendMenu } : {}),
         ...(icon !== undefined ? { icon } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(disabled !== undefined

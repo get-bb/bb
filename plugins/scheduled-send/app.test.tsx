@@ -91,12 +91,7 @@ describe("registration", () => {
         // neither owns a dispatchable submission of its own.
         scopes: ["thread", "new-thread"],
         plusMenu: [
-          {
-            id: "send-later",
-            label: "Send later…",
-            icon: "Calendar",
-            experimental_sendMenu: true,
-          },
+          { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
         // The picker is a portalled dialog, so the mount point wears no card
         // chrome.
