@@ -587,6 +587,36 @@ function useStageHeight(
   return { height, animate };
 }
 
+function MobileCardFlow({ children }: { children: ReactNode }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useBrowserLayoutEffect(() => {
+    const frame = frameRef.current;
+    const content = contentRef.current;
+    if (!frame || !content) return;
+    const measure = () => {
+      frame.style.height = `${content.getBoundingClientRect().height}px`;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={frameRef}
+      className="overflow-y-clip transition-[height] duration-300 ease-out motion-reduce:transition-none"
+      style={{ height: 0 }}
+    >
+      <div ref={contentRef} className="flow-root">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function ProductMap({
   pluginPageHref,
   renderPluginIcon,
@@ -723,17 +753,22 @@ export function ProductMap({
   );
 
   const cardNode = openSurface ? (
-    <SurfaceCard
-      surface={openSurface}
-      mobile={viewportMobile}
-      number={numbers.get(openSurface.id) ?? null}
-      onDismiss={card.close}
-      onCopyForAgent={onCopyForAgent}
-      navigation={{
-        ...annotationNeighbors(slides[index].surfaces, openSurface.id),
-        onOpen: selectSurface,
-      }}
-    />
+    <div
+      data-guide-card-flow
+      className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full"
+    >
+      <SurfaceCard
+        surface={openSurface}
+        mobile={viewportMobile}
+        number={numbers.get(openSurface.id) ?? null}
+        onDismiss={card.close}
+        onCopyForAgent={onCopyForAgent}
+        navigation={{
+          ...annotationNeighbors(slides[index].surfaces, openSurface.id),
+          onOpen: selectSurface,
+        }}
+      />
+    </div>
   ) : null;
   useEffect(() => {
     if (card.openId === null) return;
@@ -949,14 +984,7 @@ export function ProductMap({
               </div>
             </div>
 
-            {cardNode ? (
-              <div
-                data-guide-card-flow
-                className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full"
-              >
-                {cardNode}
-              </div>
-            ) : null}
+            {viewportMobile ? <MobileCardFlow>{cardNode}</MobileCardFlow> : cardNode}
           </section>
         </div>
       </div>
