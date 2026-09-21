@@ -464,6 +464,19 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("pads top-level separators by display width", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const command = "调".repeat(10);
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.commandStarted({ itemId: "cmd-wide", command }),
+    ]);
+
+    expect(timeline.text).toContain(
+      `── Running ${command} ${"─".repeat(28)}\n`,
+    );
+  });
+
   it("uses shared turn title fallback text in CLI output", () => {
     const text = formatThreadTimelineText(
       [
@@ -2405,7 +2418,8 @@ describe("timeline CLI rendering snapshots", () => {
     const expectedText = "Summary 1.\nBody.\nSummary 2.";
 
     expect(
-      renderActiveTimeline(streamingEvents).projection.state.activeThinking?.text,
+      renderActiveTimeline(streamingEvents).projection.state.activeThinking
+        ?.text,
     ).toBe(expectedText);
     const completedMessages = renderActiveTimeline(
       completedEvents.slice(0, -1),
@@ -2432,7 +2446,8 @@ describe("timeline CLI rendering snapshots", () => {
     const expectedText = "First paragraph.\n\nSecond paragraph.";
 
     expect(
-      renderActiveTimeline(streamingEvents).projection.state.activeThinking?.text,
+      renderActiveTimeline(streamingEvents).projection.state.activeThinking
+        ?.text,
     ).toBe(expectedText);
     expect(
       renderIdleTimeline([

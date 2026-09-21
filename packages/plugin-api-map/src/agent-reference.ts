@@ -1,3 +1,4 @@
+import { escapeHtmlText } from "@bb/text-utils";
 import { SURFACES_BY_ID, type PluginSurface } from "./surfaces";
 
 export const PLUGIN_GUIDE_PLUGIN_ID = "plugin-api-docs";
@@ -33,14 +34,6 @@ export interface PluginSurfaceAgentReference {
 const AGENT_REFERENCE_PREFIX = "Build a plugin that uses ";
 const AGENT_REFERENCE_SUFFIX = " ";
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
 export function createPluginSurfaceAgentReference(
   surface: PluginSurface,
 ): PluginSurfaceAgentReference {
@@ -59,7 +52,7 @@ export function createPluginSurfaceAgentReference(
   };
   const clipboard = {
     text: `${AGENT_REFERENCE_PREFIX}${serializedText}${AGENT_REFERENCE_SUFFIX}`,
-    html: `${escapeHtml(AGENT_REFERENCE_PREFIX)}<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtml(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtml(serializedText)}">${escapeHtml(serializedText)}</span>${escapeHtml(AGENT_REFERENCE_SUFFIX)}`,
+    html: `${escapeHtmlText(AGENT_REFERENCE_PREFIX)}<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtmlText(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtmlText(serializedText)}">${escapeHtmlText(serializedText)}</span>${escapeHtmlText(AGENT_REFERENCE_SUFFIX)}`,
   };
   const context = [
     `Plugin Guide surface: ${surface.title} (${surface.id}).`,

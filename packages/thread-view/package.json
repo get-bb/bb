@@ -18,6 +18,7 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

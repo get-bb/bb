@@ -6,6 +6,7 @@ import {
   QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH,
   type Thread,
 } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { dispatchEnvironmentAndHost } from "./dispatch-hooks.js";
@@ -30,7 +31,7 @@ export function describeDispatchFailure(error: unknown): string {
       : "The message could not be sent.";
   return message.length <= QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH
     ? message
-    : `${message.slice(0, QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH - 1)}…`;
+    : `${sliceUtf16Head(message, QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH - 1)}…`;
 }
 
 /**

@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@hugeicons/core-free-icons": "^4.3.4",
     "@hugeicons/react": "^1.1.6",
     "clsx": "^2.1.1",

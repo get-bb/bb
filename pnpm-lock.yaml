@@ -104,6 +104,9 @@ importers:
       '@bb/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../../packages/thread-view
@@ -463,6 +466,9 @@ importers:
       '@bb/connect-db':
         specifier: workspace:*
         version: link:../../packages/connect-db
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../../packages/tunnel-contract
@@ -667,6 +673,9 @@ importers:
       '@bb/server-archive':
         specifier: workspace:*
         version: link:../../packages/server-archive
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/tunnel-client':
         specifier: workspace:*
         version: link:../../packages/tunnel-client
@@ -2020,6 +2029,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../shared-ui
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       '@hugeicons/core-free-icons':
         specifier: ^4.3.4
         version: 4.3.4
@@ -2406,6 +2418,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       semver:
         specifier: ^7.7.4
         version: 7.8.5
@@ -2847,6 +2862,9 @@ importers:
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../server-contract
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       zod:
         specifier: 4.3.6
         version: 4.3.6

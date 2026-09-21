@@ -19,6 +19,7 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import type {
   ClientTurnRequestId,
   CompletedTurnDisplay,
@@ -1590,7 +1591,10 @@ function toConversationOutlinePreview(text: string): string {
   if (normalized.length <= CONVERSATION_OUTLINE_PREVIEW_MAX_LENGTH) {
     return normalized;
   }
-  return normalized.slice(0, CONVERSATION_OUTLINE_PREVIEW_MAX_LENGTH).trimEnd();
+  return sliceUtf16Head(
+    normalized,
+    CONVERSATION_OUTLINE_PREVIEW_MAX_LENGTH,
+  ).trimEnd();
 }
 
 function toConversationOutlineAttachmentSummary(

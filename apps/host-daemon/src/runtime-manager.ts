@@ -9,6 +9,7 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
+import { sliceUtf16Tail } from "@bb/text-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -119,7 +120,7 @@ function buildProviderProcessExitDetail(
   if (!info.stderr) {
     return undefined;
   }
-  return `stderr:\n${info.stderr.slice(-PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH)}`;
+  return `stderr:\n${sliceUtf16Tail(info.stderr, PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH)}`;
 }
 
 export interface RuntimeEntry {
