@@ -40,8 +40,6 @@ function NavigationControls() {
         plugin
       </button>
       <button onClick={() => navigate("/threads/thread-1")}>thread</button>
-      <button onClick={() => navigate("/plugins")}>plugins</button>
-      <button onClick={() => navigate("/skills/library/demo")}>skills</button>
     </>
   );
 }
@@ -71,10 +69,6 @@ describe("SplitWorkspaceRoute", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "thread" }));
     expect(screen.getByTestId("route-content").textContent).toBe("thread");
-    for (const name of ["plugins", "skills"]) {
-      fireEvent.click(screen.getByRole("button", { name }));
-      expect(screen.getByTestId("route-content").textContent).toBe("resource");
-    }
     expect(workspaceLifecycle).toEqual({ mounts: 1, unmounts: 0 });
   });
 

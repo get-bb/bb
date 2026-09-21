@@ -113,7 +113,7 @@ import {
 } from "./useMobileVisualViewportHeight";
 import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { findPaneByThread } from "@/lib/split-layout";
+import { countPanes, findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -530,7 +530,17 @@ export function AppLayout({ children }: AppLayoutProps) {
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
-  const showHeader = !isThreadView && !isRootView && pluginPanelMatch === null;
+  const splitLayout = useAtomValue(splitLayoutAtom);
+  const isResourceSplit =
+    !isCompactViewport &&
+    (isPluginsWorkspace || isSkillsWorkspace) &&
+    splitLayout !== null &&
+    countPanes(splitLayout.root) > 1;
+  const showHeader =
+    !isThreadView &&
+    !isRootView &&
+    pluginPanelMatch === null &&
+    !isResourceSplit;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);

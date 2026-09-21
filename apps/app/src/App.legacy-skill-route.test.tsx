@@ -19,7 +19,7 @@ vi.mock("./views/ToolsView", () => ({
   SkillsView: () => <h1>Skills</h1>,
 }));
 vi.mock("./views/SplitWorkspaceRoute", () => ({
-  default: () => {
+  default: function Workspace() {
     const { pathname } = useLocation();
     const match = /^\/plugins\/([^/]+)$/.exec(pathname);
     return (

@@ -25,6 +25,10 @@ const PluginsView = lazy(() =>
   import("./ToolsView").then((m) => ({ default: m.PluginsView })),
 );
 
+const SkillsView = lazy(() =>
+  import("./ToolsView").then((m) => ({ default: m.SkillsView })),
+);
+
 export default function SplitWorkspaceRoute() {
   const location = useLocation();
   const { projectId, threadId, isThreadView } = useRouteState();
@@ -80,6 +84,12 @@ export default function SplitWorkspaceRoute() {
   }
   if (routeContent === null) {
     return <Navigate to={APP_ROOT_ROUTE_PATH} replace />;
+  }
+  if (
+    routeContent.kind === "resource" &&
+    (layout === null || countPanes(layout.root) < 2)
+  ) {
+    return routeContent.path === "/plugins" ? <PluginsView /> : <SkillsView />;
   }
   if (
     routeContent.kind === "plugin-detail" &&
