@@ -588,6 +588,7 @@ describe("Theme Preview", () => {
     });
 
     expect(screen.getByText("Overlays")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Overlays" }));
     for (const name of ["Menu", "Dialog", "Popover", "Tooltip", "Hover card", "Toast"]) {
       expect(screen.getByRole("button", { name })).toBeDefined();
     }
@@ -689,6 +690,7 @@ describe("Theme Preview", () => {
       setTheme: () => DEFAULT_CATALOG,
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Overlays" }));
     const trigger = document.querySelector<HTMLButtonElement>("[data-tp-hovercard-trigger]");
     if (!trigger) throw new Error("Hover card trigger was not rendered");
 
@@ -720,6 +722,13 @@ describe("Theme Preview", () => {
       setTheme: () => DEFAULT_CATALOG,
     });
 
+    for (const name of ["Overlays", "Components", "Style sheet"]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-expanded")).toBe("false");
+    }
+    expect(screen.queryByRole("textbox", { name: "Search threads" })).toBeNull();
+    const components = screen.getByRole("button", { name: "Components" });
+    fireEvent.click(components);
+
     // Input accepts typing.
     const search = await screen.findByRole("textbox", { name: "Search threads" });
     fireEvent.change(search, { target: { value: "endless color" } });
@@ -739,6 +748,14 @@ describe("Theme Preview", () => {
 
     // Disabled states are real, not painted.
     expect((screen.getByRole("button", { name: "Disabled" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(components);
+    expect(screen.queryByRole("textbox", { name: "Search threads" })).toBeNull();
+    fireEvent.click(components);
+    expect(screen.getByRole("textbox", { name: "Search threads" })).toBe(search);
+    expect((search as HTMLInputElement).value).toBe("endless color");
+    expect(screen.getByRole("switch", { name: "Notifications" }).getAttribute("aria-checked")).not.toBe(before);
+    expect(screen.getByRole("checkbox", { name: "Include drafts" }).getAttribute("aria-checked")).not.toBe(checkedBefore);
   });
 
   it("gives the tooltip a dismissal delay and keyboard focus support", async () => {
@@ -746,6 +763,7 @@ describe("Theme Preview", () => {
       themeCatalog: () => DEFAULT_CATALOG,
       setTheme: () => DEFAULT_CATALOG,
     });
+    fireEvent.click(screen.getByRole("button", { name: "Overlays" }));
     const trigger = await waitFor(() => {
       const found = document.querySelector<HTMLButtonElement>("[data-tp-tooltip-trigger]");
       expect(found).not.toBeNull();
@@ -778,7 +796,9 @@ describe("Theme Preview", () => {
       const sheet = document.querySelector("[data-tp-area=stylesheet]");
       const blocks = [...(sheet?.querySelectorAll("[data-tp-block]") ?? [])].map((el) => el.getAttribute("data-tp-block"));
       expect(blocks).toEqual(["surfaces", "ink", "accent", "status", "lines", "typography", "rhythm", "radius", "shadow"]);
-      expect(sheet?.querySelector("input, select, [role=slider], button")).toBeNull();
+      expect(sheet?.querySelector("input, select, [role=slider]")).toBeNull();
+      expect(sheet?.querySelectorAll("button")).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Style sheet" }).getAttribute("aria-expanded")).toBe("true");
       const ratios = await waitFor(() => {
         const found = document.querySelectorAll("[data-tp-contrast-ratio]");
         expect(found).toHaveLength(13);
