@@ -142,6 +142,25 @@ describe("theme.css neutral ramp", () => {
     );
   });
 
+  it("keeps the scrollport cap below label controls but above project rows", () => {
+    const cap = Number(
+      css.match(
+        /\[data-sidebar-sticky-stack\]::before\s*\{[^}]*z-index:\s*(\d+)/,
+      )?.[1],
+    );
+    const tier = (name: string) =>
+      Number(
+        css.match(
+          new RegExp(
+            `\\[data-sidebar-sticky-tier="${name}"\\]\\s*\\{[^}]*--bb-sidebar-sticky-tier-z-index:\\s*(\\d+)`,
+          ),
+        )?.[1],
+      );
+
+    expect(cap).toBeLessThan(tier("label"));
+    expect(cap).toBeGreaterThan(tier("project"));
+  });
+
   it("collapses the label slot when a section header is not sticky", () => {
     const compact = css.replace(/\s+/g, " ");
     const declarations = (selector: string): string | undefined =>
