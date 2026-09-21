@@ -3367,6 +3367,9 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^2.27.2
         version: 2.27.2
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
       tiptap-markdown:
         specifier: ^0.8.10
         version: 0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))

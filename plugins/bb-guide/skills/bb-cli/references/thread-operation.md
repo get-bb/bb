@@ -42,12 +42,6 @@
   scheduled tell neither sends nor runs. Both report `delivery: "queued"` and
   dispatch on the sweep after the requested time. The SDK equivalent is `sendAt`
   (epoch ms) on `threads.spawn` / `threads.send`.
-- Add `--draft` to `bb thread spawn` or `bb thread tell` to save a message until
-  manual Send now. Follow-up saves imply queue mode and reject explicit steer
-  or auto mode. SDK callers use `pluginSubmission: { pluginId: "drafts", data:
-  { kind: "draft" } }` on `threads.spawn` or `threads.send`; use
-  `mode: "queue-if-active"` for a follow-up. Drafts must be installed, enabled,
-  and available or the server rejects the save before starting any work.
 - `bb thread queue list` shows a Sender for agent threads and system notices.
   SDK queue rows and `--json` include `initiator` and nullable `senderThreadId`.
 - A send that cannot run right now does not fail: it joins the thread's queue

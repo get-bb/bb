@@ -1816,4 +1816,5 @@ export {
   useOptionalIsSidebarShowing,
   useSidebar,
   useSidebarContentElementRef,
+  SidebarContentElementContext,
 };

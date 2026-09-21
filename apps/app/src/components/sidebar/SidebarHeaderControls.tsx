@@ -23,6 +23,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
+import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility";
 
 interface HeaderCreationActions {
   onNewProject?: () => void;
@@ -186,11 +187,13 @@ export function SidebarHeaderControls({
                   </DropdownMenuSub>
                 ),
               )}
-              {children && (
+              {children ? (
                 <>
                   <DropdownMenuSeparator />
                   {children}
                 </>
+              ) : (
+                <ThreadListVisibilityMenuItems />
               )}
             </>
           )}
@@ -215,6 +218,7 @@ export function SidebarSectionMenuItems({
           Rename
         </DropdownMenuItem>
       )}
+      <ThreadListVisibilityMenuItems />
       {onRemove && (
         <>
           <DropdownMenuSeparator />

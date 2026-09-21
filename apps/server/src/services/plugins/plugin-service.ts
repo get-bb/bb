@@ -1266,15 +1266,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     hooks: {
-      isPluginRunning(pluginId) {
-        const row = getInstalledPlugin(deps.db, pluginId);
-        return (
-          row !== undefined &&
-          row.enabled &&
-          loaded.has(pluginId) &&
-          getStatus(row).status === "running"
-        );
-      },
       listHooks: listPluginHooks,
       invokeHook: invokeIsolated,
       decisionTimeoutMs: DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,

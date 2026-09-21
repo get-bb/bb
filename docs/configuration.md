@@ -351,6 +351,25 @@ uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 `Control+Shift+[/]` on the web.
 
+On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
+`Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
+tabs and each pane's New tab button in displayed order across the active
+chat's right-panel groups. Press Enter or Space on New tab to open the picker.
+On the selected New tab page, `panel.previousNewTabItem` /
+`panel.nextNewTabItem` use `Command+Control+ArrowUp` / `Command+Control+ArrowDown` to
+move through search, enabled actions, and recent items in displayed order.
+Search results replace actions and recents while searching. Enter activates
+the focused item.
+Chat splits use `pane.focus.left` / `right` / `up` / `down` with
+`Command+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+spatially to the adjacent chat pane, including stacked splits, and stop at the
+layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
+commands still cycle in reading order. On Windows/Linux, these arrow navigation
+commands start unassigned to preserve native Control-arrow editing shortcuts.
+Rebind any of these commands in Settings → Keyboard, via
+`bb settings keyboard set <command> <shortcut|disabled>`, or SDK
+`system.updateKeyboardSettings`; read bindings with `system.config`.
+
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
 `bb settings keyboard reset plugin:example/open-issue` restores the plugin's
@@ -687,6 +706,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
 | `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
 | `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
+| `sidebar.hiddenGroups`            | Project, custom section, and machine ids moved into More |
 | `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
 | `sidebar.collapsedProjects`       | Collapsed project ids                               |
 | `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
@@ -759,6 +779,35 @@ value. A change on one device reaches every other connected window through the
 
 Sidebar width and open state stay in the browser because they depend on the
 window size.
+
+### Thread-list visibility
+
+Choose **Hide from list** in a project, custom section, or machine's menu to
+move it into **More**. Its menu in More offers **Add to sidebar** to restore it.
+**Customize list** manages visibility and order for the current
+organization. Hiding a group preserves its threads, saved order, and collapse
+state; pinned threads stay in Pinned. Hidden work remains reachable through More,
+search, and direct links. More shows activity without automatically restoring
+hidden groups.
+
+`sidebar.hiddenGroups` defaults to `[]` and accepts `project:<projectId>`,
+`section:<sectionId>`, and `machine:<hostId>` keys (`machine:no-machine` for the
+unassigned machine group). Each organization uses only its matching keys.
+Built-in Pinned and Threads sections cannot be hidden. Duplicate keys are
+deduplicated; unavailable IDs are retained without creating sidebar rows, and
+new groups default to visible.
+
+```sh
+bb settings ui get sidebar.hiddenGroups
+bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
+bb settings ui reset sidebar.hiddenGroups
+```
+
+`set` replaces the complete list across organizations, so include any existing
+keys you want to keep hidden. `reset` restores the default empty list and shows
+every group. SDK callers use `sdk.system.uiPreferences.list()` for the current
+value and revision, `.set({ key: "sidebar.hiddenGroups", value, expectedRevision })`
+to replace the list, and `.reset({ key: "sidebar.hiddenGroups" })` to show all.
 
 ### Sidebar footer
 

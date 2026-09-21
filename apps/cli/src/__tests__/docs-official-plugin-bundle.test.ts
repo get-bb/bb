@@ -90,6 +90,7 @@ describe("Docs official plugin frontend bundle", () => {
       radixContextMenu: componentStub,
       radixDialog: componentStub,
       radixSelect: componentStub,
+      radixTooltip: componentStub,
       clsx: componentStub,
       tailwindMerge: componentStub,
       classVarianceAuthority: componentStub,

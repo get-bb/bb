@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  PANE_DIRECTION_APP_COMMAND_IDS,
   defaultAppSettings,
   isAppKeybindingAvailableForClient,
   isMacKeyboardPlatform,
@@ -211,11 +212,14 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     if (active) {
       sources.add(source);
       activeContextsRef.current.set(key, sources);
-      return;
+    } else {
+      sources.delete(source);
+      if (sources.size === 0) {
+        activeContextsRef.current.delete(key);
+      }
     }
-    sources.delete(source);
-    if (sources.size === 0) {
-      activeContextsRef.current.delete(key);
+    if (key === "splitActive") {
+      getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
     }
   }, []);
 
@@ -354,9 +358,28 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     const handleKeyDown = (event: KeyboardEvent) => {
       handleKeyboardEvent(event);
     };
+    const handlePaneNavigation = (event: KeyboardEvent) => {
+      if (
+        getShortcutCommand(event, [
+          "panel.previousTab",
+          "panel.nextTab",
+          "panel.previousNewTabItem",
+          "panel.nextNewTabItem",
+          ...PANE_DIRECTION_APP_COMMAND_IDS,
+          "pane.focus.previous",
+          "pane.focus.next",
+        ]) !== null
+      ) {
+        handleKeyboardEvent(event);
+      }
+    };
+    window.addEventListener("keydown", handlePaneNavigation, true);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyboardEvent]);
+    return () => {
+      window.removeEventListener("keydown", handlePaneNavigation, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [getShortcutCommand, handleKeyboardEvent]);
 
   useEffect(() => {
     const desktop = getBbDesktopInfo();

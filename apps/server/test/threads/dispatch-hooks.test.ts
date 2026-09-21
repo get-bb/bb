@@ -1,7 +1,5 @@
 import {
   createQueuedThreadMessage,
-  environments,
-  threads,
   getThread,
   listEvents,
   listQueuedThreadMessages,
@@ -74,12 +72,9 @@ function emptyRegistry(): HookRegistry {
  */
 function installHooks(
   registry: HookRegistry,
-  options: { decisionTimeoutMs?: number; running?: boolean } = {},
+  options: { decisionTimeoutMs?: number } = {},
 ): void {
   setPluginHookProvider({
-    isPluginRunning: (pluginId) =>
-      options.running ??
-      registry["message.dispatch"].some((hook) => hook.pluginId === pluginId),
     listHooks: (hook) => registry[hook],
     // Mirrors the plugin service's failure isolation: a throw is reported, not
     // propagated, and the runner is what turns it into a failed dispatch.
@@ -202,256 +197,6 @@ async function expectApiError(run: () => Promise<unknown>): Promise<ApiError> {
   throw new Error("expected the operation to fail");
 }
 
-describe("built-in Drafts save-only admission", () => {
-  const pluginSubmission = { pluginId: "drafts", data: { kind: "draft" } };
-
-  it.each(["missing", "disabled", "missing-handler"] as const)(
-    "rejects %s Drafts before creating a thread, environment, or turn",
-    async (state) => {
-      await withTestHarness(async (harness) => {
-        const hostId = `host-drafts-${state}`;
-        const { project, thread } = seedRunnableThread(harness, {
-          hostId,
-          status: "active",
-        });
-        if (state === "missing") {
-          setPluginHookProvider(undefined);
-        } else {
-          installHooks(
-            {
-              "message.dispatch":
-                state === "missing-handler"
-                  ? []
-                  : [
-                      {
-                        pluginId: "drafts",
-                        handler: () => ({ action: "wait", reason: "Draft" }),
-                      },
-                    ],
-            },
-            { running: state === "missing-handler" },
-          );
-        }
-        const beforeThreads = harness.db.select().from(threads).all().length;
-        const beforeEnvironments = harness.db
-          .select()
-          .from(environments)
-          .all().length;
-        const beforeTurns = turnRequests(harness, thread.id).length;
-        const createError = await expectApiError(() =>
-          createThreadFromRequest(harness.deps, {
-            projectId: project.id,
-            providerId: "codex",
-            environment: {
-              type: "host",
-              hostId,
-              workspace: {
-                type: "unmanaged",
-                path: "/tmp/drafts-new-environment",
-              },
-            },
-            origin: "sdk",
-            startedOnBehalfOf: null,
-            input: textInput("save only"),
-            pluginSubmission,
-          }),
-        );
-        expect(createError.body.code).toBe("drafts_unavailable");
-        const sendError = await expectApiError(() =>
-          acceptThreadSendRequest(harness.deps, {
-            thread,
-            payload: {
-              input: textInput("/clear"),
-              mode: "steer-if-active",
-              pluginSubmission,
-            },
-          }),
-        );
-        expect(sendError.body.code).toBe("drafts_unavailable");
-        expect(harness.db.select().from(threads).all()).toHaveLength(
-          beforeThreads,
-        );
-        expect(harness.db.select().from(environments).all()).toHaveLength(
-          beforeEnvironments,
-        );
-        expect(turnRequests(harness, thread.id)).toHaveLength(beforeTurns);
-        expect(queuedRows(harness, thread.id)).toEqual([]);
-      });
-    },
-  );
-
-  it("keeps active steering, a future schedule, and /clear behind the Drafts hold", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedRunnableThread(harness, {
-        hostId: "host-save-only-steer",
-        status: "active",
-      });
-      installHooks({
-        "message.dispatch": [
-          {
-            pluginId: "drafts",
-            handler: () => ({ action: "wait", reason: "Draft" }),
-          },
-        ],
-      });
-      const beforeTurns = turnRequests(harness, thread.id).length;
-      const response = await acceptThreadSendRequest(harness.deps, {
-        thread,
-        payload: {
-          input: textInput("/clear"),
-          mode: "steer-if-active",
-          sendAt: Date.now() + 60_000,
-          pluginSubmission,
-        },
-      });
-      expect(response.delivery).toBe("queued");
-      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
-        waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
-        sendAt: null,
-      });
-      expect(turnRequests(harness, thread.id)).toHaveLength(beforeTurns);
-      expect(getThread(harness.db, thread.id)?.status).toBe("active");
-    });
-  });
-
-  it.each(["throws", "proceeds", "schedules"] as const)(
-    "fails closed when Drafts %s",
-    async (behavior) => {
-      await withTestHarness(async (harness) => {
-        const { host, project } = seedDispatchFixture(
-          harness,
-          `host-draft-${behavior}`,
-        );
-        installHooks({
-          "message.dispatch": [
-            {
-              pluginId: "drafts",
-              handler: () => {
-                if (behavior === "throws") throw new Error("Drafts failed");
-                return behavior === "proceeds"
-                  ? { action: "proceed" }
-                  : {
-                      action: "wait",
-                      reason: "Draft",
-                      sendAt: Date.now() + 60_000,
-                    };
-              },
-            },
-          ],
-        });
-        const beforeEnvironments = harness.db
-          .select()
-          .from(environments)
-          .all().length;
-        const error = await expectApiError(() =>
-          createThreadFromRequest(harness.deps, {
-            projectId: project.id,
-            providerId: "codex",
-            environment: {
-              type: "host",
-              hostId: host.id,
-              workspace: {
-                type: "unmanaged",
-                path: "/tmp/drafts-failure-environment",
-              },
-            },
-            origin: "sdk",
-            startedOnBehalfOf: null,
-            input: textInput("save only"),
-            pluginSubmission,
-          }),
-        );
-        expect(error.body.code).toBe("dispatch_hook_failed");
-        expect(harness.db.select().from(environments).all()).toHaveLength(
-          beforeEnvironments,
-        );
-        for (const row of harness.db.select().from(threads).all()) {
-          expect(turnRequests(harness, row.id)).toEqual([]);
-        }
-      });
-    },
-  );
-
-  it("keeps the durable Drafts owner when another plugin also waits", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedRunnableThread(harness, {
-        hostId: "host-drafts-owner",
-        status: "idle",
-      });
-      installHooks({
-        "message.dispatch": [
-          {
-            pluginId: "capacity",
-            handler: () => ({ action: "wait", reason: "Busy" }),
-          },
-          {
-            pluginId: "drafts",
-            handler: (context) => {
-              const wait = context.queuedMessages[0]?.waitingOn;
-              return context.experimental_submission?.pluginId === "drafts" ||
-                (wait?.kind === "plugin" && wait.pluginId === "drafts")
-                ? { action: "wait", reason: "Draft" }
-                : { action: "proceed" };
-            },
-          },
-        ],
-      });
-      const beforeTurns = turnRequests(harness, thread.id).length;
-      await acceptThreadSendRequest(harness.deps, {
-        thread,
-        payload: {
-          input: textInput("save only"),
-          mode: "auto",
-          pluginSubmission,
-        },
-      });
-      const saved = onlyQueuedRow(harness, thread.id);
-      expect(saved.waitingOn).toEqual({
-        kind: "plugin",
-        pluginId: "drafts",
-        reason: "Draft (also waiting on capacity: Busy)",
-      });
-      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
-      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
-        id: saved.id,
-        waitingOn: { kind: "plugin", pluginId: "drafts" },
-      });
-      expect(turnRequests(harness, thread.id)).toHaveLength(beforeTurns);
-    });
-  });
-
-  it.each([
-    { pluginId: "other", data: { kind: "draft" } },
-    { pluginId: "drafts", data: { kind: "other" } },
-    { pluginId: "drafts", data: null },
-    { pluginId: "drafts", data: [{ kind: "draft" }] },
-  ])(
-    "preserves opaque submission behavior for $pluginId / $data",
-    async (opaqueSubmission) => {
-      await withTestHarness(async (harness) => {
-        const { thread } = seedRunnableThread(harness, {
-          hostId: "host-opaque-draft",
-          status: "idle",
-        });
-        setPluginHookProvider(undefined);
-        const response = await acceptThreadSendRequest(harness.deps, {
-          thread,
-          payload: {
-            input: textInput("scheduled opaque request"),
-            mode: "auto",
-            sendAt: Date.now() + 60_000,
-            pluginSubmission: opaqueSubmission,
-          },
-        });
-        expect(response.delivery).toBe("queued");
-        expect(onlyQueuedRow(harness, thread.id).waitingOn).toEqual({
-          kind: "time",
-        });
-      });
-    },
-  );
-});
-
 describe("message.dispatch hook context", () => {
   it("passes plugin submission data through a new thread's first dispatch", async () => {
     await withTestHarness(async (harness) => {
@@ -462,7 +207,7 @@ describe("message.dispatch hook context", () => {
             pluginId: "drafts",
             handler: (context) => {
               seen.push(context.experimental_submission);
-              return { action: "wait", reason: "Draft" };
+              return { action: "proceed" };
             },
           },
         ],
@@ -476,7 +221,7 @@ describe("message.dispatch hook context", () => {
         data: { kind: "draft" },
       };
 
-      const created = await createThreadFromRequest(harness.deps, {
+      await createThreadFromRequest(harness.deps, {
         environment: {
           type: "host",
           hostId: host.id,
@@ -491,17 +236,6 @@ describe("message.dispatch hook context", () => {
       });
 
       expect(seen).toEqual([pluginSubmission]);
-      expect(getThread(harness.db, created.id)?.status).toBe("pending");
-      const saved = onlyQueuedRow(harness, created.id);
-      await sendQueuedMessage(harness.deps, {
-        threadId: created.id,
-        queuedMessageId: saved.id,
-        mode: "auto",
-        claimPolicy: { kind: "explicit-send" },
-      });
-      expect(seen).toEqual([pluginSubmission]);
-      expect(getThread(harness.db, created.id)?.status).not.toBe("pending");
-      expect(queuedRows(harness, created.id)).toEqual([]);
     });
   });
 

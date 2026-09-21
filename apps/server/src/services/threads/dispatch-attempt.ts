@@ -43,8 +43,6 @@ import {
   dispatchExecutionSources,
   dispatchWaitReasonForPass,
   hasMessageDispatchHooks,
-  isDraftSubmission,
-  requireDraftSubmissionAvailable,
   noteDispatchRequeued,
   runMessageDispatchHookPass,
   type DispatchAttemptKind,
@@ -295,7 +293,6 @@ async function runDispatchAttempt(
   reattempted: boolean,
 ): Promise<DispatchAttemptOutcome> {
   const { payload, thread } = args;
-  requireDraftSubmissionAvailable(args.pluginSubmission);
   // A stopping thread is writable HERE and nowhere upstream: the checkpoint
   // below turns it into a core wait, which is a truthful "not yet" the row can
   // recover from, rather than the 409 that used to make a stop a dead end for
@@ -508,10 +505,7 @@ async function runDispatchAttempt(
     }
   };
 
-  if (
-    !sendNow &&
-    (isDraftSubmission(args.pluginSubmission) || hasMessageDispatchHooks())
-  ) {
+  if (!sendNow && hasMessageDispatchHooks()) {
     const outcome = await runMessageDispatchHookPass(deps, {
       thread,
       threadResponse: toThreadResponseFromThread(deps, { thread }),

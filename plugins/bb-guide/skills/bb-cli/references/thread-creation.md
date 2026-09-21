@@ -10,10 +10,6 @@
   current thread's project ID to add. Omitted execution flags use remembered project defaults;
   without a remembered model, bb resolves the selected provider and its reported
   default model on the target machine.
-- Add `--draft` to save the first message without starting a turn or provisioning
-  its environment. Drafts must be available; a failed save never falls back to
-  starting work. Use `bb thread queue list/update/send` to inspect, edit, or send
-  it. Queue deletion removes only the message, preserving the owning thread.
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.

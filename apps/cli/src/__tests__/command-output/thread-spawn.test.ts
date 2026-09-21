@@ -27,42 +27,6 @@ describe("bb thread spawn command output", () => {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
 
-  it("saves the first message with the shipped Drafts submission", async () => {
-    const post = vi.fn(async ({ json }: { json: unknown }) => {
-      createThreadRequestSchema.parse(json);
-      return fixtures.makeThread({
-        id: "thread-draft",
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "pending",
-      });
-    });
-    stubServerApi({ "v1.threads.$post": post });
-
-    await runCommand(
-      [
-        "thread",
-        "spawn",
-        "--project",
-        "proj-1",
-        "--prompt",
-        "Save this",
-        "--draft",
-      ],
-      register,
-    );
-
-    expect(post).toHaveBeenCalledWith({
-      json: expect.objectContaining({
-        pluginSubmission: { pluginId: "drafts", data: { kind: "draft" } },
-        input: [{ type: "text", text: "Save this", mentions: [] }],
-      }),
-    });
-    expect(collectLogLines(vi.mocked(console.log))[0]).toBe(
-      "Draft saved: thread-draft",
-    );
-  });
-
   it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
     const post = vi.fn(async ({ json }: { json: unknown }) => {
       createThreadRequestSchema.parse(json);

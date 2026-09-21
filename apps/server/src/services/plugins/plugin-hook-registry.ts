@@ -52,7 +52,6 @@ export async function invokeBridgedProvider<T>(
  * seams — and because it is the seam a test substitutes fake handlers through.
  */
 export interface PluginHookProvider {
-  isPluginRunning?(pluginId: string): boolean;
   /** Registered handlers for a hook, in plugin install order. */
   listHooks<K extends PluginHookName>(hook: K): PluginHookRegistration<K>[];
   /**
@@ -78,9 +77,7 @@ export interface PluginHookProvider {
  */
 let provider: PluginHookProvider | undefined;
 
-export function setPluginHookProvider(
-  next: PluginHookProvider | undefined,
-): void {
+export function setPluginHookProvider(next: PluginHookProvider | undefined): void {
   provider = next;
 }
 
