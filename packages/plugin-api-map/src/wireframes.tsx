@@ -2140,17 +2140,12 @@ export function ExtensionsPluginPageWireframe({
         <Mark
           id="plugin-status"
           label="The needs-configuration banner bb shows for a plugin that reports it"
-          className="flex items-start gap-2 border-b border-border bg-surface-recessed/55 px-5 py-2.5 text-sm"
+          className="flex items-center gap-2 border-b border-border bg-surface-recessed/55 px-5 py-1.5 text-xs"
           chip="corner-inset"
         >
-          <MiniIcon icon="Settings" className="mt-0.5 size-4 text-warning" />
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium text-foreground">
-              Needs configuration
-            </span>
-            <span className="block pt-0.5 text-xs leading-relaxed text-muted-foreground">
-              Set an API key.
-            </span>
+          <MiniIcon icon="Settings" className="size-3.5 text-warning" />
+          <span className="min-w-0 flex-1 font-medium text-foreground">
+            Needs configuration
           </span>
           <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-foreground px-2.5 text-xs text-background">
             Open settings
