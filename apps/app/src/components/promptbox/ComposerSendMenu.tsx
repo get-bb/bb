@@ -88,7 +88,7 @@ export function ComposerSendMenu({
   }
 
   return (
-    <div className="inline-flex items-center [&_[data-promptbox-submit-action]]:rounded-r-none [&_[data-promptbox-submit-action]]:border-r-0">
+    <div className="inline-flex items-center [&:hover_button]:duration-0 [&_[data-promptbox-submit-action]]:rounded-r-none [&_[data-promptbox-submit-action]]:border-r-0">
       {children}
       <DropdownMenu open={open && canSubmit} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger asChild>
