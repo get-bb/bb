@@ -160,16 +160,14 @@ export function CatalogPluginDetail({
       title={entry.displayName}
       metadata={<PluginCardAuthor entry={entry} />}
       actions={
-        <>
-          <PluginCatalogInstallControl
-            displayName={entry.displayName}
-            installed={false}
-            showLabel
-            disabled={!entry.compatible}
-            count={count}
-            onInstall={() => onInstall(entry)}
-          />
-        </>
+        <PluginCatalogInstallControl
+          displayName={entry.displayName}
+          installed={false}
+          showLabel
+          disabled={!entry.compatible}
+          count={count}
+          onInstall={() => onInstall(entry)}
+        />
       }
     >
       <ResourceDetailStack>
