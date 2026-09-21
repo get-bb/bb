@@ -1,4 +1,5 @@
 import Table from "cli-table3";
+import { displayWidth, truncateToWidth } from "@bb/domain/text-measure";
 
 interface BorderlessTableOptions {
   head: string[];
@@ -70,12 +71,12 @@ export function columnWidths(
   minimums: readonly number[],
 ): number[] {
   return minimums.map((minimum, index) =>
-    Math.max(minimum, ...rows.map((row) => row[index].length)),
+    Math.max(minimum, ...rows.map((row) => displayWidth(row[index] ?? ""))),
   );
 }
 
 export function truncateCell(value: string, maxWidth: number): string {
   const singleLine = value.replace(/\s+/gu, " ");
-  if (singleLine.length <= maxWidth) return singleLine;
-  return `${singleLine.slice(0, maxWidth - 1)}…`;
+  if (displayWidth(singleLine) <= maxWidth) return singleLine;
+  return `${truncateToWidth(singleLine, maxWidth - 1)}…`;
 }

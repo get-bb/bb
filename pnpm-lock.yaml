@@ -4358,6 +4358,9 @@ importers:
 
   plugins/tasks:
     dependencies:
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
@@ -4531,6 +4534,9 @@ importers:
 
   plugins/workflows:
     dependencies:
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
@@ -17756,9 +17762,7 @@ snapshots:
       yaml: 2.9.0
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
-      - bufferutil
       - supports-color
-      - utf-8-validate
       - ws
       - zod
 
@@ -20649,7 +20653,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

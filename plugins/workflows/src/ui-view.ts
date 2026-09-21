@@ -1,3 +1,4 @@
+import { displayWidth, truncateToWidth } from "@bb/domain/text-measure";
 import { parseWorkflowSource } from "./parser.js";
 import type { WorkflowRunInspection } from "./service.js";
 import type {
@@ -6,14 +7,14 @@ import type {
   WorkflowRunView,
 } from "./ui-contract.js";
 
-const MAX_FALLBACK_LABEL_LENGTH = 80;
+const MAX_FALLBACK_LABEL_WIDTH = 80;
 
 function fallbackCallLabel(prompt: string, index: number): string {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   if (normalized.length === 0) return `Agent ${index + 1}`;
-  return normalized.length <= MAX_FALLBACK_LABEL_LENGTH
+  return displayWidth(normalized) <= MAX_FALLBACK_LABEL_WIDTH
     ? normalized
-    : `${normalized.slice(0, MAX_FALLBACK_LABEL_LENGTH - 1)}…`;
+    : `${truncateToWidth(normalized, MAX_FALLBACK_LABEL_WIDTH - 1)}…`;
 }
 
 function callView(

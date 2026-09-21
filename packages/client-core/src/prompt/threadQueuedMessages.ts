@@ -1,8 +1,10 @@
 import { type PromptInput } from "@bb/domain";
+import { displayWidth, truncateToWidth } from "@bb/domain/text-measure";
 import { fileNameFromPath } from "@bb/thread-view";
 import { promptInputToDraft, type PromptDraftState } from "./prompt-draft.js";
 
-const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 140;
+const QUEUED_MESSAGE_PREVIEW_MAX_WIDTH = 140;
+const QUEUED_MESSAGE_PREVIEW_ELLIPSIS = "...";
 
 interface FormatQueuedMessagePreviewOptions {
   truncate?: boolean;
@@ -53,11 +55,14 @@ export function formatQueuedMessagePreview(
   if (trimmedText.length > 0) {
     if (
       options.truncate === false ||
-      trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS
+      displayWidth(trimmedText) <= QUEUED_MESSAGE_PREVIEW_MAX_WIDTH
     ) {
       return trimmedText;
     }
-    return `${trimmedText.slice(0, QUEUED_MESSAGE_PREVIEW_MAX_CHARS - 1)}...`;
+    return `${truncateToWidth(
+      trimmedText,
+      QUEUED_MESSAGE_PREVIEW_MAX_WIDTH - QUEUED_MESSAGE_PREVIEW_ELLIPSIS.length,
+    )}${QUEUED_MESSAGE_PREVIEW_ELLIPSIS}`;
   }
 
   const attachmentCount = countQueuedMessageAttachments(visibleInput);

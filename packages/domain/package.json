@@ -39,6 +39,11 @@
       "types": "./src/utf16.ts",
       "default": "./src/utf16.ts"
     },
+    "./text-measure": {
+      "source": "./src/text-measure.ts",
+      "types": "./src/text-measure.ts",
+      "default": "./src/text-measure.ts"
+    },
     "./update-state": {
       "source": "./src/update-state.ts",
       "types": "./src/update-state.ts",

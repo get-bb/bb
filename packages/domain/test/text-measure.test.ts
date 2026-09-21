@@ -4,7 +4,7 @@ import {
   displayWidth,
   truncateToWidth,
   truncateToWidthAtWordBoundary,
-} from "../../src/services/lib/text-measure.js";
+} from "../src/text-measure.js";
 
 describe("text measure", () => {
   it("counts words in scripts that do not separate them with spaces", () => {

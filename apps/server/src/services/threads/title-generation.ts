@@ -5,6 +5,12 @@ import {
   type PromptInput,
   type PromptMentionCommandTrigger,
 } from "@bb/domain";
+import {
+  countWords,
+  displayWidth,
+  truncateToWidth,
+  truncateToWidthAtWordBoundary,
+} from "@bb/domain/text-measure";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -12,12 +18,6 @@ import {
   InferenceTimeoutError,
   inferenceCompleteWithFallback,
 } from "../ai/inference.js";
-import {
-  countWords,
-  displayWidth,
-  truncateToWidth,
-  truncateToWidthAtWordBoundary,
-} from "../lib/text-measure.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WIDTH = 48;
