@@ -1,3 +1,4 @@
+import { proposalSchema, type Proposal } from "./proposals.js";
 import { watch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -256,6 +257,44 @@ type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
 type OpenerSource = z.infer<typeof openerSourceSchema>;
 
 export const docsRpcContract = defineRpcContract({
+  readProposal: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: proposalSchema.nullable(),
+  },
+  proposeNote: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        content: z.string(),
+        expectedSha256: z.string().min(1),
+        expectedVersion: z.number().int().positive().nullable(),
+      })
+      .strict(),
+    output: proposalSchema,
+  },
+  updateProposal: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        content: z.string(),
+        expectedVersion: z.number().int().positive(),
+      })
+      .strict(),
+    output: proposalSchema,
+  },
+  resolveProposal: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        action: z.enum(["accept", "reject", "undo", "redo"]),
+        expectedVersion: z.number().int().positive(),
+      })
+      .strict(),
+    output: proposalSchema,
+  },
   syncSnapshot: {
     input: z
       .object({ vaultId: vaultIdSchema, scope: syncScopeSchema })
@@ -697,6 +736,12 @@ export default async function plugin(
       position INTEGER NOT NULL,
       PRIMARY KEY (vault_id, parent_path, child_path)
     )`,
+    `CREATE TABLE IF NOT EXISTS proposals (
+      vault_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      data TEXT NOT NULL,
+      PRIMARY KEY (vault_id, path)
+    )`,
   ]);
 
   let seededDefaultVault = false;
@@ -858,6 +903,7 @@ export default async function plugin(
     contentEncoding?: "utf8" | "base64";
     expectedSha256?: unknown;
     createOnly?: boolean;
+    proposalOnly?: boolean;
   }) {
     const vault = getVault(args.vaultId);
     const relativePath = requireVaultPath(args.rawPath);
@@ -878,9 +924,76 @@ export default async function plugin(
           : {}),
     });
     if (result.outcome === "written") {
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      bb.realtime.publish("vault-changed", {
+        vaultId: vault.id,
+        path: relativePath,
+        ...(args.proposalOnly ? { proposalOnly: true } : {}),
+      });
     }
     return result;
+  }
+
+  const vaultOperations = new Map<string, Promise<unknown>>();
+
+  async function serializeVault<T>(
+    vaultId: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const key = vaultId;
+    const previous = vaultOperations.get(key) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => {
+        getVault(vaultId);
+        return work();
+      });
+    vaultOperations.set(key, current);
+    try {
+      return await current;
+    } finally {
+      if (vaultOperations.get(key) === current) vaultOperations.delete(key);
+    }
+  }
+
+  function readProposal(
+    vaultId: string,
+    relativePath: string,
+  ): Proposal | null {
+    const row = db
+      .prepare("SELECT data FROM proposals WHERE vault_id = ? AND path = ?")
+      .get(vaultId, relativePath);
+    if (!row) return null;
+    const data = z.object({ data: z.string() }).parse(row);
+    return proposalSchema.parse(JSON.parse(data.data));
+  }
+
+  function saveProposal(proposal: Proposal): Proposal {
+    db.prepare(
+      "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?) ON CONFLICT(vault_id, path) DO UPDATE SET data = excluded.data",
+    ).run(proposal.vaultId, proposal.path, JSON.stringify(proposal));
+    bb.realtime.publish("vault-changed", {
+      vaultId: proposal.vaultId,
+      path: proposal.path,
+      proposalOnly: true,
+    });
+    bb.realtime.publish("proposal-changed", {
+      vaultId: proposal.vaultId,
+      path: proposal.path,
+      version: proposal.version,
+    });
+    return proposal;
+  }
+
+  function requireProposal(
+    vaultId: string,
+    relativePath: string,
+    expectedVersion: number,
+  ): Proposal {
+    const proposal = readProposal(vaultId, relativePath);
+    if (!proposal || proposal.version !== expectedVersion) {
+      throw new Error("The proposal changed. Read it again before continuing.");
+    }
+    return proposal;
   }
 
   async function resolveOpenerFile(
@@ -1008,14 +1121,40 @@ export default async function plugin(
     const vault = getVault(vaultId);
     const from = requireVaultPath(fromValue);
     const to = requireVaultPath(toValue);
-    await bb.sdk.files.move({
-      ...hostArgs(vault),
-      sourcePath: absolutePath(vault, from),
-      destinationPath: absolutePath(vault, to),
-      rootPath: vault.rootPath,
+    return serializeVault(vault.id, async () => {
+      await bb.sdk.files.move({
+        ...hostArgs(vault),
+        sourcePath: absolutePath(vault, from),
+        destinationPath: absolutePath(vault, to),
+        rootPath: vault.rootPath,
+      });
+      db.transaction(() => {
+        const rows = db
+          .prepare(
+            "SELECT data FROM proposals WHERE vault_id = ? AND (path = ? OR substr(path, 1, length(?)) = ?)",
+          )
+          .all(vault.id, from, `${from}/`, `${from}/`);
+        deleteProposals(vault.id, from);
+        deleteProposals(vault.id, to);
+        const insert = db.prepare(
+          "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?)",
+        );
+        for (const row of rows) {
+          const { data } = z.object({ data: z.string() }).parse(row);
+          const proposal = proposalSchema.parse(JSON.parse(data));
+          proposal.path = to + proposal.path.slice(from.length);
+          insert.run(vault.id, proposal.path, JSON.stringify(proposal));
+        }
+      })();
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { path: to };
     });
-    bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { path: to };
+  }
+
+  function deleteProposals(vaultId: string, relativePath: string) {
+    db.prepare(
+      "DELETE FROM proposals WHERE vault_id = ? AND (path = ? OR substr(path, 1, length(?)) = ?)",
+    ).run(vaultId, relativePath, `${relativePath}/`, `${relativePath}/`);
   }
 
   async function removePath(
@@ -1025,14 +1164,17 @@ export default async function plugin(
   ): Promise<{ ok: true }> {
     const vault = getVault(vaultId);
     const relativePath = requireVaultPath(rawPath);
-    await bb.sdk.files.remove({
-      ...hostArgs(vault),
-      path: absolutePath(vault, relativePath),
-      rootPath: vault.rootPath,
-      recursive,
+    return serializeVault(vault.id, async () => {
+      await bb.sdk.files.remove({
+        ...hostArgs(vault),
+        path: absolutePath(vault, relativePath),
+        rootPath: vault.rootPath,
+        recursive,
+      });
+      deleteProposals(vault.id, relativePath);
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { ok: true };
     });
-    bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { ok: true };
   }
 
   function scopeContains(scope: SyncScope, relativePath: string): boolean {
@@ -1432,6 +1574,112 @@ export default async function plugin(
   }
 
   const handlers: PluginRpcHandlers<typeof docsRpcContract> = {
+    async readProposal(input) {
+      return readProposal(getVault(input.vaultId).id, input.path);
+    },
+    async proposeNote(input) {
+      const vaultId = getVault(input.vaultId).id;
+      return serializeVault(vaultId, async () => {
+        const previous = readProposal(vaultId, input.path);
+        if ((previous?.version ?? null) !== input.expectedVersion) {
+          throw new Error(
+            "The proposal changed. Read it again before proposing changes.",
+          );
+        }
+        const file = await readFile(vaultId, input.path);
+        if (
+          file.contentEncoding !== "utf8" ||
+          file.sha256 !== input.expectedSha256
+        ) {
+          throw new Error(
+            "The document changed. Read it again before proposing changes.",
+          );
+        }
+        return saveProposal({
+          vaultId,
+          path: input.path,
+          version: (previous?.version ?? 0) + 1,
+          baseContent: file.content,
+          baseSha256: file.sha256,
+          content: input.content,
+          status: "pending",
+          resolvedSha256: null,
+        });
+      });
+    },
+    async updateProposal(input) {
+      const vaultId = getVault(input.vaultId).id;
+      return serializeVault(vaultId, async () => {
+        const proposal = requireProposal(
+          vaultId,
+          input.path,
+          input.expectedVersion,
+        );
+        if (proposal.status !== "pending")
+          throw new Error("This proposal is no longer pending.");
+        return saveProposal({
+          ...proposal,
+          content: input.content,
+          version: proposal.version + 1,
+        });
+      });
+    },
+    async resolveProposal(input) {
+      const vaultId = getVault(input.vaultId).id;
+      return serializeVault(vaultId, async () => {
+        const proposal = requireProposal(
+          vaultId,
+          input.path,
+          input.expectedVersion,
+        );
+        const status = (
+          {
+            accept: proposal.status === "pending" ? "accepted" : null,
+            reject: proposal.status === "pending" ? "rejected" : null,
+            undo:
+              proposal.status === "accepted"
+                ? "undone"
+                : proposal.status === "rejected"
+                  ? "pending"
+                  : null,
+            redo: proposal.status === "undone" ? "pending" : null,
+          } as const
+        )[input.action];
+        if (!status)
+          throw new Error(
+            input.action === "undo"
+              ? "Nothing to undo."
+              : input.action === "redo"
+                ? "Nothing to redo."
+                : "This proposal is no longer pending.",
+          );
+        const next = { ...proposal, status, version: proposal.version + 1 };
+        const restoring = status === "undone";
+        const conflictMessage = restoring
+          ? "The document changed. Undo would overwrite newer edits."
+          : "The document changed. Ask for an updated proposal.";
+        if (status === "accepted" || restoring) {
+          const expectedSha256 = restoring
+            ? proposal.resolvedSha256
+            : proposal.baseSha256;
+          if (!expectedSha256) throw new Error("Nothing to undo.");
+          const result = await writeFile({
+            vaultId,
+            rawPath: input.path,
+            content: restoring ? proposal.baseContent : proposal.content,
+            expectedSha256,
+            proposalOnly: true,
+          });
+          if (result.outcome === "conflict") throw new Error(conflictMessage);
+          next.resolvedSha256 = result.sha256;
+        } else if (status === "pending") {
+          const file = await readFile(vaultId, input.path);
+          if (file.sha256 !== proposal.baseSha256)
+            throw new Error(conflictMessage);
+        }
+        return saveProposal(next);
+      });
+    },
     async syncSnapshot(input) {
       return syncSnapshot(input.vaultId, input.scope);
     },
@@ -1445,12 +1693,14 @@ export default async function plugin(
       return readFile(input.vaultId, input.path);
     },
     async saveNote(input) {
-      return writeFile({
-        vaultId: input.vaultId,
-        rawPath: input.path,
-        content: input.content,
-        expectedSha256: input.expectedSha256,
-      });
+      return serializeVault(getVault(input.vaultId).id, () =>
+        writeFile({
+          vaultId: input.vaultId,
+          rawPath: input.path,
+          content: input.content,
+          expectedSha256: input.expectedSha256,
+        }),
+      );
     },
     async createNote(input) {
       return createNote(input.vaultId, input);
@@ -1563,12 +1813,17 @@ export default async function plugin(
     },
     async removeVault(input) {
       const id = requireString(input.vaultId, "vaultId");
-      if (listVaults().length <= 1)
-        throw new Error("At least one vault is required");
-      db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
-      db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
-      bb.realtime.publish("vault-changed", { vaultId: id });
-      return { ok: true };
+      return serializeVault(id, async () => {
+        if (listVaults().length <= 1)
+          throw new Error("At least one vault is required");
+        db.transaction(() => {
+          db.prepare("DELETE FROM proposals WHERE vault_id = ?").run(id);
+          db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
+          db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
+        })();
+        bb.realtime.publish("vault-changed", { vaultId: id });
+        return { ok: true as const };
+      });
     },
     async uploadAttachment(input) {
       const vaultId = input.vaultId;
@@ -2552,6 +2807,58 @@ export default async function plugin(
     return changed ? 4 : 0;
   }
 
+  const proposalPositionals = [
+    {
+      name: "path",
+      description: "Markdown path relative to the vault root",
+      required: true,
+    },
+  ] as const;
+  const proposalVersionOption = {
+    type: "string",
+    required: true,
+    description:
+      "Version returned by proposal; use none only when no proposal exists",
+  } as const;
+
+  function parseProposalVersion(value: string): number | null {
+    if (value === "none") return null;
+    const version = Number(value);
+    if (!Number.isSafeInteger(version) || version < 1)
+      throw new CliUsageError("Expected a positive proposal version or none.");
+    return version;
+  }
+
+  const proposalCommands = Object.fromEntries(
+    (["accept", "reject", "undo", "redo"] as const).map((action) => [
+      action,
+      cliCommand({
+        summary: `${action[0]!.toUpperCase()}${action.slice(1)} a document proposal`,
+        positionals: proposalPositionals,
+        options: {
+          vault: VAULT_OPTION,
+          version: proposalVersionOption,
+          json: JSON_OPTION,
+        },
+        run: (input) =>
+          attemptCli(async () => {
+            const expectedVersion = parseProposalVersion(input.options.version);
+            if (expectedVersion === null)
+              throw new CliUsageError(
+                "This action requires a proposal version.",
+              );
+            const result = await handlers.resolveProposal({
+              vaultId: input.options.vault,
+              path: requireVaultPath(input.positionals.path),
+              action,
+              expectedVersion,
+            });
+            return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+          }),
+      }),
+    ]),
+  );
+
   bb.cli.register(
     defineCli({
       name: "docs",
@@ -2559,6 +2866,115 @@ export default async function plugin(
       description: DOCS_DESCRIPTION,
       usageErrorExitCode: 2,
       commands: {
+        ...proposalCommands,
+        proposal: cliCommand({
+          summary: "Read the current proposal and its version",
+          positionals: proposalPositionals,
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: JSON.stringify(
+                await handlers.readProposal({
+                  vaultId: input.options.vault,
+                  path: requireVaultPath(input.positionals.path),
+                }),
+                null,
+                2,
+              ),
+            })),
+        }),
+        propose: cliCommand({
+          summary: "Propose a Markdown revision without changing the document",
+          positionals: proposalPositionals,
+          options: {
+            vault: VAULT_OPTION,
+            version: proposalVersionOption,
+            json: JSON_OPTION,
+            "expected-sha256": {
+              type: "string",
+              required: true,
+              description: "Current document SHA-256 from read --json",
+            },
+            file: {
+              type: "string",
+              required: true,
+              description:
+                "Workspace UTF-8 file containing the complete proposed Markdown",
+            },
+            "workspace-host": WORKSPACE_HOST_OPTION,
+          },
+          run: (input, context) =>
+            attemptCli(async () => {
+              const candidatePath = resolveHostPath(
+                context.cwd ?? process.cwd(),
+                input.options.file,
+              );
+              const hostId = await resolveWorkspaceHostId(
+                workspaceArgs({
+                  positionals: [],
+                  vaultId: input.options.vault,
+                  into: undefined,
+                  workspaceHostId: input.options["workspace-host"],
+                }),
+                context,
+              );
+              const file = await bb.sdk.files.read({
+                ...hostIdArgs(hostId),
+                path: candidatePath,
+                rootPath: (path.win32.isAbsolute(candidatePath) &&
+                !path.posix.isAbsolute(candidatePath)
+                  ? path.win32
+                  : path.posix
+                ).dirname(candidatePath),
+              });
+              if (file.contentEncoding !== "utf8")
+                throw new CliUsageError(
+                  "Proposal file must be UTF-8 Markdown.",
+                );
+              const result = await handlers.proposeNote({
+                vaultId: input.options.vault,
+                path: requireVaultPath(input.positionals.path, {
+                  extension: ".md",
+                }),
+                content: file.content,
+                expectedSha256: input.options["expected-sha256"],
+                expectedVersion: parseProposalVersion(input.options.version),
+              });
+              return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+            }),
+        }),
+        "proposal-update": cliCommand({
+          summary: "Edit a pending candidate using its version",
+          positionals: proposalPositionals,
+          options: {
+            vault: VAULT_OPTION,
+            version: proposalVersionOption,
+            json: JSON_OPTION,
+            content: {
+              type: "string",
+              required: true,
+              description: "Complete candidate Markdown",
+            },
+          },
+          run: (input) =>
+            attemptCli(async () => {
+              const expectedVersion = parseProposalVersion(
+                input.options.version,
+              );
+              if (expectedVersion === null)
+                throw new CliUsageError(
+                  "This action requires a proposal version.",
+                );
+              const result = await handlers.updateProposal({
+                vaultId: input.options.vault,
+                path: requireVaultPath(input.positionals.path),
+                content: input.options.content,
+                expectedVersion,
+              });
+              return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+            }),
+        }),
         vaults: cliCommand({
           summary: "List configured vaults",
           suggestFor: ["vault"],
@@ -2987,8 +3403,13 @@ export default async function plugin(
       const vaultId = itemId.slice(0, separator);
       const relativePath = itemId.slice(separator + 1);
       const file = await readFile(vaultId, relativePath);
+      const proposal = readProposal(getVault(vaultId).id, relativePath);
       return {
-        context: `Docs document (${vaultId}/${relativePath}):\n\n${file.content}`,
+        context:
+          `Docs document (${vaultId}/${relativePath}):\nSHA-256: ${file.sha256}\n\n${file.content}` +
+          (proposal
+            ? `\n\nDocs proposal metadata:\n${JSON.stringify(proposal)}\nUse bb docs propose with this version and current document hash to propose a revision; do not push over the user's document.`
+            : "\n\nProposal version: none. Use bb docs propose to suggest changes for approval."),
       };
     },
   });

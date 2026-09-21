@@ -61,5 +61,9 @@ export interface BbDesktopApi extends BbDesktopInfo {
   ): BbDesktopInfoUnsubscribe;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
+  setSplitNavigationEnabled?(
+    enabled: boolean,
+    directionalCommands?: readonly AppCommandId[],
+  ): void;
   setTheme(theme: BbDesktopTheme): void;
 }

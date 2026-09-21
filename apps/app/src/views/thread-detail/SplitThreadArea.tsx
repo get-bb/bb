@@ -1,5 +1,8 @@
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
+import {
+  PANE_DIRECTION_APP_COMMAND_IDS,
+  PANE_FOCUS_APP_COMMAND_IDS,
+} from "@bb/domain";
 import { useAtom, useAtomValue, useStore } from "jotai";
 import {
   Fragment,
@@ -92,7 +95,7 @@ import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
-import { getAdjacentPaneId } from "./splitPaneCommands";
+import { getAdjacentPaneId, getDirectionalPaneId } from "./splitPaneCommands";
 import {
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
@@ -682,6 +685,29 @@ function SplitPaneCommandHandlers({
   toggleMaximizePane,
 }: SplitPaneCommandHandlersProps) {
   useAppCommandContext("splitActive", isSplitActive);
+  const directionalTargets = useMemo(
+    () =>
+      (["left", "right", "top", "bottom"] as const).map((direction) =>
+        isSplitActive
+          ? getDirectionalPaneId(layout.root, layout.focusedPaneId, direction)
+          : null,
+      ),
+    [isSplitActive, layout.root, layout.focusedPaneId],
+  );
+  useEffect(() => {
+    getBbDesktopInfo()?.setSplitNavigationEnabled?.(
+      isSplitActive,
+      PANE_DIRECTION_APP_COMMAND_IDS.filter(
+        (_, index) => directionalTargets[index] !== null,
+      ),
+    );
+  }, [isSplitActive, directionalTargets]);
+  useIndexedAppCommandHandlers(PANE_DIRECTION_APP_COMMAND_IDS, (index) => {
+    const paneId = directionalTargets[index];
+    if (!paneId) return false;
+    focusPane(paneId);
+    return true;
+  });
   useAppCommandHandler("pane.focus.previous", () => {
     if (!isSplitActive) return false;
     const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, -1);

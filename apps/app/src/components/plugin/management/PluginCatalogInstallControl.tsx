@@ -79,7 +79,9 @@ export function PluginCatalogInstallControl(
             </span>
             {props.showLabel ? (installed ? "Installed" : "Install") : null}
             {count === undefined ? null : (
-              <span aria-hidden className="text-2xs">{count.display}</span>
+              <span aria-hidden className="text-2xs">
+                {count.display}
+              </span>
             )}
           </Button>
         </TooltipTrigger>

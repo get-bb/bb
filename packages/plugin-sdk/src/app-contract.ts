@@ -1905,6 +1905,8 @@ export interface ComposerCustomization {
 /** Host-rendered menu row in the composer's `+` menu. */
 export interface ComposerPlusMenuItem {
   id: string;
+  /** Also offer this action in the desktop send dropdown and mobile long-press menu. */
+  experimental_sendMenu?: boolean;
   label: string;
   /** Drawn only when the manifest declares no `bb.branding.icon`. */
   icon?: BbIconName;
