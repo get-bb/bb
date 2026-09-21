@@ -565,7 +565,7 @@ function ThreadRowComponent({
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
         {thread.archivedAt !== null ? (
-          <span className="relative flex items-center">
+          <span className="relative flex items-center max-md:pointer-coarse:hidden">
             <div
               data-sidebar-hover-actions-open={
                 isActionsOpen ? "true" : undefined
