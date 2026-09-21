@@ -470,27 +470,20 @@ export function PluginDetail({
         <ResourceDetailReleaseSection
           label="Details"
           actions={
-            hasReleaseControl ? (
-              <PluginDetailReleaseControl plugin={plugin} />
-            ) : undefined
+            <div className="flex items-center gap-2">
+              <PluginCategoryLabel
+                categoryId={(catalogEntry ?? plugin).categoryId}
+                label={(catalogEntry ?? plugin).category ?? "Not categorized"}
+              />
+              {hasReleaseControl ? (
+                <PluginDetailReleaseControl plugin={plugin} />
+              ) : null}
+            </div>
           }
         >
           <PluginDetailMetadata>
             {catalogEntry === undefined ? (
-              <>
-                <PluginDetailMetadataItem
-                  label="Category"
-                  className="col-span-2"
-                >
-                  <div className="flex">
-                    <PluginCategoryLabel
-                      categoryId={plugin.categoryId}
-                      label={plugin.category ?? "Not categorized"}
-                    />
-                  </div>
-                </PluginDetailMetadataItem>
-                {installationMetadata}
-              </>
+              installationMetadata
             ) : (
               <PluginMarketplaceDetailMetadata entry={catalogEntry}>
                 {installationMetadata}
