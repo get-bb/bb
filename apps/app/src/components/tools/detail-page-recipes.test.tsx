@@ -165,7 +165,7 @@ describe("Plugin detail recipe", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "About"],
+      ["overview", ""],
       ["definition", "Source"],
       ["release", "Details"],
     ]);
@@ -188,7 +188,7 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "About"],
+      ["overview", ""],
       ["definition", "Source"],
       ["release", "Details"],
       ["activity", "Background services"],
@@ -203,7 +203,7 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "About"],
+      ["overview", ""],
       ["definition", "Source"],
       ["release", "Details"],
       ["activity", "Background services"],
