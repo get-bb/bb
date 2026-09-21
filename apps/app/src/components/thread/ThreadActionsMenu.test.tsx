@@ -327,7 +327,9 @@ describe("ThreadActionsMenu section moves", () => {
     const moveToSection = await screen.findByRole("menuitem", {
       name: "Move to section",
     });
-    expect(moveToSection.querySelector('[data-icon="MoveTo"]')).not.toBeNull();
+    expect(
+      moveToSection.querySelector('[data-icon="SectionMove"]'),
+    ).not.toBeNull();
     fireEvent.click(moveToSection);
 
     expect(await screen.findByText("Move to section")).not.toBeNull();

@@ -51,7 +51,7 @@ export function ComposerSectionChip({
           aria-label={`Section: ${label}`}
           className="h-7 max-w-full gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-2 text-xs font-medium text-muted-foreground hover:bg-surface-hover hover:text-foreground"
         >
-          <Icon name="Layers" className="size-3.5 shrink-0" aria-hidden />
+          <Icon name="SectionAdd" className="size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0 truncate">{label}</span>
           <Icon
             name="ChevronDown"
@@ -77,11 +77,6 @@ export function ComposerSectionChip({
                   onSelect={() => selectSection(section.id)}
                   className={SECTION_CHIP_ITEM_CLASS_NAME}
                 >
-                  <Icon
-                    name="Layers"
-                    className="size-4 text-muted-foreground"
-                    aria-hidden
-                  />
                   <span className="min-w-0 flex-1 truncate">
                     {section.name}
                   </span>
@@ -104,11 +99,6 @@ export function ComposerSectionChip({
                 onSelect={() => selectSection(null)}
                 className={SECTION_CHIP_ITEM_CLASS_NAME}
               >
-                <Icon
-                  name="MessageSquare"
-                  className="size-4 text-muted-foreground"
-                  aria-hidden
-                />
                 <span className="min-w-0 flex-1 truncate">
                   {NO_SECTION_LABEL}
                 </span>

@@ -118,4 +118,26 @@ describe("ComposerSectionChip", () => {
         .getAttribute("aria-current"),
     ).toBeNull();
   });
+
+  it("uses the section icon on the picker value and omits option icons", () => {
+    render(
+      <ComposerSectionChip
+        sections={SECTIONS}
+        value="sec_research"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Section: Research" });
+    expect(trigger.querySelector('[data-icon="SectionAdd"]')).not.toBeNull();
+    fireEvent.click(trigger);
+
+    for (const option of screen.getAllByRole("option")) {
+      expect(
+        Array.from(option.querySelectorAll("[data-icon]")).map((icon) =>
+          icon.getAttribute("data-icon"),
+        ),
+      ).toEqual(["Check"]);
+    }
+  });
 });
