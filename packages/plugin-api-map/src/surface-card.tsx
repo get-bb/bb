@@ -208,12 +208,13 @@ export function SurfaceCard({
                             className="size-3.5 shrink-0 text-subtle-foreground"
                           />
                         ) : null)}
-                      <span className="min-w-0">{plugin}</span>
+                      <span className="min-w-0 truncate">{plugin}</span>
                     </>
                   );
                   return href ? (
                     <a
                       href={href}
+                      title={plugin}
                       className={`flex min-h-9 @2xl/guide:min-h-7 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
                     >
                       {body}
