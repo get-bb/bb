@@ -697,6 +697,41 @@ describe("sidebar split layout", () => {
 });
 
 describe("adjacentSidebarTab", () => {
+  it("includes the new-tab control between pane groups without changing the selected tab", () => {
+    const initial = createSidebarSplitState(["a", "b"], "a");
+    const left = initial.layout.focusedPaneId;
+    const state = moveSidebarTab(
+      initial,
+      left,
+      "b",
+      { paneId: left, zone: "right" },
+      { groupId: "right" },
+    );
+    const right = state.layout.focusedPaneId;
+    expect(adjacentSidebarTab(state, 1, [], { focused: false })).toEqual({
+      paneId: right,
+      tabId: null,
+    });
+    expect(adjacentSidebarTab(state, -1, [], { focused: true })).toEqual({
+      paneId: right,
+      tabId: "b",
+    });
+    expect(adjacentSidebarTab(state, 1, [], { focused: true })).toEqual({
+      paneId: left,
+      tabId: "a",
+    });
+    expect(adjacentSidebarTab(state, -1, [], { focused: false })).toEqual({
+      paneId: left,
+      tabId: null,
+    });
+    const maximized = setSidebarPaneMaximized(state, right);
+    expect(adjacentSidebarTab(maximized, 1, [], { focused: true })).toEqual({
+      paneId: right,
+      tabId: "b",
+    });
+    expect(getSidebarGroupForPane(state, right)?.activeTabId).toBe("b");
+  });
+
   it("follows fixed headers before reordered movable tabs and wraps both ways", () => {
     const initial = createSidebarSplitState(
       ["file-a", "info", "file-b", "diff"],

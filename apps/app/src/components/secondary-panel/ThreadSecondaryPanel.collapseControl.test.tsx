@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AppCommandProvider,
@@ -1040,6 +1040,55 @@ function NextPanelTabButton() {
     </button>
   );
 }
+
+it("focuses New tab without opening it and resumes cycling from the button", async () => {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  const onOpenNewTab = vi.fn();
+  render(
+    <Wrapper>
+      <AppCommandProvider>
+        <TooltipProvider>
+          <NextPanelTabButton />
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={infoFixedTab}
+              canUseGitUi={false}
+              fixedTabs={infoFixedTabs}
+              tabs={[]}
+              splitPanelStateId="new-tab-navigation"
+              isOpen
+              isConversationCollapsed={false}
+              metadataContent={<input aria-label="Draft" defaultValue="keep" />}
+              onClose={noop}
+              onCollapse={noop}
+              onTabReorder={noop}
+              onOpenNewTab={onOpenNewTab}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </AppCommandProvider>
+    </Wrapper>,
+  );
+  const next = screen.getByRole("button", { name: "Next panel tab" });
+  const info = screen.getByRole("button", { name: "Show thread info panel" });
+  const newTab = screen.getByRole("button", { name: /^Open new tab/ });
+  const draft = screen.getByRole("textbox", { name: "Draft" });
+  draft.focus();
+  fireEvent.click(next);
+  await waitFor(() => expect(document.activeElement).toBe(newTab));
+  expect(info.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByDisplayValue("keep")).toBe(draft);
+  expect(onOpenNewTab).not.toHaveBeenCalled();
+  fireEvent.click(next);
+  await waitFor(() => expect(document.activeElement).toBe(info));
+  fireEvent.click(next);
+  await waitFor(() => expect(document.activeElement).toBe(newTab));
+  fireEvent.click(newTab);
+  expect(onOpenNewTab).toHaveBeenCalledOnce();
+});
 
 it("ignores tab navigation while chat maximize suppresses the panel and resumes after restore", () => {
   const { wrapper: Wrapper } = createQueryClientTestHarness();

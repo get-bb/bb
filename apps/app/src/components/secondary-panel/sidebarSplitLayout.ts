@@ -319,7 +319,8 @@ export function adjacentSidebarTab(
   state: SidebarSplitState,
   direction: -1 | 1,
   fixedTabIds: readonly string[],
-): { paneId: string; tabId: string } | null {
+  newTabButton?: { focused: boolean },
+): { paneId: string; tabId: string | null } | null {
   const rects = computePaneRects(state.layout.root);
   const tabs = listPanes(state.layout.root)
     .filter(
@@ -335,14 +336,18 @@ export function adjacentSidebarTab(
     .flatMap((pane) => {
       const group = getSidebarGroupForPane(state, pane.paneId);
       if (group === null) return [];
-      return [
+      const tabIds: (string | null)[] = [
         ...fixedTabIds.filter((id) => group.tabIds.includes(id)),
         ...group.tabIds.filter((id) => !fixedTabIds.includes(id)),
-      ].map((tabId) => ({ paneId: pane.paneId, tabId }));
+      ];
+      if (newTabButton !== undefined) tabIds.push(null);
+      return tabIds.map((tabId) => ({ paneId: pane.paneId, tabId }));
     });
   if (tabs.length === 0) return null;
   const paneId = state.maximizedPaneId ?? state.layout.focusedPaneId;
-  const activeTabId = getSidebarGroupForPane(state, paneId)?.activeTabId;
+  const activeTabId = newTabButton?.focused
+    ? null
+    : getSidebarGroupForPane(state, paneId)?.activeTabId;
   const index = tabs.findIndex(
     (tab) => tab.paneId === paneId && tab.tabId === activeTabId,
   );

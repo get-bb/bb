@@ -203,7 +203,8 @@ same resolved bindings. The complete default table is in docs/configuration.md.
 
 Right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Mod+Shift+ArrowLeft` / `Mod+Shift+ArrowRight`. They wrap through visible
-tabs in displayed order across the active chat pane's right-panel groups.
+tabs and each pane's New tab button in displayed order across the active
+chat's right-panel groups. Press Enter or Space on New tab to open the picker.
 Chat splits use separate, initially unassigned `pane.focus.previous` /
 `pane.focus.next` commands. Rebind either pair in Settings → Keyboard, via
 `bb settings keyboard set <command> <shortcut|disabled>`, or SDK

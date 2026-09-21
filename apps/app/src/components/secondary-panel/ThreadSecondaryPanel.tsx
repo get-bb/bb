@@ -933,11 +933,15 @@ function ThreadSecondaryPanelContent({
       activeTabId={globalActiveTabId}
       canNavigateTabs={canNavigateTabs && isLayoutOpen}
       fixedTabIds={fixedTabs.map((tab) => tab.tab.id)}
-      onTabNavigated={(paneId) => {
+      hasNewTabButton={showNewTabButton}
+      onTabNavigated={(paneId, isNewTabButton) => {
         window.requestAnimationFrame(() => {
+          const control = isNewTabButton
+            ? "button[data-panel-new-tab]"
+            : 'button[aria-pressed="true"]';
           panelRef.current
             ?.querySelector<HTMLElement>(
-              `[data-sidebar-split-tab-group="${CSS.escape(paneId)}"] button[aria-pressed="true"]`,
+              `[data-sidebar-split-tab-group="${CSS.escape(paneId)}"] ${control}`,
             )
             ?.focus({ preventScroll: true });
         });
@@ -1179,6 +1183,7 @@ function NewTabButton({
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}
+      data-panel-new-tab=""
       aria-label={shortcut ? `${ariaLabel} (${shortcut.label})` : ariaLabel}
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
     >

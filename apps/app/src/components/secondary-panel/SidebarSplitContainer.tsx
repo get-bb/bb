@@ -104,7 +104,8 @@ interface SidebarSplitContainerProps {
   activeTabId: string;
   canNavigateTabs?: boolean;
   fixedTabIds?: readonly string[];
-  onTabNavigated?: (paneId: string) => void;
+  hasNewTabButton?: boolean;
+  onTabNavigated?: (paneId: string, isNewTabButton: boolean) => void;
   isFullScreen: boolean;
   onActivateTab: (tabId: string) => void;
   onGlobalTabReorder: (request: SecondaryPanelTabReorderRequest) => void;
@@ -118,6 +119,7 @@ export function SidebarSplitContainer({
   activeTabId,
   canNavigateTabs = true,
   fixedTabIds = [],
+  hasNewTabButton = false,
   onTabNavigated,
   isFullScreen,
   onActivateTab,
@@ -315,16 +317,33 @@ export function SidebarSplitContainer({
     [activeTabId, commitState, onActivateTab],
   );
 
-  const navigateTab = (direction: -1 | 1) => {
+  const navigateTab = (direction: -1 | 1, origin: EventTarget | null) => {
     if (!canNavigateTabs) return false;
-    const target = adjacentSidebarTab(stateRef.current, direction, fixedTabIds);
+    const target = adjacentSidebarTab(
+      stateRef.current,
+      direction,
+      fixedTabIds,
+      hasNewTabButton
+        ? {
+            focused:
+              origin instanceof HTMLElement &&
+              origin.closest("[data-panel-new-tab]") !== null,
+          }
+        : undefined,
+    );
     if (target === null) return false;
-    selectTab(target.paneId, target.tabId);
-    onTabNavigated?.(target.paneId);
+    if (target.tabId === null) {
+      commitState((current) => focusSidebarPane(current, target.paneId), true);
+    } else {
+      selectTab(target.paneId, target.tabId);
+    }
+    onTabNavigated?.(target.paneId, target.tabId === null);
     return true;
   };
-  useAppCommandHandler("panel.previousTab", () => navigateTab(-1));
-  useAppCommandHandler("panel.nextTab", () => navigateTab(1));
+  useAppCommandHandler("panel.previousTab", ({ target }) =>
+    navigateTab(-1, target),
+  );
+  useAppCommandHandler("panel.nextTab", ({ target }) => navigateTab(1, target));
 
   const focusPane = useCallback(
     (paneId: string) => {
