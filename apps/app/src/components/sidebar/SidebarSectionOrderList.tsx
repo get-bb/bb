@@ -32,9 +32,6 @@ export function SidebarSectionOrderList({
       {trailing}
     </DndContext>
   ) : (
-    <>
-      {content}
-      {trailing}
-    </>
+    content
   );
 }

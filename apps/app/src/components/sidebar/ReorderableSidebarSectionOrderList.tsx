@@ -13,18 +13,16 @@ interface ReorderableSidebarSectionOrderListProps {
   ) => ReactNode;
   order: readonly SidebarSectionId[];
   threadDnd: SectionThreadDndState | null;
-  footer?: ReactNode;
 }
 
 export function ReorderableSidebarSectionOrderList({
   children,
   order,
   threadDnd,
-  footer,
 }: ReorderableSidebarSectionOrderListProps) {
   if (!threadDnd) {
     return (
-      <SidebarSectionOrderList order={order} trailing={footer}>
+      <SidebarSectionOrderList order={order}>
         {(sectionId) => children(sectionId, () => false)}
       </SidebarSectionOrderList>
     );
@@ -36,12 +34,9 @@ export function ReorderableSidebarSectionOrderList({
         order={order}
         dndContextProps={threadDnd.dndContextProps}
         trailing={
-          <>
-            {footer}
-            <SectionThreadDragOverlayPortal
-              activeThread={threadDnd.activeThread}
-            />
-          </>
+          <SectionThreadDragOverlayPortal
+            activeThread={threadDnd.activeThread}
+          />
         }
       >
         {(sectionId) => children(sectionId, threadDnd.consumeClickSuppression)}

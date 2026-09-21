@@ -1,3 +1,4 @@
+import { SidebarContentElementContext } from "@/components/ui/sidebar";
 import {
   createContext,
   useContext,
@@ -254,16 +255,18 @@ export function ThreadListMore() {
         testIdPrefix="sidebar-thread-list"
       >
         {(close) => (
-          <div data-sidebar-overflow="true">
-            {groups.map((group) => (
-              <HiddenGroup
-                key={group.id}
-                group={group}
-                close={close}
-                restore={state.restore}
-              />
-            ))}
-          </div>
+          <SidebarContentElementContext.Provider value={null}>
+            <div data-sidebar-overflow="true">
+              {groups.map((group) => (
+                <HiddenGroup
+                  key={group.id}
+                  group={group}
+                  close={close}
+                  restore={state.restore}
+                />
+              ))}
+            </div>
+          </SidebarContentElementContext.Provider>
         )}
       </SidebarMore>
     </div>

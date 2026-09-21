@@ -2341,7 +2341,6 @@ export const ChronologicalSectionThreadSections = memo(
         threads: getProjectThreadItemDescendants(item.group.items),
         renderContent: (close) => (
           <ProjectThreadTree
-            dndParentKey={item.group.key}
             rootItems={item.group.items}
             threadListState={{
               status: "ready",
@@ -2363,51 +2362,51 @@ export const ChronologicalSectionThreadSections = memo(
       }),
     );
     const orderedSections = (
+      <SidebarSectionOrderList order={topLevelSectionOrder}>
+        {(sectionId) => {
+          const builtInSection = renderBuiltInSidebarSection({
+            sectionId,
+            sections: configuredBuiltInSections,
+            disabled: topLevelSectionOrder.length < 2,
+            collapsedSectionIds: builtInSections.collapsedSectionIds,
+            onToggleCollapsed: builtInSections.onToggleCollapsed,
+            consumeClickSuppression,
+            showPinnedSection: topLevelSectionOrder.includes("pinned"),
+          });
+          if (builtInSection !== undefined) {
+            return <div key={sectionId}>{builtInSection}</div>;
+          }
+          const sectionItem = sectionItemsBySectionId.get(sectionId);
+          return sectionItem ? (
+            <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+              {renderItems([sectionItem])}
+            </ThreadListVisibilityGroupScope>
+          ) : null;
+        }}
+      </SidebarSectionOrderList>
+    );
+
+    return (
       <ThreadListVisibility
         groups={visibilityGroups}
         order={fullSectionOrder}
         onOrderChange={onFullSectionOrderChange}
         label="Sections"
       >
-        <SidebarSectionOrderList
-          order={topLevelSectionOrder}
-          trailing={<ThreadListMore />}
-        >
-          {(sectionId) => {
-            const builtInSection = renderBuiltInSidebarSection({
-              sectionId,
-              sections: configuredBuiltInSections,
-              disabled: topLevelSectionOrder.length < 2,
-              collapsedSectionIds: builtInSections.collapsedSectionIds,
-              onToggleCollapsed: builtInSections.onToggleCollapsed,
-              consumeClickSuppression,
-              showPinnedSection: topLevelSectionOrder.includes("pinned"),
-            });
-            if (builtInSection !== undefined) {
-              return <div key={sectionId}>{builtInSection}</div>;
-            }
-            const sectionItem = sectionItemsBySectionId.get(sectionId);
-            return sectionItem ? (
-              <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
-                {renderItems([sectionItem])}
-              </ThreadListVisibilityGroupScope>
-            ) : null;
-          }}
-        </SidebarSectionOrderList>
+        {sectionDnd ? (
+          <DndContext {...sectionDnd.dndContextProps}>
+            <SectionThreadDndProvider value={renderedSectionDnd}>
+              {orderedSections}
+              <SectionThreadDragOverlayPortal
+                activeThread={sectionDnd.activeThread}
+              />
+            </SectionThreadDndProvider>
+          </DndContext>
+        ) : (
+          orderedSections
+        )}
+        <ThreadListMore />
       </ThreadListVisibility>
-    );
-
-    return sectionDnd ? (
-      <DndContext {...sectionDnd.dndContextProps}>
-        <SectionThreadDndProvider value={renderedSectionDnd}>
-          {orderedSections}
-          <SectionThreadDragOverlayPortal
-            activeThread={sectionDnd.activeThread}
-          />
-        </SectionThreadDndProvider>
-      </DndContext>
-    ) : (
-      orderedSections
     );
   },
 );

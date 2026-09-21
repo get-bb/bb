@@ -891,7 +891,6 @@ function ProjectModeSections({
         renderContent: (close) => (
           <ProjectThreadTree
             projectId={row.project.id}
-            dndParentKey={id}
             rootItems={items}
             threadListState={row.threadListState}
             progressiveDisclosureEnabled={progressiveDisclosureEnabled}
@@ -919,11 +918,7 @@ function ProjectModeSections({
       onOrderChange={onFullOrderChange}
       label="Projects"
     >
-      <ReorderableSidebarSectionOrderList
-        order={order}
-        threadDnd={threadDnd}
-        footer={<ThreadListMore />}
-      >
+      <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
         {(sectionId, consumeClickSuppression) => {
           const builtInSection = renderBuiltInSidebarSection({
             sectionId,
@@ -964,6 +959,7 @@ function ProjectModeSections({
           );
         }}
       </ReorderableSidebarSectionOrderList>
+      <ThreadListMore />
     </ThreadListVisibility>
   );
 }
@@ -1289,7 +1285,6 @@ export function MachineModeSections({
         threads: getProjectThreadItemDescendants(items),
         renderContent: (close) => (
           <ProjectThreadTree
-            dndParentKey={id}
             rootItems={items}
             threadListState={section.threadListState}
             progressiveDisclosureEnabled={progressiveDisclosureEnabled}
@@ -1317,11 +1312,7 @@ export function MachineModeSections({
       onOrderChange={onFullOrderChange}
       label="Machines"
     >
-      <ReorderableSidebarSectionOrderList
-        order={order}
-        threadDnd={threadDnd}
-        footer={<ThreadListMore />}
-      >
+      <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
         {(sectionId, consumeClickSuppression) => {
           const builtInSection = renderBuiltInSidebarSection({
             sectionId,
@@ -1371,6 +1362,7 @@ export function MachineModeSections({
           );
         }}
       </ReorderableSidebarSectionOrderList>
+      <ThreadListMore />
     </ThreadListVisibility>
   );
 }
