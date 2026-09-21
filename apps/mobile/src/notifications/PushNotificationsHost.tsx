@@ -98,22 +98,6 @@ export function PushNotificationsHost() {
   }, [openTarget]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        const content = notification.request.content;
-        const target = parsePushNotificationData(content.data);
-        if (!target) return;
-        toast.message(content.title ?? "bb", {
-          description: content.body ?? undefined,
-          duration: 8_000,
-          action: { label: "Open", onClick: () => void openTarget(target) },
-        });
-      },
-    );
-    return () => subscription.remove();
-  }, [openTarget]);
-
-  useEffect(() => {
     if (!activeProfile || !connected) return;
     void controller.sync(activeProfile);
   }, [controller, activeProfile, connected, activeEnabled]);
