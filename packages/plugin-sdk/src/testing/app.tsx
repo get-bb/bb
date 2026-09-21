@@ -48,7 +48,10 @@ import {
   type ExperimentalSidebarNavigationRegistration,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
+  type PluginSidebarThreadDraftState,
   type PluginSidebarThreadPullRequestState,
+  type PluginSidebarThreadRowStatus,
+  type PluginSidebarThreadShortcut,
   type PluginSidebarThreadSplit,
   type PluginProvidersState,
   type PluginSidebarThreadsState,
@@ -216,6 +219,9 @@ interface SlotEnv {
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
+  sidebarDraftThreadIds: ReadonlySet<string>;
+  sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
+  sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
   branchesState: BranchesState;
@@ -927,6 +933,24 @@ const testPluginSdkApp = {
       [env, threadId],
     );
   },
+  useSidebarThreadDraft(threadId): PluginSidebarThreadDraftState {
+    const env = useSlotEnv("useSidebarThreadDraft");
+    return useMemo(
+      () => ({ hasUnsubmittedDraft: env.sidebarDraftThreadIds.has(threadId) }),
+      [env, threadId],
+    );
+  },
+  useSidebarThreadDraftIds(): ReadonlySet<string> {
+    return useSlotEnv("useSidebarThreadDraftIds").sidebarDraftThreadIds;
+  },
+  useSidebarThreadRowStatus(threadId): PluginSidebarThreadRowStatus | null {
+    const env = useSlotEnv("useSidebarThreadRowStatus");
+    return env.sidebarRowStatuses.get(threadId) ?? null;
+  },
+  useSidebarThreadShortcut(threadId): PluginSidebarThreadShortcut | null {
+    const env = useSlotEnv("useSidebarThreadShortcut");
+    return env.sidebarShortcuts.get(threadId) ?? null;
+  },
   experimental_useSidebarThreadPullRequest(
     threadId,
   ): PluginSidebarThreadPullRequestState {
@@ -1235,6 +1259,22 @@ export interface RenderSlotOptions<
    * by thread id. Omitted → every thread reports none.
    */
   sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
+  /**
+   * Thread ids `useSidebarThreadDraft()` and `useSidebarThreadDraftIds()`
+   * report as holding an unsent draft. Omitted → none.
+   */
+  sidebarDraftThreadIds?: readonly string[];
+  /**
+   * Row statuses `useSidebarThreadRowStatus()` reports, keyed by thread id.
+   * Omitted → every thread reports null.
+   */
+  sidebarRowStatuses?: Record<string, PluginSidebarThreadRowStatus>;
+  /**
+   * Shortcuts `useSidebarThreadShortcut()` reports, keyed by thread id, as
+   * if the app command modifier were held. Omitted → every thread reports
+   * null.
+   */
+  sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
   /** Host acceptance for `useBbNavigate().openThreadPanel`. */
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
@@ -1471,6 +1511,15 @@ export function renderSlot<
   const sidebarActionCalls: SidebarActionCall[] = [];
   const sidebarPullRequests = new Map(
     Object.entries(options.sidebarPullRequests ?? {}),
+  );
+  const sidebarDraftThreadIds: ReadonlySet<string> = new Set(
+    options.sidebarDraftThreadIds ?? [],
+  );
+  const sidebarRowStatuses = new Map(
+    Object.entries(options.sidebarRowStatuses ?? {}),
+  );
+  const sidebarShortcuts = new Map(
+    Object.entries(options.sidebarShortcuts ?? {}),
   );
   const sidebarThreads: PluginSidebarThreadsState = {
     status: options.sidebarThreads?.status ?? "ready",
@@ -1738,6 +1787,9 @@ export function renderSlot<
     sidebarActions,
     sidebarActionCalls,
     sidebarPullRequests,
+    sidebarDraftThreadIds,
+    sidebarRowStatuses,
+    sidebarShortcuts,
     providers,
     codeTheme,
     branchesState: {

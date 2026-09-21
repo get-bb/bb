@@ -1124,6 +1124,37 @@ export interface PluginCodeThemeState {
 }
 
 /**
+ * Whether the composer holds unsent text for a thread (see
+ * {@link PluginSdkApp.useSidebarThreadDraft}). This is per-client state, so
+ * it lives beside `indicator` rather than in it: bb's row paints a pencil for
+ * an idle thread with a draft and a "working-draft" glyph for a busy one.
+ */
+export interface PluginSidebarThreadDraftState {
+  hasUnsubmittedDraft: boolean;
+}
+
+/**
+ * The status another plugin's app-wide script set on a thread's row through
+ * `useComposer().experimental_setThreadRowStatus` (see
+ * {@link PluginSdkApp.useSidebarThreadRowStatus}). bb's row draws it in
+ * place of the draft glyph while it is set; a replaced list should do the
+ * same so a status set by, say, the drafts or workflows plugin does not
+ * vanish when the list changes hands.
+ */
+export type PluginSidebarThreadRowStatus = PluginComposerThreadRowStatus;
+
+/**
+ * The jump-to-thread shortcut bb assigned to a row while the app command
+ * modifier is held (see {@link PluginSdkApp.useSidebarThreadShortcut}).
+ */
+export interface PluginSidebarThreadShortcut {
+  /** Human-readable key label, e.g. "⌘1", for a pill on the row. */
+  label: string;
+  /** Value for the row's `aria-keyshortcuts` attribute. */
+  ariaKeyshortcuts: string;
+}
+
+/**
  * Act on threads from a plugin surface. Every method routes to the host's own
  * flow, so optimistic updates, toasts, dialogs, pane closing, and route repair
  * behave exactly as they do in the built-in sidebar. Unknown thread ids are
@@ -2824,6 +2855,37 @@ export interface PluginSdkApp {
   experimental_useSidebarThreadSplit(
     threadId: string,
   ): PluginSidebarThreadSplit;
+  /**
+   * Whether the composer holds an unsent draft for one thread (see
+   * {@link PluginSidebarThreadDraftState}). Per row, because a draft is
+   * client-local composer state the array-wide view cannot carry. Reports
+   * false for an unknown thread.
+   */
+  useSidebarThreadDraft(threadId: string): PluginSidebarThreadDraftState;
+  /**
+   * The ids of every sidebar thread that currently holds an unsent draft, for
+   * rollups on collapsed groups. One subscription for the whole list; prefer
+   * {@link PluginSdkApp.useSidebarThreadDraft} inside a row.
+   */
+  useSidebarThreadDraftIds(): ReadonlySet<string>;
+  /**
+   * The row status another plugin set on this thread (see
+   * {@link PluginSidebarThreadRowStatus}), or null. Draw it where bb's row
+   * would: in place of the draft glyph, with its `tone`.
+   */
+  useSidebarThreadRowStatus(
+    threadId: string,
+  ): PluginSidebarThreadRowStatus | null;
+  /**
+   * The jump shortcut assigned to this row while the app command modifier is
+   * held (see {@link PluginSidebarThreadShortcut}), or null the rest of the
+   * time. bb assigns keys in DOM order to rows carrying the
+   * `data-sidebar-thread-shortcut-target` attribute, so a row that omits it
+   * always reads null.
+   */
+  useSidebarThreadShortcut(
+    threadId: string,
+  ): PluginSidebarThreadShortcut | null;
   /**
    * The provider directory (see {@link PluginProvidersState}). Reads the
    * host's own cached provider roster, so a plugin that shows a thread's

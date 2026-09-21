@@ -290,6 +290,17 @@ const actions = experimental_useSidebarThreadActions();
 // the SDK ships no status component. Treat an unknown indicator, status, or
 // runtimeStatus value as its documented fallback — bb adds kinds over time.
 
+// Three more per-row facts are client-local, so they are hooks rather than
+// fields on the thread: an unsent composer draft (bb paints a pencil, or a
+// "working-draft" glyph when the thread is busy), a row status another
+// plugin's app-wide script set (bb draws it in place of the draft glyph), and
+// the jump shortcut bb assigns while the app command modifier is held (bb
+// shows a key pill). Compose them with `indicator` yourself:
+const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
+const rowStatus = useSidebarThreadRowStatus(thread.id); // { icon, label, tone? } | null
+const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcuts } | null
+const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
+
 // Pull requests are per row and opt-in — a lookup hits the git host, so it is
 // deliberately NOT on the thread payload every sidebar loads:
 const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
@@ -311,7 +322,8 @@ is no silent `delete`: deletion is recursive, and only bb can show the
 confirmation that counts the child threads.
 
 Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
-seed rows with the `sidebarThreads` option and assert against
+seed rows with the `sidebarThreads` option (plus `sidebarDraftThreadIds`,
+`sidebarRowStatuses`, and `sidebarShortcuts` for the per-row hooks) and assert against
 `inspection.sidebarActionCalls`.
 
 **Splits.** Rows can drag out to the split area:

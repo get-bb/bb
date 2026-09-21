@@ -11,9 +11,18 @@ import type {
   PluginSidebarSection,
   PluginSidebarThread,
   PluginSidebarThreadActions,
+  PluginSidebarThreadDraftState,
   PluginSidebarThreadPullRequestState,
+  PluginSidebarThreadRowStatus,
+  PluginSidebarThreadShortcut,
   PluginSidebarThreadsState,
 } from "@get-bb/plugin-sdk";
+import { useSidebarThreadShortcut as useHostSidebarThreadShortcut } from "@/components/sidebar/sidebarThreadShortcuts";
+import {
+  usePromptDraftHasInput,
+  usePromptDraftInputThreadIds,
+} from "@/hooks/usePromptDraftStorage";
+import { usePluginThreadRowStatus } from "./plugin-thread-row-status";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import {
@@ -211,6 +220,45 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       updateThreadAsync,
     ],
   );
+}
+
+const NO_DRAFT: PluginSidebarThreadDraftState = Object.freeze({
+  hasUnsubmittedDraft: false,
+});
+const HAS_DRAFT: PluginSidebarThreadDraftState = Object.freeze({
+  hasUnsubmittedDraft: true,
+});
+const EMPTY_DRAFT_IDS: ReadonlySet<string> = new Set();
+
+export function useSidebarThreadDraft(
+  threadId: string,
+): PluginSidebarThreadDraftState {
+  const entry = useSidebarThreadEntry(threadId);
+  const hasDraft = usePromptDraftHasInput({
+    kind: "thread",
+    projectId: entry?.projectId ?? "",
+    threadId,
+  });
+  return entry !== null && hasDraft ? HAS_DRAFT : NO_DRAFT;
+}
+
+export function useSidebarThreadDraftIds(): ReadonlySet<string> {
+  const entries = useThreadEntryMap();
+  const refs = useMemo(() => [...entries.values()], [entries]);
+  const ids = usePromptDraftInputThreadIds(refs);
+  return ids.size === 0 ? EMPTY_DRAFT_IDS : ids;
+}
+
+export function useSidebarThreadRowStatus(
+  threadId: string,
+): PluginSidebarThreadRowStatus | null {
+  return usePluginThreadRowStatus(threadId);
+}
+
+export function useSidebarThreadShortcut(
+  threadId: string,
+): PluginSidebarThreadShortcut | null {
+  return useHostSidebarThreadShortcut(threadId) ?? null;
 }
 
 export function useSidebarThreadPullRequest(

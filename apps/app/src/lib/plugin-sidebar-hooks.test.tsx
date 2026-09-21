@@ -8,8 +8,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
   useSidebarThreadActions,
+  useSidebarThreadDraft,
+  useSidebarThreadDraftIds,
+  useSidebarThreadRowStatus,
+  useSidebarThreadShortcut,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
+import {
+  clearPluginThreadRowStatuses,
+  setPluginThreadRowStatus,
+} from "./plugin-thread-row-status";
+import { SidebarThreadShortcutKeysContext } from "@/components/sidebar/sidebarThreadShortcuts";
 
 const actions = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -71,6 +80,36 @@ vi.mock("./root-compose-selection", () => ({
   useSetRootComposeProjectId: () => actions.setRootComposeProjectId,
 }));
 
+const drafts = vi.hoisted(() => ({
+  threadIds: new Set<string>(),
+  listeners: new Set<() => void>(),
+  notify() {
+    for (const listener of drafts.listeners) listener();
+  },
+}));
+
+vi.mock("@/hooks/usePromptDraftStorage", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const subscribe = (listener: () => void) => {
+    drafts.listeners.add(listener);
+    return () => drafts.listeners.delete(listener);
+  };
+  return {
+    usePromptDraftHasInput: (scope: { threadId: string }) =>
+      useSyncExternalStore(subscribe, () => drafts.threadIds.has(scope.threadId)),
+    usePromptDraftInputThreadIds: (threads: readonly { id: string }[]) => {
+      const snapshot = useSyncExternalStore(subscribe, () =>
+        threads
+          .map((thread) => (drafts.threadIds.has(thread.id) ? "1" : "0"))
+          .join(""),
+      );
+      return new Set(
+        threads.filter((_, index) => snapshot[index] === "1").map((t) => t.id),
+      );
+    },
+  };
+});
+
 function payload(threads: ThreadListEntry[], sections: SidebarSection[] = []) {
   return {
     sections,
@@ -83,6 +122,8 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   state.data = undefined;
+  drafts.threadIds.clear();
+  clearPluginThreadRowStatuses("plugin-a");
 });
 
 describe("useSidebarThreads", () => {
@@ -228,5 +269,89 @@ describe("useSidebarThreadActions", () => {
       result.current.open("thr_missing");
     });
     expect(actions.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("per-row client state hooks", () => {
+  it("reports an unsent draft for a known thread and false otherwise", () => {
+    const thread = makeThreadListEntry({ id: "thr_1", projectId: "proj_app" });
+    state.data = payload([thread]);
+    drafts.threadIds.add("thr_1");
+    drafts.threadIds.add("thr_unknown");
+
+    const known = renderHook(() => useSidebarThreadDraft("thr_1"));
+    const unknown = renderHook(() => useSidebarThreadDraft("thr_unknown"));
+    expect(known.result.current.hasUnsubmittedDraft).toBe(true);
+    expect(unknown.result.current.hasUnsubmittedDraft).toBe(false);
+
+    act(() => {
+      drafts.threadIds.delete("thr_1");
+      drafts.notify();
+    });
+    expect(known.result.current.hasUnsubmittedDraft).toBe(false);
+  });
+
+  it("collects every sidebar thread holding a draft", () => {
+    state.data = payload([
+      makeThreadListEntry({ id: "thr_1", projectId: "proj_app" }),
+      makeThreadListEntry({ id: "thr_2", projectId: "proj_app" }),
+    ]);
+    drafts.threadIds.add("thr_2");
+    const { result } = renderHook(() => useSidebarThreadDraftIds());
+    expect([...result.current]).toEqual(["thr_2"]);
+
+    act(() => {
+      drafts.threadIds.add("thr_1");
+      drafts.notify();
+    });
+    expect([...result.current].sort()).toEqual(["thr_1", "thr_2"]);
+  });
+
+  it("reads and tracks a row status set by another plugin", () => {
+    const { result } = renderHook(() => useSidebarThreadRowStatus("thr_1"));
+    expect(result.current).toBeNull();
+
+    act(() => {
+      setPluginThreadRowStatus("thr_1", "plugin-a", {
+        icon: "Loading",
+        label: "Drafting",
+        tone: "running",
+      });
+    });
+    expect(result.current).toEqual({
+      icon: "Loading",
+      label: "Drafting",
+      tone: "running",
+    });
+
+    act(() => {
+      setPluginThreadRowStatus("thr_1", "plugin-a", null);
+    });
+    expect(result.current).toBeNull();
+  });
+
+  it("reports the assigned shortcut only while the host provides one", () => {
+    const withoutProvider = renderHook(() => useSidebarThreadShortcut("thr_1"));
+    expect(withoutProvider.result.current).toBeNull();
+
+    const keys = new Map([
+      ["thr_1", { label: "⌘1", ariaKeyshortcuts: "Meta+1" }],
+    ]);
+    const { result } = renderHook(() => useSidebarThreadShortcut("thr_1"), {
+      wrapper: ({ children }) => (
+        <SidebarThreadShortcutKeysContext.Provider value={keys}>
+          {children}
+        </SidebarThreadShortcutKeysContext.Provider>
+      ),
+    });
+    expect(result.current).toEqual({ label: "⌘1", ariaKeyshortcuts: "Meta+1" });
+    const other = renderHook(() => useSidebarThreadShortcut("thr_2"), {
+      wrapper: ({ children }) => (
+        <SidebarThreadShortcutKeysContext.Provider value={keys}>
+          {children}
+        </SidebarThreadShortcutKeysContext.Provider>
+      ),
+    });
+    expect(other.result.current).toBeNull();
   });
 });
