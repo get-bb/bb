@@ -54,6 +54,77 @@ export const SURFACE_NUMBERS: ReadonlyMap<string, number> = new Map(
   ),
 );
 
+type GuideSlide = Omit<SurfaceGroup, "id"> & {
+  id: string;
+  groupId: SurfaceGroup["id"];
+  appShellScene?: "navigation" | "conversation" | "panel";
+  homePanel?: boolean;
+};
+
+const DESKTOP_SLIDES: GuideSlide[] = SURFACE_GROUPS.map((group) => ({
+  ...group,
+  groupId: group.id,
+}));
+const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
+  if (group.id === "composer") {
+    return [{
+      ...group,
+      blurb: "Plugins can add banners, actions, providers, and rich text to the prompt box.",
+    }];
+  }
+  if (group.id === "app-shell") {
+    return [
+      {
+        ...group,
+        title: "Sidebar",
+        blurb: "Plugins can add navigation, thread status, and footer controls.",
+        appShellScene: "navigation" as const,
+        surfaces: group.surfaces.filter((surface) => [
+          "sidebar-navigation", "nav-panel", "thread-row-status", "thread-list", "sidebar-footer",
+        ].includes(surface.id)),
+      },
+      {
+        ...group,
+        id: "app-shell-thread",
+        title: "Thread",
+        blurb: "Plugins can extend the thread header, conversation, and composer.",
+        appShellScene: "conversation" as const,
+        surfaces: group.surfaces.filter((surface) => [
+          "thread-header", "timeline-renderers", "message-directives", "message-actions",
+          "pending-interaction", "app-overlay", "content-scripts",
+        ].includes(surface.id)),
+      },
+      {
+        ...group,
+        id: "app-shell-panel",
+        title: "Side panel",
+        blurb: "Explore plugin controls and content in the side panel’s tabs.",
+        appShellScene: "panel" as const,
+        surfaces: group.surfaces.filter((surface) => [
+          "browser-toolbar", "code-renderers", "thread-panel", "file-opener",
+        ].includes(surface.id)),
+      },
+    ];
+  }
+  if (group.id === "home") {
+    return [
+      {
+        ...group,
+        surfaces: group.surfaces.filter((surface) => surface.id === "homepage-section"),
+      },
+      {
+        ...group,
+        id: "home-actions",
+        title: "New thread actions",
+        blurb: "Plugins can add an action to the new-thread panel launcher.",
+        homePanel: true,
+        surfaces: group.surfaces.filter((surface) => surface.id === "new-thread-panel"),
+      },
+    ];
+  }
+  return [group];
+});
+
 export function annotationNeighbors(
   surfaces: readonly PluginSurface[],
   currentId: string,
@@ -120,7 +191,7 @@ function PlatformCard({ surface }: { surface: PluginSurface }) {
   );
 }
 
-function PlatformSlide({ group }: { group: SurfaceGroup }) {
+function PlatformSlide({ group }: { group: GuideSlide }) {
   return (
     <div className="space-y-3">
       {(group.sections ?? []).map((section) => {
@@ -335,18 +406,18 @@ function SlideContent({
   group,
   mobile = false,
 }: {
-  group: SurfaceGroup;
+  group: GuideSlide;
   mobile?: boolean;
 }) {
-  switch (group.id) {
+  switch (group.groupId) {
     case "app-shell":
-      return <AppShellWireframe mobile={mobile} />;
+      return <AppShellWireframe mobile={mobile} mobileScene={group.appShellScene} />;
     case "command-palette":
       return <CommandPaletteWireframe mobile={mobile} />;
     case "composer":
       return <RealComposerAnnotated mobile={mobile} />;
     case "home":
-      return <ComposeScreenWireframe mobile={mobile} />;
+      return <ComposeScreenWireframe mobile={mobile} panel={group.homePanel} />;
     case "settings":
       return <SettingsWireframe mobile={mobile} />;
     case "extensions":
@@ -359,7 +430,7 @@ function SlideContent({
 const PROBE_NOOP = () => {};
 const PROBE_COPY = async () => false;
 
-function CardReserveProbe({ group }: { group: SurfaceGroup }) {
+function CardReserveProbe({ group }: { group: GuideSlide }) {
   return (
     <div
       inert
@@ -389,7 +460,7 @@ function CardReserveProbe({ group }: { group: SurfaceGroup }) {
   );
 }
 
-function Slide({ group, mobile }: { group: SurfaceGroup; mobile: boolean }) {
+function Slide({ group, mobile }: { group: GuideSlide; mobile: boolean }) {
   if (mobile && group.id !== "headless") {
     return (
       <div
@@ -409,7 +480,7 @@ function Slide({ group, mobile }: { group: SurfaceGroup; mobile: boolean }) {
   }
   return (
     <>
-      <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.id]}>
+      <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.groupId]}>
         <SlideContent group={group} />
       </SpatialFixture>
       <CardReserveProbe group={group} />
@@ -512,7 +583,6 @@ export function ProductMap({
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
 }) {
-  const slides = SURFACE_GROUPS;
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pageListRef = useRef<HTMLDivElement>(null);
@@ -532,6 +602,7 @@ export function ProductMap({
   );
   const mobile =
     displayMode === null ? viewportMobile : displayMode === "mobile";
+  const slides = mobile ? MOBILE_SLIDES : DESKTOP_SLIDES;
   useEffect(() => {
     const query = window.matchMedia?.("(max-width: 767px)");
     if (!query) return;
@@ -544,12 +615,11 @@ export function ProductMap({
     card.open(id);
   };
   const pageListEdges = useScrollEdges(pageListRef);
-  const [index, setIndex] = useState(() =>
-    Math.max(
-      0,
-      slides.findIndex((slide) => slide.id === initialSlideId),
-    ),
-  );
+  const [slideId, setSlideId] = useState(initialSlideId ?? "app-shell");
+  const selectedSlide = MOBILE_SLIDES.find((slide) => slide.id === slideId);
+  const index = Math.max(0, slides.findIndex((slide) =>
+    slide.id === slideId || (!mobile && slide.id === selectedSlide?.groupId),
+  ));
   const stage = useStageHeight(index, slideRefs);
 
   useEffect(() => {
@@ -575,14 +645,16 @@ export function ProductMap({
     card.close();
     setSelectedId(null);
     setHoverId(null);
-    setIndex(next);
+    setSlideId(slides[next].id);
     onSlideChange?.(slides[next].id);
   };
 
   const goToSurface = (id: string) => {
     const group = GROUP_BY_SURFACE_ID.get(id);
     if (!group) return;
-    const target = slides.findIndex((slide) => slide.id === group.id);
+    const target = slides.findIndex((slide) =>
+      slide.surfaces.some((surface) => surface.id === id),
+    );
     if (target === -1) return;
     if (target !== index) show(target);
     selectSurface(id);
@@ -590,6 +662,9 @@ export function ProductMap({
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target instanceof HTMLSelectElement) return;
+    if (event.target instanceof Element && event.target.closest('[role="dialog"]')) {
+      return;
+    }
     if (event.key === "ArrowRight") {
       event.preventDefault();
       show(index + 1);
@@ -603,14 +678,12 @@ export function ProductMap({
     () => ({
       activeId: hoverId,
       setActiveId: setHoverId,
-      expandedId:
-        card.openId ??
-        (mobile ? (selectedId ?? slides[index].surfaces[0]?.id) : null),
+      expandedId: card.openId ?? selectedId,
       numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
       onSelect: selectSurface,
       pluginPageHref,
       renderPluginIcon,
-      currentGroupId: slides[index].id,
+      currentGroupId: slides[index].groupId,
       onGoToSurface: goToSurface,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -622,6 +695,7 @@ export function ProductMap({
       index,
       selectedId,
       mobile,
+      slides,
     ],
   );
 
@@ -633,7 +707,7 @@ export function ProductMap({
       onCopyForAgent={onCopyForAgent}
       navigation={{
         ...annotationNeighbors(slides[index].surfaces, openSurface.id),
-        onOpen: goToSurface,
+        onOpen: selectSurface,
       }}
     />
   ) : null;
@@ -649,7 +723,7 @@ export function ProductMap({
       if (target.closest('[role="dialog"]')) return;
       if (
         target.closest(
-          'a[href^="#surface-"], [data-guide-annotation-picker], [data-guide-display-mode]',
+          'a[href^="#surface-"], [data-guide-display-mode]',
         )
       )
         return;
@@ -675,9 +749,7 @@ export function ProductMap({
                 <SlideTitle title={slides[index].title} />
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
-                {mobile && slides[index].id !== "headless"
-                  ? "Choose an annotation to see where it appears on mobile."
-                  : slides[index].blurb}
+                {slides[index].blurb}
               </p>
             </div>
             <div
@@ -816,33 +888,6 @@ export function ProductMap({
                 ))}
               </div>
             </div>
-            {slides[index].id !== "headless" ? (
-              <label
-                data-guide-annotation-picker
-                className={cn(
-                  "mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground",
-                  !mobile && "@2xl/guide:hidden",
-                )}
-              >
-                Annotation
-                <select
-                  aria-label="Explore an annotation"
-                  value={card.openId ?? selectedId ?? ""}
-                  onChange={(event) => {
-                    if (event.target.value) selectSurface(event.target.value);
-                    else card.close();
-                  }}
-                  className={`h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground ${FOCUS_RING_CLASS}`}
-                >
-                  <option value="">Choose an annotation…</option>
-                  {slides[index].surfaces.map((surface) => (
-                    <option key={surface.id} value={surface.id}>
-                      {SURFACE_NUMBERS.get(surface.id)}. {surface.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
             <div
               className={cn(
                 "overflow-x-clip",

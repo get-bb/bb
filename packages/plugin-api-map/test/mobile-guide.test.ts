@@ -5,9 +5,13 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { ProductMap } from "../src/product-map";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
-it("pages mobile surfaces by controls and swipe while preserving annotation selection across layouts", () => {
+it("pages mobile panes without using annotation selection as navigation", () => {
+  vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({
     matches: true,
@@ -25,57 +29,12 @@ it("pages mobile surfaces by controls and swipe while preserving annotation sele
   document.body.append(container);
   const root = createRoot(container);
   const scrollIntoView = HTMLElement.prototype.scrollIntoView;
-  HTMLElement.prototype.scrollIntoView = () => {};
+  const scroll = vi.fn();
+  const navigate = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scroll;
   try {
-    act(() => root.render(createElement(ProductMap)));
-    const current = () =>
-      container.querySelector('[data-map-section="app-shell"]');
-    expect(
-      current()?.querySelector('[data-guide-mobile-scene="navigation"]'),
-    ).not.toBeNull();
-    const picker = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Explore an annotation"]',
-    )!;
-    const select = (id: string) =>
-      act(() => {
-        picker.value = id;
-        picker.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-    select("thread-panel");
-    expect(
-      current()?.querySelector('[data-guide-mobile-scene="panel"]'),
-    ).not.toBeNull();
-    expect(
-      current()?.querySelector('[data-guide-tab-body="thread-panel"]'),
-    ).not.toBeNull();
-    const modes = container.querySelectorAll<HTMLButtonElement>(
-      "[data-guide-display-mode] button",
-    );
-    act(() => modes[1]!.click());
-    expect(
-      current()?.querySelector(
-        '[data-guide-responsive-strategy="scale-together"]',
-      ),
-    ).not.toBeNull();
-    expect(picker.value).toBe("thread-panel");
-    act(() => modes[0]!.click());
-    expect(
-      current()?.querySelector('[data-guide-mobile-scene="panel"]'),
-    ).not.toBeNull();
-    expect(picker.value).toBe("thread-panel");
-    select("message-actions");
-    expect(
-      current()?.querySelector('[data-guide-mobile-scene="conversation"]'),
-    ).not.toBeNull();
-    expect(
-      current()?.querySelector(
-        '[data-guide-fixture="message-action-selection-toolbar"]',
-      ),
-    ).not.toBeNull();
-    select("sidebar-footer");
-    expect(
-      current()?.querySelector('[data-guide-mobile-scene="navigation"]'),
-    ).not.toBeNull();
+    act(() => root.render(createElement(ProductMap, { onSlideChange: navigate })));
+    const current = () => container.querySelector("[data-map-section]:not([inert])")!;
     const visiblePage = () => {
       const buttons = container.querySelectorAll(
         "[data-guide-page-list-scroll] li:not([hidden]) button",
@@ -83,23 +42,53 @@ it("pages mobile surfaces by controls and swipe while preserving annotation sele
       expect(buttons).toHaveLength(1);
       return buttons[0]!.textContent;
     };
-    const next = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Next surface"]',
-    )!;
-    expect(visiblePage()).toBe("The bb app window");
+    const next = container.querySelector<HTMLButtonElement>('[aria-label="Next surface"]')!;
+    const openAnnotation = (id: string) => act(() => {
+      current().querySelector<HTMLAnchorElement>(`a[href="#surface-${id}"]`)!.click();
+    });
+    const nextAnnotation = () => act(() => {
+      container.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label^="Next annotation:"]')!.click();
+    });
+    expect(container.querySelector('[aria-label="Explore an annotation"]')).toBeNull();
+    expect(visiblePage()).toBe("Sidebar");
+    expect(current().querySelector('[data-guide-mobile-scene="navigation"]')).not.toBeNull();
+    openAnnotation("sidebar-navigation");
+    act(() => vi.advanceTimersByTime(400));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    nextAnnotation();
+    act(() => vi.advanceTimersByTime(400));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(visiblePage()).toBe("Sidebar");
+    expect(container.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Full-page panels");
+    act(() => container.querySelector('[role="dialog"] button')!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+    ));
+    expect(navigate).not.toHaveBeenCalled();
+    act(() => next.click());
+    expect(visiblePage()).toBe("Thread");
+    expect(current().querySelector('[data-guide-mobile-scene="conversation"]')).not.toBeNull();
+    for (const id of ["timeline-renderers", "message-directives", "pending-interaction", "app-overlay"]) {
+      expect(current().querySelector(`a[href="#surface-${id}"]`), id).not.toBeNull();
+    }
+    act(() => next.click());
+    expect(visiblePage()).toBe("Side panel");
+    expect(current().querySelector('[data-guide-mobile-scene="panel"]')).not.toBeNull();
+    openAnnotation("browser-toolbar");
+    nextAnnotation();
+    expect(current().querySelector('[data-guide-tab-body="browser-toolbar"]')).not.toBeNull();
+    expect(navigate.mock.calls.map(([id]) => id)).toEqual(["app-shell-thread", "app-shell-panel"]);
+    const modes = container.querySelectorAll<HTMLButtonElement>("[data-guide-display-mode] button");
+    act(() => modes[1]!.click());
+    expect(current().getAttribute("data-map-section")).toBe("app-shell");
+    act(() => modes[0]!.click());
+    expect(visiblePage()).toBe("Side panel");
     act(() => next.click());
     expect(visiblePage()).toBe("Command palette");
     act(() => next.click());
     expect(visiblePage()).toBe("The composer");
-    select("provider-picker");
-    const badges = container.querySelectorAll(
-      '[data-map-section="composer"] [data-guide-badge]',
-    );
-    expect(badges).toHaveLength(1);
-    expect(badges[0]?.getAttribute("data-guide-badge")).toBe("provider-picker");
-    const navigation = container.querySelector(
-      "[data-guide-page-list-scroll]",
-    )!;
+    expect(current().querySelectorAll("[data-guide-badge]")).toHaveLength(7);
+    const navigation = container.querySelector("[data-guide-page-list-scroll]")!;
     const swipe = (dx: number, dy = 0) => {
       for (const [type, x, y] of [
         ["touchstart", 150, 100],
@@ -118,11 +107,13 @@ it("pages mobile surfaces by controls and swipe while preserving annotation sele
     };
     swipe(-80);
     expect(visiblePage()).toBe("Home page");
-    expect(picker.value).toBe("");
     swipe(-10, 80);
     expect(visiblePage()).toBe("Home page");
+    swipe(-80);
+    expect(visiblePage()).toBe("New thread actions");
+    expect(current().querySelector('[data-guide-region="new-thread-panel"]')).not.toBeNull();
     swipe(80);
-    expect(visiblePage()).toBe("The composer");
+    expect(visiblePage()).toBe("Home page");
     for (let step = 0; step < 4; step++) act(() => next.click());
     expect(visiblePage()).toBe("Plugin backend");
     expect(next.disabled).toBe(true);

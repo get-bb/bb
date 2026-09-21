@@ -98,7 +98,7 @@ export function SurfaceCard({
       cardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [surface.id, probe]);
+  }, [probe]);
 
   return (
     <div

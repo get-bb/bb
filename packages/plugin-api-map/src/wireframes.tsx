@@ -663,10 +663,8 @@ export type AppShellRightPanelTab =
 
 function RightPanelTabLaneBadges({
   only,
-  onTabSelect,
 }: {
   only?: AppShellRightPanelTab;
-  onTabSelect: (tab: AppShellRightPanelTab) => void;
 }) {
   return (
     <>
@@ -676,7 +674,6 @@ function RightPanelTabLaneBadges({
           label="Plugin controls beside the Browser address bar"
           anchor='[data-guide-region="browser-toolbar"]'
           at="lane"
-          onActivate={() => onTabSelect("browser-toolbar")}
         />
       ) : null}
       {!only || only === "code-renderers" ? (
@@ -685,7 +682,6 @@ function RightPanelTabLaneBadges({
           label="Plugin code and diff renderers on bb's Diff tab"
           anchor='[data-guide-region="code-renderers"]'
           at="lane"
-          onActivate={() => onTabSelect("code-renderers")}
         />
       ) : null}
       {!only || only === "thread-panel" ? (
@@ -694,7 +690,6 @@ function RightPanelTabLaneBadges({
           label="A plugin tab in the thread side panel"
           anchor='[data-guide-region="thread-panel"]'
           at="lane"
-          onActivate={() => onTabSelect("thread-panel")}
         />
       ) : null}
       {!only || only === "file-opener" ? (
@@ -703,7 +698,6 @@ function RightPanelTabLaneBadges({
           label="A plugin file viewer or editor tab"
           anchor='[data-guide-region="file-opener"]'
           at="lane"
-          onActivate={() => onTabSelect("file-opener")}
         />
       ) : null}
     </>
@@ -944,34 +938,17 @@ export function CommandPaletteWireframe({
   );
 }
 
-export function AppShellWireframe({ mobile = false }: { mobile?: boolean }) {
-  const { expandedId } = useSurfaceMap();
+export function AppShellWireframe({
+  mobile = false,
+  mobileScene = "navigation",
+}: {
+  mobile?: boolean;
+  mobileScene?: "navigation" | "conversation" | "panel";
+}) {
   const [rightPanelTab, setRightPanelTab] =
     useState<AppShellRightPanelTab>("browser-toolbar");
 
-  useEffect(() => {
-    if (
-      expandedId === "browser-toolbar" ||
-      expandedId === "thread-panel" ||
-      expandedId === "file-opener" ||
-      expandedId === "code-renderers"
-    ) {
-      setRightPanelTab(expandedId);
-    }
-  }, [expandedId]);
-
-  const scene = mobile
-    ? APP_SHELL_MARKS.slice(0, 5).some((id) => id === expandedId)
-      ? "navigation"
-      : [
-            "browser-toolbar",
-            "thread-panel",
-            "file-opener",
-            "code-renderers",
-          ].includes(expandedId ?? "")
-        ? "panel"
-        : "conversation"
-    : "desktop";
+  const scene = mobile ? mobileScene : "desktop";
 
   return (
     <div
@@ -1027,7 +1004,6 @@ export function AppShellWireframe({ mobile = false }: { mobile?: boolean }) {
         <RightPanelTabLaneBadges
           key={mobile ? rightPanelTab : "desktop"}
           only={mobile ? rightPanelTab : undefined}
-          onTabSelect={setRightPanelTab}
         />
       ) : null}
       <AppShellWireframeBody
@@ -1159,26 +1135,24 @@ function AppShellWireframeBody({
               </span>
             </div>
 
-            {!mobile || expandedId === "timeline-renderers" ? (
-              <div className="w-[78%] space-y-1">
-                <span className="flex items-center gap-1.5 text-foreground">
-                  <PluginGlyph className="size-3.5" />
-                  Re-ran checkout suite
-                  <span className="text-subtle-foreground">Completed</span>
-                </span>
-                <RegionMark
-                  id="timeline-renderers"
-                  label="Plugin-owned content inside a timeline entry"
-                  className="ml-5 block space-y-1 px-2.5 py-2"
-                  chip="side"
-                >
-                  <div className="flex items-center gap-2" aria-hidden>
-                    <span className="h-1.5 w-2/3 rounded-sm bg-muted/60" />
-                    <span className="h-1.5 w-12 rounded-sm bg-foreground/40" />
-                  </div>
-                </RegionMark>
-              </div>
-            ) : null}
+            <div className="w-[78%] space-y-1">
+              <span className="flex items-center gap-1.5 text-foreground">
+                <PluginGlyph className="size-3.5" />
+                Re-ran checkout suite
+                <span className="text-subtle-foreground">Completed</span>
+              </span>
+              <RegionMark
+                id="timeline-renderers"
+                label="Plugin-owned content inside a timeline entry"
+                className="ml-5 block space-y-1 px-2.5 py-2"
+                chip="side"
+              >
+                <div className="flex items-center gap-2" aria-hidden>
+                  <span className="h-1.5 w-2/3 rounded-sm bg-muted/60" />
+                  <span className="h-1.5 w-12 rounded-sm bg-foreground/40" />
+                </div>
+              </RegionMark>
+            </div>
 
             <div
               data-guide-fixture="assistant-message"
@@ -1191,25 +1165,23 @@ function AppShellWireframeBody({
               <p className="leading-relaxed">
                 The retries cluster in two suites. Failure rate by suite:
               </p>
-              {!mobile || expandedId === "message-directives" ? (
-                <Mark
-                  id="message-directives"
-                  label="A plugin component rendered inline by a message directive"
-                  className="block w-3/5 px-2.5 py-2.5"
-                >
-                  <span className="flex items-end gap-1.5" aria-hidden>
-                    <span className="h-4 w-3.5 rounded-sm bg-muted" />
-                    <span className="h-8 w-3.5 rounded-sm bg-foreground/40" />
-                    <span className="h-2.5 w-3.5 rounded-sm bg-muted" />
-                    <span className="h-6 w-3.5 rounded-sm bg-muted" />
-                    <span className="h-2 w-3.5 rounded-sm bg-muted" />
-                  </span>
-                  <span className="mt-1.5 flex items-center gap-1.5">
-                    <PluginGlyph className="size-3.5" />
-                    ::your-directive
-                  </span>
-                </Mark>
-              ) : null}
+              <Mark
+                id="message-directives"
+                label="A plugin component rendered inline by a message directive"
+                className="block w-3/5 px-2.5 py-2.5"
+              >
+                <span className="flex items-end gap-1.5" aria-hidden>
+                  <span className="h-4 w-3.5 rounded-sm bg-muted" />
+                  <span className="h-8 w-3.5 rounded-sm bg-foreground/40" />
+                  <span className="h-2.5 w-3.5 rounded-sm bg-muted" />
+                  <span className="h-6 w-3.5 rounded-sm bg-muted" />
+                  <span className="h-2 w-3.5 rounded-sm bg-muted" />
+                </span>
+                <span className="mt-1.5 flex items-center gap-1.5">
+                  <PluginGlyph className="size-3.5" />
+                  ::your-directive
+                </span>
+              </Mark>
               <div className="space-y-1.5">
                 {messageActionsSelected ? (
                   <div
@@ -1268,38 +1240,25 @@ function AppShellWireframeBody({
           </div>
 
           <div className="space-y-2 border-t border-border-hairline p-4">
-            {!mobile || expandedId === "pending-interaction" ? (
-              <Mark
-                id="pending-interaction"
-                label="A plugin ask-the-user form, shown in place of the composer"
-                className="block border border-border bg-card p-3"
-              >
-                <span className="flex items-center gap-1.5 text-foreground">
-                  <PluginGlyph className="size-3.5" />
-                  Pick a release channel
+            <Mark
+              id="pending-interaction"
+              label="A plugin ask-the-user form, shown in place of the composer"
+              className="block border border-border bg-card p-3"
+            >
+              <span className="flex items-center gap-1.5 text-foreground">
+                <PluginGlyph className="size-3.5" />
+                Pick a release channel
+              </span>
+              <span className="mt-2 flex gap-1.5" aria-hidden>
+                <span className="h-5.5 flex-1 rounded-md border border-border" />
+                <span className="flex h-5.5 items-center rounded-md border border-border px-2">
+                  Cancel
                 </span>
-                <span className="mt-2 flex gap-1.5" aria-hidden>
-                  <span className="h-5.5 flex-1 rounded-md border border-border" />
-                  <span className="flex h-5.5 items-center rounded-md border border-border px-2">
-                    Cancel
-                  </span>
-                  <span className="flex h-5.5 items-center rounded-md bg-foreground px-2 text-background">
-                    Submit
-                  </span>
+                <span className="flex h-5.5 items-center rounded-md bg-foreground px-2 text-background">
+                  Submit
                 </span>
-              </Mark>
-            ) : (
-              <div className="rounded-xl border border-border p-3 text-sm">
-                <span className="block pb-6">Ask for a follow-up…</span>
-                <span className="flex items-center gap-2">
-                  <MiniIcon icon="Plus" />
-                  Fable 5
-                  <span className="ml-auto">
-                    <MiniIcon icon="ArrowUp" />
-                  </span>
-                </span>
-              </div>
-            )}
+              </span>
+            </Mark>
           </div>
         </div>
 
@@ -1311,21 +1270,19 @@ function AppShellWireframeBody({
         )}
       </div>
 
-      {!mobile || expandedId === "app-overlay" ? (
-        <Mark
-          id="app-overlay"
-          label="App-wide floating plugin interface"
-          className="absolute bottom-24 right-12 z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md"
-        >
-          <PluginGlyph className="size-4 shrink-0" />
-          <span className="min-w-0">
-            <span className="block truncate font-medium">Floating widget</span>
-            <span className="block truncate text-2xs text-subtle-foreground">
-              2 agents active
-            </span>
+      <Mark
+        id="app-overlay"
+        label="App-wide floating plugin interface"
+        className="absolute bottom-24 right-12 z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md"
+      >
+        <PluginGlyph className="size-4 shrink-0" />
+        <span className="min-w-0">
+          <span className="block truncate font-medium">Floating widget</span>
+          <span className="block truncate text-2xs text-subtle-foreground">
+            2 agents active
           </span>
-        </Mark>
-      ) : null}
+        </span>
+      </Mark>
     </WindowFrame>
   );
 }
@@ -1394,53 +1351,47 @@ export function AppShellRightPanel({
             compact ? "shrink-0" : "min-w-0",
           )}
         >
-          {!compact || activeTab === "browser-toolbar" ? (
-            <button
-              type="button"
-              data-guide-tab="browser-toolbar"
-              className={cn(
-                tabClass("browser-toolbar"),
-                "gap-1.5 whitespace-nowrap px-2 text-foreground",
-              )}
-              onClick={() => onTabSelect("browser-toolbar")}
-            >
-              Browser
-            </button>
-          ) : null}
-          {!compact || activeTab === "thread-panel" ? (
-            <Mark
-              id="thread-panel"
-              label="A plugin tab in the thread side panel"
-              className={cn(
-                tabClass("thread-panel"),
-                "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
-              )}
-              showChip={false}
-              onActivate={() => onTabSelect("thread-panel")}
-            >
-              <span data-guide-tab="thread-panel" className="contents">
-                <PluginGlyph className="size-3.5" />
-                <span className="text-foreground">Your tab</span>
-              </span>
-            </Mark>
-          ) : null}
-          {!compact || activeTab === "file-opener" ? (
-            <Mark
-              id="file-opener"
-              label="A plugin file viewer or editor tab"
-              className={cn(
-                tabClass("file-opener"),
-                "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
-              )}
-              showChip={false}
-              onActivate={() => onTabSelect("file-opener")}
-            >
-              <span data-guide-tab="file-opener" className="contents">
-                <MiniIcon icon="FileText" className="size-3.5" />
-                <span className="text-foreground">retry-notes.md</span>
-              </span>
-            </Mark>
-          ) : null}
+          <button
+            type="button"
+            data-guide-tab="browser-toolbar"
+            className={cn(
+              tabClass("browser-toolbar"),
+              "gap-1.5 whitespace-nowrap px-2 text-foreground",
+            )}
+            onClick={() => onTabSelect("browser-toolbar")}
+          >
+            Browser
+          </button>
+          <Mark
+            id="thread-panel"
+            label="A plugin tab in the thread side panel"
+            className={cn(
+              tabClass("thread-panel"),
+              "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
+            )}
+            showChip={false}
+            onActivate={() => onTabSelect("thread-panel")}
+          >
+            <span data-guide-tab="thread-panel" className="contents">
+              <PluginGlyph className="size-3.5" />
+              <span className="text-foreground">Your tab</span>
+            </span>
+          </Mark>
+          <Mark
+            id="file-opener"
+            label="A plugin file viewer or editor tab"
+            className={cn(
+              tabClass("file-opener"),
+              "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
+            )}
+            showChip={false}
+            onActivate={() => onTabSelect("file-opener")}
+          >
+            <span data-guide-tab="file-opener" className="contents">
+              <MiniIcon icon="FileText" className="size-3.5" />
+              <span className="text-foreground">retry-notes.md</span>
+            </span>
+          </Mark>
         </span>
         <span className="flex-1" />
         <MiniIcon icon="Plus" className="size-3.5" />
@@ -1567,7 +1518,6 @@ export function RealComposerAnnotated({
 }: {
   mobile?: boolean;
 }) {
-  const { expandedId } = useSurfaceMap();
   const banners = useEngagement("composer-banners");
   const mention = useEngagement("mention-provider");
   return (
@@ -1577,46 +1527,36 @@ export function RealComposerAnnotated({
           data-guide-annotation-layer="composer-controls"
           className="pointer-events-none absolute inset-0 z-50"
         >
-          {!mobile || expandedId === "composer-banners" ? (
-            <MeasuredBadge
-              id="composer-banners"
-              label="Plugin composer banners, above the prompt box"
-              anchor='[data-guide-target="composer-banners"]'
-              at="end"
-            />
-          ) : null}
-          {!mobile || expandedId === "composer-state" ? (
-            <MeasuredBadge
-              id="composer-state"
-              label="The draft prompt a plugin can read and lock"
-              anchor='[data-guide-target="composer-state"]'
-              at="start"
-            />
-          ) : null}
-          {!mobile || expandedId === "composer-plus-menu" ? (
-            <MeasuredBadge
-              id="composer-plus-menu"
-              label="Plugin rows in the composer's + menu"
-              anchor='[data-guide-target="composer-plus-menu"]'
-              at="start"
-            />
-          ) : null}
-          {!mobile || expandedId === "provider-picker" ? (
-            <MeasuredBadge
-              id="provider-picker"
-              label="Your agent provider and its mark, in the model picker"
-              anchor='[data-guide-target="provider-picker"]'
-              at={mobile ? "start" : "above"}
-            />
-          ) : null}
-          {!mobile || expandedId === "composer-actions" ? (
-            <MeasuredBadge
-              id="composer-actions"
-              label="Plugin composer actions, before voice and send"
-              anchor='[data-guide-target="composer-actions"]'
-              at={mobile ? "end" : "above"}
-            />
-          ) : null}
+          <MeasuredBadge
+            id="composer-banners"
+            label="Plugin composer banners, above the prompt box"
+            anchor='[data-guide-target="composer-banners"]'
+            at="end"
+          />
+          <MeasuredBadge
+            id="composer-state"
+            label="The draft prompt a plugin can read and lock"
+            anchor='[data-guide-target="composer-state"]'
+            at="start"
+          />
+          <MeasuredBadge
+            id="composer-plus-menu"
+            label="Plugin rows in the composer's + menu"
+            anchor='[data-guide-target="composer-plus-menu"]'
+            at="start"
+          />
+          <MeasuredBadge
+            id="provider-picker"
+            label="Your agent provider and its mark, in the model picker"
+            anchor='[data-guide-target="provider-picker"]'
+            at="above"
+          />
+          <MeasuredBadge
+            id="composer-actions"
+            label="Plugin composer actions, before voice and send"
+            anchor='[data-guide-target="composer-actions"]'
+            at={mobile ? "end" : "above"}
+          />
         </div>
         <WindowFrame>
           <div className="flex min-h-[506px] flex-col">
@@ -1686,14 +1626,13 @@ export function RealComposerAnnotated({
 }
 
 function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
-  const { expandedId } = useSurfaceMap();
   const draft = useEngagement("composer-state");
   const plus = useEngagement("composer-plus-menu");
   const picker = useEngagement("provider-picker");
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className="relative flex h-[126px] flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-3 shadow-lift">
+      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 shadow-lift", mobile ? "min-h-48 gap-7 pt-7" : "h-[126px] pt-3")}>
         {plus.outlined ? (
           <div
             aria-hidden
@@ -1719,7 +1658,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
           data-guide-target="composer-state"
           className={cn(
             "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
-            mobile ? "min-h-7 flex-wrap gap-y-1.5" : "h-7",
+            mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
             engagedRingClass(draft.outlined),
           )}
         >
@@ -1731,9 +1670,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             label="Plugin mention results in the @ typeahead"
             className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
             chip="outside-above"
-            showChip={
-              !plus.outlined && (!mobile || expandedId === "mention-provider")
-            }
+            showChip={!plus.outlined}
           >
             <span aria-hidden>@release-notes</span>
           </RegionMark>
@@ -1746,9 +1683,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             label="Plugin highlighting, painted over the draft prompt"
             className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
             chip="outside-above"
-            showChip={
-              !plus.outlined && (!mobile || expandedId === "composer-rich-text")
-            }
+            showChip={!plus.outlined}
           >
             <span aria-hidden>TODO</span>
           </RegionMark>
@@ -1819,12 +1754,12 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
 
 export function ComposeScreenWireframe({
   mobile = false,
+  panel = false,
 }: {
   mobile?: boolean;
+  panel?: boolean;
 }) {
-  const { expandedId } = useSurfaceMap();
   if (mobile) {
-    const panel = expandedId === "new-thread-panel";
     return (
       <div className="px-3 pt-4">
         <WindowFrame>
