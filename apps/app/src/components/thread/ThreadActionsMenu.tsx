@@ -348,12 +348,10 @@ export function ThreadArchiveQuickAction({
   thread,
   className,
   disabled,
-  icon,
 }: {
   thread: Thread;
   className?: string;
   disabled?: boolean;
-  icon?: IconName;
 }) {
   const { archiveThreadAndChildren, unarchiveThread } = useThreadActions();
   const isArchived = thread.archivedAt != null;
@@ -379,7 +377,7 @@ export function ThreadArchiveQuickAction({
           }}
         >
           <Icon
-            name={icon ?? (isArchived ? "ArchiveRestore" : "Archive")}
+            name={isArchived ? "ArchiveRestore" : "Archive"}
             className={COARSE_POINTER_ICON_SIZE_CLASS}
           />
         </Button>
