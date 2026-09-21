@@ -22,7 +22,7 @@ export function getPluginSettingsEntryRoutePath(
   entry: PluginSettingsEntry,
 ): string {
   const path = getPluginConfigurationRoutePath({ pluginId: entry.id });
-  return entry.hasConfiguration ? path : `${path}?view=installed`;
+  return `${path}?view=installed`;
 }
 
 interface BuildPluginSettingsEntriesArgs {
