@@ -126,14 +126,14 @@ describe("assistant streaming Markdown rendering", () => {
     ).toBe("https://example.com");
   });
 
-  it("does not resolve an incomplete image and resolves the completed local image", () => {
+  it("does not load an incomplete image and loads the completed local image", () => {
     const view = render(assistant("Image ![preview](/workspace/preview"));
     expect(screen.queryByRole("img")).toBeNull();
     expect(view.container.textContent).not.toContain("![preview]");
 
     view.rerender(assistant("Image ![preview](/workspace/preview.png)"));
     expect(
-      screen.getByRole("img", { name: "preview" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "preview" }).getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_stream/host-files/content?path=%2Fworkspace%2Fpreview.png",
     );

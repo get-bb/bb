@@ -16,7 +16,9 @@ Cursor project skills come from `.cursor/skills`, which can link to
 
 ACP agents may reject unlisted model IDs. OpenCode requires models in its own
 configuration; BB discovers them there. OpenCode agents are session modes, not
-models selectable through BB's model field.
+models selectable through BB's model field. Grok Build advertises models and
+`thought_level` options over ACP, so the picker follows the connected agent
+(including `xhigh` on grok-4.6).
 
 OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
 expose compatible compaction. Check the actual agent's capabilities before

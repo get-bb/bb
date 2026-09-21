@@ -26,7 +26,6 @@ import {
   assertPublicMarketplaceUrl,
   boundedResponseJson,
   publicMarketplaceFetch,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
   MARKETPLACE_PACKUMENT_MAX_BYTES,
 } from "../plugin-catalog/marketplace-http.js";
 import { installGitDependencies } from "./git-plugin-dependencies.js";
@@ -178,7 +177,6 @@ export function createListedRegistryNpmResolverRun(listedRegistry: string) {
       return publicMarketplaceFetch(input, {
         ...init,
         redirect: "error",
-        signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
       });
     },
     readJson: (response) =>

@@ -2,7 +2,6 @@ import { z } from "zod";
 import { parseJsonDocument } from "../plugins/collection-manifest.js";
 import {
   boundedResponseBytes,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 
@@ -74,7 +73,6 @@ export async function fetchMarketplaceStats(args: {
     method: "GET",
     headers: new Headers({ accept: "application/json" }),
     redirect: "error",
-    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
   });
   if (response.status === 404) {
     await response.body?.cancel();

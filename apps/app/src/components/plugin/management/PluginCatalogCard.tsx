@@ -1,7 +1,4 @@
-import {
-  ResourceInstallControl,
-  ResourceInstalledControl,
-} from "@bb/shared-ui/resource-list";
+import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
@@ -14,11 +11,13 @@ export function PluginCatalogGrid({
   entries,
   showCategory = true,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
   showCategory?: boolean;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   return (
@@ -29,6 +28,7 @@ export function PluginCatalogGrid({
           entry={entry}
           showCategory={showCategory}
           onInstall={onInstall}
+          onUninstall={onUninstall}
           onOpenPlugin={onOpenPlugin}
         />
       ))}
@@ -40,11 +40,13 @@ export function PluginCatalogCard({
   entry,
   showCategory,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
   showCategory: boolean;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
@@ -65,30 +67,22 @@ export function PluginCatalogCard({
       }
       headerAction={
         entry.installed ? (
-          <ResourceInstalledControl accessibleLabel="Installed" count={count} />
-        ) : (
-          <ResourceInstallControl
-            accessibleLabel={`Install ${entry.displayName}${
-              count === undefined ? "" : ` — ${count.accessibleLabel}`
-            }`}
-            disabled={!entry.compatible}
-            presentation="compact"
-            tooltip={`Install ${entry.displayName}`}
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed
+            included={entry.source.startsWith("builtin:")}
             count={count}
-            className="border-border/80 bg-background text-foreground shadow-none hover:bg-state-hover"
-            onAction={() =>
-              onInstall({
-                entryId: entry.entryId,
-                marketplace: entry.marketplace,
-                pluginId: entry.pluginId,
-                publisherLabel: entry.publisherLabel,
-                displayName: entry.displayName,
-                icon: entry.icon,
-                iconUrl: entry.iconUrl,
-                iconTinted: entry.iconTinted,
-                source: entry.source,
-              })
+            onUninstall={
+              onUninstall === undefined ? undefined : () => onUninstall(entry)
             }
+          />
+        ) : (
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed={false}
+            disabled={!entry.compatible}
+            count={count}
+            onInstall={() => onInstall(entry)}
           />
         )
       }

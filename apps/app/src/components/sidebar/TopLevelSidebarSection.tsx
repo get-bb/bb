@@ -28,6 +28,10 @@ import {
   SIDEBAR_CONTROL_STATE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
 } from "./sidebarRowClasses";
+import {
+  SectionDropTargetOverlay,
+  useSectionDropTargetState,
+} from "./useSectionDropTargetState";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -55,9 +59,10 @@ interface TopLevelSidebarSectionCollapseControl {
 
 export interface TopLevelSidebarSectionProps {
   label: string;
+  labelEditor?: ReactNode;
+  onRename?: () => void;
   children: ReactNode;
-  childrenInset?: boolean;
-  showChildrenWhenCollapsed?: boolean;
+  dropParentKey?: string;
   sectionId?: string;
   stickyHeader?: boolean;
   status?: ReactNode;
@@ -77,9 +82,10 @@ export interface TopLevelSidebarSectionProps {
 
 export function TopLevelSidebarSection({
   label,
+  labelEditor,
+  onRename,
   children,
-  childrenInset = true,
-  showChildrenWhenCollapsed = false,
+  dropParentKey,
   sectionId,
   stickyHeader = true,
   status,
@@ -96,6 +102,7 @@ export function TopLevelSidebarSection({
   consumeClickSuppression,
   isDropTargetActive = false,
 }: TopLevelSidebarSectionProps) {
+  const threadDropState = useSectionDropTargetState(dropParentKey);
   const collapsedSplitIndicator = useThreadGroupSplitIndicator(
     collapsedThreads,
     collapseControl?.isCollapsed === true,
@@ -135,13 +142,13 @@ export function TopLevelSidebarSection({
   ) : null;
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
-      if (!consumeClickSuppression?.()) {
+      if (labelEditor || !consumeClickSuppression?.()) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
     },
-    [consumeClickSuppression],
+    [consumeClickSuppression, labelEditor],
   );
   const handleCollapseControlClick = useCallback<
     MouseEventHandler<HTMLButtonElement>
@@ -169,17 +176,21 @@ export function TopLevelSidebarSection({
       ref={sectionRef}
       style={sectionStyle}
       data-sidebar-section-id={sectionId}
+      data-sidebar-drop-target={threadDropState ?? undefined}
+      data-sidebar-rename-row=""
       data-sidebar-sticky-header={stickyHeader ? undefined : "false"}
       className={cn(
-        "group/sidebar-section min-w-0 rounded-md transition-colors",
+        "group/sidebar-section relative min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",
       )}
       onClickCapture={handleClickCapture}
     >
+      {threadDropState ? (
+        <SectionDropTargetOverlay state={threadDropState} />
+      ) : null}
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="label"
-        style={childrenInset ? undefined : { marginBottom: 0 }}
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
@@ -193,12 +204,28 @@ export function TopLevelSidebarSection({
         {...(dragBindings?.listeners ?? {})}
       >
         <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
-          <span className="min-w-0 truncate" title={label}>
-            {label}
-          </span>
+          {labelEditor ?? (
+            <span
+              className="min-w-0 truncate"
+              title={label}
+              onDoubleClick={
+                onRename
+                  ? (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onRename();
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          )}
           {collapseControl ? (
             <button
               type="button"
+              disabled={Boolean(labelEditor)}
+              data-sidebar-rename-anchor=""
               aria-expanded={!collapseControl.isCollapsed}
               data-sidebar-hover-actions-mobile={
                 SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
@@ -213,6 +240,7 @@ export function TopLevelSidebarSection({
                 "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
                 SIDEBAR_CONTROL_STATE_CLASS,
                 LIST_HOVER_TRANSITION,
+                labelEditor && "hidden",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -234,6 +262,7 @@ export function TopLevelSidebarSection({
             data-sidebar-trailing-controls=""
             className={cn(
               "relative z-20 inline-flex h-7 shrink-0 items-center max-md:pointer-coarse:h-9",
+              labelEditor && "hidden",
               SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
             )}
             onClick={status || actions ? stopActionsClick : undefined}
@@ -264,9 +293,8 @@ export function TopLevelSidebarSection({
           </span>
         ) : null}
       </SidebarStickyTier>
-      {(collapseControl?.isCollapsed && !showChildrenWhenCollapsed) ||
-      children == null ? null : (
-        <div className={childrenInset ? "mt-1" : undefined}>{children}</div>
+      {collapseControl?.isCollapsed || children == null ? null : (
+        <div className="mt-1">{children}</div>
       )}
     </SidebarStickyGroup>
   );

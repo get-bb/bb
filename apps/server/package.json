@@ -28,6 +28,7 @@
     "@bb/server-archive": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "@better-auth/api-key": "^1.6.23",
     "@better-auth/drizzle-adapter": "^1.6.23",

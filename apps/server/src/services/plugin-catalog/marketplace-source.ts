@@ -9,7 +9,6 @@ import {
 } from "../plugins/install-sources.js";
 import {
   boundedResponseBytes,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
@@ -199,7 +198,6 @@ async function materializeHttps(
       method: "GET",
       headers,
       redirect: "error",
-      signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
     });
   }
 

@@ -452,25 +452,9 @@ describe("resolveSystemExecutionOptions", () => {
               command: "grok",
               args: ["agent", "stdio"],
               env: {},
-              modelCli: {
-                listArgs: ["models"],
-                selectFlag: "--model",
-                primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
-              },
               permissionCli: {
                 full: ["--always-approve"],
                 insertAfterArgs: 1,
-              },
-              reasoningCli: {
-                flag: "--reasoning-effort",
-                supportedLevels: ["low", "medium", "high"],
-                levelValues: {
-                  none: "low",
-                  xhigh: "high",
-                  ultracode: "high",
-                  max: "high",
-                },
-                defaultLevel: "high",
               },
             },
           },

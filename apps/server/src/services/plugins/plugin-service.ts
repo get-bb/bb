@@ -297,6 +297,10 @@ export interface PluginService {
     id: string,
     kind: "js" | "css",
   ): { path: string; hash: string } | undefined;
+  getAppAssetByHash(
+    hash: string,
+    kind: "js" | "css",
+  ): { path: string; hash: string } | undefined;
   getBrandingAsset(
     id: string,
     variant: PluginBrandingAssetVariant,
@@ -1620,6 +1624,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const path = kind === "js" ? assets.jsPath : assets.cssPath;
       if (path === null) return undefined;
       return { path, hash: assets.hash };
+    },
+
+    getAppAssetByHash(hash, kind) {
+      for (const [id, snapshot] of appBundles) {
+        if (!loaded.has(id) || snapshot.assets?.hash !== hash) continue;
+        const path =
+          kind === "js" ? snapshot.assets.jsPath : snapshot.assets.cssPath;
+        if (path !== null) return { path, hash };
+      }
+      return undefined;
     },
 
     getBrandingAsset(id, variant) {

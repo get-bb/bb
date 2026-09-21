@@ -32,8 +32,10 @@ every window and client sees the same value.
   '["active","archived"]'` to include archived results. Archived recents load
   only while selected and are bounded at the server. Older `draft` selections
   display as Active.
-- `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
-  existing server and legacy browser choices are preserved.
+- `sidebar.organizationMode` defaults to Custom (`chronological`) on new installs.
+  Migrated installs with existing projects, threads, or UI preferences fall back to
+  By project (`project`). Saved server choices win over legacy browser choices,
+  which win over the installation fallback. Reset saves that fallback explicitly.
 - `sidebar.threadGrouping.environment` decides whether sibling threads sharing
   one worktree environment collapse into a single worktree row inside their
   section: `true` groups them and `false` keeps every thread on its own row, in

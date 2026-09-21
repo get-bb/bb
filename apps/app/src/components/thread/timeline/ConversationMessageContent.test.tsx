@@ -55,7 +55,7 @@ describe("ConversationMessageContent assistant images", () => {
     expect(
       screen
         .getByRole("img", { name: "Generated diagram" })
-        .getAttribute("data-markdown-image-src"),
+        .getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
     );
@@ -92,7 +92,7 @@ describe("ConversationMessageContent user images", () => {
     );
 
     expect(
-      screen.getByRole("img", { name: "diagram" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "diagram" }).getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
     );

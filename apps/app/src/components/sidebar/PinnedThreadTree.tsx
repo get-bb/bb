@@ -1,17 +1,11 @@
-import {
-  Fragment,
-  memo,
-  useCallback,
-  useMemo,
-  type CSSProperties,
-} from "react";
+import { memo, useCallback, useMemo, type CSSProperties } from "react";
 import { DndContext, useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { NeighborReorderRequest } from "@bb/client-core";
-import { DropPreviewRow, ThreadTreeNodeRow } from "./ProjectRow";
+import { ThreadTreeNodeRow } from "./ProjectRow";
 import {
   useSidebarSortable,
   type SidebarSortableDragBindings,
@@ -121,20 +115,9 @@ const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
     disabled,
     displace,
   });
-  const hasProjectedDestination =
-    props.sectionDnd != null &&
-    (props.sectionDnd.dragOverParentKey !== null ||
-      props.sectionDnd.nestTarget?.state === "valid" ||
-      props.sectionDnd.reorderTarget !== null);
   const sortableStyle: CSSProperties =
     props.sectionDnd?.activeThread?.id === getPinnedRootNodeId(node)
-      ? {
-          ...style,
-          opacity: 0,
-          pointerEvents: "none",
-          position: hasProjectedDestination ? "absolute" : style.position,
-          width: hasProjectedDestination ? "100%" : undefined,
-        }
+      ? { ...style, opacity: 0.35, pointerEvents: "none" }
       : style;
 
   return (
@@ -205,14 +188,6 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   }
 
   if (chronologicalDnd) {
-    const previewBeforeKey =
-      chronologicalDnd.dropPreview?.parentKey === PINNED_THREAD_PARENT_KEY
-        ? chronologicalDnd.dropPreview.beforeItemKey
-        : null;
-    const showDropPreview =
-      chronologicalDnd.dragOverParentKey === PINNED_THREAD_PARENT_KEY &&
-      chronologicalDnd.reorderTarget === null &&
-      previewBeforeKey === null;
     return (
       <div
         ref={setPinnedParentRef}
@@ -225,34 +200,21 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
           strategy={verticalListSortingStrategy}
         >
           {chronologicalRootNodes.map((node) => (
-            <Fragment key={getPinnedRootNodeId(node)}>
-              {previewBeforeKey === `thread:${getPinnedRootNodeId(node)}` ? (
-                <DropPreviewRow
-                  depth={0}
-                  thread={chronologicalDnd.activeThread}
-                />
-              ) : null}
-              <SortablePinnedRootItem
-                node={node}
-                disabled={chronologicalDnd.pinnedReorderPending}
-                displace={false}
-                sectionDnd={chronologicalDnd}
-                selectedThreadId={selectedThreadId}
-                collapsedThreadIds={collapsedThreadIds}
-                collapsedEnvironmentIds={collapsedEnvironmentIds}
-                onProjectSelect={onProjectSelect}
-                onToggleThreadCollapsed={onToggleThreadCollapsed}
-                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-              />
-            </Fragment>
+            <SortablePinnedRootItem
+              key={getPinnedRootNodeId(node)}
+              node={node}
+              disabled={chronologicalDnd.pinnedReorderPending}
+              displace={false}
+              sectionDnd={chronologicalDnd}
+              selectedThreadId={selectedThreadId}
+              collapsedThreadIds={collapsedThreadIds}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              onProjectSelect={onProjectSelect}
+              onToggleThreadCollapsed={onToggleThreadCollapsed}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            />
           ))}
         </SortableContext>
-        <DropPreviewRow
-          animate={chronologicalDnd.activeThread !== null}
-          depth={0}
-          visible={showDropPreview}
-          thread={chronologicalDnd.activeThread}
-        />
       </div>
     );
   }

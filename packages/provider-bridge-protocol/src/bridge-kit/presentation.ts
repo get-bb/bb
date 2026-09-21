@@ -1,4 +1,5 @@
 import { THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import type { DeltaPresentation } from "../thread-delta.js";
 
 export const PRESENTATION_TITLE_MAX_LENGTH = 160;
@@ -9,13 +10,13 @@ export function presentationTitle(text: string): string | undefined {
     return undefined;
   }
   return firstLine.length > PRESENTATION_TITLE_MAX_LENGTH
-    ? `${firstLine.slice(0, PRESENTATION_TITLE_MAX_LENGTH - 1)}…`
+    ? `${sliceUtf16Head(firstLine, PRESENTATION_TITLE_MAX_LENGTH - 1)}…`
     : firstLine;
 }
 
 export function presentationDetail(text: string): string {
   return text.length > THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH
-    ? `${text.slice(0, THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH - 1)}…`
+    ? `${sliceUtf16Head(text, THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH - 1)}…`
     : text;
 }
 

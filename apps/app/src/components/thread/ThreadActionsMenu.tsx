@@ -40,6 +40,8 @@ import { useThreadSectionMove } from "./ThreadSectionMoveProvider";
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
   onOpenInSplit?: () => void;
+  onRename?: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export interface ThreadActionsMenuResponsiveAction {
@@ -56,6 +58,7 @@ interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
 
 interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
   children: ReactNode;
+  disabled?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -174,6 +177,7 @@ function ThreadSectionMoveMenu({
 function ThreadActionsMenuItems({
   thread,
   onOpenInSplit,
+  onRename,
   compactStep = "actions",
   onCompactStepChange,
   responsiveActions = [],
@@ -283,6 +287,10 @@ function ThreadActionsMenuItems({
         surface={surface}
         icon="Edit"
         onSelect={() => {
+          if (onRename) {
+            onRename();
+            return;
+          }
           window.setTimeout(() => {
             requestRename(thread);
           }, 0);
@@ -384,6 +392,8 @@ export function ThreadArchiveQuickAction({
 export function ThreadActionsMenu({
   thread,
   onOpenInSplit,
+  onRename,
+  onCloseAutoFocus,
   responsiveActions,
   onOpenChange,
   triggerClassName,
@@ -414,10 +424,11 @@ export function ThreadActionsMenu({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" onCloseAutoFocus={onCloseAutoFocus}>
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
+          onRename={onRename}
           compactStep={compactStep}
           onCompactStepChange={setCompactStep}
           responsiveActions={responsiveActions}
@@ -438,9 +449,11 @@ export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
 
 function ThreadActionsCompactLongPressMenu({
   children,
+  disabled,
   thread,
   onOpenInSplit,
   onOpenChange,
+  onRename,
 }: ThreadActionsContextMenuProps) {
   const { compactStep, setCompactStep, handleOpenChange } =
     useThreadActionsMenuLifecycle(onOpenChange);
@@ -448,11 +461,13 @@ function ThreadActionsCompactLongPressMenu({
   return (
     <CompactLongPressMenu
       label="Thread actions"
+      disabled={disabled}
       onOpenChange={handleOpenChange}
       items={
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
+          onRename={onRename}
           compactStep={compactStep}
           onCompactStepChange={setCompactStep}
           surface="dropdown"
@@ -466,17 +481,26 @@ function ThreadActionsCompactLongPressMenu({
 
 function ThreadActionsDesktopContextMenu({
   children,
+  disabled,
   thread,
   onOpenInSplit,
   onOpenChange,
+  onRename,
+  onCloseAutoFocus,
 }: ThreadActionsContextMenuProps) {
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent aria-label="Thread actions">
+      <ContextMenuTrigger asChild disabled={disabled}>
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        aria-label="Thread actions"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
+          onRename={onRename}
           surface="context"
         />
       </ContextMenuContent>

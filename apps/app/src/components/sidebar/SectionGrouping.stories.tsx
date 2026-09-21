@@ -156,7 +156,10 @@ function SidebarStage({ children }: { children: ReactNode }) {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
-        <div className="w-full max-w-[460px] min-w-0 rounded-md bg-sidebar p-2 text-sidebar-foreground">
+        <div
+          data-sidebar="sidebar"
+          className="w-full max-w-[460px] min-w-0 rounded-md bg-sidebar p-2 text-sidebar-foreground"
+        >
           <SidebarStickyStack>{children}</SidebarStickyStack>
         </div>
       </ThreadActionsProvider>

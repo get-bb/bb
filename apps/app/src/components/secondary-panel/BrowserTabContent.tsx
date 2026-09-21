@@ -660,20 +660,14 @@ export function BrowserTabContent({
     }
     if (isViewVisible) {
       visibilityCoordinator.show(tabId, syncBounds, {
-        focus: canHandleBrowserCommands,
+        focus: false,
       });
       return () => {
         visibilityCoordinator.hide(tabId);
       };
     }
     visibilityCoordinator.hide(tabId);
-  }, [
-    canHandleBrowserCommands,
-    visibilityCoordinator,
-    tabId,
-    isViewVisible,
-    syncBounds,
-  ]);
+  }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);
 
   useEffect(() => {
     if (desktopBrowser?.onFocus === undefined || onNativeFocus === undefined) {
@@ -683,11 +677,6 @@ export function BrowserTabContent({
       if (focusedTabId === tabId) onNativeFocus();
     });
   }, [desktopBrowser, onNativeFocus, tabId]);
-
-  useEffect(() => {
-    if (!isViewVisible || !canHandleBrowserCommands) return;
-    desktopBrowser?.focus?.(tabId);
-  }, [canHandleBrowserCommands, desktopBrowser, isViewVisible, tabId]);
 
   useEffect(() => {
     if (addressFocusRequest === null) {

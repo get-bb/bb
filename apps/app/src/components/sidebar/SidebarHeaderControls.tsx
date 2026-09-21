@@ -44,6 +44,7 @@ export function SidebarHeaderControls({
   children,
   open,
   onOpenChange,
+  onCloseAutoFocus,
 }: {
   label: string;
   onNewThread?: () => void;
@@ -51,6 +52,7 @@ export function SidebarHeaderControls({
   children?: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
   const compact = useIsCompactViewport();
@@ -79,6 +81,7 @@ export function SidebarHeaderControls({
             variant="ghost"
             size="icon"
             aria-label={`${label} actions`}
+            data-sidebar-rename-anchor=""
             className={SIDEBAR_CONTROL_BUTTON_CLASS}
           >
             <Icon
@@ -89,6 +92,7 @@ export function SidebarHeaderControls({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          onCloseAutoFocus={onCloseAutoFocus}
           mobileTitle={
             page === "organize"
               ? "Organize"

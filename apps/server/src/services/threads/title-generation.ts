@@ -1,6 +1,16 @@
 import { renderTemplate } from "@bb/templates";
 import { getThread, updateThread } from "@bb/db";
-import type { PromptInput } from "@bb/domain";
+import {
+  removeCommandMentionsFromPromptInput,
+  type PromptInput,
+  type PromptMentionCommandTrigger,
+} from "@bb/domain";
+import {
+  countWords,
+  displayWidth,
+  truncateToWidth,
+  truncateToWidthAtWordBoundary,
+} from "@bb/text-utils";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -10,7 +20,9 @@ import {
 } from "../ai/inference.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
-const MAX_GENERATED_TITLE_WORDS = 5;
+const MAX_GENERATED_TITLE_WIDTH = 48;
+const MAX_TITLE_FALLBACK_WIDTH = 80;
+const TITLE_FALLBACK_ELLIPSIS = "...";
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
 interface ApplyGeneratedThreadTitleArgs {
@@ -55,12 +67,69 @@ function cleanPromptText(input: PromptInput[]): string {
     .trim();
 }
 
+function clampPromptText(text: string): string {
+  if (displayWidth(text) <= MAX_TITLE_FALLBACK_WIDTH) {
+    return text;
+  }
+  const body = truncateToWidth(
+    text,
+    MAX_TITLE_FALLBACK_WIDTH - TITLE_FALLBACK_ELLIPSIS.length,
+  );
+  return `${body}${TITLE_FALLBACK_ELLIPSIS}`;
+}
+
 export function deriveTitleFallback(input: PromptInput[]): string | null {
   const text = cleanPromptText(input);
   if (text.length === 0) {
     return null;
   }
-  return text.length <= 80 ? text : `${text.slice(0, 77)}...`;
+  return clampPromptText(text);
+}
+
+interface InvokedPromptCommand {
+  name: string;
+  trigger: PromptMentionCommandTrigger;
+}
+
+export function collectInvokedPromptCommands(
+  input: PromptInput[],
+): InvokedPromptCommand[] {
+  const seen = new Set<string>();
+  return input.flatMap((part) =>
+    part.type === "text"
+      ? part.mentions.flatMap((mention) => {
+          if (mention.resource.kind !== "command") {
+            return [];
+          }
+          const { name, trigger } = mention.resource;
+          const key = `${trigger}${name}`;
+          if (seen.has(key)) {
+            return [];
+          }
+          seen.add(key);
+          return [{ name, trigger }];
+        })
+      : [],
+  );
+}
+
+function promptTextWithoutCommands(
+  input: PromptInput[],
+  commands: InvokedPromptCommand[],
+): string {
+  return cleanPromptText(
+    commands.reduce<PromptInput[]>(
+      (remaining, command) =>
+        removeCommandMentionsFromPromptInput(remaining, command),
+      input,
+    ),
+  );
+}
+
+function formatInvokedCommands(commands: InvokedPromptCommand[]): string {
+  return commands
+    .map((command) => `${command.trigger}${command.name}`)
+    .join(", ");
 }
 
 export function shouldGenerateThreadTitle(input: PromptInput[]): boolean {
@@ -69,17 +138,19 @@ export function shouldGenerateThreadTitle(input: PromptInput[]): boolean {
     return false;
   }
 
-  return text.split(/\s+/u).length >= MIN_TITLE_GENERATION_WORDS;
+  if (collectInvokedPromptCommands(input).length > 0) {
+    return true;
+  }
+
+  return countWords(text) >= MIN_TITLE_GENERATION_WORDS;
 }
 
 export function sanitizeGeneratedTitle(value: string): string | null {
-  const words = value
-    .trim()
-    .replace(/\s+/gu, " ")
-    .split(" ")
-    .filter((word) => word.length > 0);
-
-  const title = words.slice(0, MAX_GENERATED_TITLE_WORDS).join(" ");
+  const normalized = value.trim().replace(/\s+/gu, " ");
+  const title = truncateToWidthAtWordBoundary(
+    normalized,
+    MAX_GENERATED_TITLE_WIDTH,
+  ).trim();
   return title.length > 0 ? title : null;
 }
 
@@ -137,8 +208,13 @@ export async function generateThreadMetadataWithOutcome(
     return complete(null, "too-short");
   }
 
+  const commands = collectInvokedPromptCommands(args.input);
+  const body = promptTextWithoutCommands(args.input, commands);
   const prompt = renderTemplate("generateThreadMetadata", {
-    cleanedPrompt: fallback,
+    cleanedPrompt: body.length > 0 ? clampPromptText(body) : fallback,
+    ...(commands.length > 0
+      ? { invokedCommands: formatInvokedCommands(commands) }
+      : {}),
   });
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 

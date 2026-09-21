@@ -20,7 +20,6 @@ import {
 import {
   collectSectionThreadDndLookup,
   NEST_HOVER_DELAY_MS,
-  SectionThreadProjectionGate,
   useSectionThreadDnd,
 } from "./useSectionThreadDnd";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -204,7 +203,7 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
     expect(result.current?.dragOverParentKey).toBeNull();
   });
 
-  it("does not un-project when `over` flips back without new user input", () => {
+  it("follows the resolved drop parent and clears it over the source section", () => {
     const { result } = renderSectionThreadDnd();
     const props = () => result.current!.dndContextProps;
 
@@ -212,45 +211,14 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
     act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
     expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
 
-    act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
-    expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
-
     act(() => props().onDragOver?.(dragOver("dragged", "loose")));
     expect(result.current?.dragOverParentKey).toBe(CHRONOLOGICAL_CONTAINER_ID);
 
-    act(() => notePointerMove());
     act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
     expect(result.current?.dragOverParentKey).toBeNull();
 
-    act(() => notePointerMove());
     act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
     expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
-  });
-
-  it("stops tracking input once the drag ends", () => {
-    const addSpy = vi.spyOn(document, "addEventListener");
-    const removeSpy = vi.spyOn(document, "removeEventListener");
-    const { result, unmount } = renderSectionThreadDnd();
-    const props = () => result.current!.dndContextProps;
-
-    act(() => props().onDragStart?.(dragStart("dragged")));
-    const added = addSpy.mock.calls.filter(([type]) => type === "pointermove");
-    expect(added).toHaveLength(1);
-
-    act(() =>
-      props().onDragCancel?.({ active: { id: "dragged" } } as DragCancelEvent),
-    );
-    expect(
-      removeSpy.mock.calls.filter(([type]) => type === "pointermove"),
-    ).toHaveLength(1);
-
-    act(() => props().onDragStart?.(dragStart("dragged")));
-    unmount();
-    expect(
-      removeSpy.mock.calls.filter(([type]) => type === "pointermove"),
-    ).toHaveLength(2);
-    addSpy.mockRestore();
-    removeSpy.mockRestore();
   });
 });
 
@@ -293,6 +261,89 @@ describe("useSectionThreadDnd nest projection", () => {
       } as DragCancelEvent),
     );
     expect(result.current?.nestTarget).toBeNull();
+  });
+});
+
+describe("worktree group drop collisions", () => {
+  it("keeps an empty Threads destination when hidden group children overlap the pointer", () => {
+    const rootItems = buildSectionThreadList(
+      [
+        createThread({
+          id: "first",
+          sectionId: "a",
+          environmentId: "env",
+          environmentIsWorktree: true,
+          createdAt: 3,
+        }),
+        createThread({
+          id: "second",
+          sectionId: "a",
+          environmentId: "env",
+          environmentIsWorktree: true,
+          createdAt: 2,
+        }),
+        createThread({
+          id: "child",
+          sectionId: "a",
+          environmentId: "env",
+          environmentIsWorktree: true,
+          parentThreadId: "second",
+        }),
+      ],
+      undefined,
+      SECTIONS,
+      new Set(),
+      true,
+    );
+    const lookup = collectSectionThreadDndLookup(
+      rootItems,
+      CHRONOLOGICAL_CONTAINER_ID,
+    );
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+    const { result } = renderSectionThreadDnd(rootItems);
+    const props = () => result.current!.dndContextProps;
+    act(() => props().onDragStart?.(dragStart(activeId)));
+    act(() => props().onDragOver?.(dragOver(activeId, "threads")));
+    expect(result.current?.dragOverParentKey).toBe(CHRONOLOGICAL_CONTAINER_ID);
+
+    const sourceRect = {
+      top: 100,
+      left: 0,
+      width: 200,
+      height: 28,
+      right: 200,
+      bottom: 128,
+    };
+    const targetRect = { ...sourceRect, top: 40, bottom: 68 };
+    const sourceIds = [
+      activeId,
+      "first",
+      "second",
+      "child",
+      getSidebarThreadRowDroppableId("child"),
+    ];
+    const droppableRects = new Map([
+      ...sourceIds.map((id): [string, typeof sourceRect] => [id, sourceRect]),
+      [CHRONOLOGICAL_CONTAINER_ID, targetRect],
+    ]);
+    for (const pointerCoordinates of [
+      { x: 20, y: 114 },
+      { x: 20, y: 150 },
+    ]) {
+      const collisions = props().collisionDetection!({
+        active: { id: activeId },
+        collisionRect: sourceRect,
+        droppableRects,
+        droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+        pointerCoordinates,
+      } as unknown as Parameters<CollisionDetection>[0]);
+      expect(collisions.map(({ id }) => id)).toEqual([
+        CHRONOLOGICAL_CONTAINER_ID,
+      ]);
+    }
+    act(() =>
+      props().onDragCancel?.({ active: { id: activeId } } as DragCancelEvent),
+    );
   });
 });
 
@@ -417,22 +468,5 @@ describe("useSectionThreadDnd nest hover delay", () => {
     );
     act(() => props().onDragStart?.(dragStart("dragged")));
     expect(collide(114)).toEqual([]);
-  });
-});
-
-describe("SectionThreadProjectionGate", () => {
-  it("allows each target once per input and blocks reverts", () => {
-    const gate = new SectionThreadProjectionGate();
-    expect(gate.allow(null, "b")).toBe(true);
-    expect(gate.allow("b", null)).toBe(false);
-    expect(gate.allow("b", "c")).toBe(true);
-    expect(gate.allow("c", "b")).toBe(false);
-
-    gate.noteInput();
-    expect(gate.allow("c", "b")).toBe(true);
-    expect(gate.allow("b", "c")).toBe(false);
-
-    gate.reset();
-    expect(gate.allow("b", "c")).toBe(true);
   });
 });

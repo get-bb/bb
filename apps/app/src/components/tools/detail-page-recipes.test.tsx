@@ -639,7 +639,7 @@ describe("Skill detail recipe", () => {
     );
 
     expect(
-      screen.getByRole("img", { name: "example" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "example" }).getAttribute("src"),
     ).toBe("/skill-preview/assets/example.png");
   });
 
