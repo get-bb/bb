@@ -288,7 +288,7 @@ and `archived`, defaulting to `["active"]`. Drafts appear above the existing
 hierarchy; selected archived threads use their preserved placement and a restore
 action. Archived pages load only while selected. For example:
 `bb settings ui set sidebar.threadLifecycles '["active","draft"]'`.
-Reset the key to restore Active. Plugin sidebar replacements own their filters.
+Plugin sidebar replacements own their filters.
 
 `palette.threadLifecycles` uses the same values and Active default, independently
 of the sidebar. It filters named groups before and after typing; Drafts and
@@ -298,8 +298,7 @@ or reset the key to restore Active.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, Sort by, and Filter. Organize selects By project,
-By machine, or Custom and retains Groups → By environment. Sort by and Filter
-show Reset only when their displayed settings differ from the default.
+By machine, or Custom and retains Groups → By environment.
 The separate `sidebar.threadGrouping.environment` preference
 decides whether sibling threads sharing one worktree collapse into a single row.
 It defaults to `auto`, which groups them

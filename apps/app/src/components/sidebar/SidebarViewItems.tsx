@@ -1,4 +1,3 @@
-import { getUiPreferenceDefault } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   DropdownMenuGroup,
@@ -26,38 +25,15 @@ export function SidebarViewItems({
     savedDirection,
     setDirection,
     selectedSort,
-    changed,
   } = settings;
-  const reset = page !== "organize" && changed[page] ? (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        className="text-xs text-muted-foreground"
-        onSelect={(event) => {
-          event.preventDefault();
-          if (page === "sort") {
-            setSort(getUiPreferenceDefault("sidebar.chronologicalSort"));
-            setDirection(getUiPreferenceDefault("sidebar.sortDirection"));
-          } else {
-            setLifecycles(getUiPreferenceDefault("sidebar.threadLifecycles"));
-          }
-        }}
-      >
-        Reset
-      </DropdownMenuItem>
-    </>
-  ) : null;
   if (page === "filter") {
     return (
-      <>
-        <DropdownMenuGroup aria-label="Thread lifecycle">
-          <ThreadLifecycleFilterItems
-            value={lifecycles}
-            onChange={setLifecycles}
-          />
-        </DropdownMenuGroup>
-        {reset}
-      </>
+      <DropdownMenuGroup aria-label="Thread lifecycle">
+        <ThreadLifecycleFilterItems
+          value={lifecycles}
+          onChange={setLifecycles}
+        />
+      </DropdownMenuGroup>
     );
   }
   if (page === "organize") {
@@ -105,52 +81,49 @@ export function SidebarViewItems({
     );
   }
   return (
-    <>
-      <DropdownMenuGroup aria-label="Sort">
-        {sortOptions.map((option) => {
-          const selected = selectedSort === option.sort;
-          const direction =
-            savedDirection === "default" ? option.direction : savedDirection;
-          const nextDirection = selected
-            ? direction === "ascending"
-              ? "descending"
-              : "ascending"
-            : option.direction;
-          return (
-            <DropdownMenuItem
-              key={option.sort}
-              role="menuitemradio"
-              aria-checked={selected}
-              aria-label={
-                selected
-                  ? `${option.label}, ${direction}. Sort ${nextDirection}`
-                  : option.label
-              }
-              onSelect={(event) => {
-                event.preventDefault();
-                setSort(option.sort);
-                setDirection(nextDirection);
-              }}
-            >
-              {option.label}
-              {selected && (
-                <span className="sr-only">
-                  , {direction}. Sort {nextDirection}
-                </span>
-              )}
-              <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-                {selected && (
-                  <Icon
-                    name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                    className="size-4"
-                  />
-                )}
+    <DropdownMenuGroup aria-label="Sort">
+      {sortOptions.map((option) => {
+        const selected = selectedSort === option.sort;
+        const direction =
+          savedDirection === "default" ? option.direction : savedDirection;
+        const nextDirection = selected
+          ? direction === "ascending"
+            ? "descending"
+            : "ascending"
+          : option.direction;
+        return (
+          <DropdownMenuItem
+            key={option.sort}
+            role="menuitemradio"
+            aria-checked={selected}
+            aria-label={
+              selected
+                ? `${option.label}, ${direction}. Sort ${nextDirection}`
+                : option.label
+            }
+            onSelect={(event) => {
+              event.preventDefault();
+              setSort(option.sort);
+              setDirection(nextDirection);
+            }}
+          >
+            {option.label}
+            {selected && (
+              <span className="sr-only">
+                , {direction}. Sort {nextDirection}
               </span>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuGroup>
-      {reset}
-    </>
+            )}
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {selected && (
+                <Icon
+                  name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
+                  className="size-4"
+                />
+              )}
+            </span>
+          </DropdownMenuItem>
+        );
+      })}
+    </DropdownMenuGroup>
   );
 }
