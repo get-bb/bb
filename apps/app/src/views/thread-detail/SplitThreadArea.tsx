@@ -1483,13 +1483,7 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     ) {
       onStaleRef.current();
     }
-  }, [
-    isConfirmedArchived,
-    isDeleted,
-    isGone,
-    isUnarchived,
-    unarchivesInFlight,
-  ]);
+  }, [isConfirmedArchived, isDeleted, isGone, isUnarchived, unarchivesInFlight]);
 
   return null;
 }

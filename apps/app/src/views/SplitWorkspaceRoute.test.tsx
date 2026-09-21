@@ -1,13 +1,26 @@
 // @vitest-environment jsdom
 
-import { Suspense, useEffect } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Suspense, useEffect, type ReactNode } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import { createStore, Provider } from "jotai";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { AppRoutes } from "../App";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneContent } from "@/lib/split-layout";
 import SplitWorkspaceRoute from "./SplitWorkspaceRoute";
 
 const workspaceLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
+
+vi.mock("@/components/layout/AppLayout", () => ({
+  AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 vi.mock("./thread-detail/SplitThreadArea", () => ({
   SplitThreadArea: ({ routeContent }: { routeContent: PaneContent }) => {
@@ -29,6 +42,14 @@ vi.mock("./ToolsView", () => ({
   PluginsView: ({ pluginId }: { pluginId?: string }) => (
     <output data-testid="tools-view">{pluginId ?? "overview"}</output>
   ),
+  SkillsView: function SkillsView() {
+    const { skillId, registrySkillId } = useParams();
+    return (
+      <output data-testid="skill-detail">
+        {skillId ?? registrySkillId ?? "collection"}
+      </output>
+    );
+  },
 }));
 
 function NavigationControls() {
@@ -44,11 +65,46 @@ function NavigationControls() {
   );
 }
 
+afterEach(cleanup);
+
 describe("SplitWorkspaceRoute", () => {
   beforeEach(() => {
     workspaceLifecycle.mounts = 0;
     workspaceLifecycle.unmounts = 0;
   });
+
+  it.each([
+    ["/skills/library/local-skill", "local-skill", false],
+    ["/skills/registry/owner%2Fskill", "owner/skill", true],
+  ])(
+    "keeps standalone detail parameters at %s",
+    async (path, skillId, hasPane) => {
+      const store = createStore();
+      store.set(
+        splitLayoutAtom,
+        hasPane
+          ? {
+              root: {
+                type: "pane",
+                paneId: "pane-1",
+                content: { kind: "new-thread" },
+              },
+              focusedPaneId: "pane-1",
+            }
+          : null,
+      );
+      render(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={[path]}>
+            <AppRoutes />
+          </MemoryRouter>
+        </Provider>,
+      );
+      expect((await screen.findByTestId("skill-detail")).textContent).toBe(
+        skillId,
+      );
+    },
+  );
 
   it("preserves the workspace mount across focus-driven page URL changes", () => {
     render(
