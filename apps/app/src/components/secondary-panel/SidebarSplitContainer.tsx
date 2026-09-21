@@ -348,9 +348,12 @@ export function SidebarSplitContainer({
 
   const navigateNewTabItem = (direction: -1 | 1) => {
     if (!canNavigateTabs) return false;
-    const page = containerRef.current?.querySelector<HTMLElement>(
-      '[data-split-pane-id][data-focused="true"]:not([aria-hidden="true"]) [data-panel-new-tab-page]',
-    );
+    const pane = hasMultiplePanes
+      ? containerRef.current?.querySelector<HTMLElement>(
+          '[data-split-pane-id][data-focused="true"]:not([aria-hidden="true"])',
+        )
+      : containerRef.current;
+    const page = pane?.querySelector<HTMLElement>("[data-panel-new-tab-page]");
     if (!page) return false;
     const items = Array.from(
       page.querySelectorAll<HTMLElement>(
@@ -574,24 +577,27 @@ export function SidebarSplitContainer({
   if (!hasMultiplePanes && firstPane !== undefined) {
     const group = getSidebarGroupForPane(state, firstPane.paneId);
     if (group === null) return null;
-    // oxlint-disable-next-line react/refs
-    return renderPane({
-      group,
-      isFocused: true,
-      isLeftEdge: true,
-      isMaximized: isFullScreen,
-      isTopRow: true,
-      onBeginTabDrag: (tabId, event) =>
-        beginTabDrag(firstPane.paneId, tabId, event),
-      onReorderTab: (request) => reorderTab(firstPane.paneId, request),
-      onFocusPane: () => focusPane(firstPane.paneId),
-      onRemoveSplit: undefined,
-      onMoveActiveTabToSide: moveActiveTabHandler(firstPane.paneId),
-      onSelectTab: (tabId) => selectTab(firstPane.paneId, tabId),
-      onToggleMaximize: onToggleFullScreen,
-      paneId: firstPane.paneId,
-      showOuterControls: true,
-    });
+    return (
+      <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
+        {renderPane({
+          group,
+          isFocused: true,
+          isLeftEdge: true,
+          isMaximized: isFullScreen,
+          isTopRow: true,
+          onBeginTabDrag: (tabId, event) =>
+            beginTabDrag(firstPane.paneId, tabId, event),
+          onReorderTab: (request) => reorderTab(firstPane.paneId, request),
+          onFocusPane: () => focusPane(firstPane.paneId),
+          onRemoveSplit: undefined,
+          onMoveActiveTabToSide: moveActiveTabHandler(firstPane.paneId),
+          onSelectTab: (tabId) => selectTab(firstPane.paneId, tabId),
+          onToggleMaximize: onToggleFullScreen,
+          paneId: firstPane.paneId,
+          showOuterControls: true,
+        })}
+      </div>
+    );
   }
   const presentedLayout = resizePreviewLayout ?? state.layout;
   const paneRects = computePaneRects(presentedLayout.root);
