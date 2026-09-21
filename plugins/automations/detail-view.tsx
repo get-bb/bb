@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
 import type {
   AgentEnvironment,
+  AutomationDetailResponse,
   AutomationExecution,
   AutomationResponse,
   AutomationRunResponse,
@@ -66,7 +67,7 @@ interface AutomationRunsViewState {
 }
 
 interface AutomationDetailViewProps {
-  automation: AutomationResponse;
+  automation: AutomationDetailResponse;
   projectLabel: string;
   runsState: AutomationRunsViewState;
   actionPending: boolean;
@@ -684,8 +685,20 @@ export function AgentAutomationDefinition({
 export function ScriptAutomationDefinition({
   execution,
 }: {
-  execution: Extract<AutomationExecution, { mode: "script" }>;
+  execution: Extract<
+    AutomationDetailResponse["execution"],
+    { mode: "script" }
+  >;
 }) {
+  const { resolvedWorkingDirectory } = execution;
+  const workingDirectoryLabel =
+    resolvedWorkingDirectory === null
+      ? "Working directory unavailable"
+      : formatHomePathForDisplay(resolvedWorkingDirectory);
+  const workingDirectoryAriaLabel =
+    resolvedWorkingDirectory === null
+      ? workingDirectoryLabel
+      : `Working directory: ${workingDirectoryLabel}`;
   return (
     <ResourceDetailPanel
       surface="flat"
@@ -706,6 +719,14 @@ export function ScriptAutomationDefinition({
         <span className="inline-flex items-center gap-1.5">
           <Icon name="Clock" className="size-3.5" aria-hidden />
           {Math.round(execution.timeoutMs / 1000)}s timeout
+        </span>
+        <span
+          className="inline-flex min-w-0 items-center gap-1.5"
+          aria-label={workingDirectoryAriaLabel}
+          title={workingDirectoryLabel}
+        >
+          <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+          <span className="max-w-64 truncate">{workingDirectoryLabel}</span>
         </span>
         {execution.env ? (
           <AutomationEnvironmentVariables environment={execution.env} />

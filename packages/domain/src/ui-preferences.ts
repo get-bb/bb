@@ -22,6 +22,9 @@ export type SidebarChronologicalSort = z.infer<
   typeof sidebarChronologicalSortSchema
 >;
 
+const sidebarThreadGroupingSchema = z.union([z.literal("auto"), z.boolean()]);
+export type SidebarThreadGrouping = z.infer<typeof sidebarThreadGroupingSchema>;
+
 const collapsibleSidebarSectionIdSchema = z.enum(["pinned", "threads"]);
 
 const uiPreferenceStringSchema = z
@@ -31,14 +34,20 @@ const uiPreferenceStringSchema = z
 const uiPreferenceStringListSchema = z
   .array(uiPreferenceStringSchema)
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
+const sidebarHiddenGroupsSchema = z
+  .array(uiPreferenceStringSchema.regex(/^(project|section|machine):\S+$/))
+  .max(UI_PREFERENCE_LIST_MAX_LENGTH)
+  .transform((value) => [...new Set(value)]);
 
 export const UI_PREFERENCE_KEYS = [
   "sidebar.organizationMode",
+  "sidebar.threadGrouping.environment",
   "sidebar.chronologicalSort",
   "sidebar.sortDirection",
   "sidebar.sectionOrder",
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
+  "sidebar.hiddenGroups",
   "sidebar.collapsedSections",
   "sidebar.collapsedProjects",
   "sidebar.collapsedThreads",
@@ -79,6 +88,11 @@ export const uiPreferenceDefinitions = {
     "chronological",
     "How the sidebar groups threads: by project, Custom (chronological), or by machine. Defaults to Custom when unset.",
   ),
+  "sidebar.threadGrouping.environment": defineUiPreference(
+    sidebarThreadGroupingSchema,
+    "auto",
+    "Whether sibling threads sharing a worktree environment collapse into one row. auto groups them in every organization mode except Custom.",
+  ),
   "sidebar.chronologicalSort": defineUiPreference(
     sidebarChronologicalSortSchema,
     "updated",
@@ -103,6 +117,11 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringListSchema,
     ["pinned", "machines", "threads"],
     "Top-level section order when the sidebar is organized by machine.",
+  ),
+  "sidebar.hiddenGroups": defineUiPreference(
+    sidebarHiddenGroupsSchema,
+    [],
+    "Project, custom section, and machine groups moved into More, using project:<id>, section:<id>, or machine:<id>. Setting this list replaces the hidden groups across all sidebar organizations; reset shows every group.",
   ),
   "sidebar.collapsedSections": defineUiPreference(
     z

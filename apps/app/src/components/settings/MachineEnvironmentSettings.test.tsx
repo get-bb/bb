@@ -47,8 +47,17 @@ vi.mock("@/lib/sdk", () => ({
     },
   },
 }));
-afterEach(cleanup);
-beforeEach(() => vi.resetAllMocks());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.stubGlobal("crypto", {
+    getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+    randomUUID: undefined,
+  });
+});
 
 async function show(
   status: MachineEnvironmentList["builtInGit"]["status"] = "logged in",

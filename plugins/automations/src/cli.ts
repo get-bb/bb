@@ -1,19 +1,24 @@
 import { isAbsolute, resolve } from "node:path";
-import type {
-  BbPluginApi,
-  PluginCliContext,
-  PluginCliResult,
+import {
+  PluginCliError,
+  cliCommand,
+  defineCli,
+  type BbPluginApi,
+  type PluginCliContext,
+  type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { AutomationService } from "./service.js";
 import type {
   AgentEnvironment,
   AgentExecutionUpdate,
+  AutomationDetailResponse,
   AutomationReadProblem,
   AutomationReadResult,
   AutomationResponse,
   AutomationRunResponse,
   AutomationScriptInterpreter,
+  AutomationScriptWorkingDirectory,
   CreateAutomationInput,
   PermissionMode,
   ReasoningLevel,
@@ -26,7 +31,13 @@ import {
   resolvePermissionMode,
 } from "./provider-permissions.js";
 import {
+  AUTOMATION_RUNS_LIMIT_DEFAULT,
+  AUTOMATION_RUNS_LIMIT_MAX,
+  AUTOMATION_SCRIPT_MAX_LENGTH,
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
+} from "./limits.js";
+import {
   automationScriptInterpreterSchema,
   permissionModeSchema,
   reasoningLevelSchema,
@@ -48,74 +59,270 @@ const hostListSchema = z.array(
     .passthrough(),
 );
 
-interface ParsedArgs {
-  command: string;
-  positionals: string[];
-  flags: Map<string, string | true>;
+const DESCRIPTION = `Automations run agent prompts or server-side scripts on a schedule.
+
+Scripts run on the bb server host. New standard-project scripts use the
+project source on that host when one exists; Personal and projects without a
+server-host source run in the plugin's shared script storage directory.
+Existing scripts without a saved policy also run there. Select
+automation-storage, project, or an absolute server-host path with
+--working-directory. An unavailable selected directory fails the run.`;
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
+
+const PROJECT_OPTION = {
+  type: "string",
+  placeholder: "id",
+  description:
+    "Required. Project that owns the automation; `bb project list --include-personal --json` lists ids",
+} as const;
+
+const AUTOMATION_ID_POSITIONAL = {
+  name: "automationId",
+  description: "Automation id from `bb automation list`",
+  required: true,
+} as const;
+
+const SCHEDULE_OPTIONS = {
+  cron: {
+    type: "string",
+    placeholder: "expression",
+    description:
+      "Five-field cron expression, at most 100 characters; requires --timezone",
+  },
+  timezone: {
+    type: "string",
+    placeholder: "iana-timezone",
+    description:
+      "IANA timezone for --cron, for example America/New_York; only used with --cron",
+  },
+  at: {
+    type: "string",
+    placeholder: "datetime",
+    description:
+      "One-shot run time in the future, preferably ISO 8601 (2026-01-31T09:00:00Z)",
+  },
+  in: {
+    type: "string",
+    placeholder: "duration",
+    description: "One-shot delay from now: 30s, 5m, 2h, or 1d",
+  },
+} as const;
+
+const AGENT_OPTIONS = {
+  prompt: {
+    type: "string",
+    placeholder: "text",
+    description: "Prompt the agent runs when the automation is due",
+  },
+  provider: {
+    type: "string",
+    placeholder: "id",
+    description: "Provider id, for example claude or codex",
+  },
+  model: {
+    type: "string",
+    placeholder: "model",
+    description: "Model id the provider accepts",
+  },
+  reasoning: {
+    type: "enum",
+    values: reasoningLevelSchema.options,
+    description: "Reasoning level; new automations default to medium",
+  },
+  "service-tier": {
+    type: "enum",
+    values: [...serviceTierSchema.options, "none"],
+    description: "Service tier; none leaves the automation without one",
+  },
+  "permission-mode": {
+    type: "enum",
+    values: permissionModeSchema.options,
+    description:
+      "Permission mode; defaults to the provider's best of auto then full",
+  },
+  "target-thread": {
+    type: "string",
+    placeholder: "thread-id",
+    description: "Re-prompt this existing thread instead of spawning one",
+  },
+  environment: {
+    type: "string",
+    placeholder: "id-or-path",
+    description:
+      "Existing environment id, or a workspace path to run in on a connected host",
+  },
+  "new-environment": {
+    type: "enum",
+    values: ["worktree"],
+    description: "Create a fresh environment of this kind for each run",
+  },
+  "base-branch": {
+    type: "string",
+    placeholder: "branch",
+    description: "Base branch for --new-environment worktree",
+  },
+} as const;
+
+const SCRIPT_OPTIONS = {
+  script: {
+    type: "string",
+    placeholder: "inline",
+    description: `Inline script body, at most ${AUTOMATION_SCRIPT_MAX_LENGTH} characters`,
+  },
+  "script-file": {
+    type: "string",
+    placeholder: "path",
+    description:
+      "Copy the script from this file; relative paths resolve against the invoking directory",
+  },
+  host: {
+    type: "string",
+    placeholder: "name-or-id",
+    description:
+      "Host holding --script-file; defaults to the thread's environment host, else the server host",
+  },
+  interpreter: {
+    type: "enum",
+    values: automationScriptInterpreterSchema.options,
+    description:
+      "Interpreter for the script; inferred from a --script-file extension when omitted",
+  },
+  timeout: {
+    type: "duration",
+    defaultUnit: "ms",
+    min: 1,
+    max: AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
+    description: `Run timeout; a bare number is milliseconds (default ${AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS}, max ${AUTOMATION_SCRIPT_TIMEOUT_MAX_MS})`,
+  },
+  "env-json": {
+    type: "string",
+    placeholder: "json",
+    description:
+      'Script environment variables as a JSON object of string values, for example {"CHANNEL":"qa"}',
+  },
+  "working-directory": {
+    type: "string",
+    placeholder: "automation-storage|project|path",
+    description:
+      "Where the script runs: automation-storage, project, or an absolute path on the bb server host",
+  },
+} as const;
+
+interface ScheduleOptionValues {
+  cron: string | undefined;
+  timezone: string | undefined;
+  at: string | undefined;
+  in: string | undefined;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
-  const [command = "help", ...rest] = argv;
-  const positionals: string[] = [];
-  const flags = new Map<string, string | true>();
-  for (let index = 0; index < rest.length; index += 1) {
-    const arg = rest[index];
-    if (arg.startsWith("--")) {
-      const [rawName, inlineValue] = arg.slice(2).split(/=(.*)/s, 2);
-      if (!rawName) throw new Error(`Invalid flag ${arg}`);
-      if (inlineValue !== undefined) {
-        flags.set(rawName, inlineValue);
-        continue;
-      }
-      const next = rest[index + 1];
-      if (next !== undefined && !next.startsWith("--")) {
-        flags.set(rawName, next);
-        index += 1;
-      } else {
-        flags.set(rawName, true);
-      }
-    } else {
-      positionals.push(arg);
-    }
+interface AgentOptionValues {
+  prompt: string | undefined;
+  provider: string | undefined;
+  model: string | undefined;
+  reasoning: ReasoningLevel | undefined;
+  "service-tier": ServiceTier | "none" | undefined;
+  "permission-mode": PermissionMode | undefined;
+  "target-thread": string | undefined;
+  environment: string | undefined;
+  "new-environment": "worktree" | undefined;
+  "base-branch": string | undefined;
+}
+
+interface ScriptOptionValues {
+  script: string | undefined;
+  "script-file": string | undefined;
+  host: string | undefined;
+  interpreter: AutomationScriptInterpreter | undefined;
+  timeout: number | undefined;
+  "env-json": string | undefined;
+  "working-directory": string | undefined;
+}
+
+type ExecutionOptionValues = AgentOptionValues & ScriptOptionValues;
+
+type UpdateOptionValues = ExecutionOptionValues &
+  ScheduleOptionValues & {
+    project: string | undefined;
+    name: string | undefined;
+  };
+
+function cliError(message: string, code: string): PluginCliError {
+  return new PluginCliError(message, { code });
+}
+
+async function attempt(
+  work: () => Promise<PluginCliResult>,
+): Promise<PluginCliResult> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
+      error instanceof Error ? error.message : String(error),
+      { code: "automation_failed" },
+    );
   }
-  return { command, positionals, flags };
 }
 
-function flag(args: ParsedArgs, name: string): string | undefined {
-  const value = args.flags.get(name);
-  if (value === undefined || value === true) return undefined;
+function jsonOutput(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function requireProjectId(
+  value: string | undefined,
+  ctx: Pick<PluginCliContext, "projectId">,
+): string {
+  if (value !== undefined && value !== "") return value;
+  const known = ctx.projectId;
+  throw new PluginCliError("missing required option --project", {
+    code: "missing_required",
+    hint:
+      known === undefined
+        ? "Pass --project <id>; `bb project list --include-personal --json` lists project ids."
+        : `This thread's project is ${known}; re-run with --project ${known}`,
+  });
+}
+
+function requireOptionValue(name: string, value: string): string {
+  if (value === "") {
+    throw cliError(
+      `Missing required option --${name} <value>.`,
+      "missing_required",
+    );
+  }
   return value;
-}
-
-function boolFlag(args: ParsedArgs, name: string): boolean {
-  return args.flags.has(name);
-}
-
-function requireFlag(args: ParsedArgs, name: string): string {
-  const value = flag(args, name);
-  if (!value) throw new Error(`Missing required option --${name} <value>.`);
-  return value;
-}
-
-function optionalJson(args: ParsedArgs, value: unknown): string | null {
-  return boolFlag(args, "json") ? `${JSON.stringify(value, null, 2)}\n` : null;
 }
 
 function parseRunAt(value: string): number {
   const runAt = Date.parse(value);
   if (!Number.isFinite(runAt)) {
-    throw new Error("--at must be a valid date/time, preferably ISO 8601.");
+    throw cliError(
+      "--at must be a valid date/time, preferably ISO 8601.",
+      "invalid_value",
+    );
   }
-  if (runAt <= Date.now()) throw new Error("--at must be in the future.");
+  if (runAt <= Date.now()) {
+    throw cliError("--at must be in the future.", "invalid_value");
+  }
   return runAt;
 }
 
 function parseRunIn(value: string): number {
   const match = DURATION_PATTERN.exec(value.trim());
-  if (!match)
-    throw new Error("--in must be a duration like 30s, 5m, 2h, or 1d.");
+  if (!match) {
+    throw cliError(
+      "--in must be a duration like 30s, 5m, 2h, or 1d.",
+      "invalid_value",
+    );
+  }
   const amount = Number.parseInt(match[1] ?? "", 10);
-  if (amount <= 0) throw new Error("--in must be greater than zero.");
+  if (amount <= 0) {
+    throw cliError("--in must be greater than zero.", "invalid_value");
+  }
   const unit = (match[2] ?? "").toLowerCase();
   const multiplier = unit.startsWith("s")
     ? 1_000
@@ -127,104 +334,80 @@ function parseRunIn(value: string): number {
   return Date.now() + amount * multiplier;
 }
 
-function buildTrigger(args: ParsedArgs): CreateAutomationInput["trigger"] {
-  const cron = flag(args, "cron");
-  const at = flag(args, "at");
-  const runIn = flag(args, "in");
-  const triggerFlags = [
-    cron !== undefined,
-    at !== undefined,
-    runIn !== undefined,
-  ].filter(Boolean).length;
+function buildTrigger(
+  options: ScheduleOptionValues,
+): CreateAutomationInput["trigger"] {
+  const { cron, at, in: runIn, timezone } = options;
+  const triggerFlags = [cron, at, runIn].filter(
+    (value) => value !== undefined,
+  ).length;
   if (triggerFlags !== 1) {
-    throw new Error(
+    throw cliError(
       "Provide exactly one schedule flag: --cron, --at, or --in.",
+      "missing_required",
     );
   }
   if (cron !== undefined) {
-    const timezone = flag(args, "timezone");
-    if (!timezone) throw new Error("--cron requires --timezone.");
+    if (!timezone)
+      throw cliError("--cron requires --timezone.", "missing_required");
     return { triggerType: "schedule", cron, timezone };
   }
-  if (flag(args, "timezone") !== undefined) {
-    throw new Error("--timezone is only used with --cron.");
+  if (timezone !== undefined) {
+    throw cliError(
+      "--timezone is only used with --cron.",
+      "unexpected_argument",
+    );
   }
   if (at !== undefined) return { triggerType: "once", runAt: parseRunAt(at) };
-  if (runIn !== undefined)
+  if (runIn !== undefined) {
     return { triggerType: "once", runAt: parseRunIn(runIn) };
-  throw new Error("Provide exactly one schedule flag: --cron, --at, or --in.");
-}
-
-function parsePermissionMode(
-  value: string | undefined,
-): PermissionMode | undefined {
-  if (value === undefined) return undefined;
-  const parsed = permissionModeSchema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  throw new Error(
-    "Invalid --permission-mode. Expected accept-edits, auto, or full.",
-  );
-}
-
-function parseReasoningLevel(value: string): ReasoningLevel {
-  const parsed = reasoningLevelSchema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  throw new Error(
-    "Invalid --reasoning. Expected none, low, medium, high, xhigh, ultracode, max, or ultra.",
-  );
-}
-
-function parseServiceTier(value: string): ServiceTier | null {
-  if (value === "none") return null;
-  const parsed = serviceTierSchema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  throw new Error("Invalid --service-tier. Expected default, fast, or none.");
-}
-
-function validateAgentTargetOptions(args: ParsedArgs): void {
-  const targetOptionNames = [
-    "target-thread",
-    "environment",
-    "new-environment",
-  ] as const;
-  const providedTargetOptions = targetOptionNames.filter((name) =>
-    args.flags.has(name),
-  );
-  for (const name of providedTargetOptions) {
-    if (!flag(args, name)) {
-      throw new Error(`Missing required option --${name} <value>.`);
-    }
   }
-  if (providedTargetOptions.length > 1) {
-    throw new Error(
+  throw cliError(
+    "Provide exactly one schedule flag: --cron, --at, or --in.",
+    "missing_required",
+  );
+}
+
+function parseScriptWorkingDirectory(
+  raw: string,
+): AutomationScriptWorkingDirectory {
+  const value = requireOptionValue("working-directory", raw);
+  if (value === "automation-storage" || value === "project") {
+    return { type: value };
+  }
+  if (isAbsolute(value)) return { type: "path", path: value };
+  throw cliError(
+    "Invalid --working-directory. Expected automation-storage, project, or an absolute path on the bb server host.",
+    "invalid_value",
+  );
+}
+
+function validateAgentTargetOptions(options: AgentOptionValues): void {
+  const targetThread = options["target-thread"];
+  const environment = options.environment;
+  const newEnvironment = options["new-environment"];
+  if (targetThread !== undefined) {
+    requireOptionValue("target-thread", targetThread);
+  }
+  if (environment !== undefined) requireOptionValue("environment", environment);
+  const provided = [targetThread, environment, newEnvironment].filter(
+    (value) => value !== undefined,
+  );
+  if (provided.length > 1) {
+    throw cliError(
       "Cannot combine target options: --target-thread, --environment, and --new-environment.",
+      "unexpected_argument",
     );
   }
-  if (args.flags.has("base-branch") && !args.flags.has("new-environment")) {
-    throw new Error("--base-branch requires --new-environment worktree.");
-  }
-}
-
-function parseScriptInterpreter(
-  value: string | undefined,
-): AutomationScriptInterpreter | undefined {
-  if (value === undefined) return undefined;
-  const parsed = automationScriptInterpreterSchema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  throw new Error(
-    "Invalid --interpreter. Expected bash, sh, node, or python3.",
-  );
-}
-
-function parseTimeoutMs(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(
-      "--timeout must be a positive integer number of milliseconds.",
+  if (
+    options["base-branch"] !== undefined &&
+    options["new-environment"] === undefined
+  ) {
+    throw cliError(
+      "--base-branch requires --new-environment worktree.",
+      "missing_required",
     );
   }
-  return parsed;
 }
 
 function parseScriptEnv(
@@ -235,11 +418,17 @@ function parseScriptEnv(
   try {
     decoded = JSON.parse(value);
   } catch {
-    throw new Error("--env-json must be a JSON object of string values.");
+    throw cliError(
+      "--env-json must be a JSON object of string values.",
+      "invalid_value",
+    );
   }
   const parsed = z.record(z.string(), z.string()).safeParse(decoded);
   if (!parsed.success) {
-    throw new Error("--env-json must be a JSON object of string values.");
+    throw cliError(
+      "--env-json must be a JSON object of string values.",
+      "invalid_value",
+    );
   }
   return parsed.data;
 }
@@ -256,26 +445,26 @@ async function resolveConnectedHostId(
     hosts.find((candidate) => candidate.connected === true) ??
     hosts.find((candidate) => candidate.status === "connected") ??
     hosts[0];
-  if (!host?.id) throw new Error("No connected host is available.");
+  if (!host?.id) {
+    throw cliError("No connected host is available.", "no_connected_host");
+  }
   return host.id;
 }
 
 async function buildAgentEnvironment(
   bb: Pick<BbPluginApi, "sdk">,
-  args: ParsedArgs,
+  options: AgentOptionValues,
 ): Promise<AgentEnvironment> {
-  const environment = flag(args, "environment")?.trim();
-  const newEnvironment = flag(args, "new-environment")?.trim();
-  const baseBranch = flag(args, "base-branch")?.trim();
+  const environment = options.environment?.trim();
+  const newEnvironment = options["new-environment"];
+  const baseBranch = options["base-branch"]?.trim();
   if (environment && newEnvironment) {
-    throw new Error("Cannot combine --environment with --new-environment.");
+    throw cliError(
+      "Cannot combine --environment with --new-environment.",
+      "unexpected_argument",
+    );
   }
   if (newEnvironment) {
-    if (newEnvironment !== "worktree") {
-      throw new Error(
-        `Unknown environment kind '${newEnvironment}'. Supported: worktree.`,
-      );
-    }
     return {
       type: "host",
       hostId: await resolveConnectedHostId(bb),
@@ -318,7 +507,9 @@ async function resolveScriptFileHostId(
 ): Promise<string | undefined> {
   if (override !== undefined) {
     const query = override.trim();
-    if (query.length === 0) throw new Error("--host requires a name or id.");
+    if (query.length === 0) {
+      throw cliError("--host requires a name or id.", "invalid_value");
+    }
     const hosts = scriptFileHostListSchema.parse(await bb.sdk.hosts.list());
     const idMatch = hosts.find((host) => host.id === query);
     if (idMatch) return idMatch.id;
@@ -327,14 +518,16 @@ async function resolveScriptFileHostId(
     );
     if (nameMatches.length === 1) return nameMatches[0]!.id;
     if (nameMatches.length > 1) {
-      throw new Error(
+      throw cliError(
         `Host name "${query}" is ambiguous; pass one of these ids: ${nameMatches
           .map((host) => host.id)
           .join(", ")}`,
+        "invalid_value",
       );
     }
-    throw new Error(
+    throw cliError(
       `Unknown host "${query}"; run \`bb machine list\` to list hosts.`,
+      "invalid_value",
     );
   }
   if (ctx.threadId === undefined) return undefined;
@@ -345,8 +538,9 @@ async function resolveScriptFileHostId(
     }),
   );
   if (!thread.environment) {
-    throw new Error(
+    throw cliError(
       `Thread ${ctx.threadId} has no environment, so the --script-file host cannot be resolved; pass --host <name-or-id>.`,
+      "invalid_value",
     );
   }
   return thread.environment.hostId;
@@ -360,14 +554,14 @@ type ScriptFileSource = {
 
 async function loadScriptFileSource(
   bb: Pick<BbPluginApi, "sdk">,
-  args: ParsedArgs,
+  options: ScriptOptionValues,
   ctx: Pick<PluginCliContext, "cwd" | "threadId">,
 ): Promise<ScriptFileSource | undefined> {
-  const scriptFile = flag(args, "script-file");
-  const hostOverride = flag(args, "host");
+  const scriptFile = options["script-file"];
+  const hostOverride = options.host;
   if (scriptFile === undefined) {
     if (hostOverride !== undefined) {
-      throw new Error("--host requires --script-file.");
+      throw cliError("--host requires --script-file.", "missing_required");
     }
     return undefined;
   }
@@ -376,8 +570,9 @@ async function loadScriptFileSource(
     path = scriptFile;
   } else {
     if (ctx.cwd === undefined || !isAbsolute(ctx.cwd)) {
-      throw new Error(
+      throw cliError(
         "Relative --script-file paths need the invoking CLI cwd; pass an absolute path.",
+        "invalid_value",
       );
     }
     path = resolve(ctx.cwd, scriptFile);
@@ -388,7 +583,7 @@ async function loadScriptFileSource(
     path,
   });
   if (file.contentEncoding !== "utf8") {
-    throw new Error(`--script-file is not UTF-8 text: ${path}`);
+    throw cliError(`--script-file is not UTF-8 text: ${path}`, "invalid_value");
   }
   return { path, hostId, content: file.content };
 }
@@ -400,96 +595,107 @@ type BuiltExecution = {
 
 async function buildExecution(
   bb: Pick<BbPluginApi, "sdk">,
-  args: ParsedArgs,
+  options: ExecutionOptionValues,
   ctx: Pick<PluginCliContext, "cwd" | "threadId">,
 ): Promise<BuiltExecution> {
-  const prompt = flag(args, "prompt");
-  const script = flag(args, "script");
-  const scriptFile = flag(args, "script-file");
+  const prompt = options.prompt;
+  const script = options.script;
+  const scriptFile = options["script-file"];
   const hasAgent = prompt !== undefined;
   const hasScript = script !== undefined || scriptFile !== undefined;
   if (hasAgent && hasScript) {
-    throw new Error(
+    throw cliError(
       "Provide either agent flags (--prompt) or script flags (--script/--script-file), not both.",
+      "unexpected_argument",
     );
   }
   if (
     hasAgent &&
-    (args.flags.has("interpreter") ||
-      args.flags.has("timeout") ||
-      args.flags.has("env-json"))
+    (options.interpreter !== undefined ||
+      options.timeout !== undefined ||
+      options["env-json"] !== undefined ||
+      options["working-directory"] !== undefined)
   ) {
-    throw new Error(
-      "Agent automations do not accept --interpreter, --timeout, or --env-json.",
+    throw cliError(
+      "Agent automations do not accept --interpreter, --timeout, --env-json, or --working-directory.",
+      "unexpected_argument",
     );
   }
   if (!hasAgent && !hasScript) {
-    throw new Error(
+    throw cliError(
       "Provide an execution mode: agent (--prompt --provider --model) or script (--script-file <path> or --script <inline>).",
+      "missing_required",
     );
   }
   if (hasAgent) {
-    const provider = flag(args, "provider");
-    const model = flag(args, "model");
+    const provider = options.provider;
+    const model = options.model;
     if (!provider || !model) {
-      throw new Error(
+      throw cliError(
         "Agent automations require --provider and --model alongside --prompt.",
+        "missing_required",
       );
     }
-    validateAgentTargetOptions(args);
-    const environment = await buildAgentEnvironment(bb, args);
-    const reasoning = flag(args, "reasoning");
-    const serviceTier = flag(args, "service-tier");
-    const parsedServiceTier =
-      serviceTier === undefined ? undefined : parseServiceTier(serviceTier);
+    validateAgentTargetOptions(options);
+    const environment = await buildAgentEnvironment(bb, options);
+    const serviceTier = options["service-tier"];
     return {
       execution: {
         mode: "agent",
         prompt,
         providerId: provider,
         model,
-        reasoningLevel:
-          reasoning === undefined ? "medium" : parseReasoningLevel(reasoning),
-        ...(parsedServiceTier === null || parsedServiceTier === undefined
+        reasoningLevel: options.reasoning ?? "medium",
+        ...(serviceTier === undefined || serviceTier === "none"
           ? {}
-          : { serviceTier: parsedServiceTier }),
+          : { serviceTier }),
         permissionMode: await resolvePermissionMode(
           bb,
           provider,
-          parsePermissionMode(flag(args, "permission-mode")),
+          options["permission-mode"],
           providerRoutingForEnvironment(environment),
         ),
         environment,
-        ...(flag(args, "target-thread")
-          ? { targetThreadId: flag(args, "target-thread") }
+        ...(options["target-thread"]
+          ? { targetThreadId: options["target-thread"] }
           : {}),
       },
     };
   }
   if (
-    args.flags.has("provider") ||
-    args.flags.has("model") ||
-    args.flags.has("reasoning") ||
-    args.flags.has("service-tier") ||
-    args.flags.has("permission-mode") ||
-    args.flags.has("target-thread") ||
-    args.flags.has("environment") ||
-    args.flags.has("new-environment") ||
-    args.flags.has("base-branch")
+    options.provider !== undefined ||
+    options.model !== undefined ||
+    options.reasoning !== undefined ||
+    options["service-tier"] !== undefined ||
+    options["permission-mode"] !== undefined ||
+    options["target-thread"] !== undefined ||
+    options.environment !== undefined ||
+    options["new-environment"] !== undefined ||
+    options["base-branch"] !== undefined
   ) {
-    throw new Error("Script automations do not accept agent execution flags.");
+    throw cliError(
+      "Script automations do not accept agent execution flags.",
+      "unexpected_argument",
+    );
   }
   if (script !== undefined && scriptFile !== undefined) {
-    throw new Error("Provide exactly one of --script or --script-file.");
+    throw cliError(
+      "Provide exactly one of --script or --script-file.",
+      "unexpected_argument",
+    );
   }
-  const explicitInterpreter = parseScriptInterpreter(flag(args, "interpreter"));
-  const timeoutMs = parseTimeoutMs(flag(args, "timeout"));
-  const env = parseScriptEnv(flag(args, "env-json"));
-  const scriptSource = await loadScriptFileSource(bb, args, ctx);
+  const timeoutMs = options.timeout;
+  const env = parseScriptEnv(options["env-json"]);
+  const workingDirectoryOption = options["working-directory"];
+  const workingDirectory =
+    workingDirectoryOption === undefined
+      ? undefined
+      : parseScriptWorkingDirectory(workingDirectoryOption);
+  const scriptSource = await loadScriptFileSource(bb, options, ctx);
   const content = scriptSource ? scriptSource.content : script;
-  if (!content) throw new Error("Missing script content.");
+  if (!content) throw cliError("Missing script content.", "invalid_value");
   const interpreter =
-    explicitInterpreter ??
+    options.interpreter ??
     (scriptSource ? interpreterForPath(scriptSource.path) : undefined);
   return {
     execution: {
@@ -497,6 +703,7 @@ async function buildExecution(
       script: content,
       ...(scriptSource ? { scriptFile: scriptSource.path } : {}),
       ...(interpreter ? { interpreter } : {}),
+      ...(workingDirectory ? { workingDirectory } : {}),
       timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
       ...(env ? { env } : {}),
     },
@@ -504,7 +711,7 @@ async function buildExecution(
   };
 }
 
-const COMPLETE_EXECUTION_FLAG_NAMES = [
+const COMPLETE_EXECUTION_OPTION_NAMES = [
   "script",
   "script-file",
   "interpreter",
@@ -514,52 +721,55 @@ const COMPLETE_EXECUTION_FLAG_NAMES = [
 
 async function buildAgentExecutionUpdate(
   bb: Pick<BbPluginApi, "sdk">,
-  args: ParsedArgs,
+  options: AgentOptionValues,
 ): Promise<AgentExecutionUpdate | undefined> {
   const agentOptionNames = [
-    "prompt",
-    "provider",
-    "model",
-    "reasoning",
-    "service-tier",
-    "permission-mode",
-    "target-thread",
-    "environment",
-    "new-environment",
-    "base-branch",
-  ] as const;
-  if (!agentOptionNames.some((name) => args.flags.has(name))) return undefined;
+    options.prompt,
+    options.provider,
+    options.model,
+    options.reasoning,
+    options["service-tier"],
+    options["permission-mode"],
+    options["target-thread"],
+    options.environment,
+    options["new-environment"],
+    options["base-branch"],
+  ];
+  if (!agentOptionNames.some((value) => value !== undefined)) return undefined;
 
-  validateAgentTargetOptions(args);
+  validateAgentTargetOptions(options);
   const update: AgentExecutionUpdate = {};
-  if (args.flags.has("prompt")) update.prompt = requireFlag(args, "prompt");
-  if (args.flags.has("provider")) {
-    update.providerId = requireFlag(args, "provider");
+  if (options.prompt !== undefined) {
+    update.prompt = requireOptionValue("prompt", options.prompt);
   }
-  if (args.flags.has("model")) update.model = requireFlag(args, "model");
-  if (args.flags.has("reasoning")) {
-    update.reasoningLevel = parseReasoningLevel(requireFlag(args, "reasoning"));
+  if (options.provider !== undefined) {
+    update.providerId = requireOptionValue("provider", options.provider);
   }
-  if (args.flags.has("service-tier")) {
-    update.serviceTier = parseServiceTier(requireFlag(args, "service-tier"));
+  if (options.model !== undefined) {
+    update.model = requireOptionValue("model", options.model);
   }
-  if (args.flags.has("permission-mode")) {
-    update.permissionMode = parsePermissionMode(
-      requireFlag(args, "permission-mode"),
-    );
+  if (options.reasoning !== undefined) {
+    update.reasoningLevel = options.reasoning;
   }
-  if (args.flags.has("target-thread")) {
+  const serviceTier = options["service-tier"];
+  if (serviceTier !== undefined) {
+    update.serviceTier = serviceTier === "none" ? null : serviceTier;
+  }
+  if (options["permission-mode"] !== undefined) {
+    update.permissionMode = options["permission-mode"];
+  }
+  if (options["target-thread"] !== undefined) {
     update.target = {
       type: "target-thread",
-      threadId: requireFlag(args, "target-thread"),
+      threadId: requireOptionValue("target-thread", options["target-thread"]),
     };
   } else if (
-    args.flags.has("environment") ||
-    args.flags.has("new-environment")
+    options.environment !== undefined ||
+    options["new-environment"] !== undefined
   ) {
     update.target = {
       type: "environment",
-      environment: await buildAgentEnvironment(bb, args),
+      environment: await buildAgentEnvironment(bb, options),
     };
   }
   return update;
@@ -567,52 +777,68 @@ async function buildAgentExecutionUpdate(
 
 async function buildUpdateRequest(
   bb: Pick<BbPluginApi, "sdk">,
-  args: ParsedArgs,
-  ctx: Pick<PluginCliContext, "cwd" | "threadId">,
+  options: UpdateOptionValues,
+  automationId: string,
+  ctx: Pick<PluginCliContext, "cwd" | "projectId" | "threadId">,
 ): Promise<{
   request: UpdateAutomationInput;
   scriptSource?: ScriptFileSource;
 }> {
-  const projectId = requireFlag(args, "project");
-  const automationId = args.positionals[0];
-  if (!automationId) throw new Error("Missing automationId.");
+  const projectId = requireProjectId(options.project, ctx);
   const request: UpdateAutomationInput = { projectId, automationId };
-  const name = flag(args, "name");
-  if (name !== undefined) request.name = name;
+  if (options.name !== undefined) request.name = options.name;
   if (
-    flag(args, "cron") !== undefined ||
-    flag(args, "timezone") !== undefined ||
-    flag(args, "at") !== undefined ||
-    flag(args, "in") !== undefined
+    options.cron !== undefined ||
+    options.timezone !== undefined ||
+    options.at !== undefined ||
+    options.in !== undefined
   ) {
-    request.trigger = buildTrigger(args);
+    request.trigger = buildTrigger(options);
   }
   let scriptSource: ScriptFileSource | undefined;
   const replacesAgentExecution =
-    args.flags.has("prompt") &&
-    args.flags.has("provider") &&
-    args.flags.has("model");
+    options.prompt !== undefined &&
+    options.provider !== undefined &&
+    options.model !== undefined;
   if (
     replacesAgentExecution ||
-    COMPLETE_EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))
+    COMPLETE_EXECUTION_OPTION_NAMES.some((name) => options[name] !== undefined)
   ) {
-    const built = await buildExecution(bb, args, ctx);
+    const built = await buildExecution(bb, options, ctx);
     request.execution = built.execution;
     scriptSource = built.scriptSource;
   } else {
-    const agentUpdate = await buildAgentExecutionUpdate(bb, args);
+    const agentUpdate = await buildAgentExecutionUpdate(bb, options);
     if (agentUpdate !== undefined) {
       request.agent = agentUpdate;
     }
+  }
+  const workingDirectoryOption = options["working-directory"];
+  if (request.agent !== undefined && workingDirectoryOption !== undefined) {
+    throw cliError(
+      "Cannot combine agent execution flags with --working-directory.",
+      "unexpected_argument",
+    );
+  }
+  if (
+    request.execution === undefined &&
+    request.agent === undefined &&
+    workingDirectoryOption !== undefined
+  ) {
+    request.script = {
+      workingDirectory: parseScriptWorkingDirectory(workingDirectoryOption),
+    };
   }
   if (
     request.name === undefined &&
     request.trigger === undefined &&
     request.execution === undefined &&
-    request.agent === undefined
+    request.agent === undefined &&
+    request.script === undefined
   ) {
-    throw new Error(
-      "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent update flags.",
+    throw cliError(
+      "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent/script update flags.",
+      "missing_required",
     );
   }
   return { request, ...(scriptSource ? { scriptSource } : {}) };
@@ -630,7 +856,7 @@ function formatAutomationTrigger(automation: AutomationResponse): string {
 }
 
 type PrintableAutomation =
-  | AutomationResponse
+  | AutomationDetailResponse
   | Extract<AutomationReadProblem, { problem: "missing-agent-prompt" }>;
 
 function printAutomation(
@@ -656,6 +882,11 @@ function printAutomation(
   ) {
     lines.push(`  Script:    ${automation.execution.storedScriptPath}`);
   }
+  if (automation.execution.mode === "script") {
+    lines.push(
+      `  Working dir: ${automation.execution.resolvedWorkingDirectory ?? "unavailable"}`,
+    );
+  }
   if (automation.execution.mode === "agent") {
     lines.push(
       `  Provider:  ${automation.execution.providerId}`,
@@ -677,7 +908,7 @@ function shellQuote(value: string): string {
 }
 
 function refreshScriptFileCommand(
-  automation: AutomationResponse,
+  automation: AutomationDetailResponse,
   source: ScriptFileSource,
 ): string {
   if (automation.execution.mode !== "script") return "";
@@ -695,6 +926,13 @@ function refreshScriptFileCommand(
   if (automation.execution.interpreter !== undefined) {
     argv.push("--interpreter", automation.execution.interpreter);
   }
+  const workingDirectory = automation.execution.workingDirectory;
+  argv.push(
+    "--working-directory",
+    workingDirectory.type === "path"
+      ? workingDirectory.path
+      : workingDirectory.type,
+  );
   argv.push("--timeout", String(automation.execution.timeoutMs));
   if (automation.execution.env !== undefined) {
     argv.push("--env-json", JSON.stringify(automation.execution.env));
@@ -703,7 +941,7 @@ function refreshScriptFileCommand(
 }
 
 function printScriptFileSnapshotNote(
-  automation: AutomationResponse,
+  automation: AutomationDetailResponse,
   source: ScriptFileSource | undefined,
 ): string {
   if (
@@ -803,260 +1041,304 @@ function printRunTable(runs: AutomationRunResponse[]): string {
   );
 }
 
-function helpText(): string {
-  return `Automation commands
-
-bb automation list --project <id>
-bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> [--reasoning <level>] [--service-tier default|fast] | --script <inline> | --script-file <path> [--host <name-or-id>])
-bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete agent/script execution flags | --provider <id> --model <model> --reasoning <level> --service-tier default|fast|none]
-bb automation pause <automationId> --project <id>
-bb automation resume <automationId> --project <id>
-bb automation run <automationId> --project <id> [--idempotency-key <key>]
-bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
-bb automation delete <automationId> --project <id> --yes
-`;
-}
-
 export function registerAutomationCli(args: {
   bb: Pick<BbPluginApi, "cli" | "sdk">;
   service: AutomationService;
 }): void {
   const { bb, service } = args;
-  bb.cli.register({
-    name: "automation",
-    summary: "Inspect and manage automations (scheduled agent/script runs)",
-    commands: [
-      {
-        name: "list",
-        summary: "List automations for a project",
-        usage: "bb automation list --project <id> [--json]",
-      },
-      {
-        name: "create",
-        summary: "Create an automation",
-        usage:
-          "bb automation create --project <id> --name <name> [schedule flags] [mode flags]",
-      },
-      {
-        name: "show",
-        summary: "Show automation details",
-        usage: "bb automation show <automationId> --project <id> [--json]",
-      },
-      {
-        name: "update",
-        summary: "Update automation configuration",
-        usage: "bb automation update <automationId> --project <id> [flags]",
-      },
-      {
-        name: "pause",
-        summary: "Pause an automation",
-        usage: "bb automation pause <automationId> --project <id> [--json]",
-      },
-      {
-        name: "resume",
-        summary: "Resume an automation",
-        usage: "bb automation resume <automationId> --project <id> [--json]",
-      },
-      {
-        name: "run",
-        summary: "Run an automation now",
-        usage:
-          "bb automation run <automationId> --project <id> [--idempotency-key <key>] [--json]",
-      },
-      {
-        name: "runs",
-        summary: "List automation runs",
-        usage:
-          "bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>] [--json]",
-      },
-      {
-        name: "delete",
-        summary: "Delete an automation",
-        usage:
-          "bb automation delete <automationId> --project <id> --yes [--json]",
-      },
-    ],
-    async run(argv: string[], ctx: PluginCliContext): Promise<PluginCliResult> {
-      try {
-        const parsed = parseArgs(argv);
-        const command = parsed.command;
-        if (command === "help" || command === "--help" || command === "-h") {
-          return { exitCode: 0, stdout: helpText() };
-        }
-        if (command === "list") {
-          const result = service.list({
-            projectId: requireFlag(parsed, "project"),
-          });
-          const json = optionalJson(parsed, result);
-          return {
-            exitCode: 0,
-            stdout:
-              json ??
-              (result.length === 0
-                ? "No automations found\n"
-                : printAutomationTable(result)),
-          };
-        }
-        if (command === "create") {
-          const projectId = requireFlag(parsed, "project");
-          const { execution, scriptSource } = await buildExecution(
-            bb,
-            parsed,
-            ctx,
-          );
-          const request: ResolvedCreateAutomationInput = {
-            projectId,
-            name: requireFlag(parsed, "name"),
-            enabled: !boolFlag(parsed, "disabled"),
-            trigger: buildTrigger(parsed),
-            execution,
-            origin: ctx.threadId ? "agent" : "human",
-            ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
-          };
-          const created = await service.create(request);
-          const json = optionalJson(parsed, created);
-          return {
-            exitCode: 0,
-            stdout:
-              json ??
-              `Automation created: ${created.id}\n${printAutomation(created)}${printScriptFileSnapshotNote(created, scriptSource)}`,
-          };
-        }
-        if (command === "show") {
-          const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing automationId.");
-          const found = await service.get({
-            projectId: requireFlag(parsed, "project"),
-            automationId,
-          });
-          const json = optionalJson(parsed, found);
-          return {
-            exitCode: 0,
-            stdout:
-              json ??
-              ("problem" in found
-                ? printAutomationProblem(found)
-                : printAutomation(found)),
-          };
-        }
-        if (command === "update") {
-          const { request, scriptSource } = await buildUpdateRequest(
-            bb,
-            parsed,
-            ctx,
-          );
-          const updated = await service.update(request);
-          const json = optionalJson(parsed, updated);
-          return {
-            exitCode: 0,
-            stdout:
-              json ??
-              `Automation ${updated.id} updated\n${printAutomation(updated)}${printScriptFileSnapshotNote(updated, scriptSource)}`,
-          };
-        }
-        if (command === "pause" || command === "resume") {
-          const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing automationId.");
-          const input = {
-            projectId: requireFlag(parsed, "project"),
-            automationId,
-          };
-          const updated =
-            command === "pause" ? service.pause(input) : service.resume(input);
-          const json = optionalJson(parsed, updated);
-          return {
-            exitCode: 0,
-            stdout:
-              json ??
-              `Automation ${updated.id} ${command === "pause" ? "paused" : "resumed"}\n`,
-          };
-        }
-        if (command === "run") {
-          const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing automationId.");
-          const result = await service.run({
-            projectId: requireFlag(parsed, "project"),
-            automationId,
-            ...(flag(parsed, "idempotency-key")
-              ? { idempotencyKey: flag(parsed, "idempotency-key") }
-              : {}),
-          });
-          const json = optionalJson(parsed, result);
-          const threadLine = result.run.threadId
-            ? `Thread: ${result.run.threadId}\n`
-            : "";
-          return {
-            exitCode: 0,
-            stdout: json ?? `Run started: ${result.run.id}\n${threadLine}`,
-          };
-        }
-        if (command === "runs") {
-          const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing automationId.");
-          const limitText = flag(parsed, "limit");
-          const limit =
-            limitText === undefined
-              ? undefined
-              : Number.parseInt(limitText, 10);
-          if (limit !== undefined && (!Number.isFinite(limit) || limit <= 0)) {
-            throw new Error("--limit must be a positive integer.");
-          }
-          const result = service.runs({
-            projectId: requireFlag(parsed, "project"),
-            automationId,
-            limit: limit ?? 50,
-          });
-          const outputRunId = flag(parsed, "output");
-          if (outputRunId) {
-            const run = result.runs.find(
-              (candidate) => candidate.id === outputRunId,
-            );
-            if (!run)
-              throw new Error(
-                `Run ${outputRunId} not found in returned runs. Increase --limit if it is older.`,
+  bb.cli.register(
+    defineCli({
+      name: "automation",
+      summary: "Inspect and manage automations (scheduled agent/script runs)",
+      description: DESCRIPTION,
+      root: cliCommand({
+        summary: "Show the automation commands",
+        run: (input) => ({ exitCode: 0, stdout: input.help }),
+      }),
+      commands: {
+        list: cliCommand({
+          summary: "List automations for a project",
+          options: { project: PROJECT_OPTION, json: JSON_OPTION },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const result = service.list({
+                projectId: requireProjectId(input.options.project, ctx),
+              });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(result)
+                  : result.length === 0
+                    ? "No automations found\n"
+                    : printAutomationTable(result),
+              };
+            }),
+        }),
+        create: cliCommand({
+          summary: "Create an automation",
+          description:
+            "Pick exactly one schedule flag and one execution mode: agent (--prompt --provider --model) or script (--script or --script-file).",
+          options: {
+            project: PROJECT_OPTION,
+            name: {
+              type: "string",
+              placeholder: "name",
+              required: true,
+              description: "Display name, at most 200 characters",
+            },
+            disabled: {
+              type: "boolean",
+              description: "Create the automation paused",
+            },
+            ...SCHEDULE_OPTIONS,
+            ...AGENT_OPTIONS,
+            ...SCRIPT_OPTIONS,
+            json: JSON_OPTION,
+          },
+          constraints: [
+            { kind: "exactly-one", options: ["cron", "at", "in"] },
+            { kind: "requires", option: "cron", needs: ["timezone"] },
+            { kind: "requires", option: "timezone", needs: ["cron"] },
+          ],
+          run: (input, ctx) =>
+            attempt(async () => {
+              const projectId = requireProjectId(input.options.project, ctx);
+              const { execution, scriptSource } = await buildExecution(
+                bb,
+                input.options,
+                ctx,
               );
-            const json = optionalJson(parsed, run);
-            return { exitCode: 0, stdout: json ?? `${run.output ?? ""}\n` };
-          }
-          const json = optionalJson(parsed, result);
-          return {
-            exitCode: 0,
-            stdout:
-              json ??
-              (result.runs.length === 0
-                ? "No runs found\n"
-                : printRunTable(result.runs)),
-          };
-        }
-        if (command === "delete") {
-          const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing automationId.");
-          if (!boolFlag(parsed, "yes")) {
-            throw new Error(
-              "Deletion requires --yes when run through the plugin CLI.",
-            );
-          }
-          await service.delete({
-            projectId: requireFlag(parsed, "project"),
-            automationId,
-          });
-          const value = { ok: true, id: automationId };
-          const json = optionalJson(parsed, value);
-          return {
-            exitCode: 0,
-            stdout: json ?? `Automation ${automationId} deleted\n`,
-          };
-        }
-        throw new Error(
-          `Unknown automation command '${command}'.\n\n${helpText()}`,
-        );
-      } catch (error) {
-        return {
-          exitCode: 1,
-          stderr: `${error instanceof Error ? error.message : String(error)}\n`,
-        };
-      }
-    },
-  });
+              const request: ResolvedCreateAutomationInput = {
+                projectId,
+                name: input.options.name,
+                enabled: !input.options.disabled,
+                trigger: buildTrigger(input.options),
+                execution,
+                origin: ctx.threadId ? "agent" : "human",
+                ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
+              };
+              const created = await service.create(request);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(created)
+                  : `Automation created: ${created.id}\n${printAutomation(created)}${printScriptFileSnapshotNote(created, scriptSource)}`,
+              };
+            }),
+        }),
+        show: cliCommand({
+          summary: "Show automation details",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: { project: PROJECT_OPTION, json: JSON_OPTION },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const found = await service.get({
+                projectId: requireProjectId(input.options.project, ctx),
+                automationId: input.positionals.automationId,
+              });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(found)
+                  : "problem" in found
+                    ? printAutomationProblem(found)
+                    : printAutomation(found),
+              };
+            }),
+        }),
+        update: cliCommand({
+          summary: "Update automation configuration",
+          description:
+            "Replace the execution with a complete agent (--prompt --provider --model) or script (--script/--script-file), or patch an existing agent with any subset of its flags.",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: {
+            project: PROJECT_OPTION,
+            name: {
+              type: "string",
+              placeholder: "name",
+              description: "Replacement display name, at most 200 characters",
+            },
+            ...SCHEDULE_OPTIONS,
+            ...AGENT_OPTIONS,
+            ...SCRIPT_OPTIONS,
+            json: JSON_OPTION,
+          },
+          constraints: [
+            { kind: "at-most-one", options: ["cron", "at", "in"] },
+            { kind: "requires", option: "cron", needs: ["timezone"] },
+            { kind: "requires", option: "timezone", needs: ["cron"] },
+          ],
+          run: (input, ctx) =>
+            attempt(async () => {
+              const { request, scriptSource } = await buildUpdateRequest(
+                bb,
+                input.options,
+                input.positionals.automationId,
+                ctx,
+              );
+              const updated = await service.update(request);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(updated)
+                  : `Automation ${updated.id} updated\n${printAutomation(updated)}${printScriptFileSnapshotNote(updated, scriptSource)}`,
+              };
+            }),
+        }),
+        pause: cliCommand({
+          summary: "Pause an automation",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: { project: PROJECT_OPTION, json: JSON_OPTION },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const updated = service.pause({
+                projectId: requireProjectId(input.options.project, ctx),
+                automationId: input.positionals.automationId,
+              });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(updated)
+                  : `Automation ${updated.id} paused\n`,
+              };
+            }),
+        }),
+        resume: cliCommand({
+          summary: "Resume an automation",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: { project: PROJECT_OPTION, json: JSON_OPTION },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const updated = service.resume({
+                projectId: requireProjectId(input.options.project, ctx),
+                automationId: input.positionals.automationId,
+              });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(updated)
+                  : `Automation ${updated.id} resumed\n`,
+              };
+            }),
+        }),
+        run: cliCommand({
+          summary: "Run an automation now",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: {
+            project: PROJECT_OPTION,
+            "idempotency-key": {
+              type: "string",
+              placeholder: "key",
+              description:
+                "Reuse the run started by an earlier call with this key, at most 200 characters",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const idempotencyKey = input.options["idempotency-key"];
+              const result = await service.run({
+                projectId: requireProjectId(input.options.project, ctx),
+                automationId: input.positionals.automationId,
+                ...(idempotencyKey ? { idempotencyKey } : {}),
+              });
+              const threadLine = result.run.threadId
+                ? `Thread: ${result.run.threadId}\n`
+                : "";
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(result)
+                  : `Run started: ${result.run.id}\n${threadLine}`,
+              };
+            }),
+        }),
+        runs: cliCommand({
+          summary: "List automation runs",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: {
+            project: PROJECT_OPTION,
+            limit: {
+              type: "integer",
+              min: 1,
+              max: AUTOMATION_RUNS_LIMIT_MAX,
+              default: AUTOMATION_RUNS_LIMIT_DEFAULT,
+              description: "How many recent runs to read",
+            },
+            output: {
+              type: "string",
+              placeholder: "runId",
+              description:
+                "Print only this run's captured output; it must be inside --limit",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const result = service.runs({
+                projectId: requireProjectId(input.options.project, ctx),
+                automationId: input.positionals.automationId,
+                limit: input.options.limit,
+              });
+              const outputRunId = input.options.output;
+              if (outputRunId) {
+                const run = result.runs.find(
+                  (candidate) => candidate.id === outputRunId,
+                );
+                if (!run) {
+                  throw cliError(
+                    `Run ${outputRunId} not found in returned runs. Increase --limit if it is older.`,
+                    "not_found",
+                  );
+                }
+                return {
+                  exitCode: 0,
+                  stdout: input.options.json
+                    ? jsonOutput(run)
+                    : `${run.output ?? ""}\n`,
+                };
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput(result)
+                  : result.runs.length === 0
+                    ? "No runs found\n"
+                    : printRunTable(result.runs),
+              };
+            }),
+        }),
+        delete: cliCommand({
+          summary: "Delete an automation",
+          positionals: [AUTOMATION_ID_POSITIONAL],
+          options: {
+            project: PROJECT_OPTION,
+            yes: {
+              type: "boolean",
+              description: "Required. Confirms the automation is deleted",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input, ctx) =>
+            attempt(async () => {
+              if (!input.options.yes) {
+                throw cliError(
+                  "Deletion requires --yes when run through the plugin CLI.",
+                  "missing_required",
+                );
+              }
+              const projectId = requireProjectId(input.options.project, ctx);
+              const automationId = input.positionals.automationId;
+              await service.delete({ projectId, automationId });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? jsonOutput({ ok: true, id: automationId })
+                  : `Automation ${automationId} deleted\n`,
+              };
+            }),
+        }),
+      },
+    }),
+  );
 }

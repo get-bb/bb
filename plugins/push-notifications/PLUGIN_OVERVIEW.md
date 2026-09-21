@@ -18,10 +18,12 @@ Channel switches apply to this server and save immediately. Browser permission i
 ## CLI and SDK
 
 - `bb push-notifications list [--json]`: registered mobile devices, with redacted tokens.
-- `bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-label>`: register or refresh a mobile device.
-- `bb push-notifications remove <id>`: remove a mobile device.
+- `bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-label> [--json]`: register or refresh a mobile device.
+- `bb push-notifications remove <id> [--json]`: remove a mobile device.
 - `bb push-notifications status [--json]`: channel switches, mobile relay, subscription count, and last mobile send result.
-- `bb push-notifications test <web|desktop>`: broadcast a test to connected clients of that type. Fails if the channel is disabled.
+- `bb push-notifications test <web|desktop> [--json]`: broadcast a test to connected clients of that type. Fails if the channel is disabled.
 - `bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>`: change a channel.
+
+Every command takes `--help`. A failure with `--json` prints `{ "ok": false, "error": { "code", "message" } }` on stdout and the readable text on stderr.
 
 Agents can use the SDK’s plugin settings API for the same switches and `sdk.plugins.callRpc({ pluginId: "push-notifications", method: "notifications.test", input: { channel: "web" }, outputSchema: z.object({ ok: z.literal(true) }) })` to send a test. RPC input is validated by `pushNotificationsRpcContract`. Permission requests still require a click in the target client.

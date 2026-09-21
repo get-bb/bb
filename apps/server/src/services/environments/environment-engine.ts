@@ -11,7 +11,7 @@ import { withEnvironmentCleanupSlot } from "./cleanup-concurrency.js";
 // bb-fork(windows): cross-platform absolute-path check for path claims.
 import { parseClaimableEnvironmentPath } from "./environment-path.windows.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { foreignProviderOwnedPathRefusal } from "../threads/workspace-path-claims.js";
+import { foreignProjectOwnedPathRefusal } from "../threads/workspace-path-claims.js";
 import {
   cancelPendingEnvironmentHook,
   runEnvironmentHook,
@@ -372,15 +372,16 @@ async function runCreate(
             signal: signal,
           });
     if (result.status === "created") {
+      let adoptedExistingEnvironment = false;
+      let existingProviderOwnsLifecycle = false;
       try {
         const producedPath = result.path.replace(/\/+$/u, "") || "/";
-        const { dataDir } = await ensureHostSessionReadyForWork(deps, {
+        await ensureHostSessionReadyForWork(deps, {
           hostId: context.host.id,
         });
         deps.db.transaction(
           () => {
-            const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-              dataDir,
+            const refusal = foreignProjectOwnedPathRefusal(deps.db, {
               hostId: context.host.id,
               path: producedPath,
               projectId: context.project.id,
@@ -412,11 +413,15 @@ async function runCreate(
                 `Workspace ${producedPath} is owned by the "${existing.environmentProviderId}" environment provider (plugin "${existing.environmentProviderPluginId ?? "unknown"}").`,
               );
             }
+            existingProviderOwnsLifecycle =
+              existing?.environmentProviderId != null;
+            const reservedId = provisioning.id;
             provisioning = bindEnvironmentPath(
               deps.db,
               provisioning,
               producedPath,
             );
+            adoptedExistingEnvironment = provisioning.id !== reservedId;
           },
           { behavior: "immediate" },
         );
@@ -443,9 +448,13 @@ async function runCreate(
         (row) => {
           row.hostId = context.host.id;
           row.path = produced.path;
-          row.providerOwnsPath = produced.ownsPath;
-          row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
-          row.resource = produced.resource ?? null;
+          if (!adoptedExistingEnvironment) {
+            row.providerOwnsPath = produced.ownsPath;
+          }
+          if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
+            row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
+            row.resource = produced.resource ?? null;
+          }
         },
       );
       signal.throwIfAborted();

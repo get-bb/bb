@@ -49,13 +49,238 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
-const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 31;
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 45;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   {
     reason:
-      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content.",
+      "A submitted plugin form leaves on its row only what the plugin's describeSubmission returned, and the whole description is absent when the plugin declares no describeSubmission or when that call throws or times out. Within one, an absent title means the presentation's completed label stands, an absent detail means the title is the whole row, and an absent payload means the row renders without handing anything to the plugin's own timeline renderer. bb never stores the form's payload or the submitted value, so these fields are the entire record of what happened.",
     fields: [
+      "threadPendingInteractionsResponseSchema.resolution.description",
+      "threadPendingInteractionsResponseSchema.resolution.description.detail",
+      "threadPendingInteractionsResponseSchema.resolution.description.payload",
+      "threadPendingInteractionsResponseSchema.resolution.description.title",
+    ],
+  },
+  {
+    reason:
+      "The resolve route's body is the persisted resolution union, so it also admits the plugin_submitted arm and its description. No caller can send one: a plugin interaction is submitted through the respond route, and validatePendingInteractionResolution rejects every plugin interaction before a resolution is read. These four exist only because the request schema reuses the persisted shape.",
+    fields: [
+      "resolvePendingInteractionRequestSchema.description",
+      "resolvePendingInteractionRequestSchema.description.detail",
+      "resolvePendingInteractionRequestSchema.description.payload",
+      "resolvePendingInteractionRequestSchema.description.title",
+    ],
+  },
+  {
+    reason:
+      "A localFile prompt input names, sizes, and types itself only when the uploader knew those facts; the path is the only required identity. Absence means unknown, never an unnamed or empty file, and no reader may treat a missing size as zero.",
+    fields: [
+      "createQueuedMessageRequestSchema.input.mimeType",
+      "createQueuedMessageRequestSchema.input.name",
+      "createQueuedMessageRequestSchema.input.sizeBytes",
+      "createThreadRequestSchema.input.mimeType",
+      "createThreadRequestSchema.input.name",
+      "createThreadRequestSchema.input.sizeBytes",
+      "forkThreadRequestSchema.agentContextSeed.mimeType",
+      "forkThreadRequestSchema.agentContextSeed.name",
+      "forkThreadRequestSchema.agentContextSeed.sizeBytes",
+      "forkThreadRequestSchema.input.mimeType",
+      "forkThreadRequestSchema.input.name",
+      "forkThreadRequestSchema.input.sizeBytes",
+      "sendMessageRequestSchema.input.mimeType",
+      "sendMessageRequestSchema.input.name",
+      "sendMessageRequestSchema.input.sizeBytes",
+      "sendQueuedMessageResponseSchema.queuedMessage.content.mimeType",
+      "sendQueuedMessageResponseSchema.queuedMessage.content.name",
+      "sendQueuedMessageResponseSchema.queuedMessage.content.sizeBytes",
+    ],
+  },
+  {
+    reason:
+      "A prompt input declares visibility only to hide itself from the person: the single value agent-only marks an input the transcript does not show. Absence is the ordinary visible input, so the field is never written for the common case.",
+    fields: [
+      "createQueuedMessageRequestSchema.input.visibility",
+      "createThreadRequestSchema.input.visibility",
+      "forkThreadRequestSchema.agentContextSeed.visibility",
+      "forkThreadRequestSchema.input.visibility",
+      "sendMessageRequestSchema.input.visibility",
+      "sendQueuedMessageResponseSchema.queuedMessage.content.visibility",
+    ],
+  },
+  {
+    reason:
+      "A row carries a declarative presentation only when a bridge or plugin attached one; rows persisted before grammar v2, and rows from a bridge that declares none, have no presentation and clients fall back to bb's own rendering for the row kind.",
+    fields: [
+      "threadPendingInteractionsResponseSchema.payload.presentation",
+      "threadTimelineResponseSchema.activeBackgroundCommands.presentation",
+      "threadTimelineResponseSchema.activeWorkflows.presentation",
+      "threadTimelineResponseSchema.delta.upsertRows.presentation",
+      "threadTimelineResponseSchema.rows.presentation",
+    ],
+  },
+  {
+    reason:
+      "Within a presentation each member is separately optional and absence is a definite answer, not a blank: no title means the label stands alone, no detail means the label and title are the whole summary, no suppress means render normally, no tint means the neutral row tint (which is not a colour value), and no badge means there is nothing to flag about how the call will run.",
+    fields: [
+      "threadPendingInteractionsResponseSchema.payload.presentation.badge",
+      "threadPendingInteractionsResponseSchema.payload.presentation.detail",
+      "threadPendingInteractionsResponseSchema.payload.presentation.suppress",
+      "threadPendingInteractionsResponseSchema.payload.presentation.tint",
+      "threadPendingInteractionsResponseSchema.payload.presentation.title",
+      "threadPendingInteractionsResponseSchema.payload.subject.presentation.badge",
+      "threadPendingInteractionsResponseSchema.payload.subject.presentation.detail",
+      "threadPendingInteractionsResponseSchema.payload.subject.presentation.suppress",
+      "threadPendingInteractionsResponseSchema.payload.subject.presentation.tint",
+      "threadPendingInteractionsResponseSchema.payload.subject.presentation.title",
+      "threadTimelineResponseSchema.activeBackgroundCommands.presentation.badge",
+      "threadTimelineResponseSchema.activeBackgroundCommands.presentation.detail",
+      "threadTimelineResponseSchema.activeBackgroundCommands.presentation.suppress",
+      "threadTimelineResponseSchema.activeBackgroundCommands.presentation.tint",
+      "threadTimelineResponseSchema.activeBackgroundCommands.presentation.title",
+      "threadTimelineResponseSchema.activeWorkflows.presentation.badge",
+      "threadTimelineResponseSchema.activeWorkflows.presentation.detail",
+      "threadTimelineResponseSchema.activeWorkflows.presentation.suppress",
+      "threadTimelineResponseSchema.activeWorkflows.presentation.tint",
+      "threadTimelineResponseSchema.activeWorkflows.presentation.title",
+      "threadTimelineResponseSchema.delta.upsertRows.presentation.badge",
+      "threadTimelineResponseSchema.delta.upsertRows.presentation.detail",
+      "threadTimelineResponseSchema.delta.upsertRows.presentation.suppress",
+      "threadTimelineResponseSchema.delta.upsertRows.presentation.tint",
+      "threadTimelineResponseSchema.delta.upsertRows.presentation.title",
+      "threadTimelineResponseSchema.rows.presentation.badge",
+      "threadTimelineResponseSchema.rows.presentation.detail",
+      "threadTimelineResponseSchema.rows.presentation.suppress",
+      "threadTimelineResponseSchema.rows.presentation.tint",
+      "threadTimelineResponseSchema.rows.presentation.title",
+    ],
+  },
+  {
+    reason:
+      "A user question omits shortLabel when its prompt is short enough to title the row itself, omits options when it takes free text only, and omits an option description when the option label needs no gloss. Each absence is the question's shape, not missing data.",
+    fields: [
+      "threadPendingInteractionsResponseSchema.payload.questions.options",
+      "threadPendingInteractionsResponseSchema.payload.questions.options.description",
+      "threadPendingInteractionsResponseSchema.payload.questions.shortLabel",
+      "threadTimelineResponseSchema.delta.upsertRows.questions.options",
+      "threadTimelineResponseSchema.delta.upsertRows.questions.options.description",
+      "threadTimelineResponseSchema.delta.upsertRows.questions.shortLabel",
+      "threadTimelineResponseSchema.rows.questions.options",
+      "threadTimelineResponseSchema.rows.questions.options.description",
+      "threadTimelineResponseSchema.rows.questions.shortLabel",
+    ],
+  },
+  {
+    reason:
+      "A workflow agent snapshot reports only what has happened to that agent so far: a queued agent has no startedAt, an unsettled one no durationMs, resultPreview, tokens, or toolCalls, one that has called nothing no lastToolName or lastToolSummary, and one that succeeded no error. phaseIndex and phaseTitle are absent for a workflow with no phases, agentType and isolation for an agent that took the defaults, and promptPreview when the prompt was not captured. Filling these with zeros or empty strings would make 'not yet' indistinguishable from 'nothing'.",
+    fields: [
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.agentType",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.durationMs",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.error",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.isolation",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.lastToolName",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.lastToolSummary",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.phaseIndex",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.phaseTitle",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.promptPreview",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.queuedAt",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.resultPreview",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.startedAt",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.tokens",
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.agents.toolCalls",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.agentType",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.durationMs",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.error",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.isolation",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.lastToolName",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.lastToolSummary",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.phaseIndex",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.phaseTitle",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.promptPreview",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.queuedAt",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.resultPreview",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.startedAt",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.tokens",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.agents.toolCalls",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.agentType",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.durationMs",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.error",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.isolation",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.lastToolName",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.lastToolSummary",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.phaseIndex",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.phaseTitle",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.promptPreview",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.queuedAt",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.resultPreview",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.startedAt",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.tokens",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.toolCalls",
+      "threadTimelineResponseSchema.rows.workflow.agents.agentType",
+      "threadTimelineResponseSchema.rows.workflow.agents.durationMs",
+      "threadTimelineResponseSchema.rows.workflow.agents.error",
+      "threadTimelineResponseSchema.rows.workflow.agents.isolation",
+      "threadTimelineResponseSchema.rows.workflow.agents.lastToolName",
+      "threadTimelineResponseSchema.rows.workflow.agents.lastToolSummary",
+      "threadTimelineResponseSchema.rows.workflow.agents.phaseIndex",
+      "threadTimelineResponseSchema.rows.workflow.agents.phaseTitle",
+      "threadTimelineResponseSchema.rows.workflow.agents.promptPreview",
+      "threadTimelineResponseSchema.rows.workflow.agents.queuedAt",
+      "threadTimelineResponseSchema.rows.workflow.agents.resultPreview",
+      "threadTimelineResponseSchema.rows.workflow.agents.startedAt",
+      "threadTimelineResponseSchema.rows.workflow.agents.tokens",
+      "threadTimelineResponseSchema.rows.workflow.agents.toolCalls",
+    ],
+  },
+  {
+    reason:
+      "A workflow phase carries a kind only when the script labelled it; absence means an ordinary phase identified by its index and title.",
+    fields: [
+      "threadTimelineResponseSchema.activeBackgroundCommands.workflow.phases.kind",
+      "threadTimelineResponseSchema.activeWorkflows.workflow.phases.kind",
+      "threadTimelineResponseSchema.delta.upsertRows.workflow.phases.kind",
+      "threadTimelineResponseSchema.rows.workflow.phases.kind",
+    ],
+  },
+  {
+    reason:
+      "A command row carries an output preview only when its output was truncated and the full text may still be fetchable; absence means the row's output field is the whole output.",
+    fields: [
+      "threadTimelineResponseSchema.delta.upsertRows.outputPreview",
+      "threadTimelineResponseSchema.rows.outputPreview",
+    ],
+  },
+  {
+    reason:
+      "A generic operation row carries a reasoning id only when the provider tied the operation to a reasoning block; absence means there is no reasoning to link to.",
+    fields: [
+      "threadTimelineResponseSchema.delta.upsertRows.reasoningId",
+      "threadTimelineResponseSchema.rows.reasoningId",
+    ],
+  },
+  {
+    reason:
+      "A plan step carries a status only once the provider reports progress on it; absence means the step is listed but not yet started, which is not the same as pending.",
+    fields: [
+      "threadTimelineResponseSchema.delta.upsertRows.steps.status",
+      "threadTimelineResponseSchema.rows.steps.status",
+    ],
+  },
+  {
+    reason:
+      "A pending interaction has an expiry only on a host that expires them; a persistent host leaves the field off, and null means the same thing for a stored row that predates it.",
+    fields: ["threadPendingInteractionsResponseSchema.expiresAt"],
+  },
+  {
+    reason:
+      "A provider interaction carries an explicit origin only since bb began recording which provider raised it; absence means an older row whose provider is still readable from the providerId, providerThreadId, and providerRequestId beside it.",
+    fields: ["threadPendingInteractionsResponseSchema.origin"],
+  },
+  {
+    reason:
+      "Timeline snapshot and image metadata fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content.",
+    fields: [
+      "threadTimelineResponseSchema.imageMetadata",
       "threadTimelineResponseSchema.timelinePage.contentPage",
       "threadTimelineResponseSchema.timelinePage.historySnapshot",
       "threadTimelineResponseSchema.timelinePage.olderRowsSourceSeqEnd",
@@ -731,18 +956,33 @@ describe("public terminal contracts", () => {
     ).toBe(false);
   });
 
-  it("requires output responses to signal truncation", () => {
+  it("requires output responses to signal truncation and terminal state", () => {
     expect(
       terminalOutputResponseSchema.safeParse({
         chunks: [],
         nextSeq: 12,
         truncated: false,
+        status: "exited",
+        exitCode: 1,
+        closeReason: "process-exit",
       }).success,
     ).toBe(true);
     expect(
       terminalOutputResponseSchema.safeParse({
         chunks: [],
         nextSeq: 12,
+        status: "running",
+        exitCode: null,
+        closeReason: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
+        truncated: false,
+        exitCode: null,
+        closeReason: null,
       }).success,
     ).toBe(false);
   });
@@ -1844,19 +2084,35 @@ describe("server-contract clients", () => {
     ).toThrow();
   });
 
-  it("rejects zero timeline pagination cursor sequences", () => {
-    expect(() =>
+  it("accepts the history epoch and rejects invalid timeline cursor sequences", () => {
+    expect(
       contract.timelinePaginationCursorSchema.parse({
         anchorSeq: 0,
-        anchorId: "row-1",
+        anchorId: "timeline-window:0",
       }),
-    ).toThrow();
-    expect(() =>
+    ).toEqual({ anchorSeq: 0, anchorId: "timeline-window:0" });
+    expect(
       contract.threadTimelineQuerySchema.parse({
         beforeAnchorSeq: "0",
-        beforeAnchorId: "row-1",
+        beforeAnchorId: "timeline-window:0",
       }),
-    ).toThrow();
+    ).toMatchObject({ beforeAnchorSeq: "0" });
+    for (const anchorSeq of [-1, 0.5]) {
+      expect(() =>
+        contract.timelinePaginationCursorSchema.parse({
+          anchorSeq,
+          anchorId: "timeline-window:0",
+        }),
+      ).toThrow();
+    }
+    for (const beforeAnchorSeq of ["-1", "0.5", "00", "01"]) {
+      expect(() =>
+        contract.threadTimelineQuerySchema.parse({
+          beforeAnchorSeq,
+          beforeAnchorId: "timeline-window:0",
+        }),
+      ).toThrow();
+    }
   });
 
   it("requires parent change timeline system rows to carry status", () => {

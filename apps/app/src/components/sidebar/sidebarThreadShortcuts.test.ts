@@ -68,4 +68,32 @@ describe("sidebar thread shortcuts", () => {
       getSidebarThreadShortcutTargets(root).map((target) => target.threadId),
     ).toEqual(["thr_a", "thr_d"]);
   });
+
+  it("excludes More menu rows and placeholders from both shortcut orders", () => {
+    const root = document.createElement("aside");
+    appendShortcutTarget(root, "thr_a");
+    const overflow = document.createElement("div");
+    overflow.dataset.sidebarOverflow = "true";
+    root.append(overflow);
+    const nestedGroup = document.createElement("div");
+    overflow.append(nestedGroup);
+    appendShortcutTarget(nestedGroup, "thr_hidden");
+    const placeholder = document.createElement("div");
+    placeholder.setAttribute(
+      "data-sidebar-windowed-nav",
+      "thr_hidden_windowed:proj_1",
+    );
+    nestedGroup.append(placeholder);
+    appendShortcutTarget(root, "thr_b");
+
+    for (const targets of [
+      getSidebarThreadShortcutTargets(root),
+      getSidebarThreadNavigationTargets(root),
+    ]) {
+      expect(targets.map(({ threadId, key }) => ({ threadId, key }))).toEqual([
+        { threadId: "thr_a", key: "1" },
+        { threadId: "thr_b", key: "2" },
+      ]);
+    }
+  });
 });

@@ -9,9 +9,9 @@ Registers frontend commands with `{ id, title, defaultShortcut?, isAvailable?, r
 palette consumes the same registrations as the deprecated
 `app.slots.commandPaletteAction` alias. Both paths share validation and a
 per-plugin ID namespace. The public name follows the explicitly requested API
-spelling without an experimental prefix. Existing context and registration
-type names remain deprecated aliases of `PluginCommandContext` and
-`PluginCommandRegistration`.
+spelling without an experimental prefix. Types use `PluginCommandContext`
+and `PluginCommandRegistration`; the old runtime registration path remains
+compatible with compiled plugins.
 
 Audit command identity, availability outside the palette, shortcut conflicts,
 and saved binding lifecycle before stabilizing the keyboard shortcut contract.
@@ -123,8 +123,8 @@ values and their sixteen `ExperimentalProvider*` types dropped the prefix
 `ExperimentalProviderHealth` → `ProviderHealth`, …), as did the
 `BRIDGE_REQUEST_METHODS.experimentalProvider*` keys (the method strings on
 the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
-`PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
-type of `presentation.label`.
+`PluginAgentToolExperimentalStatusLabels` became `PluginAgentToolLabels`,
+then `PluginRowLabels` in SDK 0.4.102, the type of `presentation.label`.
 
 ## One-release compatibility windows (removal target: bb 0.42)
 
@@ -301,8 +301,9 @@ identically for all of them. The handler receives a typed context (project,
 environment/host, `environmentIntent` as a
 `PluginDispatchEnvironmentIntent | null`, prompt blocks plus a plain-text view,
 the resolved execution tuple with per-field provenance, origin/parent
-provenance, the target thread, whether the attempt would `start-turn` or
-`join-turn`, and the queued row when the attempt is a re-attempt) and answers
+provenance, the author summary as `initiator` plus `senderThreadId`, the
+target thread, whether the attempt would `start-turn` or `join-turn`, and all
+queued rows in `queuedMessages` when the attempt is a re-attempt) and answers
 `proceed`, `wait` (queue the message as a row with a reason and an optional
 `sendAt`), or `reject` (a synchronous 409 carrying the plugin's message). A
 handler cannot rewrite the dispatch it is deciding about: there is no amendment
@@ -342,6 +343,29 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
 
 **Audit before stabilizing.**
 
+- **Grouped dispatch authors.** `queuedMessages` includes all claimed rows in
+  dispatch order, with each row's content, author, origin, and originPluginId; inline attempts use an
+  empty array. `initiator` summarizes their category, with hook-local `mixed`
+  when categories differ. `senderThreadId` is the shared sender ID, null when no message has a sender,
+  or `mixed` when they disagree.
+  Queue serialization resolves thread-start requesters and retries with the
+  same author rule as inline dispatches. Grouping and recorded turn initiators
+  are unchanged. `origin` and `originPluginId` each summarize their shared
+  value or `mixed` when rows disagree, including a value versus null. Before
+  stabilization, verify plugins handle mixed origins independently of authors.
+- **`queuedMessage` is emitted but untyped.** The public context uses
+  `queuedMessages`; core still emits its first row or null under the old name
+  for previously built handlers. Remove that compatibility field and the
+  corresponding shim before stabilizing.
+- **`startedOnBehalfOf` is emitted but untyped.** It left
+  `MessageDispatchHookContext` when `initiator`/`senderThreadId` arrived: it
+  described why a THREAD was started, never who sent the message being decided
+  about. Core still sets it on the context object so a handler built against an
+  older SDK keeps working. Drop the context field before stabilizing, and with
+  it the shim in `dispatch-hooks.ts`. The queued row's `requested_by_initiator`
+  and `requested_by_thread_id` are unaffected: they record the requester a
+  thread-start's author is resolved from, which is internal state rather than a
+  plugin-facing field.
 - **One hook is not a shape.** The registry, the map and the `on(hook, handler)`
   signature are all built for several hooks, and there is one. Confirm the
   second hook fits the shape before stabilizing it — or collapse the argument.
@@ -566,17 +590,17 @@ schema accepts. Inputs are persisted and readable by every plugin, so they
 must contain no secrets; credentials belong in plugin settings and inputs
 carry non-secret references. `experimental_BranchPicker` is the host's branch
 picker with its branch-options loading (`{ hostId, projectId, value, onChange,
-label?, placeholder?, disabled }` — `label` is text before the branch, omitted
-means the branch alone; `placeholder` replaces the muted default base shown
-while nothing is picked), exported so a provider that runs on an enrolled
-machine can render bb's own branch control inside its inputs control — the
-worktree plugin's `app.tsx` does exactly that, emitting `{ branch: { kind:
-"named", name } }` for a pick, `{ branch: { kind: "default" } }` for a
-cleared pick and on mount — the same additive-versioning exception as
+label?, placeholder?, disabled }` — `label` prefixes the branch on the trigger
+and supplies the menu heading; omitted means the branch alone on the trigger
+and a neutral "Branches" menu heading; `placeholder` supplies the complete
+empty-selection text, defaulting to "Select branch"). A null selection does
+not resolve or imply a worktree base. The caller owns what picking a branch
+means. The component retains the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
-loading state, and a `refresh()` operation that performs a blocking remote
-refresh. `experimental_BranchPicker` is built on this hook.
+loading state, and a `refresh()` operation
+that performs a blocking remote refresh. `experimental_BranchPicker` is built
+on this hook.
 `experimental_useCheckoutState({ hostId, projectId })` exposes the checkout's
 git, unborn, detached, dirty, current-branch, and operation facts. The checkout
 plugin combines the two hooks into its own chip, menu, search, and branch list,
@@ -1959,6 +1983,11 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
 
 **Kept experimental (2026-08-22).** zero consumers; every audit item is about the prop shape and none has a consumer to answer it — the first real renderer (a Codex extension-kind body, or the echo example) precedes stabilization.
 
+**Form rows (2026-09-16).** Register `"<pluginId>/<rendererId>"` to render a
+`requestInput` form's history. `payload` is `describeSubmission().payload`
+or `null`; `completedAt` is `null`. Before stabilization, decide whether form
+and extension rows need distinct `kind` values.
+
 **What it does.** Lets a provider plugin's frontend render the expanded body
 of the timeline rows it owns: `{ kind, component }`, where `kind` is one of
 the plugin's own extension item kinds (`"<pluginId>/<name>"`, as declared in
@@ -2668,6 +2697,63 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
    `experimental_data` can be lost in that surface. Decide whether to expose a
    forwardable experimental field or reject data-bearing submissions there.
 
+## `useComposer().experimental_setSelection`
+
+**What it does.** Sets a composer's pickers (provider, model, reasoning level,
+service tier, permission mode, and in a new-thread composer the project and
+environment) through the same handlers the pickers call, so a plugin-made
+choice is indistinguishable from a hand-made one: in the new-thread composer
+the values become the remembered defaults and are reported as explicit in
+`executionInputSources`; in a thread composer a provider change begins the
+handoff (snapshot for exit, handoff block prepended to the draft) and a
+same-provider model change does not, exactly like the picker. Omitted fields
+are left alone. Fields the composer has no picker for are ignored, not
+rejected: a thread composer drops `projectId` and `environment`, a provider
+without service tiers drops `serviceTier`, a fork draft keeps its locked
+project, provider and environment, and a provider the composer does not list
+is ignored together with the model and reasoning level meant for it. The new-thread host switches the project
+first and awaits it (attachment copy, and the composer remounts plugin
+surfaces), then applies the environment and machine with the new project's
+setters, then a provider change and a catalog reload, then model, reasoning,
+tier and permission mode each on its own commit. Resolves with the composer's
+own selection once the applied values have committed and the model catalog
+for the selected provider and machine has settled (data present and not a
+placeholder, or the query errored), bounded at 15 seconds after which the
+selection as it stands is returned. Backed by an optional `setSelection` on
+the internal `PluginComposerHost`, supplied by the thread and new-thread
+composers, including the plugin-embedded `experimental_NewThreadComposer`
+whose component-local selections leave the stored new-thread preferences
+untouched. The input type is `ExperimentalComposerSelection`; the hook
+validates it and rejects unknown reasoning levels, tiers and permission
+modes. The testing harness records accepted calls in `composer.selections`.
+
+**Audit before stabilizing.**
+
+1. **Provenance.** A value set by a plugin in the new-thread composer is
+   stored and reported exactly like a hand-picked one, so a routed thread is
+   indistinguishable from a chosen one in the user's preference history. A
+   plugin that needs to tell them apart tags its own threads through plugin
+   metadata. Decide whether `executionInputSources` should carry a plugin
+   source before a second consumer needs it.
+2. **Timeout shape.** The bounded catalog wait resolves with the unsettled
+   selection rather than rejecting. Confirm that is the right failure mode
+   for a plugin that shows the result to the user.
+3. **Provider inputs.** `environment.inputs` are not applied; the provider's
+   inputs control keeps its own value. Decide whether the seed path's inputs
+   handling should be reused here.
+4. **Guard semantics after a project switch.** The `isActive` guard stops a
+   stale surface from starting a call but a call already in flight survives
+   its own surface's unmount and resolves with the settled result. Confirm
+   that is the behavior plugins expect, and whether the promise should also
+   resolve early when the composer itself unmounts.
+5. **Model-only thread changes.** A model change in a thread without a
+   provider change sets the next turn's model in place, as the picker does.
+   Confirm plugins do not expect it to start a handoff.
+6. **Empty selections in the result.** `providerId` and `model` are omitted
+   while the composer has nothing selected and `environment` while nothing is
+   submittable, which overloads "missing" with "no picker here". Decide
+   whether the result should distinguish them.
+
 ## Desktop browser control
 
 `bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, disposable tab-state subscriptions, and cookie import from an installed browser through `listImportSources` and `importCookies` (`ExperimentalDesktopBrowserInstanceRequest`, `ExperimentalDesktopBrowserImportCookiesInput`, `ExperimentalDesktopBrowserImportSources`, `ExperimentalDesktopBrowserImportOutcome`). The matching core CLI is `bb browser`.
@@ -3106,3 +3192,26 @@ new unprefixed public API member is introduced. Audit before stabilization:
 immutable cross-project ownership, cross-host cleanup, archive/delete retries,
 creation races, and preservation of existing unowned threads. The Plugin Guide SDK card
 describes the public behavior.
+
+## Environment provider existing-path selection
+
+`PluginEnvironmentProviderDefinition.experimental_existingPath(inputs)` returns
+an absolute path or null from parsed inputs without performing mutations. On an
+existing machine, core checks that project's environment at the path after
+selection validation. A usable environment follows the normal reuse flow,
+preserving its provider, ownership, resource, merge base, and cleanup identity.
+An unusable environment is refused; a missing record follows normal creation,
+where the provider still validates the directory. Other projects' managed paths
+remain forbidden. New-machine selections continue through creation.
+
+Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
+progress, cross-project ownership, and concurrent creation before binding.
+
+## `ComposerPlusMenuItem.experimental_sendMenu`
+
+Also offers a registered composer plus-menu action in the send button's
+dropdown on desktop and long-press menu on mobile, with the same scope,
+disabled state, callback, and plugin
+lifecycle. The existing plus-menu entry remains available. Requires SDK 0.4.108.
+Audit discoverability, gesture cancellation, draft preservation, and ordering
+with the host's alternate Queue or Steer action before stabilization.

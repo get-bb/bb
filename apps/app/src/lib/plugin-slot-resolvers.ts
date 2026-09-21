@@ -183,12 +183,23 @@ export function resolveTimelineRenderer(
   registrations: readonly PluginTimelineRendererSlot[],
   target:
     | { kind: "extension"; extensionKind: string }
+    | { kind: "form"; pluginId: string; rendererId: string }
     | { kind: "tool"; providerPluginId: string | null },
 ): PluginTimelineRendererSlot | null {
   if (target.kind === "extension") {
     return (
       registrations.find(
         (registration) => registration.kind === target.extensionKind,
+      ) ?? null
+    );
+  }
+  if (target.kind === "form") {
+    const kind = `${target.pluginId}/${target.rendererId}`;
+    return (
+      registrations.find(
+        (registration) =>
+          registration.pluginId === target.pluginId &&
+          registration.kind === kind,
       ) ?? null
     );
   }

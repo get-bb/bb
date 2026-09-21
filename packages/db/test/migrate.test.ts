@@ -802,6 +802,10 @@ function dropQueueReworkSchema(db: DbConnection): void {
     "retry_of_turn_request_id",
     "retry_attempt",
     "retry_reason",
+    "origin",
+    "origin_plugin_id",
+    "requested_by_initiator",
+    "requested_by_thread_id",
   ]) {
     if (!queuedColumns.some((column) => column.name === name)) continue;
     db.$client
@@ -854,12 +858,25 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  const queuedDispatchOrigin = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of [
+    "origin",
+    "origin_plugin_id",
+    "requested_by_initiator",
+    "requested_by_thread_id",
+  ]) {
+    if (!queuedDispatchOrigin.some((column) => column.name === name)) continue;
+    db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
+  }
   db.$client.exec("DROP TABLE IF EXISTS thread_pruning_cursors");
   db.$client.exec("DROP TABLE IF EXISTS project_attachment_threads");
   db.$client.exec("DROP TABLE IF EXISTS project_attachments");
   db.$client.exec("DROP TABLE IF EXISTS project_attachment_backfills");
   db.$client.exec("DROP INDEX IF EXISTS threads_project_id_idx");
   db.$client.exec("DROP TABLE IF EXISTS environment_variables");
+  db.$client.exec("DROP TABLE IF EXISTS thread_image_metadata");
   db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
   db.$client.exec("DROP TABLE IF EXISTS provider_model_catalogs");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");

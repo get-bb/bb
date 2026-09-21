@@ -142,6 +142,7 @@ function DefaultRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-default"
         value={value}
         mentionRanges={mentionRanges}
@@ -168,6 +169,7 @@ function SubmittingRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-submitting"
         value={value}
         mentionRanges={mentionRanges}
@@ -193,6 +195,7 @@ function LoadingModelsRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-loading-models"
         value={value}
         mentionRanges={mentionRanges}
@@ -227,6 +230,7 @@ function ModelLoadFailedRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-model-load-failed"
         value={value}
         mentionRanges={mentionRanges}
@@ -263,6 +267,7 @@ function UnsupportedCodexCliRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-unsupported-codex-cli"
         value={value}
         mentionRanges={mentionRanges}
@@ -302,6 +307,7 @@ function MissingCodexCliRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-missing-codex-cli"
         value={value}
         mentionRanges={mentionRanges}
@@ -338,6 +344,7 @@ function GenericModelRequestFailedRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-model-request-failed"
         value={value}
         mentionRanges={mentionRanges}
@@ -380,6 +387,7 @@ function NoModelsAvailableRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-no-models"
         value={value}
         mentionRanges={mentionRanges}
@@ -414,6 +422,7 @@ function CustomModelAfterLoadErrorRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-custom-model-after-load-error"
         value={value}
         mentionRanges={mentionRanges}
@@ -453,6 +462,7 @@ function ClaudeProviderRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-claude"
         value={value}
         mentionRanges={mentionRanges}
@@ -493,6 +503,7 @@ function FullAccessRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-full-access"
         value={value}
         mentionRanges={mentionRanges}
@@ -535,6 +546,7 @@ function ProjectlessThreadRow() {
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
         id="story-new-thread-projectless"
         value={value}
         mentionRanges={mentionRanges}

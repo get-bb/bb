@@ -32,6 +32,7 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useUiPreferences: () => ({ data: undefined, isError: false }),
   useSystemConfig: () => ({
     data: {
       experiments: {
@@ -79,6 +80,10 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
+}));
+
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
+  useMoveThreadToSection: () => vi.fn(),
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
@@ -188,8 +193,11 @@ function renderPluginPanelRoute(): void {
 
 function isHiddenByCompactShelf(element: HTMLElement): boolean {
   return (
-    element.classList.contains(COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS) &&
-    element.dataset.panelShelf === "shelf"
+    COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS.split(" ").every((className) =>
+      element.classList.contains(className),
+    ) &&
+    (element.dataset.panelShelf === "shelf" ||
+      element.dataset.panelShelf === "full")
   );
 }
 
@@ -228,7 +236,7 @@ describe("AppLayout plugin panel header", () => {
     ).toBe(true);
   });
 
-  it("keeps the fixed left trigger above compact panels", () => {
+  it("hides the fixed left trigger while either compact panel presentation is open", () => {
     viewportState.compact = true;
     renderPluginPanelRoute();
 
@@ -245,7 +253,7 @@ describe("AppLayout plugin panel header", () => {
 
     act(() => setCompactSecondaryPanelPresentation("full"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
-    expect(isHiddenByCompactShelf(trigger)).toBe(false);
+    expect(isHiddenByCompactShelf(trigger)).toBe(true);
 
     act(() => setCompactSecondaryPanelPresentation("closed"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();

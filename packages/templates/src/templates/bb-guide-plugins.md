@@ -225,6 +225,18 @@ vault to remove that folder. Use `--workspace-host <id>` when a standalone
 CLI's working directory is not on the server machine. Direct `write`, `mkdir`,
 `move`, and `remove` remain only as deprecated compatibility commands.
 
+Docs can also propose revisions without overwriting the saved document:
+
+  bb docs proposal <path> [--vault <id>] [--json]
+  bb docs propose <path> --file <candidate.md> --expected-sha256 <hash> --version <none|N> [--vault <id>] [--json]
+  bb docs proposal-update <path> --content <markdown> --version <N> [--vault <id>] [--json]
+  bb docs accept|reject|undo|redo <path> --version <N> [--vault <id>] [--json]
+
+Read the current file and proposal before proposing. Use `none` only when no
+proposal exists; otherwise pass its current version. Markdown Docs cards are
+editable in the timeline and can open in a tab. Pending proposals show a live
+diff for the user to accept, reject, edit, or request further changes.
+
 The Tasks plugin is an opt-in official plugin bundled with the app:
 `bb plugin install tasks`. It adds a task tracker, agent delegation,
 and the `bb tasks` command. Common agent operations are:
@@ -341,18 +353,17 @@ added/updated/unchanged counts.
                                  devDependency to this bb's SDK version and
                                  the type-only devDependencies of the packages
                                  bb shims at runtime (sonner, vaul, the portal
-                                 radix families, ...) to this bb's versions, or
-                                 rewrite the vendored types/ of a plugin that
-                                 still carries them; --check writes nothing
-                                 and exits non-zero on a mismatch
+                                 radix families, ...) to this bb's versions;
+                                 legacy vendored-layout plugins must migrate;
+                                 --check writes nothing and exits non-zero on
+                                 a mismatch
   bb plugin migrate [path]       Switch a plugin that still vendors types/ to
                                  the @get-bb/plugin-sdk npm package (default:
                                  cwd): pin the devDependency, drop the tsconfig
                                  path map, delete the vendored declarations.
                                  Prints the plan and asks first; --yes skips
                                  the prompt (required when stdin is not a
-                                 terminal). The old layout keeps working, so
-                                 nothing migrates unless you ask
+                                 terminal)
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json); when
                                  bb.app is declared, the minified frontend
@@ -827,17 +838,17 @@ node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts (plus
 -app.d.ts and -host.d.ts): ordinary readable declarations, not a minified
 bundle — read them
 for an exact signature. Plugins scaffolded before this switch instead vendor
-the root/app declarations in types/, mapped through tsconfig; that layout still
-works for existing entries. Run `bb plugin migrate` before adding `bb.host` so
-the `/host` and `/testing/host` declaration subpaths are available; migration
-shows every change and asks first.
+the root/app declarations in types/, mapped through tsconfig. `bb plugin build`
+and `bb plugin dev` still work with those checked-in declarations, but warn
+without updating them. Run `bb plugin migrate` to receive current SDK types and
+before adding `bb.host` so the `/host` and `/testing/host` declaration subpaths
+are available; migration shows every change and asks first.
 The SDK surface grows every release, so `bb plugin types` syncs a plugin to
-the running bb — repinning the SDK devDependency and the shimmed packages'
-type-only devDependencies, or rewriting types/ for a plugin that still
-vendors them. Run it in a cloned or older plugin, and `bb
-plugin types --check` in CI. `bb plugin build` and `bb plugin dev` keep a
-vendored plugin in step for you. Need a symbol the types
-don't explain? Clone the repo: https://github.com/get-bb/bb. The API in
+the running bb by repinning the SDK devDependency and the shimmed packages'
+type-only devDependencies. It exits with migration instructions for a plugin
+that still vendors types/. Run it in a cloned or older package-layout plugin,
+and `bb plugin types --check` in CI. Need a symbol the types don't explain?
+Clone the repo: https://github.com/get-bb/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and

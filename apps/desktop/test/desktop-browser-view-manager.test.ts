@@ -13,6 +13,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
+import { resolveDesktopBrowserAppCommand } from "../src/desktop-browser-shortcuts.js";
 import { createDesktopBrowserCdpAdapter } from "../src/desktop-browser-cdp-adapter.js";
 import { createDesktopBrowserBroker } from "../src/desktop-browser-broker.js";
 import { createDesktopBrowserBrokerClient } from "../src/desktop-browser-broker-client.js";
@@ -2490,36 +2491,101 @@ describe("DesktopBrowserViewManager", () => {
     expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
   });
 
-  it("takes host focus for the find command so the find bar can receive typing", () => {
-    const dispatchAppCommand = vi.fn();
-    const focusHostWebContents = vi.fn();
-    const manager = createDesktopBrowserViewManager({
-      dispatchAppCommand,
-      focusHostWebContents,
-      partition: "persist:test",
-      resolveAppCommand: (input) =>
-        input.key === "f" && input.metaKey ? "browser.find" : null,
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 51,
-    });
+  it.each([
+    "browser.find",
+    "panel.previousTab",
+    "panel.nextTab",
+    "pane.focus.previous",
+    "pane.focus.next",
+  ] as const)(
+    "takes host focus for %s so the selected target can receive typing",
+    (command) => {
+      const dispatchAppCommand = vi.fn();
+      const focusHostWebContents = vi.fn();
+      const manager = createDesktopBrowserViewManager({
+        dispatchAppCommand,
+        focusHostWebContents,
+        partition: "persist:test",
+        resolveAppCommand: (input) =>
+          input.key === "f" && input.metaKey ? command : null,
+      });
+      const hostWindow = new FakeHostWindow({
+        contentBounds: { width: 700, height: 450 },
+        webContentsId: 51,
+      });
 
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com",
-    });
-    const webContents = requireFakeView(0).webContents;
+      attachBrowserTab({
+        manager,
+        hostWindow,
+        tabId: "browser:a",
+        url: "https://example.com",
+      });
+      const webContents = requireFakeView(0).webContents;
 
-    expect(webContents.emitBeforeInput({ key: "f", meta: true })).toBe(true);
-    expect(focusHostWebContents).toHaveBeenCalledWith(51);
-    expect(dispatchAppCommand).toHaveBeenCalledWith({
-      command: "browser.find",
-      hostWebContentsId: 51,
-    });
-  });
+      expect(webContents.emitBeforeInput({ key: "f", meta: true })).toBe(true);
+      expect(focusHostWebContents).toHaveBeenCalledWith(51);
+      expect(dispatchAppCommand).toHaveBeenCalledWith({
+        command,
+        hostWebContentsId: 51,
+      });
+    },
+  );
+
+  it.each(["pane.focus.previous", "pane.focus.next"] as const)(
+    "leaves native page focus and input untouched when %s is unavailable",
+    (command) => {
+      let splitNavigationEnabled = false;
+      const dispatchAppCommand = vi.fn();
+      const focusHostWebContents = vi.fn();
+      const manager = createDesktopBrowserViewManager({
+        dispatchAppCommand,
+        focusHostWebContents,
+        partition: "persist:test",
+        resolveAppCommand: (input, hostWebContentsId) => resolveDesktopBrowserAppCommand({
+          input,
+          isMac: true,
+          splitNavigationEnabled: splitNavigationEnabled && hostWebContentsId === 51,
+          keybindings: [{
+            command,
+            desktopOnly: false,
+            shortcut: {
+              key: "ArrowRight", mod: true, control: true,
+              meta: false, alt: false, shift: false,
+            },
+            when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
+          }],
+        }),
+      });
+      const hostWindow = new FakeHostWindow({
+        contentBounds: { width: 700, height: 450 },
+        webContentsId: 51,
+      });
+      attachBrowserTab({
+        manager, hostWindow, tabId: "browser:a", url: "https://example.com",
+      });
+      const webContents = requireFakeView(0).webContents;
+
+      expect(webContents.emitBeforeInput({
+        key: "ArrowRight", meta: true, control: true,
+      })).toBe(false);
+      expect(focusHostWebContents).not.toHaveBeenCalled();
+      expect(dispatchAppCommand).not.toHaveBeenCalled();
+
+      splitNavigationEnabled = true;
+      expect(webContents.emitBeforeInput({
+        key: "ArrowRight", meta: true, control: true,
+      })).toBe(true);
+      expect(focusHostWebContents).toHaveBeenCalledWith(51);
+      expect(dispatchAppCommand).toHaveBeenCalledWith({ command, hostWebContentsId: 51 });
+
+      splitNavigationEnabled = false;
+      expect(webContents.emitBeforeInput({
+        key: "ArrowRight", meta: true, control: true,
+      })).toBe(false);
+      expect(focusHostWebContents).toHaveBeenCalledTimes(1);
+      expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("drives webContents find-in-page and relays results to the host renderer", () => {
     const manager = createDesktopBrowserViewManager({

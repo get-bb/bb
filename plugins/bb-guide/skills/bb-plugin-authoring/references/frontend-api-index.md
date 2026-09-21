@@ -149,10 +149,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginMessageActionRegistration`
 - `PluginAppCommands`
 - `PluginCommandContext`
-- `PluginCommandPaletteActionContext` (deprecated alias)
 - `PluginCommandShortcut`
 - `PluginCommandRegistration`
-- `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginProviderIconRegistration`
 - `PluginTimelineRowPresentation`
 - `PluginTimelineRowStatus`
@@ -176,6 +174,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ComposerPlusMenuItem`
 - `ComposerView`
 - `ExperimentalComposerSubmitOptions`
+- `ExperimentalComposerSelection`
 - `ComposerRichTextSpec`
 - `ComposerStructuredDraft`
 - `PluginComposerTextEffect`

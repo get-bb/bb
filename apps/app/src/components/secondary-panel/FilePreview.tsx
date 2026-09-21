@@ -67,6 +67,7 @@ export type FilePreviewState =
   | { kind: "empty" }
   | { kind: "not-found" }
   | { kind: "error"; message?: string }
+  | { kind: "unsupported"; message: string }
   | { kind: "image"; url: string }
   | { kind: "video"; url: string }
   | ({ kind: "iframe" } & IframeFilePreviewTarget)
@@ -563,9 +564,12 @@ function FilePreviewBody({
     return (
       <FilePreviewMessage
         message={state.message ?? "Failed to load file"}
-        role={state.message === undefined ? "alert" : undefined}
+        role="alert"
       />
     );
+  }
+  if (state.kind === "unsupported") {
+    return <FilePreviewMessage message={state.message} />;
   }
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;

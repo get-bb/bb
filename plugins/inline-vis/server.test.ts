@@ -109,12 +109,9 @@ describe("preparePreview rpc", () => {
       kind: "markdown",
       file: "notes.md",
       source: "workspace",
+      target: { kind: "workspace", environmentId: "env_1", path: "notes.md" },
+      rootPath: ROOT,
       content: "# Notes\n\nReady for review.",
-      document: {
-        rootPath: ROOT,
-        threadId: "thr_1",
-        target: { kind: "workspace", environmentId: "env_1", path: "notes.md" },
-      },
     });
   });
 
@@ -151,16 +148,13 @@ describe("preparePreview rpc", () => {
       kind: "markdown",
       file: "reports/summary.markdown",
       source: "thread-storage",
-      content: "# Report",
-      document: {
-        rootPath: storageRootPath,
+      target: {
+        kind: "thread-storage",
         threadId: "thr_1",
-        target: {
-          kind: "thread-storage",
-          threadId: "thr_1",
-          path: "reports/summary.markdown",
-        },
+        path: "reports/summary.markdown",
       },
+      rootPath: storageRootPath,
+      content: "# Report",
     });
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);
   });
@@ -278,6 +272,11 @@ describe("preparePreview rpc", () => {
       file: "charts/demo.html",
       source: "workspace",
       content: "<html><body>ok</body></html>",
+      target: {
+        kind: "workspace",
+        environmentId: "env_1",
+        path: "charts/demo.html",
+      },
     });
     expect(harness.sdk.callsTo("files.read")).toHaveLength(1);
   });
@@ -318,6 +317,11 @@ describe("preparePreview rpc", () => {
       file: "reports/result.html",
       source: "thread-storage",
       content: "<html><body>ok</body></html>",
+      target: {
+        kind: "thread-storage",
+        threadId: "thr_1",
+        path: "reports/result.html",
+      },
     });
     expect(harness.sdk.callsTo("threads.storageLocation")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);

@@ -37,6 +37,7 @@ import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
 import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import {
   resetPluginSlotStoreForTest,
@@ -80,6 +81,9 @@ const mocks = vi.hoisted(() => ({
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
   stopThreadMutate: vi.fn(),
   serviceTier: undefined as "default" | "fast" | undefined,
+  setPermissionMode: vi.fn(),
+  setReasoningLevel: vi.fn(),
+  setServiceTier: vi.fn(),
   supportsServiceTier: false,
   toastError: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
@@ -598,6 +602,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         providers: [],
         hasMultipleProviders: true,
         isLoadingModels: false,
+        modelCatalogIsSettled: true,
         modelLoadError: null,
         modelLoadFailed: false,
         modelOptions: [],
@@ -616,8 +621,8 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         selectedProviderId,
         serviceTier: mocks.serviceTier,
         serviceTierSupportByProvider: {},
-        setPermissionMode: vi.fn(),
-        setReasoningLevel: vi.fn(),
+        setPermissionMode: mocks.setPermissionMode,
+        setReasoningLevel: mocks.setReasoningLevel,
         setProviderModelReasoning: ({
           providerId,
           model,
@@ -633,7 +638,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
           setSelectedProviderId(providerId);
           setExplicitModel(null);
         },
-        setServiceTier: vi.fn(),
+        setServiceTier: mocks.setServiceTier,
         supportsPermissionModeSelection: true,
         supportsServiceTier: mocks.supportsServiceTier,
       };
@@ -1984,6 +1989,129 @@ describe("ThreadDetailPromptArea", () => {
       "claude-opus-4-8",
     );
     expect(screen.getByText("Model fallback")).toBeTruthy();
+  });
+
+  async function settledSelection(
+    promise: Promise<ExperimentalComposerSelection>,
+  ): Promise<ExperimentalComposerSelection> {
+    let result: ExperimentalComposerSelection | null = null;
+    let failure: unknown = null;
+    void promise.then(
+      (value) => {
+        result = value;
+      },
+      (error: unknown) => {
+        failure = error;
+      },
+    );
+    await waitFor(() => {
+      expect(result !== null || failure !== null).toBe(true);
+    });
+    if (failure !== null) throw failure;
+    return result as unknown as ExperimentalComposerSelection;
+  }
+
+  it("starts a handoff when a plugin sets another provider, and drops the fields a thread has no picker for", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const host = mocks.pluginComposerHost;
+    expect(host?.setSelection).toBeDefined();
+
+    const result = await settledSelection(
+      host!.setSelection!({
+        projectId: "proj_other",
+        environment: { type: "project-default" },
+        providerId: "claude-code",
+        model: "claude-opus-5",
+        serviceTier: "fast",
+      }),
+    );
+
+    expect(result).toEqual({
+      providerId: "claude-code",
+      model: "claude-opus-5",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+    });
+    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+    expect(screen.getByTestId("command-suggestions").textContent).toBe(
+      "claude-code:new-thread",
+    );
+    expect(screen.getByTestId("selected-model").textContent).toBe(
+      "claude-opus-5",
+    );
+    expect(mocks.promptDraft.text).not.toBe("Keep going");
+    expect(mocks.promptDraft.text.endsWith("Keep going")).toBe(true);
+    expect(mocks.setServiceTier).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: "claude-code",
+          model: "claude-opus-5",
+        }),
+      ),
+    );
+    expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("sets a same-provider model in place without starting a handoff", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.supportsServiceTier = true;
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    const result = await settledSelection(
+      mocks.pluginComposerHost!.setSelection!({
+        model: "gpt-5-mini",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+        permissionMode: "full",
+      }),
+    );
+
+    expect(result).toEqual({
+      providerId: "codex",
+      model: "gpt-5-mini",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+    });
+    expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5-mini");
+    expect(screen.getByTestId("submit-label").textContent).toBe("");
+    expect(screen.getByTestId("command-suggestions").textContent).toBe(
+      "codex:thread",
+    );
+    expect(mocks.promptDraft.text).toBe("Keep going");
+    expect(mocks.setReasoningLevel).toHaveBeenCalledWith("high");
+    expect(mocks.setServiceTier).toHaveBeenCalledWith("fast");
+    expect(mocks.setPermissionMode).toHaveBeenCalledWith("full");
+  });
+
+  it("gives the queued-message editor no pickers to set", () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    expect(mocks.pluginComposerHost?.scope.kind).toBe("queued-message");
+    expect(mocks.pluginComposerHost?.setSelection).toBeUndefined();
   });
 
   it("creates a new thread with a changed model from the same provider", async () => {

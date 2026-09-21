@@ -8,8 +8,19 @@ import {
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
 
+export interface ThreadPruningSweepLimits {
+  elapsedBudgetMs: number;
+  maxAdvances: number;
+}
+
+export const THREAD_PRUNING_SWEEP_LIMITS: ThreadPruningSweepLimits = {
+  elapsedBudgetMs: 50,
+  maxAdvances: 64,
+};
+
 export async function runThreadPruningSweep(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  limits: ThreadPruningSweepLimits,
 ): Promise<void> {
   const startedAt = performance.now();
   const completed = new Set<string>();
@@ -21,8 +32,8 @@ export async function runThreadPruningSweep(
   let reason = "budget";
   try {
     while (
-      advances < 64 &&
-      performance.now() - startedAt < 50 &&
+      advances < limits.maxAdvances &&
+      performance.now() - startedAt < limits.elapsedBudgetMs &&
       completed.size < THREAD_PRUNING_POLICIES.length
     ) {
       const activity = getDatabaseMaintenanceActivity(deps.db);

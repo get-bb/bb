@@ -53,6 +53,8 @@ export interface PluginListItem {
   isOrphanedBuiltin: boolean;
   catalogEntryId: string | null;
   catalogMarketplaceName: string | null;
+  categoryId?: InstalledPlugin["categoryId"];
+  category?: string;
   publisherLabel: string | null;
   sourceDisplay: string;
   updateState: PluginUpdateState;
@@ -110,6 +112,8 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,
     catalogEntryId: plugin.catalogEntryId ?? null,
     catalogMarketplaceName: plugin.catalogMarketplaceName ?? null,
+    categoryId: plugin.categoryId,
+    category: plugin.category,
     publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
     updateState: {

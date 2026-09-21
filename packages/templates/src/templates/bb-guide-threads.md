@@ -12,10 +12,14 @@ Every command supports --json for machine-readable output.
 Spawning:
 
   bb thread spawn --project <id> --prompt "..." [options]
+  bb thread spawn --project <id> --prompt-file <path> [options]
 
-    --prompt <prompt>              Initial prompt (required)
+    --prompt <prompt>              Initial prompt (one of --prompt or --prompt-file is required)
+    --prompt-file <path>           Read the prompt from a file; `-` reads stdin. Use this for
+                                   multi-line or Markdown prompts: inside double quotes the shell
+                                   runs `backticks` and $(...) before bb sees them
     --title <title>                Thread title
-    --project <id>                 Project (required)
+    --project <id>                 Project (required; when omitted the error prints this thread's project ID to add)
     --parent-thread <id>           Parent thread (may be in another project)
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --lifecycle-owner-thread <id>  Archive/delete with this owner
@@ -98,6 +102,7 @@ Forking:
   bb thread fork <source-thread-id> [options]
 
     --prompt <prompt>              Optional first prompt; omit for an idle fork
+    --prompt-file <path>           Read the first prompt from a file; `-` reads stdin
     --lifecycle-owner-thread <id>  Archive/delete with this owner
     --source-seq-end <seq>         Fork after the source turn containing this event sequence (tip by default)
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
@@ -185,6 +190,7 @@ Sections:
 
 Inspecting:
 
+  bb thread image-metadata [id]            Read or record learned image dimensions (--self, --source, --width, --height, --etag, --json)
   bb thread context [id]                   Show recorded context usage and available breakdown (--self, --json)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
@@ -215,8 +221,8 @@ Inspecting:
   bb thread wait <id>                      Wait for a thread status or event (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
-    --timeout <seconds>                    Timeout in seconds (default: 1200 / 20 min)
-    --poll-interval <ms>                   Polling interval in milliseconds
+    --timeout <duration>                   Seconds, or a duration with a unit: 90s, 20m, 4h (default: 1200s / 20 min)
+    --poll-interval <duration>             Milliseconds, or a duration with a unit
 
 Opening threads and files in the app:
 
@@ -246,6 +252,10 @@ Opening threads and files in the app:
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
+  bb thread tell <id> --message-file <path>
+                                           Read the message from a file; `-` reads stdin. Use this for
+                                           multi-line or Markdown messages: inside double quotes the
+                                           shell runs `backticks` and $(...) before bb sees them
     --mode <mode>                          Message mode: steer (default), queue, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
@@ -428,6 +438,12 @@ starting a provider request. Use `--self` for the current thread and `--json` fo
 breakdown after turns and compaction when its SDK supports context inspection.
 A later aggregate-only measurement replaces any older breakdown. Other providers
 continue to expose their available totals.
+
+`bb thread image-metadata [id]` returns persisted source, width, height, and ETag
+records. Set one with `--source <url> --width <pixels> --height <pixels>` and
+optional `--etag <etag>`. Dimensions belong to the thread and are returned with
+timeline responses; recording metadata does not fetch the image. The web client
+learns unknown Markdown image dimensions after their first successful load.
 
 Lifecycle ownership:
   spawn and fork accept --lifecycle-owner-thread <id>. SDK arguments use

@@ -77,6 +77,12 @@ The direct `write`, `mkdir`, `move`, and `remove` commands are deprecated. Do
 not use them for agent edits; they remain temporarily available only for
 backward compatibility.
 
+Run `bb docs --help` for the command list and `bb docs <command> --help` for a
+command's arguments, options, and rules. Each command accepts only the options
+its help lists; an unknown command, unknown option, or stray argument exits 2
+before touching a vault, and with `--json` the failure also prints
+`{"ok":false,"error":{"code","message","hint"?}}` on stdout.
+
 Use Markdown for documents and plans. Use a self-contained `.html` file for a
 visual artifact or interactive report; relative assets can live beside it.
 Only write into Docs when the user asks to create, save, store, or update
@@ -91,6 +97,31 @@ Emit this leaf directive on its own line:
 ```
 
 `vault` and `path` are required. Include a short human-readable `title` when
-known. The rendered card opens an editable, autosaving document in the thread
-side panel; its secondary action opens the full Docs editor. Use the directive for both
+known. Markdown cards are editable and autosave in the timeline; Open in tab opens
+the same document in Docs. Use the directive for both
 Markdown documents and full HTML artifacts.
+
+## Propose changes for approval
+
+When the user asks to update a mentioned document or revise a pending proposal,
+keep the saved file intact and propose the revision for approval. Read the
+current file and proposal first, write the complete candidate into a workspace
+Markdown file, then run:
+
+```sh
+bb docs read letter.md --vault personal --json
+bb docs proposal letter.md --vault personal --json
+bb docs propose letter.md --vault personal --file ./candidate.md --expected-sha256 HASH --version N --json
+```
+
+Use `--version none` only when `proposal` returned null. Otherwise pass its exact
+version, including when the previous proposal was rejected or accepted. Use the
+hash from the current document read. A conflict means the user changed the
+file or proposal while you worked: read again and reconcile your revision;
+never retry automatically using a newer version. A Docs mention includes the
+current file and proposal metadata to support this workflow.
+
+Return the usual `::docs` directive. The user can accept, reject, edit the
+candidate, or ask for further changes. Do not run `accept` on the user's behalf
+unless explicitly asked. Existing pull/edit/push remains available for direct
+changes the user requested without proposal review.

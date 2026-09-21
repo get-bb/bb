@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useAtomValue } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
@@ -15,6 +16,7 @@ import {
   PINNED_THREAD_PARENT_KEY,
   type SectionThreadDndState,
 } from "./useSectionThreadDnd";
+import { sidebarGroupThreadsByEnvironmentAtom } from "./sidebarCollapsedAtoms";
 
 interface ShouldSuppressPinnedThreadDropPreviewArgs {
   activeThreadId: string | undefined;
@@ -108,6 +110,9 @@ export function useRenderedSectionThreadDnd({
   sections,
   threads,
 }: UseRenderedSectionThreadDndArgs): SectionThreadDndState | null {
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   return useMemo<SectionThreadDndState | null>(() => {
     if (!sectionDnd) {
       return null;
@@ -138,6 +143,7 @@ export function useRenderedSectionThreadDnd({
             activeThread,
             compareThreads,
             draftThreadIds,
+            groupThreadsByEnvironment,
             pinnedRootNodes,
             sections,
             target,
@@ -149,6 +155,7 @@ export function useRenderedSectionThreadDnd({
     compareThreads,
     draftThreadIds,
     groups,
+    groupThreadsByEnvironment,
     pinnedRootNodes,
     pinnedThreads,
     rootItems,

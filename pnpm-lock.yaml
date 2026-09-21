@@ -123,8 +123,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -780,8 +780,8 @@ importers:
         specifier: ^5.2.14
         version: 5.2.14(@types/react@19.2.13)(react-native-gesture-handler@2.32.0(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4))(react-native-reanimated@4.5.1(react-native-worklets@0.10.1(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react-native':
         specifier: ^1.0.15
         version: 1.0.15(react-native-svg@15.15.4(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
@@ -1115,8 +1115,8 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -2029,9 +2029,12 @@ importers:
 
   packages/plugin-api-map:
     dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../shared-ui
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -2147,8 +2150,8 @@ importers:
         specifier: workspace:*
         version: link:../tsconfig
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -2245,9 +2248,6 @@ importers:
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      lucide-react:
-        specifier: ^1.23.0
-        version: 1.23.0(react@19.2.4)
       react:
         specifier: ^19.0.0
         version: 19.2.4
@@ -2641,8 +2641,8 @@ importers:
   packages/shared-ui:
     dependencies:
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -2752,9 +2752,6 @@ importers:
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      lucide-react:
-        specifier: ^1.23.0
-        version: 1.23.0(react@19.2.4)
       react:
         specifier: ^19.0.0
         version: 19.2.4
@@ -3156,6 +3153,9 @@ importers:
 
   plugins/browser-automation:
     dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -3166,9 +3166,24 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      jsdom:
+        specifier: ^29.0.1
+        version: 29.0.1(@noble/hashes@2.4.0)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
       tsx:
         specifier: ^4.21.0
         version: 4.23.1
@@ -3372,8 +3387,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-ui
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -3422,6 +3437,9 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^2.27.2
         version: 2.27.2
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
       tiptap-markdown:
         specifier: ^0.8.10
         version: 0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
@@ -3517,6 +3535,9 @@ importers:
 
   plugins/environment-git-worktree:
     dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
       bb-environment-provider-host:
         specifier: workspace:*
         version: link:../../packages/environment-provider-host
@@ -4065,6 +4086,9 @@ importers:
       '@bb/plugin-api-map':
         specifier: workspace:*
         version: link:../../packages/plugin-api-map
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
     devDependencies:
       '@bb/plugin-build':
         specifier: workspace:*
@@ -4438,8 +4462,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-ui
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -4524,8 +4548,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-ui
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -4630,8 +4654,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-ui
       '@hugeicons/core-free-icons':
-        specifier: ^4.1.3
-        version: 4.1.3
+        specifier: ^4.3.4
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -4881,7 +4905,7 @@ importers:
         version: link:../../packages/shared-ui
       '@hugeicons/core-free-icons':
         specifier: ^4.1.3
-        version: 4.1.3
+        version: 4.3.4
       '@hugeicons/react':
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.4)
@@ -7042,8 +7066,8 @@ packages:
       '@hono/node-server': ^1.19.2
       hono: ^4.6.0
 
-  '@hugeicons/core-free-icons@4.1.3':
-    resolution: {integrity: sha512-FWPrKnlYKpSaitUtlZhFlDQXDgHiayTPFJYWvyIKkW2RI6Vj5KBvjxI+lAnnFPu07SwgIMiDDj+Gttl0t+o/oQ==}
+  '@hugeicons/core-free-icons@4.3.4':
+    resolution: {integrity: sha512-TMbzqGFD4XnEyVYut4sTzT7Wpq+Mghe7ChGd+R3bkyhJc31tcsfxtX8gmgrV3zIqn5dumsNJhvsX+h3OPjLMGQ==}
 
   '@hugeicons/react-native@1.0.15':
     resolution: {integrity: sha512-YKg+k16uz7FRgq/ReaWrf0qzdRDOkEruQBE4/oVWZ2qZXq9T4mqj3P3HoZ7Uk/pi8KVlpZTi7TAokwizsQMbFA==}
@@ -13804,11 +13828,6 @@ packages:
   lru_map@0.4.1:
     resolution: {integrity: sha512-I+lBvqMMFfqaV8CJCISjI3wbjmwVu/VyOoU7+qtu9d7ioW5klMgsTTiUOUp+DJvfTTzKXoPbyC6YfgkNcyPSOg==}
 
-  lucide-react@1.23.0:
-    resolution: {integrity: sha512-38BpJcD0JhFosxHApP/BYsBetLpQFRoTRzEzstM/XCc3jsAG7wqaY1lgVwxiUe3xqYE+lNxo2PkCmYwXWrwwIw==}
-    peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
     engines: {node: '>=12'}
@@ -19544,7 +19563,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@hugeicons/core-free-icons@4.1.3': {}
+  '@hugeicons/core-free-icons@4.3.4': {}
 
   '@hugeicons/react-native@1.0.15(react-native-svg@15.15.4(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)':
     dependencies:
@@ -26903,10 +26922,6 @@ snapshots:
       yallist: 4.0.0
 
   lru_map@0.4.1: {}
-
-  lucide-react@1.23.0(react@19.2.4):
-    dependencies:
-      react: 19.2.4
 
   luxon@3.7.2: {}
 

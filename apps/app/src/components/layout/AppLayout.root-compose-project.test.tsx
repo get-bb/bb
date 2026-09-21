@@ -31,6 +31,7 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useUiPreferences: () => ({ data: undefined, isError: false }),
   useSystemConfig: () => ({
     data: {
       experiments: {
@@ -54,6 +55,10 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
+}));
+
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
+  useMoveThreadToSection: () => vi.fn(),
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({

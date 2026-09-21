@@ -16,6 +16,10 @@ import {
 import { publishAutomationChange } from "./realtime.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
+import type {
+  ProjectsSdk,
+  ScriptWorkingDirectoryResolver,
+} from "./working-directory.js";
 
 type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
@@ -31,6 +35,9 @@ type AgentThreadsSdk = {
 };
 export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };
+};
+export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  sdk: { projects: ProjectsSdk };
 };
 
 const sdkThreadSchema = z
@@ -247,7 +254,7 @@ function closeRunForUnusableTargetThread(
 }
 
 export async function executeScriptRun(
-  bb: Pick<BbPluginApi, "realtime" | "log">,
+  bb: ScriptRunApi,
   db: Db,
   args: {
     pluginDataDir: string;
@@ -256,6 +263,7 @@ export async function executeScriptRun(
     execution: Extract<AutomationExecution, { mode: "script" }>;
     onFailure: RunFailureHandler;
     serverUrl: string;
+    resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
   },
 ): Promise<void> {
   try {
@@ -269,6 +277,15 @@ export async function executeScriptRun(
       });
       return;
     }
+    const workingDir = await args.resolveWorkingDirectory(
+      args.automation.projectId,
+      args.execution.workingDirectory,
+    );
+    if (workingDir === null) {
+      throw new Error(
+        `Project ${args.automation.projectId} has no source on the bb server host`,
+      );
+    }
     const result = await executeStoredScript({
       pluginDataDir: args.pluginDataDir,
       automationId: args.automation.id,
@@ -279,6 +296,7 @@ export async function executeScriptRun(
       timeoutMs: args.execution.timeoutMs,
       env: args.execution.env,
       serverUrl: args.serverUrl,
+      workingDir,
     });
     // bb-fork(windows): surface a missing bb CLI on the plugin log instead of the run output.
     if (result.warning !== null && result.warning !== undefined) {

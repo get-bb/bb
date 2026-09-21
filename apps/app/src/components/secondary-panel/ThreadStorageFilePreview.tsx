@@ -6,8 +6,9 @@ import {
 } from "./FilePreview";
 import { hashSourceContents } from "@/components/code/source-code-budget";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
-import { HttpError } from "@/lib/api";
 import { resolveExportBaseHref } from "@/lib/document-export";
+import { asHttpError, getHttpErrorMessage } from "@/lib/http-error";
+import { extractErrorMessage } from "@bb/core-ui";
 import type {
   FilePreview,
   FilePreviewLineRange,
@@ -80,6 +81,13 @@ function getTextPreviewKind(
   return null;
 }
 
+function resolveFilePreviewErrorMessage(error: Error): string | null {
+  const httpError = asHttpError(error);
+  return httpError === null
+    ? extractErrorMessage(error.message)
+    : getHttpErrorMessage(httpError);
+}
+
 interface ResolveSecondaryPanelFilePreviewStateArgs {
   activePath: string;
   error: Error | null | undefined;
@@ -98,8 +106,11 @@ function resolveSecondaryPanelFilePreviewState({
   lineRange,
 }: ResolveSecondaryPanelFilePreviewStateArgs): FilePreviewState {
   if (error) {
-    const isNotFound = error instanceof HttpError && error.status === 404;
-    return { kind: isNotFound ? "not-found" : "error" };
+    if (asHttpError(error)?.status === 404) {
+      return { kind: "not-found" };
+    }
+    const message = resolveFilePreviewErrorMessage(error);
+    return message === null ? { kind: "error" } : { kind: "error", message };
   }
 
   if (isLoading || !filePreview || filePreview.path !== activePath) {
@@ -156,7 +167,7 @@ function resolveSecondaryPanelFilePreviewState({
   }
 
   return {
-    kind: "error",
+    kind: "unsupported",
     message: `Preview not available for ${filePreview.mimeType}.`,
   };
 }

@@ -24,12 +24,18 @@ function composerView(
 }
 
 describe("registration", () => {
-  it("adds a draft action to thread and new-thread composers", () => {
+  it("offers the same draft action in plus and send menus for both composer scopes", () => {
     expect(app.composerCustomizations).toMatchObject([
       {
         id: "drafts",
         scopes: ["thread", "new-thread"],
-        plusMenu: [{ label: "Save draft…", icon: "EditFile" }],
+        plusMenu: [
+          {
+            label: "Save draft…",
+            icon: "EditFile",
+            experimental_sendMenu: true,
+          },
+        ],
       },
     ]);
   });

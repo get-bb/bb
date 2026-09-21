@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { access, mkdir, stat } from "node:fs/promises";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
@@ -20,6 +20,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
+const SCRIPT_FAILURE_DETAIL_MAX_CHARS = 200;
 
 let resolvedBbPath: string | null = null;
 
@@ -78,6 +79,14 @@ async function isExecutableFile(candidate: string): Promise<boolean> {
   }
 }
 
+async function isDirectory(candidate: string): Promise<boolean> {
+  try {
+    return (await stat(candidate)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 async function resolveBbBinary(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
@@ -128,6 +137,7 @@ export function isWakeAgentSuppressed(output: string): boolean {
 export interface ScriptRunResult {
   exitCode: number | null;
   output: string;
+  stderr: string;
   timedOut: boolean;
   /**
    * bb-fork(windows): plugin diagnostics about the run itself (today: bb is not on the
@@ -144,6 +154,29 @@ interface ScriptRunOutcome {
   skipReason: string | null;
 }
 
+function firstStderrLine(stderr: string): string | null {
+  let start = 0;
+  while (start < stderr.length) {
+    const newline = stderr.indexOf("\n", start);
+    const lineEnd = newline === -1 ? stderr.length : newline;
+    const trimmedEnd =
+      lineEnd > start && stderr[lineEnd - 1] === "\r" ? lineEnd - 1 : lineEnd;
+    if (trimmedEnd > start) {
+      const trimmed = stripVTControlCharacters(stderr.slice(start, trimmedEnd))
+        .replace(/\p{Cc}/gu, " ")
+        .trim();
+      if (trimmed.length > 0) {
+        return trimmed.length > SCRIPT_FAILURE_DETAIL_MAX_CHARS
+          ? `${trimmed.slice(0, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
+          : trimmed;
+      }
+    }
+    if (newline === -1) break;
+    start = newline + 1;
+  }
+  return null;
+}
+
 export function mapScriptResultToRun(
   result: ScriptRunResult,
 ): ScriptRunOutcome {
@@ -157,11 +190,14 @@ export function mapScriptResultToRun(
     };
   }
   if (result.exitCode !== 0) {
+    const detail = firstStderrLine(result.stderr);
     return {
       status: "failed",
       output: result.output.length > 0 ? result.output : null,
       exitCode: result.exitCode,
-      error: `Script exited with code ${result.exitCode}`,
+      error: `Script exited with code ${result.exitCode}${
+        detail === null ? "" : `: ${detail}`
+      }`,
       skipReason: null,
     };
   }
@@ -263,11 +299,11 @@ function executeWithProcessGroup(args: {
         signalProcessGroup(child, "SIGKILL");
       }
       const suffix = outputLimitExceeded ? "\n[output truncated]\n" : "";
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
       resolve({
         exitCode: timedOut ? null : outputLimitExceeded ? 1 : code,
-        output: `${Buffer.concat(stdoutChunks).toString("utf8")}${Buffer.concat(
-          stderrChunks,
-        ).toString("utf8")}${suffix}`,
+        output: `${Buffer.concat(stdoutChunks).toString("utf8")}${stderr}${suffix}`,
+        stderr,
         timedOut,
       });
     });
@@ -289,6 +325,7 @@ export async function executeStoredScript(args: {
   timeoutMs: number;
   env?: Record<string, string>;
   serverUrl: string;
+  workingDir: string;
 }): Promise<ScriptRunResult> {
   const scriptPath = await resolveAutomationScriptPath({
     dataDir: args.pluginDataDir,
@@ -311,8 +348,13 @@ export async function executeStoredScript(args: {
   if (bbPath !== null) {
     scriptEnv.BB_CLI = bbPath;
   }
-  const cwd = scriptsRoot(args.pluginDataDir);
-  await mkdir(cwd, { recursive: true });
+  await mkdir(scriptsRoot(args.pluginDataDir), { recursive: true });
+  if (!(await isDirectory(args.workingDir))) {
+    throw new Error(
+      `Script working directory is not an existing directory: ${args.workingDir}`,
+    );
+  }
+  const cwd = args.workingDir;
   const result = await executeWithProcessGroup({
     command: interpreter,
     scriptPath,

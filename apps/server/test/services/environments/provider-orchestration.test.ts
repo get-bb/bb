@@ -1,6 +1,9 @@
 import { appendThreadProvisioningEvent } from "../../../src/services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../../src/services/threads/thread-lifecycle.js";
-import { prepareProviderEnvironment } from "../../../src/services/threads/thread-environment-placement.js";
+import {
+  resolveThreadEnvironmentPlacement,
+  prepareProviderEnvironment,
+} from "../../../src/services/threads/thread-environment-placement.js";
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
@@ -60,6 +63,7 @@ import {
 import { toThreadResponseFromThread } from "../../../src/services/threads/thread-runtime-display.js";
 import type { TestEnvironmentProviderContext } from "../../helpers/provider-decisions.js";
 import {
+  seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -1928,3 +1932,269 @@ it("serializes concurrent branchless checkout attaches until the first thread is
       await fake.harness.lifecycle.dispose();
     }
   }));
+
+describe("existing-path provider selection", () => {
+  it.each([true, false])(
+    "reuses a recorded path without create and preserves ownership %s",
+    async (ownsPath) =>
+      withTestHarness(async (harness) => {
+        const create = vi.fn<PluginEnvironmentProviderDeclaration["create"]>();
+        const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+          async () => ({ status: "removed" }),
+        );
+        const fixture = setup(harness, {
+          experimental_existingPath: () => "/tmp/existing/",
+          create,
+          remove,
+          policy: { retireGraceMs: 0 },
+        });
+        const existing = seedEnvironment(harness.deps, {
+          projectId: fixture.context.project.id,
+          hostId: fixture.host.id,
+          path: "/tmp/existing",
+          providerOwnsPath: ownsPath,
+          environmentProviderId: fixture.record.provider.id,
+          environmentProviderPluginId: "test",
+          environmentProviderInstanceKey: "original-key",
+          mergeBaseBranch: "release",
+        });
+        harness.db
+          .update(environments)
+          .set({ resource: { original: true } })
+          .where(eq(environments.id, existing.id))
+          .run();
+        const before = getEnvironment(harness.db, existing.id);
+        const placement = await resolveThreadEnvironmentPlacement(
+          harness.deps,
+          {
+            projectId: fixture.context.project.id,
+            requestedEnvironment: {
+              type: "provider",
+              environmentProviderId: fixture.record.provider.id,
+              machine: { type: "existing", hostId: fixture.host.id },
+              inputs: null,
+            },
+          },
+        );
+        expect(placement).toEqual({
+          environmentId: existing.id,
+          environmentIntent: { type: "reuse", environmentId: existing.id },
+        });
+        expect(create).not.toHaveBeenCalled();
+        expect(getEnvironment(harness.db, existing.id)).toEqual(before);
+        await sweepProviderEnvironment(harness.deps, existing.id);
+        expect(remove).toHaveBeenCalledWith(
+          expect.objectContaining({
+            path: "/tmp/existing",
+            pathKey: "original-key",
+            resource: { original: true },
+          }),
+        );
+        expect(getEnvironment(harness.db, existing.id)?.teardownStatus).toBe(
+          "removed",
+        );
+      }),
+  );
+
+  it("leaves an unrecorded path to provider creation", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        experimental_existingPath: () => "/tmp/unrecorded",
+      });
+      const placement = await resolveThreadEnvironmentPlacement(harness.deps, {
+        projectId: fixture.context.project.id,
+        requestedEnvironment: {
+          type: "provider",
+          environmentProviderId: fixture.record.provider.id,
+          machine: { type: "existing", hostId: fixture.host.id },
+          inputs: null,
+        },
+      });
+      expect(placement.environmentId).toBeNull();
+      expect(placement.environmentIntent.type).toBe("provider");
+    }));
+
+  it.each(["error", "cleanup", "foreign"])(
+    "refuses an existing path in %s state",
+    async (state) =>
+      withTestHarness(async (harness) => {
+        const fixture = setup(harness, {
+          experimental_existingPath: () => "/tmp/existing",
+        });
+        const other =
+          state === "foreign"
+            ? seedProjectWithSource(harness.deps, {
+                hostId: fixture.host.id,
+                name: "Other",
+              }).project
+            : fixture.context.project;
+        const existing = seedEnvironment(harness.deps, {
+          projectId: other.id,
+          hostId: fixture.host.id,
+          path: "/tmp/existing",
+          status: state === "error" ? "error" : "ready",
+          providerOwnsPath: true,
+        });
+        if (state === "cleanup")
+          harness.db
+            .update(environments)
+            .set({ teardownStatus: "running" })
+            .where(eq(environments.id, existing.id))
+            .run();
+        await expect(
+          resolveThreadEnvironmentPlacement(harness.deps, {
+            projectId: fixture.context.project.id,
+            requestedEnvironment: {
+              type: "provider",
+              environmentProviderId: fixture.record.provider.id,
+              machine: { type: "existing", hostId: fixture.host.id },
+              inputs: null,
+            },
+          }),
+        ).rejects.toThrow();
+      }),
+  );
+
+  it("keeps the existing cleanup metadata when creation races with another attachment", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        async () => ({ status: "removed" }),
+      );
+      const fixture = setup(harness, {
+        create: async () => ({
+          status: "created",
+          path: "/tmp/existing",
+          ownsPath: false,
+          resource: { adopted: true },
+        }),
+        remove,
+        policy: { retireGraceMs: 0 },
+      });
+      const existing = seedEnvironment(harness.deps, {
+        projectId: fixture.context.project.id,
+        hostId: fixture.host.id,
+        path: "/tmp/existing",
+        providerOwnsPath: true,
+        environmentProviderId: fixture.record.provider.id,
+        environmentProviderPluginId: "test",
+        environmentProviderInstanceKey: "original-key",
+        mergeBaseBranch: "release",
+      });
+      harness.db
+        .update(environments)
+        .set({ resource: { original: true } })
+        .where(eq(environments.id, existing.id))
+        .run();
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row()).toMatchObject({
+        id: existing.id,
+        providerOwnsPath: true,
+        resource: { original: true },
+        mergeBaseBranch: "release",
+        environmentProviderInstanceKey: "original-key",
+        environmentProviderSelection: existing.environmentProviderSelection,
+      });
+      fixture.attach();
+      await sweepProviderEnvironment(harness.deps, existing.id);
+      expect(remove).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: "/tmp/existing",
+          pathKey: "original-key",
+          resource: { original: true },
+        }),
+      );
+    }));
+});
+
+describe("worktree adoption cleanup", () => {
+  it.each([true, false])(
+    "retains the real worktree provider cleanup behavior for owned=%s",
+    async (owned) =>
+      withTestHarness(async (harness) => {
+        const fixture = setup(harness);
+        const fake = createFakePluginHost({
+          pluginId: "environment-git-worktree",
+          experimental_callHostRpc: async ({ method }) => {
+            if (method !== "remove")
+              throw new Error(`Unexpected host operation: ${method}`);
+            return { status: "removed" };
+          },
+        });
+        const module = z
+          .object({
+            default: z.custom<(bb: BbPluginApi) => Promise<void>>(
+              (value) => typeof value === "function",
+            ),
+          })
+          .parse(
+            await import(
+              new URL(
+                "../../../../../plugins/environment-git-worktree/server.ts",
+                import.meta.url,
+              ).href
+            ),
+          );
+        await module.default(fake.bb);
+        const provider =
+          fake.harness.registrations.environmentProviders.get("git-worktree");
+        if (provider === undefined)
+          throw new Error("Missing worktree provider");
+        const record = { pluginId: "environment-git-worktree", provider };
+        setPluginEnvironmentProviderBridge({
+          listEnvironmentProviders: () => [record],
+          getEnvironmentProvider: (id) =>
+            id === provider.id ? record : undefined,
+          invokeProvider: async (_id, _label, run) => ({
+            ok: true,
+            value: await run(),
+          }),
+          decisionTimeoutMs: 10_000,
+        });
+        const existing = seedEnvironment(harness.deps, {
+          projectId: fixture.context.project.id,
+          hostId: fixture.host.id,
+          path: "/tmp/legacy-worktree",
+          providerOwnsPath: owned,
+          environmentProviderId: "git-worktree",
+          environmentProviderPluginId: record.pluginId,
+          environmentProviderInstanceKey: "original-key",
+          mergeBaseBranch: "release",
+        });
+        harness.db
+          .update(environments)
+          .set({
+            resource: owned ? null : { adopted: true },
+            retireAt: Date.now() - 1,
+          })
+          .where(eq(environments.id, existing.id))
+          .run();
+        const placement = await resolveThreadEnvironmentPlacement(
+          harness.deps,
+          {
+            projectId: fixture.context.project.id,
+            requestedEnvironment: {
+              type: "provider",
+              environmentProviderId: "git-worktree",
+              machine: { type: "existing", hostId: fixture.host.id },
+              inputs: { kind: "existing", path: existing.path },
+            },
+          },
+        );
+        expect(placement.environmentId).toBe(existing.id);
+        expect(fake.harness.experimental_hostRpcCalls).toHaveLength(0);
+        await sweepProviderEnvironment(harness.deps, existing.id);
+        expect(getEnvironment(harness.db, existing.id)?.teardownStatus).toBe(
+          "removed",
+        );
+        expect(fake.harness.experimental_hostRpcCalls).toHaveLength(
+          owned ? 1 : 0,
+        );
+        if (owned)
+          expect(fake.harness.experimental_hostRpcCalls[0]).toMatchObject({
+            method: "remove",
+            input: { path: existing.path, pathKey: "original-key" },
+          });
+      }),
+  );
+});

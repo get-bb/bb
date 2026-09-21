@@ -199,7 +199,7 @@ describe.sequential("bb plugin new dependency install", () => {
   it("falls back to the manual step when the selected npm is unavailable", async () => {
     vi.stubEnv("PATH", join(workDir, "empty-bin"));
     if (process.platform === "win32") {
-      vi.mocked(pluginBuild.resolvePluginNpmCli).mockReturnValue(
+      vi.mocked(pluginBuild.resolveBundledNpmCli).mockReturnValue(
         join(workDir, "missing-npm.cjs"),
       );
     }

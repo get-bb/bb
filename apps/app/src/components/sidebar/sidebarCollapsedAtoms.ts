@@ -1,3 +1,4 @@
+import { atom } from "jotai";
 import type {
   SidebarChronologicalSort,
   SidebarOrganizationMode,
@@ -39,9 +40,25 @@ export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
   "sidebar.machineSectionOrder",
 );
 
+export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(
+  "sidebar.hiddenGroups",
+);
+
 export const sidebarOrganizationModeAtom = createSyncedPreferenceAtom(
   "sidebar.organizationMode",
 );
+
+export const sidebarEnvironmentGroupingAtom = createSyncedPreferenceAtom(
+  "sidebar.threadGrouping.environment",
+);
+
+export const sidebarGroupThreadsByEnvironmentAtom = atom((get) => {
+  const grouping = get(sidebarEnvironmentGroupingAtom);
+  if (grouping !== "auto") {
+    return grouping;
+  }
+  return get(sidebarOrganizationModeAtom) !== "chronological";
+});
 
 export const sidebarChronologicalSortAtom = createSyncedPreferenceAtom(
   "sidebar.chronologicalSort",

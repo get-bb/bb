@@ -1,4 +1,11 @@
 import {
+  ThreadListVisibility,
+  ThreadListMore,
+  ThreadListVisibilityGroupScope,
+  ThreadListVisibilityMenuItems,
+  type ThreadListVisibilityGroup,
+} from "./ThreadListVisibility";
+import {
   SidebarHeaderControls,
   SidebarSectionMenuItems,
 } from "./SidebarHeaderControls";
@@ -58,8 +65,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { EmptyState } from "@bb/shared-ui/empty-state";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
+import { ThreadListEmptyState } from "@/components/thread/ThreadListEmptyState";
 import {
   SidebarMenuSkeleton,
   SidebarStickyGroup,
@@ -128,6 +135,7 @@ import { SidebarSectionRow } from "./SidebarSectionRow";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import {
   sidebarCollapsedThreadSectionsAtom,
+  sidebarGroupThreadsByEnvironmentAtom,
   type CollapsibleSidebarSectionId,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
@@ -251,6 +259,7 @@ interface ChronologicalBuiltInSidebarSections {
 interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
   builtInSections: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
+  fullSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
   pinnedRootNodes?: readonly ProjectThreadNode[];
@@ -456,24 +465,10 @@ export function formatArchivedEnvironmentThreadsToastTitle({
   return `Archived ${getThreadDisplayTitle(archivedThread)}`;
 }
 
-function getProjectThreadTreeEmptyStateIcon(
-  variant: ProjectThreadTreeVariant,
-): IconName | undefined {
-  if (variant === "section") {
-    return "MessageSquare";
-  }
-
-  return undefined;
-}
-
 function getProjectThreadTreeEmptyStateClassName(
   variant: ProjectThreadTreeVariant,
 ): string {
   return cn("py-0.5", variant === "section" ? "px-2" : "pl-8 pr-2");
-}
-
-function getProjectThreadTreeEmptyStateMessageClassName(): string {
-  return "text-xs leading-4 text-subtle-foreground/60";
 }
 
 function getProjectThreadTreeGroupLineClassName(
@@ -2010,6 +2005,9 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     sectionDnd?.dragOverParentKey === dndParentKey &&
     treePreviewBeforeKey === null;
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   const [revealedItemKeys, setRevealedItemKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -2017,8 +2015,19 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   const allRootItems = useMemo(
     () =>
       providedRootItems ??
-      buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
-    [compareThreads, draftThreadIds, projectThreads, providedRootItems],
+      buildProjectThreadGroups(
+        projectThreads,
+        compareThreads,
+        draftThreadIds,
+        groupThreadsByEnvironment,
+      ),
+    [
+      compareThreads,
+      draftThreadIds,
+      groupThreadsByEnvironment,
+      projectThreads,
+      providedRootItems,
+    ],
   );
   const rootItems = useMemo(() => {
     if (!progressiveDisclosureEnabled) {
@@ -2063,16 +2072,14 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
 
   if (rootItems.length === 0) {
     const emptyState = (
-      <EmptyState
+      <ThreadListEmptyState
         message={
           threadListState.status === "unavailable"
             ? "Threads unavailable"
-            : "No threads"
+            : undefined
         }
-        icon={getProjectThreadTreeEmptyStateIcon(variant)}
+        showIcon={variant === "section"}
         className={getProjectThreadTreeEmptyStateClassName(variant)}
-        iconClassName="size-3.5 text-subtle-foreground/50"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
     );
 
@@ -2150,6 +2157,7 @@ export const ChronologicalSectionThreadSections = memo(
     onToggleEnvironmentCollapsed,
     builtInSections,
     topLevelSectionOrder,
+    fullSectionOrder,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
@@ -2169,6 +2177,9 @@ export const ChronologicalSectionThreadSections = memo(
       [collapsedThreadIds, onToggleThreadCollapsed],
     );
     const draftThreadIds = usePromptDraftInputThreadIds(threads);
+    const groupThreadsByEnvironment = useAtomValue(
+      sidebarGroupThreadsByEnvironmentAtom,
+    );
     const rootItems = useMemo(
       () =>
         buildSectionThreadList(
@@ -2176,8 +2187,15 @@ export const ChronologicalSectionThreadSections = memo(
           compareThreads,
           sections,
           draftThreadIds,
+          groupThreadsByEnvironment,
         ),
-      [threads, compareThreads, sections, draftThreadIds],
+      [
+        threads,
+        compareThreads,
+        sections,
+        draftThreadIds,
+        groupThreadsByEnvironment,
+      ],
     );
     const persistedSectionItems = rootItems.filter(
       (item) => item.kind === "section",
@@ -2235,16 +2253,13 @@ export const ChronologicalSectionThreadSections = memo(
       renderedSectionDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID &&
       loosePreviewBeforeKey === null;
     const looseEmptyState = (
-      <EmptyState
+      <ThreadListEmptyState
         message={
           threadListState.status === "unavailable"
             ? "Threads unavailable"
-            : "No threads"
+            : undefined
         }
-        icon={getProjectThreadTreeEmptyStateIcon("section")}
         className={getProjectThreadTreeEmptyStateClassName("section")}
-        iconClassName="size-3.5 text-subtle-foreground/50"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
     );
     const threadsListContent =
@@ -2322,6 +2337,35 @@ export const ChronologicalSectionThreadSections = memo(
         content: threadsContent,
       },
     };
+
+    const visibilityGroups: ThreadListVisibilityGroup[] = sectionItems.map(
+      (item) => ({
+        id: buildSidebarEntitySectionId("section", item.group.id),
+        title: item.group.name,
+        threads: getProjectThreadItemDescendants(item.group.items),
+        renderContent: (close) => (
+          <ProjectThreadTree
+            rootItems={item.group.items}
+            progressiveDisclosureEnabled={false}
+            threadListState={{
+              status: "ready",
+              threads: getProjectThreadItemDescendants(item.group.items),
+            }}
+            compareThreads={compareThreads}
+            variant="section"
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
+            }}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        ),
+      }),
+    );
     const orderedSections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>
         {(sectionId) => {
@@ -2339,23 +2383,35 @@ export const ChronologicalSectionThreadSections = memo(
           }
           const sectionItem = sectionItemsBySectionId.get(sectionId);
           return sectionItem ? (
-            <div key={sectionId}>{renderItems([sectionItem])}</div>
+            <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+              {renderItems([sectionItem])}
+            </ThreadListVisibilityGroupScope>
           ) : null;
         }}
       </SidebarSectionOrderList>
     );
 
-    return sectionDnd ? (
-      <DndContext {...sectionDnd.dndContextProps}>
-        <SectionThreadDndProvider value={renderedSectionDnd}>
-          {orderedSections}
-          <SectionThreadDragOverlayPortal
-            activeThread={sectionDnd.activeThread}
-          />
-        </SectionThreadDndProvider>
-      </DndContext>
-    ) : (
-      orderedSections
+    return (
+      <ThreadListVisibility
+        groups={visibilityGroups}
+        order={fullSectionOrder}
+        onOrderChange={onTopLevelSectionOrderChange}
+        label="Sections"
+      >
+        {sectionDnd ? (
+          <DndContext {...sectionDnd.dndContextProps}>
+            <SectionThreadDndProvider value={renderedSectionDnd}>
+              {orderedSections}
+              <SectionThreadDragOverlayPortal
+                activeThread={sectionDnd.activeThread}
+              />
+            </SectionThreadDndProvider>
+          </DndContext>
+        ) : (
+          orderedSections
+        )}
+        <ThreadListMore />
+      </ThreadListVisibility>
     );
   },
 );
@@ -2427,12 +2483,21 @@ function ProjectRowComponent({
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
     >
-      <ProjectActionsMenuItems project={project} surface="dropdown" />
+      <ProjectActionsMenuItems
+        project={project}
+        surface="dropdown"
+        extraActions={(surface) => (
+          <ThreadListVisibilityMenuItems surface={surface} />
+        )}
+      />
     </SidebarHeaderControls>
   );
 
   return (
     <ProjectActionsContextMenu
+      extraActions={(surface) => (
+        <ThreadListVisibilityMenuItems surface={surface} />
+      )}
       project={project}
       onOpenChange={setIsContextActionsOpen}
     >

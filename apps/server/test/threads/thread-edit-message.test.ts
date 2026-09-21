@@ -1194,11 +1194,11 @@ describe("editThreadMessage", () => {
       const { environment, thread } = seedEditableThread(harness);
       let pendingInteractionChecks = 0;
       const originalHasPendingInteraction =
-        harness.deps.pendingInteractions.hasPendingThreadInteraction.bind(
+        harness.deps.pendingInteractions.hasTurnBoundPendingThreadInteraction.bind(
           harness.deps.pendingInteractions,
         );
       const pendingInteractionSpy = vi
-        .spyOn(harness.deps.pendingInteractions, "hasPendingThreadInteraction")
+        .spyOn(harness.deps.pendingInteractions, "hasTurnBoundPendingThreadInteraction")
         .mockImplementation((threadId) => {
           pendingInteractionChecks += 1;
           if (pendingInteractionChecks === 2) {

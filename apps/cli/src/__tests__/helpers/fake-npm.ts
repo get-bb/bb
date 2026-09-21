@@ -73,7 +73,7 @@ export async function installFakeNpm(workDir: string): Promise<string> {
   if (process.platform === "win32") {
     const windowsEntry = join(binDir, "npm-cli.cjs");
     await writeFile(windowsEntry, FAKE_NPM);
-    vi.spyOn(pluginBuild, "resolvePluginNpmCli").mockReturnValue(windowsEntry);
+    vi.spyOn(pluginBuild, "resolveBundledNpmCli").mockReturnValue(windowsEntry);
   }
   vi.stubEnv("PATH", `${binDir}${delimiter}${process.env.PATH ?? ""}`);
   return binDir;

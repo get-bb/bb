@@ -43,6 +43,7 @@ interface BranchPickerSearchProps {
   onEnterSelection: (branch: string) => void;
   onQueryChange: (query: string) => void;
   ariaLabel?: string;
+  placeholder?: string;
 }
 
 export function BranchPickerSectionHeader({
@@ -133,6 +134,7 @@ export function BranchPickerSearch({
   onEnterSelection,
   onQueryChange,
   ariaLabel,
+  placeholder = "Search branches",
 }: BranchPickerSearchProps) {
   return (
     <div className="shrink-0 border-b border-border p-1.5">
@@ -152,7 +154,7 @@ export function BranchPickerSearch({
             event.stopPropagation();
             if (enterSelection) onEnterSelection(enterSelection);
           }}
-          placeholder="Search branches"
+          placeholder={placeholder}
           className="h-8 border-0 bg-transparent pl-8 pr-2 text-xs shadow-none focus-visible:ring-0"
         />
       </div>

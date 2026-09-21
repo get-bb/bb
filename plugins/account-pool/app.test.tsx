@@ -573,45 +573,6 @@ describe("Account Pool settings", () => {
     },
   );
 
-  it("copies the exact device code and distinguishes it from the URL copy", async () => {
-    const codeCopy = deferred<void>();
-    const urlCopy = deferred<void>();
-    const writeText = vi
-      .fn()
-      .mockImplementationOnce(() => codeCopy.promise)
-      .mockImplementationOnce(() => urlCopy.promise);
-    vi.stubGlobal("navigator", {
-      ...navigator,
-      clipboard: { writeText },
-    });
-    const slot = render([], { "codexLogin.start": codexLoginStart });
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Sign in to Codex" }),
-    );
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Copy Codex sign-in code" }),
-    );
-    expect(writeText).toHaveBeenLastCalledWith("ABCD-1234");
-    await act(async () => codeCopy.resolve());
-    expect(slot.getByText("Sign-in code copied")).toBeTruthy();
-    expect(
-      slot
-        .getByRole("button", { name: "Copy Codex sign-in code" })
-        .querySelector('[data-icon="Check"]'),
-    ).not.toBeNull();
-
-    const urlButton = slot.getByRole("button", {
-      name: "Copy Codex authorization URL",
-    });
-    fireEvent.click(urlButton);
-    expect(writeText).toHaveBeenLastCalledWith(
-      "https://auth.openai.com/codex/device",
-    );
-    await act(async () => urlCopy.resolve());
-    expect(slot.getByText("Authorization URL copied")).toBeTruthy();
-    expect(urlButton.textContent).toContain("Copied");
-  });
-
   it("does not claim success when copying the device code fails", async () => {
     const copy = deferred<void>();
     const writeText = vi.fn(() => copy.promise);

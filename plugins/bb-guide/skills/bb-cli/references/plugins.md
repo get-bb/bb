@@ -163,19 +163,19 @@
     by that digest, and run it as a host RPC worker, a provider bridge, or
     both). None of it needs the server.
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
-    to the running bb (default: cwd). For a plugin that depends on the npm
-    package it rewrites the exact `devDependencies` pin to this bb's SDK
+    to the running bb (default: cwd). It rewrites the exact `devDependencies`
+    pin to this bb's SDK
     version and brings the type-only devDependencies of the packages bb shims
     at runtime (sonner, vaul, the portal radix families, @pierre/diffs, clsx,
     tailwind-merge, class-variance-authority) to this bb's versions — adding
     any an app plugin is missing and moving one out of `dependencies`
-    (reporting old → new, and reminding you to `npm install`); for a
-    plugin that still vendors declarations it rewrites `types/*.d.ts`, creating
-    `types/` when absent. Run it in a cloned or older plugin: the SDK surface
-    grows every release. `--check` writes nothing and exits non-zero on a
-    mismatch (for CI). `bb plugin build` and `bb plugin dev` refresh vendored
-    declarations automatically and leave npm-package plugins alone. Needs no
-    server.
+    (reporting old → new, and reminding you to `npm install`). A plugin that
+    still vendors declarations must run `bb plugin migrate`; `types` and
+    `types --check` exit non-zero with that instruction. Run `types` in a
+    cloned or older package-layout plugin: the SDK surface grows every release.
+    `--check` writes nothing and exits non-zero on a mismatch (for CI).
+    `bb plugin build` and `bb plugin dev` warn for a vendored layout, skip the
+    type update, and continue with its checked-in declarations. Needs no server.
   - `bb plugin migrate [path] [--yes]` — convert a plugin that still vendors
     `types/` to the `@get-bb/plugin-sdk` npm package (default: cwd): add the
     exact `devDependencies` pin, raise `engines.bbPluginSdk` when this bb's SDK
@@ -194,7 +194,8 @@
     prints the exact plan and asks before touching anything; `--yes` is
     required when stdin is not a terminal, where it otherwise prints the plan
     and exits non-zero having changed nothing. Run `npm install` afterwards.
-    The vendored layout keeps working, so nothing migrates unless you ask.
+    The vendored layout still builds and runs in development with its existing
+    declarations, but SDK type updates require migration.
     Re-running on a migrated plugin is a no-op. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is

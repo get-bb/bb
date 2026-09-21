@@ -21,10 +21,18 @@ bb pool account refresh <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
 bb pool config
-bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>
+bb pool parent [proxy|isolate]
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
+
+Every command accepts `--json` and `--help`. `bb pool --help` lists the
+commands; `bb pool <command> --help` prints that command's arguments, options,
+and rules, including which flags cannot be combined. Unknown commands, unknown
+flags, and stray arguments are rejected with the nearest suggestion rather than
+ignored, and a failing invocation that carries `--json` also prints
+`{"ok":false,"error":{"code","message","hint"}}` on stdout.
 
 Claude `--login` starts a PKCE session, prints a browser URL and session ID,
 then exits. Pipe the manual callback code to `account login-complete` with that

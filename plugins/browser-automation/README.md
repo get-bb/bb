@@ -8,8 +8,10 @@ Browser Automation is optional and disabled by default. Enable it in plugin
 settings when you want to use it.
 
 The plugin was scaffolded with `bb plugin new browser-automation`. It has server, host,
-CLI, RPC, and a bundled skill. Agents use the CLI through the skill. Screenshot
-commands return temporary JPEG file paths and the browser host ID. Screenshot cards, streaming previews, and a screenshot sidebar viewer are not included. Cloud provisioning and arbitrary CDP endpoints are excluded.
+app, CLI, RPC, and a bundled skill. Agents use the CLI through the skill. Screenshot
+commands return temporary JPEG file paths and the browser host ID. Local headless
+sessions show a live preview inline in the chat that expands into a lightbox; see
+[Live preview](#live-preview). Screenshot cards and a screenshot sidebar viewer are not included. Cloud provisioning and arbitrary CDP endpoints are excluded.
 
 ## Runtime installation and provenance
 
@@ -110,6 +112,7 @@ bb browser-automation run <session-id> --script 'const p = await browser.getPage
 bb browser-automation run <session-id> --script-file ./check.js --script-host <invoking-host-id> --timeout-ms 30000 --json
 bb browser-automation pages <session-id> --json
 bb browser-automation screenshot <session-id> --page main --json
+bb browser-automation preview <session-id> [--after <sequence>] --json
 bb browser-automation stop <session-id> --json
 bb browser-automation close <session-id> --json
 ```
@@ -159,7 +162,7 @@ session records or CLI session results.
 
 The CLI uses the same validated operation handlers as RPC. The
 RPC contract in `contracts.ts` exposes `open`, `list`, `run`, `pages`,
-`screenshot`, `stop`, and `close`.
+`screenshot`, `preview`, `stop`, and `close`.
 RPC inputs include `threadId`; session operations also include `sessionId`.
 `open.selection` is `{backend:"local",hostId}` or
 `{backend:"desktop",hostId,instanceId,tabId?}`. A tab ID is an explicit handoff.
@@ -174,6 +177,52 @@ sessions and revokes their desktop leases. Unreachable desktop cleanup remains
 recorded for reconciliation on a later plugin load. Desktop lease loss is
 observed using the public SDK subscription; core revokes the CDP endpoint
 immediately, and the plugin stops its worker session when notified.
+
+## Live preview
+
+Opening a local headless session returns a `previewDirective` in the CLI
+result, `::browser-preview{session="<session-id>"}`. The plugin's agent
+instructions tell the agent to paste it once, as a standalone line, in its next
+message. BB renders that line inline in the chat as a live thumbnail of the
+browser with the page title, location, and a Live, Ended, or Unavailable state.
+The card collapses, and its expand button opens the same live view in a
+lightbox sized to the window; on compact screens the lightbox is the shared
+responsive drawer. The lightbox is mounted once per window as an app overlay,
+not inside the card, so it stays open and live when the timeline paginates the
+card away. Desktop sessions return no directive and never preview: that
+browser is already visible in the app's side panel, and its brokered connection
+is not reused for previews.
+
+Frames come from a second, read-only CDP connection that the host worker opens
+to the session's own Chrome (`preview.ts`). It runs `Page.startScreencast` as
+JPEG at about four frames per second, at most 800 pixels on the long edge for
+thumbnails. While a lightbox requests `size: "full"` it recasts the same page at
+up to 1280 pixels, the headless window's width, and returns to thumbnails ten
+seconds after the last full-size request. It casts only while something is
+watching: the connection closes after 15 seconds
+without a request and reopens on demand. It previews the page that navigated
+most recently, preferring any page over `about:blank`, so it follows the named
+page a script is driving. Previews never enter the per-session run queue, so
+they keep updating while a script runs and never delay one.
+
+The app long-polls the `preview` RPC with the last sequence it rendered and the
+`size` it needs, `thumbnail` by default; the
+server forwards to the host's `preview` RPC, which answers as soon as a newer
+frame exists or after five seconds with `frame: null`. An inline card polls
+only while the window is visible and it is expanded and scrolled into view, so
+cards left behind in the chat history cost nothing. The lightbox opens from the
+card's current frame and then runs its own poller; the card pauses its poller
+while its session's lightbox is open. Preview requests are not
+session activity: watching a preview does not postpone the five-minute idle
+cleanup. When the session stops, closes, or expires, the card keeps its last
+frame dimmed for as long as it stays mounted; a card first viewed after that
+shows only its Ended header. A card whose session it can never read, such as a
+directive copied into a forked thread, gives up after five failed requests.
+
+`bb browser-automation preview <session-id> --json` reports the same live frame
+as `{session, frame}` where `frame` has `sequence`, `mimeType`, `width`,
+`height`, `url`, `title`, and `bytes`, or is `null` when nothing newer than
+`--after` arrived. It omits the image bytes; use `screenshot` for a file.
 
 ## Validation
 
@@ -201,7 +250,9 @@ binary path, its SHA-256, and timings.
 
 `smoke` takes an explicit binary and creates disposable directories and runs
 real Chrome, without starting a BB core or using an existing browser profile.
-It verifies named pages, navigation, clicking, JPEG bytes, serialization,
+It verifies named pages, navigation, clicking, JPEG bytes, a live preview that
+follows a second named page while its script runs and switches to full-size
+frames on request, serialization,
 independent session cancellation, a synchronous infinite-loop timeout,
 reopening, closing a runtime session (further runs are rejected), and
 preservation of an attached browser and its page state after that session

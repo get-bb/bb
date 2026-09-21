@@ -117,6 +117,7 @@ describe("bb CLI warning placement", () => {
       mapScriptResultToRun({
         exitCode: 0,
         output: "",
+        stderr: "",
         timedOut: false,
         warning: "[bb] warning: could not locate the bb CLI",
       }),
@@ -128,6 +129,7 @@ describe("bb CLI warning placement", () => {
       mapScriptResultToRun({
         exitCode: 0,
         output: '{"wakeAgent": false}\n',
+        stderr: "",
         timedOut: false,
         warning: "[bb] warning: could not locate the bb CLI",
       }),
@@ -171,6 +173,7 @@ describe("bb CLI injection into a script run", () => {
         scriptFile: "script.mjs",
         interpreter: "node",
         timeoutMs: 10_000,
+        workingDir: scriptDir,
         serverUrl: "http://127.0.0.1:38886",
       });
 

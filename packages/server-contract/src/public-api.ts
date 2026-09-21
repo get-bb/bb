@@ -249,6 +249,7 @@ import type {
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
   ThreadTimelineResponse,
+  ThreadImageMetadata,
   ThreadContextResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
@@ -369,6 +370,7 @@ import {
   terminalOutputQuerySchema,
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
+  threadImageMetadataSchema,
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
@@ -1564,6 +1566,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
+    }),
+    saveImageMetadata: defineRoute({
+      path: "/threads/:id/timeline/image-metadata",
+      method: "put",
+      request: jsonRequest<PathId, ThreadImageMetadata>(
+        threadImageMetadataSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     timeline: defineRoute({
       path: "/threads/:id/timeline",

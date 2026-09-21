@@ -19,7 +19,29 @@ inspection.
 
 Run `bb --version` for the CLI version. Use `bb --help` or `bb help [command]`
 for help. Run bb guide for the system overview. Run bb guide <chapter> for one
-area. Use bb <group> --help for current flags and defaults.
+area. Use bb <group> --help for current flags and defaults, or
+`bb guide commands <group>` for every command in a group with its options on
+one page.
+
+## Errors and JSON
+
+- Read the whole error before you run `--help`. A failed invocation prints the
+  nearest command or option, the usage line, the valid options, and, for a
+  missing project, thread, machine, or environment, the exact flag to add with
+  the current ID filled in.
+- With `--json`, a failure prints
+  `{"ok": false, "error": {"code", "message", "hint"}}` on stdout and the
+  readable message on stderr, and exits non-zero. Parse stdout only; `2>&1`
+  mixes the message into the JSON.
+- Output shapes differ by command: `bb thread list --json` is a bare array,
+  `bb thread show --json` nests under `.thread`, `bb terminal list --json`
+  wraps in `.sessions`. `bb guide json` lists each shape, and the help of the
+  most-parsed commands ends with its JSON shape.
+- Pass long or multi-line text from a file: `bb thread tell <id>
+--message-file <path>`, `bb thread spawn --prompt-file <path>`, with `-` for
+  stdin. Inside double quotes the shell runs `backticks` and `$(...)` before
+  bb sees the text, which silently corrupts Markdown and can execute commands.
+- Timeouts take seconds or a duration with a unit (`90s`, `20m`, `4h`).
 
 A standalone CLI targets http://127.0.0.1:38886. Use BB_SERVER_URL and
 BB_HOST_DAEMON_PORT only for an intentional non-default target.
@@ -114,6 +136,7 @@ bb environment providers --json
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb thread show "$BB_THREAD_ID" --json
 bb thread context --self --json
+bb thread image-metadata --self --json
 bb environment status "$BB_ENVIRONMENT_ID" --json
 bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
@@ -140,12 +163,14 @@ plugins; do not add plugin command manuals here.
 
 ## Built-in browser control
 
-Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Revealing tabs or acquiring control opens the side panel and selects the tab only in the already focused thread, without switching threads or activating the desktop window. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares. `import-sources` and `import-cookies --from <source> --profile <dir> [--into personal|automation:<id>]` copy signed-in cookies from an installed browser into a BB browser profile; they need `--host`, `--instance`, and `--generation` only, and the source browser must be quit first.
+Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Revealing tabs or acquiring control opens the side panel and selects the tab only in the already focused thread, without switching threads or activating the desktop window. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares. `import-sources` and `import-cookies --from <source> --profile <dir> [--into personal|automation:<id>]` copy signed-in cookies from an installed browser (including Helium on macOS) into a BB browser profile; they need `--host`, `--instance`, and `--generation` only, and the source browser must be quit first.
 
 `bb machine show <id-or-name> --json` includes provider-owned inventory and
 estimates in `providerDetails` when available. Provider inventory failures are
 reported; this is not billing/invoice data. Suspension requires idle live threads
 and no open terminals; empty machines can use an opted-in provider idle policy.
+
+`bb thread image-metadata` reads persisted image dimensions; add `--source URL --width N --height N` and optional `--etag TAG` to record a source without fetching it.
 
 `bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
 

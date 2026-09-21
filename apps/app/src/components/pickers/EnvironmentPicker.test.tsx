@@ -543,6 +543,76 @@ describe("EnvironmentPickerUI", () => {
       host.id,
     );
   });
+
+  it("offers reusing an existing environment alongside the providers", () => {
+    const onSelectReuse = vi.fn();
+    renderPicker(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        onSelectReuse={onSelectReuse}
+        modal={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    const item = screen.getByRole("option", { name: /Reuse existing/u });
+    expect(item.getAttribute("aria-disabled")).toBe("false");
+    fireEvent.click(item);
+    expect(onSelectReuse).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the existing-environment row selected while a reuse value is active", () => {
+    renderPicker(
+      <EnvironmentPickerUI
+        value="reuse:env_alpha"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        onSelectReuse={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    expect(
+      screen
+        .getByRole("option", { name: /Reuse existing/u })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+  });
+
+  it("omits the existing-environment row when reuse is not wired up", () => {
+    renderPicker(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    expect(screen.queryByText("Reuse existing")).toBeNull();
+  });
 });
 
 describe("EnvironmentPickerUI multi-machine menu", () => {

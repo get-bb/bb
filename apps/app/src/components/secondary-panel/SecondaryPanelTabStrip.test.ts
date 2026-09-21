@@ -211,7 +211,7 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(strip?.children[2]).toBe(rightButton);
     expect(leftButton?.classList.contains("absolute")).toBe(false);
     expect(rightButton?.classList.contains("absolute")).toBe(false);
-    expect(leftButton?.classList.contains("w-5")).toBe(true);
+    expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-5")).toBe(true);
     expect(leftButton?.classList.contains("opacity-0")).toBe(true);
     expect(leftButton?.tabIndex).toBe(-1);
@@ -236,6 +236,8 @@ describe("secondary panel tab-strip edge fades", () => {
     viewport!.scrollLeft = 120;
     fireEvent.scroll(viewport!);
     act(() => animationFrameCallback?.(0));
+    expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(leftButton?.classList.contains("w-5")).toBe(true);
     expect(rightButton?.getAttribute("aria-hidden")).toBe("true");
     expect(leftButton?.getAttribute("aria-hidden")).toBe("false");
     expect(document.activeElement).toBe(leftButton);
