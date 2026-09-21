@@ -412,15 +412,24 @@ Stories: move `SidebarOverview`, `SectionGrouping`, and `ThreadRow` stories to
   consumer.
 - `docs/cli-guide-and-skill.md` for the CLI changes.
 
-Performance benchmark: `apps/app/src/components/sidebar/sidebar.bench.tsx`
-(Vitest bench, jsdom) mounts the built-in list and the plugin list with a
-generated bootstrap payload of 3,000 threads across 40 projects and 8
-sections, then measures initial mount, one status patch through
-`updateCachedThreadListStatusState`, one membership refetch that changes
-50 rows, and one pin. Run with `pnpm exec turbo run bench --filter=@bb/app`
-and paste the table into each Phase 3 PR that touches rendering. jsdom
-measures JavaScript time only; a manual pass in the desktop app with the
-React profiler covers layout.
+Performance benchmark: `apps/app/src/components/sidebar/sidebar.bench.test.tsx`
+(gated Vitest test, jsdom) mounts the list with a generated bootstrap payload
+of 3,000 threads across 40 projects and 8 sections, simulates an 800px
+viewport so windowing engages, then measures initial mount, one status patch
+through `updateCachedThreadListStatusState`, one membership refetch that
+changes 50 rows, and one pin (median of 5). Run with:
+
+```
+cd apps/app && BB_SIDEBAR_BENCH=1 pnpm exec vitest run src/components/sidebar/sidebar.bench.test.tsx
+```
+
+Baseline for the built-in list (2026-09-21, bee, jsdom): mount 694 ms with
+81 realized rows of 2,688 windowed items, status patch 183 ms, membership
+refetch 247 ms, pin 181 ms. Phase 3 adds the plugin list to the same harness
+(mounted through `PluginThreadList` with its registration, preference RPC
+stubbed) and each rendering PR pastes both rows. jsdom measures JavaScript
+time only; a manual pass in the desktop app with the React profiler covers
+layout.
 
 Verification per phase:
 
