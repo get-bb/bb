@@ -31,6 +31,7 @@ interface ProjectActionsMenuBaseProps {
   project: ProjectResponse;
   onRename?: () => void;
   onCloseAutoFocus?: (event: Event) => void;
+  extraActions?: (surface: ProjectActionsMenuSurface) => ReactNode;
 }
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
@@ -57,6 +58,7 @@ export function ProjectActionsMenuItems({
   project,
   surface,
   onRename,
+  extraActions,
 }: ProjectActionsMenuItemsProps) {
   const navigate = useNavigate();
   const { hostId: pickerHostId } = usePathPickerHost();
@@ -98,6 +100,7 @@ export function ProjectActionsMenuItems({
           Add local path
         </ActionMenuItem>
       ) : null}
+      {extraActions?.(surface)}
       <ActionMenuSeparator surface={surface} />
       <ActionMenuItem
         surface={surface}
@@ -118,6 +121,7 @@ export function ProjectActionsMenu({
   triggerClassName,
   onRename,
   onCloseAutoFocus,
+  extraActions,
 }: ProjectActionsMenuProps) {
   return (
     <DropdownMenu>
@@ -151,6 +155,7 @@ export function ProjectActionsMenu({
           project={project}
           surface="dropdown"
           onRename={onRename}
+          extraActions={extraActions}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -173,6 +178,7 @@ function ProjectActionsCompactLongPressMenu({
   project,
   onOpenChange,
   onRename,
+  extraActions,
 }: ProjectActionsContextMenuProps) {
   return (
     <CompactLongPressMenu
@@ -184,6 +190,7 @@ function ProjectActionsCompactLongPressMenu({
           project={project}
           surface="dropdown"
           onRename={onRename}
+          extraActions={extraActions}
         />
       }
     >
@@ -199,6 +206,7 @@ function ProjectActionsDesktopContextMenu({
   onOpenChange,
   onRename,
   onCloseAutoFocus,
+  extraActions,
 }: ProjectActionsContextMenuProps) {
   return (
     <ContextMenu onOpenChange={onOpenChange}>
@@ -214,6 +222,7 @@ function ProjectActionsDesktopContextMenu({
           project={project}
           surface="context"
           onRename={onRename}
+          extraActions={extraActions}
         />
       </ContextMenuContent>
     </ContextMenu>

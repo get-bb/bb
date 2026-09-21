@@ -1,4 +1,11 @@
 import {
+  ThreadListVisibility,
+  ThreadListMore,
+  ThreadListVisibilityGroupScope,
+  ThreadListVisibilityMenuItems,
+  type ThreadListVisibilityGroup,
+} from "./ThreadListVisibility";
+import {
   SidebarHeaderControls,
   SidebarSectionMenuItems,
 } from "./SidebarHeaderControls";
@@ -244,6 +251,7 @@ interface ChronologicalBuiltInSidebarSections {
 interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
   builtInSections: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
+  fullSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
   pinnedRootNodes?: readonly ProjectThreadNode[];
@@ -2130,6 +2138,7 @@ export const ChronologicalSectionThreadSections = memo(
     onToggleEnvironmentCollapsed,
     builtInSections,
     topLevelSectionOrder,
+    fullSectionOrder,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
@@ -2308,6 +2317,35 @@ export const ChronologicalSectionThreadSections = memo(
         content: threadsContent,
       },
     };
+
+    const visibilityGroups: ThreadListVisibilityGroup[] = sectionItems.map(
+      (item) => ({
+        id: buildSidebarEntitySectionId("section", item.group.id),
+        title: item.group.name,
+        threads: getProjectThreadItemDescendants(item.group.items),
+        renderContent: (close) => (
+          <ProjectThreadTree
+            rootItems={item.group.items}
+            progressiveDisclosureEnabled={false}
+            threadListState={{
+              status: "ready",
+              threads: getProjectThreadItemDescendants(item.group.items),
+            }}
+            compareThreads={compareThreads}
+            variant="section"
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
+            }}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        ),
+      }),
+    );
     const orderedSections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>
         {(sectionId) => {
@@ -2325,23 +2363,35 @@ export const ChronologicalSectionThreadSections = memo(
           }
           const sectionItem = sectionItemsBySectionId.get(sectionId);
           return sectionItem ? (
-            <div key={sectionId}>{renderItems([sectionItem])}</div>
+            <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+              {renderItems([sectionItem])}
+            </ThreadListVisibilityGroupScope>
           ) : null;
         }}
       </SidebarSectionOrderList>
     );
 
-    return sectionDnd ? (
-      <DndContext {...sectionDnd.dndContextProps}>
-        <SectionThreadDndProvider value={renderedSectionDnd}>
-          {orderedSections}
-          <SectionThreadDragOverlayPortal
-            activeThread={sectionDnd.activeThread}
-          />
-        </SectionThreadDndProvider>
-      </DndContext>
-    ) : (
-      orderedSections
+    return (
+      <ThreadListVisibility
+        groups={visibilityGroups}
+        order={fullSectionOrder}
+        onOrderChange={onTopLevelSectionOrderChange}
+        label="Sections"
+      >
+        {sectionDnd ? (
+          <DndContext {...sectionDnd.dndContextProps}>
+            <SectionThreadDndProvider value={renderedSectionDnd}>
+              {orderedSections}
+              <SectionThreadDragOverlayPortal
+                activeThread={sectionDnd.activeThread}
+              />
+            </SectionThreadDndProvider>
+          </DndContext>
+        ) : (
+          orderedSections
+        )}
+        <ThreadListMore />
+      </ThreadListVisibility>
     );
   },
 );
@@ -2429,12 +2479,18 @@ function ProjectRowComponent({
         project={project}
         surface="dropdown"
         onRename={rename.startEditingFromMenu}
+        extraActions={(surface) => (
+          <ThreadListVisibilityMenuItems surface={surface} />
+        )}
       />
     </SidebarHeaderControls>
   );
 
   return (
     <ProjectActionsContextMenu
+      extraActions={(surface) => (
+        <ThreadListVisibilityMenuItems surface={surface} />
+      )}
       project={project}
       disabled={rename.isEditing}
       onRename={rename.startEditingFromMenu}
