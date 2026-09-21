@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { getUiPreferenceDefault } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -77,28 +76,6 @@ function useSidebarViewSettings() {
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
-  const direction =
-    savedDirection === "default"
-      ? selectedSort === "alpha"
-        ? "ascending"
-        : "descending"
-      : savedDirection;
-  const defaultSort = getUiPreferenceDefault("sidebar.chronologicalSort");
-  const defaultDirection = getUiPreferenceDefault("sidebar.sortDirection");
-  const defaultLifecycles = getUiPreferenceDefault("sidebar.threadLifecycles");
-  const changed = {
-    sort:
-      selectedSort !== defaultSort ||
-      direction !==
-        (defaultDirection === "default"
-          ? defaultSort === "alpha"
-            ? "ascending"
-            : "descending"
-          : defaultDirection),
-    filter:
-      lifecycles.length !== defaultLifecycles.length ||
-      lifecycles.some((value) => !defaultLifecycles.includes(value)),
-  };
   return {
     lifecycles,
     setLifecycles,
@@ -110,7 +87,6 @@ function useSidebarViewSettings() {
     savedDirection,
     setDirection,
     selectedSort,
-    changed,
   };
 }
 export function SidebarHeaderControls({

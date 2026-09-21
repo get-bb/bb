@@ -708,14 +708,13 @@ Active, Drafts, and Archived. Drafts appear above the existing hierarchy;
 selected archived threads retain their section, project, machine, and pin placement.
 Choose Filter in a sidebar header's combined actions menu to change the selection.
 The combined menu offers Organize, Sort by, and Filter.
-Sort by and Filter show Reset only when their displayed settings differ from the
-default. Organize retains its Sections choices and Groups → By environment toggle.
+Organize retains its Sections choices and Groups → By environment toggle.
 Archived rows have a persistent Archive icon
 that restores the thread without navigating away.
 Drafts come from the available unarchived bootstrap; Archived loads pages only
 while selected. For example, `bb settings ui set sidebar.threadLifecycles
-'["active","draft"]'` shows active and saved draft threads. Reset restores
-`["active"]`. Plugin sidebar replacements own their rendering.
+'["active","draft"]'` shows active and saved draft threads.
+Plugin sidebar replacements own their rendering.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads
 that share one worktree environment collapse into a single worktree row inside
