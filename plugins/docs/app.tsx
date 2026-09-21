@@ -1142,10 +1142,7 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
         onClick={openPreview}
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <HugeiconsIcon
-            icon={/\.html?$/i.test(document.path) ? HtmlFile01Icon : File01Icon}
-            className="size-4"
-          />
+          <HugeiconsIcon icon={HtmlFile01Icon} className="size-4" />
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {document.title}
@@ -1164,7 +1161,12 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   );
 }
 
-function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
+function HtmlPreview({
+  vaultId,
+  path,
+  title,
+  panel = false,
+}: DocumentRef & { panel?: boolean }) {
   const rpc = useRpc<typeof docsRpcContract>();
   const [state, setState] = useState<PreviewLease | { error: string } | null>(
     null,
@@ -1174,8 +1176,8 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
     setState(null);
     rpc
       .call("preparePreview", {
-        vaultId: document.vaultId,
-        path: document.path,
+        vaultId,
+        path,
       })
       .then((lease) => {
         if (active) setState(lease);
@@ -1189,16 +1191,22 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
     return () => {
       active = false;
     };
-  }, [document.path, document.vaultId, rpc]);
+  }, [path, vaultId, rpc]);
   if (!state) return <DocumentSkeleton />;
   if ("error" in state)
-    return <div className="text-sm text-destructive">{state.error}</div>;
+    return (
+      <div
+        className={`text-sm text-destructive ${panel ? "" : "min-w-0 flex-1 p-6"}`}
+      >
+        {state.error}
+      </div>
+    );
   return (
     <iframe
-      className="min-h-[32rem] flex-1 border-0 bg-white"
+      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-white`}
       sandbox="allow-scripts"
-      title={document.title}
-      src={`${state.baseUrl}/${encodePath(document.path)}`}
+      title={title}
+      src={`${state.baseUrl}/${encodePath(path)}`}
     />
   );
 }
@@ -1260,7 +1268,7 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
           <HugeiconsIcon icon={ArrowUpRight01Icon} />
         </Button>
       </div>
-      <HtmlDocumentPanelBody document={document} />
+      <HtmlPreview {...document} panel />
     </div>
   );
 }
@@ -1497,39 +1505,6 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
         }}
       />
     </div>
-  );
-}
-
-function HtmlPane({
-  vaultId,
-  filePath,
-}: {
-  vaultId: string;
-  filePath: string;
-}) {
-  const rpc = useRpc<typeof docsRpcContract>();
-  const [lease, setLease] = useState<PreviewLease | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLease(null);
-    setError(null);
-    void rpc
-      .call("preparePreview", { vaultId, path: filePath })
-      .then((value) => setLease(value))
-      .catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [filePath, rpc, vaultId]);
-  if (error)
-    return (
-      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">{error}</div>
-    );
-  if (!lease) return <DocumentSkeleton />;
-  return (
-    <iframe
-      className="min-h-0 flex-1 border-0 bg-white"
-      sandbox="allow-scripts"
-      title={filePath}
-      src={`${lease.baseUrl}/${encodePath(filePath)}`}
-    />
   );
 }
 
@@ -2266,10 +2241,11 @@ function NotesWorkspace({
             }}
           />
         ) : filePath && /\.html?$/i.test(filePath) ? (
-          <HtmlPane
+          <HtmlPreview
             key={`${activeVaultId}:${filePath}`}
             vaultId={activeVaultId}
-            filePath={filePath}
+            path={filePath}
+            title={filePath}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">

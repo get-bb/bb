@@ -1742,34 +1742,54 @@ describe("Docs nav panel", () => {
     expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
   });
 
-  it("opens a full HTML page through the same preview lease", async () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "personal/dashboards/metrics.html" },
-      {
+  it.each(["workspace", "panel"])(
+    "opens sandboxed HTML in the %s",
+    async (surface) => {
+      const path = "dashboards/metrics.html";
+      const options = {
         rpc: {
           listNotes: () =>
             listNotesResult(
               [],
               [
                 { kind: "directory", path: "dashboards" },
-                { kind: "file", path: "dashboards/metrics.html" },
+                { kind: "file", path },
               ],
             ),
           preparePreview: () => preview,
         },
-      },
-    );
-
-    await waitFor(() => {
-      const iframe = slot.container.querySelector("iframe");
-      expect(iframe?.getAttribute("src")).toBe(
-        "/api/v1/file-previews/lease/dashboards/metrics.html",
-      );
-      expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
-    });
-    expect(slot.queryByRole("button", { name: "View source" })).toBeNull();
-  });
+      } satisfies RenderSlotOptions;
+      const slot =
+        surface === "panel"
+          ? renderSlot(
+              app.threadPanelActions[0]!,
+              {
+                threadId: "thr_1",
+                params: { vaultId: "personal", path, title: "Metrics" },
+              },
+              options,
+            )
+          : renderSlot(
+              docsRegistration,
+              { subPath: `personal/${path}` },
+              options,
+            );
+      await waitFor(() => {
+        const iframe = slot.container.querySelector("iframe");
+        expect(iframe?.getAttribute("src")).toBe(
+          `/api/v1/file-previews/lease/${path}`,
+        );
+        expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
+        expect(iframe?.title).toBe(surface === "panel" ? "Metrics" : path);
+        expect(
+          iframe?.classList.contains(
+            surface === "panel" ? "min-h-[32rem]" : "min-h-0",
+          ),
+        ).toBe(true);
+      });
+      expect(slot.queryByRole("button", { name: "View source" })).toBeNull();
+    },
+  );
 
   it("filters the vault tree by note title", async () => {
     const slot = renderSlot(
