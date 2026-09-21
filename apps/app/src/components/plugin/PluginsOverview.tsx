@@ -47,8 +47,10 @@ import { getPluginDetailRoutePath } from "@/lib/route-paths";
 export function PluginsOverview({
   onOpenPlugin,
   mode,
+  showInstalledCreateAction = true,
 }: {
   mode?: "installed" | "browse";
+  showInstalledCreateAction?: boolean;
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
@@ -245,7 +247,7 @@ export function PluginsOverview({
             sortDirection={installedSortDirection}
             installsKnown={installsKnown}
             changeSearchParams={changeSearchParams}
-            action={installedActions}
+            action={showInstalledCreateAction ? installedActions : null}
             sourceFilter={{
               options: sourceFilterOptions,
               selectedValues: activeSourceFilters,

@@ -52,7 +52,6 @@ import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettin
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
-import { SettingsPluginActions } from "@/components/settings/SettingsPluginActions";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginDetailPaneView } from "@/views/ToolsView";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
@@ -1132,13 +1131,15 @@ export function SettingsView() {
         {activePluginId ? (
           <PluginDetailPaneView
             pluginId={activePluginId}
-            header={<SettingsPluginActions />}
             contentClassName="max-w-[760px] md:px-4"
             onRemoved={() => navigate(SETTINGS_ROUTE_PATH)}
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
-            <PluginsOverview mode="installed" />
+            <PluginsOverview
+              mode="installed"
+              showInstalledCreateAction={false}
+            />
           </div>
         )}
       </div>
@@ -1148,21 +1149,18 @@ export function SettingsView() {
   let content: ReactNode = null;
   if (activePluginId !== null) {
     content = (
-      <div className="space-y-4">
-        <SettingsPluginActions />
-        <PluginSettingsPage
-          pluginId={activePluginId}
-          onBackToDetails={() => {
-            const params = new URLSearchParams(location.search);
-            params.set("view", "installed");
-            params.delete("configure");
-            navigate({
-              pathname: location.pathname,
-              search: params.toString(),
-            });
-          }}
-        />
-      </div>
+      <PluginSettingsPage
+        pluginId={activePluginId}
+        onBackToDetails={() => {
+          const params = new URLSearchParams(location.search);
+          params.set("view", "installed");
+          params.delete("configure");
+          navigate({
+            pathname: location.pathname,
+            search: params.toString(),
+          });
+        }}
+      />
     );
   } else if (activeSection === "providers") {
     content = (
