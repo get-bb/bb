@@ -46,6 +46,9 @@ const {
 const { useSidebarModeSectionOrder } = await import(
   "./useSidebarModeSectionOrder.js"
 );
+const { SidebarHeaderControls } = await import("./SidebarHeaderControls.js");
+const { ThreadListVisibilityMenuItems } =
+  await import("./ThreadListVisibility.js");
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   return makeThreadListEntry({
@@ -239,7 +242,14 @@ function CustomSectionsVisibilityProbe({
         collapsedSectionIds: new Set(),
         onToggleCollapsed: vi.fn(),
         pinned: { label: "Pinned", content: null },
-        threads: { label: "Threads" },
+        threads: {
+          label: "Threads",
+          actions: (
+            <SidebarHeaderControls label="Threads" showNewThread={false}>
+              <ThreadListVisibilityMenuItems />
+            </SidebarHeaderControls>
+          ),
+        },
       }}
     />
   );
@@ -728,6 +738,64 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
+  it("hides loose Threads in More and restores them", async () => {
+    const store = createStore();
+    const savedOrder = ["section:sec_building", "pinned", "threads"];
+    store.set(sidebarOrganizationModeAtom, "chronological");
+    store.set(sidebarManualSectionOrderAtom, savedOrder);
+    const threads = [
+      makeThread({
+        id: "thr_loose",
+        title: "Loose thread",
+        titleFallback: "Loose thread",
+        sectionId: null,
+      }),
+    ];
+    renderTree(
+      <CustomSectionsVisibilityProbe
+        threads={threads}
+        onProjectSelect={vi.fn()}
+      />,
+      { threads, store },
+    );
+
+    expect(screen.getByText("Loose thread")).not.toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Threads actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from list" }),
+    );
+
+    expect(screen.queryByText("Loose thread")).toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["threads"]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "More sections" }),
+      ),
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
+      key: "Enter",
+    });
+    const threadsGroup = await screen.findByRole("menuitem", {
+      name: "Threads",
+    });
+    fireEvent.keyDown(threadsGroup, { key: "ArrowRight" });
+    expect(await screen.findByText("Loose thread")).not.toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "More sections" }),
+      ).toBeNull(),
+    );
+    expect(screen.getByText("Loose thread")).not.toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+  });
+
   it("hides a section with inherited descendants and restores its saved position", async () => {
     const store = createStore();
     const savedOrder = [
@@ -777,35 +845,38 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByText("Inherited child")).toBeNull();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
     expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
-    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
-    const hiddenSections = await screen.findByRole("list", {
-      name: "Hidden sections",
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "More sections" }),
+      ),
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
+      key: "Enter",
     });
-    expect(within(hiddenSections).getByText("Review parent")).not.toBeNull();
+    const section = await screen.findByRole("menuitem", { name: "Review" });
+    expect(screen.queryByText("Review parent")).toBeNull();
+    fireEvent.keyDown(section, { key: "ArrowRight" });
+    expect(await screen.findByText("Review parent")).not.toBeNull();
     fireEvent.click(
-      within(hiddenSections).getByRole("link", {
-        name: "Open Inherited child",
-      }),
+      await screen.findByRole("link", { name: "Open Inherited child" }),
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole("list", { name: "Hidden sections" }),
+        screen.queryByRole("group", { name: "Hidden sections" }),
       ).toBeNull(),
     );
     expect(onProjectSelect).toHaveBeenCalledOnce();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
-    const reopenedSections = await screen.findByRole("list", {
-      name: "Hidden sections",
+    fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
+      key: "Enter",
     });
-    fireEvent.pointerDown(
-      within(reopenedSections).getByRole("button", { name: "Review options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Add to sidebar" }),
-    );
+    const reopenedSection = await screen.findByRole("menuitem", {
+      name: "Review",
+    });
+    expect(screen.queryByText("Review parent")).toBeNull();
+    fireEvent.keyDown(reopenedSection, { key: "ArrowRight" });
+    fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
 
     await waitFor(() =>
       expect(
@@ -822,7 +893,7 @@ describe("ProjectRow interactions", () => {
         ),
         (element) => element.dataset.sidebarVisibilityGroup,
       ),
-    ).toEqual(["section:sec_review", "section:sec_building"]);
+    ).toEqual(["section:sec_review", "section:sec_building", "threads"]);
   });
 
   it("surfaces named activity when the project is collapsed", () => {

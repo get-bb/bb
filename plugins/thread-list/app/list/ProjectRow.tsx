@@ -2112,12 +2112,38 @@ export const ChronologicalSectionThreadSections = memo(
       },
     };
 
-    const visibilityGroups: ThreadListVisibilityGroup[] = sectionItems.map(
-      (item) => ({
+    const visibilityGroups: ThreadListVisibilityGroup[] = [
+      {
+        id: "threads",
+        title: "Threads",
+        threads: looseThreads,
+        renderContent: (close: () => void) => (
+          <ProjectThreadTree
+            rootItems={looseItems}
+            threadListState={
+              threadListState.status === "ready"
+                ? { status: "ready", threads: looseThreads }
+                : threadListState
+            }
+            compareThreads={compareThreads}
+            variant="section"
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
+            }}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        ),
+      },
+      ...sectionItems.map((item) => ({
         id: buildSidebarEntitySectionId("section", item.group.id),
         title: item.group.name,
         threads: getProjectThreadItemDescendants(item.group.items),
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={item.group.items}
             threadListState={{
@@ -2137,8 +2163,8 @@ export const ChronologicalSectionThreadSections = memo(
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
           />
         ),
-      }),
-    );
+      })),
+    ];
     const orderedSections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>
         {(sectionId) => {
@@ -2152,7 +2178,13 @@ export const ChronologicalSectionThreadSections = memo(
             showPinnedSection: topLevelSectionOrder.includes("pinned"),
           });
           if (builtInSection !== undefined) {
-            return <div key={sectionId}>{builtInSection}</div>;
+            return sectionId === "threads" ? (
+              <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+                {builtInSection}
+              </ThreadListVisibilityGroupScope>
+            ) : (
+              <div key={sectionId}>{builtInSection}</div>
+            );
           }
           const sectionItem = sectionItemsBySectionId.get(sectionId);
           return sectionItem ? (

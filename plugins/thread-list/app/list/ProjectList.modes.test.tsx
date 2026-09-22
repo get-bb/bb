@@ -382,40 +382,13 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("No machine")).toBeNull();
     expect(screen.queryByText("Machine activity")).toBeNull();
 
-    fireEvent.click(more);
-    const hiddenMachines = await screen.findByRole("list", {
-      name: "Hidden machines",
-    });
-    expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
-    fireEvent.click(
-      within(hiddenMachines).getByRole("button", {
-        name: "Collapse No machine section",
-      }),
-    );
-    expect(within(hiddenMachines).queryByText("Machine activity")).toBeNull();
-    fireEvent.click(
-      within(hiddenMachines).getByRole("button", {
-        name: "Expand No machine section",
-      }),
-    );
-    expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
+    fireEvent.keyDown(more, { key: "Enter" });
+    const section = await screen.findByRole("menuitem", { name: /No machine/ });
+    expect(screen.queryByText("Machine activity")).toBeNull();
+    fireEvent.keyDown(section, { key: "ArrowRight" });
+    expect(await screen.findByText("Machine activity")).not.toBeNull();
     expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
-    fireEvent.keyDown(
-      within(hiddenMachines).getByRole("button", {
-        name: "No machine options",
-      }),
-      { key: "Enter" },
-    );
-    const restore = await screen.findByRole("menuitem", {
-      name: "Add to sidebar",
-    });
-    expect(
-      screen.getByRole("list", { name: "Hidden machines" }),
-    ).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Customize list" }),
-    ).not.toBeNull();
-    fireEvent.click(restore);
+    fireEvent.click(screen.getByRole("button", { name: "Add to list" }));
 
     await waitFor(() =>
       expect(
