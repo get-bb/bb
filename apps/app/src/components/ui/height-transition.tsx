@@ -215,23 +215,30 @@ interface AutoHeightContainerProps {
   children: ReactNode;
   snapRevision?: string;
   animateGrowth?: boolean;
+  containmentArmed?: boolean;
 }
 
 const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
 const AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS = 120;
 
-function useSnapHeightGrowth(): boolean {
+function useSnapHeightGrowth(containmentArmed: boolean): boolean {
   const isPointerCoarse = usePointerCoarse();
   const prefersReducedMotion = usePrefersReducedMotion();
-  return isPointerCoarse || prefersReducedMotion || !supportsScrollAnchoring();
+  return (
+    containmentArmed ||
+    isPointerCoarse ||
+    prefersReducedMotion ||
+    !supportsScrollAnchoring()
+  );
 }
 
 export function AutoHeightContainer({
   children,
   snapRevision,
   animateGrowth = true,
+  containmentArmed = false,
 }: AutoHeightContainerProps) {
-  const snapGrowth = useSnapHeightGrowth();
+  const snapGrowth = useSnapHeightGrowth(containmentArmed);
   const durationMs =
     snapGrowth || !animateGrowth ? 0 : HEIGHT_TRANSITION_DURATION_MS;
   const wrapperRef = useRef<HTMLDivElement>(null);

@@ -15,15 +15,20 @@ import {
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
 } from "./timeline-row-containment";
 
-function stubScrollAnchoring(supported: boolean): void {
+function stubCssSupports(supportedProperties: readonly string[]): void {
   vi.stubGlobal("CSS", {
-    supports: (property: string, value: string) =>
-      supported && property === "overflow-anchor" && value === "none",
+    supports: (property: string) => supportedProperties.includes(property),
   });
 }
 
+const FULL_CONTAINMENT_SUPPORT = [
+  "overflow-anchor",
+  "content-visibility",
+  "contain-intrinsic-block-size",
+] as const;
+
 beforeEach(() => {
-  stubScrollAnchoring(true);
+  stubCssSupports(FULL_CONTAINMENT_SUPPORT);
 });
 
 afterEach(() => {
@@ -98,6 +103,9 @@ describe("ThreadTimelineRows row containment", () => {
     expect(TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME).not.toContain(
       "content-visibility",
     );
+    expect(TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME).not.toContain(
+      "max-md:",
+    );
 
     await act(nextAnimationFrame);
     expect(rowWrapper(view.container, "assistant_1").className).toBe(
@@ -105,7 +113,7 @@ describe("ThreadTimelineRows row containment", () => {
     );
     await act(nextAnimationFrame);
     const armedClassNames = [
-      "max-md:[content-visibility:auto]",
+      "[content-visibility:auto]",
       TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
     ];
     for (const rowId of ["user_1", "turn_1", "assistant_1"]) {
@@ -135,7 +143,7 @@ describe("ThreadTimelineRows row containment", () => {
     ).toBe(true);
     expect(
       rowWrapper(view.container, "assistant_1").classList.contains(
-        "max-md:[content-visibility:auto]",
+        "[content-visibility:auto]",
       ),
     ).toBe(true);
 
@@ -152,8 +160,10 @@ describe("ThreadTimelineRows row containment", () => {
     );
   });
 
-  it("never arms content-visibility where CSS scroll anchoring is missing (WebKit)", async () => {
-    stubScrollAnchoring(false);
+  async function expectContainmentNotArmed(
+    supportedProperties: readonly string[],
+  ): Promise<void> {
+    stubCssSupports(supportedProperties);
     const rows = [
       conversationRow({
         id: "user_1",
@@ -189,7 +199,21 @@ describe("ThreadTimelineRows row containment", () => {
       expect(classes).toContain(
         TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
       );
-      expect(classes).not.toContain("max-md:[content-visibility:auto]");
+      expect(classes).not.toContain("[content-visibility:auto]");
     }
+  }
+
+  it("never arms content-visibility where CSS scroll anchoring is missing (WebKit)", async () => {
+    await expectContainmentNotArmed([
+      "content-visibility",
+      "contain-intrinsic-block-size",
+    ]);
+  });
+
+  it("never arms content-visibility where the browser lacks the property", async () => {
+    await expectContainmentNotArmed([
+      "overflow-anchor",
+      "contain-intrinsic-block-size",
+    ]);
   });
 });

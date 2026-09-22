@@ -166,9 +166,9 @@ function stubScrollAnchoringSupport(supported: boolean): void {
 }
 
 describe("AutoHeightContainer growth easing", () => {
-  function renderWrapper(): HTMLElement {
+  function renderWrapper(containmentArmed = false): HTMLElement {
     const view = render(
-      <AutoHeightContainer>
+      <AutoHeightContainer containmentArmed={containmentArmed}>
         <span>Streaming response</span>
       </AutoHeightContainer>,
     );
@@ -186,6 +186,14 @@ describe("AutoHeightContainer growth easing", () => {
     stubScrollAnchoringSupport(true);
 
     expect(renderWrapper().style.transition).toContain("height 180ms");
+  });
+
+  it("snaps growth while timeline row containment is armed", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMediaQueries(new Set());
+    stubScrollAnchoringSupport(true);
+
+    expect(renderWrapper(true).style.transition).toContain("height 0ms");
   });
 
   it("snaps growth on a coarse pointer", () => {

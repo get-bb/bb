@@ -3,8 +3,18 @@ import type { ThreadTimelineViewRow } from "@bb/thread-view";
 import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 
 export const TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME =
-  "max-md:[contain-intrinsic-block-size:auto_1.25rem]";
-const CONTENT_VISIBILITY_CLASS_NAME = "max-md:[content-visibility:auto]";
+  "[contain-intrinsic-block-size:auto_1.25rem]";
+const CONTENT_VISIBILITY_CLASS_NAME = "[content-visibility:auto]";
+
+export function supportsTimelineRowContainment(): boolean {
+  return (
+    supportsScrollAnchoring() &&
+    typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("content-visibility", "auto") &&
+    CSS.supports("contain-intrinsic-block-size", "auto 1px")
+  );
+}
 
 export function useArmTopLevelTimelineRowContainment(
   wrapperRef: RefObject<HTMLElement | null>,
@@ -12,7 +22,7 @@ export function useArmTopLevelTimelineRowContainment(
 ): void {
   useEffect(() => {
     const wrapper = wrapperRef.current;
-    if (!enabled || wrapper === null || !supportsScrollAnchoring()) {
+    if (!enabled || wrapper === null || !supportsTimelineRowContainment()) {
       return;
     }
     let cancelled = false;

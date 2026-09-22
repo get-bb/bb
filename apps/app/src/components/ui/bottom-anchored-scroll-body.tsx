@@ -61,6 +61,9 @@ const BOTTOM_RESTORE_SETTLE_FRAME_COUNT = 3;
 const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
 const COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 250;
 const SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS = 8;
+const SCROLL_ELEMENT_SETTLE_MAX_ATTEMPTS = 8;
+const SCROLL_ELEMENT_SETTLE_TOLERANCE_PX = 8;
+const SCROLL_TOP_READBACK_TOLERANCE_PX = 1;
 const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
 const TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR =
   '[data-timeline-row-list="top-level"]';
@@ -121,6 +124,70 @@ function getScrollOffsetToRevealElement({
     0,
     elementRect.top - scrollAreaRect.top + scrollArea.scrollTop,
   );
+}
+
+export interface SettleScrollElementIntoViewArgs {
+  element: HTMLElement;
+  getScrollElement: () => HTMLElement | null;
+  isCancelled?: () => boolean;
+  maxAttempts?: number;
+  tolerancePx?: number;
+}
+
+function waitForAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve();
+      return;
+    }
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+export async function settleScrollElementIntoView({
+  element,
+  getScrollElement,
+  isCancelled,
+  maxAttempts = SCROLL_ELEMENT_SETTLE_MAX_ATTEMPTS,
+  tolerancePx = SCROLL_ELEMENT_SETTLE_TOLERANCE_PX,
+}: SettleScrollElementIntoViewArgs): Promise<void> {
+  const initialScrollElement = getScrollElement();
+  if (
+    initialScrollElement === null ||
+    isElementFullyVisibleInScrollArea({
+      element,
+      scrollArea: initialScrollElement,
+    })
+  ) {
+    return;
+  }
+  let previousScrollTop: number | null = null;
+  let lastWrittenScrollTop: number | null = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await waitForAnimationFrame();
+    if (isCancelled?.() === true) return;
+    const scrollElement = getScrollElement();
+    if (scrollElement === null) return;
+    const currentScrollTop = scrollElement.scrollTop;
+    if (
+      lastWrittenScrollTop !== null &&
+      (Math.abs(currentScrollTop - lastWrittenScrollTop) >
+        SCROLL_TOP_READBACK_TOLERANCE_PX ||
+        (previousScrollTop !== null &&
+          Math.abs(currentScrollTop - previousScrollTop) <=
+            SCROLL_TOP_READBACK_TOLERANCE_PX))
+    ) {
+      return;
+    }
+    previousScrollTop = currentScrollTop;
+    const targetScrollTop = Math.min(
+      getMaxScrollOffset(scrollElement),
+      getScrollOffsetToRevealElement({ element, scrollArea: scrollElement }),
+    );
+    if (Math.abs(currentScrollTop - targetScrollTop) <= tolerancePx) return;
+    scrollElement.scrollTop = targetScrollTop;
+    lastWrittenScrollTop = targetScrollTop;
+  }
 }
 
 interface TopMostVisibleRow {
