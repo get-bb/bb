@@ -47,25 +47,28 @@ function useRenameController() {
       if (current.pending) return current.pending;
       if (current.cannotRetry) return Promise.resolve(false);
       const value = current.draft.trim();
-      const error = !value
-        ? "Name cannot be empty."
-        : current.maxLength && value.length > current.maxLength
-          ? `Name must be ${current.maxLength} characters or fewer.`
-          : null;
-      if (!clear && error) {
+      const shouldClear = clear || (!value && Boolean(current.onClear));
+      const error = shouldClear
+        ? null
+        : !value
+          ? "Name cannot be empty."
+          : current.maxLength && value.length > current.maxLength
+            ? `Name must be ${current.maxLength} characters or fewer.`
+            : null;
+      if (error) {
         update({ ...current, error });
         return Promise.resolve(false);
       }
       if (
-        (!clear && value === current.name.trim()) ||
-        (clear && !current.name)
+        (!shouldClear && value === current.name.trim()) ||
+        (shouldClear && !current.name)
       ) {
         update(null);
         return Promise.resolve(true);
       }
-      if (clear && !current.onClear) return Promise.resolve(false);
+      if (shouldClear && !current.onClear) return Promise.resolve(false);
       const pending = Promise.resolve()
-        .then(() => (clear ? current.onClear?.() : current.onSave(value)))
+        .then(() => (shouldClear ? current.onClear?.() : current.onSave(value)))
         .then(
           () => {
             update(null);

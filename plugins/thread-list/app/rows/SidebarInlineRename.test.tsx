@@ -81,7 +81,9 @@ async function start(value = "New name") {
 
 describe("renameError", () => {
   it("duck-types status and code from any error-like object", () => {
-    expect(renameError({ status: 409, code: "section_name_conflict" }, "thread")).toEqual({
+    expect(
+      renameError({ status: 409, code: "section_name_conflict" }, "thread"),
+    ).toEqual({
       error: "A section with this name already exists.",
       cannotRetry: false,
     });
@@ -305,13 +307,11 @@ describe("sidebar inline rename", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("clears environment names only through the explicit clear action", async () => {
+  it("clears environment names when the submitted value is empty", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClear = vi.fn().mockResolvedValue(undefined);
     render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
     fireEvent.keyDown(await start(" "), { key: "Enter" });
-    expect(onClear).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Clear custom name" }));
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
     expect(onSave).not.toHaveBeenCalled();
     expect(onClear).toHaveBeenCalledOnce();
