@@ -1,42 +1,26 @@
-# Parent thread row navigation handoff
+# Mobile thread-row selection handoff
 
-## Issue and solution
+## Cause and change
 
-Clicking the highlighted blank area of a parent thread row did not navigate to the thread. The disclosure-caret separation introduced in #3989 constrained the parent row's anchor to the rendered title width, while the surrounding row continued to show hover and selected states.
+[PR #3989](https://github.com/get-bb/bb/pull/3989) separated the parent disclosure caret from its navigation link. [PR #4077](https://github.com/get-bb/bb/pull/4077) widened that link, but the compact row's right-side status slot remained outside it. Tapping the status reached a decorative span in the row and did nothing. [PR #4098](https://github.com/get-bb/bb/pull/4098) forwards bare-row and noninteractive trailing clicks to the existing link in both the core fallback and bundled `thread-list` plugin. Buttons and links retain their own actions. [Issue #3195](https://github.com/get-bb/bb/issues/3195) concerns the adjacent disclosure target; no issue tracks this status dead zone.
 
-The navigation wrapper now fills the available row width in both the bundled `thread-list` plugin and the core fallback implementation. The disclosure caret remains a separate button, so clicking the row opens the parent and clicking the caret only expands or collapses its children. Regression assertions cover both implementations.
+At 390 × 844, the parent link ends at x=243 while the status tap lands near x=269. Blue outlines the full row, green the link, yellow the separate caret, and red the status tap area.
 
-## Review links
+![Annotated compact thread row tap areas](docs/review-assets/mobile-thread-row-selection/annotated.png)
 
-- PR: [#4077](https://github.com/get-bb/bb/pull/4077)
-- Related GitHub issue: none; reported with a screen recording in BB thread `thr_uivddeyuu5`
-- Live build: [BB Connect](https://ymichael--23244.getbb.app)
-- CI: [14 successful checks, 2 intentional skips, 0 failures](https://github.com/get-bb/bb/pull/4077/checks); all required checks passed
-- Mergeability: GitHub reports `CLEAN` / `MERGEABLE`
+## Live fixture
 
-## Focused verification
+[Open the worktree build](https://ymichael--22227.getbb.app/projects/proj_e29xavb58p/threads/thr_w9wvmbzmav). It uses an isolated data store and project `proj_e29xavb58p` (`Mobile row QA`). The fixture has parent `thr_5k93c5ejau` (`Parent status target`), child `thr_cqnhq7fmgg` (`Child disclosure target`), and ordinary thread `thr_w9wvmbzmav` (`Ordinary title target`).
 
-- `pnpm exec turbo run test --filter=@bb/app -- --run src/components/sidebar/ThreadRow.test.tsx` — 84 passed
-- `pnpm exec turbo run test --filter=bb-plugin-thread-list -- --run app/rows/ThreadRow.test.tsx` — 93 passed
-- `pnpm exec turbo run typecheck --filter=bb-plugin-thread-list --filter=@bb/app` — passed
-- Production-style `pnpm start:worktree` browser verification — passed locally against the Connect-served bundle; remote headless access reached the expected owner sign-in gate
-- Verification inventory — blocked by pre-existing unmapped `browser` CLI family drift
+1. At a compact touch viewport, open the sidebar. Tap the parent's right-side status icon. The URL should change to `/projects/proj_e29xavb58p/threads/thr_5k93c5ejau` on one tap. Opening it marks the status read, so reload the fixture after resetting its unread state if repeating this step.
+2. Return to the ordinary thread URL above, open the sidebar, and tap its title. It should stay on that ordinary thread route; repeat from the parent route to observe navigation back to it.
+3. From the ordinary route, open the sidebar and tap the parent's disclosure caret. The child should hide or show while the route stays on the ordinary thread.
+4. Drag a row slightly and release. The drag release must not navigate. A later deliberate title or status tap should navigate.
 
-## Exact live verification steps
+## Verification
 
-1. Open the live build link above.
-2. Find the expanded `Parent navigation target` row with `Child fixture` nested below it.
-3. Click the blank portion of the parent row between its title and disclosure caret.
-4. Confirm the URL changes to the parent thread route and the parent thread header appears.
-5. Click the disclosure caret.
-6. Confirm `Child fixture` disappears while the parent thread URL remains unchanged.
-
-## Screenshots
-
-Before — the pointer lands in the highlighted row area outside the title-sized link:
-
-![Before](docs/review-assets/thread-navigation-click/before.png)
-
-After — the same row area navigates to the parent thread; the caret remains independent:
-
-![After](docs/review-assets/thread-navigation-click/after.jpg)
+- Core `ThreadRow.test.tsx`: 86 passed; plugin `ThreadRow.test.tsx`: 95 passed. Both include status-area forwarding and drag-click suppression assertions.
+- Turbo typecheck for `@bb/app` and `bb-plugin-thread-list`: passed.
+- Live `pnpm start:worktree` at 390 × 844: right-side status tap, title tap, disclosure caret, and drag release behaved as above. The app and daemon health endpoints responded.
+- The verification inventory check is blocked by the pre-existing unmapped `browser` CLI family. It did not prevent focused tests or live interaction checks.
+- Final CI: [PR #4098 checks](https://github.com/get-bb/bb/pull/4098/checks). Required checks passed on the final PR HEAD.
