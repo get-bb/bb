@@ -1,29 +1,10 @@
-import {
-  defineWorkspaceTestConfig,
-  sharedWorkerProjects,
-} from "../../vitest.shared.js";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
 const parsedTimeoutScale = Number(process.env.BB_TEST_TIMEOUT_SCALE ?? 1);
 const timeoutScale =
   Number.isFinite(parsedTimeoutScale) && parsedTimeoutScale > 0
     ? parsedTimeoutScale
     : 1;
-
-const projectExecutionDefaultsProjects = sharedWorkerProjects({
-  pkgDir: __dirname,
-  name: "@bb/integration-tests:project-execution-defaults",
-  include: ["fake/smoke/project-execution-defaults.test.ts"],
-}).map((project) => {
-  if (typeof project !== "object" || !("test" in project)) {
-    throw new Error(
-      "Expected project-execution-defaults shared worker project configuration",
-    );
-  }
-  return {
-    ...project,
-    test: { ...project.test, isolate: true },
-  };
-});
 
 export default defineWorkspaceTestConfig({
   test: {
@@ -46,10 +27,8 @@ export default defineWorkspaceTestConfig({
           isolate: false,
           globalSetup: ["./global-setup.ts"],
           include: ["fake/**/*.test.ts"],
-          exclude: ["fake/smoke/project-execution-defaults.test.ts"],
         },
       },
-      ...projectExecutionDefaultsProjects,
       {
         extends: true,
         test: {
