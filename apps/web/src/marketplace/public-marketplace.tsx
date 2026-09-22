@@ -49,6 +49,7 @@ import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
 } from "./marketplace-model.js";
+import { MarketplaceScreenshots } from "./marketplace-screenshots.js";
 import { MarketplaceOverview } from "./marketplace-overview.js";
 import type {
   MarketplaceV2Entry,
@@ -917,17 +918,11 @@ export function PublicMarketplaceDetailPage({
         {
           <div className="marketplace-detail-body">
             {entry.screenshots.length === 0 ? null : (
-              <div className="marketplace-screenshots">
-                {entry.screenshots.map((screenshot, index) => (
-                  <img
-                    key={screenshot}
-                    src={marketplaceAssetUrl(screenshot)}
-                    alt={`${entry.displayName} screenshot ${index + 1}`}
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
-                ))}
-              </div>
+              <MarketplaceScreenshots
+                key={entry.id}
+                screenshots={entry.screenshots}
+                name={entry.displayName}
+              />
             )}
             {entry.overview === undefined ? null : (
               <section className="marketplace-detail-section marketplace-overview-section">

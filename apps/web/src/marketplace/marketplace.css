@@ -764,6 +764,96 @@ a.marketplace-detail-author:hover {
   scroll-snap-type: x mandatory;
 }
 
+.marketplace-screenshot-trigger {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: zoom-in;
+  scroll-snap-align: start;
+}
+
+.marketplace-screenshot-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.marketplace-lightbox {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 20px;
+  border: 0;
+  background: transparent;
+  color: white;
+}
+
+.marketplace-lightbox[open] {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr) 44px;
+  gap: 16px;
+  justify-items: center;
+}
+
+.marketplace-lightbox::backdrop {
+  background: rgb(0 0 0 / 88%);
+}
+
+.marketplace-lightbox > img {
+  align-self: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  min-height: 0;
+}
+
+.marketplace-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 13px;
+}
+
+.marketplace-lightbox-navigation {
+  display: flex;
+  gap: 12px;
+}
+
+.marketplace-lightbox button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 10%);
+  color: white;
+  cursor: pointer;
+}
+
+.marketplace-lightbox button:hover {
+  background: rgb(255 255 255 / 20%);
+}
+
+.marketplace-lightbox button:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 3px;
+}
+
+.marketplace-lightbox button svg {
+  width: 20px;
+  height: 20px;
+}
+
 .marketplace-screenshots img {
   display: block;
   width: 100%;
