@@ -39,7 +39,7 @@ function createSyncState(): SyncState {
   };
 }
 
-let state = createSyncState();
+const state = createSyncState();
 
 function valueAtomFor<Key extends PreferenceKey>(
   key: Key,
@@ -235,10 +235,12 @@ export function resetPreferencesSyncForTest(): void {
   for (const pending of state.pendingWrites.values()) {
     if (pending.timer !== null) window.clearTimeout(pending.timer);
   }
+  state.pendingWrites.clear();
+  state.rpc = null;
+  state.hydrateGeneration += 1;
   const store = getDefaultStore();
   for (const key of PREFERENCE_KEYS) {
     store.set(valueAtomFor(key), getPreferenceDefault(key));
   }
   store.set(state.readyAtom, false);
-  state = createSyncState();
 }

@@ -20,6 +20,30 @@ export function useSidebarContentElement(
   return element;
 }
 
+export const SidebarContentElementContext =
+  React.createContext<React.RefObject<HTMLElement | null> | null>(null);
+
+export function useSidebarContentElementRef(): React.RefObject<HTMLElement | null> | null {
+  return React.useContext(SidebarContentElementContext);
+}
+
+export function SidebarContentElementProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const anchorRef = React.useRef<HTMLDivElement>(null);
+  const element = useSidebarContentElement(anchorRef);
+  const contentRef = React.useMemo(() => ({ current: element }), [element]);
+  return (
+    <SidebarContentElementContext.Provider value={contentRef}>
+      <div ref={anchorRef} className="contents">
+        {children}
+      </div>
+    </SidebarContentElementContext.Provider>
+  );
+}
+
 type SidebarStickyTierKind = "label" | "project" | "parent";
 
 type SidebarStickyStackProps = React.ComponentProps<"div">;

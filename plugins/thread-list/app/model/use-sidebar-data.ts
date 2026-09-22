@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { Host } from "@bb/domain";
 import {
   experimental_useSidebarThreads,
   type PluginSidebarProject,
@@ -84,4 +85,18 @@ export function useSidebarData(): SidebarData {
     () => buildSidebarData(status, threads, projects, sections),
     [status, threads, projects, sections],
   );
+}
+
+export function toMachineHosts(
+  hostsById: ReadonlyMap<string, SidebarHost>,
+): Host[] {
+  return [...hostsById.values()].map(
+    (host) => ({ id: host.id, name: host.name }) as Host,
+  );
+}
+
+export function useSidebarMachineHosts(
+  hostsById: ReadonlyMap<string, SidebarHost>,
+): Host[] {
+  return useMemo(() => toMachineHosts(hostsById), [hostsById]);
 }

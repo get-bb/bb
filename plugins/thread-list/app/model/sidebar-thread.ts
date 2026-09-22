@@ -7,6 +7,43 @@ export type SidebarThread = ThreadListEntry & {
 };
 
 const entriesByDto = new WeakMap<PluginSidebarThread, SidebarThread>();
+const entriesByListEntry = new WeakMap<ThreadListEntry, SidebarThread>();
+
+export function getThreadDisplayTitle(
+  thread: Pick<ThreadListEntry, "id" | "title" | "titleFallback">,
+): string {
+  if (thread.title && thread.title.trim().length > 0) return thread.title;
+  if (thread.titleFallback && thread.titleFallback.trim().length > 0) {
+    return thread.titleFallback;
+  }
+  return `Thread ${thread.id.slice(0, 8)}`;
+}
+
+function isSidebarThread(thread: ThreadListEntry): thread is SidebarThread {
+  return (
+    "href" in thread &&
+    typeof thread.href === "string" &&
+    "displayTitle" in thread &&
+    typeof thread.displayTitle === "string"
+  );
+}
+
+export function asSidebarThread(thread: ThreadListEntry): SidebarThread {
+  if (isSidebarThread(thread)) return thread;
+  const cached = entriesByListEntry.get(thread);
+  if (cached !== undefined) return cached;
+  const entry: SidebarThread = {
+    ...thread,
+    href: `/projects/${thread.projectId}/threads/${thread.id}`,
+    displayTitle: getThreadDisplayTitle(thread),
+  };
+  entriesByListEntry.set(thread, entry);
+  return entry;
+}
+
+export function getSidebarThreadDisplayTitle(thread: ThreadListEntry): string {
+  return asSidebarThread(thread).displayTitle;
+}
 
 export function toSidebarThread(thread: PluginSidebarThread): SidebarThread {
   const cached = entriesByDto.get(thread);

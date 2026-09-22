@@ -16,6 +16,7 @@ interface ActionMenuItemProps {
   children: ReactNode;
   variant?: "default" | "destructive";
   icon: IconName;
+  href?: string;
   onSelect?: (event: Event) => void;
   surface: ActionMenuSurface;
 }
@@ -28,6 +29,7 @@ export function ActionMenuItem({
   children,
   variant,
   icon,
+  href,
   onSelect,
   surface,
 }: ActionMenuItemProps) {
@@ -37,24 +39,30 @@ export function ActionMenuItem({
       {children}
     </>
   );
+  const body = href === undefined ? content : <a href={href}>{content}</a>;
 
   if (surface === "context") {
     return (
       <ContextMenuItem
+        asChild={href !== undefined}
         className={cn(
           variant === "destructive" &&
             "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive",
         )}
         onSelect={onSelect}
       >
-        {content}
+        {body}
       </ContextMenuItem>
     );
   }
 
   return (
-    <DropdownMenuItem variant={variant} onSelect={onSelect}>
-      {content}
+    <DropdownMenuItem
+      asChild={href !== undefined}
+      variant={variant}
+      onSelect={onSelect}
+    >
+      {body}
     </DropdownMenuItem>
   );
 }

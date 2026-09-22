@@ -4638,6 +4638,9 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../../packages/test-helpers
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -20792,7 +20795,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 
