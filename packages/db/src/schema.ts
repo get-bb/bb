@@ -180,7 +180,10 @@ export const projectExecutionDefaults = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("project_execution_defaults_project_idx").on(table.projectId),
+    uniqueIndex("project_execution_defaults_project_provider_idx").on(
+      table.projectId,
+      table.providerId,
+    ),
   ],
 );
 

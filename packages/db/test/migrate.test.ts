@@ -537,6 +537,12 @@ const machineProvidersMigrationPath = resolve(
   "drizzle",
   "0117_machine_providers.sql",
 );
+const projectExecutionDefaultsProviderKeyMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0131_amusing_mysterio.sql",
+);
 function closeConnection(db: DbConnection): void {
   db.$client.close();
 }
@@ -1173,7 +1179,8 @@ function restorePre0022ThreadTypeSchema(db: DbConnection): void {
   db.$client.exec(`
     ALTER TABLE project_execution_defaults
       ADD COLUMN thread_type text DEFAULT 'standard' NOT NULL;
-    DROP INDEX project_execution_defaults_project_idx;
+    DROP INDEX IF EXISTS project_execution_defaults_project_provider_idx;
+    DROP INDEX IF EXISTS project_execution_defaults_project_idx;
     CREATE UNIQUE INDEX project_execution_defaults_project_thread_type_idx
       ON project_execution_defaults (project_id, thread_type);
     CREATE INDEX project_execution_defaults_project_idx
@@ -2267,6 +2274,144 @@ describe("migrate", () => {
       migrate(db);
 
       expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("preserves project execution defaults when expanding the provider key", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "project-defaults-migration-host",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "project-defaults-migration-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/project-defaults-migration-project",
+        },
+      });
+      db.$client
+        .prepare(
+          `
+            INSERT INTO project_execution_defaults (
+              project_id,
+              provider_id,
+              model,
+              service_tier,
+              reasoning_level,
+              permission_mode,
+              updated_at
+            ) VALUES (?, 'codex', 'gpt-5', 'default', 'medium', 'full', 100)
+          `,
+        )
+        .run(project.id);
+      db.$client.exec(`
+        DROP INDEX project_execution_defaults_project_provider_idx;
+        CREATE UNIQUE INDEX project_execution_defaults_project_idx
+          ON project_execution_defaults (project_id);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: projectExecutionDefaultsProviderKeyMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [string],
+            {
+              model: string;
+              permissionMode: string;
+              providerId: string;
+              reasoningLevel: string;
+              serviceTier: string;
+            }
+          >(
+            `
+              SELECT
+                provider_id AS providerId,
+                model,
+                service_tier AS serviceTier,
+                reasoning_level AS reasoningLevel,
+                permission_mode AS permissionMode
+              FROM project_execution_defaults
+              WHERE project_id = ?
+            `,
+          )
+          .get(project.id),
+      ).toEqual({
+        providerId: "codex",
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+      });
+      db.$client
+        .prepare(
+          `
+            INSERT INTO project_execution_defaults (
+              project_id,
+              provider_id,
+              model,
+              service_tier,
+              reasoning_level,
+              permission_mode,
+              updated_at
+            ) VALUES (?, 'pi', 'pi-model', 'default', 'medium', 'full', 101)
+          `,
+        )
+        .run(project.id);
+      expect(
+        db.$client
+          .prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM project_execution_defaults",
+          )
+          .get(),
+      ).toEqual({ count: 2 });
+
+      runMigrationFile({
+        db,
+        migrationPath: projectExecutionDefaultsProviderKeyMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[string], { providerId: string; model: string }>(
+            `
+              SELECT provider_id AS providerId, model
+              FROM project_execution_defaults
+              WHERE project_id = ?
+              ORDER BY provider_id
+            `,
+          )
+          .all(project.id),
+      ).toEqual([
+        { providerId: "codex", model: "gpt-5" },
+        { providerId: "pi", model: "pi-model" },
+      ]);
+      expect(() =>
+        db.$client
+          .prepare(
+            `
+              INSERT INTO project_execution_defaults (
+                project_id,
+                provider_id,
+                model,
+                service_tier,
+                reasoning_level,
+                permission_mode,
+                updated_at
+              ) VALUES (?, 'codex', 'duplicate', 'default', 'medium', 'full', 102)
+            `,
+          )
+          .run(project.id),
+      ).toThrow();
     } finally {
       closeConnection(db);
     }

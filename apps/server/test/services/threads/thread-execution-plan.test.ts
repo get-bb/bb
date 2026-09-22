@@ -81,6 +81,14 @@ describe("thread execution plan input sources", () => {
       });
       upsertProjectExecutionDefaults(harness.deps.db, {
         projectId: project.id,
+        providerId: "pi",
+        model: "pi-default-model",
+        reasoningLevel: "low",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
         providerId: "codex",
         model: "gpt-5",
         reasoningLevel: "medium",
@@ -118,9 +126,14 @@ describe("thread execution plan input sources", () => {
       expect(ignoredDisplayedValue.providerId).toBe("codex");
       expect(ignoredDisplayedValue.executionDefaults?.model).toBe("gpt-5");
       expect(legacyExplicitValue.providerId).toBe("pi");
-      expect(legacyExplicitValue.executionDefaults).toBeNull();
+      expect(legacyExplicitValue.executionDefaults?.model).toBe(
+        "pi-default-model",
+      );
+      expect(legacyExplicitValue.requestedModel).toBe("openai-codex/gpt-5.4");
       expect(clientPreferredProvider.providerId).toBe("pi");
-      expect(clientPreferredProvider.executionDefaults).toBeNull();
+      expect(clientPreferredProvider.executionDefaults?.model).toBe(
+        "pi-default-model",
+      );
       expect(clientPreferredProvider.requestedModel).toBeNull();
     });
   });
@@ -234,6 +247,75 @@ describe("machine permission ceiling", () => {
           threadId: thread.id,
         }),
       ).resolves.toBeNull();
+    });
+  });
+
+  it("uses the execution defaults for the thread provider", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "provider-scoped-thread-defaults-host",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "pi",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: thread.projectId,
+        providerId: "pi",
+        model: "pi-default-model",
+        reasoningLevel: "low",
+        permissionMode: "full",
+        serviceTier: "default",
+        updatedAt: 100,
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: thread.projectId,
+        providerId: "codex",
+        model: "codex-latest-model",
+        reasoningLevel: "high",
+        permissionMode: "auto",
+        serviceTier: "fast",
+        updatedAt: 100,
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {},
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution).toMatchObject({
+        model: "pi-default-model",
+        reasoningLevel: "low",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      const explicitPlan = await resolveExistingThreadExecutionPlan(
+        harness.deps,
+        {
+          executionSource: "client/turn/requested",
+          input: {
+            model: { source: "explicit", value: "pi-explicit-model" },
+          },
+          threadId: thread.id,
+        },
+      );
+
+      expect(explicitPlan.resolvedExecution).toMatchObject({
+        model: "pi-explicit-model",
+        reasoningLevel: "low",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
     });
   });
 

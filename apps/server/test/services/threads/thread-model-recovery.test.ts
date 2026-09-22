@@ -1,6 +1,13 @@
-import { getThreadExecutionOverride, setThreadExecutionOverride } from "@bb/db";
+import {
+  getThreadExecutionOverride,
+  setThreadExecutionOverride,
+  upsertProjectExecutionDefaults,
+} from "@bb/db";
 import { describe, expect, it } from "vitest";
-import { recoverThreadModelOverride } from "../../../src/services/threads/thread-execution-override.js";
+import {
+  applyThreadExecutionOverride,
+  recoverThreadModelOverride,
+} from "../../../src/services/threads/thread-execution-override.js";
 import { buildExecutionOptions } from "../../../src/services/threads/thread-commands.js";
 import { availableModelFixture } from "../../helpers/available-models.js";
 import { registerProviderHostRpcResponder } from "../../helpers/host-rpc.js";
@@ -14,6 +21,77 @@ import { withTestHarness } from "../../helpers/test-app.js";
 
 describe("stale model recovery", () => {
   const savedModels = ["claude-mythos-5", "claude-opus-4-8[1m]"];
+
+  it("uses the target provider's project model for reasoning fallback", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-provider-scoped-model-recovery",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/provider-scoped-model-recovery",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/provider-scoped-model-recovery",
+        status: "ready",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "pi",
+        status: "idle",
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "pi",
+        model: "pi-project-model",
+        reasoningLevel: "low",
+        permissionMode: "full",
+        serviceTier: "default",
+        updatedAt: 100,
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "codex-project-model",
+        reasoningLevel: "high",
+        permissionMode: "auto",
+        serviceTier: "fast",
+        updatedAt: 100,
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelsByProviderId: {
+          pi: {
+            models: [
+              availableModelFixture({
+                model: "pi-project-model",
+                reasoningLevels: ["low"],
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+
+      await expect(
+        applyThreadExecutionOverride(harness.deps, {
+          thread,
+          patch: { reasoningLevel: "high" },
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message: expect.stringContaining('model "pi-project-model"'),
+        },
+      });
+    });
+  });
+
   it.each(savedModels)("recovers %s", async (savedModel) => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

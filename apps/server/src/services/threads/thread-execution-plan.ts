@@ -73,6 +73,7 @@ export function resolveExistingThreadPermissionMode(
   }
   const projectDefaults = getProjectExecutionDefaults(deps.db, {
     projectId: thread.projectId,
+    providerId: thread.providerId,
   });
   const projectExecution =
     projectDefaults?.providerId === thread.providerId ? projectDefaults : null;
@@ -264,6 +265,7 @@ export async function resolveExistingThreadExecutionPlan(
     args.projectDefaults === undefined
       ? getProjectExecutionDefaults(deps.db, {
           projectId: thread.projectId,
+          providerId: thread.providerId,
         })
       : args.projectDefaults;
   const projectExecution =

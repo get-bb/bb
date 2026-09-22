@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
   ProjectExecutionDefaults,
   PermissionMode,
@@ -10,6 +10,7 @@ import { projectExecutionDefaults } from "../schema.js";
 
 export interface GetProjectExecutionDefaultsArgs {
   projectId: string;
+  providerId?: string;
 }
 
 export interface ListProjectExecutionDefaultsByProjectIdsArgs {
@@ -38,7 +39,16 @@ export function getProjectExecutionDefaults(
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .from(projectExecutionDefaults)
-    .where(eq(projectExecutionDefaults.projectId, args.projectId))
+    .where(
+      args.providerId === undefined
+        ? eq(projectExecutionDefaults.projectId, args.projectId)
+        : and(
+            eq(projectExecutionDefaults.projectId, args.projectId),
+            eq(projectExecutionDefaults.providerId, args.providerId),
+          ),
+    )
+    .orderBy(desc(projectExecutionDefaults.updatedAt))
+    .limit(1)
     .get();
 
   return row ?? null;
@@ -63,7 +73,17 @@ export function listProjectExecutionDefaultsByProjectIds(
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .from(projectExecutionDefaults)
-    .where(inArray(projectExecutionDefaults.projectId, [...args.projectIds]))
+    .where(
+      and(
+        inArray(projectExecutionDefaults.projectId, [...args.projectIds]),
+        sql`not exists (
+          select 1
+          from project_execution_defaults as newer
+          where newer.project_id = ${projectExecutionDefaults.projectId}
+            and newer.updated_at > ${projectExecutionDefaults.updatedAt}
+        )`,
+      ),
+    )
     .all();
 
   for (const row of rows) {
@@ -77,7 +97,18 @@ export function upsertProjectExecutionDefaults(
   db: DbConnection,
   args: UpsertProjectExecutionDefaultsArgs,
 ): ProjectExecutionDefaults {
-  const updatedAt = args.updatedAt ?? Date.now();
+  const requestedUpdatedAt = args.updatedAt ?? Date.now();
+  const updatedAt = sql<number>`max(
+    coalesce(
+      (
+        select max(${projectExecutionDefaults.updatedAt})
+        from ${projectExecutionDefaults}
+        where ${projectExecutionDefaults.projectId} = ${args.projectId}
+      ),
+      ${requestedUpdatedAt - 1}
+    ) + 1,
+    ${requestedUpdatedAt}
+  )`;
   const row = db
     .insert(projectExecutionDefaults)
     .values({
@@ -90,7 +121,10 @@ export function upsertProjectExecutionDefaults(
       updatedAt,
     })
     .onConflictDoUpdate({
-      target: [projectExecutionDefaults.projectId],
+      target: [
+        projectExecutionDefaults.projectId,
+        projectExecutionDefaults.providerId,
+      ],
       set: {
         providerId: args.providerId,
         model: args.model,
