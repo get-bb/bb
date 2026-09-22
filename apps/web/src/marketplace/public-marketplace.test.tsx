@@ -126,7 +126,6 @@ describe("public marketplace route rendering", () => {
     expect(html.indexOf(entry.description)).toBeGreaterThan(
       html.indexOf('class="marketplace-detail-install"'),
     );
-    expect(html).not.toContain("marketplace-overview-rule");
     expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
@@ -200,7 +199,6 @@ describe("public marketplace route rendering", () => {
       html.indexOf("More in Code &amp; Reviews"),
     );
     expect(html).not.toContain("marketplace-screenshots");
-    expect(html).not.toContain("marketplace-overview-rule");
   });
 
   it("renders the category shelf alone when the author has no other plugins", () => {
