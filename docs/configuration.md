@@ -708,7 +708,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
 | `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
 | `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
-| `sidebar.hiddenGroups`            | Project, custom section, and machine ids moved into More |
+| `sidebar.hiddenGroups`            | Threads, project, custom section, and machine ids moved into More |
 | `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
 | `sidebar.collapsedProjects`       | Collapsed project ids                               |
 | `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
@@ -796,7 +796,7 @@ window size.
 
 ### Thread-list visibility
 
-Choose **Hide from list** in a project, custom section, or machine's menu to
+Choose **Hide from list** in Threads, a project, custom section, or machine's menu to
 move it into **More**. Its menu in More offers **Add to sidebar** to restore it.
 **Customize list** manages visibility and order for the current
 organization. Hiding a group preserves its threads, saved order, and collapse
@@ -804,16 +804,16 @@ state; pinned threads stay in Pinned. Hidden work remains reachable through More
 search, and direct links. More shows activity without automatically restoring
 hidden groups.
 
-`sidebar.hiddenGroups` defaults to `[]` and accepts `project:<projectId>`,
-`section:<sectionId>`, and `machine:<hostId>` keys (`machine:no-machine` for the
-unassigned machine group). Each organization uses only its matching keys.
-Built-in Pinned and Threads sections cannot be hidden. Duplicate keys are
-deduplicated; unavailable IDs are retained without creating sidebar rows, and
-new groups default to visible.
+`sidebar.hiddenGroups` defaults to `[]` and accepts `threads`,
+`project:<projectId>`, `section:<sectionId>`, and `machine:<hostId>` keys
+(`machine:no-machine` for the unassigned machine group). Each organization uses
+only its matching keys; `threads` applies to every organization. Pinned cannot
+be hidden. Duplicate keys are deduplicated; unavailable IDs are retained
+without creating sidebar rows, and new groups default to visible.
 
 ```sh
 bb settings ui get sidebar.hiddenGroups
-bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
+bb settings ui set sidebar.hiddenGroups '["threads","project:proj_example","section:sec_example"]'
 bb settings ui reset sidebar.hiddenGroups
 ```
 
