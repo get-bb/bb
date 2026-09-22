@@ -8,17 +8,17 @@ The navigation wrapper now fills the available row width in both the bundled `th
 
 ## Review links
 
-- PR: pending
+- PR: [#4077](https://github.com/get-bb/bb/pull/4077)
 - Related GitHub issue: none; reported with a screen recording in BB thread `thr_uivddeyuu5`
-- Live build: pending
-- CI: pending
+- Live build: [BB Connect](https://ymichael--15244.getbb.app)
+- CI: [running for the current PR head](https://github.com/get-bb/bb/pull/4077/checks)
 
 ## Focused verification
 
 - `pnpm exec turbo run test --filter=@bb/app -- --run src/components/sidebar/ThreadRow.test.tsx` — 84 passed
 - `pnpm exec turbo run test --filter=bb-plugin-thread-list -- --run app/rows/ThreadRow.test.tsx` — 93 passed
 - `pnpm exec turbo run typecheck --filter=bb-plugin-thread-list --filter=@bb/app` — passed
-- Production-style `pnpm start:worktree` browser verification — pending final PR HEAD
+- Production-style `pnpm start:worktree` browser verification — pending final PR HEAD launch
 - Verification inventory — blocked by pre-existing unmapped `browser` CLI family drift
 
 ## Exact live verification steps
