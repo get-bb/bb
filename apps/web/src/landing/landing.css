@@ -324,10 +324,6 @@ code,
 /* The browser path: an outline button that copies the install command.
    Explicit background because a bare <button> otherwise shows the UA
    `buttonface` grey (the anchor-based ghost buttons stay transparent). */
-.cmd-short-label {
-  display: none;
-}
-
 .cmd-btn {
   position: relative;
   background: var(--bg);

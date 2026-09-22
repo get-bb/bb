@@ -6,13 +6,11 @@ export function CommandButton({
   command,
   label,
   size,
-  shortLabel,
   onCopy,
 }: {
   command: string;
   label: string;
   size: "hero" | "compact";
-  shortLabel?: string;
   onCopy: (copied: boolean) => void;
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -32,7 +30,6 @@ export function CommandButton({
       onClick={() => void copy()}
       aria-label={label}
     >
-      {shortLabel ? <span className="cmd-short-label">{shortLabel}</span> : null}
       <span className="cmd-dollar">$</span>
       <span className="cmd-text">{command}</span>
       <span className="cmd-copy">Copy</span>
