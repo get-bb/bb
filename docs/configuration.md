@@ -1590,3 +1590,16 @@ or with `bb settings general telemetryEnabled false`. The saved server-wide pref
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
+
+## Desktop browser cookie discovery
+
+The desktop app combines known-browser definitions with schema-based discovery
+of Chromium and Firefox cookie stores matched to registered web browsers.
+Known-browser entries remain available without registration metadata.
+On Linux, an absolute `XDG_CONFIG_HOME`
+in the desktop process environment replaces `~/.config` for discovery and known
+Chromium profile locations; relative values are ignored. Flatpak and Snap data
+directories are also searched. On macOS, discovery searches Application Support.
+The desktop app's own profile is excluded. See `bb guide browser` for search
+bounds, encryption limitations, and the `import-sources` / `import-cookies`
+commands. No additional BB setting is required to enable discovery.

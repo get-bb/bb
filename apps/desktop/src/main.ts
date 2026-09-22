@@ -2595,7 +2595,12 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
   const browserImportService = createBrowserImportService({
-    context: { platform: process.platform, home: homedir() },
+    context: {
+      platform: process.platform,
+      home: homedir(),
+      configHome: process.env.XDG_CONFIG_HOME,
+      excludedDirectories: [app.getPath("userData")],
+    },
     resolveIcon: (appPath) => readMacAppIcon(appPath),
     log(message, details) {
       desktopLogger.info(

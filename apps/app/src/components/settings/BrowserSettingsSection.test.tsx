@@ -113,27 +113,39 @@ describe("BrowserSettingsSectionContent", () => {
     expect(rowButton("brave").textContent).toBe("Recheck");
   });
 
-  it("imports a single-profile browser directly and records it in the row", async () => {
-    const desktopBrowser = makeDesktopBrowser();
-    render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
-    await waitFor(() => expect(screen.getByText("Firefox")).toBeDefined());
-    fireEvent.click(rowButton("firefox"));
-    await waitFor(() =>
-      expect(screen.getByText("default · 2 cookies imported")).toBeDefined(),
-    );
-    expect(desktopBrowser.importCookies).toHaveBeenCalledWith({
-      sourceId: "firefox",
-      sourceProfileDirectory: "Profiles/p1",
-      profile: { kind: "personal" },
-    });
-    expect(screen.getByText("1 skipped (accounts.example.com)")).toBeDefined();
-    expect(screen.getByText("imported just now")).toBeDefined();
-    expect(
-      JSON.parse(
-        window.localStorage.getItem(BROWSER_IMPORT_RECORDS_STORAGE_KEY) ?? "{}",
-      ).firefox.imported,
-    ).toBe(2);
-  });
+  it.each(["firefox", `storage-${"b".repeat(64)}`])(
+    "imports %s directly and records it in the row",
+    async (sourceId) => {
+      const desktopBrowser = makeDesktopBrowser({
+        listImportSources: vi.fn(async () => ({
+          sources: sources.map((source) =>
+            source.id === "firefox" ? { ...source, id: sourceId } : source,
+          ),
+        })),
+      });
+      render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
+      await waitFor(() => expect(screen.getByText("Firefox")).toBeDefined());
+      fireEvent.click(rowButton(sourceId));
+      await waitFor(() =>
+        expect(screen.getByText("default · 2 cookies imported")).toBeDefined(),
+      );
+      expect(desktopBrowser.importCookies).toHaveBeenCalledWith({
+        sourceId,
+        sourceProfileDirectory: "Profiles/p1",
+        profile: { kind: "personal" },
+      });
+      expect(
+        screen.getByText("1 skipped (accounts.example.com)"),
+      ).toBeDefined();
+      expect(screen.getByText("imported just now")).toBeDefined();
+      expect(
+        JSON.parse(
+          window.localStorage.getItem(BROWSER_IMPORT_RECORDS_STORAGE_KEY) ??
+            "{}",
+        )[sourceId].imported,
+      ).toBe(2);
+    },
+  );
 
   it("asks for a profile when a browser has several, then imports it", async () => {
     const desktopBrowser = makeDesktopBrowser();

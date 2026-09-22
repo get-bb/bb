@@ -1129,7 +1129,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Give a worker on that host a private, scoped CDP WebSocket connection for DevBrowser or agent-browser",
           "Capture or reveal a tab and release control while preserving the tab and its login",
           "Observe changed tab and control state with a disposable two-second polling subscription; report disconnect errors",
-          "List browsers installed on the desktop host and copy a profile's signed-in cookies into the personal BB browser or an automation profile",
+          "List known browsers and schema-detected Chromium/Firefox profiles belonging to registered browsers on the desktop host; use the returned source ID to copy a profile's signed-in cookies into the personal BB browser or an automation profile",
         ],
         apiSymbols: [
           "ExperimentalDesktopBrowsersArea",
