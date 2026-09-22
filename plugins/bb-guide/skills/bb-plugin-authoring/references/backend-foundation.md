@@ -22,13 +22,13 @@ The complete top-level factory API is `pluginId`, `log`, `settings`, `storage`,
 `http`, `rpc`, `realtime`, `background`, `cli`, `agents`, `providers`, `ui`,
 `events`, `experimental_hooks`, `experimental_environments`,
 `experimental_machines`, `experimental_serverAccess`, `status`, `server`, `hosts`,
-`experimental_aiServices`, `sdk`, and `onDispose`.
+`experimental_aiServices`, `sdk`, `onDispose`, and `onInstall`.
 
 Keyed registrations must be unique within one factory execution: duplicate
 settings, routes, rpc methods, services, schedules, CLI registrations, tools,
 instruction providers or mention providers are rejected.
-Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
-are additive, so registering multiple listeners is supported.
+Listeners are different: `bb.events.on`, settings `onChange`, `onDispose`, and
+`onInstall` are additive, so registering multiple listeners is supported.
 
 ### bb.log
 

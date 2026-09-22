@@ -31,7 +31,7 @@ because the slot props cannot express most of what bb's navigation does.
 
 ## Status (2026-09-22)
 
-Implemented as four stacked layers:
+Implemented as five stacked layers:
 
 1. Navigation model API (2a-2d, 2f): `experimental_useSidebarNavigation`,
    `experimental_useSidebarNavigationSplit`,
@@ -45,6 +45,9 @@ Implemented as four stacked layers:
    navigation deleted, placeholder with remembered height, a picked provider
    that is disabled or removed falls back to Navigation, `experimental_Original`
    renders the bundled plugin. SDK 0.5.14.
+5. Install hook: `bb.onInstall` runs once after a fresh install,
+   so a plugin such as Compact Nav can pick its own header and navigation.
+   SDK 0.5.15.
 
 Differences from the plan: the header default is `__builtin__` (reusing the
 replacement picker) rather than `__none__`; the plugin lives at

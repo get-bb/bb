@@ -311,11 +311,10 @@ function Navigation() {
 }
 ```
 
-To turn both on when your plugin is installed, pick them once from `server.ts`
-on first load and record that you did in `bb.storage.kv`, so later choices in
-Settings → Appearance stick: read `bb.sdk.system.uiPreferences.list()` for the
-revisions, then `set` `sidebar.headerProvider` and `sidebar.navigationProvider`
-to `<plugin-id>/<slot-id>`. Users do the same with `bb settings ui set`.
+To turn both on when your plugin is installed, set `sidebar.headerProvider`
+and `sidebar.navigationProvider` to `<plugin-id>/<slot-id>` from
+`bb.onInstall` (see backend-ui-lifecycle.md); later choices in
+Settings → Appearance stick. Users do the same with `bb settings ui set`.
 
 ### Replacing the sidebar thread list
 

@@ -173,6 +173,7 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_serverAccess",
   "sdk",
   "onDispose",
+  "onInstall",
 ] as const satisfies readonly (keyof BbPluginApi)[];
 
 type MissingApiKey = Exclude<

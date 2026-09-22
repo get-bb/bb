@@ -779,8 +779,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Register long-running services that bb starts, supervises, and restarts after a failure",
           "Register jobs that run on a cron schedule",
           "Be told to shut down cleanly before it reloads or is disabled",
+          "Run one-time setup right after the user installs it with onInstall, for example to pick its own sidebar slots",
         ],
-        apiSymbols: ["PluginBackground"],
+        apiSymbols: ["PluginBackground", "BbPluginApi.onInstall"],
         firstParty: [
           "Automations",
           "Docs",

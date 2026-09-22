@@ -2324,8 +2324,7 @@ it with one toast on a crash. `--bb-sidebar-control-size` and
 A plugin that moves its navigation into the header tracks whether its header
 is mounted itself (a module-level flag both components read) and returns null
 from its navigation component while it is. A plugin can pick its own header
-and navigation once, the first time it loads, through
-`bb.sdk.system.uiPreferences`; later choices are the user's.
+and navigation from `bb.onInstall`; later choices are the user's.
 
 **Audit before stabilizing.**
 
@@ -2334,7 +2333,7 @@ and navigation once, the first time it loads, through
    footer does.
 2. **Two pickers.** A plugin that wants its navigation in the header needs
    both its header and its navigation picked, which plugins do for the user
-   on first load. Decide whether that write should become a declared,
+   from `bb.onInstall`. Decide whether that write should become a declared,
    host-applied default, or whether a navigation registration should declare
    a paired header instead.
 3. **Geometry.** Validate `width` and the start inset across macOS with and

@@ -2073,4 +2073,14 @@ export interface BbPluginApi {
    * The sanctioned place to clear timers and close connections.
    */
   onDispose(hook: () => void | Promise<void>): void;
+  /**
+   * Run a handler once, right after this plugin is installed and its server
+   * entry has loaded: for example to pick its own sidebar slots with
+   * `bb.sdk.system.uiPreferences`. It does not run on update, reload,
+   * enable, or server restart, nor for bb's bundled plugins; reinstalling
+   * after removal runs it again. Register it while the entry loads. A
+   * handler that throws is logged and the install still succeeds; the
+   * install waits at most 30 seconds for handlers to finish.
+   */
+  onInstall(handler: () => void | Promise<void>): void;
 }
