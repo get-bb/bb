@@ -6,7 +6,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
 
 interface InlineThreadTitleCommitResult {
   kind: "cancel" | "commit";
@@ -82,9 +81,7 @@ function InlineThreadTitleEditor({
       aria-label={ariaLabel}
       autoCapitalize="sentences"
       autoCorrect="off"
-      className={cn(
-        "relative z-10 box-border min-w-0 w-[calc(100%+0.5rem)] -mx-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 text-sm font-normal leading-[inherit] outline-none ring-1 ring-ring",
-      )}
+      className="relative z-10 min-w-0 max-w-full appearance-none border-0 bg-transparent px-0 py-0 [font:inherit] outline-none field-sizing-content"
       spellCheck={false}
       value={value}
       onBlur={() => {
