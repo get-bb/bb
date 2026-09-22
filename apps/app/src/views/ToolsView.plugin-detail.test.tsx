@@ -2294,4 +2294,63 @@ describe("plugin detail source and settings", () => {
       "get-bb/bb",
     );
   });
+
+  it("keeps in-place settings out of the URL when the detail pane is embedded in a thread", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return Response.json({
+            enabled: true,
+            plugins: [
+              makeInstalledPlugin({
+                id: "github",
+                name: "GitHub",
+                hasSettings: true,
+              }),
+            ],
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return Response.json({ results: [], collections: [] });
+        }
+        if (url === "/api/v1/plugins/github/settings") {
+          return Response.json({
+            ok: true,
+            schema: { repository: { type: "string", label: "Repository" } },
+            values: { repository: "get-bb/bb" },
+          });
+        }
+        return Response.json({ error: "not found" }, { status: 404 });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_1?panel=files"]}>
+        <TooltipProvider>
+          <PluginDetailPaneView pluginId="github" />
+        </TooltipProvider>
+        <LocationProbe />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(screen.getByTestId("route-path").textContent).toBe("/threads/thr_1");
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?panel=files",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?panel=files",
+    );
+  });
 });

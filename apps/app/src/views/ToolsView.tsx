@@ -54,6 +54,7 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   REGISTRY_SKILLS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
+  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
@@ -151,9 +152,20 @@ function PluginsToolView({
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const configurationOpen =
-    new URLSearchParams(location.search).get("configure") === pluginId;
+  const routeOwnsDetail =
+    location.pathname === getPluginDetailRoutePath({ pluginId }) ||
+    location.pathname === getPluginConfigurationRoutePath({ pluginId });
+  const [locallyConfiguredPluginId, setLocallyConfiguredPluginId] = useState<
+    string | null
+  >(null);
+  const configurationOpen = routeOwnsDetail
+    ? new URLSearchParams(location.search).get("configure") === pluginId
+    : locallyConfiguredPluginId === pluginId;
   const setConfigurationOpen = (open: boolean) => {
+    if (!routeOwnsDetail) {
+      setLocallyConfiguredPluginId(open ? pluginId : null);
+      return;
+    }
     const params = new URLSearchParams(location.search);
     if (open) params.set("configure", pluginId);
     else params.delete("configure");
