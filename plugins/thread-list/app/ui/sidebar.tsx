@@ -12,11 +12,11 @@ export function useSidebarContentElement(
 ): HTMLElement | null {
   const [element, setElement] = React.useState<HTMLElement | null>(null);
   React.useLayoutEffect(() => {
-    setElement(
+    const next =
       anchorRef.current?.closest<HTMLElement>(SIDEBAR_CONTENT_SELECTOR) ??
-        null,
-    );
-  });
+      null;
+    setElement((current) => (current === next ? current : next));
+  }, [anchorRef]);
   return element;
 }
 
