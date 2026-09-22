@@ -365,10 +365,10 @@ function Shelf({
     >
       <div className="marketplace-section-head">
         <div>
-          <div>
-            <h2>{shelf.label}</h2>
+          <h2>
+            {shelf.label}{"\u00a0"}
             <span>{shelf.entries.length}</span>
-          </div>
+          </h2>
           {description === undefined ? null : <p>{description}</p>}
         </div>
         <a
@@ -771,10 +771,10 @@ function MoreInCategory({
     <section>
       <div className="marketplace-section-head">
         <div>
-          <div>
-            <h2>More in {categoryName}</h2>
+          <h2>
+            More in {categoryName}{"\u00a0"}
             <span>{entries.length}</span>
-          </div>
+          </h2>
           {category?.description === undefined ? null : (
             <p>{category.description}</p>
           )}

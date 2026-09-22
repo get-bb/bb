@@ -244,12 +244,6 @@
   min-width: 0;
 }
 
-.marketplace-section-head > div > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
 .marketplace-section-head h2 {
   color: var(--heading);
   font-size: 19px;
