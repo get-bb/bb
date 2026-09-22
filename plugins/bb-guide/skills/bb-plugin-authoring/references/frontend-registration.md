@@ -271,9 +271,9 @@ const actions = experimental_useSidebarThreadActions();
 // sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
 // server order. A thread's `sectionId` names one of these or is null for the
 // loose "Threads" bucket. Create, rename, and delete sections and move
-// threads between them through the public API from your server
-// (`bb.sdk.threadSections.*`, `bb.sdk.threads.update({ id, sectionId })`);
-// the sidebar refreshes over realtime.
+// threads between them through the public API from your server, the
+// `threadSections` area and `threads.update({ id, sectionId })` on the
+// backend client; the sidebar refreshes over realtime.
 
 // threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
 // parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
