@@ -388,19 +388,7 @@ export function compiledInCandidate(pluginId: string): PluginFrontendCandidate {
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
-  /**
-   * Plugin frontends compiled into the app build. They are imported through
-   * their own importer instead of the server bundle, never reloaded on a
-   * bundle hash change (the module can only change with the app build), and
-   * seeded before the plugin inventory request answers so they are on
-   * screen at first paint.
-   */
   compiledIn?: ReadonlyMap<string, CompiledInPluginFrontend>;
-  /**
-   * Remembers which compiled-in plugins the server last reported absent
-   * (disabled or uninstalled), so the next boot does not paint them and then
-   * take them away.
-   */
   compiledInDisabledMemo?: CompiledInDisabledMemo;
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
   retainCss: (pluginId: string) => () => void;
