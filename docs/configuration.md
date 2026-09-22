@@ -1642,3 +1642,10 @@ The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with
 `bb thread-list prefs set threadLifecycles '["archived"]'` or the header's
 Filter menu. It syncs to every window and rejects empty or duplicate values.
+
+### Thread list provider icons
+
+The Thread list plugin's `showProviderIcons` preference (default `true`) leads
+each thread row with its agent provider's icon, such as Claude Code or Codex.
+Turn it off with `bb thread-list prefs set showProviderIcons false` or the
+header's Organize → Rows → Provider icons checkbox. It syncs to every window.

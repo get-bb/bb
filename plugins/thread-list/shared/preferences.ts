@@ -66,6 +66,12 @@ export const preferenceDefinitions = {
     "Thread lifecycles shown in the list: active, archived, or both. At least one is required.",
     null,
   ),
+  showProviderIcons: definePreference(
+    z.boolean(),
+    true,
+    "Whether each thread row leads with its agent provider's icon.",
+    null,
+  ),
   organizationMode: definePreference(
     organizationModeSchema,
     "chronological",

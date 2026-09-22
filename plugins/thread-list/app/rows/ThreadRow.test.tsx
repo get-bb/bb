@@ -16,6 +16,11 @@ import {
   type RenderedSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import type { ProviderInfo } from "@bb/domain";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
+import { getDefaultStore } from "jotai";
+import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
+import { resetPreferencesSyncForTest } from "../preferences/preferences-sync.js";
 import { makeSidebarThread } from "../model/fixtures.js";
 import { toSidebarThread } from "../model/sidebar-thread.js";
 import {
@@ -106,6 +111,7 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   pluginStatus?: PluginSidebarThreadRowStatus;
   splitLayout?: PluginSidebarSplitLayout;
   projects?: PluginSidebarProject[];
+  providers?: ProviderInfo[];
   sdk?: PluginSdkTestFakes;
 }
 
@@ -116,6 +122,7 @@ function renderThreadRow({
   pluginStatus,
   splitLayout,
   projects = [],
+  providers = [],
   sdk,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
@@ -126,6 +133,7 @@ function renderThreadRow({
     { thread, ...harness },
     {
       sidebarThreads: { threads: [thread], projects },
+      providers: { status: "ready", providers },
       sidebarDraftThreadIds: hasComposerDraft ? [thread.id] : [],
       sidebarRowStatuses: pluginStatus ? { [thread.id]: pluginStatus } : {},
       sidebarShortcuts: shortcutKey
@@ -197,6 +205,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
+  resetPreferencesSyncForTest();
 });
 
 describe("ThreadRow", () => {
@@ -796,6 +805,50 @@ describe("ThreadRow", () => {
       screen.getByTitle("Compare Mention target in Mention project"),
     ).not.toBeNull();
     expect(screen.queryByText(/@thread:thr_mentioned/)).toBeNull();
+  });
+
+  it("marks the row with its agent provider's icon", () => {
+    renderThreadRow({
+      thread: createThread({ providerId: "claude-code" }),
+      providers: [
+        makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
+      ],
+    });
+
+    const mark = screen.getByRole("img", { name: "Claude Code" });
+    expect(mark.getAttribute("data-sidebar-thread-provider-icon")).toBe(
+      "claude-code",
+    );
+    expect(
+      mark
+        .querySelector("[data-provider-kind='agent']")
+        ?.getAttribute("data-provider-id"),
+    ).toBe("claude-code");
+  });
+
+  it("omits the provider icon when the list hides provider icons", () => {
+    getDefaultStore().set(sidebarShowProviderIconsAtom, false);
+    renderThreadRow({
+      thread: createThread({ providerId: "claude-code" }),
+      providers: [
+        makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
+      ],
+    });
+
+    expect(screen.queryByRole("img", { name: "Claude Code" })).toBeNull();
+  });
+
+  it("omits the provider icon until the provider directory knows the id", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ providerId: "unknown-agent" }),
+      providers: [
+        makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
+      ],
+    });
+
+    expect(
+      container.querySelector("[data-sidebar-thread-provider-icon]"),
+    ).toBeNull();
   });
 
   it("marks a child from another project with the project name", () => {

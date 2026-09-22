@@ -6,7 +6,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `threadLifecycles`, `organizationMode`,
+`bb thread-list prefs list --json`; keys are `threadLifecycles`, `showProviderIcons`, `organizationMode`,
 `environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group),

@@ -27,6 +27,8 @@ import {
   type ThreadListIndicatorState,
 } from "@bb/client-core";
 import {
+  experimental_ProviderIcon as ProviderIcon,
+  experimental_useProviders,
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreadSplit,
   ThreadTitle,
@@ -37,7 +39,9 @@ import {
   type PluginSidebarSplitPane,
   type PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
+import { useAtomValue } from "jotai";
 import type { SidebarThread } from "../model/sidebar-thread.js";
+import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
 import { useSidebarProjectName } from "../model/use-sidebar-data.js";
 import { AppCommandShortcutPill } from "../ui/AppCommandShortcutPill.js";
 import { SidebarStickyTier } from "../ui/sidebar.js";
@@ -205,6 +209,34 @@ function renderThreadRowContainer({
     <div ref={containerRef} {...containerProps}>
       {children}
     </div>
+  );
+}
+
+/**
+ * The agent provider's mark, so a glance at the list tells which backend a
+ * thread runs on. Draws nothing when the list hides provider icons, or until
+ * the provider directory knows the id.
+ */
+function ThreadRowProviderIcon({ providerId }: { providerId: string }) {
+  const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
+  const { providers } = experimental_useProviders();
+  const provider = providers.find((candidate) => candidate.id === providerId);
+  if (!showProviderIcons || provider === undefined) return null;
+  return (
+    <span
+      data-sidebar-thread-provider-icon={providerId}
+      role="img"
+      aria-label={provider.displayName}
+      title={provider.displayName}
+      className="mr-1.5 flex shrink-0 items-center text-muted-foreground"
+    >
+      <ProviderIcon
+        providerKind="agent"
+        provider={provider}
+        className="size-3.5"
+        aria-hidden
+      />
+    </span>
   );
 }
 
@@ -539,6 +571,7 @@ function ThreadRowComponent({
             (!parentOptions || !hasChildren || isEditing) && "flex-1",
           )}
         >
+          <ThreadRowProviderIcon providerId={thread.providerId} />
           {isEditing ? (
             <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
               {editor}

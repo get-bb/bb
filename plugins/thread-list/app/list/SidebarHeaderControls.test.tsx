@@ -19,6 +19,7 @@ import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarShowProviderIconsAtom,
   sidebarSortDirectionAtom,
 } from "../preferences/atoms.js";
 import type { OrganizationMode } from "../../shared/preferences.js";
@@ -46,6 +47,7 @@ function setup(
   store.set(sidebarChronologicalSortAtom, "updated");
   store.set(sidebarSortDirectionAtom, "default");
   store.set(sidebarEnvironmentGroupingAtom, "auto");
+  store.set(sidebarShowProviderIconsAtom, true);
   const newThread = vi.fn();
   const newSection = vi.fn();
   render(
@@ -254,6 +256,32 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe(false);
     expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
+  });
+
+  it("turns provider icons off and back on from Organize", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "Provider icons",
+    });
+    expect(screen.getByRole("group", { name: "Rows" })).toBeTruthy();
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(store.get(sidebarShowProviderIconsAtom)).toBe(false);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("menuitemcheckbox", { name: "Provider icons" })
+          .getAttribute("aria-checked"),
+      ).toBe("false"),
+    );
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Provider icons" }),
+    );
+    expect(store.get(sidebarShowProviderIconsAtom)).toBe(true);
   });
 
   it("resolves legacy sort, toggles direction, and resets it for another field", async () => {
