@@ -2,6 +2,8 @@
 
 `bb browser` is the experimental core API for automation integrations controlling BB desktop tabs. The Browser Automation plugin adds its own script/session commands; another plugin can use the same core connection independently.
 
+`bb browser-automation open --machine <name-or-id>` accepts an exact host ID or an unambiguous machine name. Exact IDs take precedence; unknown or ambiguous names fail before session creation. Use `--backend local --headless` for headless sessions or `--backend desktop --desktop <instance-id>` for a desktop session.
+
 Start with `bb browser instances --host <host-id> --json`. For every tab/control operation provide `--host <host-id> --instance <instance-id> --generation <generation> --thread <thread-id>`. The browser host can differ from the agent host. Never infer an active desktop window.
 
 - `tabs`: list native tabs and their control state.

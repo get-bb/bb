@@ -102,8 +102,9 @@ export function createBrowserAutomationCli(deps: {
           machine: {
             type: "string",
             required: true,
-            placeholder: "host-id",
-            description: "Host that runs the browser",
+            placeholder: "name-or-id",
+            description:
+              "Host that runs the browser: exact ID or unambiguous name",
           },
           desktop: {
             type: "string",
