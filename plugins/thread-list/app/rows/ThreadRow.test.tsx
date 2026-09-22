@@ -19,7 +19,11 @@ import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import type { ProviderInfo } from "@bb/domain";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { getDefaultStore } from "jotai";
-import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
+import {
+  sidebarProviderIconColorAtom,
+  sidebarProviderIconColorsAtom,
+  sidebarShowProviderIconsAtom,
+} from "../preferences/atoms.js";
 import { resetPreferencesSyncForTest } from "../preferences/preferences-sync.js";
 import { makeSidebarThread } from "../model/fixtures.js";
 import { toSidebarThread } from "../model/sidebar-thread.js";
@@ -824,6 +828,47 @@ describe("ThreadRow", () => {
         .querySelector("[data-provider-kind='agent']")
         ?.getAttribute("data-provider-id"),
     ).toBe("claude-code");
+  });
+
+  it("colors the icon from the theme, then the brand tint, and lets a custom color win", () => {
+    const provider = makeProviderInfo({
+      id: "claude-code",
+      displayName: "Claude Code",
+      strings: {
+        signInHint: "Sign in",
+        expiredHint: "Sign in again",
+        installUrl: "https://example.com",
+        iconTint: { light: "#d97757", dark: "#e08a6c" },
+      },
+    });
+    const thread = createThread({ providerId: "claude-code" });
+    renderThreadRow({ thread, providers: [provider] });
+
+    const mark = screen.getByRole("img", { name: "Claude Code" });
+    expect(mark.style.color).toBe(
+      "var(--provider-icon-claude-code, var(--provider-icon, light-dark(#d97757, #e08a6c)))",
+    );
+    expect(
+      mark
+        .querySelector("[data-provider-kind='agent']")
+        ?.getAttribute("data-provider-tint"),
+    ).toBeFalsy();
+
+    act(() => {
+      getDefaultStore().set(sidebarProviderIconColorAtom, "monochrome");
+    });
+    expect(mark.style.color).toBe(
+      "var(--provider-icon-claude-code, var(--provider-icon, currentColor))",
+    );
+
+    act(() => {
+      getDefaultStore().set(sidebarProviderIconColorsAtom, {
+        "claude-code": { light: "#112233", dark: "#445566" },
+      });
+    });
+    expect(mark.style.color).toBe(
+      "light-dark(rgb(17, 34, 51), rgb(68, 85, 102))",
+    );
   });
 
   it("omits the provider icon when the list hides provider icons", () => {

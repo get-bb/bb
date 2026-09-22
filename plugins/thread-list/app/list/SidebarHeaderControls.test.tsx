@@ -19,9 +19,11 @@ import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarProviderIconColorAtom,
   sidebarShowProviderIconsAtom,
   sidebarSortDirectionAtom,
 } from "../preferences/atoms.js";
+import { providerIconColorsDialogOpenAtom } from "./ProviderIconColorsDialog.js";
 import type { OrganizationMode } from "../../shared/preferences.js";
 
 installTestPluginRuntime();
@@ -48,6 +50,7 @@ function setup(
   store.set(sidebarSortDirectionAtom, "default");
   store.set(sidebarEnvironmentGroupingAtom, "auto");
   store.set(sidebarShowProviderIconsAtom, true);
+  store.set(sidebarProviderIconColorAtom, "brand");
   const newThread = vi.fn();
   const newSection = vi.fn();
   render(
@@ -282,6 +285,28 @@ describe("sidebar header controls", () => {
       screen.getByRole("menuitemcheckbox", { name: "Provider icons" }),
     );
     expect(store.get(sidebarShowProviderIconsAtom)).toBe(true);
+  });
+
+  it("switches provider icon colors and opens the color customizer", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const monochrome = await screen.findByRole("menuitemradio", {
+      name: "Monochrome",
+    });
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Brand colors" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+
+    fireEvent.click(monochrome);
+    expect(store.get(sidebarProviderIconColorAtom)).toBe("monochrome");
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Customize colors…" }),
+    );
+    expect(store.get(providerIconColorsDialogOpenAtom)).toBe(true);
   });
 
   it("resolves legacy sort, toggles direction, and resets it for another field", async () => {

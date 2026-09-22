@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPresentationTintColor } from "@bb/domain";
 
 const STRING_MAX_LENGTH = 1_024;
 const LIST_MAX_LENGTH = 10_000;
@@ -33,6 +34,22 @@ export const environmentGroupingSchema = z.union([
   z.boolean(),
 ]);
 export type EnvironmentGrouping = z.infer<typeof environmentGroupingSchema>;
+
+export const providerIconColorModeSchema = z.enum(["brand", "monochrome"]);
+export type ProviderIconColorMode = z.infer<typeof providerIconColorModeSchema>;
+
+const providerIconColorSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine(isPresentationTintColor, "Expected a CSS color such as #d97757");
+
+export const providerIconColorsSchema = z.record(
+  listItemSchema,
+  z.object({ light: providerIconColorSchema, dark: providerIconColorSchema }),
+);
+export type ProviderIconColors = z.infer<typeof providerIconColorsSchema>;
 
 const collapsibleSectionIdSchema = z.enum(["pinned", "threads"]);
 
@@ -70,6 +87,18 @@ export const preferenceDefinitions = {
     z.boolean(),
     true,
     "Whether each thread row leads with its agent provider's icon.",
+    null,
+  ),
+  providerIconColor: definePreference(
+    providerIconColorModeSchema,
+    "brand",
+    "How provider icons are colored when neither a custom color nor the theme sets one: brand uses each provider's own tint, monochrome matches the row text.",
+    null,
+  ),
+  providerIconColors: definePreference(
+    providerIconColorsSchema,
+    {},
+    "Custom provider icon colors by provider id, each with a light and a dark CSS color. They win over the theme and the color mode.",
     null,
   ),
   organizationMode: definePreference(

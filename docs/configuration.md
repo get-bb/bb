@@ -1649,3 +1649,12 @@ The Thread list plugin's `showProviderIcons` preference (default `true`) leads
 each thread row with its agent provider's icon, such as Claude Code or Codex.
 Turn it off with `bb thread-list prefs set showProviderIcons false` or the
 header's Organize → Rows → Provider icons checkbox. It syncs to every window.
+
+An icon's color comes from the first of these that is set:
+
+1. A custom color for that provider: Organize → Rows → Customize colors…, or
+   `bb thread-list prefs set providerIconColors '{"codex":{"light":"#10a37f","dark":"#6ee7b7"}}'`.
+2. The theme: `--provider-icon-<provider id>` for one provider, then
+   `--provider-icon` for all of them (see the theming reference).
+3. The `providerIconColor` mode: `brand` (default) uses each provider's own
+   tint, `monochrome` matches the row text.
