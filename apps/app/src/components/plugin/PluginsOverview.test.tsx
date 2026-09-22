@@ -550,12 +550,13 @@ describe("PluginsOverview", () => {
     );
   });
 
-  it("opens the canonical detail returned by a Browse install", async () => {
+  it("keeps Browse and its filters open after installation", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/plugins?view=browse"]}>
+      <MemoryRouter initialEntries={["/plugins?view=browse&query=GitHub&sort=name"]}>
         <QueryClientWrapper>
+          <LocationPath />
           <Routes>
             <Route path="/plugins" element={<PluginsOverview />} />
             <Route path="*" element={<LocationPath />} />
@@ -572,8 +573,13 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
 
-    expect((await screen.findByTestId("location-path")).textContent).toBe(
-      "/settings/plugins/github",
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Install GitHub?" })).toBeNull();
+    });
+    expect(screen.getByTestId("location-path").textContent).toBe("/plugins");
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toHaveProperty(
+      "value",
+      "GitHub",
     );
   });
 

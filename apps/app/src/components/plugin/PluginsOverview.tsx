@@ -330,14 +330,6 @@ export function PluginsOverview({
         onOpenChange={(open) =>
           setAddDialog((current) => ({ ...current, open }))
         }
-        onInstalled={(plugin) =>
-          navigate(
-            getPluginDetailRoutePath({
-              pluginId: plugin.id,
-              view: "installed",
-            }),
-          )
-        }
       />
     </>
   );
