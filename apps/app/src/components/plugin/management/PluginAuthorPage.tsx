@@ -8,7 +8,6 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   type PluginCatalogSearchEntry,
   usePluginCatalogSearch,
@@ -77,10 +76,10 @@ export function PluginAuthorPage({
     selectedCategories,
     changeSearchParams,
   } = usePluginCollectionParams();
-  const debouncedQuery = useDebouncedValue(query.trim(), 300);
+  const trimmedQuery = query.trim();
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  const searchQuery = usePluginCatalogSearch(debouncedQuery, {
-    enabled: debouncedQuery !== "",
+  const searchQuery = usePluginCatalogSearch(trimmedQuery, {
+    enabled: trimmedQuery !== "",
   });
   const entries = useMemo(
     () =>
@@ -105,7 +104,7 @@ export function PluginAuthorPage({
   const visibleEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
     const searchEntries =
-      debouncedQuery === ""
+      trimmedQuery === ""
         ? (catalogQuery.data?.entries ?? [])
         : (searchQuery.data?.entries ?? []);
     const filtered = entriesByMarketplaceAuthor(
@@ -121,13 +120,13 @@ export function PluginAuthorPage({
   }, [
     authorKey,
     catalogQuery.data?.entries,
-    debouncedQuery,
+    trimmedQuery,
     searchQuery.data?.entries,
     selectedCategories,
     sort,
     sortDirection,
   ]);
-  const searchPending = debouncedQuery !== "" && searchQuery.isPending;
+  const searchPending = trimmedQuery !== "" && searchQuery.isPending;
   const browseParams = new URLSearchParams(searchParams);
   browseParams.delete("author");
   const browseSearch = browseParams.toString();
@@ -224,6 +223,7 @@ export function PluginAuthorPage({
               />
             ) : (
               <PluginCatalogGrid
+                resetKey={searchParams.toString()}
                 entries={visibleEntries}
                 onInstall={onInstall}
                 onUninstall={onUninstall}

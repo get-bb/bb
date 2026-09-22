@@ -645,8 +645,8 @@ describe("PluginsOverview", () => {
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "Plugin 01" } },
     );
+    await waitFor(() => expect(screen.queryByText("Plugin 14")).toBeNull());
     expect(screen.getByText("Plugin 01")).toBeTruthy();
-    expect(screen.queryByText("Plugin 14")).toBeNull();
   });
 
   it("keeps loading in Settings while the sentinel stays visible so disabled plugins are reachable", async () => {
