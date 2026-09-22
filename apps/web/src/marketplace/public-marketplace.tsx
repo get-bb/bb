@@ -956,6 +956,7 @@ export function PublicMarketplaceDetailPage({
             <div className="marketplace-detail-actions">
               <CommandButton
                 command={installCommand}
+                shortLabel="Copy install command"
                 label={`Copy ${installCommand}`}
                 size="compact"
                 onCopy={(copied) => {
@@ -976,7 +977,6 @@ export function PublicMarketplaceDetailPage({
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
               </a>
             </div>
-
           </div>
         </header>
         {
