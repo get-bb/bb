@@ -58,7 +58,7 @@ async function resultText(
 }
 
 describe("provider gating", () => {
-  it.each(["claude-code", "some-plugin-provider"])(
+  it.each(["claude-code", "codex", "some-plugin-provider"])(
     "withholds the tool from %s, which declares it natively",
     async (providerId) => {
       const host = createHost();
@@ -69,7 +69,7 @@ describe("provider gating", () => {
     },
   );
 
-  it.each(["codex", "pi", "acp-cursor"])(
+  it.each(["pi", "acp-cursor"])(
     "registers the tool for %s with the schema generated from its input parser",
     async (providerId) => {
       const host = createHost();
@@ -85,7 +85,7 @@ describe("provider gating", () => {
     },
   );
 
-  it.each(["codex", "pi", "acp-cursor"])(
+  it.each(["pi", "acp-cursor"])(
     "does not prescribe provider-specific plan tools to %s",
     async (providerId) => {
       const host = createHost();
@@ -102,7 +102,7 @@ describe("provider gating", () => {
   it("advertises multiSelect as optional and defaults it during execution", async () => {
     const host = createHost();
     const resolved = await host.harness.resolveAgentConfiguration(
-      configurationContext("codex"),
+      configurationContext("pi"),
     );
     expect(resolved.tools[0]?.inputSchema).toMatchObject({
       additionalProperties: false,

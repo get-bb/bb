@@ -1,6 +1,7 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
+  isApprovalInteractionOutcome,
   type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
@@ -8,6 +9,8 @@ import {
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
+  type UserQuestionInteractionOutcome,
+  type UserQuestionPendingInteractionPayload,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { CodexMacOsPermissionItem } from "./extension-kinds.js";
 import { normalizePendingInteractionRequestedPermissionProfile } from "./pending-interaction-normalization.js";
@@ -18,6 +21,7 @@ import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
   codexPermissionsRequestApprovalParamsSchema,
+  codexToolRequestUserInputParamsSchema,
 } from "./schemas.js";
 import type {
   CodexAdditionalPermissions,
@@ -29,7 +33,12 @@ import type {
 type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
-  | PermissionsRequestApprovalResponse;
+  | PermissionsRequestApprovalResponse
+  | { answers: Record<string, { answers: string[] }> };
+
+type CodexInteractionOutcome =
+  | ApprovalInteractionOutcome
+  | UserQuestionInteractionOutcome;
 
 function assertNever(value: never): never {
   throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
@@ -77,6 +86,73 @@ function filterSessionDecisionWithoutGrant(
     );
   }
   return filtered;
+}
+
+function buildCodexUserQuestionId(
+  questionId: string,
+  optionIndex: number,
+): string {
+  return `${questionId}:option-${optionIndex + 1}`;
+}
+
+function buildCodexUserQuestionPayload(params: {
+  questions: Array<{
+    id: string;
+    header: string;
+    question: string;
+    isOther: boolean;
+    isSecret: boolean;
+    options: Array<{ label: string; description: string }> | null;
+  }>;
+}): UserQuestionPendingInteractionPayload {
+  return {
+    kind: "user_question",
+    questions: params.questions.map((question) => ({
+      id: question.id,
+      prompt: question.question,
+      shortLabel: question.header,
+      multiSelect: false,
+      options: question.options?.map((option, optionIndex) => ({
+        value: buildCodexUserQuestionId(question.id, optionIndex),
+        label: option.label,
+        description: option.description,
+      })),
+      allowFreeText: question.isOther || question.options === null,
+    })),
+  };
+}
+
+function buildCodexUserQuestionResponse(args: UserQuestionInteractionOutcome): {
+  answers: Record<string, { answers: string[] }>;
+} {
+  const answers: Record<string, { answers: string[] }> = {};
+  for (const question of args.payload.questions) {
+    const answer = args.resolution.answers[question.id];
+    if (!answer) {
+      throw new ProviderResponseEncodeError(
+        `Missing answer for user question '${question.id}'`,
+      );
+    }
+    const selected = answer.selected.map((value) => {
+      const option = question.options?.find(
+        (candidate) => candidate.value === value,
+      );
+      if (!option) {
+        throw new ProviderResponseEncodeError(
+          `Unknown selected option '${value}' for user question '${question.id}'`,
+        );
+      }
+      return option.label;
+    });
+    const values = answer.freeText ? [...selected, answer.freeText] : selected;
+    if (values.length === 0) {
+      throw new ProviderResponseEncodeError(
+        `Answer for user question '${question.id}' is empty`,
+      );
+    }
+    answers[question.id] = { answers: values };
+  }
+  return { answers };
 }
 
 export function decodeCodexInteractiveRequest(
@@ -198,14 +274,37 @@ export function decodeCodexInteractiveRequest(
         },
       };
     }
+    case "item/tool/requestUserInput": {
+      const parsed = codexToolRequestUserInputParamsSchema.safeParse(
+        request.params,
+      );
+      if (!parsed.success) {
+        return null;
+      }
+      if (parsed.data.questions.some((question) => question.isSecret)) {
+        throw new ProviderRequestDecodeErrorValue(
+          "Codex secret user input is not supported by the BB question form",
+        );
+      }
+      return {
+        requestId: request.id,
+        method: request.method,
+        providerThreadId: parsed.data.threadId,
+        turnId: parsed.data.turnId,
+        payload: buildCodexUserQuestionPayload(parsed.data),
+      };
+    }
     default:
       return null;
   }
 }
 
 export function buildCodexInteractiveResponse(
-  args: ApprovalInteractionOutcome,
+  args: CodexInteractionOutcome,
 ): CodexInteractiveResponse {
+  if (!isApprovalInteractionOutcome(args)) {
+    return buildCodexUserQuestionResponse(args);
+  }
   switch (args.payload.subject.kind) {
     case "command": {
       const response: CommandExecutionRequestApprovalResponse = {

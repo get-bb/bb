@@ -710,6 +710,81 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("keeps a Codex user question answerable after five minutes and provider request re-registration", async () => {
+    vi.useFakeTimers();
+    try {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-pending-interaction-codex-user-question-lifetime",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "codex",
+        });
+        const request: PendingInteractionCreate = {
+          threadId: thread.id,
+          turnId: "turn-codex-user-question-lifetime",
+          providerId: "codex",
+          providerThreadId: "provider-thread-codex-user-question-lifetime",
+          providerRequestId: "request-codex-user-question-lifetime",
+          payload: createUserQuestionPayload({
+            prompt: "Which audited path should we use?",
+          }),
+        };
+
+        const created = registerPendingInteraction(
+          harness.deps,
+          harness.deps.pendingInteractions,
+          request,
+        );
+        if (created.outcome === "rejected") {
+          throw new Error(
+            `Expected interaction registration to succeed: ${created.reason}`,
+          );
+        }
+
+        await vi.advanceTimersByTimeAsync(300_000);
+        expect(
+          harness.deps.pendingInteractions.getThreadInteraction({
+            threadId: thread.id,
+            interactionId: created.interaction.id,
+          }),
+        ).toMatchObject({ status: "pending", payload: request.payload });
+
+        const duplicate = registerPendingInteraction(
+          harness.deps,
+          harness.deps.pendingInteractions,
+          request,
+        );
+        expect(duplicate).toEqual({
+          outcome: "existing",
+          interaction: created.interaction,
+        });
+
+        const resolution = createUserAnswerResolution({
+          freeText: "Use the audited release path.",
+        });
+        expect(
+          harness.deps.pendingInteractions.resolvePendingInteraction({
+            threadId: thread.id,
+            interactionId: created.interaction.id,
+            resolution,
+          }),
+        ).toMatchObject({ status: "resolving", resolution });
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("interrupts pending user-question interactions without orphaning state", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
