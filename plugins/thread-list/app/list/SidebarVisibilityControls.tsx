@@ -167,16 +167,21 @@ export function SidebarOverflowItem({
   onClose,
 }: {
   activity?: ReactNode;
-  children: ReactNode;
+  children: (close: () => void) => ReactNode;
   item: SidebarVisibilityItem;
   onAddToSidebar: (id: string) => void;
   onClose: () => void;
 }) {
   const compact = useIsCompactViewport();
-  const content = (
+  const [isCompactOpen, setIsCompactOpen] = useState(false);
+  const closeCompact = useCallback(() => {
+    setIsCompactOpen(false);
+    onClose();
+  }, [onClose]);
+  const content = (close: () => void) => (
     <div data-sidebar-overflow="true" className="flex min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {children}
+        {children(close)}
       </div>
       <Button
         type="button"
@@ -188,7 +193,7 @@ export function SidebarOverflowItem({
           "mt-1 shrink-0 border-t",
         )}
         onClick={() => {
-          onClose();
+          close();
           onAddToSidebar(item.id);
         }}
       >
@@ -213,7 +218,7 @@ export function SidebarOverflowItem({
 
   if (compact) {
     return (
-      <Popover>
+      <Popover open={isCompactOpen} onOpenChange={setIsCompactOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
@@ -233,7 +238,7 @@ export function SidebarOverflowItem({
           aria-label={item.title}
           className="flex min-h-0 flex-col p-1 [&>div]:min-h-0 [&>div]:flex-1"
         >
-          {content}
+          {content(closeCompact)}
         </PopoverContent>
       </Popover>
     );
@@ -257,7 +262,7 @@ export function SidebarOverflowItem({
           }}
           className="flex max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-1rem))] w-72 flex-col [&>div]:min-h-0 [&>div]:flex-1"
         >
-          {content}
+          {content(onClose)}
         </DropdownMenuSubContent>
       </DropdownMenuPortal>
     </DropdownMenuSub>

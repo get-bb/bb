@@ -221,7 +221,7 @@ function HiddenGroup({
       onAddToSidebar={restore}
       activity={<GroupActivity threads={group.threads} />}
     >
-      {group.renderContent(close)}
+      {(closeSection) => group.renderContent(closeSection)}
     </SidebarOverflowItem>
   );
 }

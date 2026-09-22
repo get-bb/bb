@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -8,7 +14,10 @@ import {
 } from "./SidebarVisibilityControls.js";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityCustomize.js";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("shared sidebar visibility controls", () => {
   it("loads group customization and toggles visibility without navigating away", async () => {
@@ -56,7 +65,9 @@ describe("thread overflow submenus", () => {
               onClose={close}
               onAddToSidebar={() => {}}
             >
-              <button onClick={close}>Review thread</button>
+              {(closeSection) => (
+                <button onClick={closeSection}>Review thread</button>
+              )}
             </SidebarOverflowItem>
           )}
         </SidebarMore>
@@ -75,6 +86,43 @@ describe("thread overflow submenus", () => {
       key: "Enter",
     });
     await screen.findByRole("menuitem", { name: "Review" });
+    expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
+  });
+
+  it("closes both compact drawers when a thread is selected", () => {
+    vi.useFakeTimers();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarMore
+          ariaLabel="More sections"
+          listLabel="Hidden sections"
+          customizeLabel="Customize list"
+          onCustomize={() => {}}
+        >
+          {(close) => (
+            <SidebarOverflowItem
+              item={{ id: "review", title: "Review" }}
+              onClose={close}
+              onAddToSidebar={() => {}}
+            >
+              {(closeSection) => (
+                <button onClick={closeSection}>Review thread</button>
+              )}
+            </SidebarOverflowItem>
+          )}
+        </SidebarMore>
+      </CompactViewportOverrideProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
+    act(() => vi.advanceTimersByTime(120));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    act(() => vi.advanceTimersByTime(120));
+    fireEvent.click(screen.getByRole("button", { name: "Review thread" }));
+
+    expect(
+      screen.getByRole("button", { name: "More sections" }),
+    ).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
   });
 });
