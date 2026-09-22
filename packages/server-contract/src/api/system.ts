@@ -59,6 +59,7 @@ export type SystemExecutionOptionsModelLoadErrorCode = z.infer<
 export const systemExecutionOptionsModelLoadErrorSchema = z.object({
   providerId: z.string().min(1),
   code: systemExecutionOptionsModelLoadErrorCodeSchema,
+  detail: z.string().min(1).nullable(),
 });
 export type SystemExecutionOptionsModelLoadError = z.infer<
   typeof systemExecutionOptionsModelLoadErrorSchema

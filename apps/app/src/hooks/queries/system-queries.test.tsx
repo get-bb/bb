@@ -499,7 +499,7 @@ describe("useSystemExecutionOptions", () => {
   it("does not preload a catalog that came from a failed probe", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValue({
       ...CODEX_CATALOG,
-      modelLoadError: { providerId: "codex", code: "failed" },
+      modelLoadError: { providerId: "codex", code: "failed", detail: null },
     });
     const first = createQueryClientTestHarness();
     const warm = renderHook(

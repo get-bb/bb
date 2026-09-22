@@ -178,7 +178,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   intentionally inspect the server machine. Model lists answer from the
   machine's last stored list while a background refresh runs, so a list can be
   hours old. A provider whose refresh keeps failing or timing out keeps
-  answering from its last stored list.
+  answering from its last stored list. When nothing can be listed, the command
+  prints the provider, failure code, and underlying host message on stderr.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. Use a provider ID returned by the target host's catalog. Acceptance
   of unlisted models is provider-specific; consult that provider's skill.

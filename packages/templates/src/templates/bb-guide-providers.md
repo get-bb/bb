@@ -28,6 +28,11 @@ Model lists answer from the machine's last stored list while a background
 refresh runs, so a list can be hours old. A provider whose refresh keeps
 failing or timing out keeps answering from its last stored list.
 
+When no list can be served, bb provider models prints the failing provider,
+the failure code, and the underlying host message on stderr, then reports the
+empty catalog on stdout. The model pickers show the same underlying message
+beneath their summary line.
+
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls
 both recall (`memories.use_memories`) and future generation

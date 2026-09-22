@@ -45,10 +45,13 @@ const baseExecution = makeExecutionControlsProps();
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail:
+    "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.",
 } satisfies SystemExecutionOptionsModelLoadError;
 const codexMissingCliModelLoadError = {
   providerId: "codex",
   code: "missing_executable",
+  detail: null,
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const baseEnvironment: NewThreadEnvironmentConfig = {

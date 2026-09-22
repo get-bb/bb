@@ -358,6 +358,14 @@ both for one event. `data` is optional and additive; a response without it,
 or with a malformed one, is a plain failure, and a request that times out or
 whose bridge exits has no response and therefore no hint.
 
+A launch that fails because the provider's own CLI is not installed is a
+classification, not a recovery hint: the bridge rejects the request by passing
+`MISSING_EXECUTABLE` (-32004) to `sendError` instead of the generic
+`BRIDGE_ERROR`. The host daemon reports that rejection as `missing_executable`
+without reading the message, so the picker can say the CLI is missing whatever
+prose the bridge chose. A bridge that keeps using `BRIDGE_ERROR` is classified
+generically, as before.
+
 A bridge that can heal itself does not ask the runtime to: the codex bridge
 rebuilds a thread's `codex app-server` child before the next turn after a
 terminal account error, and the claude bridge replaces its CLI child the same
