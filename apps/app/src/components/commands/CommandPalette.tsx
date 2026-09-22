@@ -24,7 +24,6 @@ import {
   useAppCommandRunner,
   useAppCommandShortcuts,
 } from "./AppCommandProvider";
-import { AppCommandShortcutPill } from "./AppCommandShortcutHint";
 import {
   PALETTE_ACTION_BUCKETS,
   type PaletteAction,
@@ -54,7 +53,11 @@ import {
 } from "@/components/settings/plugin-settings-entries";
 import { useSettingsNavSections } from "@/components/settings/settings-nav";
 import { appQueryClient } from "@/lib/app-query-client";
-import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
+import {
+  PALETTE_SECTION_LABEL_CLASS,
+  PaletteShell,
+  PaletteShortcut,
+} from "./PaletteShell";
 
 const ThreadSearchPaletteMode = lazy(() =>
   import("./ThreadSearchPaletteMode").then((module) => ({
@@ -523,7 +526,7 @@ function PaletteRow({
       aria-selected={isActive}
       data-palette-action-kind={isDrillIn ? "drill-in" : "terminal"}
       className={cn(
-        "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm outline-none",
+        "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none",
         isActive && "bg-state-hover text-foreground",
       )}
       onPointerMove={onActivate}
@@ -540,7 +543,7 @@ function PaletteRow({
             </span>
           )}
           {shortcut === null ? null : (
-            <AppCommandShortcutPill shortcut={shortcut} />
+            <PaletteShortcut>{shortcut.label}</PaletteShortcut>
           )}
           {isDrillIn ? (
             <span className="sr-only">Opens a search view</span>

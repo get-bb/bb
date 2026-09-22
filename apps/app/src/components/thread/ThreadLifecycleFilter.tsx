@@ -88,7 +88,7 @@ export function ThreadLifecycleFilter({
         <Button
           variant="ghost"
           size="sm"
-          className="min-w-0 max-w-full justify-start"
+          className="min-w-0 max-w-full justify-start font-normal text-subtle-foreground"
           aria-label={`Filter: ${label}`}
         >
           <Icon

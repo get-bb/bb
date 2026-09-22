@@ -11,7 +11,18 @@ import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOv
 import { TabPill } from "@/components/ui/tab-pill";
 
 export const PALETTE_SECTION_LABEL_CLASS =
-  "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground opacity-60";
+  "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground";
+
+export function PaletteShortcut({ children }: { children: string }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover/50 px-1.5 py-1 font-sans text-xs font-normal leading-none tabular-nums text-subtle-foreground"
+    >
+      {children}
+    </kbd>
+  );
+}
 
 interface PaletteModeChipProps {
   clearLabel: string;

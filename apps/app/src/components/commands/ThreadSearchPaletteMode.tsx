@@ -52,7 +52,11 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
-import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
+import {
+  PALETTE_SECTION_LABEL_CLASS,
+  PaletteShell,
+  PaletteShortcut,
+} from "./PaletteShell";
 
 interface ThreadSearchOption {
   lifecycle: ThreadArchiveFilter;
@@ -438,14 +442,7 @@ export function ThreadSearchPaletteMode({
                         onClick={() => selectOption(option, index, true)}
                       >
                         <span className="mr-1">Open in split</span>
-                        {[splitModifier, "↵"].map((key) => (
-                          <kbd
-                            key={key}
-                            className="min-w-4 rounded-sm bg-state-hover px-1 py-0.5 text-center font-sans font-normal text-muted-foreground"
-                          >
-                            {key}
-                          </kbd>
-                        ))}
+                        <PaletteShortcut>{`${splitModifier} ↵`}</PaletteShortcut>
                       </button>
                     ) : null}
                   </div>

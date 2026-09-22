@@ -442,6 +442,8 @@ describe("CommandPalette", () => {
       await screen.findByRole("option", { name: /Title first/ });
       fireEvent.keyDown(searchField(), { key: "ArrowDown" });
       const button = screen.getByRole("button", { name: "Open in split" });
+      expect(button.querySelectorAll("kbd")).toHaveLength(1);
+      expectClasses(button.querySelector("kbd"), "bg-state-hover/50");
       expect(
         button.parentElement?.querySelector('[aria-selected="true"]')
           ?.textContent,
@@ -713,9 +715,8 @@ describe("CommandPalette", () => {
         "text-xs",
         "font-normal",
         "text-subtle-foreground",
-        "opacity-60",
       );
-      expectNoClasses(header, "bg-muted/30");
+      expectNoClasses(header, "bg-muted/30", "opacity-60");
     }
     expectClasses(commandList(), "p-1");
     expectClasses(commandList().parentElement, "overflow-hidden");
@@ -773,7 +774,8 @@ describe("CommandPalette", () => {
       expect(within(row).queryByText("Threads")).toBeNull();
     }
     const searchThreadsRow = threadRows[1] as HTMLElement;
-    expect(searchThreadsRow.querySelector("kbd")).not.toBeNull();
+    expectClasses(searchThreadsRow.querySelector("kbd"), "bg-state-hover/50");
+    expectNoClasses(searchThreadsRow.querySelector("kbd"), "opacity-60");
     expectAttribute(searchThreadsRow, "data-palette-action-kind", "drill-in");
     expectText(searchThreadsRow, "Search threads…");
     expect(
@@ -787,7 +789,7 @@ describe("CommandPalette", () => {
     expect(actionRows[2]?.textContent).not.toContain("Composer and models");
     expect(actionRows[3]?.textContent).toContain("Browser");
     for (const row of [...threadRows, ...actionRows]) {
-      expect(row.classList.contains("px-2")).toBe(true);
+      expectClasses(row, "px-2", "py-1.5", "min-h-8");
     }
     expect(commandList().querySelector("[data-icon]")).toBeNull();
     expectClasses(threadRows[0], "bg-state-hover", "text-foreground");
@@ -1098,6 +1100,7 @@ describe("CommandPalette", () => {
     const trigger = screen.getByRole("button", {
       name: "Filter: Active",
     });
+    expectClasses(trigger, "font-normal", "text-subtle-foreground");
     act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     const archived = await screen.findByRole("menuitemcheckbox", {
@@ -1280,7 +1283,6 @@ describe("CommandPalette", () => {
       "text-xs",
       "font-normal",
       "text-subtle-foreground",
-      "opacity-60",
     );
     expect(more.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     for (let index = 0; index < 3; index++)
