@@ -689,7 +689,7 @@ a.marketplace-detail-author:hover {
 .marketplace-detail-source {
   text-decoration: underline;
   text-underline-offset: 3px;
-  font-size: 14px;
+  font-size: 13px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -738,7 +738,7 @@ a.marketplace-detail-author:hover {
   border-radius: 5px;
   background: var(--heading);
   color: var(--bg);
-  font-size: var(--text-label-small);
+  font-size: 13px;
 }
 
 .marketplace-detail-actions .cmd-btn:hover .cmd-copy,
