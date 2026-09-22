@@ -27,6 +27,13 @@
   line-height: 1.08;
 }
 
+.marketplace-heading-mark {
+  display: inline-block;
+  width: 1.3em;
+  height: 1.3em;
+  vertical-align: -0.24em;
+}
+
 .marketplace-hero > p {
   margin: 18px auto 0;
   color: var(--dim);

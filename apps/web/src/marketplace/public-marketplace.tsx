@@ -540,7 +540,11 @@ function MarketplaceToolbar({
     <>
       {hero ? (
         <header className="marketplace-hero">
-          <h1>Make bb yours.</h1>
+          <h1 aria-label="Make bb yours">
+            Make{" "}
+            <span className="bb-mark marketplace-heading-mark" aria-hidden />{" "}
+            yours
+          </h1>
           <p>
             Themes, providers, workflows, and tools, installed with one command.
           </p>

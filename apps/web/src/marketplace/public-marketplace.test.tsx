@@ -22,7 +22,7 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
-    expect(html).toContain("Make bb yours.");
+    expect(html).toContain('aria-label="Make bb yours"');
     expect(html).toContain(
       "Themes, providers, workflows, and tools, installed with one command.",
     );
