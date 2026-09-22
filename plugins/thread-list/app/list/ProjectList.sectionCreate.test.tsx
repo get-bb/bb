@@ -78,6 +78,18 @@ async function createSectionFrom(actionsLabel: string) {
 }
 
 describe("creating a sidebar section", () => {
+  it("shows one divider before the built-in section visibility actions", async () => {
+    renderCustomSections();
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "Threads actions" }),
+      { button: 0 },
+    );
+    const menu = screen
+      .getByRole("menuitem", { name: "Hide from list" })
+      .closest('[role="menu"]');
+    expect(menu?.querySelectorAll('[role="separator"]')).toHaveLength(2);
+  });
+
   it("places the new section directly below the section it was created from", async () => {
     const { store } = renderCustomSections();
     await createSectionFrom("Alpha section actions");

@@ -172,8 +172,10 @@ export function ThreadListVisibilityGroupScope({
 
 export function ThreadListVisibilityMenuItems({
   surface = "dropdown",
+  leadingSeparator = true,
 }: {
   surface?: "dropdown" | "context";
+  leadingSeparator?: boolean;
 }) {
   const state = useContext(VisibilityContext);
   const id = useContext(GroupContext);
@@ -181,7 +183,7 @@ export function ThreadListVisibilityMenuItems({
   const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
   return (
     <>
-      <ActionMenuSeparator surface={surface} />
+      {leadingSeparator && <ActionMenuSeparator surface={surface} />}
       {id !== null && (
         <Item onSelect={() => state.hide(id)}>
           <SidebarVisibilityActionContent visible label="Hide from list" />

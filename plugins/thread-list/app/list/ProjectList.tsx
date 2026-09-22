@@ -1494,7 +1494,7 @@ function ProjectListComponent({
         {renameActions ? (
           <SidebarSectionMenuItems onRename={renameActions.onRename} />
         ) : (
-          <ThreadListVisibilityMenuItems />
+          <ThreadListVisibilityMenuItems leadingSeparator={false} />
         )}
       </SidebarHeaderControls>
     );
