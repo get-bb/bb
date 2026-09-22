@@ -503,7 +503,7 @@ function ThreadRowComponent({
       ) : null}
       <span
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
+          "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           !shortcut &&
             !isEditing &&
             (parentOptions && hasChildren
@@ -511,42 +511,45 @@ function ThreadRowComponent({
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
+        <NavLink
+          ref={rowLinkRef}
+          to={getThreadRoutePath({ projectId, threadId: thread.id })}
+          data-sidebar-thread-shortcut-target=""
+          data-sidebar-thread-id={thread.id}
+          data-sidebar-rename-anchor=""
+          onClick={(event) => {
+            if (isEditing) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            setConversationCollapsed(false);
+            if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              openInSplit();
+              return;
+            }
+            if (consumeSidebarTitleDoubleClick(thread.id)) {
+              event.preventDefault();
+              event.stopPropagation();
+              startEditing();
+              return;
+            }
+            onProjectSelect?.();
+          }}
+          onDoubleClick={isEditing ? undefined : startTitleEditing}
+          aria-label={linkLabel}
+          aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+          className="absolute inset-0 rounded-md outline-none"
+        />
         <span
-          className="relative flex min-w-0 flex-1 items-center self-stretch"
+          className={cn(
+            "pointer-events-none relative flex min-w-0 items-center self-stretch",
+            (!parentOptions || !hasChildren || isEditing) && "flex-1",
+          )}
         >
-          <NavLink
-            ref={rowLinkRef}
-            to={getThreadRoutePath({ projectId, threadId: thread.id })}
-            data-sidebar-thread-shortcut-target=""
-            data-sidebar-thread-id={thread.id}
-            data-sidebar-rename-anchor=""
-            onClick={(event) => {
-              if (isEditing) {
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-              }
-              setConversationCollapsed(false);
-              if (splitAvailable && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                openInSplit();
-                return;
-              }
-              if (consumeSidebarTitleDoubleClick(thread.id)) {
-                event.preventDefault();
-                event.stopPropagation();
-                startEditing();
-                return;
-              }
-              onProjectSelect?.();
-            }}
-            onDoubleClick={isEditing ? undefined : startTitleEditing}
-            aria-label={linkLabel}
-            aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-            className="absolute inset-0 rounded-md outline-none"
-          />
           {isEditing ? (
-            <span className="relative z-10 min-w-0 flex-1 overflow-visible">
+            <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
               {editor}
             </span>
           ) : (
