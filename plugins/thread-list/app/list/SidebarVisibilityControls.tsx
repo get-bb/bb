@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useState,
-  type PointerEventHandler,
-  type ReactNode,
-} from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
@@ -18,23 +13,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import {
-  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
+import { COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
-  SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-} from "../ui/sidebar-hover-actions.js";
-import {
-  PROJECT_LIST_ACTION_BUTTON_CLASS,
-  SIDEBAR_CONTROL_BUTTON_CLASS,
-} from "../rows/sidebarRowClasses.js";
-import { TopLevelSidebarSection } from "./TopLevelSidebarSection.js";
+import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
 
 const OVERFLOW_ROW_BUTTON_CLASS =
   "w-full justify-start gap-2 rounded-sm px-2 text-xs font-normal hover:bg-state-hover focus-visible:bg-state-hover";
@@ -97,11 +84,15 @@ export function SidebarMore({
 
   return (
     <div data-testid={`${testIdPrefix}-more-row`}>
-      <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+      <DropdownMenu
+        modal={false}
+        open={isMenuOpen}
+        onOpenChange={setIsMenuOpen}
+      >
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <div>
-              <PopoverTrigger asChild>
+              <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   size="sm"
@@ -120,7 +111,7 @@ export function SidebarMore({
                     <span className="ml-auto flex shrink-0">{activity}</span>
                   ) : null}
                 </Button>
-              </PopoverTrigger>
+              </DropdownMenuTrigger>
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent aria-label={`${ariaLabel} options`}>
@@ -129,16 +120,16 @@ export function SidebarMore({
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        <PopoverContent
+        <DropdownMenuContent
           side="right"
           align="start"
           sideOffset={8}
           mobileTitle="More"
           aria-label={ariaLabel}
-          className="flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-56 flex-col overflow-hidden p-1 max-md:min-h-0 max-md:flex-1"
+          className="flex max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))] w-56 flex-col overflow-hidden p-1 max-md:min-h-0 max-md:flex-1"
         >
           <div
-            role="list"
+            role="group"
             aria-label={listLabel}
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
           >
@@ -148,172 +139,121 @@ export function SidebarMore({
             role="separator"
             className="-mx-1 my-1 h-px shrink-0 bg-border"
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+          <DropdownMenuItem
             className={cn(
               OVERFLOW_ROW_BUTTON_CLASS,
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
               "shrink-0",
             )}
             data-testid={`${testIdPrefix}-customize-trigger`}
-            onClick={() => {
+            onSelect={() => {
               close();
               onCustomize();
             }}
           >
             <SidebarCustomizeActionContent label={customizeLabel} />
-          </Button>
-        </PopoverContent>
-      </Popover>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
 
 export function SidebarOverflowItem({
   activity,
-  additionalActions,
   children,
-  expanded,
   item,
-  onActivate,
   onAddToSidebar,
   onClose,
-  onExpandedChange,
-  onPointerDown,
-  testIdPrefix = "sidebar-navigation",
 }: {
   activity?: ReactNode;
-  additionalActions?: ReactNode;
-  children?: ReactNode;
-  expanded?: boolean;
+  children: ReactNode;
   item: SidebarVisibilityItem;
-  onActivate?: (event: SidebarActivationModifiers) => void;
   onAddToSidebar: (id: string) => void;
   onClose: () => void;
-  onExpandedChange?: (expanded: boolean) => void;
-  onPointerDown?: PointerEventHandler<HTMLButtonElement>;
-  testIdPrefix?: string;
 }) {
-  const [isActionsOpen, setIsActionsOpen] = useState(false);
-
-  const actions = (
-    <DropdownMenu
-      modal={false}
-      open={isActionsOpen}
-      onOpenChange={setIsActionsOpen}
-    >
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={`${item.title} options`}
-          className={
-            onExpandedChange
-              ? SIDEBAR_CONTROL_BUTTON_CLASS
-              : cn(
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                  "rounded-sm p-0 hover:bg-state-hover",
-                )
-          }
-        >
-          <Icon
-            name="MoreHorizontal"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="right"
-        align="start"
-        sideOffset={4}
-        aria-label={`${item.title} options`}
+  const compact = useIsCompactViewport();
+  const content = (
+    <div data-sidebar-overflow="true" className="flex min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {children}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          OVERFLOW_ROW_BUTTON_CLASS,
+          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+          "mt-1 shrink-0 border-t",
+        )}
+        onClick={() => {
+          onClose();
+          onAddToSidebar(item.id);
+        }}
       >
-        {additionalActions}
-        <DropdownMenuItem
-          className="cursor-pointer"
-          onSelect={() => {
-            onClose();
-            onAddToSidebar(item.id);
-          }}
-        >
-          <SidebarVisibilityActionContent visible={false} />
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <SidebarVisibilityActionContent visible={false} label="Add to list" />
+      </Button>
+    </div>
+  );
+  const label = (
+    <>
+      {item.icon}
+      <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
+      {activity}
+    </>
   );
 
-  if (onExpandedChange) {
+  if (compact) {
     return (
-      <div role="listitem" data-sidebar-overflow-item={item.id}>
-        <TopLevelSidebarSection
-          label={item.title}
-          stickyHeader={false}
-          collapseControl={{
-            isCollapsed: !expanded,
-            onToggleCollapsed: () => onExpandedChange(!expanded),
-          }}
-          status={!expanded ? activity : undefined}
-          actions={actions}
-          actionsOpen={isActionsOpen}
-          actionsMobileAlways
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              OVERFLOW_ROW_BUTTON_CLASS,
+              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+            )}
+            disabled={item.disabled}
+            data-sidebar-overflow-item={item.id}
+          >
+            {label}
+            <Icon name="ChevronRight" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          mobileTitle={item.title}
+          aria-label={item.title}
+          className="flex min-h-0 flex-col p-1 [&>div]:min-h-0 [&>div]:flex-1"
         >
-          {children}
-        </TopLevelSidebarSection>
-      </div>
+          {content}
+        </PopoverContent>
+      </Popover>
     );
   }
 
   return (
-    <div role="listitem">
-      <div className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            OVERFLOW_ROW_BUTTON_CLASS,
-            COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-            "pr-9 max-md:pointer-coarse:pr-11",
-          )}
-          disabled={item.disabled}
-          data-sidebar-overflow-item={item.id}
-          data-sidebar-navigation-more-item={
-            testIdPrefix === "sidebar-navigation" ? item.id : undefined
-          }
-          onPointerDown={onPointerDown}
-          onClick={(event) => {
-            if (!onActivate) return;
-            onClose();
-            onActivate({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        disabled={item.disabled}
+        data-sidebar-overflow-item={item.id}
+        textValue={item.title}
+      >
+        {label}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent
+          aria-label={item.title}
+          onKeyDownCapture={(event) => {
+            if (event.key === "Tab") event.stopPropagation();
           }}
+          className="flex max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-1rem))] w-72 flex-col [&>div]:min-h-0 [&>div]:flex-1"
         >
-          {item.icon ? (
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              {item.icon}
-            </span>
-          ) : null}
-          <span className="min-w-0 flex-1 truncate text-left">
-            {item.title}
-          </span>
-          {activity}
-        </Button>
-        <div
-          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-          data-sidebar-hover-actions-mobile={
-            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-          }
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-y-0 right-0 flex items-center pointer-coarse:opacity-100 pointer-coarse:pointer-events-auto",
-          )}
-        >
-          {actions}
-        </div>
-      </div>
-    </div>
+          {content}
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
   );
 }
 

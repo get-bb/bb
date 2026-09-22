@@ -214,16 +214,12 @@ function HiddenGroup({
   close: () => void;
   restore: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
   return (
     <SidebarOverflowItem
       item={group}
       onClose={close}
       onAddToSidebar={restore}
-      expanded={expanded}
-      onExpandedChange={setExpanded}
       activity={<GroupActivity threads={group.threads} />}
-      testIdPrefix="sidebar-thread-list"
     >
       {group.renderContent(close)}
     </SidebarOverflowItem>
