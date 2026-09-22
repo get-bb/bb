@@ -133,7 +133,7 @@ then `PluginRowLabels` in SDK 0.4.102, the type of `presentation.label`.
   that warns on its first render, then renders `UrlLink`),
   `BbNavigate.experimental_openUrl` (warns on its first call, then calls
   `openUrl`), and the delegation prop `experimental_Original` passed beside
-  `Original` on the thread-list, file-opener, source-code renderer and diff
+  `Original` on the file-opener, source-code renderer and diff
   renderer props (the timeline renderer never carried the old name; the
   alias warns on its first render). A bundle that never uses an alias never
   warns. All go in bb 0.42. The two 0.4.14 `app` exports
@@ -2269,23 +2269,24 @@ one list at a time fills the scroll area. Automatic activation is the default.
 If several are registered, the first in the slot snapshot wins (plugin ids are
 sorted, then each plugin's registration order is preserved); removing the
 automatic winner reveals the next. The user can override that behavior under
-Settings → Appearance by pinning BB's list or a specific provider; the choice
-is stored per client. A plugin-owned enable/disable setting can also live in
-the component, which renders `Original` when disabled.
+Settings → Appearance by pinning a specific provider; the choice is stored per
+client. bb ships its own list as the bundled `thread-list` plugin and has no
+separate built-in list, so there is no `Original` prop on this slot.
 
-Fallbacks keep the sidebar usable: no automatic provider renders BB's list; an
-unavailable pinned provider temporarily renders BB's list without erasing the
-choice; and a crashing component renders BB's list (not the usual "plugin
-crashed" chip, which in place of a whole sidebar would strand the user) plus
-one toast.
+Placeholders keep the sidebar usable: while plugin frontends boot the region
+shows skeleton rows; with no provider it shows "No thread list plugin is
+enabled" with a link to Plugins; an unavailable pinned provider shows the same
+without erasing the choice; and a crashing component shows a "stopped working"
+placeholder with a Reload button (not the usual "plugin crashed" chip, which in
+place of a whole sidebar would strand the user) plus one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
+1. **Arbitration.** Confirm automatic/pinned is the right long-term
    selection model and alphabetical plugin-id order is an acceptable default
    tie-breaker when multiple replacements are enabled.
-2. **Fallback discoverability.** Confirm one toast is the right signal when a
-   crash silently swaps the user's sidebar back.
+2. **Fallback discoverability.** Confirm one toast plus the placeholder's
+   Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
    the New-thread button, search action, plugin nav rows, and footer stay
    host-rendered, because they are shared surfaces (other plugins live in two
@@ -2478,6 +2479,14 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
+
+**Archive selection (Sep 2026).** `experimental_useSidebarThreads` accepts
+`experimental_lifecycles` (active, archived, or both; active by default).
+`PluginSidebarThreadsState.experimental_archived` is null for active-only reads;
+otherwise it exposes archive loading/error state, pagination flags, and
+`fetchNextPage`. Archive reads share the host query and realtime cache. Audit
+archive-only loading/errors, combined views, pagination retries, and archived
+row actions before stabilizing these additions.
 
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own

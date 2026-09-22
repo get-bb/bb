@@ -13,6 +13,7 @@ import {
 import {
   canonicalProjectAttachmentPath,
   pathLooksRuntimeReadable,
+  PROMPT_ATTACHMENT_MAX_BYTES,
 } from "@bb/domain";
 // oxlint-disable-next-line no-restricted-imports
 import {
@@ -29,9 +30,6 @@ import type { PromptInput } from "@bb/domain";
 import type { UploadedPromptAttachment } from "@bb/server-contract";
 import mimeTypes from "mime-types";
 import { ApiError } from "../../errors.js";
-
-const IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
-const FILE_LIMIT_BYTES = 25 * 1024 * 1024;
 
 const HEIF_IMAGE_MIME_TYPES = new Set([
   "image/heic",
@@ -222,6 +220,13 @@ export async function validatePromptAttachmentReferences(
   }
 }
 
+function formatMegabytes(bytes: number): string {
+  const megabytes = bytes / (1024 * 1024);
+  return Number.isInteger(megabytes)
+    ? String(megabytes)
+    : megabytes.toFixed(1);
+}
+
 function isHeifImageUpload(file: File): boolean {
   const mimeType = (file.type.split(";")[0] ?? "").trim().toLowerCase();
   return HEIF_IMAGE_MIME_TYPES.has(mimeType);
@@ -241,12 +246,13 @@ export async function storeAttachment(
     );
   }
   const isImage = (file.type || "").startsWith("image/");
-  const sizeLimit = isImage ? IMAGE_LIMIT_BYTES : FILE_LIMIT_BYTES;
-  if (file.size > sizeLimit) {
+  if (file.size > PROMPT_ATTACHMENT_MAX_BYTES) {
     throw new ApiError(
       400,
       "invalid_request",
-      `Attachment exceeds ${Math.floor(sizeLimit / (1024 * 1024))}MB limit`,
+      `${file.name} is ${formatMegabytes(file.size)}MB, over the ${formatMegabytes(
+        PROMPT_ATTACHMENT_MAX_BYTES,
+      )}MB attachment limit`,
     );
   }
 

@@ -8,8 +8,7 @@ export function SidebarThreadListSetting() {
     <ReplacementProviderSetting
       label="Sidebar"
       triggerAriaLabel="Sidebar thread list"
-      description="Choose automatic activation, BB's list, or a specific plugin on this device."
-      builtInDescription="Projects, sections, and nested threads."
+      description="Choose automatic activation or a specific plugin on this device."
       preferenceAtom={threadListProviderAtom}
       slots={threadLists}
     />
