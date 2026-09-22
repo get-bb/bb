@@ -219,10 +219,10 @@ function WorktreeInputsControl({
       ? baseResult.branch
       : null;
   const baseBranchLabel = branchName ?? defaultBase ?? "default";
-  const triggerLabel =
-    existingPath === null
-      ? `${BRANCH_FROM_PREFIX} ${baseBranchLabel}`
-      : `${REUSE_PREFIX} ${worktreePathLabel(existingPath)}`;
+  const triggerPrefix =
+    existingPath === null ? BRANCH_FROM_PREFIX : REUSE_PREFIX;
+  const triggerValue =
+    existingPath === null ? baseBranchLabel : worktreePathLabel(existingPath);
   const triggerTitle =
     existingPath ?? `Create a worktree from ${baseBranchLabel}`;
 
@@ -269,7 +269,17 @@ function WorktreeInputsControl({
               name="GitMerge"
               className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
             />
-            <span className="min-w-0 truncate">{triggerLabel}</span>
+            <span className="flex min-w-0 items-baseline gap-1 truncate">
+              <span
+                data-promptbox-hide-compact=""
+                className="shrink-0 text-muted-foreground"
+              >
+                {triggerPrefix}
+              </span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {triggerValue}
+              </span>
+            </span>
           </span>
           <Icon
             name="ChevronDown"
@@ -314,7 +324,7 @@ function WorktreeInputsControl({
           />
           <div
             ref={optionsScrollRef}
-            className="h-80 min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0"
+            className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 md:h-80"
             onWheel={(event) => event.stopPropagation()}
           >
             <BranchPickerSectionHeader label="Work in:" sticky={false} />

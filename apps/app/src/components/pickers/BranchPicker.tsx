@@ -80,7 +80,7 @@ export function getMergeBaseBranchCandidateGroups({
 
 const EMPTY_BRANCH_OPTIONS: readonly string[] = [];
 const BRANCH_LABEL_PREFIXES = ["Branch from:"] as const;
-const BRANCH_SEARCH_DEBOUNCE_MS = 120;
+export const BRANCH_SEARCH_DEBOUNCE_MS = 120;
 
 interface BranchPlainLabelParts {
   kind: "plain";
