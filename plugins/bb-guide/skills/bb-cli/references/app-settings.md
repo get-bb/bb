@@ -25,7 +25,7 @@ another plugin. The SDK exposes the same setting through `uiPreferences`.
   `sidebar.chronologicalSort`, the section
   orders, the collapsed-id lists, `sidebar.hiddenGroups`,
   `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
-  `sidebar.threadListProvider`).
+  `sidebar.headerProvider`, `sidebar.threadListProvider`).
 - The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
   including threads with saved messages. This selection is browser-local, not
   a server-backed preference or SDK/CLI setting. Selected archived rows

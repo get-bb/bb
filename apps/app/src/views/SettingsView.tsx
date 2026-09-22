@@ -55,6 +55,7 @@ import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
+import { SidebarHeaderSetting } from "@/components/settings/SidebarHeaderSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
@@ -697,6 +698,7 @@ export function AppearanceSettingsSection({
       <div className="space-y-5">
         <SidebarThreadListSetting />
         <SidebarNavigationSetting />
+        <SidebarHeaderSetting />
         <CodeRendererSettings />
         <SettingsWithControl label="Theme">
           <DropdownMenu>

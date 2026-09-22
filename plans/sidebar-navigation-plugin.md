@@ -59,9 +59,9 @@ because the slot props cannot express most of what bb's navigation does.
    picks a header provider under Settings → Appearance, directly below
    Navigation. Compact Nav's "Place icons beside sidebar toggle" setting is
    replaced by that picker. The cost is two choices to get Compact Nav's
-   header layout. The navigation component protects against half-picked
-   states by rendering its own row unless its plugin's header is active
-   (2e).
+   header layout, so Compact Nav picks both itself the first time it loads. The
+   navigation component protects against half-picked or crashed headers by
+   rendering its own row unless its own header component is mounted.
 
 ## Phase 0: placeholder and cold start
 
@@ -176,13 +176,6 @@ The slot props become:
 ```ts
 export interface ExperimentalSidebarNavigationProps {
   isCompactViewport: boolean;
-  /**
-   * True when this plugin's own `experimental_sidebarHeader` registration is
-   * the active header. A plugin that moves its items to the header returns
-   * null here only when this is true, so a user who picked its navigation
-   * but not its header still gets navigation.
-   */
-  experimental_isOwnHeaderActive: boolean;
   /** @deprecated Removed in the release after the flip; see Phase 5. */
   experimental_Original: ComponentType;
 }
@@ -348,9 +341,11 @@ Update `docs/configuration.md`, `app-settings.md`, and
 `SidebarTopReserveRow` gains the slot described in 2e, resolved through a
 `useSidebarHeaderReplacement()` beside `useSidebarNavigationReplacement()`
 and mounted with `PluginReplacementSlot` (render-nothing original, toast on
-crash). `SidebarNavigationRegion` computes `experimental_isOwnHeaderActive`
-by comparing the resolved header's `pluginId` with the navigation
-provider's.
+crash). A plugin that draws navigation in the header tracks whether its
+header is mounted with a module-level flag and returns null from its
+navigation component while it is; no host prop is involved, so a crashed
+or unpicked header brings the navigation row back. A plugin that wants both
+picked sets them once from its backend on first load.
 
 ## Phase 4: first-party plugin
 
@@ -376,9 +371,7 @@ Tests move with the code; `SidebarNavigationRegion.test.tsx` keeps the host
 contract (arbitration, placeholder states, generation-bound actions, a
 provider that returns null collapsing to zero height, customize takeover),
 and a new `SidebarTopReserveRow.test.tsx` covers the header slot (width
-updates, crash leaves the history controls, hidden during customize,
-`experimental_isOwnHeaderActive` for same-plugin and different-plugin
-pairs).
+updates, crash leaves the history controls, hidden during customize).
 
 ## Phase 5: compatibility for installed Compact Nav
 
@@ -456,12 +449,13 @@ function IconRow({ capacity }: { capacity: number }) {
 }
 
 function CompactHeader({ width, controlSize }: ExperimentalSidebarHeaderProps) {
+  useLayoutEffect(() => headerFlag.mount(), []);
   return <IconRow capacity={Math.floor((width + GAP) / (controlSize + GAP))} />;
 }
 
-function CompactNavigation({ experimental_isOwnHeaderActive }: ExperimentalSidebarNavigationProps) {
-  if (experimental_isOwnHeaderActive) return null;
-  return <IconRow capacity={Number.POSITIVE_INFINITY} />;
+function CompactNavigation() {
+  const inHeader = useSyncExternalStore(headerFlag.subscribe, headerFlag.get);
+  return inHeader ? null : <IconRow capacity={Number.POSITIVE_INFINITY} />;
 }
 
 export default definePluginApp((app) => {

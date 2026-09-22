@@ -32,6 +32,7 @@ import {
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
   type ExperimentalSidebarNavigationProps,
+  type ExperimentalSidebarHeaderProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -263,6 +264,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
+  experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
@@ -343,6 +345,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "experimental_Original",
   ],
+  experimental_sidebarHeader: ["width", "controlSize", "isCompactViewport"],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",

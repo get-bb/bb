@@ -46,6 +46,8 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
+import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
+import { useSidebarNavigationReplacement } from "./sidebarNavigationProvider";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -65,6 +67,7 @@ export function AppSidebar({
   mobileHosted,
 }: AppSidebarProps) {
   const threadListReplacement = useThreadListReplacement();
+  const navigationReplacement = useSidebarNavigationReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const newThreadSplit = usePaneContentSplitDrag({
@@ -204,7 +207,15 @@ export function AppSidebar({
 
   const body = (
     <>
-      <SidebarTopReserveRow testId="app-sidebar-top-reserve-row" />
+      <SidebarTopReserveRow
+        testId="app-sidebar-top-reserve-row"
+        renderHeaderSlot={(startInsetClassName) => (
+          <SidebarHeaderSlot
+            hidden={isNavigationCustomizing || isCompactCustomizeModeActive}
+            startInsetClassName={startInsetClassName}
+          />
+        )}
+      />
       <SidebarNavigationRegion
         isCustomizing={isNavigationCustomizing}
         onCustomizingChange={setNavigationCustomizing}
@@ -217,14 +228,16 @@ export function AppSidebar({
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
       />
-      <div
-        aria-hidden="true"
-        className={cn(
-          "mx-2 my-2 shrink-0 border-t border-sidebar-border/25",
-          isCompactCustomizeModeActive && "hidden",
-        )}
-        data-testid="app-sidebar-navigation-divider"
-      />
+      {navigationReplacement.kind === "owner" ? (
+        <div
+          aria-hidden="true"
+          className={cn(
+            "mx-2 my-2 shrink-0 border-t border-sidebar-border/25",
+            isCompactCustomizeModeActive && "hidden",
+          )}
+          data-testid="app-sidebar-navigation-divider"
+        />
+      ) : null}
       <SidebarContent
         className={cn(isCompactCustomizeModeActive && "hidden")}
         aria-hidden={isCompactCustomizeModeActive ? true : undefined}

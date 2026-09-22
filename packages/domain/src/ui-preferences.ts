@@ -59,6 +59,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
+  "sidebar.headerProvider",
   "sidebar.threadListProvider",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
@@ -179,6 +180,13 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringSchema,
     "__automatic__",
     "Plugin that renders the sidebar navigation, or __automatic__ / __builtin__.",
+  ),
+  "sidebar.headerProvider": defineUiPreference(
+    uiPreferenceStringSchema.transform((value) =>
+      value === "__automatic__" ? "__builtin__" : value,
+    ),
+    "__builtin__",
+    "Plugin that renders controls beside the sidebar toggle, or __builtin__ for bb's own header only.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>

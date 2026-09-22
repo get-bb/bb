@@ -211,7 +211,8 @@ is lost when the document navigates; check again when `url` changes.
 `app.slots.experimental_sidebarNavigation` replaces the navigation controls
 above the thread list. The component receives `isCompactViewport` and
 `experimental_Original`. BB keeps the drawer, thread list, footer, resize
-handle, and hidden-body shortcut policy.
+handle, and hidden-body shortcut policy. BB draws no divider below a replacement; draw your
+own if your layout wants one.
 
 Read the items with `experimental_useSidebarNavigation()`. It returns
 `{ items, activeItemId, actions }`. `items` holds New thread, Search threads,
@@ -269,6 +270,45 @@ lookup; it will be removed once bb's navigation ships as a bundled plugin.
 BB restores its own navigation if the selected replacement is unavailable or
 crashes. Users can select Automatic, BB, or one plugin under Settings →
 Appearance → Navigation.
+
+### Controls beside the sidebar toggle
+
+`app.slots.experimental_sidebarHeader` renders a component between the
+sidebar toggle (and the macOS window controls) and bb's back and forward
+buttons. It is exclusive and opt-in: the user picks at most one under Settings
+→ Appearance → Header. Registration: `{ id, title, description?, component }`.
+The component receives `width` (px available, updated on resize),
+`controlSize` (bb's header button size, also `--bb-sidebar-control-size`;
+use `--bb-sidebar-control-icon-size` for glyphs), and `isCompactViewport`.
+Content is clipped to the row; on macOS empty space drags the window, while
+buttons, links, inputs, and `role`/`tabindex` elements do not. The header is
+hidden while bb's customize editor is open, and a crash removes it.
+
+To move navigation into the header, render `experimental_useSidebarNavigation()`
+items there and return null from your `experimental_sidebarNavigation`
+component while the header is mounted. A module-level flag is enough, and it
+clears when the header is unpicked or crashes, so the row comes back:
+
+```tsx
+let inHeader = false;
+const listeners = new Set<() => void>();
+const setInHeader = (next: boolean) => { inHeader = next; listeners.forEach((l) => l()); };
+const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
+
+function HeaderIcons({ width, controlSize }: ExperimentalSidebarHeaderProps) {
+  useLayoutEffect(() => (setInHeader(true), () => setInHeader(false)), []);
+  return <IconRow capacity={Math.floor((width + 4) / (controlSize + 4))} />;
+}
+function Navigation() {
+  return useSyncExternalStore(subscribe, () => inHeader) ? null : <IconRow />;
+}
+```
+
+To turn both on when your plugin is installed, pick them once from `server.ts`
+on first load and record that you did in `bb.storage.kv`, so later choices in
+Settings → Appearance stick: read `bb.sdk.system.uiPreferences.list()` for the
+revisions, then `set` `sidebar.headerProvider` and `sidebar.navigationProvider`
+to `<plugin-id>/<slot-id>`. Users do the same with `bb settings ui set`.
 
 ### Replacing the sidebar thread list
 

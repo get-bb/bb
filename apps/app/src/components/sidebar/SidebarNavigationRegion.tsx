@@ -47,13 +47,29 @@ export function SidebarNavigationRegion({
   const replacement = useSidebarNavigationReplacement();
   const { isCompactViewport } = useSidebar();
   const restoreFocusRef = useRef(false);
+  const navRef = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
     if (isCustomizing || !restoreFocusRef.current) return;
     restoreFocusRef.current = false;
     const target = focusReturnTargetRef.current;
     focusReturnTargetRef.current = null;
-    if (target?.isConnected) target.focus();
+    if (target?.isConnected) {
+      target.focus();
+      return;
+    }
+    const nav = navRef.current;
+    const scope =
+      nav?.closest<HTMLElement>(
+        '[data-sidebar="sidebar"], [data-testid="app-sidebar-body"]',
+      ) ?? null;
+    const fallback =
+      nav?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ??
+      scope?.querySelector<HTMLElement>(
+        `[data-sidebar-header-slot] :is(${FOCUSABLE_SELECTOR})`,
+      ) ??
+      null;
+    fallback?.focus();
   }, [focusReturnTargetRef, isCustomizing]);
 
   const original = <BuiltInSidebarNavigation {...builtInProps} />;
@@ -61,6 +77,7 @@ export function SidebarNavigationRegion({
     replacement.kind === "plugin" ? replacement.registration.title : "Plugin";
   return (
     <nav
+      ref={navRef}
       aria-label="Sidebar navigation"
       data-testid="sidebar-navigation-region"
       className={cn(

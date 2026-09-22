@@ -30,6 +30,30 @@
     --bb-app-chrome-row-height: 3rem;
     --bb-shell-height: 100dvh;
     --secondary-panel-width-mobile: min(76vw, 320px);
+    --bb-sidebar-control-size: 28px;
+    --bb-sidebar-control-icon-size: 16px;
+  }
+
+  @media (width < 48rem) and (pointer: coarse) {
+    :root {
+      --bb-sidebar-control-size: 36px;
+      --bb-sidebar-control-icon-size: 20px;
+    }
+  }
+
+  [data-sidebar-header-slot]
+    :where(
+      button,
+      a,
+      input,
+      select,
+      textarea,
+      [role="button"],
+      [role="link"],
+      [tabindex]
+    ) {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
   }
 
   html.bb-app-shell-root {

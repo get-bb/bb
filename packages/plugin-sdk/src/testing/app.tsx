@@ -46,6 +46,7 @@ import {
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
   type ExperimentalSidebarNavigationRegistration,
+  type ExperimentalSidebarHeaderRegistration,
   type ExperimentalSidebarNavigationActions,
   type ExperimentalSidebarNavigationIconProps,
   type ExperimentalSidebarNavigationItem,
@@ -1166,6 +1167,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
+  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];

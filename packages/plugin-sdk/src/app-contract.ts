@@ -294,6 +294,26 @@ export interface ExperimentalSidebarNavigationProps {
 }
 
 /**
+ * Props passed to an `experimental_sidebarHeader` component, rendered in the
+ * sidebar's header row between the sidebar toggle (and the macOS window
+ * controls) and bb's back and forward buttons.
+ */
+export interface ExperimentalSidebarHeaderProps {
+  /**
+   * Width in px of the space the component may use, updated when the sidebar
+   * resizes or the window chrome changes. It can be smaller than
+   * `controlSize` in a narrow sidebar.
+   */
+  width: number;
+  /**
+   * Width and height in px of the header's own buttons, equal to the
+   * `--bb-sidebar-control-size` CSS variable. Size your controls to match.
+   */
+  controlSize: number;
+  isCompactViewport: boolean;
+}
+
+/**
  * Props passed to an `experimental_threadList` component — the sidebar's
  * scrolling thread area, replaced wholesale by one plugin.
  */
@@ -1522,6 +1542,24 @@ export interface ExperimentalSidebarNavigationRegistration {
 }
 
 /**
+ * Render a component in the sidebar's header row, between the sidebar toggle
+ * and bb's back and forward buttons. Exclusive: the user picks at most one
+ * header under Settings → Appearance, and by default the header shows only
+ * bb's own controls. Content is clipped to the row, so it cannot move the
+ * thread list or bb's controls. On macOS the empty space keeps dragging the
+ * window; buttons, links, and inputs do not.
+ */
+export interface ExperimentalSidebarHeaderRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Settings → Appearance and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalSidebarHeaderProps>;
+}
+
+/**
  * Register this plugin as a viewer/editor for file extensions. By default,
  * matching files render the first applicable opener in deterministic slot
  * order. The user can pin BB's preview or a specific opener per extension
@@ -1938,6 +1976,14 @@ export interface PluginAppSlots {
   /** Replace the bounded sidebar navigation controls. */
   experimental_sidebarNavigation(
     registration: ExperimentalSidebarNavigationRegistration,
+  ): void;
+  /**
+   * Render a component in the sidebar header row (see
+   * {@link ExperimentalSidebarHeaderRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_sidebarHeader(
+    registration: ExperimentalSidebarHeaderRegistration,
   ): void;
   /**
    * Replace the sidebar's thread list (see

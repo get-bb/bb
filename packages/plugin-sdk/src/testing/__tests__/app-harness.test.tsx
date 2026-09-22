@@ -641,6 +641,34 @@ describe("loadPluginApp", () => {
         component: expect.any(Function),
       },
     ]);
+    const withHeader = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_sidebarHeader({
+          id: "icons",
+          title: "Header icons",
+          component: () => null,
+        });
+      }),
+    );
+    expect(withHeader.experimentalSidebarHeaders).toEqual([
+      { id: "icons", title: "Header icons", component: expect.any(Function) },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarHeader({
+            id: "icons",
+            title: "One",
+            component: () => null,
+          });
+          builder.slots.experimental_sidebarHeader({
+            id: "icons",
+            title: "Two",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_sidebarHeader: duplicate id "icons"');
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {

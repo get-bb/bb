@@ -203,8 +203,9 @@ function renderHarness(
   onOwnerMount = vi.fn(),
   initialEntries: string[] = ["/"],
 ) {
+  const store = createStore();
   return render(
-    <Provider store={createStore()}>
+    <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
         <SidebarProvider>
           <Harness onOwnerMount={onOwnerMount} />
@@ -415,6 +416,19 @@ describe("SidebarNavigationRegion", () => {
     expect(screen.getByRole("button", { name: "Local count 1" })).toBeDefined();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Customize replacement" }),
+    );
+  });
+
+  it("focuses the first navigation control when the opener is gone", async () => {
+    registerFixture();
+    renderHarness();
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    act(() => capturedActions.current?.openCustomize());
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "New thread" }),
     );
   });
 

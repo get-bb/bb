@@ -735,6 +735,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.pluginPanelOrder`        | Navigation entry order                              |
 | `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+| `sidebar.headerProvider`          | Plugin key, or `__builtin__` for bb's header only   |
 | `sidebar.threadListProvider`      | Plugin key; defaults to `thread-list/thread-list` |
 
 The sidebar thread list uses an explicit plugin selection and defaults to the bundled
@@ -743,6 +744,11 @@ Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
 Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
+
+`sidebar.headerProvider` picks a plugin that draws controls in the sidebar header
+row, between the sidebar toggle and the back and forward buttons. It defaults to
+`__builtin__`, which leaves only bb's controls there. Set it with
+`bb settings ui set sidebar.headerProvider <plugin-id>/<slot-id>`.
 
 New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
 Migrated installations with existing projects, threads, or UI preferences fall back

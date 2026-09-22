@@ -2300,6 +2300,44 @@ renders bb's glyphs for its own items and plugin branding for panels.
 6. **Accessibility.** Validate labels, `aria-current`, shortcut metadata,
    disabled and loading state, and focus order in third-party markup.
 
+## `app.slots.experimental_sidebarHeader` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Renders one plugin component in the sidebar header row,
+between the sidebar toggle (and the macOS window controls) and bb's back and
+forward buttons. The slot is exclusive and opt-in: `sidebar.headerProvider`
+defaults to `__builtin__` (bb's controls only) and the user picks a provider
+under Settings → Appearance → Header. The component receives `width`,
+`controlSize`, and `isCompactViewport`. The host clips content to the row,
+keeps the window drag region on macOS while interactive descendants opt out,
+hides the header while the navigation customize editor is open, and removes
+it with one toast on a crash. `--bb-sidebar-control-size` and
+`--bb-sidebar-control-icon-size` expose the header's control sizing.
+
+A plugin that moves its navigation into the header tracks whether its header
+is mounted itself (a module-level flag both components read) and returns null
+from its navigation component while it is. A plugin can pick its own header
+and navigation once, the first time it loads, through
+`bb.sdk.system.uiPreferences`; later choices are the user's.
+
+**Audit before stabilizing.**
+
+1. **Exclusive versus shared.** Confirm one provider is right for the header
+   row, or whether several small controls should share it the way the sidebar
+   footer does.
+2. **Two pickers.** A plugin that wants its navigation in the header needs
+   both its header and its navigation picked, which plugins do for the user
+   on first load. Decide whether that write should become a declared,
+   host-applied default, or whether a navigation registration should declare
+   a paired header instead.
+3. **Geometry.** Validate `width` and the start inset across macOS with and
+   without traffic lights, browsers, compact drawers, landscape safe areas,
+   and a sidebar narrower than one control.
+4. **Focus order.** Confirm header controls before the history buttons is
+   acceptable when a plugin splits one list of items across the header and
+   the navigation region.
+5. **Drag regions.** Confirm the interactive-descendant no-drag rule covers
+   real plugin markup, including custom elements and menus.
+
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** examples only; no shipped consumer has tested the arbitration/fallback model or the accessibility contract.
