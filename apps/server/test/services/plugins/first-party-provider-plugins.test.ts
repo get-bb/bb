@@ -67,7 +67,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsThreadRename: false,
     fork: "tip",
     supportsManualCompaction: true,
-    supportsUsage: false,
+    supportsUsage: true,
     visibility: "installed",
     hasLogo: true,
   },
