@@ -324,7 +324,12 @@
 
   @media (max-width: 767px) and (pointer: coarse) {
     /* The overlay is hidden on coarse phones, so no room is reserved. */
-    .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset {
+    .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+      .bb-sidebar-hover-actions-inset,
+    .bb-sidebar-hover-actions-row:has(
+        .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"]
+      )
+      .bb-sidebar-hover-actions-inset {
       padding-right: 0;
     }
 
