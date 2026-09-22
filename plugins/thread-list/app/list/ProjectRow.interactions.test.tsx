@@ -782,7 +782,9 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByText("Review parent")).toBeNull();
     fireEvent.keyDown(section, { key: "ArrowRight" });
     expect(await screen.findByText("Review parent")).not.toBeNull();
-    fireEvent.click(screen.getByRole("link", { name: "Open Inherited child" }));
+    fireEvent.click(
+      await screen.findByRole("link", { name: "Open Inherited child" }),
+    );
     await waitFor(() =>
       expect(
         screen.queryByRole("group", { name: "Hidden sections" }),
