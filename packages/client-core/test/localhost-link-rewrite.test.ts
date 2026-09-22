@@ -46,4 +46,59 @@ describe("rewriteLocalhostLinkHref", () => {
       ).toBe(href);
     }
   });
+
+  it("leaves localhost links alone when bb is viewed through Connect", () => {
+    for (const currentHostname of [
+      "sawyer.getbb.app",
+      "sawyer--8000.getbb.app",
+      "getbb.app",
+      "SAWYER.GETBB.APP",
+      "sawyer.localhost",
+      "sawyer--8000.localhost",
+      "sawyer.bb.localhost",
+    ]) {
+      expect(
+        rewriteLocalhostLinkHref({
+          currentHostname,
+          enabled: true,
+          href: "http://localhost:5173/app",
+        }),
+      ).toBe("http://localhost:5173/app");
+    }
+  });
+
+  it("does not produce a Connect hostname with the localhost port", () => {
+    expect(
+      rewriteLocalhostLinkHref({
+        currentHostname: "asdf.getbb.app",
+        enabled: true,
+        href: "http://localhost:5173/app",
+      }),
+    ).toBe("http://localhost:5173/app");
+  });
+
+  it("does not ignore unrelated hostnames", () => {
+    expect(
+      rewriteLocalhostLinkHref({
+        currentHostname: "notgetbb.app",
+        enabled: true,
+        href: "http://localhost:5173/app",
+      }),
+    ).toBe("http://notgetbb.app:5173/app");
+  });
+
+  it("preserves bb Connect share links", () => {
+    for (const href of [
+      "https://sawyer--5173.getbb.app/app",
+      "http://sawyer--5173.localhost:59332/app",
+    ]) {
+      expect(
+        rewriteLocalhostLinkHref({
+          currentHostname: "100.64.158.8",
+          enabled: true,
+          href,
+        }),
+      ).toBe(href);
+    }
+  });
 });
