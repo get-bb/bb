@@ -710,7 +710,7 @@ describe("PluginsOverview", () => {
     ).toBeNull();
   });
 
-  it("sorts enabled plugins before inactive plugins and published plugins first within enabled", async () => {
+  it("keeps disabled plugins in place, sorting published plugins first", async () => {
     installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
@@ -766,9 +766,9 @@ describe("PluginsOverview", () => {
     expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-official",
       "plugin-row-enabled-local-alpha",
       "plugin-row-inactive-local",
-      "plugin-row-inactive-official",
     ]);
     const officialPills = screen.getAllByText("BB Official");
     expect(officialPills).toHaveLength(2);
@@ -808,9 +808,9 @@ describe("PluginsOverview", () => {
     expect(rowIds()).toEqual([
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-official",
       "plugin-row-enabled-local-alpha",
       "plugin-row-inactive-local",
-      "plugin-row-inactive-official",
     ]);
     expect(
       screen

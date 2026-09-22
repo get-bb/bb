@@ -1,5 +1,4 @@
 export interface PluginSettingsCandidate {
-  enabled: boolean;
   hasSettings: boolean;
   icon: string | null;
   id: string;
@@ -30,8 +29,7 @@ export function buildPluginSettingsEntries(
   return args.installedPlugins
     .filter(
       (plugin) =>
-        plugin.enabled &&
-        (plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id)),
+        plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id),
     )
     .map((plugin) => ({
       id: plugin.id,

@@ -751,6 +751,8 @@ release packages with their declared production dependencies). A crashing slot c
 touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) appear under both Settings → Installed plugins
 and Plugins → Installed plugins. Both locations manage the same installed plugins.
+Disabled plugins stay in both lists, and a disabled plugin with declared
+settings keeps its Settings entry.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed
