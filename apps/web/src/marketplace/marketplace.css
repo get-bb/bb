@@ -622,17 +622,6 @@
   line-height: 1.1;
 }
 
-.marketplace-detail-description {
-  grid-column: 1 / -1;
-}
-
-.marketplace-detail-description p {
-  margin: 0;
-  color: var(--dim);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
 .marketplace-detail-attribution,
 .marketplace-detail-actions {
   display: flex;
@@ -874,6 +863,19 @@ a.marketplace-detail-author:hover {
   font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.01em;
+}
+
+.marketplace-overview-lead {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.marketplace-overview-rule {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 
 .marketplace-overview {

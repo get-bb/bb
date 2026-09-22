@@ -881,9 +881,6 @@ export function PublicMarketplaceDetailPage({
               </span>
             </div>
           </div>
-          <div className="marketplace-detail-description">
-            <p>{entry.description}</p>
-          </div>
           <div className="marketplace-detail-install">
             <div className="marketplace-detail-actions">
               <CommandButton
@@ -924,12 +921,16 @@ export function PublicMarketplaceDetailPage({
                 name={entry.displayName}
               />
             )}
-            {entry.overview === undefined ? null : (
-              <section className="marketplace-detail-section marketplace-overview-section">
-                <h2>Overview</h2>
-                <MarketplaceOverview markdown={entry.overview} />
-              </section>
-            )}
+            <section className="marketplace-detail-section marketplace-overview-section">
+              <p className="marketplace-overview-lead">{entry.description}</p>
+              {entry.overview === undefined ? null : (
+                <>
+                  <hr className="marketplace-overview-rule" />
+                  <h2>Overview</h2>
+                  <MarketplaceOverview markdown={entry.overview} />
+                </>
+              )}
+            </section>
             <MoreFromAuthor
               author={entry.author}
               entries={authorSiblings}
