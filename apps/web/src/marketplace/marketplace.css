@@ -1076,6 +1076,10 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
+  .marketplace-detail-head {
+    column-gap: 12px;
+  }
+
   .marketplace-detail-actions .cmd-dollar,
   .marketplace-detail-actions .cmd-text,
   .marketplace-detail-actions .cmd-copy {
@@ -1244,16 +1248,16 @@ a.marketplace-detail-author:hover {
   }
 
   .marketplace-detail-head .marketplace-artwork.is-large {
-    width: 52px;
-    height: 52px;
-    border-radius: 13px;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
   }
 
   .marketplace-detail-head .marketplace-artwork.is-large svg,
   .marketplace-detail-head .marketplace-artwork.is-large img,
   .marketplace-detail-head .marketplace-artwork.is-large .marketplace-svg-icon {
-    width: 28px;
-    height: 28px;
+    width: 20px;
+    height: 20px;
   }
 
   .marketplace-detail-identity h1 {
