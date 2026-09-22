@@ -47,7 +47,7 @@ export function PluginCatalogCard({
   const count = pluginInstallCountPresentation(entry.installs);
   return (
     <PluginCard
-      leading={<CatalogEntryIconChip entry={entry} />}
+      leading={<CatalogEntryIconChip entry={entry} className="size-8" />}
       title={entry.displayName}
       description={entry.description || undefined}
       byline={<PluginCardAuthor entry={entry} />}

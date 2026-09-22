@@ -10,7 +10,7 @@ import { pluginAuthorGithub } from "./plugin-marketplace-author";
 
 export function PluginCardGrid({ children }: { children: ReactNode }) {
   return (
-    <ResourceBrowseGrid className="w-full grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
+    <ResourceBrowseGrid className="w-full grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
       {children}
     </ResourceBrowseGrid>
   );
@@ -30,8 +30,8 @@ export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) 
   return (
     <ResourceBrowseCard
       {...props}
-      className="h-full min-h-40 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-3 rounded-xl p-4"
-      leadingClassName="size-10"
+      className="h-full min-h-36 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-2 rounded-xl p-3"
+      leadingClassName="size-8"
       description={
         <span className="block min-h-[2lh]">{props.description}</span>
       }
@@ -39,7 +39,7 @@ export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) 
         <span className="line-clamp-2 whitespace-normal">{props.title}</span>
       }
       footer={
-        <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-3 text-xs text-subtle-foreground">
+        <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs text-subtle-foreground">
           <span className="min-w-0 truncate">{byline}</span>
           <span className="pointer-events-auto shrink-0">{footerAction}</span>
         </div>

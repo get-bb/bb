@@ -109,7 +109,7 @@ export function InstalledPluginRow({
       <PluginCard
         leading={
           <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
-            <ResourceIconFrame className="size-10 rounded-md border border-border bg-muted/40 text-muted-foreground">
+            <ResourceIconFrame className="size-8 rounded-md border border-border bg-muted/40 text-muted-foreground">
               {() => <PluginLogo plugin={plugin} className="size-6" />}
             </ResourceIconFrame>
           </PluginSignalLogo>
