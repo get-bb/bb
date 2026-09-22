@@ -14,6 +14,7 @@ import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 
 const mocks = vi.hoisted(() => ({
   renameThread: vi.fn(),
@@ -77,6 +78,7 @@ afterEach(() => {
   mocks.renameThread.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
+  delete window.bbDesktop;
 });
 
 describe("ThreadDetailHeader", () => {
@@ -533,6 +535,41 @@ describe("ThreadDetailHeader", () => {
     expect(mocks.renameThread).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Focused thread")).not.toBeNull();
+  });
+
+  it("keeps the header title out of the macOS window-drag region so double click renames", () => {
+    window.bbDesktop = createBbDesktopApi({
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    });
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Focused thread"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const title = screen.getByText("Focused thread").closest("p");
+    expect(title?.className).toContain("[-webkit-app-region:no-drag]");
+
+    fireEvent.doubleClick(screen.getByText("Focused thread"));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    expect(input.closest("p")?.className).toContain(
+      "[-webkit-app-region:no-drag]",
+    );
   });
 
   it("does not start a pane drag while the header title is being edited", () => {

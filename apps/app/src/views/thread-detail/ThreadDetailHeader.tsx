@@ -172,12 +172,10 @@ export function ThreadDetailHeader({
               !isFocused &&
               dimsInactiveSplits &&
               CONTEXT_INACTIVE_TEXT_CLASS,
+            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
             beginPaneDrag &&
               !isEditing &&
-              cn(
-                "cursor-grab touch-none select-none",
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-              ),
+              "cursor-grab touch-none select-none",
           )}
           onDoubleClick={handleTitleDoubleClick}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
