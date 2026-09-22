@@ -399,7 +399,13 @@ function AutosavingPluginSetting({
           ? "secret"
           : undefined
       }
-      controlPlacement={isMultilineSetting(descriptor) ? "below" : "inline"}
+      controlPlacement={
+        descriptor.type === "boolean"
+          ? "trailing"
+          : isMultilineSetting(descriptor)
+            ? "below"
+            : "inline"
+      }
       {...(descriptor.description !== undefined
         ? { description: descriptor.description }
         : {})}
