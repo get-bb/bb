@@ -359,37 +359,9 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
   };
 }
 
-export interface CompiledInPluginFrontend {
-  importModule: () => Promise<unknown>;
-}
-
-export interface CompiledInDisabledMemo {
-  read(): ReadonlySet<string>;
-  write(pluginIds: ReadonlySet<string>): void;
-}
-
-export const COMPILED_IN_BUNDLE_HASH = "compiled-in";
-
-export function compiledInCandidate(pluginId: string): PluginFrontendCandidate {
-  return {
-    pluginId,
-    bundle: {
-      jsUrl: `compiled-in:${pluginId}`,
-      cssUrl: null,
-      jsBytes: 0,
-      hash: COMPILED_IN_BUNDLE_HASH,
-      sdkMajor: 0,
-      sdkVersion: COMPILED_IN_BUNDLE_HASH,
-      compatible: true,
-    },
-  };
-}
-
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
-  compiledIn?: ReadonlyMap<string, CompiledInPluginFrontend>;
-  compiledInDisabledMemo?: CompiledInDisabledMemo;
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
   retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
@@ -653,45 +625,6 @@ async function activateContentScripts(
   }
 }
 
-export async function seedCompiledInPluginFrontends(
-  state: PluginFrontendReconcileState,
-  deps: PluginFrontendReconcileDeps,
-): Promise<void> {
-  if (state.tornDown || deps.compiledIn === undefined) return;
-  const disabled = deps.compiledInDisabledMemo?.read() ?? new Set<string>();
-  const seeded = [...deps.compiledIn.keys()]
-    .filter((pluginId) => !disabled.has(pluginId))
-    .map(compiledInCandidate);
-  if (seeded.length === 0) return;
-  const closeSlotBatch = deps.beginSlotBatch();
-  try {
-    await reconcileCandidates(seeded, state, deps);
-  } finally {
-    closeSlotBatch();
-  }
-}
-
-function rememberDisabledCompiledIn(
-  candidateIds: ReadonlySet<string>,
-  deps: PluginFrontendReconcileDeps,
-): void {
-  if (deps.compiledIn === undefined || deps.compiledInDisabledMemo === undefined) {
-    return;
-  }
-  const disabled = new Set<string>();
-  for (const pluginId of deps.compiledIn.keys()) {
-    if (!candidateIds.has(pluginId)) disabled.add(pluginId);
-  }
-  const previous = deps.compiledInDisabledMemo.read();
-  if (
-    previous.size === disabled.size &&
-    [...disabled].every((pluginId) => previous.has(pluginId))
-  ) {
-    return;
-  }
-  deps.compiledInDisabledMemo.write(disabled);
-}
-
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
@@ -700,7 +633,6 @@ export async function reconcilePluginFrontends(
   const candidates = await deps.fetchCandidates();
   if (state.tornDown) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
-  rememberDisabledCompiledIn(candidateIds, deps);
   for (const pluginId of [...state.records.keys()]) {
     if (candidateIds.has(pluginId)) continue;
     state.pendingControllers.get(pluginId)?.abort();
@@ -727,13 +659,8 @@ async function reconcileCandidates(
   await runWithConcurrencyLimit(
     orderPluginFrontendCandidates(candidates, deps.routePluginId()),
     PLUGIN_FRONTEND_LOAD_CONCURRENCY,
-    async (serverCandidate) => {
-      const pluginId = serverCandidate.pluginId;
-      const compiledIn = deps.compiledIn?.get(pluginId);
-      const candidate =
-        compiledIn === undefined
-          ? serverCandidate
-          : compiledInCandidate(pluginId);
+    async (candidate) => {
+      const pluginId = candidate.pluginId;
       const previous = state.records.get(pluginId);
       if (
         previous !== undefined &&
@@ -750,7 +677,7 @@ async function reconcileCandidates(
           ? previousAttempt.count + 1
           : 0;
       const importUrl =
-        retryCount === 0 || compiledIn !== undefined
+        retryCount === 0
           ? candidate.bundle.jsUrl
           : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount);
       const loaded = await loadPluginFrontends(
@@ -761,10 +688,7 @@ async function reconcileCandidates(
           },
         ],
         {
-          importModule:
-            compiledIn === undefined
-              ? deps.importModule
-              : () => compiledIn.importModule(),
+          importModule: deps.importModule,
           injectCss: () => {},
           warn: deps.warn,
         },
@@ -995,44 +919,9 @@ function publishBrowserDiagnostics(): void {
 
 const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
 
-export const COMPILED_IN_PLUGIN_FRONTENDS: ReadonlyMap<
-  string,
-  CompiledInPluginFrontend
-> = new Map();
-
-const COMPILED_IN_DISABLED_STORAGE_KEY = "bb.plugin-frontend.compiled-in-disabled";
-
-const browserCompiledInDisabledMemo: CompiledInDisabledMemo = {
-  read() {
-    try {
-      const raw = window.localStorage.getItem(COMPILED_IN_DISABLED_STORAGE_KEY);
-      const parsed: unknown = raw === null ? [] : JSON.parse(raw);
-      return new Set(
-        Array.isArray(parsed)
-          ? parsed.filter((value): value is string => typeof value === "string")
-          : [],
-      );
-    } catch {
-      return new Set();
-    }
-  },
-  write(pluginIds) {
-    try {
-      window.localStorage.setItem(
-        COMPILED_IN_DISABLED_STORAGE_KEY,
-        JSON.stringify([...pluginIds]),
-      );
-    } catch {
-      return;
-    }
-  },
-};
-
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
   importModule: (url) => import(/* @vite-ignore */ url),
-  compiledIn: COMPILED_IN_PLUGIN_FRONTENDS,
-  compiledInDisabledMemo: browserCompiledInDisabledMemo,
   applyCss: applyPluginCss,
   retainCss: retainPluginCss,
   routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),
@@ -1129,7 +1018,6 @@ export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
-    await seedCompiledInPluginFrontends(state, browserReconcileDeps);
     await reconcilePluginFrontends(state, browserReconcileDeps);
   })()
     .catch((error: unknown) => {
