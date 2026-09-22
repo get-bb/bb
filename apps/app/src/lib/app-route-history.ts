@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { matchPath, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import type { Location } from "react-router-dom";
+import { PLUGIN_DETAIL_ROUTE_PATH, PLUGINS_ROUTE_PATH } from "./route-paths";
 
 interface AppRouteHistoryEntry {
   key: string;
   url: string;
+  pluginCollectionUrl: string | null;
 }
 
 interface AppRouteHistoryState {
@@ -25,13 +27,17 @@ function getNormalizedUrl(location: Location): string {
   return `${location.pathname}${location.search}${location.hash}`;
 }
 
+function getNavigationUrl(entry: AppRouteHistoryEntry): string {
+  return entry.pluginCollectionUrl ?? entry.url;
+}
+
 function findBackTargetIndex(state: AppRouteHistoryState): number | null {
-  const currentUrl = state.entries[state.index]?.url;
-  if (currentUrl === undefined) {
+  const current = state.entries[state.index];
+  if (current === undefined) {
     return null;
   }
   for (let candidate = state.index - 1; candidate >= 0; candidate -= 1) {
-    if (state.entries[candidate].url !== currentUrl) {
+    if (getNavigationUrl(state.entries[candidate]) !== getNavigationUrl(current)) {
       return candidate;
     }
   }
@@ -39,8 +45,8 @@ function findBackTargetIndex(state: AppRouteHistoryState): number | null {
 }
 
 function findForwardTargetIndex(state: AppRouteHistoryState): number | null {
-  const currentUrl = state.entries[state.index]?.url;
-  if (currentUrl === undefined) {
+  const current = state.entries[state.index];
+  if (current === undefined) {
     return null;
   }
   for (
@@ -48,7 +54,13 @@ function findForwardTargetIndex(state: AppRouteHistoryState): number | null {
     candidate < state.entries.length;
     candidate += 1
   ) {
-    if (state.entries[candidate].url !== currentUrl) {
+    if (getNavigationUrl(state.entries[candidate]) !== getNavigationUrl(current)) {
+      const collectionUrl = state.entries[candidate].pluginCollectionUrl;
+      if (collectionUrl !== null) {
+        while (state.entries[candidate + 1]?.pluginCollectionUrl === collectionUrl) {
+          candidate += 1;
+        }
+      }
       return candidate;
     }
   }
@@ -97,7 +109,16 @@ function recordLocation(
     return;
   }
   lastRecordedLocation = location;
-  const entry = { key: location.key, url: getNormalizedUrl(location) };
+  const isPluginCollection =
+    matchPath(PLUGINS_ROUTE_PATH, location.pathname) !== null ||
+    matchPath(PLUGIN_DETAIL_ROUTE_PATH, location.pathname) !== null;
+  const entry = {
+    key: location.key,
+    url: getNormalizedUrl(location),
+    pluginCollectionUrl: isPluginCollection
+      ? `${PLUGINS_ROUTE_PATH}${location.search}${location.hash}`
+      : null,
+  };
   historyState =
     historyState.entries.length === 0
       ? { entries: [entry], index: 0 }
