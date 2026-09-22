@@ -498,7 +498,7 @@ describe("ThreadDetailHeader", () => {
     );
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Focused thread");
 
     fireEvent.change(input, { target: { value: "Renamed thread" } });
@@ -514,7 +514,7 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });
 
-  it("cancels an inline header rename on Escape without saving", () => {
+  it("cancels an inline header rename on Escape without saving", async () => {
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
@@ -531,7 +531,7 @@ describe("ThreadDetailHeader", () => {
     );
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     fireEvent.change(input, { target: { value: "Scratch name" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
@@ -540,7 +540,7 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });
 
-  it("keeps the header title out of the macOS window-drag region so double click renames", () => {
+  it("keeps the header title out of the macOS window-drag region so double click renames", async () => {
     window.bbDesktop = createBbDesktopApi({
       lastCheckedAt: null,
       latestVersion: null,
@@ -569,13 +569,13 @@ describe("ThreadDetailHeader", () => {
     expect(title?.className).toContain("[-webkit-app-region:no-drag]");
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     expect(input.closest("p")?.className).toContain(
       "[-webkit-app-region:no-drag]",
     );
   });
 
-  it("does not start a pane drag while the header title is being edited", () => {
+  it("does not start a pane drag while the header title is being edited", async () => {
     const beginPaneDrag = vi.fn();
     render(
       <PaneContext.Provider
@@ -599,7 +599,7 @@ describe("ThreadDetailHeader", () => {
     );
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     fireEvent.pointerDown(input, { button: 0 });
 
     expect(beginPaneDrag).not.toHaveBeenCalled();
