@@ -949,15 +949,7 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+
             </div>
           </div>
           <div className="marketplace-detail-install">
@@ -982,7 +974,6 @@ export function PublicMarketplaceDetailPage({
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
               </MarketplaceLink>
             </div>
-
           </div>
         </header>
         {
@@ -1002,12 +993,21 @@ export function PublicMarketplaceDetailPage({
             )}
             <section className="marketplace-detail-section marketplace-overview-section">
               <p className="marketplace-overview-lead">{entry.description}</p>
+              <hr className="marketplace-overview-rule" />
+              <div className="marketplace-overview-heading">
+                <h2>Overview</h2>
+              <a
+                className="marketplace-detail-source"
+                href={repository}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View source
+                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+              </a>
+              </div>
               {entry.overview === undefined ? null : (
-                <>
-                  <hr className="marketplace-overview-rule" />
-                  <h2>Overview</h2>
-                  <MarketplaceOverview markdown={entry.overview} />
-                </>
+                <MarketplaceOverview markdown={entry.overview} />
               )}
             </section>
             <MoreFromAuthor
