@@ -550,7 +550,7 @@ function PluginRuntimeStatusAlert({
                 asChild
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-0.5 px-2.5 text-xs"
+                className="h-7 gap-0.5 px-2.5 text-xs font-normal text-muted-foreground hover:text-foreground [&_[data-icon-root]]:size-3"
               >
                 <Link
                   to={
