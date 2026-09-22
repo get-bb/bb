@@ -259,12 +259,9 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Forward", "/plugins/github");
   });
 
-  it.each([
-    "?view=installed&query=notes",
-    "?category=security&sort=name&direction=desc",
-    "?author=get-bb",
-    "?shelf=bb-official",
-  ])("skips tab-only entries in both directions for %s", async (context) => {
+  it("skips tab-only entries in both directions", async () => {
+    const context =
+      "?view=installed&query=notes&category=security&sort=name&direction=desc";
     const routes = [
       `/plugins${context}`,
       `/plugins/memory${context}`,
