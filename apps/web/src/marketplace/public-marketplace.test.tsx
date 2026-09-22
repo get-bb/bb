@@ -104,7 +104,7 @@ describe("public marketplace route rendering", () => {
     );
     expect(html).toContain("cmd-btn cmd-compact");
     expect(html).toContain("bb plugin install prompt-library");
-    expect(html).not.toContain("Download bb for macOS");
+    expect(html).toContain("Get it for macOS");
     expect(html).not.toContain("marketplace-install-command");
     expect(html).not.toContain("Don&#x27;t have bb?");
     expect(html).not.toContain("Runs in bb");

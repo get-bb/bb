@@ -976,6 +976,12 @@ export function PublicMarketplaceDetailPage({
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
               </a>
             </div>
+            <MarketplaceLink
+              className="marketplace-detail-source marketplace-detail-download"
+              href="/download/macos"
+            >
+              Get it for macOS
+            </MarketplaceLink>
           </div>
         </header>
         {
