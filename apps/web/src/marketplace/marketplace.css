@@ -702,6 +702,18 @@ a.marketplace-detail-author:hover {
   flex: none;
 }
 
+.marketplace-detail-installs {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.marketplace-detail-installs svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
 .marketplace-detail-install {
   display: grid;
   justify-items: start;

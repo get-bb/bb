@@ -870,7 +870,12 @@ export function PublicMarketplaceDetailPage({
               </MarketplaceLink>
             </div>
             <div className="marketplace-detail-metadata">
-              <span className={installs === undefined ? "is-new" : undefined}>
+              <span
+                className={`marketplace-detail-installs${installs === undefined ? " is-new" : ""}`}
+              >
+                {installs === undefined ? null : (
+                  <HugeiconsIcon icon={Download01Icon} aria-hidden />
+                )}
                 {installs === undefined
                   ? "New"
                   : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
@@ -902,7 +907,6 @@ export function PublicMarketplaceDetailPage({
               }}
             />
             <span className="marketplace-install-help">
-              Need bb?{" "}
               <MarketplaceLink href="/download/macos">
                 Download bb for macOS
               </MarketplaceLink>
