@@ -18,7 +18,10 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SIDEBAR_DISCLOSURE_ACTION_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -110,7 +113,14 @@ export function SidebarMore({
                   <Icon name="MoreHorizontal" aria-hidden="true" />
                   <span className="min-w-0 truncate text-left">More</span>
                   {activity ? (
-                    <span className="ml-auto flex shrink-0">{activity}</span>
+                    <span
+                      className={cn(
+                        "ml-auto inline-flex shrink-0 items-center justify-center",
+                        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                      )}
+                    >
+                      {activity}
+                    </span>
                   ) : null}
                 </Button>
               </DropdownMenuTrigger>
@@ -164,15 +174,19 @@ export function SidebarMore({
 export function SidebarOverflowItem({
   activity,
   children,
+  empty = false,
   item,
   onAddToSidebar,
   onClose,
+  onNewThread,
 }: {
   activity?: ReactNode;
   children: (close: () => void) => ReactNode;
+  empty?: boolean;
   item: SidebarVisibilityItem;
   onAddToSidebar: (id: string) => void;
   onClose: () => void;
+  onNewThread?: () => void;
 }) {
   const compact = useIsCompactViewport();
   const [isCompactOpen, setIsCompactOpen] = useState(false);
@@ -182,9 +196,31 @@ export function SidebarOverflowItem({
   }, [onClose]);
   const content = (close: () => void) => (
     <div data-sidebar-overflow="true" className="flex min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {children(close)}
-      </div>
+      {empty ? (
+        onNewThread ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              OVERFLOW_ROW_BUTTON_CLASS,
+              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+              "shrink-0",
+            )}
+            onClick={() => {
+              close();
+              onNewThread();
+            }}
+          >
+            <Icon name="MessageSquarePlus" aria-hidden="true" />
+            New thread
+          </Button>
+        ) : null
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {children(close)}
+        </div>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -192,7 +228,8 @@ export function SidebarOverflowItem({
         className={cn(
           OVERFLOW_ROW_BUTTON_CLASS,
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-          "mt-1 shrink-0 border-t",
+          "shrink-0",
+          !empty && "mt-1 border-t",
         )}
         onClick={() => {
           close();
@@ -208,9 +245,11 @@ export function SidebarOverflowItem({
       <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
         {item.icon}
         <span className="min-w-0 truncate">{item.title}</span>
-        <span className="relative z-20 inline-flex size-6 shrink-0 items-center justify-center">
-          <Icon name="ChevronRight" className="size-3" aria-hidden="true" />
-        </span>
+        {compact ? (
+          <span className="inline-flex size-6 shrink-0 items-center justify-center text-subtle-foreground">
+            <Icon name="ChevronRight" className="size-3" aria-hidden="true" />
+          </span>
+        ) : null}
       </span>
       {activity ? (
         <span className="ml-auto flex shrink-0">{activity}</span>

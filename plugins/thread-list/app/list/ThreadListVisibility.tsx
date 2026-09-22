@@ -36,6 +36,7 @@ export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
   id: SidebarSectionId;
   threads: readonly ThreadListEntry[];
   renderContent: (close: () => void) => ReactNode;
+  onNewThread?: () => void;
 }
 
 interface ThreadListVisibilityState {
@@ -217,8 +218,10 @@ function HiddenGroup({
   return (
     <SidebarOverflowItem
       item={group}
+      empty={group.threads.length === 0}
       onClose={close}
       onAddToSidebar={restore}
+      onNewThread={group.onNewThread}
       activity={<GroupActivity threads={group.threads} />}
     >
       {(closeSection) => group.renderContent(closeSection)}

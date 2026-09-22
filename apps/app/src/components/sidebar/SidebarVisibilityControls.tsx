@@ -122,7 +122,14 @@ export function SidebarMore({
                   <Icon name="MoreHorizontal" aria-hidden="true" />
                   <span className="min-w-0 truncate text-left">More</span>
                   {activity ? (
-                    <span className="ml-auto flex shrink-0">{activity}</span>
+                    <span
+                      className={cn(
+                        "ml-auto inline-flex shrink-0 items-center justify-center",
+                        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                      )}
+                    >
+                      {activity}
+                    </span>
                   ) : null}
                 </Button>
               </PopoverTrigger>

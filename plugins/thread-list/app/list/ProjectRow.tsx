@@ -244,6 +244,7 @@ interface ChronologicalBuiltInSidebarSections {
 
 interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
   builtInSections: ChronologicalBuiltInSidebarSections;
+  onCreateThread?: () => void;
   topLevelSectionOrder: readonly SidebarSectionId[];
   fullSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
@@ -1973,6 +1974,7 @@ export const ChronologicalSectionThreadSections = memo(
     collapsedThreadIds,
     collapsedEnvironmentIds,
     onProjectSelect,
+    onCreateThread,
     onCreateThreadInSection,
     onRemoveSection,
     onToggleThreadCollapsed,
@@ -2119,6 +2121,7 @@ export const ChronologicalSectionThreadSections = memo(
         id: "threads",
         title: "Threads",
         threads: looseThreads,
+        onNewThread: onCreateThread,
         renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={looseItems}
@@ -2145,6 +2148,9 @@ export const ChronologicalSectionThreadSections = memo(
         id: buildSidebarEntitySectionId("section", item.group.id),
         title: item.group.name,
         threads: getProjectThreadItemDescendants(item.group.items),
+        onNewThread: onCreateThreadInSection
+          ? () => onCreateThreadInSection(item.group.id)
+          : undefined,
         renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={item.group.items}
