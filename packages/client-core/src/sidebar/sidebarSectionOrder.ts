@@ -125,3 +125,35 @@ export function normalizeSidebarSectionOrder({
 
   return normalized;
 }
+
+interface InsertSidebarSectionAfterArgs {
+  storedOrder: readonly string[];
+  entitySectionIds: readonly SidebarSectionId[];
+  legacyEntityAnchor: LegacySidebarEntityAnchor;
+  anchorSectionId: SidebarSectionId;
+  sectionId: SidebarSectionId;
+}
+
+export function insertSidebarSectionAfter({
+  storedOrder,
+  entitySectionIds,
+  legacyEntityAnchor,
+  anchorSectionId,
+  sectionId,
+}: InsertSidebarSectionAfterArgs): SidebarSectionId[] | null {
+  if (anchorSectionId === sectionId) {
+    return null;
+  }
+  const normalized = normalizeSidebarSectionOrder({
+    storedOrder,
+    entitySectionIds: [...entitySectionIds, sectionId],
+    legacyEntityAnchor,
+    hasPinnedSection: true,
+  }).filter((id) => id !== sectionId);
+  const anchorIndex = normalized.indexOf(anchorSectionId);
+  if (anchorIndex === -1) {
+    return null;
+  }
+  normalized.splice(anchorIndex + 1, 0, sectionId);
+  return normalized;
+}

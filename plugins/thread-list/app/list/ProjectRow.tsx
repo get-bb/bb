@@ -1420,6 +1420,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     const topLevelActions = (
       <SidebarHeaderControls
         label={`${section.name} section`}
+        sectionId={buildSidebarEntitySectionId("section", section.id)}
         onNewThread={
           onCreateThreadInSection
             ? () => onCreateThreadInSection(section.id)
@@ -1476,6 +1477,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       <SidebarSectionRow
         name={section.name}
         label={section.name}
+        sectionId={buildSidebarEntitySectionId("section", section.id)}
         labelEditor={rename.editor}
         onRename={rename.startEditing}
         onRenameFromMenu={rename.startEditingFromMenu}
@@ -2261,6 +2263,7 @@ function ProjectRowComponent({
   const projectActions = (
     <SidebarHeaderControls
       label={project.name}
+      sectionId={buildSidebarEntitySectionId("project", project.id)}
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
       onCloseAutoFocus={rename.onCloseAutoFocus}

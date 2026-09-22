@@ -25,7 +25,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "../ui/sidebar-hover-actions.js";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { CollapsedChildActivity } from "@bb/client-core";
+import type { CollapsedChildActivity, SidebarSectionId } from "@bb/client-core";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
@@ -52,6 +52,7 @@ interface SidebarSectionRowProps {
   name: string;
   labelEditor?: ReactNode;
   label: string;
+  sectionId?: SidebarSectionId;
   depth: number;
   activity: CollapsedChildActivity;
   collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
@@ -72,6 +73,7 @@ function SidebarSectionRowComponent({
   name,
   labelEditor,
   label,
+  sectionId,
   depth,
   activity,
   collapsedThreads = EMPTY_SPLIT_INDICATOR_THREADS,
@@ -218,6 +220,7 @@ function SidebarSectionRowComponent({
           >
             <SidebarHeaderControls
               label={`${label} section`}
+              sectionId={sectionId}
               onNewThread={onCreateThread}
               onOpenChange={setIsActionsOpen}
               onCloseAutoFocus={onCloseAutoFocus}

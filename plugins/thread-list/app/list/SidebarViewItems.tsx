@@ -11,6 +11,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuPortal,
 } from "@bb/shared-ui/dropdown-menu";
+import type { SidebarSectionId } from "@bb/client-core";
 import type { HeaderCreationActions } from "./SidebarHeaderControls.js";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility.js";
 import {
@@ -38,12 +39,14 @@ type SidebarViewPage = "organize" | "sort" | "filter";
 
 export function SidebarHeaderMenuContents({
   creation,
+  anchorSectionId,
   compact,
   page,
   onPageChange,
   children,
 }: {
   creation: HeaderCreationActions;
+  anchorSectionId?: SidebarSectionId;
   compact: boolean;
   page: SidebarViewPage | null;
   onPageChange: (page: SidebarViewPage | null) => void;
@@ -70,7 +73,7 @@ export function SidebarHeaderMenuContents({
     <>
       <DropdownMenuItem
         disabled={!creation.onNewSection || creation.isCreatingSection}
-        onSelect={creation.onNewSection}
+        onSelect={() => creation.onNewSection?.(anchorSectionId)}
       >
         <Icon name="SectionAdd" />
         New section

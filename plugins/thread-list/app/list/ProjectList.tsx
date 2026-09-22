@@ -13,7 +13,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
@@ -66,6 +66,7 @@ import {
   createSidebarProjectIdResolver,
   isSidebarProjectThread,
   buildSidebarEntitySectionId,
+  insertSidebarSectionAfter,
   type CollapsibleSidebarSectionId,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
@@ -89,6 +90,7 @@ import {
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarSortDirectionAtom,
   sidebarCollapsedMachinesAtom,
+  sidebarManualSectionOrderAtom,
   sidebarOrganizationModeAtom,
 } from "../preferences/atoms.js";
 import type {
@@ -1295,24 +1297,59 @@ function ProjectListComponent({
   const [sectionCreateErrorMessage, setSectionCreateErrorMessage] = useState<
     string | null
   >(null);
+  const [sectionCreateAnchorId, setSectionCreateAnchorId] =
+    useState<SidebarSectionId | null>(null);
   const sectionDeleteDialog = useDialogState<SidebarSectionDefinition>();
-  const handleOpenCreateSectionDialog = useCallback(() => {
-    setSectionCreateErrorMessage(null);
-    setIsSectionCreateDialogOpen(true);
-  }, []);
+  const setManualSectionOrder = useSetAtom(sidebarManualSectionOrderAtom);
+  const handleOpenCreateSectionDialog = useCallback(
+    (anchorSectionId?: SidebarSectionId) => {
+      setSectionCreateErrorMessage(null);
+      setSectionCreateAnchorId(anchorSectionId ?? null);
+      setIsSectionCreateDialogOpen(true);
+    },
+    [],
+  );
   const handleCreateSectionDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
       setSectionCreateErrorMessage(null);
       setIsSectionCreateDialogOpen(false);
     }
   }, []);
+  const placeCreatedSectionNextToAnchor = useCallback(
+    (createdSectionId: string) => {
+      const anchorSectionId = sectionCreateAnchorId;
+      if (!anchorSectionId) {
+        return;
+      }
+      const sectionId = buildSidebarEntitySectionId(
+        "section",
+        createdSectionId,
+      );
+      setManualSectionOrder(
+        (current) =>
+          insertSidebarSectionAfter({
+            storedOrder: current,
+            entitySectionIds: sections.map((section) =>
+              buildSidebarEntitySectionId("section", section.id),
+            ),
+            legacyEntityAnchor: "sections",
+            anchorSectionId,
+            sectionId,
+          }) ?? current,
+      );
+    },
+    [sectionCreateAnchorId, sections, setManualSectionOrder],
+  );
   const handleCreateThreadSection = useCallback(
     (name: string) => {
       setSectionCreateErrorMessage(null);
       setIsCreateThreadSectionPending(true);
       void sdk.threadSections
         .create({ name })
-        .then(() => setIsSectionCreateDialogOpen(false))
+        .then((section) => {
+          placeCreatedSectionNextToAnchor(section.id);
+          setIsSectionCreateDialogOpen(false);
+        })
         .catch((error: unknown) =>
           setSectionCreateErrorMessage(
             getSectionMutationErrorMessage(error, "Failed to create section."),
@@ -1320,7 +1357,7 @@ function ProjectListComponent({
         )
         .finally(() => setIsCreateThreadSectionPending(false));
     },
-    [sdk],
+    [placeCreatedSectionNextToAnchor, sdk],
   );
   const handleRemoveThreadSection = useCallback(
     (section: SidebarSectionDefinition) => {
@@ -1382,6 +1419,7 @@ function ProjectListComponent({
     return (
       <SidebarHeaderControls
         label={label}
+        sectionId={sectionId}
         onNewThread={handleCreateProjectlessThread}
         open={openSidebarMenu === menuId}
         onOpenChange={(open) => setSidebarMenuOpen(menuId, open)}
