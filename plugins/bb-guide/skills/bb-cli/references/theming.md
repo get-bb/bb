@@ -133,6 +133,7 @@ semantic** tokens; the rest derive.
 | `--ring`, `--sidebar-ring`                        | keyboard focus outline                                                    | `= --primary`     |
 | `--surface-selected`, `--surface-selected-border` | selected-row tint and its outline                                         | primary 16% / 35% |
 | `--file-accent`                                   | file-path titles in the timeline (the one tint in otherwise-neutral text) | set               |
+| `--provider-icon`, `--provider-icon-<provider id>` | provider icons in the Thread list rows; the per-provider variable wins (e.g. `--provider-icon-codex`; characters outside `[A-Za-z0-9_-]` become `-`). A user's custom icon color still wins over both | brand tint or row text |
 
 **Text tiers — set these (they do NOT auto-derive; use the `color-mix` recipe so contrast tracks the anchors):**
 

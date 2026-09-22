@@ -29,6 +29,12 @@ export const sidebarGroupThreadsByEnvironmentAtom = atom((get) => {
   if (grouping !== "auto") return grouping;
   return get(sidebarOrganizationModeAtom) !== "chronological";
 });
+export const sidebarShowProviderIconsAtom =
+  createSyncedPreferenceAtom("showProviderIcons");
+export const sidebarProviderIconColorAtom =
+  createSyncedPreferenceAtom("providerIconColor");
+export const sidebarProviderIconColorsAtom =
+  createSyncedPreferenceAtom("providerIconColors");
 export const sidebarChronologicalSortAtom =
   createSyncedPreferenceAtom("chronologicalSort");
 export const sidebarSortDirectionAtom =

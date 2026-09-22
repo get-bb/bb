@@ -21,7 +21,15 @@ import {
   sidebarSortDirectionAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarProviderIconColorAtom,
+  sidebarShowProviderIconsAtom,
 } from "../preferences/atoms.js";
+import { providerIconColorsDialogOpenAtom } from "./ProviderIconColorsDialog.js";
+
+const PROVIDER_ICON_COLOR_OPTIONS = [
+  { label: "Brand colors", mode: "brand" },
+  { label: "Monochrome", mode: "monochrome" },
+] as const;
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
   { label: "By project", mode: "project" },
@@ -137,6 +145,13 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
+  const [showProviderIcons, setShowProviderIcons] = useAtom(
+    sidebarShowProviderIconsAtom,
+  );
+  const [providerIconColor, setProviderIconColor] = useAtom(
+    sidebarProviderIconColorAtom,
+  );
+  const openProviderIconColors = useSetAtom(providerIconColorsDialogOpenAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
@@ -209,6 +224,48 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
               {groupByEnvironment && <Icon name="Check" className="size-4" />}
             </span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup aria-label="Rows">
+          <DropdownMenuLabel>Rows</DropdownMenuLabel>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={showProviderIcons}
+            onSelect={(event) => {
+              event.preventDefault();
+              setShowProviderIcons(!showProviderIcons);
+            }}
+          >
+            Provider icons
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {showProviderIcons && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+          {PROVIDER_ICON_COLOR_OPTIONS.map((option) => (
+            <DropdownMenuItem
+              key={option.mode}
+              role="menuitemradio"
+              aria-checked={providerIconColor === option.mode}
+              disabled={!showProviderIcons}
+              onSelect={(event) => {
+                event.preventDefault();
+                setProviderIconColor(option.mode);
+              }}
+            >
+              {option.label}
+              <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+                {providerIconColor === option.mode && (
+                  <Icon name="Check" className="size-4" />
+                )}
+              </span>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem
+            disabled={!showProviderIcons}
+            onSelect={() => openProviderIconColors(true)}
+          >
+            Customize colors…
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </>

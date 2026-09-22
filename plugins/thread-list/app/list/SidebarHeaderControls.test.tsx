@@ -19,8 +19,11 @@ import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarProviderIconColorAtom,
+  sidebarShowProviderIconsAtom,
   sidebarSortDirectionAtom,
 } from "../preferences/atoms.js";
+import { providerIconColorsDialogOpenAtom } from "./ProviderIconColorsDialog.js";
 import type { OrganizationMode } from "../../shared/preferences.js";
 
 installTestPluginRuntime();
@@ -46,6 +49,8 @@ function setup(
   store.set(sidebarChronologicalSortAtom, "updated");
   store.set(sidebarSortDirectionAtom, "default");
   store.set(sidebarEnvironmentGroupingAtom, "auto");
+  store.set(sidebarShowProviderIconsAtom, true);
+  store.set(sidebarProviderIconColorAtom, "brand");
   const newThread = vi.fn();
   const newSection = vi.fn();
   render(
@@ -254,6 +259,54 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe(false);
     expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
+  });
+
+  it("turns provider icons off and back on from Organize", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "Provider icons",
+    });
+    expect(screen.getByRole("group", { name: "Rows" })).toBeTruthy();
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(store.get(sidebarShowProviderIconsAtom)).toBe(false);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("menuitemcheckbox", { name: "Provider icons" })
+          .getAttribute("aria-checked"),
+      ).toBe("false"),
+    );
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Provider icons" }),
+    );
+    expect(store.get(sidebarShowProviderIconsAtom)).toBe(true);
+  });
+
+  it("switches provider icon colors and opens the color customizer", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const monochrome = await screen.findByRole("menuitemradio", {
+      name: "Monochrome",
+    });
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Brand colors" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+
+    fireEvent.click(monochrome);
+    expect(store.get(sidebarProviderIconColorAtom)).toBe("monochrome");
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Customize colors…" }),
+    );
+    expect(store.get(providerIconColorsDialogOpenAtom)).toBe(true);
   });
 
   it("resolves legacy sort, toggles direction, and resets it for another field", async () => {
