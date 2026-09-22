@@ -355,11 +355,13 @@ describe("SidebarWindowedItems", () => {
     const { rerender } = render(tree(["a", "b", "c"]));
     const observer = observerInstances.at(-1);
     expect(observer?.observed.size).toBe(3);
+    const unobserve = vi.spyOn(IntersectionObserver.prototype, "unobserve");
 
     observer?.observed.clear();
     rerender(tree(["a", "b", "c", "d"]));
 
     expect(observer?.observed.size).toBe(4);
+    expect(unobserve).not.toHaveBeenCalled();
   });
 
   it("connects the observer once a zero-height scroll container gains height", () => {

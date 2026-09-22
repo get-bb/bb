@@ -199,7 +199,7 @@ export function SidebarWindowedItems({
       const viewportTop = viewport.top - WINDOW_VIEWPORT_MARGIN_PX;
       const viewportBottom = viewport.bottom + WINDOW_VIEWPORT_MARGIN_PX;
       for (const [key, element] of wrapperByKeyRef.current) {
-        if (promoted.has(key) || !keySet.has(key)) {
+        if (realizedKeys.has(key) || !keySet.has(key)) {
           continue;
         }
         const rect = element.getBoundingClientRect();
@@ -216,7 +216,6 @@ export function SidebarWindowedItems({
     const observer = observerRef.current;
     if (observer) {
       for (const element of wrapperByKeyRef.current.values()) {
-        observer.unobserve(element);
         observer.observe(element);
       }
     }
