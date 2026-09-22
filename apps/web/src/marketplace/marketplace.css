@@ -803,8 +803,10 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-detail-actions .cmd-text {
-  white-space: normal;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  text-overflow: clip;
   text-align: left;
 }
 
