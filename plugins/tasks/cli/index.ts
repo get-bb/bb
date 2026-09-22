@@ -1787,6 +1787,46 @@ export function registerTasksCli(
           },
         }),
 
+        move: cliCommand({
+          summary: "Move a task and its sub-tasks to another project",
+          description:
+            "Moved tasks get new keys in the target project; their old keys keep resolving. Labels are matched by name in the target project and created there when missing. A sub-task moved on its own is detached from its parent.",
+          positionals: [KEY_POSITIONAL],
+          options: {
+            project: REQUIRED_PROJECT_OPTION,
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const project = await requiredProject(
+                domain,
+                ctx,
+                input.options.project,
+              );
+              const result = tasksRpcContract.moveTaskToProject.output.parse(
+                await domain.moveTaskToProject(
+                  tasksRpcContract.moveTaskToProject.input.parse({
+                    taskId: task.id,
+                    projectId: project.id,
+                    authorName: taskAuthor(ctx),
+                  }),
+                ),
+              );
+              const moved = unwrapTask(result);
+              if (input.options.json) {
+                return JSON.stringify({ task: moved, previousKey: task.key });
+              }
+              return moved.key === task.key
+                ? `${task.key} is already in ${project.prefix}`
+                : `Moved ${task.key} to ${moved.key}  ${moved.title}`;
+            });
+          },
+        }),
+
         comment: cliCommand({
           summary: "Add a markdown comment to a task",
           positionals: [KEY_POSITIONAL],

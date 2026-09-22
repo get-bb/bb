@@ -168,6 +168,11 @@ export interface UpdateTaskInput {
   parentTaskId?: string | null;
 }
 
+export interface MoveTaskToProjectResult {
+  task: Task;
+  moved: Array<{ previousKey: string; task: Task }>;
+}
+
 export interface ListTasksFilters {
   projectId?: string;
   statuses?: readonly TaskStatus[];

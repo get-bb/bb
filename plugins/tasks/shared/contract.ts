@@ -541,6 +541,16 @@ export const tasksRpcContract = defineRpcContract({
       .strict(),
     output: taskMutationResultSchema,
   },
+  moveTaskToProject: {
+    input: z
+      .object({
+        taskId: idSchema,
+        projectId: idSchema,
+        authorName: nonBlankStringSchema.default("You"),
+      })
+      .strict(),
+    output: taskMutationResultSchema,
+  },
   createLabel: {
     input: z
       .object({
