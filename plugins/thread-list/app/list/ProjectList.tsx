@@ -2,6 +2,7 @@ import {
   ThreadListVisibility,
   ThreadListMore,
   ThreadListVisibilityGroupScope,
+  ThreadListVisibilityMenuItems,
   type ThreadListVisibilityGroup,
 } from "./ThreadListVisibility.js";
 import {
@@ -694,15 +695,41 @@ function ProjectModeSections({
     },
   };
 
-  const visibilityGroups: ThreadListVisibilityGroup[] = projectRows.map(
-    (row) => {
+  const visibilityGroups: ThreadListVisibilityGroup[] = [
+    {
+      id: "threads",
+      title: "Threads",
+      threads: personalThreads,
+      renderContent: (close: () => void) => (
+        <ProjectThreadTree
+          projectId={PERSONAL_PROJECT_ID}
+          rootItems={personalItems}
+          threadListState={getProjectThreadListState({
+            status,
+            threads: personalThreads,
+          })}
+          selectedThreadId={selectedThreadId}
+          collapsedThreadIds={collapsedThreadIds}
+          collapsedEnvironmentIds={collapsedEnvironmentIds}
+          compareThreads={compareThreads}
+          variant="section"
+          onProjectSelect={() => {
+            close();
+            onProjectSelect?.();
+          }}
+          onToggleThreadCollapsed={onToggleThreadCollapsed}
+          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        />
+      ),
+    },
+    ...projectRows.map((row) => {
       const id = buildSidebarEntitySectionId("project", row.project.id);
       const items = projectItemsByProjectId.get(row.project.id) ?? [];
       return {
         id,
         title: row.project.name,
         threads: getProjectThreadItemDescendants(items),
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             projectId={row.project.id}
             rootItems={items}
@@ -721,8 +748,8 @@ function ProjectModeSections({
           />
         ),
       };
-    },
-  );
+    }),
+  ];
 
   return (
     <ThreadListVisibility
@@ -742,7 +769,15 @@ function ProjectModeSections({
             consumeClickSuppression,
             showPinnedSection,
           });
-          if (builtInSection !== undefined) return builtInSection;
+          if (builtInSection !== undefined) {
+            return sectionId === "threads" ? (
+              <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+                {builtInSection}
+              </ThreadListVisibilityGroupScope>
+            ) : (
+              builtInSection
+            );
+          }
           const row = projectRowsBySectionId.get(sectionId);
           if (!row) return null;
           return (
@@ -1118,15 +1153,38 @@ export function MachineModeSections({
     },
   };
 
-  const visibilityGroups: ThreadListVisibilityGroup[] = machineSections.map(
-    (section) => {
+  const visibilityGroups: ThreadListVisibilityGroup[] = [
+    {
+      id: "threads",
+      title: "Threads",
+      threads: nonPinnedThreads,
+      renderContent: (close: () => void) => (
+        <ProjectThreadTree
+          dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
+          rootItems={allThreadItems}
+          threadListState={allThreadsListState}
+          compareThreads={compareThreads}
+          variant="section"
+          selectedThreadId={selectedThreadId}
+          collapsedThreadIds={collapsedThreadIds}
+          collapsedEnvironmentIds={collapsedEnvironmentIds}
+          onProjectSelect={() => {
+            close();
+            onProjectSelect?.();
+          }}
+          onToggleThreadCollapsed={onToggleThreadCollapsed}
+          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        />
+      ),
+    },
+    ...machineSections.map((section) => {
       const id = buildSidebarEntitySectionId("machine", section.key);
       const items = machineItemsBySectionId.get(id) ?? [];
       return {
         id,
         title: section.label,
         threads: getProjectThreadItemDescendants(items),
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={items}
             threadListState={section.threadListState}
@@ -1144,8 +1202,8 @@ export function MachineModeSections({
           />
         ),
       };
-    },
-  );
+    }),
+  ];
 
   return (
     <ThreadListVisibility
@@ -1165,7 +1223,15 @@ export function MachineModeSections({
             consumeClickSuppression,
             showPinnedSection,
           });
-          if (builtInSection !== undefined) return builtInSection;
+          if (builtInSection !== undefined) {
+            return sectionId === "threads" ? (
+              <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+                {builtInSection}
+              </ThreadListVisibilityGroupScope>
+            ) : (
+              builtInSection
+            );
+          }
           const section = machineSectionsById.get(sectionId);
           if (!section) return null;
           return (
@@ -1389,7 +1455,9 @@ function ProjectListComponent({
       >
         {renameActions ? (
           <SidebarSectionMenuItems onRename={renameActions.onRename} />
-        ) : null}
+        ) : (
+          <ThreadListVisibilityMenuItems />
+        )}
       </SidebarHeaderControls>
     );
   };

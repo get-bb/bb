@@ -74,11 +74,11 @@ describe("thread-list preferences rpc", () => {
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "hiddenGroups",
-        value: ["project:a", "project:a", "machine:m"],
+        value: ["threads", "project:a", "project:a", "machine:m"],
       }),
     ).resolves.toEqual({
       key: "hiddenGroups",
-      value: ["project:a", "machine:m"],
+      value: ["threads", "project:a", "machine:m"],
     });
     await expect(
       harness.behavior.callRpc("resetPreference", { key: "hiddenGroups" }),

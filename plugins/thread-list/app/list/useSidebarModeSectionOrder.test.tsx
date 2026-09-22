@@ -109,4 +109,29 @@ describe("sidebar group visibility and ordering", () => {
     act(() => store.set(sidebarHiddenGroupsAtom, []));
     expect(result.current.order).toEqual(["section:b", "section:a", "threads"]);
   });
+
+  it("moves the built-in Threads section out of every organization when hidden", () => {
+    const store = createStore();
+    store.set(sidebarHiddenGroupsAtom, ["threads"]);
+    const { result } = renderHook(
+      () =>
+        useSidebarModeSectionOrder({
+          mode: "chronological",
+          entitySectionIds: ["section:a"],
+          showPinnedSection: true,
+        }),
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <Provider store={store}>{children}</Provider>
+        ),
+      },
+    );
+
+    expect(result.current.persistedOrder).toEqual([
+      "pinned",
+      "section:a",
+      "threads",
+    ]);
+    expect(result.current.order).toEqual(["pinned", "section:a"]);
+  });
 });

@@ -37,7 +37,12 @@ export type EnvironmentGrouping = z.infer<typeof environmentGroupingSchema>;
 const collapsibleSectionIdSchema = z.enum(["pinned", "threads"]);
 
 const hiddenGroupsSchema = z
-  .array(listItemSchema.regex(/^(project|section|machine):\S+$/))
+  .array(
+    z.union([
+      z.literal("threads"),
+      listItemSchema.regex(/^(project|section|machine):\S+$/),
+    ]),
+  )
   .max(LIST_MAX_LENGTH)
   .transform((value) => [...new Set(value)]);
 
@@ -106,7 +111,7 @@ export const preferenceDefinitions = {
   hiddenGroups: definePreference(
     hiddenGroupsSchema,
     [],
-    "Groups moved into More, as project:<id>, section:<id>, or machine:<id>.",
+    "Groups moved into More: threads, project:<id>, section:<id>, or machine:<id>.",
     "sidebar.hiddenGroups",
   ),
   collapsedSections: definePreference(

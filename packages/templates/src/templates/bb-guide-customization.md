@@ -350,26 +350,25 @@ A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascend
 
 Thread-list visibility
 
-A project, custom section, or machine's menu offers Hide from list; its menu
-inside More offers Add to sidebar. Customize list manages visibility and
+Threads, a project, custom section, or machine's menu offers Hide from list;
+its menu inside More offers Add to list. Customize list manages visibility and
 order for the current organization. Hiding preserves the group's threads, order,
 and collapse state. Pinned threads remain in Pinned; More carries hidden activity.
 
-`sidebar.hiddenGroups` defaults to `[]`. Its keys are `project:<projectId>`,
-`section:<sectionId>`, and `machine:<hostId>` (`machine:no-machine` for the
-unassigned group). Each organization uses its own keys. Pinned and Threads cannot
-be hidden. Duplicate keys are deduplicated, and unavailable IDs remain saved
-without producing rows. New groups default visible.
+The Thread list plugin's `hiddenGroups` preference defaults to `[]`. Its keys
+are `threads`, `project:<projectId>`, `section:<sectionId>`, and
+`machine:<hostId>` (`machine:no-machine` for the unassigned group). Each
+organization uses its own keys, while `threads` applies to every organization.
+Pinned cannot be hidden. Duplicate keys are deduplicated, and unavailable IDs
+remain saved without producing rows. New groups default visible.
 
-  bb settings ui get sidebar.hiddenGroups
-  bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
-  bb settings ui reset sidebar.hiddenGroups
+  bb thread-list prefs get hiddenGroups
+  bb thread-list prefs set hiddenGroups '["threads","project:proj_example","section:sec_example"]'
+  bb thread-list prefs reset hiddenGroups
 
 `set` replaces the entire list across organizations; include existing keys you
-want to keep hidden. `reset` shows all groups. SDK callers use
-`sdk.system.uiPreferences.list()` to read the current revision, then
-`.set({ key: "sidebar.hiddenGroups", value, expectedRevision })` or
-`.reset({ key: "sidebar.hiddenGroups" })`.
+want to keep hidden. `reset` shows all groups. The plugin's `setPreference` and
+`resetPreference` RPCs expose the same operations to its app client.
 
 Sidebar footer actions
 

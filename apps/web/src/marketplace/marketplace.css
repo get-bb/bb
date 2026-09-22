@@ -837,6 +837,11 @@ a.marketplace-detail-author:hover {
   padding-bottom: 4px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.marketplace-screenshots::-webkit-scrollbar {
+  display: none;
 }
 
 .marketplace-screenshot-trigger {
