@@ -964,7 +964,6 @@ export function PublicMarketplaceDetailPage({
             <div className="marketplace-detail-actions">
               <CommandButton
                 command={installCommand}
-                shortLabel="Copy install command"
                 label={`Copy ${installCommand}`}
                 size="compact"
                 onCopy={(copied) => {

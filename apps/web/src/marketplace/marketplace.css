@@ -1088,21 +1088,6 @@ a.marketplace-detail-author:hover {
     column-gap: 12px;
   }
 
-  .marketplace-detail-actions .cmd-dollar,
-  .marketplace-detail-actions .cmd-text,
-  .marketplace-detail-actions .cmd-copy {
-    display: none;
-  }
-
-  .marketplace-detail-actions .cmd-short-label {
-    display: inline;
-  }
-
-  .marketplace-detail-actions .cmd-btn {
-    font-family: inherit;
-  }
-
-
   .marketplace-detail-identity {
     display: contents;
   }
