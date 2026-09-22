@@ -802,6 +802,12 @@ a.marketplace-detail-author:hover {
   max-width: 100%;
 }
 
+.marketplace-detail-actions .cmd-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 .marketplace-detail-actions .cmd-copy {
   font-size: 13px;
 }
