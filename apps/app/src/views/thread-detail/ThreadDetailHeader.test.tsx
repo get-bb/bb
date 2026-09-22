@@ -17,12 +17,12 @@ import { sdk } from "@/lib/sdk";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 
 const mocks = vi.hoisted(() => ({
-  renameThread: vi.fn(),
+  renameThreadAsync: vi.fn(),
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    renameThread: mocks.renameThread,
+    renameThreadAsync: mocks.renameThreadAsync,
   }),
 }));
 
@@ -75,7 +75,7 @@ const PANE_CONTEXT: PaneContextValue = {
 afterEach(() => {
   cleanup();
   viewportState.isCompactViewport = false;
-  mocks.renameThread.mockReset();
+  mocks.renameThreadAsync.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
   delete window.bbDesktop;
@@ -480,7 +480,8 @@ describe("ThreadDetailHeader", () => {
     expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
   });
 
-  it("edits the title inline after a double click and commits on Enter", () => {
+  it("edits the title inline after a double click and commits on Enter", async () => {
+    mocks.renameThreadAsync.mockResolvedValue(undefined);
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
@@ -503,11 +504,13 @@ describe("ThreadDetailHeader", () => {
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(
+    expect(mocks.renameThreadAsync).toHaveBeenCalledWith(
       THREAD_ID,
       "Renamed thread",
     );
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
+    );
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });
 
@@ -532,7 +535,7 @@ describe("ThreadDetailHeader", () => {
     fireEvent.change(input, { target: { value: "Scratch name" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
-    expect(mocks.renameThread).not.toHaveBeenCalled();
+    expect(mocks.renameThreadAsync).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });

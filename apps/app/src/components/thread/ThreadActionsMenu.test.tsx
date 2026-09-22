@@ -47,10 +47,7 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
 }));
 
 vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    ...threadActions,
-    renameThread: vi.fn(),
-  }),
+  useThreadActions: () => threadActions,
 }));
 
 const destinations = [

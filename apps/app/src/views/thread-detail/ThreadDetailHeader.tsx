@@ -79,12 +79,10 @@ export function ThreadDetailHeader({
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
-  const { renameThread } = useThreadActions();
+  const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
-    (nextTitle: string) => {
-      renameThread(threadId, nextTitle);
-    },
-    [renameThread, threadId],
+    (nextTitle: string) => renameThreadAsync(threadId, nextTitle),
+    [renameThreadAsync, threadId],
   );
   const { editor, isEditing, startEditing } = useInlineThreadTitle({
     onCommit: handleRename,

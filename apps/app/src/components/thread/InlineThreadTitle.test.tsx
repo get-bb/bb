@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resolveInlineThreadTitleCommit,
@@ -16,7 +22,7 @@ function InlineTitleHarness({
   resetKey = "thr_test",
   title,
 }: {
-  onCommit: (nextTitle: string) => void;
+  onCommit: (nextTitle: string) => Promise<void>;
   resetKey?: string;
   title: string;
 }) {
@@ -67,7 +73,7 @@ describe("resolveInlineThreadTitleCommit", () => {
 
 describe("useInlineThreadTitle", () => {
   it("commits a changed title on blur and ignores a second close", () => {
-    const onCommit = vi.fn();
+    const onCommit = vi.fn(async () => {});
     render(<InlineTitleHarness onCommit={onCommit} title="Old name" />);
 
     fireEvent.doubleClick(screen.getByRole("button", { name: "Old name" }));
@@ -80,8 +86,60 @@ describe("useInlineThreadTitle", () => {
     expect(onCommit).toHaveBeenCalledWith("New name");
   });
 
+  it("keeps the new name in the editor until the save settles", async () => {
+    let finishSave = () => {};
+    const onCommit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    render(<InlineTitleHarness onCommit={onCommit} title="Old name" />);
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Old name" }));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    fireEvent.change(input, { target: { value: "New name" } });
+    fireEvent.blur(input);
+
+    expect(screen.queryByRole("button", { name: "Old name" })).toBeNull();
+    expect(input).toHaveProperty("value", "New name");
+    expect(input).toHaveProperty("readOnly", true);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.getByRole("textbox", { name: "Thread name" })).toBe(input);
+
+    finishSave();
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
+    );
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the draft open with an error when the save fails", async () => {
+    const onCommit = vi
+      .fn<(nextTitle: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined);
+    render(<InlineTitleHarness onCommit={onCommit} title="Old name" />);
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Old name" }));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    fireEvent.change(input, { target: { value: "New name" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Could not save the name. Try again.");
+    expect(input).toHaveProperty("value", "New name");
+    expect(input).toHaveProperty("readOnly", false);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
+    );
+    expect(onCommit).toHaveBeenCalledTimes(2);
+  });
+
   it("does not commit when the draft is empty", () => {
-    const onCommit = vi.fn();
+    const onCommit = vi.fn(async () => {});
     render(<InlineTitleHarness onCommit={onCommit} title="Old name" />);
 
     fireEvent.doubleClick(screen.getByRole("button", { name: "Old name" }));
@@ -94,8 +152,8 @@ describe("useInlineThreadTitle", () => {
   });
 
   it("cancels an open edit when the thread identity changes", () => {
-    const firstCommit = vi.fn();
-    const secondCommit = vi.fn();
+    const firstCommit = vi.fn(async () => {});
+    const secondCommit = vi.fn(async () => {});
     const { rerender } = render(
       <InlineTitleHarness onCommit={firstCommit} title="Old name" />,
     );

@@ -48,7 +48,6 @@ import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 
 export interface ThreadActionsContextValue {
   archiveThreadAndChildren: (thread: Thread) => void;
-  renameThread: (threadId: string, title: string) => void;
   renameThreadAsync: (threadId: string, title: string) => Promise<void>;
   requestRename: (thread: Thread) => void;
   requestDelete: (thread: Thread) => void;
@@ -167,13 +166,6 @@ export function ThreadActionsProvider({
       });
     },
     [openRenameDialog],
-  );
-
-  const renameThread = useCallback(
-    (threadId: string, title: string) => {
-      updateMutate({ id: threadId, title });
-    },
-    [updateMutate],
   );
 
   const renameThreadAsync = useCallback(
@@ -443,7 +435,6 @@ export function ThreadActionsProvider({
 
   const value = useMemo<ThreadActionsContextValue>(
     () => ({
-      renameThread,
       renameThreadAsync,
       requestRename,
       requestDelete,
@@ -454,7 +445,6 @@ export function ThreadActionsProvider({
     }),
     [
       archiveThreadAndChildrenAction,
-      renameThread,
       renameThreadAsync,
       requestRename,
       requestDelete,
