@@ -59,9 +59,7 @@
   box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 6%, transparent);
 }
 
-.marketplace-mobile-sort,
-.marketplace-search .marketplace-search-close,
-.marketplace-search .marketplace-search-trigger {
+.marketplace-mobile-sort {
   display: none;
 }
 
@@ -1019,62 +1017,36 @@ a.marketplace-detail-author:hover {
 
   .marketplace-controls {
     display: flex;
-    flex-wrap: nowrap;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
   }
 
   .marketplace-controls > .marketplace-search {
-    order: 3;
-    flex: 0 0 44px;
-    min-width: 0;
-    margin-left: auto;
-  }
-
-  .marketplace-controls > .marketplace-search.is-expanded {
     flex: 1 1 100%;
+    min-width: 0;
+    height: 46px;
   }
 
-  .marketplace-search:not(.is-expanded) > input,
-  .marketplace-search:not(.is-expanded) > svg,
-  .marketplace-search kbd,
-  .marketplace-search .marketplace-search-clear,
+  .marketplace-search input {
+    font-size: 16px;
+  }
+
+  .marketplace-browse-controls {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
   .marketplace-sort-control,
   .marketplace-category-select .marketplace-count,
   .marketplace-flat-results > .marketplace-section-head {
     display: none;
   }
 
-  .marketplace-search:not(.is-expanded) .marketplace-search-trigger,
-  .marketplace-search.is-expanded .marketplace-search-close {
-    display: inline-grid;
-    border-radius: inherit;
-  }
-
-  .marketplace-search-trigger svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .marketplace-search input {
-    font-size: 16px;
-    text-overflow: ellipsis;
-  }
-
-  .marketplace-search > svg {
-    margin-left: 12px;
-  }
-
-  .marketplace-browse-controls {
-    display: contents;
-  }
-
-  .marketplace-controls:has(.marketplace-search.is-expanded)
-    .marketplace-browse-controls {
-    display: none;
-  }
-
   .marketplace-category-select {
-    position: static;
+    position: relative;
     order: 1;
     flex: 0 1 auto;
     min-width: 0;
@@ -1122,7 +1094,7 @@ a.marketplace-detail-author:hover {
   }
 
   .marketplace-category-options {
-    top: 64px;
+    top: calc(100% + 8px);
     right: auto;
     left: 0;
   }

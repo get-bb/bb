@@ -42,8 +42,6 @@ import {
   useState,
 } from "react";
 
-import { flushSync } from "react-dom";
-
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
 import { CommandButton } from "../landing/command-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
@@ -471,10 +469,6 @@ function MarketplaceToolbar({
   hero: boolean;
 }) {
   const searchInput = useRef<HTMLInputElement>(null);
-  const [searchExpanded, setSearchExpanded] = useState(false);
-  useEffect(() => {
-    if (searchExpanded) searchInput.current?.focus();
-  }, [searchExpanded]);
   const categoryMenu = useRef<HTMLDetailsElement>(null);
   const selectedCategory = options.find(
     (option) => option.id === state.category,
@@ -505,32 +499,13 @@ function MarketplaceToolbar({
         return;
       }
       event.preventDefault();
-      setSearchExpanded(true);
       searchInput.current?.focus();
     };
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
   }, []);
   const search = (
-    <div
-      className={`marketplace-search${searchExpanded || query.length > 0 ? " is-expanded" : ""}`}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) {
-          setSearchExpanded(false);
-        }
-      }}
-    >
-      <button
-        type="button"
-        className="marketplace-search-trigger"
-        aria-label="Search plugins"
-        onClick={() => {
-          flushSync(() => setSearchExpanded(true));
-          searchInput.current?.focus();
-        }}
-      >
-        <HugeiconsIcon icon={Search01Icon} aria-hidden />
-      </button>
+    <div className="marketplace-search">
       <HugeiconsIcon icon={Search01Icon} aria-hidden />
       <input
         ref={searchInput}
@@ -555,18 +530,6 @@ function MarketplaceToolbar({
       ) : (
         <kbd>/</kbd>
       )}
-      <button
-        type="button"
-        className="marketplace-search-close"
-        aria-label="Close search"
-        onClick={() => {
-          onQueryChange("");
-          setSearchExpanded(false);
-          searchInput.current?.blur();
-        }}
-      >
-        <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
-      </button>
     </div>
   );
   const sortOptions: Array<{
