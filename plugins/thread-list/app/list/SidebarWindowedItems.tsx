@@ -39,6 +39,43 @@ interface SidebarWindowedItemsProps {
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 
+function mergeRealizedKeys(
+  previous: ReadonlySet<string>,
+  {
+    add,
+    remove,
+    retain,
+  }: {
+    add?: ReadonlySet<string> | readonly string[];
+    remove?: ReadonlySet<string> | readonly string[];
+    retain?: ReadonlySet<string>;
+  },
+): ReadonlySet<string> {
+  let next: Set<string> | null = null;
+  const current = () => next ?? previous;
+  if (retain) {
+    for (const key of previous) {
+      if (!retain.has(key)) {
+        next ??= new Set(previous);
+        next.delete(key);
+      }
+    }
+  }
+  for (const key of remove ?? EMPTY_KEY_SET) {
+    if (current().has(key)) {
+      next ??= new Set(previous);
+      next.delete(key);
+    }
+  }
+  for (const key of add ?? EMPTY_KEY_SET) {
+    if (!current().has(key)) {
+      next ??= new Set(previous);
+      next.add(key);
+    }
+  }
+  return next ?? previous;
+}
+
 export function SidebarWindowedItems({
   itemKeys,
   focusItemKey,
@@ -127,9 +164,9 @@ export function SidebarWindowedItems({
 
   useLayoutEffect(() => {
     if (!windowingEnabled) {
-      if (realizedKeys.size > 0) {
-        setRealizedKeys(EMPTY_KEY_SET);
-      }
+      setRealizedKeys((previous) =>
+        previous.size > 0 ? EMPTY_KEY_SET : previous,
+      );
       return;
     }
 
@@ -152,37 +189,36 @@ export function SidebarWindowedItems({
       scrollElement.clientHeight === 0 ||
       typeof IntersectionObserver === "undefined";
 
-    const next = new Set<string>();
-    for (const key of realizedKeys) {
-      if (keySet.has(key)) {
-        next.add(key);
-      }
-    }
-
+    const promoted = new Set<string>();
     if (promoteAll) {
       for (const key of itemKeys) {
-        next.add(key);
+        promoted.add(key);
       }
     } else {
       const viewport = scrollElement.getBoundingClientRect();
       const viewportTop = viewport.top - WINDOW_VIEWPORT_MARGIN_PX;
       const viewportBottom = viewport.bottom + WINDOW_VIEWPORT_MARGIN_PX;
       for (const [key, element] of wrapperByKeyRef.current) {
-        if (next.has(key) || !keySet.has(key)) {
+        if (promoted.has(key) || !keySet.has(key)) {
           continue;
         }
         const rect = element.getBoundingClientRect();
         if (rect.bottom >= viewportTop && rect.top <= viewportBottom) {
-          next.add(key);
+          promoted.add(key);
         }
       }
     }
 
-    if (
-      next.size !== realizedKeys.size ||
-      ![...next].every((key) => realizedKeys.has(key))
-    ) {
-      setRealizedKeys(next);
+    setRealizedKeys((previous) =>
+      mergeRealizedKeys(previous, { add: promoted, retain: keySet }),
+    );
+
+    const observer = observerRef.current;
+    if (observer) {
+      for (const element of wrapperByKeyRef.current.values()) {
+        observer.unobserve(element);
+        observer.observe(element);
+      }
     }
     // oxlint-disable-next-line react/exhaustive-deps
   }, [windowingEnabled, keySignature]);
@@ -192,50 +228,69 @@ export function SidebarWindowedItems({
       return;
     }
     const scrollElement = resolveScrollElement();
-    if (!scrollElement || scrollElement.clientHeight === 0) {
+    if (!scrollElement) {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        startTransition(() =>
-          setRealizedKeys((previous) => {
-            let next: Set<string> | null = null;
-            for (const entry of entries) {
-              const key = keyByWrapperRef.current.get(entry.target);
-              if (key === undefined) {
-                continue;
-              }
-              if (entry.isIntersecting) {
-                if (!previous.has(key) && !next?.has(key)) {
-                  next ??= new Set(previous);
-                  next.add(key);
-                }
-              } else if (
-                (next?.has(key) ?? previous.has(key)) &&
-                !alwaysMountedKeysRef.current.has(key)
-              ) {
-                recordMeasuredHeight(key, entry.boundingClientRect.height);
-                next ??= new Set(previous);
-                next.delete(key);
-              }
+    let observer: IntersectionObserver | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    const connect = () => {
+      if (observer || scrollElement.clientHeight === 0) {
+        return;
+      }
+      observer = new IntersectionObserver(
+        (entries) => {
+          const intended = new Map<string, boolean>();
+          for (const entry of entries) {
+            const key = keyByWrapperRef.current.get(entry.target);
+            if (key === undefined) {
+              continue;
             }
-            return next ?? previous;
-          }),
-        );
-      },
-      {
-        root: scrollElement,
-        rootMargin: `${WINDOW_VIEWPORT_MARGIN_PX}px 0px`,
-      },
-    );
-    observerRef.current = observer;
-    for (const element of wrapperByKeyRef.current.values()) {
-      observer.observe(element);
+            if (entry.isIntersecting) {
+              intended.set(key, true);
+            } else if (!alwaysMountedKeysRef.current.has(key)) {
+              intended.set(key, false);
+              recordMeasuredHeight(key, entry.boundingClientRect.height);
+            }
+          }
+          if (intended.size === 0) {
+            return;
+          }
+          const entering: string[] = [];
+          const leaving: string[] = [];
+          for (const [key, isEntering] of intended) {
+            (isEntering ? entering : leaving).push(key);
+          }
+          startTransition(() =>
+            setRealizedKeys((previous) =>
+              mergeRealizedKeys(previous, { add: entering, remove: leaving }),
+            ),
+          );
+        },
+        {
+          root: scrollElement,
+          rootMargin: `${WINDOW_VIEWPORT_MARGIN_PX}px 0px`,
+        },
+      );
+      observerRef.current = observer;
+      for (const element of wrapperByKeyRef.current.values()) {
+        observer.observe(element);
+      }
+      resizeObserver?.disconnect();
+      resizeObserver = null;
+    };
+
+    connect();
+    if (!observer && typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => connect());
+      resizeObserver.observe(scrollElement);
     }
+
     return () => {
+      resizeObserver?.disconnect();
       observerRef.current = null;
-      observer.disconnect();
+      observer?.disconnect();
     };
   }, [windowingEnabled, resolveScrollElement, recordMeasuredHeight]);
 
