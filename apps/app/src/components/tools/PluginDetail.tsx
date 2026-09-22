@@ -137,6 +137,7 @@ export function CatalogPluginDetail({
           installed={false}
           showLabel
           disabled={!entry.compatible}
+          unavailableReason={entry.incompatibleReason}
           count={count}
           onInstall={() => onInstall(entry)}
         />

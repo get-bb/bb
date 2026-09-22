@@ -69,6 +69,7 @@ export function PluginCatalogCard({
             installed={false}
             subtle
             disabled={!entry.compatible}
+            unavailableReason={entry.incompatibleReason}
             count={count}
             onInstall={() => onInstall(entry)}
           />
