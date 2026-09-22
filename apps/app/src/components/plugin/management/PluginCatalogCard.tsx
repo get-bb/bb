@@ -9,13 +9,11 @@ import {
 
 export function PluginCatalogGrid({
   entries,
-  showCategory = true,
   onInstall,
   onUninstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
-  showCategory?: boolean;
   onInstall: (initial: AddPluginInitial) => void;
   onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
@@ -26,7 +24,6 @@ export function PluginCatalogGrid({
         <PluginCatalogCard
           key={`${entry.marketplace}/${entry.entryId}`}
           entry={entry}
-          showCategory={showCategory}
           onInstall={onInstall}
           onUninstall={onUninstall}
           onOpenPlugin={onOpenPlugin}
@@ -38,13 +35,11 @@ export function PluginCatalogGrid({
 
 export function PluginCatalogCard({
   entry,
-  showCategory,
   onInstall,
   onUninstall,
   onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
-  showCategory: boolean;
   onInstall: (initial: AddPluginInitial) => void;
   onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
@@ -52,24 +47,16 @@ export function PluginCatalogCard({
   const count = pluginInstallCountPresentation(entry.installs);
   return (
     <PluginCard
-      leading={<CatalogEntryIconChip entry={entry} compact />}
+      leading={<CatalogEntryIconChip entry={entry} />}
       title={entry.displayName}
       description={entry.description || undefined}
       byline={<PluginCardAuthor entry={entry} />}
-      badge={
-        showCategory && entry.category !== undefined
-          ? {
-              kind: "category",
-              categoryId: entry.categoryId,
-              label: entry.category,
-            }
-          : null
-      }
-      headerAction={
+      footerAction={
         entry.installed ? (
           <PluginCatalogInstallControl
             displayName={entry.displayName}
             installed
+            subtle
             included={entry.source.startsWith("builtin:")}
             count={count}
             onUninstall={
@@ -80,6 +67,7 @@ export function PluginCatalogCard({
           <PluginCatalogInstallControl
             displayName={entry.displayName}
             installed={false}
+            subtle
             disabled={!entry.compatible}
             count={count}
             onInstall={() => onInstall(entry)}

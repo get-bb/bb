@@ -12,6 +12,7 @@ type PluginCatalogInstallControlProps = {
   displayName: string;
   count?: { display: string; accessibleLabel: string };
   showLabel?: boolean;
+  subtle?: boolean;
 } & (
   | { installed: true; included: boolean; onUninstall?: () => void }
   | { installed: false; disabled: boolean; onInstall: () => void }
@@ -37,7 +38,7 @@ export function PluginCatalogInstallControl(
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant={installed ? "ghost" : "outline"}
+            variant={installed || props.subtle ? "ghost" : "outline"}
             size="sm"
             aria-disabled={disabled}
             disabled={!installed && disabled}
@@ -46,7 +47,7 @@ export function PluginCatalogInstallControl(
             }`}
             className={cn(
               "group/install h-7 min-w-7 shrink-0 gap-1.5 px-2 text-xs shadow-none",
-              installed
+              installed || props.subtle
                 ? "font-normal text-subtle-foreground"
                 : "border-border/80 bg-background text-foreground hover:bg-state-hover",
               installed && !disabled && "hover:text-destructive-text",
