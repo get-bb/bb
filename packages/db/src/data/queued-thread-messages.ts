@@ -737,6 +737,66 @@ export function hasQueuedThreadMessages(
   );
 }
 
+export function hasClaimedQueuedThreadMessages(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, threadId),
+          isNotNull(queuedThreadMessages.claimedAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function deleteQueuedRetriesForThreadEventSuffixInTransaction(
+  db: DbTransaction,
+  args: {
+    cutoffSequence: number;
+    oldMaxSequence: number;
+    threadId: string;
+  },
+): number {
+  const retries = db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        eq(queuedThreadMessages.payloadKind, "retry"),
+        exists(
+          db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(
+              and(
+                eq(events.threadId, args.threadId),
+                eq(events.type, "client/turn/requested"),
+                sql`${events.sequence} >= ${args.cutoffSequence}`,
+                sql`${events.sequence} <= ${args.oldMaxSequence}`,
+                sql`json_extract(${events.data}, '$.requestId') = ${queuedThreadMessages.retryOfTurnRequestId}`,
+              ),
+            ),
+        ),
+      ),
+    )
+    .all();
+  for (const retry of retries) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(db, retry);
+    db.delete(queuedThreadMessages)
+      .where(eq(queuedThreadMessages.id, retry.id))
+      .run();
+  }
+  return retries.length;
+}
+
 function manuallyStoppedQueuePauseQuery(
   db: DbQueryConnection,
   threadId: string | typeof threads.id,
