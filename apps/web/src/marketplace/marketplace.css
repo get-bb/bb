@@ -715,8 +715,7 @@
 }
 
 .marketplace-detail-actions,
-.marketplace-detail-category,
-.marketplace-install-help {
+.marketplace-detail-category {
   color: var(--label-muted);
   font-size: var(--text-label-small);
   line-height: 1.5;
@@ -732,8 +731,7 @@
   font-weight: 500;
 }
 
-.marketplace-detail-category:hover,
-.marketplace-install-help a {
+.marketplace-detail-category:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -791,10 +789,6 @@ a.marketplace-detail-author:hover {
 
 .marketplace-detail-actions .cmd-copy {
   font-size: 13px;
-}
-
-.marketplace-install-help {
-  display: none;
 }
 
 .marketplace-detail-body {
@@ -1051,10 +1045,6 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 720px) {
-  .marketplace-install-help {
-    display: inline;
-  }
-
   .plugin-pages-wrap {
     padding-inline: 20px;
   }
