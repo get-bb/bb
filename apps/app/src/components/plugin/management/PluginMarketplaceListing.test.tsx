@@ -56,7 +56,7 @@ describe("plugin marketplace author links", () => {
     );
   });
 
-  it("excludes the current plugin and caps plain teaser rows at four", () => {
+  it("excludes the current plugin and caps related cards at four", () => {
     const current = catalogEntry("Current");
     const entries = [
       current,
@@ -94,6 +94,10 @@ describe("plugin marketplace author links", () => {
       "Open Charlie details",
       "Open Delta details",
     ]);
+    expect(screen.getAllByRole("link", { name: "Pat Lee" })).toHaveLength(4);
+    expect(
+      screen.getByRole("link", { name: /View all/ }).getAttribute("href"),
+    ).toBe("/plugins?author=12%3Abb-community%3Agithub%3Apatlee");
     expect(screen.queryByText("Current")).toBeNull();
     expect(screen.queryByText("Echo")).toBeNull();
     expect(screen.queryByText("Other")).toBeNull();

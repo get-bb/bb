@@ -1,3 +1,4 @@
+import { Button } from "@bb/shared-ui/button";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Carousel,
@@ -11,9 +12,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   ResourceDefinitionSection,
-  ResourceListPanel,
-  ResourceRow,
-  ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
@@ -22,6 +20,8 @@ import {
   formatUrlLabel,
   PluginCategoryLabel,
 } from "./plugin-ui";
+import { PluginAuthorLink } from "./PluginAuthorLink";
+import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
 import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorKey,
@@ -266,20 +266,45 @@ export function PluginMoreFromAuthorSection({
   );
   if (moreEntries.length === 0) return null;
   return (
-    <ResourceDefinitionSection label="More from this author">
-      <ResourceListPanel className="py-0">
+    <ResourceDefinitionSection
+      label="More from this author"
+      actions={
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="h-auto text-xs font-normal text-muted-foreground"
+        >
+          <PluginAuthorLink entry={entry}>
+            View all
+            <Icon name="ChevronRight" className="size-3" aria-hidden />
+          </PluginAuthorLink>
+        </Button>
+      }
+    >
+      <PluginCardGrid>
         {moreEntries.map((candidate) => (
-          <ResourceRow
+          <PluginCard
             key={`${candidate.marketplace}/${candidate.entryId}`}
-            leading={<CatalogEntryIconChip entry={candidate} />}
+            leading={<CatalogEntryIconChip entry={candidate} compact />}
             title={candidate.displayName}
-            description={candidate.description || undefined}
-            trailingVisual={<ResourceRowDetailChevron />}
+            description={candidate.description}
+            byline={<PluginCardAuthor entry={candidate} />}
+            badge={
+              candidate.category === undefined
+                ? null
+                : {
+                    kind: "category",
+                    categoryId: candidate.categoryId,
+                    label: candidate.category,
+                  }
+            }
+            headerAction={null}
             openLabel={`Open ${candidate.displayName} details`}
             onOpen={() => onOpenPlugin(candidate.pluginId)}
           />
         ))}
-      </ResourceListPanel>
+      </PluginCardGrid>
     </ResourceDefinitionSection>
   );
 }
