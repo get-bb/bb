@@ -624,9 +624,6 @@
 
 .marketplace-detail-description {
   grid-column: 1 / -1;
-  padding: 16px 20px;
-  border-radius: 10px;
-  background: var(--surface);
 }
 
 .marketplace-detail-description p {
