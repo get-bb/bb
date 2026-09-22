@@ -34,8 +34,12 @@ const app = await loadPluginApp(() => import("../../app"));
 const { derivePrefix } = await import("./shared.js");
 const { describePresetEnvironment, savePresetDraft } =
   await import("./preset-dialog.js");
+const { NEW_TASK_DRAFT_STORAGE_KEY } = await import("./new-task-draft.js");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 const TASK_ID = "01HZZZZZZZZZZZZZZZZZZZZZT1";
@@ -299,6 +303,90 @@ describe("NewTaskDialog", () => {
       projectId: PROJECT_ID,
       name: "dank",
     });
+  });
+});
+
+describe("NewTaskDialog drafts", () => {
+  function draftRpc(createCalls: Array<Record<string, unknown>>) {
+    return {
+      listProjects: () => ({ projects: [project] }),
+      listFolders: () => ({ folders: [] }),
+      listPresets: () => ({ presets: [] }),
+      sidebarSummary: () => ({ projects: [] }),
+      listTasks: () => ({ tasks: [] }),
+      listLabels: () => ({ labels: [] }),
+      createTask: (input: Record<string, unknown>) => {
+        createCalls.push(input);
+        return { ok: true, task: createdTask(input) };
+      },
+    };
+  }
+
+  async function reopen(slot: ReturnType<typeof renderSlot>) {
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(slot.queryByLabelText("Task title")).toBeNull());
+    fireEvent.click(slot.getAllByRole("button", { name: /New task/ })[0]!);
+    return (await slot.findByLabelText("Task title")) as HTMLInputElement;
+  }
+
+  it("restores an unsaved draft after the dialog is dismissed", async () => {
+    const createCalls: Array<Record<string, unknown>> = [];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: draftRpc(createCalls) },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Twenty minutes of drafting" },
+    });
+
+    const title = await reopen(slot);
+    expect(title.value).toBe("Twenty minutes of drafting");
+
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(createCalls).toHaveLength(1));
+    expect(createCalls[0]).toMatchObject({
+      title: "Twenty minutes of drafting",
+    });
+    expect(window.localStorage.getItem(NEW_TASK_DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("starts empty after Discard draft", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: draftRpc([]) },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Throwaway" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Discard draft" }));
+    expect(
+      (slot.getByLabelText("Task title") as HTMLInputElement).value,
+    ).toBe("");
+    expect(slot.queryByRole("button", { name: "Discard draft" })).toBeNull();
+
+    const title = await reopen(slot);
+    expect(title.value).toBe("");
+  });
+
+  it("ignores a stored draft whose shape does not match", async () => {
+    window.localStorage.setItem(
+      NEW_TASK_DRAFT_STORAGE_KEY,
+      JSON.stringify({ version: 1, title: "Partial", status: "nope" }),
+    );
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: draftRpc([]) },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    const title = (await slot.findByLabelText(
+      "Task title",
+    )) as HTMLInputElement;
+    expect(title.value).toBe("");
   });
 });
 
