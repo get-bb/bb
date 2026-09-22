@@ -707,7 +707,7 @@ a.marketplace-detail-author:hover {
   display: grid;
   justify-items: start;
   gap: 8px;
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   min-width: 0;
 }
 
@@ -978,6 +978,10 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
+  .marketplace-detail-install {
+    grid-column: 1 / -1;
+  }
+
   .marketplace-hero h1 {
     font-size: 38px;
   }
