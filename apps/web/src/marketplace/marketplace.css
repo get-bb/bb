@@ -1076,6 +1076,10 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
+  .marketplace-detail-attribution .marketplace-detail-source {
+    flex-basis: 100%;
+  }
+
   .marketplace-detail-download {
     display: none;
   }
@@ -1109,7 +1113,7 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-attribution {
     grid-column: 1 / -1;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 0;
     white-space: nowrap;
