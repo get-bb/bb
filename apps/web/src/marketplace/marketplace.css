@@ -1083,7 +1083,6 @@ a.marketplace-detail-author:hover {
     flex-wrap: nowrap;
     gap: 8px;
     margin-top: 0;
-    font-size: 12px;
     white-space: nowrap;
   }
 
@@ -1109,7 +1108,6 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-category {
     padding: 3px 7px;
-    font-size: 12px;
   }
 
   .marketplace-detail-install {
