@@ -240,19 +240,23 @@ function AuthorAvatar({
 function InstallCount({
   entry,
   stats,
+  variant = "card",
 }: {
   entry: MarketplaceV2Entry;
   stats: MarketplaceStats | null;
+  variant?: "card" | "detail";
 }) {
   const total = marketplaceEntryInstalls(entry, stats);
+  const className = `marketplace-${variant}-installs`;
   if (total === undefined) {
-    return <span className="marketplace-card-installs is-new">New</span>;
+    return <span className={`${className} is-new`}>New</span>;
   }
-  const formatted = formatInstalls(total);
+  const formatted =
+    variant === "detail" ? total.toLocaleString("en-US") : formatInstalls(total);
   return (
     <span
-      className="marketplace-card-installs"
-      aria-label={`${total.toLocaleString("en-US")} installs`}
+      className={className}
+      aria-label={`${total.toLocaleString("en-US")} ${total === 1 ? "install" : "installs"}`}
     >
       <HugeiconsIcon icon={Download01Icon} aria-hidden />
       {formatted}
@@ -896,7 +900,6 @@ export function PublicMarketplaceDetailPage({
   const categoryDefinition = resolveMarketplaceCategory(manifest, entry);
   const category = categoryDefinition?.displayName ?? "More plugins";
   const categoryId = categoryDefinition?.id ?? UNCATEGORIZED_CATEGORY_ID;
-  const installs = marketplaceEntryInstalls(entry, stats);
   const repository = marketplaceRepositoryUrl(entry);
   const installCommand = marketplaceInstallCommand(entry.id);
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
@@ -946,21 +949,7 @@ export function PublicMarketplaceDetailPage({
               >
                 {category}
               </MarketplaceLink>
-              <span
-                className={`marketplace-detail-installs${installs === undefined ? " is-new" : ""}`}
-              >
-                {installs === undefined ? null : (
-                  <HugeiconsIcon icon={Download01Icon} aria-hidden />
-                )}
-                {installs === undefined
-                  ? "New"
-                  : installs.toLocaleString("en-US")}
-                {installs === undefined ? null : (
-                  <span className="marketplace-visually-hidden">
-                    {installs === 1 ? " install" : " installs"}
-                  </span>
-                )}
-              </span>
+              <InstallCount entry={entry} stats={stats} variant="detail" />
             </div>
           </div>
           <div className="marketplace-detail-install">
