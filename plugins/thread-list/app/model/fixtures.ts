@@ -17,7 +17,7 @@ export function makeSidebarThread(
     sectionId: null,
     originKind: null,
     originPluginId: null,
-    providerId: "codex",
+    providerId: "provider-test",
     status: "idle",
     runtimeStatus: "idle",
     queuedWork: "none",
