@@ -1220,7 +1220,7 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-author {
     min-width: 0;
-    gap: 5px;
+    gap: 12px;
   }
 
   .marketplace-detail-author > span {
@@ -1235,6 +1235,7 @@ a.marketplace-detail-author:hover {
   .marketplace-detail-attribution .marketplace-author-avatar {
     width: 18px;
     height: 18px;
+    margin-inline: 6px;
     flex: none;
   }
 
