@@ -111,6 +111,18 @@ appears automatically. Discover and select one with:
 
 bb applies the selected model to the ACP session before the first prompt.
 
+OpenCode Go quotas appear in Provider usage for the selected machine after
+signing in to Go in OpenCode on that machine. Inspect the same five-hour,
+weekly, and monthly windows with bb settings usage --machine <id-or-name> --json
+or bb.sdk.system.usageLimits({ hostId, providerId: "acp-opencode" }).
+The collector uses OPENCODE_API_KEY, the active Console account in OpenCode's
+opencode.db, or OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
+~/.local/share), including custom launch env overrides. Console account storage
+is read only; OpenCode owns refreshing expired sessions.
+Custom OpenCode wrappers need dialect: "opencode" and providerUsage: true.
+This reports the Go subscription, not usage for other OpenCode providers or
+Zen pay-as-you-go spending.
+
 An OpenCode model and an OpenCode agent are different selections. An OpenCode
 agent (build, plan, or a custom primary agent such as an orchestrator) is a
 session mode, not a model. bb does not select OpenCode agents; configure the

@@ -2456,24 +2456,24 @@ function decodeDialectId(
   return acpProviderOptionsSchema.parse(providerOptions ?? {}).acpDialect;
 }
 
-function maintenanceForRequest(
-  providerOptions: Record<string, unknown> | undefined,
-  launchSpec: AcpLaunchSpec | null,
-): AcpMaintenanceDialect | undefined {
-  const dialectId = decodeDialectId(providerOptions);
-  return resolveAcpDialect({
-    ...(dialectId === undefined ? {} : { dialectId }),
-    command: launchSpec?.command ?? "",
-  }).maintenance;
-}
-
 function maintenanceTarget(
   providerOptions: Record<string, unknown> | undefined,
-): { maintenance: AcpMaintenanceDialect | undefined; command: string | null } {
+): {
+  maintenance: AcpMaintenanceDialect | undefined;
+  command: string | null;
+  dialectId: string;
+  env: NodeJS.ProcessEnv;
+} {
   const launchSpec = decodeLaunchSpec(providerOptions);
+  const dialect = resolveAcpDialect({
+    dialectId: decodeDialectId(providerOptions),
+    command: launchSpec?.command ?? "",
+  });
   return {
-    maintenance: maintenanceForRequest(providerOptions, launchSpec),
+    maintenance: dialect.maintenance,
     command: launchSpec?.command ?? null,
+    dialectId: dialect.id,
+    env: { ...process.env, ...launchSpec?.env },
   };
 }
 
