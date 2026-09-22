@@ -10,7 +10,7 @@ The navigation wrapper now fills the available row width in both the bundled `th
 
 - PR: [#4077](https://github.com/get-bb/bb/pull/4077)
 - Related GitHub issue: none; reported with a screen recording in BB thread `thr_uivddeyuu5`
-- Live build: [BB Connect](https://ymichael--15244.getbb.app)
+- Live build: [BB Connect](https://ymichael--23244.getbb.app)
 - CI: [running for the current PR head](https://github.com/get-bb/bb/pull/4077/checks)
 
 ## Focused verification
