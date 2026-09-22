@@ -40,7 +40,7 @@ const TOOL_ROUTE_SEQUENCE = [
   "/plugins/github",
 ] as const;
 
-function HistoryHarness() {
+function HistoryHarness({ routes = TOOL_ROUTE_SEQUENCE }: { routes?: readonly string[] }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { canGoBack, canGoForward, goBack, goForward } =
@@ -48,7 +48,7 @@ function HistoryHarness() {
 
   return (
     <div>
-      <div data-testid="path">{location.pathname}</div>
+      <div data-testid="path">{location.pathname}{location.search}{location.hash}</div>
       <div data-testid="can-go-back">{String(canGoBack)}</div>
       <div data-testid="can-go-forward">{String(canGoForward)}</div>
       <button type="button" onClick={goBack}>
@@ -57,7 +57,7 @@ function HistoryHarness() {
       <button type="button" onClick={goForward}>
         Forward
       </button>
-      {TOOL_ROUTE_SEQUENCE.map((path) => (
+      {routes.map((path) => (
         <button key={path} type="button" onClick={() => navigate(path)}>
           {path}
         </button>
@@ -223,7 +223,7 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Back", "/skills");
   });
 
-  it("tracks every Tools route for sidebar back and forward controls", async () => {
+  it("tracks collection routes while skipping plugin detail selections", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <HistoryHarness />
@@ -237,7 +237,6 @@ describe("useRouteStateHistoryNavigation", () => {
     expect(screen.getByTestId("can-go-back").textContent).toBe("true");
     expect(screen.getByTestId("can-go-forward").textContent).toBe("false");
 
-    await clickAndExpectPath("Back", "/plugins");
     await clickAndExpectPath(
       "Back",
       "/skills/registry/moss-skills%2Fmoss-notes",
@@ -257,8 +256,63 @@ describe("useRouteStateHistoryNavigation", () => {
       "Forward",
       "/skills/registry/moss-skills%2Fmoss-notes",
     );
-    await clickAndExpectPath("Forward", "/plugins");
     await clickAndExpectPath("Forward", "/plugins/github");
+  });
+
+  it.each([
+    "?view=installed&query=notes",
+    "?category=security&sort=name&direction=desc",
+    "?author=get-bb",
+    "?shelf=bb-official",
+  ])("skips tab-only entries in both directions for %s", async (context) => {
+    const routes = [
+      `/plugins${context}`,
+      `/plugins/memory${context}`,
+      `/plugins/github${context}`,
+      "/settings/plugins/github",
+    ];
+    render(
+      <MemoryRouter initialEntries={["/skills"]}>
+        <HistoryHarness routes={routes} />
+      </MemoryRouter>,
+    );
+    for (const route of routes) await clickAndExpectPath(route, route);
+    await clickAndExpectPath("Back", routes[2]);
+    await clickAndExpectPath("Back", "/skills");
+    await clickAndExpectPath("Forward", routes[2]);
+    await clickAndExpectPath("Forward", routes[3]);
+  });
+
+  it("preserves collection changes and plugin workspace navigation", async () => {
+    const routes = [
+      "/plugins?view=installed",
+      "/plugins/memory?view=installed",
+      "/plugins/memory?view=installed&query=memory",
+      "/plugins/github?view=installed&query=memory",
+      "/plugins/github?author=get-bb",
+      "/plugins/github/repositories",
+      "/settings/plugins/github",
+    ];
+    render(
+      <MemoryRouter initialEntries={["/skills"]}>
+        <HistoryHarness routes={routes} />
+      </MemoryRouter>,
+    );
+    for (const route of routes) await clickAndExpectPath(route, route);
+    for (const route of [routes[5], routes[4], routes[3], routes[1], "/skills"])
+      await clickAndExpectPath("Back", route);
+    for (const route of [routes[1], routes[3], routes[4], routes[5], routes[6]])
+      await clickAndExpectPath("Forward", route);
+  });
+
+  it("does not invent a Back target for a direct plugin link", async () => {
+    render(
+      <MemoryRouter initialEntries={["/plugins/memory?view=installed"]}>
+        <HistoryHarness routes={["/plugins/github?view=installed"]} />
+      </MemoryRouter>,
+    );
+    await clickAndExpectPath("/plugins/github?view=installed", "/plugins/github?view=installed");
+    expect(screen.getByTestId("can-go-back").textContent).toBe("false");
   });
 
   it("updates the actual sidebar arrow buttons after Tools route clicks", async () => {
