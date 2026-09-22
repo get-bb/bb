@@ -8,7 +8,8 @@ export function SidebarThreadListSetting() {
     <ReplacementProviderSetting
       label="Sidebar"
       triggerAriaLabel="Sidebar thread list"
-      description="Choose automatic activation or a specific plugin on this device."
+      description="Choose the plugin that renders your sidebar thread list."
+      allowAutomatic={false}
       preferenceAtom={threadListProviderAtom}
       slots={threadLists}
     />

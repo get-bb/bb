@@ -28,6 +28,7 @@ export function ReplacementProviderSetting({
   description,
   triggerAriaLabel,
   builtInDescription,
+  allowAutomatic = true,
   preferenceAtom,
   slots,
 }: {
@@ -35,6 +36,7 @@ export function ReplacementProviderSetting({
   description: string;
   triggerAriaLabel: string;
   builtInDescription?: string;
+  allowAutomatic?: boolean;
   preferenceAtom: WritableAtom<string, [string], void>;
   slots: readonly ReplacementProviderSlot[];
 }) {
@@ -56,7 +58,7 @@ export function ReplacementProviderSetting({
           description: builtInDescription,
         };
   const options = [
-    automaticOption,
+    ...(allowAutomatic ? [automaticOption] : []),
     ...(builtInOption === null ? [] : [builtInOption]),
     ...slots.map((slot) => ({
       key: replacementProviderKey(slot),
@@ -67,7 +69,9 @@ export function ReplacementProviderSetting({
   const selected =
     options.find((option) => option.key === preference) ??
     builtInOption ??
-    automaticOption;
+    (allowAutomatic
+      ? automaticOption
+      : { key: preference, title: "Unavailable plugin" });
 
   return (
     <SettingsWithControl label={label} description={description}>

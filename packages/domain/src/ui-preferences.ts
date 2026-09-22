@@ -181,9 +181,13 @@ export const uiPreferenceDefinitions = {
     "Plugin that renders the sidebar navigation, or __automatic__ / __builtin__.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
-    uiPreferenceStringSchema,
-    "__automatic__",
-    "Plugin that renders the sidebar thread list, or __automatic__. bb has no built-in list; __builtin__ is read as __automatic__.",
+    uiPreferenceStringSchema.transform((value) =>
+      value === "__automatic__" || value === "__builtin__"
+        ? "thread-list/thread-list"
+        : value,
+    ),
+    "thread-list/thread-list",
+    "Plugin that renders the sidebar thread list. Defaults to thread-list/thread-list; legacy __automatic__ and __builtin__ values resolve to that plugin.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 
