@@ -43,6 +43,7 @@ import {
 } from "@/components/tools/PluginDetail";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
+import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
 import {
   makeInstalledPlugin,
@@ -422,6 +423,56 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.getByRole("rowheader", { name: "Installed" })).toBeTruthy();
     expect(screen.getByText("Install date unavailable")).toBeTruthy();
     expect(screen.queryByText("Updates with bb")).toBeNull();
+  });
+
+  it("loads the install date for a local plugin", async () => {
+    const installedAt = Date.UTC(2026, 8, 1);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/v1/plugins/github/source"
+          ? Response.json({
+              requested: "path:/Users/you/src/bb-plugin-github",
+              resolved: "0.1.0",
+              engines: {},
+              installedAt,
+              history: [],
+            })
+          : Response.json({ error: "not found" }, { status: 404 }),
+      ),
+    );
+    const plugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "path:/Users/you/src/bb-plugin-github",
+      rootDir: "/Users/you/src/bb-plugin-github",
+      provenance: "direct",
+      catalogEntryId: null,
+      publisherLabel: null,
+    };
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(formatAbsoluteDate(installedAt)),
+    ).toBeTruthy();
+    expect(screen.queryByText("Loading…")).toBeNull();
   });
 
   it.each([

@@ -240,7 +240,7 @@ export function PluginDetail({
 }) {
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
-    enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
+    enabled: plugin !== null && !plugin.source.startsWith("builtin:"),
   });
   usePluginUpdateCheck(plugin?.id ?? null, {
     enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
