@@ -37,7 +37,11 @@ export function PluginMarketplaceCategoryPill({
   );
 }
 
-function PluginMarketplaceDetail({
+export function PluginDetailMetadata({ children }: { children: ReactNode }) {
+  return <dl className="grid grid-cols-2 gap-x-6 gap-y-4">{children}</dl>;
+}
+
+export function PluginDetailMetadataItem({
   label,
   children,
 }: {
@@ -47,35 +51,33 @@ function PluginMarketplaceDetail({
   return (
     <div className="min-w-0 space-y-1">
       <dt className="text-2xs font-medium text-subtle-foreground">{label}</dt>
-      <dd className="min-w-0 text-xs text-muted-foreground">{children}</dd>
+      <dd className="min-w-0 text-xs text-foreground">{children}</dd>
     </div>
   );
 }
 
-function PluginMarketplaceDetails({
+export function PluginMarketplaceDetailMetadata({
   entry,
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
   return (
-    <ResourceDefinitionSection label="Details">
-      <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        {entry.publishedAt === undefined ? null : (
-          <PluginMarketplaceDetail label="Listed">
-            <time dateTime={entry.publishedAt}>
-              {new Date(entry.publishedAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </time>
-          </PluginMarketplaceDetail>
-        )}
-        <PluginMarketplaceDetail label="Marketplace">
-          {entry.marketplaceDisplayName}
-        </PluginMarketplaceDetail>
-      </dl>
-    </ResourceDefinitionSection>
+    <>
+      <PluginDetailMetadataItem label="Marketplace">
+        {entry.marketplaceDisplayName}
+      </PluginDetailMetadataItem>
+      {entry.publishedAt === undefined ? null : (
+        <PluginDetailMetadataItem label="Listed">
+          <time dateTime={entry.publishedAt}>
+            {new Date(entry.publishedAt).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </time>
+        </PluginDetailMetadataItem>
+      )}
+    </>
   );
 }
 
@@ -199,7 +201,7 @@ export function PluginOverviewLead({ description }: { description: string }) {
   );
 }
 
-function PluginMarketplaceOverview({
+export function PluginMarketplaceOverview({
   entry,
 }: {
   entry: PluginCatalogSearchEntry;
@@ -230,7 +232,11 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      <PluginMarketplaceDetails entry={entry} />
+      <ResourceDefinitionSection label="Details">
+        <PluginDetailMetadata>
+          <PluginMarketplaceDetailMetadata entry={entry} />
+        </PluginDetailMetadata>
+      </ResourceDefinitionSection>
     </>
   );
 }

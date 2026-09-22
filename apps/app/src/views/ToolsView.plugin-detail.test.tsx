@@ -262,8 +262,6 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const onDelete = vi.fn();
     const { container } = render(
@@ -292,7 +290,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    expect(screen.getByText("Release")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Details" })).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
@@ -302,15 +300,10 @@ describe("PluginDetail official catalog lifecycle", () => {
         .closest("[data-resource-detail-section]")
         ?.getAttribute("data-resource-detail-section"),
     ).toBe("release");
-    expect(screen.getByText("~/.bb/plugins/github")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Copy plugin path: /Users/you/.bb/plugins/github",
-      }),
-    );
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith("/Users/you/.bb/plugins/github");
-    });
+    expect(screen.queryByText("~/.bb/plugins/github")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Copy plugin path/u }),
+    ).toBeNull();
     expect(screen.getByText("Updates with bb")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
@@ -323,7 +316,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
   });
 
-  it("keeps update in the Release section without embedding it in the table", () => {
+  it("keeps the update action separate from Details metadata", () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const plugin: PluginListItem = {
       ...GITHUB_PLUGIN,
@@ -360,7 +353,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       name: "Update GitHub to 1.5.0",
     });
     const activation = screen.getByRole("switch", { name: "Disable GitHub" });
-    const path = screen.getByText("~/.bb/plugins/github");
+    const path = screen.queryByText("~/.bb/plugins/github");
     const releaseSection = document.querySelector(
       '[data-resource-detail-section="release"]',
     );
@@ -368,23 +361,20 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(releaseSection?.contains(version)).toBe(true);
     expect(releaseSection?.contains(update)).toBe(true);
     expect(releaseSection?.contains(activation)).toBe(false);
-    expect(releaseSection?.contains(path)).toBe(false);
-    expect(version.closest("td")).not.toBe(update.closest("td"));
-    expect(update.closest("table")).toBeNull();
-    const updateRow = screen
-      .getByRole("rowheader", { name: "Update" })
-      .closest("tr");
-    const updateLabel = screen.getByRole("rowheader", { name: "Update" });
+    expect(path).toBeNull();
+    expect(version.closest("dl")).not.toBeNull();
+    expect(update.closest("dl")).toBeNull();
+    const updateLabel = screen.getByText("Update", { selector: "p" });
+    const updateRow = updateLabel.parentElement;
     expect(updateRow).not.toBeNull();
     if (updateRow === null) return;
-    const updateDetails = within(updateRow).getByRole("cell");
+    const updateDetails = updateRow.querySelector('[role="status"]');
+    expect(updateRow.closest("dl")).toBeNull();
     expect(updateRow?.textContent).toContain("1.5.0");
     expect(updateRow?.textContent).toContain("Available");
     expect(updateRow?.contains(update)).toBe(false);
-    expect(updateLabel.tagName).toBe("TH");
-    expect(updateDetails.tagName).toBe("TD");
-    expect(updateLabel).not.toBe(updateDetails);
-    const versionLabel = screen.getByRole("rowheader", { name: "Version" });
+    expect(updateDetails?.textContent).toContain("1.5.0");
+    const versionLabel = screen.getByText("Version", { selector: "dt" });
     expect(releaseSection?.contains(versionLabel)).toBe(true);
   });
 
@@ -419,7 +409,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("rowheader", { name: "Installed" })).toBeTruthy();
+    expect(screen.getByText("Installed", { selector: "dt" })).toBeTruthy();
     expect(screen.getByText("Install date unavailable")).toBeTruthy();
     expect(screen.queryByText("Updates with bb")).toBeNull();
   });
@@ -450,7 +440,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       actionName: null,
     },
   ])(
-    "places $state information in the Update row and keeps its action above the table",
+    "places $state information below metadata and keeps its action in the section header",
     ({ updateState, expected, actionName }) => {
       const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
       render(
@@ -479,19 +469,19 @@ describe("PluginDetail official catalog lifecycle", () => {
         </MemoryRouter>,
       );
 
-      const updateLabel = screen.getByRole("rowheader", { name: "Update" });
-      const updateRow = updateLabel.closest("tr");
+      const updateLabel = screen.getByText("Update", { selector: "p" });
+      const updateRow = updateLabel.parentElement;
       const status = screen.getByRole("status", { name: expected });
       expect(updateRow?.contains(status)).toBe(true);
       expect(screen.queryByText(expected)).toBeNull();
       expect(
-        screen.getByRole("rowheader", { name: "Version" }).closest("tr"),
+        screen.getByText("Version", { selector: "dt" }).parentElement,
       ).not.toBe(updateRow);
       const action =
         actionName === null
           ? null
           : screen.getByRole("button", { name: actionName });
-      expect(action?.closest("table") ?? null).toBeNull();
+      expect(action?.closest("dl") ?? null).toBeNull();
       expect(screen.queryByRole("dialog")).toBeNull();
     },
   );
@@ -2174,4 +2164,134 @@ describe("detail disable workspace cleanup", () => {
       }
     },
   );
+});
+
+describe("plugin detail source and settings", () => {
+  it("shows a local plugin's source with open and copy actions outside the overflow menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const onOpenSource = vi.fn();
+    const plugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "path:/Users/you/src/bb-plugin-github",
+      rootDir: "/Users/you/src/bb-plugin-github",
+      provenance: "direct",
+      catalogEntryId: null,
+      publisherLabel: null,
+    };
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled={false}
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={onOpenSource}
+            onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const source = screen
+      .getByRole("heading", { name: "Source" })
+      .closest("[data-resource-detail-section]");
+    expect(source).not.toBeNull();
+    if (source === null) return;
+    expect(within(source as HTMLElement).getByText("Local source")).toBeTruthy();
+    fireEvent.click(
+      within(source as HTMLElement).getByRole("button", {
+        name: "Open source",
+      }),
+    );
+    expect(onOpenSource).toHaveBeenCalledWith(plugin);
+    fireEvent.click(
+      within(source as HTMLElement).getByRole("button", {
+        name: "Copy plugin path: /Users/you/src/bb-plugin-github",
+      }),
+    );
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("/Users/you/src/bb-plugin-github");
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Edit" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Open source" })).toBeNull();
+  });
+
+  it("opens settings in place from the detail gear and returns to details", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return Response.json({
+            enabled: true,
+            plugins: [
+              makeInstalledPlugin({
+                id: "github",
+                name: "GitHub",
+                hasSettings: true,
+              }),
+            ],
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return Response.json({ results: [], collections: [] });
+        }
+        if (url === "/api/v1/plugins/github/settings") {
+          return Response.json({
+            ok: true,
+            schema: { repository: { type: "string", label: "Repository" } },
+            values: { repository: "get-bb/bb" },
+          });
+        }
+        return Response.json({ error: "not found" }, { status: 404 });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins/github?view=installed"]}>
+        <TooltipProvider>
+          <PluginDetailPaneView pluginId="github" />
+        </TooltipProvider>
+        <LocationProbe />
+        <HistoryBackButton />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?view=installed&configure=github",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Plugin details" }),
+    );
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?view=installed",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+  });
 });

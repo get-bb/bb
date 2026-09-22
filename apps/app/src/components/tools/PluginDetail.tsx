@@ -1,8 +1,9 @@
 import { PluginCardAuthor } from "@/components/plugin/management/PluginCard";
 import { useSyncExternalStore } from "react";
 import {
+  ResourceActionButton,
   ResourceActivitySection,
-  ResourceDetailConfigurationSection,
+  ResourceDefinitionSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
@@ -19,7 +20,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import {
   PluginDetailReleaseControl,
@@ -33,8 +34,13 @@ import {
   pluginInstallCountPresentation,
 } from "@/components/plugin/management/plugin-ui";
 import {
+  PluginDetailMetadata,
+  PluginDetailMetadataItem,
   PluginMarketplaceCategoryPill,
+  PluginMarketplaceDetailMetadata,
   PluginMarketplaceListingSections,
+  PluginMarketplaceOverview,
+  PluginMarketplaceSource,
   PluginMoreFromAuthorSection,
   PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
@@ -46,10 +52,6 @@ import {
   PluginSchedules,
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
-import {
-  PluginDetailFieldRow,
-  PluginDetailTable,
-} from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import {
   usePluginSource,
@@ -79,35 +81,63 @@ export function pluginRemovalDescription(plugin: PluginListItem): string {
     : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
 }
 
-function PluginPath({ path }: { path: string }) {
+function PluginLocalSource({
+  path,
+  openDisabled,
+  onOpen,
+}: {
+  path: string;
+  openDisabled: boolean;
+  onOpen: () => void;
+}) {
   const { copied, copy } = useClipboardCopy({
     text: path,
     errorMessage: "Failed to copy path.",
   });
 
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Copy plugin path: ${path}`}
+    <ResourceDefinitionSection label="Source">
+      <div className="flex min-w-0 items-center gap-3">
+        <Icon
+          name="Folder"
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-foreground">Local source</p>
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  className="block truncate rounded-sm font-mono text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {formatHomePathForDisplay(path)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm break-all">
+                {path}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <ResourceActionButton
+            label="Open source"
+            icon="ExternalLink"
+            disabled={openDisabled}
+            disabledReason={openDisabled ? "No editor configured" : undefined}
+            onClick={onOpen}
+          />
+          <ResourceActionButton
+            label={`Copy plugin path: ${path}`}
+            tooltipLabel={copied ? "Copied" : "Copy path"}
+            icon={copied ? "Check" : "Copy"}
             onClick={() => void copy()}
-            className="group -ml-1.5 mt-0.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <span className="min-w-0 truncate text-left font-mono">
-              {formatHomePathForDisplay(path)}
-            </span>
-            <Icon
-              name={copied ? "Check" : "Copy"}
-              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              aria-hidden
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          />
+        </div>
+      </div>
+    </ResourceDefinitionSection>
   );
 }
 
@@ -225,6 +255,7 @@ export function PluginDetail({
   catalogEntry,
   catalogEntries,
   onOpenPlugin,
+  onConfigure,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -237,7 +268,9 @@ export function PluginDetail({
   catalogEntry?: PluginCatalogSearchEntry;
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
+  onConfigure?: () => void;
 }) {
+  const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
     enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
@@ -299,15 +332,6 @@ export function PluginDetail({
             disabled: pending,
             onSelect: () => onEdit(plugin),
           },
-          {
-            label: "Open source",
-            icon: "ExternalLink" as const,
-            disabled: pending || openSourceDisabled,
-            disabledReason: openSourceDisabled
-              ? "No editor configured"
-              : undefined,
-            onSelect: () => onOpenSource(plugin),
-          },
         ]
       : []),
     {
@@ -333,21 +357,34 @@ export function PluginDetail({
         )
       }
       metadata={
-        <div className="space-y-1">
-          {catalogEntry !== undefined ? (
-            <PluginCardAuthor entry={catalogEntry} />
-          ) : plugin.provenance === "builtin" ||
-            plugin.catalogMarketplaceName === "bb-official" ? (
-            <PluginCardAuthor
-              entry={{
-                author: null,
-                marketplace: "bb-official",
-                publisherLabel: "BB Official",
-              }}
-            />
-          ) : null}
-          <PluginPath path={plugin.rootDir} />
-        </div>
+        catalogEntry !== undefined ? (
+          <PluginCardAuthor entry={catalogEntry} />
+        ) : plugin.provenance === "builtin" ||
+          plugin.catalogMarketplaceName === "bb-official" ? (
+          <PluginCardAuthor
+            entry={{
+              author: null,
+              marketplace: "bb-official",
+              publisherLabel: "BB Official",
+            }}
+          />
+        ) : undefined
+      }
+      actions={
+        hasConfiguration ? (
+          <ResourceActionButton
+            label={`${pluginName} settings`}
+            tooltipLabel="Settings"
+            icon="Settings"
+            onClick={() =>
+              onConfigure
+                ? onConfigure()
+                : navigate(
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
+                  )
+            }
+          />
+        ) : undefined
       }
       lifecycleControl={
         <Switch
@@ -374,61 +411,46 @@ export function PluginDetail({
             />
           </section>
         ) : (
-          <>
-            <PluginMarketplaceListingSections entry={catalogEntry} />
-            <PluginMoreFromAuthorSection
-              entry={catalogEntry}
-              catalogEntries={catalogEntries}
-              onOpenPlugin={onOpenPlugin}
-            />
-          </>
+          <PluginMarketplaceOverview entry={catalogEntry} />
         )}
-        {hasConfiguration ? (
-          <ResourceDetailConfigurationSection
-            id="configuration"
-            className="scroll-mt-4"
-            label="Configuration"
-          >
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              This plugin is configured from{" "}
-              <Link
-                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
-                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                its Settings page
-                <Icon
-                  name="ChevronRight"
-                  className="size-3.5 no-underline"
-                  aria-hidden
-                />
-              </Link>
-            </p>
-          </ResourceDetailConfigurationSection>
+        {canEditSource ? (
+          <PluginLocalSource
+            path={plugin.rootDir}
+            openDisabled={pending || openSourceDisabled}
+            onOpen={() => onOpenSource(plugin)}
+          />
+        ) : catalogEntry !== undefined ? (
+          <PluginMarketplaceSource entry={catalogEntry} />
         ) : null}
         <ResourceDetailReleaseSection
-          label="Release"
+          label="Details"
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
             ) : undefined
           }
         >
-          <PluginDetailTable>
-            <PluginDetailFieldRow
+          <PluginDetailMetadata>
+            {catalogEntry === undefined ? null : (
+              <PluginMarketplaceDetailMetadata entry={catalogEntry} />
+            )}
+            <PluginDetailMetadataItem
               label={updatesWithBb ? "Delivery" : "Installed"}
-              labelClassName="font-medium"
             >
               {installedValue}
-            </PluginDetailFieldRow>
-            <PluginDetailFieldRow label="Version" labelClassName="font-medium">
-              <span className="font-mono text-xs">{plugin.version}</span>
-            </PluginDetailFieldRow>
-            {hasReleaseUpdate ? (
-              <PluginDetailFieldRow label="Update" stackOnNarrow>
-                <PluginDetailReleaseStatus plugin={plugin} />
-              </PluginDetailFieldRow>
-            ) : null}
-          </PluginDetailTable>
+            </PluginDetailMetadataItem>
+            <PluginDetailMetadataItem label="Version">
+              <span className="font-mono">{plugin.version}</span>
+            </PluginDetailMetadataItem>
+          </PluginDetailMetadata>
+          {hasReleaseUpdate ? (
+            <div className="space-y-1">
+              <p className="text-2xs font-medium text-subtle-foreground">
+                Update
+              </p>
+              <PluginDetailReleaseStatus plugin={plugin} />
+            </div>
+          ) : null}
         </ResourceDetailReleaseSection>
         <PluginIncludes plugin={plugin} />
         {plugin.services.length > 0 ? (
@@ -441,6 +463,13 @@ export function PluginDetail({
             <PluginSchedules plugin={plugin} />
           </ResourceActivitySection>
         ) : null}
+        {catalogEntry === undefined ? null : (
+          <PluginMoreFromAuthorSection
+            entry={catalogEntry}
+            catalogEntries={catalogEntries}
+            onOpenPlugin={onOpenPlugin}
+          />
+        )}
       </ResourceDetailStack>
     </ResourceDetailPage>
   );

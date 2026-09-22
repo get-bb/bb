@@ -1977,6 +1977,10 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
       </div>
 
       <div className="mx-auto min-h-[470px] w-full max-w-[520px] space-y-4 px-4 pb-5 pt-4">
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <MiniIcon icon="ChevronLeft" className="size-3.5" />
+          Plugin details
+        </span>
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center">
             <PluginGlyph className="size-5" />
@@ -2105,17 +2109,6 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
             </span>
           </Mark>
         </div>
-
-        <div className="space-y-2 border-t border-border-hairline pt-4">
-          <span className="block text-subtle-foreground">Plugin details</span>
-          <span className="flex flex-wrap items-center gap-1 leading-relaxed">
-            Release, capabilities, and health live on
-            <span className="text-foreground underline underline-offset-2">
-              its plugin page
-            </span>
-            <MiniIcon icon="ChevronRight" className="size-3.5" />
-          </span>
-        </div>
       </div>
     </WindowFrame>
   );
@@ -2161,6 +2154,7 @@ export function ExtensionsPluginPageWireframe({
               BB Official
             </span>
             <span className="flex-1" />
+            <MiniIcon icon="Settings" className="size-3.5" />
             <Switch
               checked
               aria-hidden
@@ -2180,18 +2174,7 @@ export function ExtensionsPluginPageWireframe({
           </div>
 
           <div className="space-y-1.5 border-t border-border-hairline pt-3">
-            <span className="block text-subtle-foreground">Configuration</span>
-            <span className="flex flex-wrap items-center gap-1 leading-relaxed">
-              This plugin is configured from
-              <span className="text-foreground underline underline-offset-2">
-                its Settings page
-              </span>
-              <MiniIcon icon="ChevronRight" className="size-3.5" />
-            </span>
-          </div>
-
-          <div className="space-y-1.5 border-t border-border-hairline pt-3">
-            <span className="block text-subtle-foreground">Release</span>
+            <span className="block text-subtle-foreground">Details</span>
             <span className="block divide-y divide-border-hairline rounded-md border border-border-hairline">
               {[
                 ["Delivery", "Updates with bb"],
