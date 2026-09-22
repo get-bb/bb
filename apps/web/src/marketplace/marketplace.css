@@ -343,6 +343,12 @@
   font-weight: 500;
 }
 
+/* Optically center the smaller count against the heading's capital height. */
+.marketplace-section-head h2 > span {
+  vertical-align: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+
 .marketplace-section-head p {
   margin-top: 2px;
   overflow: hidden;
