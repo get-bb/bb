@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -540,6 +541,92 @@ describe("ThreadDetailHeader", () => {
     expect(mocks.renameThreadAsync).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Focused thread")).not.toBeNull();
+  });
+
+  it("discards an unsaved header draft when switching threads", async () => {
+    const header = (threadId: string, threadTitle: string) => (
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={threadId}
+          threadTitle={threadTitle}
+        />
+      </PaneContext.Provider>
+    );
+    const { rerender } = render(header(THREAD_ID, "Focused thread"));
+
+    fireEvent.doubleClick(screen.getByText("Focused thread"));
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
+    fireEvent.change(input, { target: { value: "Unsaved draft" } });
+
+    rerender(header("thr_other", "Other thread"));
+
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByText("Other thread")).not.toBeNull();
+    expect(mocks.renameThreadAsync).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(screen.getByText("Other thread"));
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty(
+      "value",
+      "Other thread",
+    );
+  });
+
+  it("keeps the draft visible while a header rename saves after click-away", async () => {
+    let resolveSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    mocks.renameThreadAsync.mockReturnValue(pendingSave);
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Focused thread"
+        />
+        <button>Elsewhere</button>
+      </PaneContext.Provider>,
+    );
+
+    fireEvent.doubleClick(screen.getByText("Focused thread"));
+    const input = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "Thread name",
+    });
+    fireEvent.change(input, { target: { value: "Renamed thread" } });
+    await act(async () => new Promise(requestAnimationFrame));
+    act(() => screen.getByRole("button", { name: "Elsewhere" }).focus());
+
+    await waitFor(() =>
+      expect(mocks.renameThreadAsync).toHaveBeenCalledExactlyOnceWith(
+        THREAD_ID,
+        "Renamed thread",
+      ),
+    );
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Thread name" }),
+    ).toHaveProperty(
+      "value",
+      "Renamed thread",
+    );
+    expect(input.hasAttribute("readonly")).toBe(true);
+    expect(screen.getByRole("status", { name: "Saving name" })).not.toBeNull();
+    expect(screen.queryByText("Focused thread")).toBeNull();
+
+    await act(async () => resolveSave());
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
   });
 
   it("keeps the header title out of the macOS window-drag region so double click renames", async () => {
