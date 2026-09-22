@@ -552,10 +552,12 @@ function MarketplaceToolbar({
           <p>
             Themes, providers, workflows, and tools, installed with one command.
           </p>
+          <div className="marketplace-hero-search">{search}</div>
         </header>
-      ) : null}
+      ) : (
+        <div className="marketplace-author-search">{search}</div>
+      )}
       <div className="marketplace-controls">
-        {search}
         <div className="marketplace-browse-controls">
           <details
             className="marketplace-category-select"

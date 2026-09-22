@@ -44,6 +44,17 @@
   text-wrap: balance;
 }
 
+.marketplace-hero-search {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.marketplace-hero-search > .marketplace-search,
+.marketplace-author-search > .marketplace-search {
+  max-width: 560px;
+}
+
 .marketplace-search {
   position: relative;
   display: flex;
@@ -149,6 +160,8 @@
 }
 
 .marketplace-browse-controls {
+  width: 100%;
+  justify-content: space-between;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1021,8 +1034,8 @@ a.marketplace-detail-author:hover {
     gap: 12px;
   }
 
-  .marketplace-controls > .marketplace-search {
-    flex: 1 1 100%;
+  .marketplace-hero-search > .marketplace-search,
+  .marketplace-author-search > .marketplace-search {
     min-width: 0;
     height: 46px;
   }
