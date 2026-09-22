@@ -775,6 +775,11 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByText("Inherited child")).toBeNull();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
     expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "More sections" }),
+      ),
+    );
     fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
       key: "Enter",
     });
