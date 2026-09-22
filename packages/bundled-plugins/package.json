@@ -24,6 +24,7 @@
     "bb-plugin-github": "workspace:*",
     "bb-plugin-inline-vis": "workspace:*",
     "bb-plugin-keep-awake": "workspace:*",
+    "bb-plugin-navigation": "workspace:*",
     "bb-plugin-memory": "workspace:*",
     "bb-plugin-monaco-editor": "workspace:*",
     "bb-plugin-pdf-preview": "workspace:*",

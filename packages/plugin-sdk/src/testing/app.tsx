@@ -1433,6 +1433,7 @@ export interface RenderSlotOptions<
   sidebarNavigation?: {
     items?: readonly ExperimentalSidebarNavigationItem[];
     activeItemId?: string | null;
+    isShortcutModifierHeld?: boolean;
   };
   /**
    * The environment provider catalog `useEnvironmentProviders()` reports.
@@ -1690,6 +1691,8 @@ export function renderSlot<
   const sidebarNavigation: ExperimentalSidebarNavigationState = {
     items: options.sidebarNavigation?.items ?? [],
     activeItemId: options.sidebarNavigation?.activeItemId ?? null,
+    isShortcutModifierHeld:
+      options.sidebarNavigation?.isShortcutModifierHeld ?? false,
     actions: {
       activate(itemId, activationOptions) {
         sidebarNavigationCalls.push({

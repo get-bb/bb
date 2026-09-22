@@ -2262,7 +2262,7 @@ the bounded controls and leaves the retained sidebar regions mounted.
 ## `experimental_useSidebarNavigation`, `experimental_useSidebarNavigationSplit`, `experimental_SidebarNavigationIcon` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** `experimental_useSidebarNavigation()` returns
-`{ items, activeItemId, actions }` from one host model mounted above the
+`{ items, activeItemId, isShortcutModifierHeld, actions }` from one host model mounted above the
 sidebar, so every caller sees the same data. Items arrive in the user's saved
 order with `isVisible`, `isLoading` (a remembered plugin panel whose bundle
 has not registered), `pluginId`, shortcut metadata, and

@@ -246,6 +246,11 @@ export interface ExperimentalSidebarNavigationState {
   items: readonly ExperimentalSidebarNavigationItem[];
   /** The item whose destination the route currently shows, or null. */
   activeItemId: string | null;
+  /**
+   * True while the user holds the app command modifier, when bb's own rows
+   * reveal their `shortcut` labels. Show yours at the same time.
+   */
+  isShortcutModifierHeld: boolean;
   actions: ExperimentalSidebarNavigationActions;
 }
 

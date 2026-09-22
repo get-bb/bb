@@ -94,6 +94,10 @@
     "category": "thread-management",
     "screenshots": []
   },
+  "navigation": {
+    "category": "thread-management",
+    "screenshots": []
+  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []

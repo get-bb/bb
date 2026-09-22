@@ -215,7 +215,8 @@ handle, and hidden-body shortcut policy. BB draws no divider below a replacement
 own if your layout wants one.
 
 Read the items with `experimental_useSidebarNavigation()`. It returns
-`{ items, activeItemId, actions }`. `items` holds New thread, Search threads,
+`{ items, activeItemId, isShortcutModifierHeld, actions }`; show item shortcut
+labels while `isShortcutModifierHeld` is true, as bb's rows do. `items` holds New thread, Search threads,
 Plugins, Skills, and plugin panels in the user's saved order, hidden ones
 included. Each item has an `id` (its arrangement key, such as
 `__bb__/new-thread` or `<pluginId>/<panelId>`), `label`, semantic `icon`, host

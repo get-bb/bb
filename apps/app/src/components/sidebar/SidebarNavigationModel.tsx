@@ -19,6 +19,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   useAppCommandRunner,
   useAppCommandShortcut,
+  useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -225,6 +226,7 @@ export function SidebarNavigationModelProvider({
     threadSearchShortcut,
   ]);
   const items = useStableItems(rawItems);
+  const isShortcutModifierHeld = useIsAppCommandModifierHeld();
   const activeItemId = resolveActiveSidebarNavigationItemId({
     rows,
     pathname: location.pathname,
@@ -360,8 +362,8 @@ export function SidebarNavigationModelProvider({
   }, []);
 
   const state = useMemo<ExperimentalSidebarNavigationState>(
-    () => ({ items, activeItemId, actions }),
-    [actions, activeItemId, items],
+    () => ({ items, activeItemId, isShortcutModifierHeld, actions }),
+    [actions, activeItemId, isShortcutModifierHeld, items],
   );
   const model = useMemo<SidebarNavigationModel>(
     () => ({

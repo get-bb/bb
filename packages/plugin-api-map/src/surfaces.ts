@@ -76,6 +76,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarHeaderRegistration",
           "ExperimentalSidebarHeaderProps",
         ],
+        firstParty: ["Navigation"],
         experimental: true,
       },
       {

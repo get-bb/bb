@@ -23,6 +23,7 @@ import githubManifest from "../../../plugins/github/package.json";
 import inlineVisManifest from "../../../plugins/inline-vis/package.json";
 import keepAwakeManifest from "../../../plugins/keep-awake/package.json";
 import memoryManifest from "../../../plugins/memory/package.json";
+import navigationManifest from "../../../plugins/navigation/package.json";
 import environmentModalSandboxManifest from "../../../plugins/environment-modal-sandbox/package.json";
 import environmentPersonalWorkspaceManifest from "../../../plugins/environment-personal-workspace/package.json";
 import environmentProjectCheckoutManifest from "../../../plugins/environment-project-checkout/package.json";
@@ -55,6 +56,7 @@ const FIRST_PARTY_PLUGINS = [
   inlineVisManifest,
   keepAwakeManifest,
   memoryManifest,
+  navigationManifest,
   environmentModalSandboxManifest,
   environmentPersonalWorkspaceManifest,
   environmentProjectCheckoutManifest,

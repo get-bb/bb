@@ -24,6 +24,7 @@ const NOOP_ACTIONS: ExperimentalSidebarNavigationActions = {
 const EMPTY_STATE: ExperimentalSidebarNavigationState = {
   items: [],
   activeItemId: null,
+  isShortcutModifierHeld: false,
   actions: NOOP_ACTIONS,
 };
 
@@ -66,8 +67,13 @@ export function useSidebarNavigation(): ExperimentalSidebarNavigationState {
     [state.actions],
   );
   return useMemo(
-    () => ({ items: state.items, activeItemId: state.activeItemId, actions }),
-    [actions, state.activeItemId, state.items],
+    () => ({
+      items: state.items,
+      activeItemId: state.activeItemId,
+      isShortcutModifierHeld: state.isShortcutModifierHeld,
+      actions,
+    }),
+    [actions, state.activeItemId, state.isShortcutModifierHeld, state.items],
   );
 }
 
