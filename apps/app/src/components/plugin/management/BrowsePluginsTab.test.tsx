@@ -558,13 +558,14 @@ describe("BrowsePluginsTab", () => {
   it("notifies once while saved results remain available after failed refreshes", async () => {
     const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
     let unavailable = false;
+    let description = MEMORY_ENTRY.description;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         if (String(input).startsWith("/api/v1/plugin-catalog/search")) {
           return unavailable
             ? jsonResponse({ error: "unavailable" }, 503)
-            : jsonResponse({ results: [MEMORY_ENTRY], collections: [] });
+            : jsonResponse({ results: [{ ...MEMORY_ENTRY, description }], collections: [] });
         }
         return jsonResponse({ error: "not found" }, 404);
       }),
@@ -602,7 +603,9 @@ describe("BrowsePluginsTab", () => {
     await refresh();
     expect(warning).toHaveBeenCalledTimes(1);
     unavailable = false;
+    description = "Refreshed memory catalog";
     await refresh();
+    await screen.findByText("Refreshed memory catalog");
     unavailable = true;
     await refresh();
     await waitFor(() => expect(warning).toHaveBeenCalledTimes(2));
