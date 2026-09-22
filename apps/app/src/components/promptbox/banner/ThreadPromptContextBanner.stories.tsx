@@ -911,3 +911,17 @@ export function Overview() {
     </StoryCard>
   );
 }
+
+export const MachineRemovalHistory = () => (
+  <StoryCard>
+    <StoryRow label="Machine removed">
+      <Row environmentGone={{ status: "removed" }} mergeBase={null} />
+    </StoryRow>
+    <StoryRow label="Removal in progress">
+      <Row environmentGone={{ status: "removing" }} mergeBase={null} />
+    </StoryRow>
+    <StoryRow label="Cleanup failed">
+      <Row environmentGone={{ status: "cleanup-failed" }} mergeBase={null} />
+    </StoryRow>
+  </StoryCard>
+);

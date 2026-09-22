@@ -20,12 +20,12 @@ export function serverMachineRemoveDisabledReason(
 
 export function machineRemovalConsequences(host: Host): string {
   if (host.type === "ephemeral") {
-    return "The compute and its saved snapshots are deleted. Its environments remain as read-only history.";
+    return "The compute and its saved snapshots are deleted. Thread history is preserved.";
   }
   if (host.machineProviderId !== null) {
-    return "The provider cleans up resources it owns. Its environments remain as read-only history.";
+    return "The provider cleans up resources it owns. Thread history is preserved.";
   }
-  return "Project checkouts stay on its disk, but its environments become read-only history and it cannot run new work until paired again.";
+  return "Project checkouts stay on its disk. Thread history is preserved; this machine cannot run new work until paired again.";
 }
 
 export function MachineRemoveDialog({
@@ -54,7 +54,8 @@ export function MachineRemoveDialog({
           <DialogHeader>
             <DialogTitle>Remove {target.name}?</DialogTitle>
             <DialogDescription>
-              This revokes {target.name}'s access to this server.{" "}
+              This revokes {target.name}'s access to this server and stops its
+              running threads.{" "}
               {machineRemovalConsequences(target)}
             </DialogDescription>
           </DialogHeader>

@@ -22,6 +22,7 @@ import {
   environmentHasLiveThreads,
   environments,
   getEnvironment,
+  getHost,
   getThread,
   findProjectEnvironmentByHostPath,
   getPreparingEnvironment,
@@ -576,11 +577,14 @@ export function requestEnvironmentRemoval(
   environmentId: string,
 ): boolean {
   const row = getEnvironment(deps.db, environmentId);
-  if (row === null || environmentHasLiveThreads(deps.db, environmentId))
+  if (row === null) return false;
+  const removingMachine = getHost(deps.db, row.hostId)?.phase === "removing";
+  if (!removingMachine && environmentHasLiveThreads(deps.db, environmentId))
     return false;
   if (row.ownerThreadId !== null && row.teardownStatus === null) {
     const owner = getThread(deps.db, row.ownerThreadId);
     if (
+      !removingMachine &&
       owner !== null &&
       owner.status === "starting" &&
       owner.archivedAt === null &&
@@ -748,7 +752,9 @@ async function sweepProviderEnvironmentInSlot(
   )
     return;
   const cancelled = row.ownerThreadId !== null && row.teardownStatus !== null;
-  const shared = environmentHasLiveThreads(deps.db, environmentId);
+  const shared =
+    getHost(deps.db, row.hostId)?.phase !== "removing" &&
+    environmentHasLiveThreads(deps.db, environmentId);
   if (cancelled && shared) {
     writeEnvironment(deps, environmentId, {
       ownerThreadId: null,

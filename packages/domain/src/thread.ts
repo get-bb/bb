@@ -50,6 +50,13 @@ export type ThreadRuntimeDisplayStatus = z.infer<
 export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
   hostReconnectGraceExpiresAt: z.number().nullable(),
+  machineRemoval: z
+    .object({
+      hostId: z.string(),
+      hostName: z.string(),
+      status: z.enum(["removing", "cleanup-failed", "removed"]),
+    })
+    .optional(),
 });
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 

@@ -227,11 +227,11 @@ describe("host thread runtime status notifications", () => {
       );
       expect(activeSnapshots.length).toBeGreaterThan(0);
       expect(getThread(harness.db, fixture.activeThreadId)?.status).toBe(
-        "error",
+        "idle",
       );
       expect(activeSnapshots.at(-1)).toMatchObject({
-        status: "error",
-        runtime: { displayStatus: "error" },
+        status: "idle",
+        runtime: { displayStatus: "idle" },
       });
       expect(
         lastStatusChange(socket.messages, fixture.idleThreadId).metadata

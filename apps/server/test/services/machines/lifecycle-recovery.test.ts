@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { afterEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import {
+  requestEnvironmentRemoval,
+  sweepProviderEnvironment,
+} from "../../../src/services/environments/environment-engine.js";
 import { maintainMachine } from "../../../src/services/machines/lifecycle.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -14,6 +18,7 @@ import {
   getAppSettings,
   setAppSettings,
   getHost,
+  getThread,
   hosts,
   listThreadIdsWithHostOfflineQueueWaits,
   updateHost,
@@ -21,6 +26,7 @@ import {
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   requestMachineRemoval,
+  retryMachineCleanup,
   requestMachineSuspension,
   reconcileMachine,
   resumeMachine,
@@ -117,9 +123,13 @@ it("recovers a persisted resuming machine without queued work", async () =>
     });
   }));
 
-it.each(["active", "suspended"] as const)(
-  "removes environments on a %s persistent machine without admitting new work",
-  async (phase) =>
+it.each([
+  { phase: "active", failCleanup: false },
+  { phase: "suspended", failCleanup: false },
+  { phase: "active", failCleanup: true },
+] as const)(
+  "removes environments on a $phase persistent machine (cleanup fails first: $failCleanup)",
+  async ({ phase, failCleanup }) =>
     withTestHarness(async (harness) => {
       setAppSettings(harness.db, {
         ...getAppSettings(harness.db),
@@ -201,6 +211,7 @@ it.each(["active", "suspended"] as const)(
         })
         .where(eq(environments.id, environment.id))
         .run();
+      let cleanupFailurePending = failCleanup;
       const record = {
         pluginId: "review-worktree-plugin",
         provider: validatePluginEnvironmentProviderDeclaration({
@@ -214,6 +225,13 @@ it.each(["active", "suspended"] as const)(
             ownsPath: true,
           }),
           remove: async () => {
+            if (cleanupFailurePending) {
+              cleanupFailurePending = false;
+              return {
+                status: "failed",
+                message: "Workspace cleanup temporarily failed",
+              };
+            }
             await callPluginHostRpc(harness.deps, {
               pluginId: "review-worktree-plugin",
               hostId: target.host.id,
@@ -244,6 +262,17 @@ it.each(["active", "suspended"] as const)(
         }),
         decisionTimeoutMs: 1000,
       });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+        visibility: "hidden",
+      });
+      expect(requestEnvironmentRemoval(harness.deps, environment.id)).toBe(
+        false,
+      );
+      await sweepProviderEnvironment(harness.deps, environment.id);
+      expect(cleanupCall).not.toHaveBeenCalled();
       expect(requestMachineRemoval(harness.deps, target.host.id)).toBe(true);
       expect(getHost(harness.db, target.host.id)?.phase).toBe("removing");
       await expect(
@@ -260,11 +289,25 @@ it.each(["active", "suspended"] as const)(
         }),
       ).rejects.toThrow("cancelled");
       await sweepProviderMachine(harness.deps, target.host.id);
+      if (failCleanup) {
+        expect(getHost(harness.db, target.host.id)).toMatchObject({
+          phase: "removing",
+          teardownStatus: "failed",
+          statusMessage: "Workspace cleanup temporarily failed",
+        });
+        expect(machineRemove).not.toHaveBeenCalled();
+        await retryMachineCleanup(harness.deps, target.host.id);
+      }
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "destroyed",
         teardownStatus: "removed",
       });
       expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        archivedAt: null,
+        deletedAt: null,
+        status: "idle",
+      });
       expect(cleanupCall).toHaveBeenCalledOnce();
       expect(resume).toHaveBeenCalledTimes(phase === "suspended" ? 1 : 0);
       expect(machineRemove).toHaveBeenCalledOnce();

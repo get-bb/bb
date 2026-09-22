@@ -1,3 +1,8 @@
+import {
+  machineRemovalDescriptions,
+  machineRemovalLabels,
+  type MachineRemovalStatus,
+} from "@/lib/machine-removal-display";
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type {
@@ -107,7 +112,7 @@ export interface ThreadPromptArchivedSection {
 }
 
 export interface ThreadPromptEnvironmentGoneSection {
-  status: Extract<EnvironmentStatus, "destroyed">;
+  status: Extract<EnvironmentStatus, "destroyed"> | MachineRemovalStatus;
 }
 
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
@@ -154,8 +159,21 @@ const ENVIRONMENT_GONE_STATUS_COPY: Record<
   { ariaLabel: string; label: string }
 > = {
   destroyed: {
-    ariaLabel: "This environment has been archived.",
-    label: "Environment archived",
+    ariaLabel:
+      "Environment unavailable. You can still view this thread’s history.",
+    label: "Environment unavailable",
+  },
+  removed: {
+    label: machineRemovalLabels.removed,
+    ariaLabel: machineRemovalDescriptions.removed,
+  },
+  removing: {
+    label: machineRemovalLabels.removing,
+    ariaLabel: machineRemovalDescriptions.removing,
+  },
+  "cleanup-failed": {
+    label: machineRemovalLabels["cleanup-failed"],
+    ariaLabel: machineRemovalDescriptions["cleanup-failed"],
   },
 };
 
@@ -678,6 +696,7 @@ interface ReadOnlyContextBannerProps {
   iconName: IconName;
   statusAriaLabel: string;
   statusLabel: string;
+  description: string | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
   statusAction: ReactNode;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
@@ -688,6 +707,7 @@ function ReadOnlyContextBanner({
   iconName,
   statusAriaLabel,
   statusLabel,
+  description,
   parentThreadSection,
   statusAction,
   expandedSection,
@@ -699,7 +719,7 @@ function ReadOnlyContextBanner({
   const showStatusAction = statusAction !== null && !hasMultipleSegments;
   return (
     <PromptStackCard
-      ariaLabel="Thread context before sending"
+      ariaLabel="Thread history"
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
@@ -737,6 +757,9 @@ function ReadOnlyContextBanner({
           <BannerActionSlot>{statusAction}</BannerActionSlot>
         ) : null}
       </div>
+      {description === null ? null : (
+        <p className="px-3 pb-2 text-xs text-muted-foreground">{description}</p>
+      )}
       {parentThreadSection ? (
         <ParentThreadSectionBody
           section={parentThreadSection}
@@ -770,6 +793,7 @@ export function ThreadPromptContextBanner({
           environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
+        description={environmentGoneCopy?.ariaLabel ?? null}
         statusAction={
           archivedSection?.onUnarchive && !environmentGone ? (
             <PendingBannerActionButton

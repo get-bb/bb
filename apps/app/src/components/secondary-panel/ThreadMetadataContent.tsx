@@ -274,7 +274,9 @@ export function EnvironmentRow({
     type: "persistent" as const,
     machineProviderId: null,
   };
-  const showCreateThreadButton = isReusableEnvironment(environment);
+  const showCreateThreadButton =
+    environmentDisplayHost.machineRemoval === undefined &&
+    isReusableEnvironment(environment);
   return (
     <DetailRow
       label={
@@ -303,9 +305,11 @@ export function EnvironmentRow({
           <span
             className="inline-flex min-w-0 shrink-0 items-center gap-1.5 text-muted-foreground"
             title={`On ${environmentDisplayHost.identity.name} (${
-              environmentDisplayHost.identity.connected
-                ? "connected"
-                : "offline"
+              environmentDisplayHost.machineRemoval
+                ? "unavailable"
+                : environmentDisplayHost.identity.connected
+                  ? "connected"
+                  : "offline"
             })`}
           >
             <span>·</span>
@@ -313,7 +317,8 @@ export function EnvironmentRow({
               host={displayHost}
               machineProvider={machineProvider}
             />
-            {environmentDisplayHost.identity.connected ? null : (
+            {environmentDisplayHost.identity.connected ||
+            environmentDisplayHost.machineRemoval ? null : (
               <span>(offline)</span>
             )}
           </span>
@@ -1057,36 +1062,46 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         failed={environmentProvisioningFailure}
       />
       <WorkspacePathRow environment={environment} />
-      <BranchRow workspaceStatus={workspaceStatus} />
-      <MergeBaseRow
-        workspaceStatus={workspaceStatus}
-        selectedMergeBaseBranch={selectedMergeBaseBranch}
-        mergeBaseBranchRef={mergeBaseBranchRef}
-        mergeBaseBranchOptions={mergeBaseBranchOptions}
-        mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
-        isLoadingMergeBaseBranchOptions={isLoadingMergeBaseBranchOptions}
-        onMergeBaseBranchChange={onMergeBaseBranchChange}
-        onMergeBasePickerOpenChange={onMergeBasePickerOpenChange}
-        onMergeBaseBranchSearchQueryChange={onMergeBaseBranchSearchQueryChange}
-      />
-      <GitStatusRow
-        thread={thread}
-        environment={environment}
-        workspaceStatus={workspaceStatus}
-        workspaceStatusError={workspaceStatusError}
-        workspaceUnavailable={workspaceUnavailable}
-        selectedMergeBaseBranch={selectedMergeBaseBranch}
-      />
+      {environmentDisplayHost.machineRemoval ? null : (
+        <>
+          <BranchRow workspaceStatus={workspaceStatus} />
+          <MergeBaseRow
+            workspaceStatus={workspaceStatus}
+            selectedMergeBaseBranch={selectedMergeBaseBranch}
+            mergeBaseBranchRef={mergeBaseBranchRef}
+            mergeBaseBranchOptions={mergeBaseBranchOptions}
+            mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
+            isLoadingMergeBaseBranchOptions={isLoadingMergeBaseBranchOptions}
+            onMergeBaseBranchChange={onMergeBaseBranchChange}
+            onMergeBasePickerOpenChange={onMergeBasePickerOpenChange}
+            onMergeBaseBranchSearchQueryChange={
+              onMergeBaseBranchSearchQueryChange
+            }
+          />
+          <GitStatusRow
+            thread={thread}
+            environment={environment}
+            workspaceStatus={workspaceStatus}
+            workspaceStatusError={workspaceStatusError}
+            workspaceUnavailable={workspaceUnavailable}
+            selectedMergeBaseBranch={selectedMergeBaseBranch}
+          />
+        </>
+      )}
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
-      <ThreadCommitsRow
-        workspaceStatus={workspaceStatus}
-        onCommitClick={onCommitClick}
-      />
-      <ChangedFilesRow
-        workspaceStatus={workspaceStatus}
-        onChangedFileClick={onChangedFileClick}
-      />
+      {environmentDisplayHost.machineRemoval ? null : (
+        <>
+          <ThreadCommitsRow
+            workspaceStatus={workspaceStatus}
+            onCommitClick={onCommitClick}
+          />
+          <ChangedFilesRow
+            workspaceStatus={workspaceStatus}
+            onChangedFileClick={onChangedFileClick}
+          />
+        </>
+      )}
       {storage ? <ThreadStorageRow {...storage} /> : null}
     </ThreadMetadataCard>
   );

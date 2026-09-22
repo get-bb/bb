@@ -208,7 +208,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         </div>
         <div data-testid="composer-boundary" />
         <div data-testid="composer-hidden">
-          {pendingInteraction ? "true" : "false"}
+          {composer === null || pendingInteraction ? "true" : "false"}
         </div>
         <div data-testid="submit-mode">
           {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
@@ -953,6 +953,27 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   vi.clearAllMocks();
 });
+
+it.each(["removed", "removing", "cleanup-failed"] as const)(
+  "hides execution for a %s machine even when the environment still exists",
+  (status) => {
+    renderPromptArea({
+      thread: makeThread({
+        environmentId: "env_retained",
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+          machineRemoval: {
+            hostId: "host_old",
+            hostName: "Old laptop",
+            status,
+          },
+        },
+      }),
+    });
+    expect(screen.getByTestId("composer-hidden").textContent).toBe("true");
+  },
+);
 
 describe("environment follow-up summary", () => {
   it("renders for a thread with an environment even when it has no environment label", () => {

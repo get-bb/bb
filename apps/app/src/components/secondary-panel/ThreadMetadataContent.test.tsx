@@ -247,6 +247,22 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain("Modal machine");
   });
 
+  it("keeps the removed machine name and hides execution on a retained environment", () => {
+    const markup = renderEnvironmentRow(
+      makeEnvironment({ status: "ready" }),
+      [],
+      {
+        locality: "remote",
+        identity: { name: "Old laptop", connected: false },
+        machineRemoval: "removed",
+      },
+    );
+    expect(markup).toContain("Unavailable — machine removed");
+    expect(markup).toContain("Old laptop");
+    expect(markup).not.toContain("(offline)");
+    expect(markup).not.toContain('aria-label="New thread in this environment"');
+  });
+
   it("shows the create-thread action for a ready environment", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="New thread in this environment"',

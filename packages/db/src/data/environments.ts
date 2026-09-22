@@ -467,16 +467,25 @@ export function applyEnvironmentLifecycleEventInTransaction(
   ];
   if (args.event.type === "destroy.recorded") {
     conditions.push(
-      sql`NOT EXISTS (
-        SELECT 1 FROM threads
-        WHERE threads.environment_id = ${environments.id}
-        AND threads.archived_at IS NULL
-        AND threads.deleted_at IS NULL
-      )`,
-      sql`NOT EXISTS (
-        SELECT 1 FROM threads
-        WHERE threads.environment_id = ${environments.id}
-        AND threads.status = 'stopping'
+      sql`(
+        EXISTS (
+          SELECT 1 FROM hosts
+          WHERE hosts.id = ${environments.hostId}
+          AND hosts.phase = 'removing'
+        )
+        OR (
+          NOT EXISTS (
+            SELECT 1 FROM threads
+            WHERE threads.environment_id = ${environments.id}
+            AND threads.archived_at IS NULL
+            AND threads.deleted_at IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM threads
+            WHERE threads.environment_id = ${environments.id}
+            AND threads.status = 'stopping'
+          )
+        )
       )`,
     );
   }

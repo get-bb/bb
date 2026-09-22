@@ -547,13 +547,16 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     staleTime: 5_000,
   });
   const environment = environmentQuery.data;
+  const machineRemoval = thread?.runtime.machineRemoval;
+  const executionUnavailable =
+    machineRemoval !== undefined || environment?.status === "destroyed";
   const gitDiffTabStatus = resolveGitDiffTabStatus({
     environmentId: thread?.environmentId ?? null,
     environmentIsGitRepo: environment?.isGitRepo,
     environmentLoadFailed: environmentQuery.isError,
     environmentOwnsPath: environment?.managed,
     hasResolvedThread: thread !== undefined,
-    threadArchived: thread?.archivedAt != null,
+    threadArchived: thread?.archivedAt != null || executionUnavailable,
   });
   const threadFixedViewTabs = useMemo(
     () => [
@@ -1198,8 +1201,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     isSideChatThread && threadSourceThreadId !== null
       ? sendSideChatMessageToMain
       : undefined;
-  const canUseGitUi = gitDiffTabStatus === "eligible";
+  const canUseGitUi = !executionUnavailable && gitDiffTabStatus === "eligible";
   const canCreateTerminal =
+    !executionUnavailable &&
     thread?.environmentId !== null &&
     thread?.environmentId !== undefined &&
     environment?.status === "ready" &&
@@ -1876,21 +1880,26 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const environmentDisplayHostContext = useMemo<EnvironmentDisplayHostContext>(
     () => ({
       locality: threadEnvironmentIsLocal ? "local" : "remote",
-      identity: threadEnvironmentHost
-        ? {
-            name: threadEnvironmentHost.name,
-            connected: threadEnvironmentHost.status === "connected",
-          }
-        : null,
+      machineRemoval: machineRemoval?.status,
+      identity: machineRemoval
+        ? { name: machineRemoval.hostName, connected: false }
+        : threadEnvironmentHost
+          ? {
+              name: threadEnvironmentHost.name,
+              connected: threadEnvironmentHost.status === "connected",
+            }
+          : null,
     }),
-    [threadEnvironmentIsLocal, threadEnvironmentHost],
+    [threadEnvironmentIsLocal, threadEnvironmentHost, machineRemoval],
   );
   const workspacePreviewRootPath = environment?.path ?? null;
-  const threadOpenContext = resolveEnvironmentOpenContext({
-    environment,
-    serverOrigin: window.location.origin,
-    threadEnvironmentIsLocal,
-  });
+  const threadOpenContext = executionUnavailable
+    ? null
+    : resolveEnvironmentOpenContext({
+        environment,
+        serverOrigin: window.location.origin,
+        threadEnvironmentIsLocal,
+      });
   const {
     canOpenPreferredDirectoryTarget,
     canOpenPreferredFileTarget,
@@ -2216,11 +2225,13 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     canOpenPreferredFileTarget,
     openPathInPreferredFileTarget,
   ]);
-  const workspaceOpenPath = resolveThreadWorkspaceOpenPath({
-    canOpenWorkspace: canOpenPreferredDirectoryTarget,
-    environment,
-    hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
-  });
+  const workspaceOpenPath = executionUnavailable
+    ? null
+    : resolveThreadWorkspaceOpenPath({
+        canOpenWorkspace: canOpenPreferredDirectoryTarget,
+        environment,
+        hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
+      });
   usePublishThreadPanelOpener(handleOpenTimelinePluginPanel, isFocused);
   useAppCommandHandler("workspace.openPreferred", () => {
     if (!isFocused) return false;
@@ -2395,6 +2406,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       })
     : undefined;
   const isThreadOnReusableEnvironment =
+    !executionUnavailable &&
     environment !== undefined &&
     environment.status === "ready" &&
     environment.path !== null;
@@ -2409,7 +2421,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     : undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const threadEnvironmentGoneStatus =
-    environment?.status === "destroyed" ? environment.status : null;
+    machineRemoval?.status ??
+    (environment?.status === "destroyed" ? environment.status : null);
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch: effectiveMergeBaseBranch,
     showBranchComparison: showBranchComparisonUi,
@@ -2445,14 +2458,15 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           },
         }))
       : [];
-  const responsiveGitActions: ThreadActionsMenuResponsiveAction[] =
-    gitActions.threadHeaderGitActions.map((action) => ({
-      icon: "GitBranch" as const,
-      label: action.label,
-      onSelect: () => {
-        gitActions.threadGitActionDialog.onOpen(action.target);
-      },
-    }));
+  const responsiveGitActions: ThreadActionsMenuResponsiveAction[] = (
+    executionUnavailable ? [] : gitActions.threadHeaderGitActions
+  ).map((action) => ({
+    icon: "GitBranch" as const,
+    label: action.label,
+    onSelect: () => {
+      gitActions.threadGitActionDialog.onOpen(action.target);
+    },
+  }));
   const responsiveHeaderActions = [
     ...responsiveWorkspaceActions,
     ...responsiveGitActions,
@@ -2502,7 +2516,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           projectId={thread.projectId}
         />
       }
-      threadHeaderGitActions={gitActions.threadHeaderGitActions}
+      threadHeaderGitActions={
+        executionUnavailable ? [] : gitActions.threadHeaderGitActions
+      }
       threadId={thread.id}
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}

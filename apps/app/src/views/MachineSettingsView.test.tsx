@@ -422,7 +422,7 @@ describe("MachineSettingsView", () => {
 
     expect(
       await screen.findByText(
-        "Revokes dev-vm's access to this server. The compute and its saved snapshots are deleted. Its environments remain as read-only history.",
+        "Revokes dev-vm's access to this server. The compute and its saved snapshots are deleted. Thread history is preserved.",
       ),
     ).toBeDefined();
     const heading = await screen.findByRole("heading", { name: "dev-vm" });

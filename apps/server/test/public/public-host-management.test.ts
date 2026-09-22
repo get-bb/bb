@@ -5,6 +5,7 @@ import {
   getSessionById,
   getStoredProviderModelCatalog,
   getThread,
+  listStoredTurnCompletedKeys,
   replaceStoredProviderModelCatalog,
   updateHost,
 } from "@bb/db";
@@ -29,7 +30,9 @@ import {
   seedProjectWithSource,
   seedSession,
   seedThread,
+  seedTurnStarted,
 } from "../helpers/seed.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
@@ -583,7 +586,7 @@ describe("public host management", () => {
         id: environment.id,
         hostId: host.id,
       });
-      expect(getThread(harness.db, activeThread.id)?.status).toBe("error");
+      expect(getThread(harness.db, activeThread.id)?.status).toBe("idle");
 
       const staleEnrollResponse = await harness.app.request(
         "/internal/hosts/enroll",
@@ -608,6 +611,77 @@ describe("public host management", () => {
       expect(secondDelete.status).toBe(404);
     });
   });
+
+  it.each([
+    { type: "ephemeral", status: "idle" },
+    { type: "ephemeral", status: "active" },
+    { type: "ephemeral", status: "stopping" },
+    { type: "persistent", status: "idle" },
+    { type: "persistent", status: "active" },
+    { type: "persistent", status: "stopping" },
+  ] as const)(
+    "removes a $type machine retaining its $status thread",
+    async ({ type, status }) => {
+      await withTestHarness(async (harness) => {
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        installMachineProvider({ ephemeral: type === "ephemeral", remove });
+        const primary = seedHost(harness.deps, { id: "host_primary" });
+        seedPrimaryHost(harness.deps, primary.id);
+        const host = seedHost(harness.deps, { id: "host_sandbox" });
+        updateHost(harness.db, harness.hub, host.id, {
+          machineProviderId: "test-machine",
+          phase: "active",
+          resource: { allocation: "sandbox" },
+          type,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status,
+          title: "Hidden workflow worker",
+          visibility: "hidden",
+        });
+
+        if (status !== "idle") {
+          seedTurnStarted(harness.deps, {
+            environmentId: environment.id,
+            threadId: thread.id,
+            turnId: "turn_removal",
+          });
+        }
+
+        const removed = await harness.app.request(`${API}/hosts/${host.id}`, {
+          method: "DELETE",
+        });
+
+        expect(removed.status).toBe(200);
+        expect(await readJson(removed)).toEqual({ ok: true });
+        expect(remove).toHaveBeenCalledOnce();
+        expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+        expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+          "destroyed",
+        );
+        expect(getThread(harness.db, thread.id)).toMatchObject({
+          archivedAt: null,
+          status: "idle",
+        });
+        if (status !== "idle") {
+          expect(
+            listStoredTurnCompletedKeys(harness.db, {
+              keys: [{ threadId: thread.id, turnId: "turn_removal" }],
+            }),
+          ).toEqual([{ threadId: thread.id, turnId: "turn_removal" }]);
+        }
+      });
+    },
+  );
 
   it("deletes a removed host's stored provider model catalogs", async () => {
     await withTestHarness(async (harness) => {

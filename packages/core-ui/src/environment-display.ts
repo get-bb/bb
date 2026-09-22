@@ -1,4 +1,4 @@
-import type { Environment } from "@bb/domain";
+import type { Environment, ThreadRuntimeState } from "@bb/domain";
 
 type EnvironmentDisplayHostLocality = "local" | "remote";
 
@@ -9,6 +9,7 @@ interface EnvironmentDisplayHostIdentity {
 
 export interface EnvironmentDisplayHostContext {
   locality: EnvironmentDisplayHostLocality;
+  machineRemoval?: NonNullable<ThreadRuntimeState["machineRemoval"]>["status"];
   identity: EnvironmentDisplayHostIdentity | null;
 }
 
@@ -33,7 +34,13 @@ export interface EnvironmentDisplayInfo {
   modeLabel: string;
   compactModeLabel: string;
   providerLabel: string | null;
-  lifecycle: "provisioning" | "destroyed" | null;
+  lifecycle:
+    | "provisioning"
+    | "destroyed"
+    | "removed"
+    | "removing"
+    | "cleanup-failed"
+    | null;
   id: string;
 }
 
@@ -88,17 +95,24 @@ export function formatEnvironmentDisplay({
   providerLookup,
 }: FormatEnvironmentDisplayArgs): EnvironmentDisplayInfo {
   const lifecycle: EnvironmentDisplayInfo["lifecycle"] =
-    environment.status === "destroyed"
+    host.machineRemoval ??
+    (environment.status === "destroyed"
       ? "destroyed"
       : environment.status === "provisioning"
         ? "provisioning"
-        : null;
+        : null);
   const lifecycleLabel =
-    lifecycle === "destroyed"
-      ? "Destroyed"
-      : lifecycle === "provisioning"
-        ? "Provisioning"
-        : null;
+    lifecycle === "removed"
+      ? "Unavailable — machine removed"
+      : lifecycle === "removing"
+        ? "Machine removal in progress"
+        : lifecycle === "cleanup-failed"
+          ? "Machine cleanup failed"
+          : lifecycle === "destroyed"
+            ? "Environment unavailable"
+            : lifecycle === "provisioning"
+              ? "Provisioning"
+              : null;
   const providerLabel = resolveEnvironmentProviderLabel(
     environment.environmentProviderId,
     providerLookup,
@@ -110,8 +124,16 @@ export function formatEnvironmentDisplay({
   const namedCompactLabel = providerLabel ?? localityLabel;
 
   return {
-    modeLabel: environment.name ?? lifecycleLabel ?? namedLabel,
-    compactModeLabel: environment.name ?? lifecycleLabel ?? namedCompactLabel,
+    modeLabel:
+      (host.machineRemoval ? lifecycleLabel : null) ??
+      environment.name ??
+      lifecycleLabel ??
+      namedLabel,
+    compactModeLabel:
+      (host.machineRemoval ? lifecycleLabel : null) ??
+      environment.name ??
+      lifecycleLabel ??
+      namedCompactLabel,
     providerLabel,
     lifecycle,
     id: environment.id,

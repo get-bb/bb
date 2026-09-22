@@ -92,6 +92,32 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("<button");
   });
 
+  it.each([
+    ["removed", "Machine removed"],
+    ["removing", "Machine removal in progress"],
+    ["cleanup-failed", "Machine cleanup failed"],
+  ] as const)(
+    "explains the %s machine without execution actions",
+    (status, label) => {
+      const markup = renderToStaticMarkup(
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={{ status }}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />,
+      );
+      expect(markup).toContain(label);
+      expect(markup).not.toContain("<button");
+      expect(markup).not.toContain("Environment archived");
+    },
+  );
+
   it("renders the environment-gone read-only status without a provision action", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
@@ -107,8 +133,10 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("Environment archived");
-    expect(markup).toContain("This environment has been archived.");
+    expect(markup).toContain("Environment unavailable");
+    expect(markup).toContain(
+      "Environment unavailable. You can still view this thread’s history.",
+    );
     expect(markup).not.toContain("to keep working");
     expect(markup).toContain('role="status"');
     expect(markup).not.toContain("<button");
@@ -126,7 +154,7 @@ describe("ThreadPromptContextBanner", () => {
       label: "environment archived",
       archivedSection: null,
       environmentGoneSection: { status: "destroyed" as const },
-      expectedLabel: "Environment archived",
+      expectedLabel: "Environment unavailable",
     },
   ])(
     "keeps the $label read-only status visible in compact mode",
@@ -182,7 +210,7 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain("Environment archived");
+    expect(markup).toContain("Environment unavailable");
     expect(markup).not.toContain("Thread is archived");
     expect(markup).not.toContain(">Unarchive<");
   });
