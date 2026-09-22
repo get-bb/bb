@@ -1,10 +1,11 @@
 import { useEffect } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useStore } from "jotai";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { threadListRpcContract } from "../../server.js";
 import { PREFERENCES_CHANGED_CHANNEL } from "../../shared/preferences.js";
 import {
   applyRemotePreferenceSignal,
+  attachPreferencesStore,
   hydratePreferences,
   hydratePreferencesFromMirror,
   preferencesReadyAtom,
@@ -16,7 +17,9 @@ export function usePreferencesReady(): boolean {
 
 export function PreferencesSync() {
   const rpc = useRpc<typeof threadListRpcContract>();
+  const store = useStore();
   useEffect(() => {
+    attachPreferencesStore(store);
     hydratePreferencesFromMirror();
     void hydratePreferences(rpc).catch((error: unknown) => {
       console.warn(
@@ -25,7 +28,7 @@ export function PreferencesSync() {
         }`,
       );
     });
-  }, [rpc]);
+  }, [rpc, store]);
   useRealtime(PREFERENCES_CHANGED_CHANNEL, applyRemotePreferenceSignal);
   return null;
 }

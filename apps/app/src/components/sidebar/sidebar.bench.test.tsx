@@ -2,6 +2,7 @@
 
 import { writeFileSync } from "node:fs";
 import { act, cleanup, render } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -24,6 +25,11 @@ import {
 } from "@/hooks/queries/query-keys";
 import { updateCachedThreadListStatusState } from "@/hooks/cache-owners/query-cache";
 import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
+import { installPluginRuntime } from "@/lib/plugin-frontend";
+import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
+import type { PluginThreadListSlot } from "@/lib/plugin-slots";
+import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { PluginThreadList } from "./PluginThreadList";
 import { ProjectList } from "./ProjectList";
 
 const BENCH_ENABLED = process.env.BB_SIDEBAR_BENCH === "1";
@@ -46,6 +52,52 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
   return { ...actual, sdk: rejectingSdk() };
 });
+
+vi.mock("@/lib/ws", () => ({
+  wsManager: new Proxy(
+    {},
+    {
+      get: (_target, key) =>
+        key === "onPluginSignal" ? () => () => {} : () => undefined,
+    },
+  ),
+}));
+
+function stubPluginRpcFetch(): void {
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.includes("/rpc/")) {
+      return new Response("{}", { status: 404 });
+    }
+    const method = url.split("/rpc/")[1] ?? "";
+    let result: unknown = null;
+    if (method === "listPreferences") {
+      result = { preferences: {} };
+    } else if (method === "setPreference" || method === "resetPreference") {
+      result = JSON.parse(String(init?.body ?? "{}"));
+    }
+    return new Response(JSON.stringify({ ok: true, result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+}
+
+async function loadPluginThreadListReplacement(): Promise<
+  ResolvedReplacement<PluginThreadListSlot>
+> {
+  installPluginRuntime();
+  const module = await import("../../../../../plugins/thread-list/app");
+  const collected = collectPluginAppRegistrations(module.default);
+  const registration = collected.threadLists[0];
+  if (registration === undefined) {
+    throw new Error("thread-list plugin registered no thread list");
+  }
+  return {
+    kind: "plugin",
+    registration: { ...registration, pluginId: "thread-list", generation: 1 },
+  };
+}
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
   usePathPickerHost: () => ({ hostId: null, hostName: null }),
@@ -208,154 +260,201 @@ function installViewport(): () => void {
 
 afterEach(cleanup);
 
-describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
-  it(`mounts and updates the built-in list with ${THREAD_COUNT} threads`, { timeout: 180_000 }, async () => {
-    const restoreViewport = installViewport();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
-    });
-    const bootstrap = buildBootstrap(THREAD_COUNT);
-    queryClient.setQueryData(sidebarNavigationQueryKey(), bootstrap);
-    queryClient.setQueryData(uiPreferencesQueryKey(), {
-      preferences: Object.fromEntries(
-        UI_PREFERENCE_KEYS.map((key) => [
-          key,
-          { revision: 1, value: defaultUiPreferences[key] },
-        ]),
-      ),
-    });
-    queryClient.setQueryData(hostsQueryKey(false), [
-      makeHost({ id: "host_test", name: "bee" }),
-    ]);
+interface BenchResults {
+  list: string;
+  threads: number;
+  renderedRows: number;
+  windowedItems: number;
+  mountMs: number;
+  statusPatchMs: number;
+  membershipRefetchMs: number;
+  pinMs: number;
+}
 
-    const tree = (
-      <TooltipProvider>
-        <JotaiProvider store={createStore()}>
-          <QueryClientProvider client={queryClient}>
-            <MemoryRouter>
-              <SidebarProvider>
-                <Sidebar>
-                  <SidebarContent>
-                    <ProjectList />
-                  </SidebarContent>
-                </Sidebar>
-              </SidebarProvider>
-            </MemoryRouter>
-          </QueryClientProvider>
-        </JotaiProvider>
-      </TooltipProvider>
+function seedQueryClient(): QueryClient {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  });
+  queryClient.setQueryData(sidebarNavigationQueryKey(), buildBootstrap(THREAD_COUNT));
+  queryClient.setQueryData(uiPreferencesQueryKey(), {
+    preferences: Object.fromEntries(
+      UI_PREFERENCE_KEYS.map((key) => [
+        key,
+        { revision: 1, value: defaultUiPreferences[key] },
+      ]),
+    ),
+  });
+  queryClient.setQueryData(hostsQueryKey(false), [
+    makeHost({ id: "host_test", name: "bee" }),
+  ]);
+  return queryClient;
+}
+
+async function runScenario(
+  list: string,
+  queryClient: QueryClient,
+  body: ReactNode,
+): Promise<BenchResults> {
+  const restoreViewport = installViewport();
+  const tree = (
+    <TooltipProvider>
+      <JotaiProvider store={createStore()}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <SidebarProvider>
+              <Sidebar>
+                <SidebarContent>{body}</SidebarContent>
+              </Sidebar>
+            </SidebarProvider>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </JotaiProvider>
+    </TooltipProvider>
+  );
+
+  const mountStart = performance.now();
+  const rendered = render(tree);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  const mountMs = performance.now() - mountStart;
+  const renderedRows = rendered.container.querySelectorAll(
+    "[data-sidebar-thread-id]",
+  ).length;
+  const windowedItems = rendered.container.querySelectorAll(
+    "[data-sidebar-windowed-item]",
+  ).length;
+  expect(renderedRows).toBeGreaterThan(0);
+
+  const patchSamples: number[] = [];
+  const refetchSamples: number[] = [];
+  const pinSamples: number[] = [];
+  for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
+    const targetId = `thr_${(iteration * 7) % THREAD_COUNT}`;
+    patchSamples.push(
+      await measure(() => {
+        updateCachedThreadListStatusState(queryClient, targetId, {
+          status: iteration % 2 === 0 ? "active" : "idle",
+          runtime: {
+            displayStatus: iteration % 2 === 0 ? "active" : "idle",
+            hostReconnectGraceExpiresAt: null,
+          },
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
+          },
+          latestAttentionAt: 5_000_000 + iteration,
+          updatedAt: 5_000_000 + iteration,
+        });
+      }),
     );
 
-    const mountStart = performance.now();
-    const rendered = render(tree);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    const mountMs = performance.now() - mountStart;
-    const renderedRows = rendered.container.querySelectorAll(
-      "[data-sidebar-thread-id]",
-    ).length;
-    const windowedItems = rendered.container.querySelectorAll(
-      "[data-sidebar-windowed-item]",
-    ).length;
-    expect(renderedRows).toBeGreaterThan(0);
-
-    const patchSamples: number[] = [];
-    const refetchSamples: number[] = [];
-    const pinSamples: number[] = [];
-    for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
-      const targetId = `thr_${(iteration * 7) % THREAD_COUNT}`;
-      patchSamples.push(
-        await measure(() => {
-          updateCachedThreadListStatusState(queryClient, targetId, {
-            status: iteration % 2 === 0 ? "active" : "idle",
-            runtime: {
-              displayStatus: iteration % 2 === 0 ? "active" : "idle",
-              hostReconnectGraceExpiresAt: null,
-            },
-            activity: {
-              activeWorkflowCount: 0,
-              activeBackgroundAgentCount: 0,
-              activeBackgroundCommandCount: 0,
-              activePlanModeCount: 0,
-              activeGoalCount: 0,
-            },
-            latestAttentionAt: 5_000_000 + iteration,
-            updatedAt: 5_000_000 + iteration,
-          });
-        }),
-      );
-
-      refetchSamples.push(
-        await measure(() => {
-          const current = queryClient.getQueryData<SidebarBootstrapResponse>(
-            sidebarNavigationQueryKey(),
-          )!;
-          let touched = 0;
-          const bump = (thread: ThreadListEntry): ThreadListEntry => {
-            if (touched >= 50) return thread;
-            touched += 1;
-            return {
-              ...thread,
-              updatedAt: 6_000_000 + iteration * 100 + touched,
-              latestAttentionAt: 6_000_000 + iteration * 100 + touched,
-            };
+    refetchSamples.push(
+      await measure(() => {
+        const current = queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )!;
+        let touched = 0;
+        const bump = (thread: ThreadListEntry): ThreadListEntry => {
+          if (touched >= 50) return thread;
+          touched += 1;
+          return {
+            ...thread,
+            updatedAt: 6_000_000 + iteration * 100 + touched,
+            latestAttentionAt: 6_000_000 + iteration * 100 + touched,
           };
-          queryClient.setQueryData(sidebarNavigationQueryKey(), {
-            ...current,
-            projects: current.projects.map((project) => ({
-              ...project,
-              threads: project.threads.map(bump),
-            })),
-            personalProject: {
-              ...current.personalProject,
-              threads: current.personalProject.threads.map(bump),
-            },
-          });
-        }),
-      );
+        };
+        queryClient.setQueryData(sidebarNavigationQueryKey(), {
+          ...current,
+          projects: current.projects.map((project) => ({
+            ...project,
+            threads: project.threads.map(bump),
+          })),
+          personalProject: {
+            ...current.personalProject,
+            threads: current.personalProject.threads.map(bump),
+          },
+        });
+      }),
+    );
 
-      pinSamples.push(
-        await measure(() => {
-          const current = queryClient.getQueryData<SidebarBootstrapResponse>(
-            sidebarNavigationQueryKey(),
-          )!;
-          const pinId = `thr_${(iteration * 11 + 1) % THREAD_COUNT}`;
-          const flip = (thread: ThreadListEntry): ThreadListEntry =>
-            thread.id === pinId && thread.parentThreadId === null
-              ? {
-                  ...thread,
-                  pinnedAt: thread.pinnedAt === null ? 9_000_000 : null,
-                }
-              : thread;
-          queryClient.setQueryData(sidebarNavigationQueryKey(), {
-            ...current,
-            projects: current.projects.map((project) => ({
-              ...project,
-              threads: project.threads.map(flip),
-            })),
-            personalProject: {
-              ...current.personalProject,
-              threads: current.personalProject.threads.map(flip),
-            },
-          });
-        }),
-      );
-    }
+    pinSamples.push(
+      await measure(() => {
+        const current = queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )!;
+        const pinId = `thr_${(iteration * 11 + 1) % THREAD_COUNT}`;
+        const flip = (thread: ThreadListEntry): ThreadListEntry =>
+          thread.id === pinId && thread.parentThreadId === null
+            ? {
+                ...thread,
+                pinnedAt: thread.pinnedAt === null ? 9_000_000 : null,
+              }
+            : thread;
+        queryClient.setQueryData(sidebarNavigationQueryKey(), {
+          ...current,
+          projects: current.projects.map((project) => ({
+            ...project,
+            threads: project.threads.map(flip),
+          })),
+          personalProject: {
+            ...current.personalProject,
+            threads: current.personalProject.threads.map(flip),
+          },
+        });
+      }),
+    );
+  }
 
-    restoreViewport();
-    const results = {
-      list: "built-in",
-      threads: THREAD_COUNT,
-      renderedRows,
-      windowedItems,
-      mountMs: Math.round(mountMs),
-      statusPatchMs: Math.round(median(patchSamples)),
-      membershipRefetchMs: Math.round(median(refetchSamples)),
-      pinMs: Math.round(median(pinSamples)),
-    };
+  rendered.unmount();
+  restoreViewport();
+  const results: BenchResults = {
+    list,
+    threads: THREAD_COUNT,
+    renderedRows,
+    windowedItems,
+    mountMs: Math.round(mountMs),
+    statusPatchMs: Math.round(median(patchSamples)),
+    membershipRefetchMs: Math.round(median(refetchSamples)),
+    pinMs: Math.round(median(pinSamples)),
+  };
+  process.stdout.write(`SIDEBAR_BENCH ${JSON.stringify(results)}\n`);
+  return results;
+}
+
+describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
+  const collected: BenchResults[] = [];
+
+  it(`mounts and updates the built-in list with ${THREAD_COUNT} threads`, { timeout: 180_000 }, async () => {
+    collected.push(await runScenario("built-in", seedQueryClient(), <ProjectList />));
+  });
+
+  it(`mounts and updates the plugin list with ${THREAD_COUNT} threads`, { timeout: 180_000 }, async () => {
+    stubPluginRpcFetch();
+    const replacement = await loadPluginThreadListReplacement();
+    collected.push(
+      await runScenario(
+        "plugin",
+        seedQueryClient(),
+        <PluginThreadList
+          replacement={replacement}
+          original={null}
+          searchQuery=""
+          onNavigate={() => {}}
+        />,
+      ),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("writes the comparison", () => {
     const out = process.env.BB_SIDEBAR_BENCH_OUT;
-    if (out) writeFileSync(out, `${JSON.stringify(results, null, 2)}\n`);
-    process.stdout.write(`SIDEBAR_BENCH ${JSON.stringify(results)}\n`);
+    if (out) writeFileSync(out, `${JSON.stringify(collected, null, 2)}\n`);
   });
 });

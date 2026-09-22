@@ -31,11 +31,47 @@ export interface SidebarData {
   hostsById: ReadonlyMap<string, SidebarHost>;
 }
 
+function sameElements<T>(left: readonly T[], right: readonly T[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function sameHosts(
+  left: ReadonlyMap<string, SidebarHost>,
+  right: ReadonlyMap<string, SidebarHost>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [id, host] of left) {
+    const other = right.get(id);
+    if (other === undefined || other.name !== host.name) return false;
+  }
+  return true;
+}
+
+function sameProjectShape(
+  previous: SidebarProject,
+  project: PluginSidebarProject,
+): boolean {
+  return (
+    previous.id === project.id &&
+    previous.name === project.name &&
+    previous.href === project.href &&
+    previous.settingsHref === project.settingsHref &&
+    previous.isPersonal === project.isPersonal
+  );
+}
+
+const EMPTY_THREADS: SidebarThread[] = [];
+
 export function buildSidebarData(
   status: PluginSidebarThreadsState["status"],
   threads: readonly PluginSidebarThread[],
   projects: readonly PluginSidebarProject[],
   sections: readonly PluginSidebarSection[],
+  previous: SidebarData | null = null,
 ): SidebarData {
   const threadsByProjectId = new Map<string, SidebarThread[]>();
   const hostsById = new Map<string, SidebarHost>();
@@ -51,22 +87,90 @@ export function buildSidebarData(
       hostsById.set(thread.host.id, thread.host);
     }
   }
-  const groupedProjects = projects.map<SidebarProject>((project) => ({
-    id: project.id,
-    name: project.name,
-    href: project.href,
-    settingsHref: project.settingsHref,
-    isPersonal: project.isPersonal,
-    threads: threadsByProjectId.get(project.id) ?? [],
-  }));
+  const previousProjectsById = new Map(
+    previous?.projects.map((project) => [project.id, project]) ?? [],
+  );
+  const groupedProjects = projects.map<SidebarProject>((project) => {
+    const bucket = threadsByProjectId.get(project.id) ?? EMPTY_THREADS;
+    const before = previousProjectsById.get(project.id);
+    if (
+      before !== undefined &&
+      sameProjectShape(before, project) &&
+      sameElements(before.threads, bucket)
+    ) {
+      return before;
+    }
+    return {
+      id: project.id,
+      name: project.name,
+      href: project.href,
+      settingsHref: project.settingsHref,
+      isPersonal: project.isPersonal,
+      threads:
+        before !== undefined && sameElements(before.threads, bucket)
+          ? before.threads
+          : bucket,
+    };
+  });
+  const sharedProjects =
+    previous !== null && sameElements(previous.projects, groupedProjects)
+      ? previous.projects
+      : groupedProjects;
   return {
     status,
     sections,
-    projects: groupedProjects,
+    projects: sharedProjects,
     personalProject:
-      groupedProjects.find((project) => project.isPersonal) ?? null,
-    hostsById,
+      sharedProjects.find((project) => project.isPersonal) ?? null,
+    hostsById:
+      previous !== null && sameHosts(previous.hostsById, hostsById)
+        ? previous.hostsById
+        : hostsById,
   };
+}
+
+interface SidebarDataCacheEntry {
+  status: PluginSidebarThreadsState["status"];
+  threads: readonly PluginSidebarThread[];
+  projects: readonly PluginSidebarProject[];
+  sections: readonly PluginSidebarSection[];
+  data: SidebarData;
+}
+
+let sidebarDataCache: SidebarDataCacheEntry | null = null;
+
+export function getSidebarData(
+  state: PluginSidebarThreadsState,
+): SidebarData {
+  const cached = sidebarDataCache;
+  if (
+    cached !== null &&
+    cached.status === state.status &&
+    cached.threads === state.threads &&
+    cached.projects === state.projects &&
+    cached.sections === state.sections
+  ) {
+    return cached.data;
+  }
+  const data = buildSidebarData(
+    state.status,
+    state.threads,
+    state.projects,
+    state.sections,
+    cached?.data ?? null,
+  );
+  sidebarDataCache = {
+    status: state.status,
+    threads: state.threads,
+    projects: state.projects,
+    sections: state.sections,
+    data,
+  };
+  return data;
+}
+
+export function resetSidebarDataCacheForTest(): void {
+  sidebarDataCache = null;
 }
 
 export function useSidebarProjectName(
@@ -79,12 +183,8 @@ export function useSidebarProjectName(
 }
 
 export function useSidebarData(): SidebarData {
-  const { status, threads, projects, sections } =
-    experimental_useSidebarThreads();
-  return useMemo(
-    () => buildSidebarData(status, threads, projects, sections),
-    [status, threads, projects, sections],
-  );
+  const state = experimental_useSidebarThreads();
+  return useMemo(() => getSidebarData(state), [state]);
 }
 
 export function toMachineHosts(

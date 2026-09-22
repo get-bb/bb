@@ -6,7 +6,7 @@ import {
 } from "@bb/client-core";
 import { makeSidebarThread } from "./fixtures.js";
 import { toSidebarThread } from "./sidebar-thread.js";
-import { buildSidebarData } from "./use-sidebar-data.js";
+import { buildSidebarData, getSidebarData, resetSidebarDataCacheForTest } from "./use-sidebar-data.js";
 
 describe("toSidebarThread", () => {
   it("maps every DTO field onto the ThreadListEntry shape", () => {
@@ -201,5 +201,41 @@ describe("buildSidebarData", () => {
     expect(data.personalProject).toBeNull();
     expect(data.projects).toEqual([]);
     expect(data.hostsById.size).toBe(0);
+  });
+});
+
+describe("buildSidebarData structural sharing", () => {
+  const projects = [
+    { id: "proj_a", name: "A", isPersonal: false, href: "/a", settingsHref: "/a/s" },
+    { id: "proj_b", name: "B", isPersonal: false, href: "/b", settingsHref: "/b/s" },
+  ];
+
+  it("keeps untouched projects and their thread arrays by identity across updates", () => {
+    const a1 = makeSidebarThread({ id: "a1", projectId: "proj_a" });
+    const b1 = makeSidebarThread({ id: "b1", projectId: "proj_b" });
+    const first = buildSidebarData("ready", [a1, b1], projects, []);
+    const b1Changed = makeSidebarThread({ id: "b1", projectId: "proj_b", title: "renamed" });
+    const second = buildSidebarData("ready", [a1, b1Changed], projects, [], first);
+    expect(second.projects[0]).toBe(first.projects[0]);
+    expect(second.projects[0]?.threads).toBe(first.projects[0]?.threads);
+    expect(second.projects[1]).not.toBe(first.projects[1]);
+    expect(second.projects).not.toBe(first.projects);
+    expect(second.hostsById).toBe(first.hostsById);
+    const third = buildSidebarData("ready", [a1, b1Changed], projects, [], second);
+    expect(third.projects).toBe(second.projects);
+  });
+
+  it("serves one grouped result per host payload to every caller", () => {
+    resetSidebarDataCacheForTest();
+    const state = {
+      status: "ready" as const,
+      threads: [makeSidebarThread({ id: "a1", projectId: "proj_a" })],
+      projects,
+      sections: [],
+    };
+    const data = getSidebarData(state);
+    expect(getSidebarData({ ...state })).toBe(data);
+    expect(getSidebarData({ ...state, threads: [...state.threads] })).not.toBe(data);
+    resetSidebarDataCacheForTest();
   });
 });

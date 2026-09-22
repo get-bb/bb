@@ -385,13 +385,24 @@ changes 50 rows, and one pin (median of 5). Run with:
 cd apps/app && BB_SIDEBAR_BENCH=1 pnpm exec vitest run src/components/sidebar/sidebar.bench.test.tsx
 ```
 
-Baseline for the built-in list (2026-09-21, bee, jsdom): mount 694 ms with
-81 realized rows of 2,688 windowed items, status patch 183 ms, membership
-refetch 247 ms, pin 181 ms. Phase 3 adds the plugin list to the same harness
-(mounted through `PluginThreadList` with its registration, preference RPC
-stubbed) and each rendering PR pastes both rows. jsdom measures JavaScript
-time only; a manual pass in the desktop app with the React profiler covers
-layout.
+Both lists run through the same harness (the plugin mounted through
+`PluginThreadList` with its real registration, preference RPC stubbed).
+Results on 2026-09-21 (bee, jsdom, median of 5, 81 realized rows of 2,688
+windowed items for both):
+
+| ms | built-in | plugin |
+|---|---|---|
+| mount | 719 | 725 |
+| status patch | 184 | 222 |
+| membership refetch (50 rows) | 255 | 221 |
+| pin | 189 | 236 |
+
+Two fixes got the plugin here from 40 to 60 percent slower: the host's
+per-row hooks now share one thread-entry map per payload instead of each
+building a 3,000-entry map on every change, and the plugin's grouped data
+keeps untouched projects and thread arrays by identity across updates so
+per-project memos skip. jsdom measures JavaScript time only; a manual pass
+in the desktop app with the React profiler covers layout.
 
 Verification per phase:
 

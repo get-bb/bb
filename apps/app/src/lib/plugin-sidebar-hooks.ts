@@ -139,16 +139,28 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
   }, [data, hostNamesById, query.isError, titleResources]);
 }
 
+const threadEntryMapByPayload = new WeakMap<
+  object,
+  ReadonlyMap<string, ThreadListEntry>
+>();
+
+function threadEntryMapFor(
+  data: ReturnType<typeof useSidebarNavigation>["data"],
+): ReadonlyMap<string, ThreadListEntry> {
+  if (data === undefined) return EMPTY_ENTRIES;
+  const cached = threadEntryMapByPayload.get(data);
+  if (cached !== undefined) return cached;
+  const entries = new Map<string, ThreadListEntry>();
+  for (const project of [...data.projects, data.personalProject]) {
+    for (const thread of project.threads) entries.set(thread.id, thread);
+  }
+  threadEntryMapByPayload.set(data, entries);
+  return entries;
+}
+
 function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
   const { data } = useSidebarNavigation();
-  return useMemo(() => {
-    if (data === undefined) return EMPTY_ENTRIES;
-    const entries = new Map<string, ThreadListEntry>();
-    for (const project of [...data.projects, data.personalProject]) {
-      for (const thread of project.threads) entries.set(thread.id, thread);
-    }
-    return entries;
-  }, [data]);
+  return threadEntryMapFor(data);
 }
 
 export function useSidebarThreadEntry(
