@@ -30,7 +30,6 @@ import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { PluginThreadList } from "./PluginThreadList";
-import { ProjectList } from "./ProjectList";
 
 const BENCH_ENABLED = process.env.BB_SIDEBAR_BENCH === "1";
 const THREAD_COUNT = Number(process.env.BB_SIDEBAR_BENCH_THREADS ?? 3000);
@@ -431,10 +430,6 @@ async function runScenario(
 describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
   const collected: BenchResults[] = [];
 
-  it(`mounts and updates the built-in list with ${THREAD_COUNT} threads`, { timeout: 180_000 }, async () => {
-    collected.push(await runScenario("built-in", seedQueryClient(), <ProjectList />));
-  });
-
   it(`mounts and updates the plugin list with ${THREAD_COUNT} threads`, { timeout: 180_000 }, async () => {
     stubPluginRpcFetch();
     const replacement = await loadPluginThreadListReplacement();
@@ -442,12 +437,7 @@ describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
       await runScenario(
         "plugin",
         seedQueryClient(),
-        <PluginThreadList
-          replacement={replacement}
-          original={null}
-          searchQuery=""
-          onNavigate={() => {}}
-        />,
+        <PluginThreadList replacement={replacement} onNavigate={() => {}} />,
       ),
     );
     vi.unstubAllGlobals();

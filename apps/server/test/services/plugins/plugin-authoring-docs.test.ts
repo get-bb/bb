@@ -352,8 +352,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
-    "Original",
-    "experimental_Original",
   ],
   experimental_threadHeaderAction: [
     "threadId",

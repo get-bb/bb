@@ -209,15 +209,6 @@ export interface PluginThreadListProps {
    * @deprecated The quick palette owns thread search. Ignore this value.
    */
   searchQuery: string;
-  /**
-   * BB's thread list, bound to this sidebar instance. Render it to delegate
-   * conditionally without re-entering plugin replacement resolution.
-   *
-   * @experimental Audit before relying on this as a stable contract.
-   */
-  Original: ComponentType;
-  /** @deprecated Renamed to `Original` in SDK 0.4.16; removed in bb 0.42. */
-  experimental_Original?: ComponentType;
 }
 
 /**

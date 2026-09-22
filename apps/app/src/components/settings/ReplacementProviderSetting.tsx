@@ -34,7 +34,7 @@ export function ReplacementProviderSetting({
   label: string;
   description: string;
   triggerAriaLabel: string;
-  builtInDescription: string;
+  builtInDescription?: string;
   preferenceAtom: WritableAtom<string, [string], void>;
   slots: readonly ReplacementProviderSlot[];
 }) {
@@ -42,18 +42,22 @@ export function ReplacementProviderSetting({
 
   const automaticProvider = slots[0];
   if (automaticProvider === undefined) return null;
-  const builtInOption = {
-    key: BUILT_IN_REPLACEMENT_PROVIDER,
-    title: "bb (built-in)",
-    description: builtInDescription,
+  const automaticOption = {
+    key: AUTOMATIC_REPLACEMENT_PROVIDER,
+    title: "Automatic",
+    description: `Currently using ${automaticProvider.title} from ${automaticProvider.pluginId}.`,
   };
+  const builtInOption =
+    builtInDescription === undefined
+      ? null
+      : {
+          key: BUILT_IN_REPLACEMENT_PROVIDER,
+          title: "bb (built-in)",
+          description: builtInDescription,
+        };
   const options = [
-    {
-      key: AUTOMATIC_REPLACEMENT_PROVIDER,
-      title: "Automatic",
-      description: `Currently using ${automaticProvider.title} from ${automaticProvider.pluginId}.`,
-    },
-    builtInOption,
+    automaticOption,
+    ...(builtInOption === null ? [] : [builtInOption]),
     ...slots.map((slot) => ({
       key: replacementProviderKey(slot),
       title: slot.title,
@@ -61,7 +65,9 @@ export function ReplacementProviderSetting({
     })),
   ];
   const selected =
-    options.find((option) => option.key === preference) ?? builtInOption;
+    options.find((option) => option.key === preference) ??
+    builtInOption ??
+    automaticOption;
 
   return (
     <SettingsWithControl label={label} description={description}>

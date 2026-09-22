@@ -103,7 +103,6 @@ function props(): PluginThreadListProps {
     isCompactViewport: false,
     onNavigate: vi.fn(),
     searchQuery: "",
-    Original: () => null,
   };
 }
 

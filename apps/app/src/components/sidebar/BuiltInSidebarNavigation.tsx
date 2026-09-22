@@ -11,7 +11,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   ProjectListNewThreadAction,
   ProjectListSearchThreadsAction,
-} from "./ProjectList";
+} from "./SidebarPrimaryActions";
 import { DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER } from "@/components/plugin/pluginNavSidebarOrder";
 import { getPluginsRoutePath, getSkillsRoutePath } from "@/lib/route-paths";
 

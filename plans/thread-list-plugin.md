@@ -344,9 +344,24 @@ Stories: move `SidebarOverview`, `SectionGrouping`, and `ThreadRow` stories to
 
 ## Phase 4: switch the host
 
-- `AppSidebar.tsx` renders the Phase 0 placeholder as `original`;
-  `ProjectList` and the rest of the built-in list are deleted from
-  `apps/app`.
+Done 2026-09-21 (layer 12, `thread-list/4-flip`). The built-in list rendered
+first and the plugin swapped in when its bundle landed, which showed as a
+flicker on every load; with no built-in list the sidebar goes placeholder →
+plugin instead.
+
+- `AppSidebar.tsx` no longer builds a built-in list. `PluginThreadList`
+  mounts the resolved plugin directly and renders `ThreadListPlaceholder`
+  otherwise: skeleton rows until `usePluginFrontendsSettled` reports the
+  deferred boot done, then "No thread list plugin is enabled"; a crash shows
+  "stopped working" with a Reload button that resets the crashed slot and
+  remounts.
+- `ProjectList` and everything only it reached are deleted from `apps/app`
+  (about 12,000 lines including tests and stories). `SidebarPrimaryActions`
+  keeps the New thread and Search actions the navigation region still uses.
+  Row and drag modules that other surfaces import (mobile recents, section
+  move provider, settings) stay.
+- `PluginThreadListProps` loses `Original` and `experimental_Original`;
+  there is nothing to delegate to. SDK 0.5.7.
 - `resolvePreferredReplacement` keeps automatic-first; the bundled plugin is
   first in slot order because plugin ids sort and it is enabled by default.
   Add a test that a fresh install resolves to the plugin.

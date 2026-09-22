@@ -720,7 +720,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.pluginPanelOrder`        | Navigation entry order                              |
 | `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
-| `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+| `sidebar.threadListProvider`      | Plugin key or `__automatic__` (`__builtin__` is read as automatic) |
 
 New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
 Migrated installations with existing projects, threads, or UI preferences fall back
