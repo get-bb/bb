@@ -112,7 +112,7 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("marketplace-install-command");
     expect(html).not.toContain("Don&#x27;t have bb?");
     expect(html).not.toContain("Runs in bb");
-    expect(html).toContain("Listed");
+    expect(html).not.toContain("Listed");
     expect(html).toContain(
       'href="https://www.npmjs.com/package/@get-bb/plugin-prompt-library"',
     );

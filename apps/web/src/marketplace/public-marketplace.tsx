@@ -58,7 +58,6 @@ import {
   filterMarketplaceCategory,
   filterMarketplaceEntries,
   formatInstalls,
-  formatMarketplaceDate,
   marketplaceAssetUrl,
   marketplaceAuthorPath,
   marketplaceCategoryOptions,
@@ -815,7 +814,6 @@ export function PublicMarketplaceDetailPage({
   const category = categoryDefinition?.displayName ?? "More plugins";
   const categoryId = categoryDefinition?.id ?? UNCATEGORIZED_CATEGORY_ID;
   const installs = marketplaceEntryInstalls(entry, stats);
-  const published = formatMarketplaceDate(entry.publishedAt);
   const repository = marketplaceRepositoryUrl(entry);
   const installCommand = marketplaceInstallCommand(entry.id);
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
@@ -880,7 +878,6 @@ export function PublicMarketplaceDetailPage({
                   ? "New"
                   : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
               </span>
-              {published === null ? null : <span>Listed {published}</span>}
               <a
                 className="marketplace-detail-source"
                 href={repository}
