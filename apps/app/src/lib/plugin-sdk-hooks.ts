@@ -10,7 +10,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import type { PromptTextMention } from "@bb/domain";
@@ -293,7 +293,8 @@ export function useProviders(): PluginProvidersState {
 
 export function useSdk(): PluginBrowserBbSdk {
   const pluginId = usePluginId();
-  return getPluginBoundSdk(sdk, pluginId);
+  const queryClient = useQueryClient();
+  return getPluginBoundSdk(sdk, pluginId, queryClient);
 }
 
 const EMPTY_ENVIRONMENT_PROVIDERS: readonly PluginEnvironmentProvider[] = [];
