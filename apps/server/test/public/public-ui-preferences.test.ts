@@ -62,6 +62,29 @@ describe("public ui preferences", () => {
     },
   );
 
+  it.each(["__automatic__", "__builtin__", "garden/icons"])(
+    "normalizes legacy navigation selection %s while preserving explicit plugins",
+    async (previous) => {
+      await withTestHarness(async (harness) => {
+        const key = "sidebar.navigationProvider";
+        const expected =
+          previous === "garden/icons" ? previous : "navigation/navigation";
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: {
+            [key]: { revision: 0, value: "navigation/navigation" },
+          },
+        });
+        overwriteStoredUiPreference(harness.deps.db, {
+          key,
+          valueJson: JSON.stringify(previous),
+        });
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 1, value: expected } },
+        });
+      });
+    },
+  );
+
   it.each([
     ["__automatic__", "__builtin__"],
     ["__builtin__", "__builtin__"],

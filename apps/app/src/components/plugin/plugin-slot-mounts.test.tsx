@@ -15,7 +15,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { createStore, Provider } from "jotai";
+import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -60,7 +60,8 @@ import {
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
-import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
+import { renderNavigationHarness } from "@/test/navigation-harness";
 import {
   getComposerInputLock,
   useComposer,
@@ -1477,7 +1478,7 @@ describe("useComposer().experimental_setSelection", () => {
   });
 });
 
-describe("PluginNavSidebarItems + PluginPanelView", () => {
+describe("Navigation plugin + PluginPanelView", () => {
   function Board() {
     return <div>board panel body</div>;
   }
@@ -1499,19 +1500,17 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   }
 
-  it("keeps the Automations row in the nav list", () => {
+  it("keeps the Automations row in the nav list", async () => {
+    await registerNavigationPlugin();
     registerAutomationsPanel();
 
-    render(
-      <MemoryRouter>
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
+    renderNavigationHarness();
 
     expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
   });
 
-  it("renders a sidebar entry that routes to the plugin panel", () => {
+  it("renders a sidebar entry that routes to the plugin panel", async () => {
+    await registerNavigationPlugin();
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
@@ -1526,9 +1525,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         ],
       }),
     );
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <PluginNavSidebarItems />
+    renderNavigationHarness({
+      children: (
         <Routes>
           <Route path="/" element={<div>home</div>} />
           <Route
@@ -1536,8 +1534,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
             element={<RoutedPluginPanelView />}
           />
         </Routes>
-      </MemoryRouter>,
-    );
+      ),
+    });
     fireEvent.click(screen.getByText("Demo board"));
     expect(screen.getByText("board panel body")).toBeDefined();
   });
@@ -1601,7 +1599,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     ).toBeNull();
   });
 
-  it("shows a plugin panel's position when it is open in a split", () => {
+  it("shows a plugin panel's position when it is open in a split", async () => {
+    await registerNavigationPlugin();
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
@@ -1647,13 +1646,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       },
     });
 
-    render(
-      <Provider store={store}>
-        <MemoryRouter initialEntries={["/"]}>
-          <PluginNavSidebarItems splitEnabled />
-        </MemoryRouter>
-      </Provider>,
-    );
+    renderNavigationHarness({ store, splitEnabled: true });
 
     const splitMap = screen.getByRole("img", {
       name: "Demo board — open in split",
@@ -1662,7 +1655,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(label.nextElementSibling).toBe(splitMap);
   });
 
-  it("keeps the sidebar entry active on nested plugin panel routes", () => {
+  it("keeps the sidebar entry active on nested plugin panel routes", async () => {
+    await registerNavigationPlugin();
     setPluginSlotRegistrations(
       "simple-notes",
       registrationSet({
@@ -1677,15 +1671,11 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         ],
       }),
     );
-    render(
-      <MemoryRouter
-        initialEntries={[
-          "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
-        ]}
-      >
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
+    renderNavigationHarness({
+      initialEntries: [
+        "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
+      ],
+    });
 
     expect(
       screen
@@ -1694,7 +1684,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     ).toBe("page");
   });
 
-  it("draws a remembered plugin row before boot and keeps the same node when the plugin registers", () => {
+  it("draws a remembered plugin row before boot and keeps the same node when the plugin registers", async () => {
+    await registerNavigationPlugin();
     resetPluginFrontendBootStateForTest();
     writeLastKnownPluginNavPanelChrome([
       {
@@ -1705,11 +1696,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         icon: "columns",
       },
     ]);
-    render(
-      <MemoryRouter>
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
+    renderNavigationHarness();
     const rememberedRow = screen.getByRole("button", { name: "Demo board" });
 
     act(() => {
@@ -1734,7 +1721,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   });
 
-  it("drops a remembered plugin row that never registers once frontends have settled", () => {
+  it("drops a remembered plugin row that never registers once frontends have settled", async () => {
+    await registerNavigationPlugin();
     resetPluginFrontendBootStateForTest();
     writeLastKnownPluginNavPanelChrome([
       {
@@ -1745,11 +1733,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         icon: "columns",
       },
     ]);
-    render(
-      <MemoryRouter>
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
+    renderNavigationHarness();
     expect(screen.getByRole("button", { name: "Ghost board" })).toBeDefined();
     act(() => markPluginFrontendsSettled());
     expect(screen.queryByRole("button", { name: "Ghost board" })).toBeNull();

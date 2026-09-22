@@ -29,6 +29,30 @@ because the slot props cannot express most of what bb's navigation does.
 | `:not(:has([data-sidebar-navigation-customize-mode]))` on every rule | The inline customize editor renders inside the replaced region | The host renders the customize editor in place of the provider while it is open (3b) |
 | Media queries duplicating bb's 28/36/40px control sizes | No sizing contract | `--bb-sidebar-control-size` and `--bb-sidebar-control-icon-size` (2g) |
 
+## Status (2026-09-22)
+
+Implemented as four stacked layers:
+
+1. Navigation model API (2a-2d, 2f): `experimental_useSidebarNavigation`,
+   `experimental_useSidebarNavigationSplit`,
+   `experimental_SidebarNavigationIcon`, host customize editor. SDK 0.5.11.
+2. Header slot (2e, 2g, 3e): `experimental_sidebarHeader`,
+   `sidebar.headerProvider` (default `__builtin__`), sizing tokens. SDK
+   0.5.12.
+3. Bundled `plugins/navigation`, disabled by default; adds
+   `isShortcutModifierHeld` to the navigation state. SDK 0.5.13.
+4. Switch-over: Navigation enabled and the default provider, built-in
+   navigation deleted, placeholder with remembered height, a picked provider
+   that is disabled or removed falls back to Navigation, `experimental_Original`
+   renders the bundled plugin. SDK 0.5.14.
+
+Differences from the plan: the header default is `__builtin__` (reusing the
+replacement picker) rather than `__none__`; the plugin lives at
+`plugins/navigation`; overflow items in the plugin's More menu open in a split
+from their menu rather than by dragging. Compact Nav 0.1.5 keeps working on
+layer 4 through `experimental_Original`, except that the bundled plugin's
+divider shows below its icons.
+
 ## Decisions this plan assumes (confirm before Phase 1)
 
 1. **The host keeps arrangement state.** Order and visibility stay in

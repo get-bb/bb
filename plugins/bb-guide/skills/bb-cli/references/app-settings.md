@@ -20,6 +20,12 @@ Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
+The sidebar navigation works the same way: `sidebar.navigationProvider` defaults
+to the bundled Navigation plugin (`navigation/navigation`), and legacy
+`__automatic__` and `__builtin__` selections resolve to it. Navigation order and
+visibility stay in `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`,
+so they carry over between navigation plugins.
+
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
   (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
   `sidebar.chronologicalSort`, the section

@@ -106,22 +106,22 @@
           "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.tsx",
           "anchors": [
             "data-testid=\"sidebar-navigation-region\"",
-            "PluginReplacementSlot",
+            "NavigationProvider",
             "SidebarNavigationCustomize"
           ]
         },
         {
-          "path": "apps/app/src/components/sidebar/BuiltInSidebarNavigation.tsx",
+          "path": "plugins/navigation/app/Navigation.tsx",
           "anchors": [
-            "data-testid=\"app-sidebar-primary-actions\"",
-            "PluginNavSidebarItems"
+            "data-testid=\"plugin-nav-sidebar-items\"",
+            "experimental_useSidebarNavigation"
           ]
         },
         {
           "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.test.tsx",
           "anchors": [
             "routes Search through the quick palette without inline search UI",
-            "delegates and falls back after a crash without owner remounts"
+            "replaces a crashed provider with a reload placeholder"
           ]
         }
       ]

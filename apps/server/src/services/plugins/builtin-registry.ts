@@ -160,7 +160,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "navigation",
     pluginId: "navigation",
-    defaultEnabled: false,
+    defaultEnabled: true,
   },
   {
     name: "scheduled-send",

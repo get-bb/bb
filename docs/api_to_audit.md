@@ -2243,18 +2243,26 @@ its customize editor in the region and keeps the provider mounted but hidden.
 
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
-`experimental_Original` bypasses replacement resolution. A crash restores only
-the bounded controls and leaves the retained sidebar regions mounted.
+bb's own rows ship as the bundled Navigation plugin, the default provider
+(`sidebar.navigationProvider` is `navigation/navigation`; legacy
+`__automatic__` and `__builtin__` resolve to it). A picked provider that is
+disabled or removed falls back to the bundled plugin once plugin frontends
+have loaded. The host keeps a placeholder for loading (skeleton rows at the
+provider's remembered height), missing (the bundled plugin is also off), and
+crashed (Reload) states. `experimental_Original` renders the bundled plugin, or
+nothing while it is disabled. A crash leaves the retained sidebar regions
+mounted.
 
 **Audit before stabilizing.**
 
 1. **Boundary.** Verify plugins can express useful navigation without control
    of the drawer, thread list, footer, resize handle, or shortcuts.
-2. **Crash and delegation.** Verify `experimental_Original` and crash fallback
-   never recurse or remount the thread list and footer. `experimental_Original`
-   is scheduled for removal once bb's navigation ships as a bundled plugin.
-3. **Arbitration.** Confirm Automatic remains the correct default when several
-   navigation replacements exist.
+2. **Crash and delegation.** Verify the crash placeholder and
+   `experimental_Original` never recurse or remount the thread list and
+   footer. Remove `experimental_Original` once released plugins (Compact Nav
+   0.1.x) no longer render it.
+3. **Arbitration.** Confirm an explicit provider choice with no Automatic
+   option is right when several navigation replacements exist.
 4. **Customize handoff.** Confirm providers accept the host editor replacing
    their region, and that focus returns to the control that opened it from a
    button, a dropdown item, and a context-menu item.

@@ -331,10 +331,16 @@ function OverflowItem({
   onClose: () => void;
 }) {
   const { actions } = experimental_useSidebarNavigation();
-  const split = experimental_useSidebarNavigationSplit(item.id);
+  const split = experimental_useSidebarNavigationSplit(item.id, {
+    activation: "distance",
+    onDragStart: onClose,
+  });
   const canSplit = split.isAvailable && !isCompactViewport && !item.isDisabled;
   return (
     <SidebarOverflowItem
+      {...(canSplit && split.splitProps.onPointerDown
+        ? { onPointerDown: split.splitProps.onPointerDown }
+        : {})}
       item={{
         id: item.id,
         title: item.label,

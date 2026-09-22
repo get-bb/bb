@@ -734,7 +734,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
 | `sidebar.pluginPanelOrder`        | Navigation entry order                              |
 | `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
-| `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+| `sidebar.navigationProvider`      | Plugin key; defaults to `navigation/navigation`     |
 | `sidebar.headerProvider`          | Plugin key, or `__builtin__` for bb's header only   |
 | `sidebar.threadListProvider`      | Plugin key; defaults to `thread-list/thread-list` |
 
@@ -744,6 +744,12 @@ Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
 Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
+
+The sidebar navigation also uses an explicit plugin selection and defaults to the
+bundled Navigation plugin (`navigation/navigation`). Existing `__automatic__` and
+`__builtin__` selections resolve to that default. Order and visibility stay in
+`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, shared by every
+navigation plugin.
 
 `sidebar.headerProvider` picks a plugin that draws controls in the sidebar header
 row, between the sidebar toggle and the back and forward buttons. It defaults to

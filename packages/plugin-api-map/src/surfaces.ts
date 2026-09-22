@@ -55,7 +55,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Hide, show, and reorder destinations, open bb's customize editor, and open or disable the plugin behind a panel",
           "Draw bb's icons and plugin branding, and each panel's live sidebar accessory",
           "Put controls, such as navigation icons, in the header row beside the sidebar toggle with experimental_sidebarHeader, and have the navigation slot render nothing while that header is mounted",
-          "Render bb's original controls when the plugin wants to delegate",
+          "Start from bb's own rows: they ship as the bundled Navigation plugin, which uses only this API",
           "Leave the thread list, footer, drawer, and resize handle under bb's control",
         ],
         apiSymbols: [
@@ -73,6 +73,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarNavigationActivationOptions",
           "experimental_useSidebarNavigationSplit",
           "ExperimentalSidebarNavigationSplit",
+          "ExperimentalSidebarNavigationSplitOptions",
           "ExperimentalSidebarHeaderRegistration",
           "ExperimentalSidebarHeaderProps",
         ],

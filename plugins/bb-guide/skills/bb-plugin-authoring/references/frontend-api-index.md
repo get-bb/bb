@@ -105,6 +105,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarNavigationActions`
 - `ExperimentalSidebarNavigationState`
 - `ExperimentalSidebarNavigationSplit`
+- `ExperimentalSidebarNavigationSplitOptions`
 - `ExperimentalSidebarNavigationIconProps`
 - `ExperimentalSidebarNavigationProps`
 - `ExperimentalSidebarHeaderProps`

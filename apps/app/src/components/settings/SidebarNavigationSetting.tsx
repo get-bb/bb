@@ -9,7 +9,7 @@ export function SidebarNavigationSetting() {
       label="Navigation"
       triggerAriaLabel="Sidebar navigation"
       description="Choose who arranges the host-owned sidebar destinations on this device."
-      builtInDescription="Native New thread, Search, Plugins, Skills, and plugin panels."
+      allowAutomatic={false}
       preferenceAtom={sidebarNavigationProviderAtom}
       slots={experimentalSidebarNavigations}
     />

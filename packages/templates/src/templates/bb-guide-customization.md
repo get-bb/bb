@@ -97,6 +97,13 @@ values from `bb settings ui` once. The `threadLifecycles` preference defaults
 to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both.
 
+The sidebar navigation rows (New thread, Search, Plugins, Skills, plugin
+panels) are drawn by the Navigation builtin plugin. Their order and
+visibility are `bb settings ui` keys (`sidebar.pluginPanelOrder`,
+`sidebar.visiblePluginPanels`), shared by any navigation plugin chosen with
+`sidebar.navigationProvider`. `sidebar.headerProvider` picks a plugin that
+draws controls beside the sidebar toggle; it defaults to `__builtin__`.
+
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to

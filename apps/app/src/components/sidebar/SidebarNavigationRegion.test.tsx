@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { useEffect, useRef, useState, type MouseEventHandler } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -30,6 +31,13 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
+import { sidebarNavigationProviderAtom } from "./sidebarNavigationProvider";
+import { rememberNavigationHeight } from "./SidebarNavigationPlaceholder";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
 import {
   useSidebarNavigation,
   useSidebarNavigationSplit,
@@ -38,7 +46,6 @@ import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/pl
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
-  openNewThreadInSplit: vi.fn(),
   openInSplit: vi.fn(),
   onNewChat: vi.fn(),
   onSearchThreads: vi.fn(),
@@ -51,26 +58,6 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   }),
   useAppCommandShortcut: () => null,
   useIsAppCommandModifierHeld: () => false,
-}));
-vi.mock("@/components/plugin/PluginNavSidebarItems", () => ({
-  ResourceNavSidebarItem: () => <div />,
-  PluginNavSidebarItems: ({
-    builtInEntries = [],
-  }: {
-    builtInEntries?: Array<{
-      id: string;
-      title: string;
-      onActivate: MouseEventHandler<HTMLButtonElement>;
-    }>;
-  }) => (
-    <div>
-      {builtInEntries.map((entry) => (
-        <button key={entry.id} type="button" onClick={entry.onActivate}>
-          {entry.title}
-        </button>
-      ))}
-    </div>
-  ),
 }));
 vi.mock("./usePaneContentSplitDrag", () => ({
   usePaneContentSplitActions: () => ({
@@ -186,11 +173,7 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
           isCustomizing={isCustomizing}
           onCustomizingChange={setCustomizing}
           focusReturnTargetRef={focusReturnTargetRef}
-          splitEnabled
-          newThreadSplit={{ openInSplit: mocks.openNewThreadInSplit }}
           onNavigate={vi.fn()}
-          onNewChat={mocks.onNewChat}
-          onSearchThreads={mocks.onSearchThreads}
         />
       </SidebarNavigationModelProvider>
       <RetainedOwner onMount={onOwnerMount} />
@@ -202,8 +185,10 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
 function renderHarness(
   onOwnerMount = vi.fn(),
   initialEntries: string[] = ["/"],
+  navigationProvider = "garden/navbar",
 ) {
   const store = createStore();
+  store.set(sidebarNavigationProviderAtom, navigationProvider);
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
@@ -247,7 +232,7 @@ afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
   mocks.dispatch.mockReset();
-  mocks.openNewThreadInSplit.mockReset();
+  resetPluginFrontendBootStateForTest();
   mocks.openInSplit.mockReset();
   mocks.onNewChat.mockReset();
   mocks.onSearchThreads.mockReset();
@@ -264,14 +249,68 @@ function listedItems(name: string): string[] {
 }
 
 describe("SidebarNavigationRegion", () => {
-  it("preserves modifier-click for New thread in BB navigation", () => {
-    renderHarness();
+  it("renders bb's bundled Navigation plugin by default", async () => {
+    await registerNavigationPlugin();
+    renderHarness(vi.fn(), ["/"], "navigation/navigation");
+
+    fireEvent.click(screen.getByRole("button", { name: "Skills" }));
+    expect(screen.getByTestId("pathname").textContent).toBe("/skills");
 
     fireEvent.click(screen.getByRole("button", { name: "New thread" }), {
       metaKey: true,
     });
+    expect(mocks.openInSplit).toHaveBeenCalledWith(
+      expect.objectContaining({ content: { kind: "new-thread" } }),
+    );
+  });
 
-    expect(mocks.openNewThreadInSplit).toHaveBeenCalledOnce();
+  it("shows skeleton rows at the provider's remembered height while plugins load", () => {
+    rememberNavigationHeight("navigation/navigation", 96);
+    renderHarness(vi.fn(), ["/"], "navigation/navigation");
+
+    const placeholder = document.querySelector<HTMLElement>(
+      '[data-sidebar-navigation-placeholder="loading"]',
+    );
+    expect(placeholder?.style.height).toBe("96px");
+    expect(placeholder?.children).toHaveLength(3);
+  });
+
+  it("reserves nothing while loading a provider that rendered nothing", () => {
+    rememberNavigationHeight("garden/navbar", 0);
+    renderHarness();
+
+    expect(
+      document.querySelector("[data-sidebar-navigation-placeholder]"),
+    ).toBeNull();
+  });
+
+  it("falls back to bb's Navigation when the picked provider is gone", async () => {
+    await registerNavigationPlugin();
+    renderHarness(vi.fn(), ["/"], "compact-nav/icons");
+
+    expect(
+      document.querySelector('[data-sidebar-navigation-placeholder="loading"]'),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Plugins" })).toBeNull();
+
+    act(() => markPluginFrontendsSettled());
+
+    expect(screen.getByRole("button", { name: "Plugins" })).toBeDefined();
+    expect(
+      document.querySelector("[data-sidebar-navigation-placeholder]"),
+    ).toBeNull();
+  });
+
+  it("says no navigation is enabled once plugins settle without one", () => {
+    markPluginFrontendsSettled();
+    renderHarness(vi.fn(), ["/"], "navigation/navigation");
+
+    expect(
+      document.querySelector('[data-sidebar-navigation-placeholder="missing"]')
+        ?.textContent,
+    ).toContain("No navigation plugin is enabled.");
+    fireEvent.click(screen.getByRole("button", { name: "Open Plugins" }));
+    expect(screen.getByTestId("pathname").textContent).toBe("/plugins");
   });
 
   it("routes Search through the quick palette without inline search UI", () => {
@@ -402,9 +441,13 @@ describe("SidebarNavigationRegion", () => {
     trigger.focus();
 
     fireEvent.click(trigger);
-    expect(
-      document.querySelector('[data-sidebar-navigation-customize-mode="true"]'),
-    ).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-sidebar-navigation-customize-mode="true"]',
+        ),
+      ).not.toBeNull(),
+    );
     expect(
       screen.queryByRole("button", { name: "Customize replacement" }),
     ).toBeNull();
@@ -447,30 +490,54 @@ describe("SidebarNavigationRegion", () => {
     expect(screen.getByTestId("pathname").textContent).toBe("/");
   });
 
-  it("delegates and falls back after a crash without owner remounts", () => {
+  it("delegates to the bundled Navigation plugin through experimental_Original", async () => {
+    await registerNavigationPlugin();
+    registerFixture();
+    const ownerMount = vi.fn();
+    renderHarness(ownerMount);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delegate to BB" }));
+
+    expect(
+      document.querySelector(
+        '[data-bb-plugin="navigation"] [data-testid="plugin-nav-sidebar-items"]',
+      ),
+    ).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plugins" })).toBeDefined();
+    expect(ownerMount).toHaveBeenCalledOnce();
+  });
+
+  it("renders nothing for experimental_Original without the bundled plugin", () => {
+    registerFixture();
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delegate to BB" }));
+
+    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
+    expect(screen.queryByTestId("replacement-navigation")).toBeNull();
+  });
+
+  it("replaces a crashed provider with a reload placeholder", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     registerFixture();
     const ownerMount = vi.fn();
     renderHarness(ownerMount);
-    expect(ownerMount).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delegate to BB" }));
-    expect(screen.getByTestId("built-in-sidebar-navigation")).toBeDefined();
-    expect(ownerMount).toHaveBeenCalledOnce();
-
-    cleanup();
-    resetAllCrashedPluginSlotsForTest();
-    renderHarness(ownerMount);
     fireEvent.click(screen.getByRole("button", { name: "Crash replacement" }));
-    expect(screen.getByTestId("built-in-sidebar-navigation")).toBeDefined();
-    expect(ownerMount).toHaveBeenCalledTimes(2);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Garden Navbar stopped working.",
+    );
+    expect(ownerMount).toHaveBeenCalledOnce();
     expect(getNotifications()).toEqual([
       expect.objectContaining({
         title: "Sidebar navigation plugin crashed",
-        description:
-          "Garden Navbar (garden) stopped working, so bb's own navigation is back.",
+        description: "Garden Navbar (garden) stopped working.",
       }),
     ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(screen.getByTestId("replacement-navigation")).toBeDefined();
   });
 });

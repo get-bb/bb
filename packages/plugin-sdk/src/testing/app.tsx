@@ -1073,6 +1073,7 @@ const testPluginSdkApp = {
   },
   experimental_useSidebarNavigationSplit(
     itemId,
+    _options,
   ): ExperimentalSidebarNavigationSplit {
     const env = useSlotEnv("experimental_useSidebarNavigationSplit");
     return useMemo(

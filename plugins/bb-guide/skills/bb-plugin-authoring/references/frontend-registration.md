@@ -261,16 +261,22 @@ host quick palette; there is no inline search field or query state.
 In tests, pass `renderSlot(..., { sidebarNavigation: { items, activeItemId } })`;
 actions and split drags are recorded in `inspection.sidebarNavigationCalls`.
 
-`experimental_useSidebarNavigationSplit(id)` works like
+`experimental_useSidebarNavigationSplit(id, options?)` works like
 `experimental_useSidebarThreadSplit`: spread `splitProps` onto the item, gate
 any "Open in split" affordance on `isAvailable`, and draw `layout` as a
-mini-map if you want one.
+mini-map if you want one. For a row inside a menu or popover, pass
+`{ activation: "distance", onDragStart: closeMenu }` so the drag engages
+after a short movement and the menu closes as it starts.
 
-`experimental_Original` renders bb's navigation without another replacement
-lookup; it will be removed once bb's navigation ships as a bundled plugin.
-BB restores its own navigation if the selected replacement is unavailable or
-crashes. Users can select Automatic, BB, or one plugin under Settings →
-Appearance → Navigation.
+bb ships its own rows as the bundled Navigation plugin, which uses only this
+API; read `plugins/navigation/app/Navigation.tsx` for a complete provider.
+Users pick one provider under Settings → Appearance → Navigation; it defaults
+to Navigation (`navigation/navigation`), and there is no Automatic choice. While
+plugins load, bb shows skeleton rows at the height your component last had
+(nothing if it rendered nothing). If the picked provider is disabled or
+removed, bb uses Navigation until the user picks again; if it crashes, a
+placeholder offers Reload. `experimental_Original` renders the bundled Navigation plugin,
+or nothing while it is disabled; it is deprecated and scheduled for removal.
 
 ### Controls beside the sidebar toggle
 

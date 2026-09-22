@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type {
   ExperimentalSidebarNavigationActions,
   ExperimentalSidebarNavigationSplit,
+  ExperimentalSidebarNavigationSplitOptions,
   ExperimentalSidebarNavigationState,
   PluginSidebarSplitPane,
 } from "@get-bb/plugin-sdk";
@@ -81,19 +82,27 @@ const PLACEHOLDER_CONTENT = { kind: "new-thread" } as const;
 
 export function useSidebarNavigationSplit(
   itemId: string,
+  splitOptions?: ExperimentalSidebarNavigationSplitOptions,
 ): ExperimentalSidebarNavigationSplit {
   const model = useSidebarNavigationModel();
   const target = useSidebarNavigationRowContent(itemId);
   const enabled = target !== null && (model?.splitEnabled ?? false);
   const onNavigate = model?.onNavigate;
+  const activation = splitOptions?.activation ?? "sidebar";
+  const onDragStartRef = useRef(splitOptions?.onDragStart);
+  useEffect(() => {
+    onDragStartRef.current = splitOptions?.onDragStart;
+  });
   const options = useMemo(
     () => ({
       content: target?.content ?? PLACEHOLDER_CONTENT,
       enabled,
       label: target?.label ?? "",
+      dragActivation: activation,
+      onDragStart: () => onDragStartRef.current?.(),
       ...(onNavigate ? { onNavigate } : {}),
     }),
-    [enabled, onNavigate, target],
+    [activation, enabled, onNavigate, target],
   );
   const { onPointerDown } = usePaneContentSplitDrag(options);
   const indicator = usePaneContentSplitIndicator(options.content, enabled);

@@ -23,7 +23,6 @@ import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
-import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
@@ -47,9 +46,6 @@ import {
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
-import { useSidebarNavigationReplacement } from "./sidebarNavigationProvider";
-
-const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
@@ -67,17 +63,10 @@ export function AppSidebar({
   mobileHosted,
 }: AppSidebarProps) {
   const threadListReplacement = useThreadListReplacement();
-  const navigationReplacement = useSidebarNavigationReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
-  const newThreadSplit = usePaneContentSplitDrag({
-    content: NEW_THREAD_PANE_CONTENT,
-    enabled: true,
-    label: "New thread",
-  });
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, openMobile } = useSidebar();
-  const [compactCustomizeMode, setCompactCustomizeMode] = useState(false);
   const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
   const customizeFocusReturnRef = useRef<HTMLElement | null>(null);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
@@ -166,11 +155,8 @@ export function AppSidebar({
 
   const isHiddenHostedBody = mobileHosted?.hidden === true;
   const isCompactCustomizeModeActive =
-    isCompactViewport && (compactCustomizeMode || isNavigationCustomizing);
+    isCompactViewport && isNavigationCustomizing;
   useEffect(() => {
-    if (!isCompactViewport || !openMobile || isHiddenHostedBody) {
-      setCompactCustomizeMode(false);
-    }
     if (isCompactViewport && (!openMobile || isHiddenHostedBody)) {
       setNavigationCustomizing(false);
     }
@@ -211,7 +197,7 @@ export function AppSidebar({
         testId="app-sidebar-top-reserve-row"
         renderHeaderSlot={(startInsetClassName) => (
           <SidebarHeaderSlot
-            hidden={isNavigationCustomizing || isCompactCustomizeModeActive}
+            hidden={isNavigationCustomizing}
             startInsetClassName={startInsetClassName}
           />
         )}
@@ -220,24 +206,8 @@ export function AppSidebar({
         isCustomizing={isNavigationCustomizing}
         onCustomizingChange={setNavigationCustomizing}
         focusReturnTargetRef={customizeFocusReturnRef}
-        compactCustomizeMode={isCompactViewport && compactCustomizeMode}
-        onCompactCustomizeModeChange={setCompactCustomizeMode}
         onNavigate={closeOnMobile}
-        splitEnabled
-        newThreadSplit={newThreadSplit}
-        onNewChat={handleNewChat}
-        onSearchThreads={closeOnMobile}
       />
-      {navigationReplacement.kind === "owner" ? (
-        <div
-          aria-hidden="true"
-          className={cn(
-            "mx-2 my-2 shrink-0 border-t border-sidebar-border/25",
-            isCompactCustomizeModeActive && "hidden",
-          )}
-          data-testid="app-sidebar-navigation-divider"
-        />
-      ) : null}
       <SidebarContent
         className={cn(isCompactCustomizeModeActive && "hidden")}
         aria-hidden={isCompactCustomizeModeActive ? true : undefined}

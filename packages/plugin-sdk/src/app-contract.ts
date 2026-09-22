@@ -276,6 +276,19 @@ export interface ExperimentalSidebarNavigationSplit {
   layout: { panes: readonly PluginSidebarSplitPane[] } | null;
 }
 
+/** Options for {@link PluginSdkApp.experimental_useSidebarNavigationSplit}. */
+export interface ExperimentalSidebarNavigationSplitOptions {
+  /**
+   * `sidebar` (the default) engages the drag once the pointer leaves the
+   * sidebar, so a row list with its own drag-to-reorder keeps working.
+   * `distance` engages after a short movement in any direction; use it for
+   * rows inside a menu or popover that covers the main area.
+   */
+  activation?: "sidebar" | "distance";
+  /** Called when the drag engages, for example to close the menu the row is in. */
+  onDragStart?: () => void;
+}
+
 /** Props for {@link PluginSdkApp.experimental_SidebarNavigationIcon}. */
 export interface ExperimentalSidebarNavigationIconProps {
   icon: ExperimentalSidebarNavigationIcon;
@@ -290,8 +303,9 @@ export interface ExperimentalSidebarNavigationIconProps {
 export interface ExperimentalSidebarNavigationProps {
   isCompactViewport: boolean;
   /**
-   * bb's own navigation. Removed once the navigation ships as a bundled
-   * plugin; render items from `experimental_useSidebarNavigation` instead.
+   * Renders bb's bundled Navigation plugin, or nothing while it is disabled.
+   * Kept for plugins written before `experimental_useSidebarNavigation`;
+   * render items from that hook instead. Scheduled for removal.
    *
    * @deprecated
    */
@@ -1535,7 +1549,14 @@ export interface PluginThreadListRegistration {
   component: ComponentType<PluginThreadListProps>;
 }
 
-/** Replace the bounded navigation controls above the sidebar thread list. */
+/**
+ * Replace the navigation controls above the sidebar thread list. Exclusive:
+ * the user picks one provider under Settings → Appearance → Navigation, and
+ * bb ships its own rows as the bundled Navigation plugin
+ * (`navigation/navigation`, the default). A picked provider that is disabled
+ * or removed falls back to Navigation; a crashing provider is replaced by a
+ * placeholder with a Reload button.
+ */
 export interface ExperimentalSidebarNavigationRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -3141,6 +3162,7 @@ export interface PluginSdkApp {
    */
   experimental_useSidebarNavigationSplit(
     itemId: string,
+    options?: ExperimentalSidebarNavigationSplitOptions,
   ): ExperimentalSidebarNavigationSplit;
   /**
    * bb's artwork for a navigation item's icon: bb's glyphs for its own items,
