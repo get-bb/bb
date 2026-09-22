@@ -11,7 +11,8 @@ The navigation wrapper now fills the available row width in both the bundled `th
 - PR: [#4077](https://github.com/get-bb/bb/pull/4077)
 - Related GitHub issue: none; reported with a screen recording in BB thread `thr_uivddeyuu5`
 - Live build: [BB Connect](https://ymichael--23244.getbb.app)
-- CI: [running for the current PR head](https://github.com/get-bb/bb/pull/4077/checks); use the linked rollup for live status
+- CI: [14 successful checks, 2 intentional skips, 0 failures](https://github.com/get-bb/bb/pull/4077/checks); all required checks passed
+- Mergeability: GitHub reports `CLEAN` / `MERGEABLE`
 
 ## Focused verification
 
