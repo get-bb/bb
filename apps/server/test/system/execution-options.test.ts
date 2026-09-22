@@ -26,6 +26,7 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { advanceUntilSettled } from "../helpers/fake-timers.js";
+import { requireRegistration } from "../helpers/provider-model-catalogs.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import {
   createTestProviderRegistry,
@@ -955,11 +956,6 @@ describe("resolveSystemExecutionOptions", () => {
           code: "failed",
         });
         expect(response.models.map((model) => model.model)).toEqual([
-          "claude-fable-5-1",
-          "claude-opus-5[1m]",
-          "claude-opus-4-8[1m]",
-          "claude-opus-4-7[1m]",
-          "claude-sonnet-5",
           "claude-example-preview",
         ]);
         expect(response.selectedOnlyModels).toEqual([]);
@@ -1061,16 +1057,25 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
-  it("serves the curated Claude catalog when the model probe fails transiently", async () => {
+  it("serves a provider's declared fallback models when the model probe fails transiently", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-execution-options-claude-provisional",
+        id: "host-execution-options-provisional",
+      });
+      const base = requireRegistration(harness, "claude-code");
+      harness.deps.providerRegistry.register({
+        ...base,
+        info: { ...base.info, id: "fallback-probe" },
+        fallbackModels: [
+          availableModelFixture({ model: "fallback-a", isDefault: true }),
+          availableModelFixture({ model: "fallback-b" }),
+        ],
       });
       registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         modelErrorsByProviderId: {
-          "claude-code": {
+          "fallback-probe": {
             errorCode: "command_timeout",
             errorMessage: "Model probe timed out",
           },
@@ -1079,25 +1084,17 @@ describe("resolveSystemExecutionOptions", () => {
 
       const response = await resolveSystemExecutionOptions(harness.deps, {
         hostId: host.id,
-        providerId: "claude-code",
+        providerId: "fallback-probe",
       });
 
       expect(response.modelLoadError).toEqual({
-        providerId: "claude-code",
+        providerId: "fallback-probe",
         code: "timeout",
       });
       expect(response.models.map((model) => model.model)).toEqual([
-        "claude-fable-5-1",
-        "claude-opus-5[1m]",
-        "claude-opus-4-8[1m]",
-        "claude-opus-4-7[1m]",
-        "claude-sonnet-5",
+        "fallback-a",
+        "fallback-b",
       ]);
-      expect(
-        response.models
-          .filter((model) => model.isDefault)
-          .map((model) => model.model),
-      ).toEqual(["claude-opus-5[1m]"]);
     });
   });
 

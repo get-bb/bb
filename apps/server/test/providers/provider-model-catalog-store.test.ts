@@ -128,14 +128,6 @@ function modelIds(response: { models: readonly { model: string }[] }) {
   return response.models.map((model) => model.model);
 }
 
-function fallbackModelIds(harness: TestAppHarness, providerId: string) {
-  const ids = requireRegistration(harness, providerId).fallbackModels.map(
-    (model) => model.model,
-  );
-  expect(ids.length).toBeGreaterThan(0);
-  return ids;
-}
-
 function registerCatalogProbe(
   harness: TestAppHarness,
   args: {
@@ -225,9 +217,7 @@ describe("provider model catalog store", () => {
         providerId: "claude-code",
         code: "failed",
       });
-      expect(modelIds(response)).toEqual(
-        fallbackModelIds(harness, "claude-code"),
-      );
+      expect(modelIds(response)).toEqual([]);
       expect(host.listRequests()).toHaveLength(2);
     });
   });
@@ -572,9 +562,7 @@ describe("provider model catalog store", () => {
       lateFailure.resolve();
       const failed = await pending;
       expect(failed.modelLoadError?.code).toBe("failed");
-      expect(modelIds(failed)).toEqual(
-        fallbackModelIds(harness, "claude-code"),
-      );
+      expect(modelIds(failed)).toEqual([]);
 
       updateHost(harness.db, harness.hub, host.hostId, { phase: "creating" });
       expect((await host.read("claude-code")).modelLoadError?.code).toBe(

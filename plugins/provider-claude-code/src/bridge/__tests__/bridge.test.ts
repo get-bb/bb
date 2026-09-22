@@ -2414,10 +2414,7 @@ describe("bridge", () => {
       PATH: binDir,
     });
     expect(models.map((model) => model.model)).toEqual([
-      "claude-fable-5-1",
       "claude-opus-5[1m]",
-      "claude-opus-4-8[1m]",
-      "claude-opus-4-7[1m]",
       "claude-sonnet-5",
     ]);
     expect(models.filter((model) => model.isDefault)).toEqual([
@@ -2438,6 +2435,19 @@ describe("bridge", () => {
         persistSession: false,
       }),
     });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("treats an empty Claude model report as a discovery failure", async () => {
+    const close = vi.fn();
+    queryMock.mockReturnValueOnce({
+      initializationResult: vi.fn().mockResolvedValue({ models: [] }),
+      close,
+    });
+
+    await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
+      "Claude Code reported no models.",
+    );
     expect(close).toHaveBeenCalledOnce();
   });
 
