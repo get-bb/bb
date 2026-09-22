@@ -24,6 +24,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
+import { SIDEBAR_DISCLOSURE_ACTION_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -109,7 +110,8 @@ export function SidebarMore({
                   aria-label={ariaLabel}
                   className={cn(
                     PROJECT_LIST_ACTION_BUTTON_CLASS,
-                    "w-full text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
+                    SIDEBAR_DISCLOSURE_ACTION_CLASS,
+                    "w-full hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
                     isMenuOpen && "bg-sidebar-accent",
                   )}
                   data-testid={`${testIdPrefix}-more-trigger`}
