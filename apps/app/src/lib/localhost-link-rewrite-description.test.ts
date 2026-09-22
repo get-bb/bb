@@ -8,9 +8,14 @@ describe("localhostLinkRewriteDescription", () => {
     );
   });
 
-  it("hides the setting when Connect does not rewrite localhost links", () => {
+  it("hides the setting on getbb.app hosts", () => {
     expect(localhostLinkRewriteDescription("asdf.getbb.app")).toBeNull();
-    expect(localhostLinkRewriteDescription("sawyer.localhost")).toBeNull();
+  });
+
+  it("shows the destination on .localhost hosts", () => {
+    expect(localhostLinkRewriteDescription("sawyer.localhost")).toBe(
+      "When enabled: http://localhost:3000/ → http://sawyer.localhost:3000/",
+    );
   });
 
   it("hides the setting when localhost is already the current hostname", () => {

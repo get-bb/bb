@@ -11,7 +11,6 @@ interface RewriteLocalhostLinkHrefArgs {
 const LOOPBACK_LINK_HOSTNAMES = new Set(["127.0.0.1", "localhost"]);
 const IGNORED_REWRITE_HOSTNAME_PATTERNS = [
   /^(?:.+\.)?getbb\.app$/i,
-  /^.+\.localhost$/i,
 ];
 
 function isIgnoredRewriteHostname(hostname: string): boolean {
