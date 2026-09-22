@@ -63,7 +63,7 @@ export function PluginCatalogInstallControl(
           >
             <span className="grid place-items-center" aria-hidden>
               <Icon
-                name="Download"
+                name={installed ? "Check" : "Download"}
                 className={cn(
                   "col-start-1 row-start-1 size-3.5",
                   installed &&
