@@ -1178,6 +1178,48 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
+  .marketplace-detail-identity {
+    display: contents;
+  }
+
+  .marketplace-detail-identity h1 {
+    align-self: center;
+  }
+
+  .marketplace-detail-attribution {
+    grid-column: 1 / -1;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-top: 0;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .marketplace-detail-author {
+    min-width: 0;
+    gap: 5px;
+  }
+
+  .marketplace-detail-author > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .marketplace-detail-attribution .marketplace-detail-installs {
+    flex: none;
+  }
+
+  .marketplace-detail-attribution .marketplace-author-avatar {
+    width: 18px;
+    height: 18px;
+    flex: none;
+  }
+
+  .marketplace-detail-category {
+    padding: 3px 7px;
+    font-size: 12px;
+  }
+
   .marketplace-detail-install {
     grid-column: 1 / -1;
   }

@@ -929,7 +929,7 @@ export function PublicMarketplaceDetailPage({
               {authorPath === undefined ? (
                 <span className="marketplace-detail-author">
                   <AuthorAvatar author={entry.author} />
-                  {entry.author.name}
+                  <span>{entry.author.name}</span>
                 </span>
               ) : (
                 <MarketplaceLink
@@ -937,7 +937,7 @@ export function PublicMarketplaceDetailPage({
                   href={authorPath}
                 >
                   <AuthorAvatar author={entry.author} />
-                  {entry.author.name}
+                  <span>{entry.author.name}</span>
                 </MarketplaceLink>
               )}
               <MarketplaceLink
