@@ -99,28 +99,25 @@ function NotificationSettings() {
       <p className="text-muted-foreground" role="status">
         {status}
       </p>
-      {permission === "default" || permission === "granted" ? (
-        <div className="flex justify-end">
-          {permission === "default" ? (
-            <button
-              type="button"
-              className="rounded-md border border-border px-3 py-2 disabled:opacity-50"
-              disabled={busy || !enabled}
-              onClick={() => void requestPermission()}
-            >
-              Allow notifications
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="rounded-md border border-border px-3 py-2 disabled:opacity-50"
-              disabled={busy || !enabled}
-              onClick={() => void testNotification()}
-            >
-              Send test notification
-            </button>
-          )}
-        </div>
+      {permission === "default" ? (
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-2 disabled:opacity-50"
+          disabled={busy || !enabled}
+          onClick={() => void requestPermission()}
+        >
+          Allow notifications
+        </button>
+      ) : null}
+      {permission === "granted" ? (
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-2 disabled:opacity-50"
+          disabled={busy || !enabled}
+          onClick={() => void testNotification()}
+        >
+          Send test notification
+        </button>
       ) : null}
       {!enabled ? (
         <p className="text-muted-foreground">
