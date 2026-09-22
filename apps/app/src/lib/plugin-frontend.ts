@@ -989,43 +989,16 @@ function installPluginFrontendPageLifecycle(): void {
   window.addEventListener("pageshow", (event) => lifecycle.onPageShow(event));
 }
 
-let bootSettled = false;
-const bootListeners = new Set<() => void>();
-
-function settleBoot(): void {
-  if (bootSettled) return;
-  bootSettled = true;
-  for (const listener of [...bootListeners]) listener();
-}
-
-export function subscribePluginFrontendBoot(listener: () => void): () => void {
-  bootListeners.add(listener);
-  return () => {
-    bootListeners.delete(listener);
-  };
-}
-
-export function isPluginFrontendBootSettled(): boolean {
-  return bootSettled;
-}
-
-export function resetPluginFrontendBootForTest(): void {
-  bootSettled = false;
-  bootPromise = null;
-}
-
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
-  })()
-    .catch((error: unknown) => {
-      console.warn(
-        `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    })
-    .finally(settleBoot);
+  })().catch((error: unknown) => {
+    console.warn(
+      `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
   return bootPromise;
 }
 

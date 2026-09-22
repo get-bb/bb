@@ -87,10 +87,12 @@ plugins list request, then dynamic imports with concurrency 3, smallest
 first), so every cold load shows the placeholder until the bundle lands.
 Decided 2026-09-21: the app does not compile the plugin into itself. A
 compiled-in path was built and then dropped because it duplicated the
-loader for one plugin; the placeholder is the mitigation. `bootPluginFrontends`
-exposes a settled signal (`isPluginFrontendBootSettled`,
-`subscribePluginFrontendBoot`) so the placeholder can tell "still loading"
-from "no thread list plugin is enabled" once the first reconcile finishes.
+loader for one plugin; the placeholder is the mitigation. The existing
+`usePluginFrontendsSettled` hook in `plugin-frontend-boot-state.ts` (light,
+no runtime imports) tells the placeholder "still loading" from "no thread
+list plugin is enabled" once the deferred boot settles. Nothing in the
+sidebar may import `lib/plugin-frontend.ts` statically: it carries the
+plugin runtime shims and would pull the on-demand vendors into boot.
 
 ## Phase 1: plugin API additions
 

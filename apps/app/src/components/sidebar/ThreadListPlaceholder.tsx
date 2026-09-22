@@ -1,20 +1,7 @@
-import { useSyncExternalStore } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  isPluginFrontendBootSettled,
-  subscribePluginFrontendBoot,
-} from "@/lib/plugin-frontend";
 import { getPluginsRoutePath } from "@/lib/route-paths";
-
-export function usePluginFrontendBootSettled(): boolean {
-  return useSyncExternalStore(
-    subscribePluginFrontendBoot,
-    isPluginFrontendBootSettled,
-    isPluginFrontendBootSettled,
-  );
-}
 
 export type ThreadListPlaceholderState =
   | { kind: "loading" }
