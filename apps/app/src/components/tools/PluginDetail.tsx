@@ -126,12 +126,12 @@ export function CatalogPluginDetail({
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={<CatalogEntryIconChip entry={entry} />}
-      leadingClassName="size-10"
+      leading={<CatalogEntryIconChip entry={entry} compact />}
+      leadingClassName="size-6"
       title={entry.displayName}
       titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
       metadata={
-        <div className="pl-12">
+        <div className="pl-8">
           <PluginCardAuthor entry={entry} />
         </div>
       }
