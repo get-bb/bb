@@ -28,7 +28,6 @@
 }
 
 .marketplace-hero > p {
-  max-width: 540px;
   margin: 18px auto 0;
   color: var(--dim);
   font-size: 17.5px;
