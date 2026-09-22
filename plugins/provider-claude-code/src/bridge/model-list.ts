@@ -10,7 +10,7 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
     cwd: process.cwd(),
     maxTurns: 0,
     persistSession: false,
-    settingSources: [],
+    settingSources: ["user", "project", "local"],
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
   };
 }

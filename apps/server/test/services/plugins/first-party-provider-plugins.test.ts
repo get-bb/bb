@@ -340,7 +340,10 @@ describe("first-party provider plugins", () => {
           "max",
         ]);
         expect(claude?.fallbackModels).toEqual([]);
-        expect(claude?.envPassthrough).toEqual(["BB_CLAUDE_CODE_EXECUTABLE"]);
+        expect(claude?.envPassthrough).toEqual([
+          "BB_CLAUDE_CODE_EXECUTABLE",
+          "CLAUDE_CODE_OAUTH_TOKEN",
+        ]);
         expect(
           harness.deps.providerRegistry
             .get("codex")

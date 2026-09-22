@@ -1245,6 +1245,15 @@ database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
+### Claude Code provider
+
+bb forwards only two environment variables to the Claude Code CLI, stripping
+every other. `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary;
+`CLAUDE_CODE_OAUTH_TOKEN` authenticates it on a machine with no interactive
+login, such as a CI runner. Mint the token with `claude setup-token`, which is
+long-lived where the credentials from `/login` are not. A logged-in machine
+needs neither.
+
 ### Provider retry plugin
 
 The builtin Provider retry plugin is enabled on fresh installations. When a turn
