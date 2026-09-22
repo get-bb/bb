@@ -314,7 +314,6 @@ export function BrowsePluginsTab({
             ) : (
               <PluginCatalogGrid
                 entries={flatEntries}
-                showCategory={!isCategoryShelf}
                 onInstall={onInstall}
                 onUninstall={onUninstall}
                 onOpenPlugin={onOpenPlugin}
@@ -395,7 +394,6 @@ function BrowseShelf({
             <PluginCatalogCard
               key={`${entry.marketplace}/${entry.entryId}`}
               entry={entry}
-              showCategory={false}
               onInstall={onInstall}
               onUninstall={onUninstall}
               onOpenPlugin={onOpenPlugin}

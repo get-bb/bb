@@ -84,53 +84,15 @@ to the placeholder otherwise, and the guide says so.
 Because the list is now a plugin, cold-start timing matters more than before.
 Plugin bundles load after boot (`apps/app/src/lib/plugin-frontend.ts`: the
 plugins list request, then dynamic imports with concurrency 3, smallest
-first), so without intervention every cold load shows the skeleton until the
-bundle lands. Mitigation, decided in this phase: the first-party list is
-compiled into the app build and registered through the public API by a
-static import, not fetched as a bundle, so it is present at first paint. It
-still may only import `@get-bb/plugin-sdk/app`; an import-boundary lint
-enforces that. It remains a real plugin from the host's point of view (same
-slot, same arbitration, same Settings entry) and can still be disabled,
-which reveals the missing state.
-
-### Compiled-in frontend mechanism
-
-The plugin stays an ordinary bundled plugin: `server.ts` runs in the server
-(KV, RPC, CLI), and the server still reports a frontend bundle for it. Only
-the browser import path changes.
-
-- `apps/app/src/lib/plugin-frontend.ts` gains a static table
-  `COMPILED_IN_PLUGIN_FRONTENDS: Record<string, () => Promise<unknown>>`
-  with one entry, `"thread-list": () => import("bb-plugin-thread-list/app")`.
-  `importModule` in `browserReconcileDeps` (line 924) consults it by plugin
-  id before the `/* @vite-ignore */` dynamic import; `loadOneBundle` passes
-  the plugin id through, a one-argument signature change. Vite emits the
-  module as an app chunk with a modulepreload hint, so it is served with the
-  app, not fetched from the plugin route.
-- First paint: `boot` (line 994) calls `installPluginRuntime()` and then, before
-  `fetchCandidates` resolves, runs the reconcile for a synthetic candidate
-  per compiled-in plugin with `hash: "compiled-in:<app version>"`. The
-  registrations are live before the plugins list request returns. When the
-  real candidate arrives, the existing hash check either skips (same
-  version) or reloads through the normal path. If the server reports the
-  plugin as disabled, the candidate is absent, the seeded generation is
-  removed, and the missing state shows. To avoid a list-then-blank flash for
-  a user who disabled it, the seed is skipped when a localStorage memo
-  `bb.plugin-frontend.compiled-in-disabled` names the plugin; the reconciler
-  writes that memo whenever a compiled-in plugin is absent from the list.
-- Evaluation order: `packages/plugin-sdk/src/app.ts` snapshots the runtime
-  global at module evaluation, so the compiled-in module must be imported
-  dynamically after `installPluginRuntime()`, never by a top-level static
-  import from app code. The table above already guarantees that.
-- Styles: the module compiles with the app's Tailwind pipeline, so
-  `bb-plugin-build` scoping does not apply. The plugin uses utilities and
-  `@bb/shared-ui` components only, no plugin-scoped CSS file. The bundled
-  build the server serves for other clients still goes through
-  `prepare:bundled` as usual.
-- Boundary: a Vite alias maps `bb-plugin-thread-list/app` to
-  `plugins/thread-list/app.tsx`, and an import-boundary lint restricts
-  everything under `plugins/thread-list/` to `@get-bb/plugin-sdk/app`,
-  `@bb/shared-ui/*`, `@bb/client-core`, and its npm dependencies. No `@/`.
+first), so every cold load shows the placeholder until the bundle lands.
+Decided 2026-09-21: the app does not compile the plugin into itself. A
+compiled-in path was built and then dropped because it duplicated the
+loader for one plugin; the placeholder is the mitigation. The existing
+`usePluginFrontendsSettled` hook in `plugin-frontend-boot-state.ts` (light,
+no runtime imports) tells the placeholder "still loading" from "no thread
+list plugin is enabled" once the deferred boot settles. Nothing in the
+sidebar may import `lib/plugin-frontend.ts` statically: it carries the
+plugin runtime shims and would pull the on-demand vendors into boot.
 
 ## Phase 1: plugin API additions
 
@@ -382,9 +344,24 @@ Stories: move `SidebarOverview`, `SectionGrouping`, and `ThreadRow` stories to
 
 ## Phase 4: switch the host
 
-- `AppSidebar.tsx` renders the Phase 0 placeholder as `original`;
-  `ProjectList` and the rest of the built-in list are deleted from
-  `apps/app`.
+Done 2026-09-21 (layer 12, `thread-list/4-flip`). The built-in list rendered
+first and the plugin swapped in when its bundle landed, which showed as a
+flicker on every load; with no built-in list the sidebar goes placeholder →
+plugin instead.
+
+- `AppSidebar.tsx` no longer builds a built-in list. `PluginThreadList`
+  mounts the resolved plugin directly and renders `ThreadListPlaceholder`
+  otherwise: skeleton rows until `usePluginFrontendsSettled` reports the
+  deferred boot done, then "No thread list plugin is enabled"; a crash shows
+  "stopped working" with a Reload button that resets the crashed slot and
+  remounts.
+- `ProjectList` and everything only it reached are deleted from `apps/app`
+  (about 12,000 lines including tests and stories). `SidebarPrimaryActions`
+  keeps the New thread and Search actions the navigation region still uses.
+  Row and drag modules that other surfaces import (mobile recents, section
+  move provider, settings) stay.
+- `PluginThreadListProps` loses `Original` and `experimental_Original`;
+  there is nothing to delegate to. SDK 0.5.7.
 - `resolvePreferredReplacement` keeps automatic-first; the bundled plugin is
   first in slot order because plugin ids sort and it is enabled by default.
   Add a test that a fresh install resolves to the plugin.
@@ -412,15 +389,35 @@ Stories: move `SidebarOverview`, `SectionGrouping`, and `ThreadRow` stories to
   consumer.
 - `docs/cli-guide-and-skill.md` for the CLI changes.
 
-Performance benchmark: `apps/app/src/components/sidebar/sidebar.bench.tsx`
-(Vitest bench, jsdom) mounts the built-in list and the plugin list with a
-generated bootstrap payload of 3,000 threads across 40 projects and 8
-sections, then measures initial mount, one status patch through
-`updateCachedThreadListStatusState`, one membership refetch that changes
-50 rows, and one pin. Run with `pnpm exec turbo run bench --filter=@bb/app`
-and paste the table into each Phase 3 PR that touches rendering. jsdom
-measures JavaScript time only; a manual pass in the desktop app with the
-React profiler covers layout.
+Performance benchmark: `apps/app/src/components/sidebar/sidebar.bench.test.tsx`
+(gated Vitest test, jsdom) mounts the list with a generated bootstrap payload
+of 3,000 threads across 40 projects and 8 sections, simulates an 800px
+viewport so windowing engages, then measures initial mount, one status patch
+through `updateCachedThreadListStatusState`, one membership refetch that
+changes 50 rows, and one pin (median of 5). Run with:
+
+```
+cd apps/app && BB_SIDEBAR_BENCH=1 pnpm exec vitest run src/components/sidebar/sidebar.bench.test.tsx
+```
+
+Both lists run through the same harness (the plugin mounted through
+`PluginThreadList` with its real registration, preference RPC stubbed).
+Results on 2026-09-21 (bee, jsdom, median of 5, 81 realized rows of 2,688
+windowed items for both):
+
+| ms | built-in | plugin |
+|---|---|---|
+| mount | 719 | 725 |
+| status patch | 184 | 222 |
+| membership refetch (50 rows) | 255 | 221 |
+| pin | 189 | 236 |
+
+Two fixes got the plugin here from 40 to 60 percent slower: the host's
+per-row hooks now share one thread-entry map per payload instead of each
+building a 3,000-entry map on every change, and the plugin's grouped data
+keeps untouched projects and thread arrays by identity across updates so
+per-project memos skip. jsdom measures JavaScript time only; a manual pass
+in the desktop app with the React profiler covers layout.
 
 Verification per phase:
 
@@ -463,7 +460,7 @@ for work that needs secrets or host files.
 
 ## Open questions
 
-1. Resolved 2026-09-21: the compiled-in mechanism is specified in Phase 0.
+1. Resolved 2026-09-21: no compiled-in mechanism; the placeholder covers cold start.
 2. Whether `sidebarProgressiveDisclosure` survives the move or is dropped.
 3. Whether the invalid-project-path warning survives (needs a host path
    existence hook) or is dropped.

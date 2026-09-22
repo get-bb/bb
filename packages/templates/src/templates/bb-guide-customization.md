@@ -88,12 +88,14 @@ uses an automatic per-host limit of one thread per available processor. Use
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
 
 The sidebar thread list is owned by the Thread list builtin plugin. Its
-layout preferences (organization mode, sort, section order, hidden and
+layout preferences (active/archived filter, organization mode, sort, section order, hidden and
 collapsed groups) live in the plugin and sync to every window:
 `bb thread-list prefs list [--json]`, `prefs get <key>`,
 `prefs set <key> <value>`, and `prefs reset <key>`. `set` takes JSON; a bare
 word is a string. On first load the plugin copies non-default `sidebar.*`
-values from `bb settings ui` once.
+values from `bb settings ui` once. The `threadLifecycles` preference defaults
+to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
+shows archived threads, and `'["active","archived"]'` shows both.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
@@ -300,6 +302,13 @@ an upgrade uploads the old browser-stored layout once.
   bb settings ui get <key> [--json]
   bb settings ui set <key> <value> [--json]
   bb settings ui reset <key> [--json]
+
+The sidebar thread list uses an explicit plugin selection and defaults to the bundled
+Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
+`__builtin__` selections resolve to that default; other plugin selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
 
 `bb settings ui list` prints every key with its value, revision, and a short
 description. `set` takes plain strings for enum and provider keys and JSON for

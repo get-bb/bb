@@ -191,7 +191,7 @@ function PluginScreenshotGallery({
 export function PluginOverviewLead({ description }: { description: string }) {
   return (
     <p
-      className="max-w-prose text-base leading-relaxed text-foreground"
+      className="text-base leading-relaxed text-foreground"
       data-plugin-summary=""
     >
       {description}

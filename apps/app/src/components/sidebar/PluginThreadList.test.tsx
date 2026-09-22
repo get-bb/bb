@@ -1,14 +1,26 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
-import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import { PluginThreadList } from "./PluginThreadList";
+
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("@/components/ui/app-toast", () => ({ appToast: toast }));
 
 function pluginReplacement(
   component: (props: PluginThreadListProps) => React.ReactNode,
@@ -25,31 +37,19 @@ function pluginReplacement(
   };
 }
 
-function renderList(
-  replacement: ResolvedReplacement<PluginThreadListSlot>,
-  searchQuery = "",
-) {
-  const ui = (query: string) => (
+function renderList(replacement: ResolvedReplacement<PluginThreadListSlot>) {
+  return render(
     <MemoryRouter>
       <SidebarProvider>
-        <PluginThreadList
-          replacement={replacement}
-          original={<div data-testid="bb-thread-list">bb thread list</div>}
-          searchQuery={query}
-          onNavigate={() => {}}
-        />
+        <PluginThreadList replacement={replacement} onNavigate={() => {}} />
       </SidebarProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
-  const result = render(ui(searchQuery));
-  return {
-    ...result,
-    rerenderWith: (query: string) => result.rerender(ui(query)),
-  };
 }
 
 beforeEach(() => {
-  resetDeprecatedAliasWarningsForTests();
+  resetPluginFrontendBootStateForTest();
+  toast.error.mockClear();
 });
 
 afterEach(() => {
@@ -58,38 +58,63 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PluginThreadList experimental_Original alias", () => {
-  it("delegates to BB's list through the alias and warns once across renders", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const seen: string[] = [];
-    const { rerenderWith } = renderList(
-      pluginReplacement(
-        ({ experimental_Original: LegacyOriginal, searchQuery }) => {
-          seen.push(searchQuery);
-          return LegacyOriginal === undefined ? (
-            <div>alias missing</div>
-          ) : (
-            <LegacyOriginal />
-          );
-        },
-      ),
-    );
+describe("PluginThreadList", () => {
+  it("shows the loading placeholder until plugin frontends have booted, then the missing state", () => {
+    const { container } = renderList({ kind: "owner" });
+    expect(
+      container.querySelector('[data-thread-list-placeholder="loading"]'),
+    ).not.toBeNull();
 
-    expect(screen.getByTestId("bb-thread-list")).toBeDefined();
-    rerenderWith("needle");
-    expect(screen.getByTestId("bb-thread-list")).toBeDefined();
-    expect(seen).toEqual(["", "needle"]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      "experimental_Original is deprecated; use Original. Removed in bb 0.42",
-    );
+    act(() => markPluginFrontendsSettled());
+
+    expect(
+      container.querySelector('[data-thread-list-placeholder="missing"]'),
+    ).not.toBeNull();
+    expect(screen.getByText("No thread list plugin is enabled.")).toBeDefined();
   });
 
-  it("never warns for a list that reads Original", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    renderList(pluginReplacement(({ Original }) => <Original />));
+  it("renders the plugin list with the host props and no delegation component", () => {
+    const seen: PluginThreadListProps[] = [];
+    renderList(
+      pluginReplacement((props) => {
+        seen.push(props);
+        return <div data-testid="plugin-list">plugin list</div>;
+      }),
+    );
 
-    expect(screen.getByTestId("bb-thread-list")).toBeDefined();
-    expect(warn).not.toHaveBeenCalled();
+    expect(screen.getByTestId("plugin-list")).toBeDefined();
+    expect(seen[0]).toMatchObject({
+      activeThreadId: null,
+      activeProjectId: null,
+      isCompactViewport: false,
+      searchQuery: "",
+    });
+    expect("Original" in (seen[0] ?? {})).toBe(false);
+  });
+
+  it("replaces a crashed list with the crashed placeholder and remounts on reload", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let shouldCrash = true;
+    const { container } = renderList(
+      pluginReplacement(() => {
+        if (shouldCrash) throw new Error("boom");
+        return <div data-testid="plugin-list">recovered</div>;
+      }),
+    );
+
+    expect(
+      container.querySelector('[data-thread-list-placeholder="crashed"]'),
+    ).not.toBeNull();
+    expect(screen.getByText("Demo list stopped working.")).toBeDefined();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+
+    shouldCrash = false;
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+
+    expect(screen.getByTestId("plugin-list").textContent).toBe("recovered");
+    expect(
+      container.querySelector("[data-thread-list-placeholder]"),
+    ).toBeNull();
   });
 });

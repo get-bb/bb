@@ -252,10 +252,12 @@ export function useResourceInfiniteItems<Item>(
 
 export function ResourceInfiniteScrollSentinel({
   hasMore,
+  itemCount,
   loading = false,
   onLoadMore,
 }: {
   hasMore: boolean;
+  itemCount: number;
   loading?: boolean;
   onLoadMore: () => void;
 }) {
@@ -289,7 +291,7 @@ export function ResourceInfiniteScrollSentinel({
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, [hasMore, loading]);
+  }, [hasMore, itemCount, loading]);
 
   if (!hasMore && !loading) return null;
   return (

@@ -140,3 +140,17 @@ describe("preferences sync", () => {
     expect(rpc.calls.filter((call) => call.method === "setPreference")).toHaveLength(0);
   });
 });
+
+describe("preferences sync with a provided store", () => {
+  it("reads and writes the attached store instead of the default one", async () => {
+    const { createStore } = await import("jotai");
+    const { attachPreferencesStore } = await import("./preferences-sync.js");
+    const custom = createStore();
+    attachPreferencesStore(custom);
+    const modeAtom = createSyncedPreferenceAtom("organizationMode");
+    await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
+    expect(custom.get(preferencesReadyAtom())).toBe(true);
+    expect(custom.get(modeAtom)).toBe("machine");
+    expect(getDefaultStore().get(preferencesReadyAtom())).toBe(false);
+  });
+});
