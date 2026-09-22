@@ -1105,7 +1105,7 @@ describe("PluginNavSidebarItems", () => {
 
     const trigger = moreTrigger();
     for (const token of [
-      "text-muted-foreground",
+      "text-subtle-foreground",
       "hover:text-sidebar-foreground",
       "focus-visible:text-sidebar-foreground",
       "data-[state=open]:text-sidebar-foreground",
