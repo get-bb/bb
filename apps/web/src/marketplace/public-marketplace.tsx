@@ -950,6 +950,15 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
+              <a
+                className="marketplace-detail-source"
+                href={repository}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View source
+                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+              </a>
             </div>
           </div>
           <div className="marketplace-detail-install">
@@ -967,22 +976,15 @@ export function PublicMarketplaceDetailPage({
                   });
                 }}
               />
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
+              <MarketplaceLink
+                className="marketplace-detail-source marketplace-detail-download"
+                href="/download/macos"
               >
-                View source
+                Get it for macOS
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+              </MarketplaceLink>
             </div>
-            <MarketplaceLink
-              className="marketplace-detail-source marketplace-detail-download"
-              href="/download/macos"
-            >
-              Get it for macOS
-            </MarketplaceLink>
+
           </div>
         </header>
         {
