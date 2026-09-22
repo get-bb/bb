@@ -2,7 +2,6 @@ import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenera
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import ArrowRight02Icon from "@hugeicons/core-free-icons/ArrowRight02Icon";
 import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
 import AudioWave01Icon from "@hugeicons/core-free-icons/AudioWave01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
@@ -384,7 +383,7 @@ function Shelf({
             onSelect(shelf.id);
           }}
         >
-          View all <span aria-hidden>→</span>
+          View all
         </a>
       </div>
       <PluginGrid
@@ -784,7 +783,7 @@ function MoreInCategory({
         <MarketplaceLink
           href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
         >
-          View all <span aria-hidden>→</span>
+          View all
         </MarketplaceLink>
       </div>
       <PluginGrid
@@ -848,43 +847,48 @@ export function PublicMarketplaceDetailPage({
             <p>{entry.description}</p>
           </div>
           <div className="marketplace-detail-facts">
-            {authorPath === undefined ? (
-              <span className="marketplace-detail-author">
-                <AuthorAvatar author={entry.author} />
-                {entry.author.name}
-              </span>
-            ) : (
+            <div className="marketplace-detail-attribution">
+              {authorPath === undefined ? (
+                <span className="marketplace-detail-author">
+                  <AuthorAvatar author={entry.author} />
+                  {entry.author.name}
+                </span>
+              ) : (
+                <MarketplaceLink
+                  className="marketplace-detail-author"
+                  href={authorPath}
+                >
+                  <AuthorAvatar author={entry.author} />
+                  {entry.author.name}
+                </MarketplaceLink>
+              )}
               <MarketplaceLink
-                className="marketplace-detail-author"
-                href={authorPath}
+                className="marketplace-detail-category"
+                href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
               >
-                <AuthorAvatar author={entry.author} />
-                {entry.author.name}
+                {category}
               </MarketplaceLink>
-            )}
-            <MarketplaceLink
-              className="marketplace-category-pill"
-              href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
-            >
-              {category}
-            </MarketplaceLink>
-            <span className={installs === undefined ? "is-new" : undefined}>
-              {installs === undefined
-                ? "New"
-                : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
-            </span>
-            {published === null ? null : <span>Listed {published}</span>}
-            <a
-              className="marketplace-detail-source"
-              href={repository}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View source
-              <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-            </a>
+            </div>
+            <div className="marketplace-detail-metadata">
+              <span className={installs === undefined ? "is-new" : undefined}>
+                {installs === undefined
+                  ? "New"
+                  : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
+              </span>
+              {published === null ? null : <span>Listed {published}</span>}
+              <a
+                className="marketplace-detail-source"
+                href={repository}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View source
+                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+              </a>
+            </div>
           </div>
           <div className="marketplace-detail-install">
+            <span className="marketplace-field-label">Install in bb</span>
             <CommandButton
               command={installCommand}
               label={`Copy ${installCommand}`}
@@ -897,13 +901,12 @@ export function PublicMarketplaceDetailPage({
                 });
               }}
             />
-            <MarketplaceLink
-              className="marketplace-detail-source"
-              href="/download/macos"
-            >
-              Download bb for macOS
-              <HugeiconsIcon icon={ArrowRight02Icon} aria-hidden />
-            </MarketplaceLink>
+            <span className="marketplace-install-help">
+              Need bb?{" "}
+              <MarketplaceLink href="/download/macos">
+                Download bb for macOS
+              </MarketplaceLink>
+            </span>
           </div>
         </header>
         {

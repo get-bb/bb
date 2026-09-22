@@ -280,6 +280,8 @@
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .marketplace-section-head > a:hover {
@@ -581,8 +583,8 @@
   gap: 8px;
   margin: 8px 0 28px;
   overflow: hidden;
-  color: var(--subtle);
-  font-size: 13px;
+  color: var(--label-muted);
+  font-size: var(--text-label-small);
   white-space: nowrap;
 }
 
@@ -620,22 +622,49 @@
 
 .marketplace-detail-identity > p {
   max-width: 62ch;
-  margin-top: 12px;
+  margin-top: 8px;
   color: var(--dim);
-  font-size: 17px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
 .marketplace-detail-facts {
-  display: flex;
+  display: grid;
   min-width: 0;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 10px;
   grid-column: 2 / -1;
   grid-row: 2;
-  color: var(--subtle);
+}
+
+.marketplace-detail-attribution,
+.marketplace-detail-metadata {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.marketplace-detail-attribution {
   font-size: 13px;
+}
+
+.marketplace-detail-metadata,
+.marketplace-detail-category,
+.marketplace-field-label,
+.marketplace-install-help {
+  color: var(--label-muted);
+  font-size: var(--text-label-small);
+  line-height: 1.5;
+}
+
+.marketplace-detail-category:hover,
+.marketplace-install-help a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.marketplace-field-label {
+  font-weight: 600;
 }
 
 .marketplace-detail-author {
@@ -669,14 +698,12 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-detail-install {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  display: grid;
+  justify-items: start;
+  gap: 8px;
   grid-column: 2 / -1;
   grid-row: 3;
-  margin-top: 4px;
-  font-size: 13px;
+  margin-top: 0;
 }
 
 .marketplace-detail-body {
@@ -718,7 +745,7 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-overview {
-  max-width: 62ch;
+  width: 100%;
   color: var(--dim);
   font-size: 15px;
   line-height: 1.6;
@@ -965,7 +992,7 @@ a.marketplace-detail-author:hover {
   }
 
   .marketplace-detail-identity > p {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .marketplace-screenshots {
