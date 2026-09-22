@@ -31,7 +31,7 @@ export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) 
     <ResourceBrowseCard
       {...props}
       className="h-full min-h-36 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-2 rounded-xl p-3"
-      leadingClassName="size-8"
+      leadingClassName="size-6"
       description={
         <span className="block min-h-[2lh]">{props.description}</span>
       }
