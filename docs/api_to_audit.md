@@ -599,7 +599,10 @@ means. The component retains the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
 loading state, and a `refresh()` operation
-that performs a blocking remote refresh. `experimental_BranchPicker` is built
+that performs a blocking remote refresh. `query` is debounced before the host
+request, so a control can pass every keystroke; the previous results remain
+available while the next request settles, and filtering them stays the
+caller's job. `experimental_BranchPicker` is built
 on this hook.
 `experimental_useCheckoutState({ hostId, projectId })` exposes the checkout's
 git, unborn, detached, dirty, current-branch, and operation facts. The checkout

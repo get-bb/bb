@@ -3103,8 +3103,10 @@ export interface PluginSdkApp {
    */
   experimental_BranchPicker: ComponentType<BranchPickerProps>;
   /**
-   * Search and refresh the branch list for one project source. Experimental:
-   * see docs/api_to_audit.md.
+   * Search and refresh the branch list for one project source. `query` is
+   * debounced before it reaches the host, so a control can pass it on every
+   * keystroke; filtering the returned lists stays the caller's job.
+   * Experimental: see docs/api_to_audit.md.
    */
   experimental_useBranches(args: UseBranchesArgs): BranchesState;
   /**
