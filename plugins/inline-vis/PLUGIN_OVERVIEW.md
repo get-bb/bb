@@ -5,6 +5,7 @@ See an agent's chart, demo, report, or Markdown document in the conversation wit
 - A live HTML preview or formatted Markdown document in the message.
 - A default viewport height of 224 pixels. The agent can set a height from 120 to 1200 pixels.
 - A header action that opens the source file in bb's sidebar viewer, for workspace and thread-storage previews alike.
+- A collapse control that remembers whether inline previews should stay collapsed on the current client.
 - A clear inline error when the file is missing, too large, or unsupported.
 
 ## How it works

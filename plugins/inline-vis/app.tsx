@@ -47,6 +47,26 @@ type LoadState =
 const DEFAULT_HEIGHT_PX = 224;
 const MIN_HEIGHT_PX = 120;
 const MAX_HEIGHT_PX = 1_200;
+const COLLAPSED_STORAGE_KEY = "bb.inline-vis.collapsed";
+
+function readCollapsedPreference(): boolean {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsedPreference(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
+  } catch {
+    return;
+  }
+}
 
 function encodePathSegments(file: string): string {
   return file.split("/").map(encodeURIComponent).join("/");
@@ -75,10 +95,14 @@ function parsePreviewHeight(value: string | undefined): number | null {
 function PreviewCard({
   file,
   action,
+  collapsed,
+  onCollapsedChange,
   children,
 }: {
   file: string;
   action: ReactNode;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   children: ReactNode;
 }) {
   return (
@@ -89,8 +113,22 @@ function PreviewCard({
           <span className="truncate opacity-70">{file}</span>
         </div>
         {action}
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} visualization ${file}`}
+          title={collapsed ? "Expand visualization" : "Collapse visualization"}
+          className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          onClick={() => onCollapsedChange(!collapsed)}
+        >
+          <Icon
+            name={collapsed ? "ChevronRight" : "ChevronDown"}
+            aria-hidden
+            className="size-3"
+          />
+        </button>
       </div>
-      {children}
+      {collapsed ? null : children}
     </div>
   );
 }
@@ -117,6 +155,12 @@ function InlineVisDirective({
         ? { status: "loading", file: fileAttr }
         : { status: "missing-file" },
   );
+  const [collapsed, setCollapsed] = useState(readCollapsedPreference);
+
+  const handleCollapsedChange = (nextCollapsed: boolean) => {
+    setCollapsed(nextCollapsed);
+    writeCollapsedPreference(nextCollapsed);
+  };
 
   useEffect(() => {
     if (heightError) {
@@ -184,6 +228,8 @@ function InlineVisDirective({
       <PreviewCard
         file={state.file}
         action={<span aria-hidden className="size-5 shrink-0" />}
+        collapsed={collapsed}
+        onCollapsedChange={handleCollapsedChange}
       >
         <div
           role="status"
@@ -213,6 +259,8 @@ function InlineVisDirective({
   return (
     <PreviewCard
       file={state.file}
+      collapsed={collapsed}
+      onCollapsedChange={handleCollapsedChange}
       action={
         <button
           type="button"
