@@ -241,7 +241,7 @@ export function NewTaskDialog({
   return (
     <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent
-        className="max-w-xl gap-0 p-0"
+        className="flex max-h-[85dvh] min-h-0 max-w-xl flex-col gap-0 p-0"
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
@@ -257,7 +257,7 @@ export function NewTaskDialog({
           stageMore(files);
         }}
       >
-        <DialogTitle className="flex items-center gap-2 px-4 pt-4 text-xs font-normal text-muted-foreground">
+        <DialogTitle className="flex shrink-0 items-center gap-2 px-4 pt-4 text-xs font-normal text-muted-foreground">
           {project ? (
             <span
               aria-hidden
@@ -272,7 +272,7 @@ export function NewTaskDialog({
           Create a task with a title, description, attributes, and attachments.
         </DialogDescription>
         {createdTask ? (
-          <div className="px-4 pt-2">
+          <div className="min-h-0 flex-auto overflow-y-auto px-4 pt-2">
             <p role="alert" className="text-sm">
               Task <span className="font-medium">{createdTask.key}</span> was
               created, but {failedCount} attachment
@@ -298,7 +298,12 @@ export function NewTaskDialog({
             </div>
           </div>
         ) : null}
-        <div className={cn("px-4 pt-2", createdTask && "hidden")}>
+        <div
+          className={cn(
+            "flex min-h-0 flex-auto flex-col px-4 pt-2",
+            createdTask && "hidden",
+          )}
+        >
           <input
             ref={titleRef}
             autoFocus
@@ -313,18 +318,18 @@ export function NewTaskDialog({
             }}
             placeholder="Task title"
             aria-label="Task title"
-            className="w-full bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
+            className="w-full shrink-0 bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
           />
           <TasksEditor
             variant="comment"
             value={description}
             onChange={setDescription}
             placeholder="Description — rich text, round-trips as markdown for agents"
-            className="mt-2 min-h-16"
+            className="mt-2 min-h-16 flex-auto overflow-y-auto"
             onAttachFiles={stageMore}
           />
           {pendingFiles.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto">
               {pendingFiles.map((entry) => (
                 <AttachmentChip
                   key={entry.id}
@@ -336,14 +341,14 @@ export function NewTaskDialog({
             </div>
           ) : null}
           {hasOversized ? (
-            <p className="mt-2 text-xs text-destructive">
+            <p className="mt-2 shrink-0 text-xs text-destructive">
               Remove attachments over the 25 MB limit before creating the task.
             </p>
           ) : null}
         </div>
         <div
           className={cn(
-            "flex flex-wrap items-center gap-1.5 px-4 pt-3",
+            "flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-3",
             createdTask && "hidden",
           )}
         >
@@ -492,11 +497,11 @@ export function NewTaskDialog({
           />
         </div>
         {error ? (
-          <p role="alert" className="px-4 pt-2 text-xs text-destructive">
+          <p role="alert" className="shrink-0 px-4 pt-2 text-xs text-destructive">
             {error}
           </p>
         ) : null}
-        <DialogFooter className="mt-4 flex-row items-center border-t border-border-hairline px-4 py-3 sm:justify-between">
+        <DialogFooter className="mt-4 shrink-0 flex-row items-center border-t border-border-hairline px-4 py-3 sm:justify-between">
           {createdTask ? (
             <>
               <span />
