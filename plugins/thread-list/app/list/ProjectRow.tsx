@@ -2117,7 +2117,7 @@ export const ChronologicalSectionThreadSections = memo(
         id: "threads",
         title: "Threads",
         threads: looseThreads,
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={looseItems}
             threadListState={

@@ -700,7 +700,7 @@ function ProjectModeSections({
       id: "threads",
       title: "Threads",
       threads: personalThreads,
-      renderContent: (close) => (
+      renderContent: (close: () => void) => (
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
           rootItems={personalItems}
@@ -1158,7 +1158,7 @@ export function MachineModeSections({
       id: "threads",
       title: "Threads",
       threads: nonPinnedThreads,
-      renderContent: (close) => (
+      renderContent: (close: () => void) => (
         <ProjectThreadTree
           dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
           rootItems={allThreadItems}

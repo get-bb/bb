@@ -121,8 +121,10 @@ describe("thread overflow submenus", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review thread" }));
 
     expect(
-      screen.getByRole("button", { name: "More sections" }),
-    ).toHaveAttribute("aria-expanded", "false");
+      screen
+        .getByRole("button", { name: "More sections" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
     expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
   });
 });

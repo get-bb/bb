@@ -769,6 +769,11 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByText("Loose thread")).toBeNull();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["threads"]);
     expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "More sections" }),
+      ),
+    );
     fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
       key: "Enter",
     });
