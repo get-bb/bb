@@ -7,6 +7,7 @@ import {
 } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
+  PluginSdkApp,
   PluginSidebarProject,
   PluginSidebarSection,
   PluginSidebarThread,
@@ -37,6 +38,7 @@ import {
   useEnvironmentPullRequest,
 } from "@/hooks/queries/environment-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
@@ -103,7 +105,45 @@ function toPluginSidebarThreadCached(
   return thread;
 }
 
-export function useSidebarThreads(): PluginSidebarThreadsState {
+export function useSidebarThreads(
+  options?: Parameters<PluginSdkApp["experimental_useSidebarThreads"]>[0],
+): PluginSidebarThreadsState {
+  const lifecycles = options?.experimental_lifecycles;
+  const active = !lifecycles?.length || lifecycles.includes("active");
+  const includeArchived = lifecycles?.includes("archived") ?? false;
+  const archived = useArchivedThreads({}, { enabled: includeArchived });
+  const fetchArchivedPage = archived.fetchNextPage;
+  const fetchNextPage = useCallback(async () => {
+    await fetchArchivedPage();
+  }, [fetchArchivedPage]);
+  const archiveState = useMemo<
+    PluginSidebarThreadsState["experimental_archived"]
+  >(
+    () =>
+      includeArchived
+        ? {
+            status:
+              archived.data !== undefined
+                ? "ready"
+                : archived.isLoadingError
+                  ? "error"
+                  : "loading",
+            hasNextPage: archived.hasNextPage,
+            isFetchingNextPage: archived.isFetchingNextPage,
+            isFetchNextPageError: archived.isFetchNextPageError,
+            fetchNextPage,
+          }
+        : null,
+    [
+      includeArchived,
+      archived.data,
+      archived.isLoadingError,
+      archived.hasNextPage,
+      archived.isFetchingNextPage,
+      archived.isFetchNextPageError,
+      fetchNextPage,
+    ],
+  );
   const query = useSidebarNavigation();
   const data = query.data;
   const { data: hosts } = useHosts();
@@ -113,6 +153,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
   return useMemo<PluginSidebarThreadsState>(() => {
     if (data === undefined) {
       return {
+        experimental_archived: archiveState,
         status: query.isError ? "error" : "loading",
         threads: EMPTY_THREADS,
         projects: EMPTY_PROJECTS,
@@ -120,12 +161,24 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
       };
     }
     const allProjects = [...data.projects, data.personalProject];
+    const selected = new Map<string, ThreadListEntry>();
+    if (includeArchived) {
+      for (const thread of archived.data?.pages.flat() ?? []) {
+        if (thread.archivedAt !== null) selected.set(thread.id, thread);
+      }
+    }
+    if (active) {
+      for (const project of allProjects) {
+        for (const thread of project.threads) {
+          if (thread.archivedAt === null) selected.set(thread.id, thread);
+        }
+      }
+    }
     return {
-      status: "ready",
-      threads: allProjects.flatMap((project) =>
-        project.threads.map((thread) =>
-          toPluginSidebarThreadCached(thread, hostNamesById, titleResources),
-        ),
+      experimental_archived: archiveState,
+      status: !active && archiveState !== null ? archiveState.status : "ready",
+      threads: [...selected.values()].map((thread) =>
+        toPluginSidebarThreadCached(thread, hostNamesById, titleResources),
       ),
       projects: allProjects.map((project) => ({
         id: project.id,
@@ -136,19 +189,67 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
       })),
       sections: data.sections,
     };
-  }, [data, hostNamesById, query.isError, titleResources]);
+  }, [
+    data,
+    hostNamesById,
+    query.isError,
+    titleResources,
+    active,
+    includeArchived,
+    archived.data,
+    archiveState,
+  ]);
 }
+
+const threadEntryMapByPayload = new WeakMap<
+  object,
+  ReadonlyMap<string, ThreadListEntry>
+>();
+
+function threadEntryMapFor(
+  data: ReturnType<typeof useSidebarNavigation>["data"],
+): ReadonlyMap<string, ThreadListEntry> {
+  if (data === undefined) return EMPTY_ENTRIES;
+  const cached = threadEntryMapByPayload.get(data);
+  if (cached !== undefined) return cached;
+  const entries = new Map<string, ThreadListEntry>();
+  for (const project of [...data.projects, data.personalProject]) {
+    for (const thread of project.threads) entries.set(thread.id, thread);
+  }
+  threadEntryMapByPayload.set(data, entries);
+  return entries;
+}
+
+const archivedEntryMaps = new WeakMap<
+  NonNullable<ReturnType<typeof useArchivedThreads>["data"]>,
+  WeakMap<
+    ReadonlyMap<string, ThreadListEntry>,
+    ReadonlyMap<string, ThreadListEntry>
+  >
+>();
 
 function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
   const { data } = useSidebarNavigation();
+  const archived = useArchivedThreads({}, { enabled: false });
   return useMemo(() => {
-    if (data === undefined) return EMPTY_ENTRIES;
-    const entries = new Map<string, ThreadListEntry>();
-    for (const project of [...data.projects, data.personalProject]) {
-      for (const thread of project.threads) entries.set(thread.id, thread);
+    const active = threadEntryMapFor(data);
+    if (archived.data === undefined) return active;
+    let maps = archivedEntryMaps.get(archived.data);
+    if (maps === undefined) {
+      maps = new WeakMap();
+      archivedEntryMaps.set(archived.data, maps);
     }
+    const cached = maps.get(active);
+    if (cached !== undefined) return cached;
+    const entries = new Map([
+      ...archived.data.pages
+        .flat()
+        .map((thread) => [thread.id, thread] as const),
+      ...active,
+    ]);
+    maps.set(active, entries);
     return entries;
-  }, [data]);
+  }, [data, archived.data]);
 }
 
 export function useSidebarThreadEntry(

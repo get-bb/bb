@@ -209,15 +209,6 @@ export interface PluginThreadListProps {
    * @deprecated The quick palette owns thread search. Ignore this value.
    */
   searchQuery: string;
-  /**
-   * BB's thread list, bound to this sidebar instance. Render it to delegate
-   * conditionally without re-entering plugin replacement resolution.
-   *
-   * @experimental Audit before relying on this as a stable contract.
-   */
-  Original: ComponentType;
-  /** @deprecated Renamed to `Original` in SDK 0.4.16; removed in bb 0.42. */
-  experimental_Original?: ComponentType;
 }
 
 /**
@@ -1083,6 +1074,14 @@ export interface PluginSidebarSection {
 }
 
 export interface PluginSidebarThreadsState {
+  /** Null when archived threads were not requested. */
+  experimental_archived: {
+    status: "loading" | "ready" | "error";
+    hasNextPage: boolean;
+    isFetchingNextPage: boolean;
+    isFetchNextPageError: boolean;
+    fetchNextPage(): Promise<void>;
+  } | null;
   status: "loading" | "ready" | "error";
   threads: readonly PluginSidebarThread[];
   projects: readonly PluginSidebarProject[];
@@ -2927,7 +2926,9 @@ export interface PluginSdkApp {
    * Reads the host's own cache and realtime subscriptions, so it costs no
    * extra request and updates exactly when the built-in sidebar does.
    *
-   * `threads` is one array of every visible thread and is not capped. Thread
+   * Active threads are uncapped. Opting into archived threads uses the host
+   * archive query; request more pages through `experimental_archived`.
+   * `threads` contains the selected lifecycles across loaded pages. Thread
    * objects keep their identity across updates while the underlying entry is
    * unchanged, so a memoized row re-renders only when its own thread changed;
    * the array itself is new on every update. Window your rows (render only
@@ -2935,7 +2936,10 @@ export interface PluginSdkApp {
    * row per thread is slow on phones with many threads.
    * Experimental: see docs/api_to_audit.md.
    */
-  experimental_useSidebarThreads(): PluginSidebarThreadsState;
+  experimental_useSidebarThreads(options?: {
+    /** Defaults to active threads only. An empty selection also means active. */
+    experimental_lifecycles: readonly ("active" | "archived")[];
+  }): PluginSidebarThreadsState;
   /**
    * Thread actions bound to the host's mutations (see
    * {@link PluginSidebarThreadActions}). Experimental: see

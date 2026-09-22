@@ -11,7 +11,6 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
@@ -23,7 +22,6 @@ import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
-import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -62,7 +60,6 @@ export function AppSidebar({
   settingsRoutePath,
   mobileHosted,
 }: AppSidebarProps) {
-  const quickCreateProject = useQuickCreateProjectController();
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
@@ -190,18 +187,6 @@ export function AppSidebar({
     hideThreadShortcuts();
   }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
-  const originalThreadList = (
-    <ProjectList
-      onNewProject={
-        quickCreateProject.isAvailable
-          ? quickCreateProject.openCreateDialog
-          : undefined
-      }
-      onProjectSelect={closeOnMobile}
-      isCreatingProject={quickCreateProject.isCreating}
-    />
-  );
-
   const body = (
     <>
       <SidebarTopReserveRow testId="app-sidebar-top-reserve-row" />
@@ -229,8 +214,6 @@ export function AppSidebar({
       >
         <PluginThreadList
           replacement={threadListReplacement}
-          original={originalThreadList}
-          searchQuery=""
           onNavigate={closeOnMobile}
         />
       </SidebarContent>

@@ -6,6 +6,7 @@
    Without this, utility classes used only by moved components — row-height,
    overlay, icon sizing — get purged from the app's CSS. */
 @source "../../../../../packages/shared-ui/src";
+@source "../../../../../plugins/thread-list/app";
 
 @custom-variant dark (&:is(.dark *));
 

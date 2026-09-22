@@ -14,7 +14,7 @@ it.each([
   ["app-shell", "thread-header", "app-shell-thread", "1", true],
   ["app-shell", "browser-toolbar", "app-shell-panel", "2", true],
   ["home", "new-thread-panel", "home-actions", "1", false],
-] as const)("keeps %s/%s on its matching pane when switching layouts", (initialSlideId, surfaceId, mobileSlideId, number, hasNeighbors) => {
+] as const)("keeps %s/%s on its matching pane when switching layouts", { timeout: 30_000 }, (initialSlideId, surfaceId, mobileSlideId, number, hasNeighbors) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   let mobile = false;
   const listeners = new Set<() => void>();

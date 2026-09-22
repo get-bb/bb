@@ -469,6 +469,22 @@ function MarketplaceToolbar({
   hero: boolean;
 }) {
   const searchInput = useRef<HTMLInputElement>(null);
+  const categoryMenu = useRef<HTMLDetailsElement>(null);
+  const selectedCategory = options.find(
+    (option) => option.id === state.category,
+  );
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !categoryMenu.current?.contains(event.target)
+      ) {
+        categoryMenu.current?.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, []);
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
@@ -489,28 +505,32 @@ function MarketplaceToolbar({
     return () => window.removeEventListener("keydown", focusSearch);
   }, []);
   const search = (
-    <label className="marketplace-search">
-      <span className="marketplace-visually-hidden">Search plugins</span>
+    <div className="marketplace-search">
       <HugeiconsIcon icon={Search01Icon} aria-hidden />
       <input
         ref={searchInput}
+        aria-label="Search plugins"
         type="search"
         value={query}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
-        placeholder="Search plugins"
+        placeholder="Search"
       />
       {query.length > 0 ? (
         <button
           type="button"
+          className="marketplace-search-clear"
           aria-label="Clear search"
-          onClick={() => onQueryChange("")}
+          onClick={() => {
+            onQueryChange("");
+            searchInput.current?.focus();
+          }}
         >
           <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
         </button>
       ) : (
         <kbd>/</kbd>
       )}
-    </label>
+    </div>
   );
   const sortOptions: Array<{
     label: string;
@@ -524,7 +544,11 @@ function MarketplaceToolbar({
     <>
       {hero ? (
         <header className="marketplace-hero">
-          <h1>Make bb yours.</h1>
+          <h1 aria-label="Make bb yours">
+            Make{" "}
+            <span className="bb-mark marketplace-heading-mark" aria-hidden />{" "}
+            yours
+          </h1>
           <p>
             Themes, providers, workflows, and tools, installed with one command.
           </p>
@@ -534,48 +558,106 @@ function MarketplaceToolbar({
         <div className="marketplace-author-search">{search}</div>
       )}
       <div className="marketplace-controls">
-        <div className="marketplace-category-select">
-          <select
-            aria-label="Category"
-            value={state.category ?? ""}
-            onChange={(event) =>
-              onStateChange({
-                ...(event.currentTarget.value === ""
-                  ? {}
-                  : { category: event.currentTarget.value }),
-                sort: state.sort,
-              })
-            }
+        <div className="marketplace-browse-controls">
+          <details
+            className="marketplace-category-select"
+            ref={categoryMenu}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.removeAttribute("open");
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
           >
-            <option value="">All categories</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label} ({option.count})
-              </option>
-            ))}
-          </select>
-          <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
-        </div>
-        <div
-          className="marketplace-sort-control"
-          role="group"
-          aria-label="Sort plugins"
-        >
-          {sortOptions.map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              className={
-                state.sort === option.value ? "is-selected" : undefined
-              }
-              aria-pressed={state.sort === option.value}
-              onClick={() =>
-                onStateChange({ category: state.category, sort: option.value })
-              }
+            <summary
+              aria-label={`Category: ${selectedCategory?.label ?? "All categories"}`}
             >
-              {option.label}
-            </button>
-          ))}
+              <span>{selectedCategory?.label ?? "All categories"}</span>
+              {selectedCategory ? (
+                <span className="marketplace-count">
+                  {selectedCategory.count}
+                </span>
+              ) : null}
+              <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+            </summary>
+            <div
+              className="marketplace-category-options"
+              role="group"
+              aria-label="Category"
+            >
+              {[
+                { id: "", label: "All categories", count: undefined },
+                ...options,
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={(state.category ?? "") === option.id}
+                  onClick={() => {
+                    onStateChange({
+                      category: option.id || undefined,
+                      sort: state.sort,
+                    });
+                    categoryMenu.current?.removeAttribute("open");
+                    categoryMenu.current?.querySelector("summary")?.focus();
+                  }}
+                >
+                  <span>{option.label}</span>
+                  {option.count !== undefined ? (
+                    <span className="marketplace-count">{option.count}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </details>
+          <label className="marketplace-mobile-sort">
+            <select
+              aria-label="Sort plugins"
+              value={state.sort ?? ""}
+              onChange={(event) => {
+                const option = sortOptions.find(
+                  (option) =>
+                    (option.value ?? "") === event.currentTarget.value,
+                );
+                if (option)
+                  onStateChange({
+                    category: state.category,
+                    sort: option.value,
+                  });
+              }}
+            >
+              {sortOptions.map((option) => (
+                <option key={option.label} value={option.value ?? ""}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+          </label>
+          <div
+            className="marketplace-sort-control"
+            role="group"
+            aria-label="Sort plugins"
+          >
+            {sortOptions.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className={
+                  state.sort === option.value ? "is-selected" : undefined
+                }
+                aria-pressed={state.sort === option.value}
+                onClick={() =>
+                  onStateChange({
+                    category: state.category,
+                    sort: option.value,
+                  })
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </>

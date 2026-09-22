@@ -142,7 +142,9 @@ export async function migrateFromUiPreferences(
   for (const key of PREFERENCE_KEYS) {
     const existing = await bb.storage.kv.get<unknown>(kvKey(key));
     if (existing !== undefined) continue;
-    const legacy = entries[preferenceDefinitions[key].legacyKey];
+    const legacyKey = preferenceDefinitions[key].legacyKey;
+    if (legacyKey === null) continue;
+    const legacy = entries[legacyKey];
     if (legacy === undefined) continue;
     const parsed = parsePreferenceValue(key, legacy.value);
     if (!parsed.success) continue;

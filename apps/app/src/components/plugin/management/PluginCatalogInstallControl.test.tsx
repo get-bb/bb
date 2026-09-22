@@ -35,6 +35,9 @@ it("does not install incompatible catalog entries", () => {
       onInstall={install}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Install Notes" }));
+  const button = screen.getByRole("button", { name: "Install Notes" });
+  expect(button.getAttribute("aria-disabled")).toBe("true");
+  expect(button.hasAttribute("disabled")).toBe(false);
+  fireEvent.click(button);
   expect(install).not.toHaveBeenCalled();
 });

@@ -22,7 +22,7 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
-    expect(html).toContain("Make bb yours.");
+    expect(html).toContain('aria-label="Make bb yours"');
     expect(html).toContain(
       "Themes, providers, workflows, and tools, installed with one command.",
     );
@@ -34,18 +34,16 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("marketplace-new-chip");
     expect(html).toContain("https://github.com/get-bb.png?size=32");
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
-    expect(html).toContain('<select aria-label="Category">');
+    expect(html).toContain('aria-label="Category: All categories"');
+    expect(html).toContain('role="group" aria-label="Category"');
     expect(html).toContain(
-      '<option value="" selected="">All categories</option>',
+      '<span>Thread Content</span><span class="marketplace-count">1</span>',
     );
     expect(html).toContain(
-      '<option value="thread-content">Thread Content (1)</option>',
+      '<span>Code &amp; Reviews</span><span class="marketplace-count">2</span>',
     );
     expect(html).toContain(
-      '<option value="code-and-reviews">Code &amp; Reviews (2)</option>',
-    );
-    expect(html).toContain(
-      '<option value="uncategorized">More plugins (1)</option>',
+      '<span>More plugins</span><span class="marketplace-count">1</span>',
     );
     expect(html).not.toContain("marketplace-category-pill");
     expect(html).not.toContain("marketplace-category-filters");
@@ -78,9 +76,7 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
-    expect(html).toContain(
-      '<option value="code-and-reviews" selected="">Code &amp; Reviews (2)</option>',
-    );
+    expect(html).toContain('aria-label="Category: Code &amp; Reviews"');
     expect(html).toContain("Filtered plugins");
     expect(html).toContain("2 plugins");
     expect(html).toContain(

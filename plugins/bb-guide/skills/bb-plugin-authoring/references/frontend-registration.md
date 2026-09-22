@@ -232,17 +232,19 @@ Automatic, BB, or one plugin under Settings → Appearance → Navigation.
 list fills the sidebar's scroll area. Registering activates the replacement
 while the plugin is enabled. If multiple plugins register one, the first in
 deterministic slot order is active by default; removing it reveals the next.
-The user can pin BB's list or a specific provider under
-**Settings → Appearance → Sidebar**. The choice is per client.
+The user can pin a specific provider under **Settings → Appearance →
+Sidebar**. The choice is per client. bb ships its own list as the bundled
+`thread-list` plugin; there is no separate built-in list.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
 the search action, the plugin nav rows, and the footer stay host-rendered —
 other plugins live in two of those, so a replaced list must not remove them.
 Put your own controls at the top of your scroll area instead.
 
-If the chosen plugin is disabled, uninstalled, or its component throws, bb
-renders its own list again (plus a toast on a crash), so the sidebar is never
-empty.
+If no thread list plugin is enabled, bb shows a placeholder that links to
+Plugins. If the active component throws, bb shows a "stopped working"
+placeholder with a Reload button plus one toast; nothing else in the sidebar
+is affected.
 
 The component receives:
 
@@ -256,9 +258,6 @@ interface PluginThreadListProps {
   /** Deprecated compatibility value for the removed sidebar search field.
       The host always supplies "". */
   searchQuery: string;
-  /** BB's bound thread list. Render it to delegate conditionally without
-      re-entering plugin replacement resolution. */
-  Original: ComponentType;
 }
 ```
 

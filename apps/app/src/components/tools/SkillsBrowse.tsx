@@ -226,6 +226,7 @@ export function RegistrySkillsBrowsePage({
         )}
         {hasError || isLoading ? null : (
           <ResourceInfiniteScrollSentinel
+            itemCount={skills.length}
             hasMore={hasMore}
             loading={loadingMore}
             onLoadMore={onLoadMore}

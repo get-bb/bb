@@ -19,7 +19,11 @@ function tokens(input: string, pattern: RegExp): Set<string> {
 describe("marketplace theme tokens", () => {
   it("resolves every Marketplace token in light and dark themes", () => {
     const referenced = tokens(marketplaceCss, /var\((--[a-z0-9-]+)/gu);
-    const light = tokens(landingCss, /(--[a-z0-9-]+)\s*:/gu);
+    const marketplaceRoot = /\.plugin-pages-wrap\s*\{(?<body>[\s\S]*?)\n\}/u.exec(marketplaceCss);
+    const light = new Set([
+      ...tokens(landingCss, /(--[a-z0-9-]+)\s*:/gu),
+      ...tokens(marketplaceRoot?.groups?.body ?? "", /(--[a-z0-9-]+)\s*:/gu),
+    ]);
     const darkBlock = /\.dark\s*\{(?<body>[\s\S]*?)\n\}/u.exec(landingCss);
     const dark = new Set([
       ...light,

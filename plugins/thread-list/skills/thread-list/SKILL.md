@@ -6,7 +6,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `organizationMode`,
+`bb thread-list prefs list --json`; keys are `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups`,
 `collapsedSections`, `collapsedProjects`, `collapsedThreads`,
@@ -29,3 +29,9 @@ section are bb core state: use `bb thread section` and `bb thread update`.
 
 On first load the plugin copies any non-default `sidebar.*` values from
 `bb settings ui` once; after that the two are independent.
+
+The header's Filter menu selects Active, Archived, or both; at least one must
+remain selected. `bb thread-list prefs set threadLifecycles '["archived"]'`
+shows archived threads, and `'["active","archived"]'` shows both. The default
+is `'["active"]'`. Archived results load in pages; use Show more at the end
+of the list. The same preference is available through `setPreference` RPC.

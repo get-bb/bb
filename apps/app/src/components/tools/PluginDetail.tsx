@@ -126,17 +126,22 @@ export function CatalogPluginDetail({
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={<CatalogEntryIconChip entry={entry} />}
-      leadingClassName="size-10"
+      leading={<CatalogEntryIconChip entry={entry} compact />}
+      leadingClassName="size-6"
       title={entry.displayName}
       titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
-      metadata={<PluginCardAuthor entry={entry} />}
+      metadata={
+        <div className="pl-8">
+          <PluginCardAuthor entry={entry} />
+        </div>
+      }
       actions={
         <PluginCatalogInstallControl
           displayName={entry.displayName}
           installed={false}
           showLabel
           disabled={!entry.compatible}
+          unavailableReason={entry.incompatibleReason}
           count={count}
           onInstall={() => onInstall(entry)}
         />
@@ -332,7 +337,7 @@ export function PluginDetail({
         )
       }
       metadata={
-        <div className="space-y-1">
+        <div className="space-y-1 pl-6">
           {catalogEntry !== undefined ? (
             <PluginCardAuthor entry={catalogEntry} />
           ) : plugin.provenance === "builtin" ||
