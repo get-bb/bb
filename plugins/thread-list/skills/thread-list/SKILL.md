@@ -9,6 +9,7 @@ The Thread list plugin owns the sidebar's layout state. Read it with
 `bb thread-list prefs list --json`; keys are `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups`,
+`expandedOverflowGroups`,
 `collapsedSections`, `collapsedProjects`, `collapsedThreads`,
 `collapsedEnvironments`, `collapsedThreadSections`, and `collapsedMachines`.
 
@@ -35,3 +36,8 @@ remain selected. `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both. The default
 is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
+
+Groups inside **More** start collapsed. `expandedOverflowGroups` stores the
+complete list of `project:<projectId>`, `section:<sectionId>`, and
+`machine:<hostId>` groups that stay expanded across closures and restarts;
+resetting it to `[]` collapses every overflow group.

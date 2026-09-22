@@ -32,6 +32,7 @@ import {
 import {
   collapsedSidebarSectionIdsAtom,
   sidebarCollapsedMachinesAtom,
+  sidebarExpandedOverflowGroupsAtom,
   sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
@@ -386,12 +387,6 @@ describe("sidebar organization mode sections", () => {
     const hiddenMachines = await screen.findByRole("list", {
       name: "Hidden machines",
     });
-    expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
-    fireEvent.click(
-      within(hiddenMachines).getByRole("button", {
-        name: "Collapse No machine section",
-      }),
-    );
     expect(within(hiddenMachines).queryByText("Machine activity")).toBeNull();
     fireEvent.click(
       within(hiddenMachines).getByRole("button", {
@@ -399,9 +394,43 @@ describe("sidebar organization mode sections", () => {
       }),
     );
     expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
+    expect(store.get(sidebarExpandedOverflowGroupsAtom)).toEqual([
+      "machine:no-machine",
+    ]);
+    fireEvent.click(more);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Hidden machines" }),
+      ).toBeNull(),
+    );
+    fireEvent.click(more);
+    const reopenedMachines = await screen.findByRole("list", {
+      name: "Hidden machines",
+    });
+    expect(within(reopenedMachines).getByText("Machine activity")).not.toBeNull();
+    fireEvent.click(
+      within(reopenedMachines).getByRole("button", {
+        name: "Collapse No machine section",
+      }),
+    );
+    expect(within(reopenedMachines).queryByText("Machine activity")).toBeNull();
+    expect(store.get(sidebarExpandedOverflowGroupsAtom)).toEqual([]);
+    fireEvent.click(more);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Hidden machines" }),
+      ).toBeNull(),
+    );
+    fireEvent.click(more);
+    const recollapsedMachines = await screen.findByRole("list", {
+      name: "Hidden machines",
+    });
+    expect(
+      within(recollapsedMachines).queryByText("Machine activity"),
+    ).toBeNull();
     expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
     fireEvent.keyDown(
-      within(hiddenMachines).getByRole("button", {
+      within(recollapsedMachines).getByRole("button", {
         name: "No machine options",
       }),
       { key: "Enter" },

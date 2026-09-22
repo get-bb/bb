@@ -96,6 +96,8 @@ word is a string. On first load the plugin copies non-default `sidebar.*`
 values from `bb settings ui` once. The `threadLifecycles` preference defaults
 to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both.
+Overflow groups start collapsed. The `expandedOverflowGroups` preference
+remembers which group keys stay expanded across closures and restarts.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or

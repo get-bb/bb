@@ -1621,3 +1621,16 @@ The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with
 `bb thread-list prefs set threadLifecycles '["archived"]'` or the header's
 Filter menu. It syncs to every window and rejects empty or duplicate values.
+
+### Thread list overflow groups
+
+Groups inside the Thread list plugin's **More** menu start collapsed and
+remember their expanded state across closures and restarts. The
+`expandedOverflowGroups` preference accepts `project:<projectId>`,
+`section:<sectionId>`, and `machine:<hostId>` keys and defaults to `[]`.
+
+```sh
+bb thread-list prefs get expandedOverflowGroups
+bb thread-list prefs set expandedOverflowGroups '["project:proj_example","section:sec_example"]'
+bb thread-list prefs reset expandedOverflowGroups
+```

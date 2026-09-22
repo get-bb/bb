@@ -781,6 +781,12 @@ describe("ProjectRow interactions", () => {
     const hiddenSections = await screen.findByRole("list", {
       name: "Hidden sections",
     });
+    expect(within(hiddenSections).queryByText("Review parent")).toBeNull();
+    fireEvent.click(
+      within(hiddenSections).getByRole("button", {
+        name: "Expand Review section",
+      }),
+    );
     expect(within(hiddenSections).getByText("Review parent")).not.toBeNull();
     fireEvent.click(
       within(hiddenSections).getByRole("link", {
@@ -799,6 +805,7 @@ describe("ProjectRow interactions", () => {
     const reopenedSections = await screen.findByRole("list", {
       name: "Hidden sections",
     });
+    expect(within(reopenedSections).getByText("Review parent")).not.toBeNull();
     fireEvent.pointerDown(
       within(reopenedSections).getByRole("button", { name: "Review options" }),
       { button: 0 },

@@ -20,7 +20,10 @@ import { useSidebarThreadDraftIds } from "@get-bb/plugin-sdk/app";
 import { ActionMenuSeparator } from "../ui/action-menu-items.js";
 import { SidebarContentElementContext } from "../ui/sidebar.js";
 import { reorderStoredOrder } from "../model/stored-order.js";
-import { sidebarHiddenGroupsAtom } from "../preferences/atoms.js";
+import {
+  sidebarExpandedOverflowGroupsAtom,
+  sidebarHiddenGroupsAtom,
+} from "../preferences/atoms.js";
 import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
 import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
 import {
@@ -214,14 +217,25 @@ function HiddenGroup({
   close: () => void;
   restore: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useAtom(
+    sidebarExpandedOverflowGroupsAtom,
+  );
+  const expanded = expandedGroups.includes(group.id);
   return (
     <SidebarOverflowItem
       item={group}
       onClose={close}
       onAddToSidebar={restore}
       expanded={expanded}
-      onExpandedChange={setExpanded}
+      onExpandedChange={(nextExpanded) => {
+        setExpandedGroups((current) =>
+          nextExpanded
+            ? current.includes(group.id)
+              ? current
+              : [...current, group.id]
+            : current.filter((id) => id !== group.id),
+        );
+      }}
       activity={<GroupActivity threads={group.threads} />}
       testIdPrefix="sidebar-thread-list"
     >
