@@ -286,13 +286,15 @@ describe("InlineVisDirective", () => {
     await waitFor(() => {
       expect(first.container.querySelector("iframe")).toBeTruthy();
     });
-    fireEvent.click(
-      first.getByRole("button", {
-        name: "Collapse visualization demo.html",
-      }),
-    );
+    const collapse = first.getByRole("button", {
+      name: "Collapse visualization demo.html",
+    });
+    const header = collapse.parentElement!;
+    expect(header.classList.contains("border-b")).toBe(true);
+    fireEvent.click(collapse);
 
     expect(first.container.querySelector("iframe")).toBeNull();
+    expect(header.classList.contains("border-b")).toBe(false);
     expect(window.localStorage.getItem("bb.inline-vis.collapsed")).toBe("true");
     first.unmount();
 

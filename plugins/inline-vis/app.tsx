@@ -107,7 +107,9 @@ function PreviewCard({
 }) {
   return (
     <div className="my-2 overflow-hidden rounded-lg border border-border bg-background">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+      <div
+        className={`flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground ${collapsed ? "" : "border-b border-border"}`}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="shrink-0 font-semibold">inline-vis</span>
           <span className="truncate opacity-70">{file}</span>
