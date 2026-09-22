@@ -682,7 +682,6 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-detail-source {
-  align-self: flex-end;
   text-decoration: underline;
   text-underline-offset: 3px;
   font-size: 14px;
