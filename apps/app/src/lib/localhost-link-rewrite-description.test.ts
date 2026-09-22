@@ -4,7 +4,7 @@ import { localhostLinkRewriteDescription } from "./localhost-link-rewrite-descri
 describe("localhostLinkRewriteDescription", () => {
   it("shows the exact destination for the current host", () => {
     expect(localhostLinkRewriteDescription("100.64.158.8")).toBe(
-      "When enabled: http://localhost:3000/ → http://100.64.158.8:3000/",
+      "When enabled, localhost URLs are rewritten to use the same host or IP address you use to open BB. For example: http://localhost:3000/ → http://100.64.158.8:3000/",
     );
   });
 
@@ -14,7 +14,7 @@ describe("localhostLinkRewriteDescription", () => {
 
   it("shows the destination on .localhost hosts", () => {
     expect(localhostLinkRewriteDescription("sawyer.localhost")).toBe(
-      "When enabled: http://localhost:3000/ → http://sawyer.localhost:3000/",
+      "When enabled, localhost URLs are rewritten to use the same host or IP address you use to open BB. For example: http://localhost:3000/ → http://sawyer.localhost:3000/",
     );
   });
 
