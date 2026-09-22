@@ -504,10 +504,7 @@ function ThreadRowComponent({
         )}
       >
         <span
-          className={cn(
-            "relative flex min-w-0 items-center self-stretch",
-            (!parentOptions || !hasChildren || isEditing) && "flex-1",
-          )}
+          className="relative flex min-w-0 flex-1 items-center self-stretch"
         >
           <a
             ref={rowLinkRef}
