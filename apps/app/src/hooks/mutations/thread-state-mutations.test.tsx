@@ -25,6 +25,7 @@ import {
   useMoveThreadToSection,
   useUnpinAndMoveThread,
   useUpdateThread,
+  useUpdateThreads,
 } from "./thread-state-mutations";
 
 vi.mock("@/lib/sdk", () => ({
@@ -267,6 +268,113 @@ describe("thread state mutations", () => {
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
     });
+  });
+
+  it("optimistically moves a thread group in one cache update", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const threadIds = ["thread-1", "thread-2"];
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const entries = threadIds.map((id) =>
+      makeThreadListEntry({ id, parentThreadId: null }),
+    );
+    for (const id of threadIds) {
+      queryClient.setQueryData(
+        threadQueryKey(id),
+        makeThreadWithRuntime({ id, parentThreadId: null }),
+      );
+    }
+    queryClient.setQueryData(threadListKey, entries);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(entries),
+    );
+    const resolutions = new Map<string, (thread: ThreadResponse) => void>();
+    vi.mocked(sdk.threads.update).mockImplementation(
+      ({ threadId }) =>
+        new Promise<ThreadResponse>((resolve) => {
+          resolutions.set(threadId, resolve);
+        }),
+    );
+    const observedParents: Array<Array<string | null>> = [];
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (event.query.queryKey[0] !== threadListKey[0]) return;
+      const list = queryClient.getQueryData<ThreadListEntry[]>(threadListKey);
+      if (list) {
+        observedParents.push(list.map((thread) => thread.parentThreadId));
+      }
+    });
+    const { result } = renderHook(() => useUpdateThreads(), { wrapper });
+
+    act(() => {
+      result.current.mutate(
+        threadIds.map((threadId) => ({
+          threadId,
+          parentThreadId: "parent-thread",
+        })),
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        queryClient
+          .getQueryData<ThreadListEntry[]>(threadListKey)
+          ?.map((thread) => thread.parentThreadId),
+      ).toEqual(["parent-thread", "parent-thread"]);
+    });
+    expect(observedParents).not.toContainEqual(["parent-thread", null]);
+    expect(observedParents).not.toContainEqual([null, "parent-thread"]);
+
+    act(() => {
+      for (const id of threadIds) {
+        resolutions.get(id)?.(
+          makeThreadResponse({ id, parentThreadId: "parent-thread" }),
+        );
+      }
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    unsubscribe();
+  });
+
+  it("rolls back a failed thread group update together", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const threadIds = ["thread-1", "thread-2"];
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const entries = threadIds.map((id) =>
+      makeThreadListEntry({ id, sectionId: "section-a" }),
+    );
+    queryClient.setQueryData(threadListKey, entries);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(entries),
+    );
+    vi.mocked(sdk.threads.update).mockImplementation(({ threadId }) =>
+      threadId === "thread-1"
+        ? Promise.resolve(makeThreadResponse({ id: threadId }))
+        : Promise.reject(new Error("update failed")),
+    );
+    const { result } = renderHook(() => useUpdateThreads(), { wrapper });
+
+    act(() => {
+      result.current.mutate(
+        threadIds.map((threadId) => ({
+          threadId,
+          sectionId: "section-b",
+        })),
+      );
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(
+      queryClient
+        .getQueryData<ThreadListEntry[]>(threadListKey)
+        ?.map((thread) => thread.sectionId),
+    ).toEqual(["section-a", "section-a"]);
   });
 
   it("serializes unpin before section move while optimistically applying both fields", async () => {

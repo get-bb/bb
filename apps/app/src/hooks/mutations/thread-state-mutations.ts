@@ -11,6 +11,7 @@ import { sdk } from "@/lib/sdk";
 import type { LifecycleErrorOperation } from "@/lib/lifecycle-errors";
 import {
   applyReorderPinnedThreadResult,
+  applyThreadMetadataBatchResult,
   applyThreadPinStateResult,
   applyThreadReadStateResult,
   applyThreadUpdateResult,
@@ -19,14 +20,17 @@ import {
   beginPinThreadTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
+  beginThreadMetadataBatchTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinAndMoveThreadTransaction,
   beginUnpinThreadTransaction,
+  invalidateThreadMetadataBatch,
   rollbackArchiveThreadsTransaction,
   rollbackDeleteThreadTransaction,
   rollbackReorderPinnedThreadTransaction,
   rollbackThreadListMutationTransaction,
+  rollbackThreadMetadataBatchTransaction,
   rollbackThreadReadStateTransaction,
   type ThreadReadStateTransaction,
   settleArchiveThreadsTransaction,
@@ -37,6 +41,8 @@ import {
   type DeleteThreadTransaction,
   type PinnedThreadOrderTransaction,
   type ThreadListMutationTransaction,
+  type ThreadMetadataBatchTransaction,
+  type ThreadMetadataUpdate,
 } from "../cache-owners/thread-state-cache-owner";
 
 interface ThreadMutationRequest {
@@ -124,6 +130,60 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     },
     onSuccess: (thread) => {
       applyThreadUpdateResult({ queryClient, thread });
+    },
+  });
+}
+
+export function useUpdateThreads(options?: UpdateThreadMutationOptions) {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ThreadResponse[],
+    Error,
+    readonly ThreadMetadataUpdate[],
+    ThreadMetadataBatchTransaction | undefined
+  >({
+    meta: {
+      errorMessage: options?.errorMessage ?? "Failed to update threads.",
+      showErrorToast: options?.showErrorToast ?? true,
+      ...(options?.lifecycleOperation
+        ? { lifecycleOperation: options.lifecycleOperation }
+        : {}),
+    },
+    mutationFn: async (updates) => {
+      const results = await Promise.allSettled(
+        updates.map(({ threadId, ...request }) =>
+          sdk.threads.update({ threadId, ...request }),
+        ),
+      );
+      const failures = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures.map((failure) => failure.reason),
+          "Failed to update threads.",
+        );
+      }
+      return results.map((result) => {
+        if (result.status === "rejected") throw result.reason;
+        return result.value;
+      });
+    },
+    onMutate: (updates) =>
+      updates.length === 0
+        ? undefined
+        : beginThreadMetadataBatchTransaction({ queryClient, updates }),
+    onError: (_error, updates, transaction) => {
+      rollbackThreadMetadataBatchTransaction({ queryClient, transaction });
+      invalidateThreadMetadataBatch({
+        queryClient,
+        threadIds: updates.map((update) => update.threadId),
+      });
+    },
+    onSuccess: (threads) => {
+      applyThreadMetadataBatchResult({ queryClient, threads });
     },
   });
 }

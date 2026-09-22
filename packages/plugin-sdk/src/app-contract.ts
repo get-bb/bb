@@ -3247,9 +3247,10 @@ export interface PluginSdkApp {
    * surfaces without further work. Reserve `useRpc` for work that needs your
    * server: secrets, host files, or your plugin's own storage.
    *
-   * Writes made here are not optimistic in bb's surfaces; they land when the
-   * realtime update does. `experimental_useSidebarThreadActions()` stays the
-   * optimistic path for pin, read state, rename, and archive.
+   * Thread title, section, and parent updates are optimistic in bb's surfaces
+   * and synchronous calls are applied as one cache transaction. Other writes
+   * land when their realtime update does. `experimental_useSidebarThreadActions()`
+   * stays the optimistic path for pin, read state, rename, and archive.
    *
    * The client is stable for the plugin's lifetime, so it is safe in effect
    * and callback dependency lists.
