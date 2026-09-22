@@ -108,7 +108,7 @@ describe("public marketplace route rendering", () => {
     );
     expect(html).toContain("cmd-btn cmd-compact");
     expect(html).toContain("bb plugin install prompt-library");
-    expect(html).toContain("Get it for macOS");
+    expect(html).toContain("Download bb for macOS");
     expect(html).not.toContain("marketplace-install-command");
     expect(html).not.toContain("Don&#x27;t have bb?");
     expect(html).not.toContain("Runs in bb");
@@ -124,7 +124,10 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
-    expect(html).toContain("marketplace-overview-lead");
+    expect(html).toContain(`<p>${entry.description}</p>`);
+    expect(html.indexOf(entry.description)).toBeLessThan(
+      html.indexOf("marketplace-detail-install"),
+    );
     expect(html).not.toContain("marketplace-overview-rule");
     expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
@@ -155,7 +158,10 @@ describe("public marketplace route rendering", () => {
         stats={MARKETPLACE_STATS_FIXTURE}
       />,
     );
-    expect(html).toContain("marketplace-overview-lead");
+    expect(html).toContain(`<p>${entry.description}</p>`);
+    expect(html.indexOf(entry.description)).toBeLessThan(
+      html.indexOf("marketplace-detail-install"),
+    );
     const overview = html.slice(
       html.indexOf('class="marketplace-overview"'),
       html.indexOf("More from Acme"),
