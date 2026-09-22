@@ -741,6 +741,47 @@ describe("worktree group section dragging", () => {
     );
   }
 
+  function nestedGroupLookup() {
+    return collectSectionThreadDndLookup(
+      buildSectionThreadList(
+        [
+          createThread({ id: "outside", sectionId: "a", createdAt: 11 }),
+          createThread({
+            id: "first",
+            parentThreadId: "outside",
+            environmentId: "env",
+            environmentIsWorktree: true,
+            sectionId: "a",
+            createdAt: 10,
+          }),
+          createThread({
+            id: "second",
+            parentThreadId: "outside",
+            environmentId: "env",
+            environmentIsWorktree: true,
+            sectionId: "a",
+            createdAt: 9,
+          }),
+          createThread({
+            id: "child",
+            parentThreadId: "first",
+            environmentId: "env",
+            environmentIsWorktree: true,
+            sectionId: "a",
+          }),
+        ],
+        undefined,
+        [
+          { id: "a", name: "A" },
+          { id: "b", name: "B" },
+        ],
+        new Set(),
+        true,
+      ),
+      CHRONOLOGICAL_CONTAINER_ID,
+    );
+  }
+
   it("moves only the represented group, including descendants, to another section", () => {
     const lookup = groupLookup();
     const activeId = [...lookup.groupThreadsByItemId.keys()][0];
@@ -771,6 +812,41 @@ describe("worktree group section dragging", () => {
       threadIds: ["first", "second"],
       parentThreadId: "outside",
       sectionId: null,
+    });
+  });
+
+  it("unparents worktree roots and moves the whole group to a section", () => {
+    const lookup = nestedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+    const sectionBKey = lookup.sectionParentKeyBySectionId.get("section:b");
+    const decision = resolveSectionThreadDropDecision(
+      lookup,
+      activeId,
+      "section:b",
+    );
+
+    expect(decision).toMatchObject({
+      kind: "detach-group",
+      activeId,
+      rootThreadIds: ["first", "second"],
+      sectionId: "b",
+      toParentKey: sectionBKey,
+    });
+    expect(
+      decision?.kind === "detach-group" && decision.threadIds.sort(),
+    ).toEqual(["child", "first", "second"]);
+  });
+
+  it("unparents a worktree group when dropped back into its current section", () => {
+    const lookup = nestedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(lookup, activeId, "section:a"),
+    ).toMatchObject({
+      kind: "detach-group",
+      rootThreadIds: ["first", "second"],
+      sectionId: "a",
     });
   });
 
