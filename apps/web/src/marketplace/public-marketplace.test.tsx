@@ -120,8 +120,10 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
-    expect(html).toContain(`<p>${entry.description}</p>`);
-    expect(html.indexOf(entry.description)).toBeLessThan(
+    expect(html).toContain(
+      `<p class="marketplace-overview-lead">${entry.description}</p>`,
+    );
+    expect(html.indexOf(entry.description)).toBeGreaterThan(
       html.indexOf('class="marketplace-detail-install"'),
     );
     expect(html).not.toContain("marketplace-overview-rule");
@@ -154,8 +156,10 @@ describe("public marketplace route rendering", () => {
         stats={MARKETPLACE_STATS_FIXTURE}
       />,
     );
-    expect(html).toContain(`<p>${entry.description}</p>`);
-    expect(html.indexOf(entry.description)).toBeLessThan(
+    expect(html).toContain(
+      `<p class="marketplace-overview-lead">${entry.description}</p>`,
+    );
+    expect(html.indexOf(entry.description)).toBeGreaterThan(
       html.indexOf('class="marketplace-detail-install"'),
     );
     const overview = html.slice(
