@@ -257,8 +257,8 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(
       screen
         .getByRole("button", { name: "Install GitHub" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
