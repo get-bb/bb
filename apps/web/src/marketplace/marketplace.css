@@ -659,6 +659,11 @@
 }
 
 .marketplace-detail-category {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 10%, var(--bg));
   color: var(--accent);
   font-weight: 500;
 }
