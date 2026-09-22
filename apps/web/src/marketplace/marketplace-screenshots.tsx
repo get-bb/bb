@@ -1,5 +1,3 @@
-import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
@@ -77,29 +75,9 @@ export function MarketplaceScreenshots({
         {selected === null ? null : (
           <>
             <div className="marketplace-lightbox-toolbar">
-              <div className="marketplace-lightbox-navigation">
-                {screenshots.length > 1 ? (
-                  <button
-                    type="button"
-                    aria-label="Previous screenshot"
-                    onClick={() => move(-1)}
-                  >
-                    <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden />
-                  </button>
-                ) : null}
-                <span aria-live="polite">
-                  {selected + 1} / {screenshots.length}
-                </span>
-                {screenshots.length > 1 ? (
-                  <button
-                    type="button"
-                    aria-label="Next screenshot"
-                    onClick={() => move(1)}
-                  >
-                    <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden />
-                  </button>
-                ) : null}
-              </div>
+              <span className="marketplace-lightbox-count" aria-live="polite">
+                {selected + 1} / {screenshots.length}
+              </span>
               <button
                 type="button"
                 aria-label="Close screenshots"

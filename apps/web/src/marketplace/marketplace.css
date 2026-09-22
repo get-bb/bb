@@ -894,15 +894,7 @@ a.marketplace-detail-author:hover {
   font-size: 13px;
 }
 
-.marketplace-lightbox-navigation {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.marketplace-lightbox-navigation span {
-  min-width: 40px;
-  text-align: center;
+.marketplace-lightbox-count {
   font-variant-numeric: tabular-nums;
 }
 
