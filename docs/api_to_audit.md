@@ -306,8 +306,14 @@ target thread, whether the attempt would `start-turn` or `join-turn`, and all
 queued rows in `queuedMessages` when the attempt is a re-attempt) and answers
 `proceed`, `wait` (queue the message as a row with a reason and an optional
 `sendAt`), or `reject` (a synchronous 409 carrying the plugin's message). A
-handler cannot rewrite the dispatch it is deciding about: there is no amendment
-arm.
+proceeding handler may return `experimental_supplementalContext`, a bounded
+string of reference data that core labels with the plugin id and prepends as
+agent-only provider input. It never amends a queued row: if any handler waits
+or rejects, core discards every supplemental value and plugins recompute them
+on the eventual proceeding pass.
+`experimental_supportsSupplementalContext` is the literal `true` in the hook
+context so a plugin that also supports older BB releases can negotiate the
+field directly rather than infer support from a version string.
 
 Handlers run as a deterministic chain in plugin install order, `reject`
 short-circuits, `wait` decisions collect across a full pass, and the FIRST
@@ -342,6 +348,18 @@ plugin requests a drain and this handler now proceeds, when the user sends it
 now, or when the orphan sweep clears a wait whose plugin is no longer running.
 
 **Audit before stabilizing.**
+
+- **Provider history semantics.** The context is hidden from the human
+  transcript and absent from queued rows, but it is provider input and can
+  therefore remain in a provider session's conversational history. Decide
+  whether stabilization requires a distinct bridge-level ephemeral-context
+  primitive.
+- **Bounds and content shape.** The first release accepts non-empty strings and
+  caps their aggregate at 32,768 UTF-16 code units per pass, failing the plugin
+  that crosses the bound. Core labels every contribution as untrusted reference
+  data.
+- **Re-evaluation.** A wait discards contexts from the whole pass. Every plugin
+  must return its context again when the rechecked pass proceeds.
 
 - **Grouped dispatch authors.** `queuedMessages` includes all claimed rows in
   dispatch order, with each row's content, author, origin, and originPluginId; inline attempts use an
@@ -2563,17 +2581,17 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
 10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
-   drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
-   on `isAvailable`, and read `layout` to paint where the thread already sits.
-   The host owns every rule — the drag engages only after the pointer leaves the
-   sidebar, an edge drop splits, a center drop replaces, an open thread focuses
-   its pane, and the pane cap turns a split into a replace — so a plugin cannot
-   reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
-   list with its own pointer-drag (reorder, swipe) still composes with the
-   host's engage threshold; `splitProps` staying an open object is the right
-   forward-compatible shape, or it should narrow to a named handler; and
-   exposing the full `panes` array does not leak more layout state than a row
-   needs.
+    drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
+    on `isAvailable`, and read `layout` to paint where the thread already sits.
+    The host owns every rule — the drag engages only after the pointer leaves the
+    sidebar, an edge drop splits, a center drop replaces, an open thread focuses
+    its pane, and the pane cap turns a split into a replace — so a plugin cannot
+    reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
+    list with its own pointer-drag (reorder, swipe) still composes with the
+    host's engage threshold; `splitProps` staying an open object is the right
+    forward-compatible shape, or it should narrow to a named handler; and
+    exposing the full `panes` array does not leak more layout state than a row
+    needs.
 
 ## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 

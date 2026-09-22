@@ -857,6 +857,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Answers the admission checkpoint for ordinary sends, eligible queued messages, and retries before they reach a provider. With this, a plugin can:",
         bullets: [
           "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
+          "Attach bounded experimental_supplementalContext to a proceeding pass as plugin-labelled, agent-only provider reference data without amending queued rows",
+          "Feature-detect supplemental context through experimental_supportsSupplementalContext when one plugin build also supports older BB releases",
           "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
           "Read each queued message, its author, origin, and originPluginId in queuedMessages, with an empty array for inline attempts",
           "Read the shared initiator category or mixed for a grouped dispatch, and the shared senderThreadId, null when nobody sent it, or mixed",

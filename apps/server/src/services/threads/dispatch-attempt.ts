@@ -259,6 +259,25 @@ export function resolveDispatchAttemptKind(
     : "start-turn";
 }
 
+function prependSupplementalContext(
+  payload: SendMessageRequest & { inputGroups?: PromptInput[][] },
+  supplementalContext: PromptInput[],
+): SendMessageRequest & { inputGroups?: PromptInput[][] } {
+  if (supplementalContext.length === 0) return payload;
+  return {
+    ...payload,
+    input: [...supplementalContext, ...payload.input],
+    ...(payload.inputGroups === undefined
+      ? {}
+      : {
+          inputGroups: [
+            [...supplementalContext, ...payload.inputGroups[0]!],
+            ...payload.inputGroups.slice(1),
+          ],
+        }),
+  };
+}
+
 /**
  * THE dispatch checkpoint.
  *
@@ -348,6 +367,7 @@ async function runDispatchAttempt(
     args.executionDefaults ?? { threadId: thread.id },
   );
   const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
+  let dispatchPayload = resolvedPayload;
   const queuedMessage: QueuedDispatchMessage = {
     input: payload.input,
     execution,
@@ -392,7 +412,13 @@ async function runDispatchAttempt(
     reattemptThread: null,
   };
 
-  const continueThroughCoreWaits = async (): Promise<void> => {
+  const continueThroughCoreWaits = async (
+    supplementalContext: PromptInput[] = [],
+  ): Promise<void> => {
+    dispatchPayload = prependSupplementalContext(
+      resolvedPayload,
+      supplementalContext,
+    );
     const sendAt = payload.sendAt ?? null;
     if (!sendNow && sendAt !== null && sendAt > Date.now()) {
       continued.outcome = waitOn({ kind: "time" }, sendAt);
@@ -495,7 +521,7 @@ async function runDispatchAttempt(
     if (firstDispatch) {
       admitted.value = await admitPendingThread(deps, {
         claimed,
-        payload: resolvedPayload,
+        payload: dispatchPayload,
         respectManualStopPause,
         startContext: args.startContext ?? retryStartContext,
         thread,
@@ -591,7 +617,7 @@ async function runDispatchAttempt(
   try {
     await sendThreadMessage(deps, {
       environment,
-      payload: resolvedPayload,
+      payload: dispatchPayload,
       thread,
       trigger: args.trigger,
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),

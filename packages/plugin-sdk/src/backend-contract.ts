@@ -531,11 +531,22 @@ export type PluginDispatchEnvironmentIntent =
  * which is what a rate-limit window wants. `reject` refuses the attempt
  * outright: `message` is shown to the user verbatim.
  *
- * There is deliberately no "handled it myself" answer and no amendment arm —
- * a hook is a decision, never an owner or an author of the work.
+ * There is deliberately no "handled it myself" answer. A proceeding hook may
+ * add bounded supplemental reference context for this attempt. Core labels it
+ * with the plugin id, hides it from the human transcript, and discards it when
+ * any hook waits or rejects; the plugin must return it again on the eventual
+ * proceeding pass.
  */
 export type MessageDispatchHookDecision =
-  | { action: "proceed" }
+  | {
+      action: "proceed";
+      /**
+       * Reference data supplied only to the provider input dispatched by this
+       * pass. It does not amend a queued row and is recomputed after waits.
+       * Core identifies its plugin source and treats it as agent-only input.
+       */
+      experimental_supplementalContext?: string;
+    }
   | { action: "wait"; reason: string; sendAt?: number | null }
   | { action: "reject"; message: string };
 
@@ -603,6 +614,12 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  * on every drain, on restart, and on retry.
  */
 export interface MessageDispatchHookContext {
+  /**
+   * True when core accepts `experimental_supplementalContext` from a
+   * proceeding decision. Plugins that also support older BB versions can use
+   * this literal as feature negotiation instead of guessing from a version.
+   */
+  experimental_supportsSupplementalContext: true;
   /**
    * The target thread. Never null: thread creation is unhooked — it is a cheap
    * row — so by the time the first message is decided about, the thread exists

@@ -190,6 +190,7 @@ export function makeMessageDispatchHookContext(
   overrides: MessageDispatchHookContextOverrides = {},
 ): MessageDispatchHookContext {
   const context: MessageDispatchHookContext = {
+    experimental_supportsSupplementalContext: true,
     thread: makeThreadResponse({ status: "pending" }),
     project: {
       id: "project-1",
