@@ -47,9 +47,7 @@ export function MarketplaceScreenshots({
             className="marketplace-screenshot-trigger"
             aria-label={`Enlarge ${name} screenshot ${index + 1}`}
             aria-haspopup="dialog"
-            onClick={() => {
-              setSelected(index);
-            }}
+            onClick={() => setSelected(index)}
           >
             <img
               src={marketplaceAssetUrl(screenshot)}
@@ -102,15 +100,13 @@ export function MarketplaceScreenshots({
                   </button>
                 ) : null}
               </div>
-              <div className="marketplace-lightbox-tools">
-                <button
-                  type="button"
-                  aria-label="Close screenshots"
-                  onClick={() => setSelected(null)}
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
-                </button>
-              </div>
+              <button
+                type="button"
+                aria-label="Close screenshots"
+                onClick={() => setSelected(null)}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
+              </button>
             </div>
             <div
               className="marketplace-lightbox-viewport"

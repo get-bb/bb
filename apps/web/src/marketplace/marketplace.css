@@ -884,8 +884,7 @@ a.marketplace-detail-author:hover {
   font-size: 13px;
 }
 
-.marketplace-lightbox-navigation,
-.marketplace-lightbox-tools {
+.marketplace-lightbox-navigation {
   display: flex;
   align-items: center;
   gap: 8px;
