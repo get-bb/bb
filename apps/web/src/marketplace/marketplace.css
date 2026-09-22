@@ -931,7 +931,7 @@ a.marketplace-detail-author:hover {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  object-fit: contain;
+  object-fit: cover;
   scroll-snap-align: start;
 }
 
