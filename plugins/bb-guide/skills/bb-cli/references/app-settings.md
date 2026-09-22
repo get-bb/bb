@@ -57,23 +57,12 @@ another plugin. The SDK exposes the same setting through `uiPreferences`.
 
 ### Thread-list visibility
 
-- A project, custom section, or machine's menu offers **Hide from list**;
-  its menu inside **More** offers **Add to sidebar**. **Customize list**
-  manages visibility and order for the current organization. Hidden groups keep
-  their threads, saved order, and collapse state; pinned threads remain in Pinned.
-  More carries hidden activity without automatically restoring groups.
-- `sidebar.hiddenGroups` defaults to `[]`. Use `project:<projectId>`,
-  `section:<sectionId>`, or `machine:<hostId>` keys (`machine:no-machine` for the
-  unassigned group). Each organization applies only its matching keys. Built-in
-  Pinned and Threads cannot be hidden. Duplicate keys are deduplicated;
-  unavailable IDs are retained without creating rows, and new groups are visible.
-- `bb settings ui get sidebar.hiddenGroups` reads the current list.
-  `bb settings ui set sidebar.hiddenGroups '["project:proj_example"]'` replaces
-  the complete list across organizations; include existing keys you want to keep
-  hidden. `bb settings ui reset sidebar.hiddenGroups` shows every group again.
-- SDK callers use `sdk.system.uiPreferences.list()` for the value and revision,
-  `.set({ key: "sidebar.hiddenGroups", value, expectedRevision })` to replace it,
-  and `.reset({ key: "sidebar.hiddenGroups" })` to show all groups.
+- The bundled Thread list plugin owns its layout preferences, including hidden
+  groups. Use `bb thread-list prefs list [--json]` to inspect them and
+  `bb thread-list prefs get/set/reset <key>` to change them.
+- Its installed `thread-list` skill documents accepted keys and values. Keep
+  plugin-specific settings out of `bb settings ui`; those legacy values are
+  read only during one-time migration.
 
 ## Keyboard shortcuts
 

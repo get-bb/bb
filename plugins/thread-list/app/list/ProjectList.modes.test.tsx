@@ -51,10 +51,12 @@ vi.mock("@bb/client-core", async (importOriginal) => {
 });
 
 installTestPluginRuntime();
-const { ActiveSidebarModeSections, MachineModeSections } =
-  await import("./ProjectList.js");
-const { useSidebarModeSectionOrder } =
-  await import("./useSidebarModeSectionOrder.js");
+const { ActiveSidebarModeSections, MachineModeSections } = await import(
+  "./ProjectList.js"
+);
+const { useSidebarModeSectionOrder } = await import(
+  "./useSidebarModeSectionOrder.js"
+);
 
 const mockBuildMachineThreadGroups = vi.mocked(buildMachineThreadGroups);
 

@@ -43,8 +43,9 @@ const {
   SectionThreadDragOverlay,
   ThreadTreeNodeRow,
 } = await import("./ProjectRow.js");
-const { useSidebarModeSectionOrder } =
-  await import("./useSidebarModeSectionOrder.js");
+const { useSidebarModeSectionOrder } = await import(
+  "./useSidebarModeSectionOrder.js"
+);
 const { SidebarHeaderControls } = await import("./SidebarHeaderControls.js");
 const { ThreadListVisibilityMenuItems } =
   await import("./ThreadListVisibility.js");
@@ -186,8 +187,7 @@ function renderProjectRow(
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
     />,
     {
-      threads:
-        threadListState.status === "ready" ? threadListState.threads : [],
+      threads: threadListState.status === "ready" ? threadListState.threads : [],
       store,
       ...options,
     },
@@ -637,12 +637,14 @@ describe("ProjectRow interactions", () => {
   });
 
   it("keeps a duplicate section name in place until corrected", async () => {
-    const update = vi.fn(sdkResult({ ok: true })).mockRejectedValueOnce(
-      Object.assign(new Error("HTTP 409: Conflict"), {
-        status: 409,
-        code: "section_name_conflict",
-      }),
-    );
+    const update = vi
+      .fn(sdkResult({ ok: true }))
+      .mockRejectedValueOnce(
+        Object.assign(new Error("HTTP 409: Conflict"), {
+          status: 409,
+          code: "section_name_conflict",
+        }),
+      );
     const { sdkCalls } = renderTree(
       <CustomSectionsVisibilityProbe threads={[]} onProjectSelect={vi.fn()} />,
       { sdk: { threadSections: { update } } },
