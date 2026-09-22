@@ -198,9 +198,16 @@ export function SidebarOverflowItem({
   );
   const label = (
     <>
-      {item.icon}
-      <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
-      {activity}
+      <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
+        {item.icon}
+        <span className="min-w-0 truncate">{item.title}</span>
+        <span className="relative z-20 inline-flex size-6 shrink-0 items-center justify-center">
+          <Icon name="ChevronRight" className="size-3" aria-hidden="true" />
+        </span>
+      </span>
+      {activity ? (
+        <span className="ml-auto flex shrink-0">{activity}</span>
+      ) : null}
     </>
   );
 
@@ -219,7 +226,6 @@ export function SidebarOverflowItem({
             data-sidebar-overflow-item={item.id}
           >
             {label}
-            <Icon name="ChevronRight" />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -236,6 +242,7 @@ export function SidebarOverflowItem({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger
+        className="[&>[data-icon-root]:last-child]:hidden"
         disabled={item.disabled}
         data-sidebar-overflow-item={item.id}
         textValue={item.title}
