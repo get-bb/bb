@@ -863,11 +863,6 @@ export function PublicMarketplaceDetailPage({
               >
                 {category}
               </MarketplaceLink>
-            </div>
-          </div>
-          <p>{entry.description}</p>
-          <div className="marketplace-detail-install">
-            <div className="marketplace-detail-actions">
               <span
                 className={`marketplace-detail-installs${installs === undefined ? " is-new" : ""}`}
               >
@@ -876,8 +871,20 @@ export function PublicMarketplaceDetailPage({
                 )}
                 {installs === undefined
                   ? "New"
-                  : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
+                  : installs.toLocaleString("en-US")}
+                {installs === undefined ? null : (
+                  <span className="marketplace-visually-hidden">
+                    {installs === 1 ? " install" : " installs"}
+                  </span>
+                )}
               </span>
+            </div>
+          </div>
+          <div className="marketplace-detail-description">
+            <p>{entry.description}</p>
+          </div>
+          <div className="marketplace-detail-install">
+            <div className="marketplace-detail-actions">
               <CommandButton
                 command={installCommand}
                 label={`Copy ${installCommand}`}

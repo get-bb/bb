@@ -126,7 +126,7 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("More from BB Labs");
     expect(html).toContain(`<p>${entry.description}</p>`);
     expect(html.indexOf(entry.description)).toBeLessThan(
-      html.indexOf("marketplace-detail-install"),
+      html.indexOf('class="marketplace-detail-install"'),
     );
     expect(html).not.toContain("marketplace-overview-rule");
     expect(html.split(entry.description)).toHaveLength(2);
@@ -160,7 +160,7 @@ describe("public marketplace route rendering", () => {
     );
     expect(html).toContain(`<p>${entry.description}</p>`);
     expect(html.indexOf(entry.description)).toBeLessThan(
-      html.indexOf("marketplace-detail-install"),
+      html.indexOf('class="marketplace-detail-install"'),
     );
     const overview = html.slice(
       html.indexOf('class="marketplace-overview"'),

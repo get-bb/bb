@@ -622,8 +622,14 @@
   line-height: 1.1;
 }
 
-.marketplace-detail-head > p {
+.marketplace-detail-description {
   grid-column: 1 / -1;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.marketplace-detail-description p {
   margin: 0;
   color: var(--dim);
   font-size: 14px;
@@ -640,7 +646,8 @@
 
 .marketplace-detail-attribution {
   margin-top: 12px;
-  font-size: 13px;
+  color: var(--label-muted);
+  font-size: var(--text-label-small);
 }
 
 .marketplace-detail-actions,
@@ -675,6 +682,7 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-detail-source {
+  font-size: 14px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -710,6 +718,29 @@ a.marketplace-detail-author:hover {
   gap: 8px;
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+.marketplace-detail-actions .cmd-compact {
+  padding: 5px 5px 5px 14px;
+}
+
+.marketplace-detail-actions .cmd-copy {
+  margin-left: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--heading);
+  color: var(--bg);
+  font-size: var(--text-label-small);
+}
+
+.marketplace-detail-actions .cmd-btn:hover .cmd-copy,
+.marketplace-detail-actions .cmd-btn.copied .cmd-copy {
+  color: var(--bg);
+}
+
+.marketplace-install-help {
+  display: none;
 }
 
 .marketplace-detail-body {
@@ -939,6 +970,10 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 720px) {
+  .marketplace-install-help {
+    display: inline;
+  }
+
   .plugin-pages-wrap {
     padding-inline: 20px;
   }
