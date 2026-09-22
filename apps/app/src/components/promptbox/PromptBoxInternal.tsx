@@ -336,7 +336,7 @@ function PromptSubmitButton({
       className={cn(
         className,
         !hasInput &&
-          "border border-border text-muted-foreground/50 disabled:opacity-100",
+          "ring-1 ring-inset ring-border text-muted-foreground/50 disabled:opacity-100",
         label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
