@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 
-import { useEffect, useState, type MouseEventHandler } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect, useRef, useState, type MouseEventHandler } from "react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExperimentalSidebarNavigationProps } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalSidebarNavigationActions,
+  ExperimentalSidebarNavigationProps,
+} from "@get-bb/plugin-sdk";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
@@ -16,12 +25,22 @@ import {
   getNotifications,
   resetNotificationStore,
 } from "@/lib/notifications/notification-store";
-import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
+import {
+  resolveCustomizeFocusReturnTarget,
+  SidebarNavigationRegion,
+} from "./SidebarNavigationRegion";
+import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
+import {
+  useSidebarNavigation,
+  useSidebarNavigationSplit,
+} from "@/lib/plugin-sidebar-navigation";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
   openNewThreadInSplit: vi.fn(),
+  openInSplit: vi.fn(),
+  onNewChat: vi.fn(),
   onSearchThreads: vi.fn(),
 }));
 
@@ -57,37 +76,75 @@ vi.mock("./usePaneContentSplitDrag", () => ({
   usePaneContentSplitActions: () => ({
     beginDrag: vi.fn(),
     isCompact: false,
+    openInSplit: mocks.openInSplit,
+  }),
+  usePaneContentSplitDrag: () => ({
+    onPointerDown: undefined,
     openInSplit: vi.fn(),
   }),
 }));
 
+const capturedActions: {
+  current: ExperimentalSidebarNavigationActions | null;
+} = { current: null };
+
+function ReplacementItem({ id }: { id: string }) {
+  const { activeItemId, actions, items } = useSidebarNavigation();
+  const split = useSidebarNavigationSplit(id);
+  const item = items.find((candidate) => candidate.id === id);
+  if (!item) return null;
+  return (
+    <button
+      type="button"
+      aria-current={activeItemId === item.id ? "page" : undefined}
+      {...split.splitProps}
+      onClick={(event) =>
+        actions.activate(item.id, {
+          openInSplit: event.metaKey || event.ctrlKey,
+        })
+      }
+    >
+      {item.label}
+    </button>
+  );
+}
+
 function Replacement({
-  activeItemId,
   experimental_Original: Original,
-  experimental_activate,
-  items,
 }: ExperimentalSidebarNavigationProps) {
+  const { actions, items } = useSidebarNavigation();
   const [delegate, setDelegate] = useState(false);
   const [crash, setCrash] = useState(false);
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    capturedActions.current = actions;
+  }, [actions]);
   if (crash) throw new Error("navigation fixture crash");
   if (delegate) return <Original />;
   return (
     <div data-testid="replacement-navigation">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          aria-current={activeItemId === item.id ? "page" : undefined}
-          {...item.experimental_splitProps}
-          onClick={(event) =>
-            experimental_activate(item.id, {
-              openInSplit: event.metaKey || event.ctrlKey,
-            })
-          }
-        >
-          {item.label}
-        </button>
-      ))}
+      <ol aria-label="Visible items">
+        {items
+          .filter((item) => item.isVisible)
+          .map((item) => (
+            <li key={item.id}>
+              <ReplacementItem id={item.id} />
+            </li>
+          ))}
+      </ol>
+      <ol aria-label="Hidden items">
+        {items
+          .filter((item) => !item.isVisible)
+          .map((item) => (
+            <li key={item.id}>{item.id}</li>
+          ))}
+      </ol>
+      <button type="button" onClick={() => setCount((value) => value + 1)}>
+        Local count {count}
+      </button>
+      <button type="button" onClick={() => actions.openCustomize()}>
+        Customize replacement
+      </button>
       <button type="button" onClick={() => setDelegate(true)}>
         Delegate to BB
       </button>
@@ -108,18 +165,37 @@ function RetainedOwner({ onMount }: { onMount: () => void }) {
 }
 
 function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
+  const [isCustomizing, setCustomizing] = useState(false);
+  const focusReturnTargetRef = useRef<HTMLElement | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   return (
-    <>
-      <SidebarNavigationRegion
-        splitEnabled
-        newThreadSplit={{ openInSplit: mocks.openNewThreadInSplit }}
+    <div ref={containerRef}>
+      <SidebarNavigationModelProvider
         onNavigate={vi.fn()}
-        onNewChat={vi.fn()}
+        onNewChat={mocks.onNewChat}
         onSearchThreads={mocks.onSearchThreads}
-      />
+        onOpenCustomize={() => {
+          focusReturnTargetRef.current = resolveCustomizeFocusReturnTarget(
+            containerRef.current,
+          );
+          setCustomizing(true);
+        }}
+        splitEnabled
+      >
+        <SidebarNavigationRegion
+          isCustomizing={isCustomizing}
+          onCustomizingChange={setCustomizing}
+          focusReturnTargetRef={focusReturnTargetRef}
+          splitEnabled
+          newThreadSplit={{ openInSplit: mocks.openNewThreadInSplit }}
+          onNavigate={vi.fn()}
+          onNewChat={mocks.onNewChat}
+          onSearchThreads={mocks.onSearchThreads}
+        />
+      </SidebarNavigationModelProvider>
       <RetainedOwner onMount={onOwnerMount} />
       <LocationProbe />
-    </>
+    </div>
   );
 }
 
@@ -171,8 +247,20 @@ afterEach(() => {
   vi.restoreAllMocks();
   mocks.dispatch.mockReset();
   mocks.openNewThreadInSplit.mockReset();
+  mocks.openInSplit.mockReset();
+  mocks.onNewChat.mockReset();
   mocks.onSearchThreads.mockReset();
+  capturedActions.current = null;
 });
+
+function listedItems(name: string): string[] {
+  return screen.getByRole("list", { name }).textContent?.length
+    ? Array.from(
+        screen.getByRole("list", { name }).querySelectorAll("li"),
+        (item) => item.textContent ?? "",
+      )
+    : [];
+}
 
 describe("SidebarNavigationRegion", () => {
   it("preserves modifier-click for New thread in BB navigation", () => {
@@ -189,7 +277,11 @@ describe("SidebarNavigationRegion", () => {
     registerFixture();
     renderHarness();
 
-    fireEvent.click(screen.getByRole("button", { name: "Search threads" }));
+    act(() =>
+      capturedActions.current?.activate("__bb__/search-threads", {
+        openInSplit: false,
+      }),
+    );
 
     expect(mocks.onSearchThreads).toHaveBeenCalledOnce();
     expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", null);
@@ -235,6 +327,110 @@ describe("SidebarNavigationRegion", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Skills" }));
     expect(screen.getByTestId("pathname").textContent).toBe("/skills");
+  });
+
+  it("hands providers every item in saved order with host visibility", () => {
+    registerFixture();
+    renderHarness();
+
+    expect(listedItems("Visible items")).toEqual([
+      "New thread",
+      "Plugins",
+      "Skills",
+      "Docs",
+    ]);
+    expect(listedItems("Hidden items")).toEqual(["__bb__/search-threads"]);
+  });
+
+  it("persists visibility and order changes through the actions", () => {
+    registerFixture();
+    renderHarness();
+
+    act(() => capturedActions.current?.setVisible("garden/docs", false));
+    expect(listedItems("Hidden items")).toEqual([
+      "__bb__/search-threads",
+      "garden/docs",
+    ]);
+
+    act(() => capturedActions.current?.setVisible("garden/docs", true));
+    act(() =>
+      capturedActions.current?.setOrder([
+        "garden/docs",
+        "unknown/item",
+        "__bb__/skills",
+      ]),
+    );
+    expect(listedItems("Visible items")).toEqual([
+      "Docs",
+      "Skills",
+      "New thread",
+      "Plugins",
+    ]);
+  });
+
+  it("opens in split only when the provider asks for it", () => {
+    registerFixture();
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
+      metaKey: true,
+    });
+    expect(mocks.openInSplit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: {
+          kind: "plugin-panel",
+          pluginId: "garden",
+          panelPath: "docs",
+          subPath: "",
+        },
+      }),
+    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/");
+
+    fireEvent.click(screen.getByRole("button", { name: "New thread" }));
+    expect(mocks.onNewChat).toHaveBeenCalledOnce();
+  });
+
+  it("swaps in bb's customize editor and keeps the provider mounted", async () => {
+    registerFixture();
+    renderHarness();
+    fireEvent.click(screen.getByRole("button", { name: "Local count 0" }));
+    const trigger = screen.getByRole("button", {
+      name: "Customize replacement",
+    });
+    trigger.focus();
+
+    fireEvent.click(trigger);
+    expect(
+      document.querySelector('[data-sidebar-navigation-customize-mode="true"]'),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Customize replacement" }),
+    ).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+    expect(
+      document.querySelector('[data-sidebar-navigation-customize-mode="true"]'),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Local count 1" })).toBeDefined();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Customize replacement" }),
+    );
+  });
+
+  it("ignores actions from a provider that has unmounted", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    registerFixture();
+    renderHarness();
+    const staleActions = capturedActions.current;
+
+    fireEvent.click(screen.getByRole("button", { name: "Crash replacement" }));
+    act(() =>
+      staleActions?.activate("__bb__/extensions", { openInSplit: false }),
+    );
+
+    expect(screen.getByTestId("pathname").textContent).toBe("/");
   });
 
   it("delegates and falls back after a crash without owner remounts", () => {

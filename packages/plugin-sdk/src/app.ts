@@ -87,11 +87,16 @@ export const experimental_useSidebarThreadPullRequest =
   runtime.experimental_useSidebarThreadPullRequest;
 export const experimental_useSidebarThreadSplit =
   runtime.experimental_useSidebarThreadSplit;
+export const experimental_useSidebarNavigation =
+  runtime.experimental_useSidebarNavigation;
+export const experimental_useSidebarNavigationSplit =
+  runtime.experimental_useSidebarNavigationSplit;
+export const experimental_SidebarNavigationIcon =
+  runtime.experimental_SidebarNavigationIcon;
 export const useSidebarThreadDraft = runtime.useSidebarThreadDraft;
 export const useSidebarThreadDraftIds = runtime.useSidebarThreadDraftIds;
 export const useSidebarThreadRowStatus = runtime.useSidebarThreadRowStatus;
-export const useSidebarThreadRowStatuses =
-  runtime.useSidebarThreadRowStatuses;
+export const useSidebarThreadRowStatuses = runtime.useSidebarThreadRowStatuses;
 export const useSidebarSplitLayout = runtime.useSidebarSplitLayout;
 export const useSidebarThreadShortcut = runtime.useSidebarThreadShortcut;
 export const ThreadTitle = runtime.ThreadTitle;

@@ -340,10 +340,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   experimental_sidebarNavigation: [
-    "items",
-    "activeItemId",
     "isCompactViewport",
-    "experimental_activate",
     "experimental_Original",
   ],
   experimental_threadList: [

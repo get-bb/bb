@@ -41,7 +41,11 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
-import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
+import {
+  resolveCustomizeFocusReturnTarget,
+  SidebarNavigationRegion,
+} from "./SidebarNavigationRegion";
+import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -71,6 +75,8 @@ export function AppSidebar({
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, openMobile } = useSidebar();
   const [compactCustomizeMode, setCompactCustomizeMode] = useState(false);
+  const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
+  const customizeFocusReturnRef = useRef<HTMLElement | null>(null);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
   >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
@@ -157,12 +163,21 @@ export function AppSidebar({
 
   const isHiddenHostedBody = mobileHosted?.hidden === true;
   const isCompactCustomizeModeActive =
-    isCompactViewport && compactCustomizeMode;
+    isCompactViewport && (compactCustomizeMode || isNavigationCustomizing);
   useEffect(() => {
     if (!isCompactViewport || !openMobile || isHiddenHostedBody) {
       setCompactCustomizeMode(false);
     }
+    if (isCompactViewport && (!openMobile || isHiddenHostedBody)) {
+      setNavigationCustomizing(false);
+    }
   }, [isCompactViewport, isHiddenHostedBody, openMobile]);
+  const openNavigationCustomize = useCallback(() => {
+    customizeFocusReturnRef.current = resolveCustomizeFocusReturnTarget(
+      sidebarRef.current,
+    );
+    setNavigationCustomizing(true);
+  }, []);
   const activateVisibleThreadShortcut = useCallback(
     (index: number) =>
       isHiddenHostedBody ? false : activateThreadShortcut(index),
@@ -191,7 +206,10 @@ export function AppSidebar({
     <>
       <SidebarTopReserveRow testId="app-sidebar-top-reserve-row" />
       <SidebarNavigationRegion
-        compactCustomizeMode={isCompactCustomizeModeActive}
+        isCustomizing={isNavigationCustomizing}
+        onCustomizingChange={setNavigationCustomizing}
+        focusReturnTargetRef={customizeFocusReturnRef}
+        compactCustomizeMode={isCompactViewport && compactCustomizeMode}
         onCompactCustomizeModeChange={setCompactCustomizeMode}
         onNavigate={closeOnMobile}
         splitEnabled
@@ -268,18 +286,26 @@ export function AppSidebar({
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
-      {mobileHosted ? (
-        <div
-          ref={sidebarRef}
-          data-testid="app-sidebar-body"
-          hidden={mobileHosted.hidden}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          {body}
-        </div>
-      ) : (
-        <Sidebar ref={sidebarRef}>{body}</Sidebar>
-      )}
+      <SidebarNavigationModelProvider
+        onNavigate={closeOnMobile}
+        onNewChat={handleNewChat}
+        onSearchThreads={closeOnMobile}
+        onOpenCustomize={openNavigationCustomize}
+        splitEnabled
+      >
+        {mobileHosted ? (
+          <div
+            ref={sidebarRef}
+            data-testid="app-sidebar-body"
+            hidden={mobileHosted.hidden}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {body}
+          </div>
+        ) : (
+          <Sidebar ref={sidebarRef}>{body}</Sidebar>
+        )}
+      </SidebarNavigationModelProvider>
     </SidebarThreadShortcutKeysContext.Provider>
   );
 }

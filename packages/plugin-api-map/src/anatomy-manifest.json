@@ -107,7 +107,7 @@
           "anchors": [
             "data-testid=\"sidebar-navigation-region\"",
             "PluginReplacementSlot",
-            "experimental_activate"
+            "SidebarNavigationCustomize"
           ]
         },
         {

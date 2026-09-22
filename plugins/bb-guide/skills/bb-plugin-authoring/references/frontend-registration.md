@@ -209,22 +209,66 @@ is lost when the document navigates; check again when `url` changes.
 ### Replacing the sidebar navigation
 
 `app.slots.experimental_sidebarNavigation` replaces the navigation controls
-above the thread list. The component receives `items`, `activeItemId`, and
-`isCompactViewport`. The items represent New thread, Search threads, Plugins,
-Skills, and plugin panels. BB keeps the drawer, thread list, footer,
-resize handle, and hidden-body shortcut policy.
+above the thread list. The component receives `isCompactViewport` and
+`experimental_Original`. BB keeps the drawer, thread list, footer, resize
+handle, and hidden-body shortcut policy.
 
-Each item has an `id`, `label`, semantic `icon`, host `action`, disabled state,
-shortcut metadata, and `experimental_splitProps`. Spread the split props onto
-the interactive element. Call
-`experimental_activate(item.id, { openInSplit })` for activation. Search opens
-the host quick palette. The former inline sidebar search field and query state
-are not part of this API.
+Read the items with `experimental_useSidebarNavigation()`. It returns
+`{ items, activeItemId, actions }`. `items` holds New thread, Search threads,
+Plugins, Skills, and plugin panels in the user's saved order, hidden ones
+included. Each item has an `id` (its arrangement key, such as
+`__bb__/new-thread` or `<pluginId>/<panelId>`), `label`, semantic `icon`, host
+`action`, `isDisabled`, `isVisible`, `isLoading`, the contributing `pluginId`
+(null for bb's items), shortcut metadata, and `experimental_Accessory`.
 
-The component also receives `experimental_Original`. Render it to delegate to
-BB without another replacement lookup. BB restores the original controls if
-the selected replacement is unavailable or crashes. Users can select
-Automatic, BB, or one plugin under Settings → Appearance → Navigation.
+Draw visible items in your row and hidden ones in an overflow menu, so they
+stay reachable. Render icons with `experimental_SidebarNavigationIcon` to
+match bb's artwork and plugin branding. Render `experimental_Accessory` when
+it is not null; the host wraps it in its crash boundary.
+
+```tsx
+function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
+  const { activeItemId, actions } = experimental_useSidebarNavigation();
+  const split = experimental_useSidebarNavigationSplit(item.id);
+  return (
+    <button
+      type="button"
+      aria-label={item.label}
+      aria-current={item.id === activeItemId ? "page" : undefined}
+      disabled={item.isDisabled || item.isLoading}
+      {...split.splitProps}
+      onClick={(event) =>
+        actions.activate(item.id, { openInSplit: event.metaKey || event.ctrlKey })
+      }
+    >
+      <experimental_SidebarNavigationIcon icon={item.icon} />
+    </button>
+  );
+}
+```
+
+`actions` runs host behavior: `activate(id, { openInSplit })`,
+`setVisible(id, isVisible)`, `setOrder(ids)`, `openCustomize()`,
+`openDetails(id)`, and `disablePlugin(id)`. Visibility and order persist to
+the `sidebar.visiblePluginPanels` and `sidebar.pluginPanelOrder` settings, so
+they carry over when the user switches navigation. `openCustomize()` shows
+bb's customize editor in place of your component, which stays mounted.
+Actions called after your component unmounts do nothing. Search opens the
+host quick palette; there is no inline search field or query state.
+
+In tests, pass `renderSlot(..., { sidebarNavigation: { items, activeItemId } })`;
+actions and split drags are recorded in `inspection.sidebarNavigationCalls`.
+
+`experimental_useSidebarNavigationSplit(id)` works like
+`experimental_useSidebarThreadSplit`: spread `splitProps` onto the item, gate
+any "Open in split" affordance on `isAvailable`, and draw `layout` as a
+mini-map if you want one.
+
+`experimental_Original` renders bb's navigation without another replacement
+lookup; it will be removed once bb's navigation ships as a bundled plugin.
+BB restores its own navigation if the selected replacement is unavailable or
+crashes. Users can select Automatic, BB, or one plugin under Settings →
+Appearance → Navigation.
 
 ### Replacing the sidebar thread list
 

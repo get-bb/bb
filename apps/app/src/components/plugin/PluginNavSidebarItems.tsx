@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -81,18 +80,8 @@ import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import { useSetPluginEnabled } from "./useSetPluginEnabled";
 import { appQueryClient } from "@/lib/app-query-client";
-import {
-  pluginNavPanelOrderAtom,
-  pluginNavVisiblePanelKeysAtom,
-} from "./pluginNavSidebarAtoms";
-import {
-  arrangePluginNavPanelPreferences,
-  DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
-  getPluginNavPanelKey,
-  seedSkillsNavigationPreference,
-  togglePluginNavPanelVisibility,
-} from "./pluginNavSidebarOrder";
-import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
+import { getPluginNavPanelKey } from "./pluginNavSidebarOrder";
+import { useSidebarNavigationArrangement } from "@/components/sidebar/useSidebarNavigationArrangement";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import type { PaneContent } from "@/lib/split-layout";
 
@@ -199,10 +188,6 @@ function PluginNavSidebarItemList({
   const setEnabled = useSetPluginEnabled();
   const isCompactViewport = useIsCompactViewport();
   const splitActions = usePaneContentSplitActions();
-  const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
-  const [storedVisibleKeys, setStoredVisibleKeys] = useAtom(
-    pluginNavVisiblePanelKeysAtom,
-  );
   const [uncontrolledCustomizeOpen, setUncontrolledCustomizeOpen] =
     useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -221,10 +206,6 @@ function PluginNavSidebarItemList({
       }
     },
     [compactCustomizeMode, isCompactViewport, onCompactCustomizeModeChange],
-  );
-  const seededPreferences = useMemo(
-    () => seedSkillsNavigationPreference(storedOrder, storedVisibleKeys),
-    [storedOrder, storedVisibleKeys],
   );
   const [disablePending, setDisablePending] = useState(false);
   const handleDisable = useCallback(
@@ -245,86 +226,15 @@ function PluginNavSidebarItemList({
     },
     [onNavigate, setEnabled],
   );
-  const newLeadingKeys = useMemo(
-    () =>
-      leadingOrderKeys.filter((key) => !seededPreferences.order.includes(key)),
-    [leadingOrderKeys, seededPreferences.order],
-  );
-  const newVisibleKeys = useMemo(
-    () =>
-      rows
-        .map(getPluginNavPanelKey)
-        .filter(
-          (key) =>
-            !seededPreferences.order.includes(key) &&
-            !DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS.some(
-              (hiddenKey) => hiddenKey === key,
-            ),
-        ),
-    [rows, seededPreferences.order],
-  );
   const {
     ordered,
-    normalizedOrder,
-    normalizedVisibleKeys,
     visible,
+    hidden,
     visibleKeys,
-  } = useMemo(
-    () =>
-      arrangePluginNavPanelPreferences({
-        panels: rows,
-        storedOrder:
-          newLeadingKeys.length === 0
-            ? seededPreferences.order
-            : [...newLeadingKeys, ...seededPreferences.order],
-        storedVisibleKeys:
-          seededPreferences.visibleKeys === null || newVisibleKeys.length === 0
-            ? seededPreferences.visibleKeys
-            : [...newVisibleKeys, ...seededPreferences.visibleKeys],
-        defaultHiddenKeys: DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
-      }),
-    [newLeadingKeys, newVisibleKeys, rows, seededPreferences],
-  );
-  const hidden = useMemo(
-    () =>
-      ordered.filter((row) => !visibleKeys.includes(getPluginNavPanelKey(row))),
-    [ordered, visibleKeys],
-  );
-
-  const orderedKeys = useMemo(
-    () => ordered.map(getPluginNavPanelKey),
-    [ordered],
-  );
-
-  const persistPreferences = useCallback(
-    (order: string[], nextVisibleKeys: string[] | null) => {
-      if (!haveSameOrder(storedOrder, order)) setStoredOrder(order);
-      if (
-        storedVisibleKeys === nextVisibleKeys ||
-        (storedVisibleKeys !== null &&
-          nextVisibleKeys !== null &&
-          haveSameOrder(storedVisibleKeys, nextVisibleKeys))
-      ) {
-        return;
-      }
-      setStoredVisibleKeys(nextVisibleKeys);
-    },
-    [setStoredOrder, setStoredVisibleKeys, storedOrder, storedVisibleKeys],
-  );
-
-  const setPanelVisible = useCallback(
-    (key: string, isVisible: boolean) => {
-      persistPreferences(
-        normalizedOrder,
-        togglePluginNavPanelVisibility(
-          normalizedVisibleKeys ?? visibleKeys,
-          key,
-          isVisible,
-        ),
-      );
-    },
-    [normalizedVisibleKeys, normalizedOrder, persistPreferences, visibleKeys],
-  );
+    setVisible: setPanelVisible,
+    moveVisible,
+    moveAny: handleCustomizeDragEnd,
+  } = useSidebarNavigationArrangement(rows, leadingOrderKeys);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -335,39 +245,13 @@ function PluginNavSidebarItemList({
       ) {
         return;
       }
-      const nextOrder = reorderStoredOrder({
-        activeId: event.active.id,
-        overId: event.over.id,
-        order: normalizedOrder,
-        visibleIds: visibleKeys,
-      });
-      if (nextOrder) persistPreferences(nextOrder, normalizedVisibleKeys);
+      moveVisible(event.active.id, event.over.id);
     },
-    [normalizedOrder, normalizedVisibleKeys, persistPreferences, visibleKeys],
+    [moveVisible],
   );
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
   });
-
-  const handleCustomizeDragEnd = useCallback(
-    (activeKey: string, overKey: string) => {
-      const nextOrder = reorderStoredOrder({
-        activeId: activeKey,
-        overId: overKey,
-        order: normalizedOrder,
-        visibleIds: orderedKeys,
-      });
-      if (!nextOrder) return;
-      persistPreferences(nextOrder, normalizedVisibleKeys ?? visibleKeys);
-    },
-    [
-      normalizedOrder,
-      normalizedVisibleKeys,
-      orderedKeys,
-      persistPreferences,
-      visibleKeys,
-    ],
-  );
 
   const reorderDisabled = ordered.length < 2;
   const openCustomize = useCallback(
