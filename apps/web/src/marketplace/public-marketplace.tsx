@@ -543,6 +543,7 @@ function MarketplaceToolbar({
       {query.length > 0 ? (
         <button
           type="button"
+          className="marketplace-search-clear"
           aria-label="Clear search"
           onClick={() => {
             onQueryChange("");
@@ -554,6 +555,18 @@ function MarketplaceToolbar({
       ) : (
         <kbd>/</kbd>
       )}
+      <button
+        type="button"
+        className="marketplace-search-close"
+        aria-label="Close search"
+        onClick={() => {
+          onQueryChange("");
+          setSearchExpanded(false);
+          searchInput.current?.blur();
+        }}
+      >
+        <HugeiconsIcon icon={Cancel01Icon} aria-hidden />
+      </button>
     </div>
   );
   const sortOptions: Array<{
@@ -632,6 +645,30 @@ function MarketplaceToolbar({
               ))}
             </div>
           </details>
+          <label className="marketplace-mobile-sort">
+            <select
+              aria-label="Sort plugins"
+              value={state.sort ?? ""}
+              onChange={(event) => {
+                const option = sortOptions.find(
+                  (option) =>
+                    (option.value ?? "") === event.currentTarget.value,
+                );
+                if (option)
+                  onStateChange({
+                    category: state.category,
+                    sort: option.value,
+                  });
+              }}
+            >
+              {sortOptions.map((option) => (
+                <option key={option.label} value={option.value ?? ""}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+          </label>
           <div
             className="marketplace-sort-control"
             role="group"
