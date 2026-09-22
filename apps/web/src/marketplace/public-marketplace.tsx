@@ -842,9 +842,6 @@ export function PublicMarketplaceDetailPage({
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
             <h1>{entry.displayName}</h1>
-            <p>{entry.description}</p>
-          </div>
-          <div className="marketplace-detail-facts">
             <div className="marketplace-detail-attribution">
               {authorPath === undefined ? (
                 <span className="marketplace-detail-author">
@@ -867,7 +864,10 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
             </div>
-            <div className="marketplace-detail-metadata">
+          </div>
+          <p>{entry.description}</p>
+          <div className="marketplace-detail-install">
+            <div className="marketplace-detail-actions">
               <span
                 className={`marketplace-detail-installs${installs === undefined ? " is-new" : ""}`}
               >
@@ -878,6 +878,18 @@ export function PublicMarketplaceDetailPage({
                   ? "New"
                   : `${installs.toLocaleString("en-US")} ${installs === 1 ? "install" : "installs"}`}
               </span>
+              <CommandButton
+                command={installCommand}
+                label={`Copy ${installCommand}`}
+                size="compact"
+                onCopy={(copied) => {
+                  if (!copied) return;
+                  trackLandingEvent({
+                    name: "marketplace_install_command_copied",
+                    properties: { plugin_id: entry.id },
+                  });
+                }}
+              />
               <a
                 className="marketplace-detail-source"
                 href={repository}
@@ -888,21 +900,6 @@ export function PublicMarketplaceDetailPage({
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
               </a>
             </div>
-          </div>
-          <div className="marketplace-detail-install">
-            <span className="marketplace-field-label">Install in bb</span>
-            <CommandButton
-              command={installCommand}
-              label={`Copy ${installCommand}`}
-              size="compact"
-              onCopy={(copied) => {
-                if (!copied) return;
-                trackLandingEvent({
-                  name: "marketplace_install_command_copied",
-                  properties: { plugin_id: entry.id },
-                });
-              }}
-            />
             <span className="marketplace-install-help">
               <MarketplaceLink href="/download/macos">
                 Download bb for macOS

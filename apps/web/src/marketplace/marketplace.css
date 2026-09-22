@@ -475,7 +475,7 @@
 }
 
 .marketplace-card-installs.is-new,
-.marketplace-detail-facts .is-new {
+.marketplace-detail-installs.is-new {
   color: var(--accent);
   font-weight: 600;
 }
@@ -603,7 +603,7 @@
 
 .marketplace-detail-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 20px 24px;
   padding-bottom: 32px;
@@ -622,37 +622,29 @@
   line-height: 1.1;
 }
 
-.marketplace-detail-identity > p {
-  max-width: none;
-  margin-top: 8px;
+.marketplace-detail-head > p {
+  grid-column: 1 / -1;
+  margin: 0;
   color: var(--dim);
   font-size: 14px;
   line-height: 1.55;
 }
 
-.marketplace-detail-facts {
-  display: grid;
-  min-width: 0;
-  gap: 10px;
-  grid-column: 2;
-  grid-row: 2;
-}
-
 .marketplace-detail-attribution,
-.marketplace-detail-metadata {
+.marketplace-detail-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 12px 20px;
 }
 
 .marketplace-detail-attribution {
+  margin-top: 12px;
   font-size: 13px;
 }
 
-.marketplace-detail-metadata,
+.marketplace-detail-actions,
 .marketplace-detail-category,
-.marketplace-field-label,
 .marketplace-install-help {
   color: var(--label-muted);
   font-size: var(--text-label-small);
@@ -668,10 +660,6 @@
 .marketplace-install-help a {
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-.marketplace-field-label {
-  font-weight: 600;
 }
 
 .marketplace-detail-author {
@@ -720,10 +708,8 @@ a.marketplace-detail-author:hover {
   display: grid;
   justify-items: start;
   gap: 8px;
-  grid-column: 3;
-  grid-row: 1 / 3;
+  grid-column: 1 / -1;
   min-width: 0;
-  margin-top: 4px;
 }
 
 .marketplace-detail-body {
@@ -946,21 +932,6 @@ a.marketplace-detail-author:hover {
   margin-bottom: 8px;
 }
 
-@media (max-width: 960px) {
-  .marketplace-detail-head {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .marketplace-detail-facts {
-    grid-column: 2;
-  }
-
-  .marketplace-detail-install {
-    grid-column: 2;
-    grid-row: 3;
-  }
-}
-
 @media (max-width: 860px) {
   .marketplace-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1018,15 +989,6 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-identity h1 {
     font-size: 27px;
-  }
-
-  .marketplace-detail-facts,
-  .marketplace-detail-install {
-    grid-column: 1 / -1;
-  }
-
-  .marketplace-detail-identity > p {
-    font-size: 14px;
   }
 
   .marketplace-screenshots {
