@@ -657,6 +657,11 @@
   line-height: 1.5;
 }
 
+.marketplace-detail-category {
+  color: var(--accent);
+  font-weight: 500;
+}
+
 .marketplace-detail-category:hover,
 .marketplace-install-help a {
   text-decoration: underline;
