@@ -13,6 +13,13 @@ every window and client sees the same value.
 
 ## Sidebar preferences
 
+The sidebar thread list uses an explicit plugin selection and defaults to the bundled
+Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
+`__builtin__` selections resolve to that default; other plugin selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
+
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
   (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
   `sidebar.chronologicalSort`, the section
@@ -181,6 +188,7 @@ every window and client sees the same value.
 - The `changelogPreview` experiment defaults to false.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
+
 
 ## Sidebar progressive disclosure
 

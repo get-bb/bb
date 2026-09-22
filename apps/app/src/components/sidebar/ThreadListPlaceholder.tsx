@@ -1,7 +1,6 @@
 import { Button } from "@bb/shared-ui/button";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { getPluginsRoutePath } from "@/lib/route-paths";
 
 export type ThreadListPlaceholderState =
   | { kind: "loading" }
@@ -12,9 +11,8 @@ function LoadingRow({ textWidthClassName }: { textWidthClassName: string }) {
   return (
     <div
       data-sidebar="navigation-loading-row"
-      className="flex h-7 items-center gap-2 rounded-md"
+      className="flex h-7 items-center rounded-md"
     >
-      <Skeleton className="size-4 shrink-0 rounded-md bg-sidebar-border/60" />
       <Skeleton
         className={cn(
           "h-3 rounded-sm bg-sidebar-border/50",
@@ -50,9 +48,6 @@ export function ThreadListPlaceholder({
         className="flex flex-col gap-2 px-3 py-2 text-sm text-muted-foreground"
       >
         <span>No thread list plugin is enabled.</span>
-        <Button asChild variant="outline" size="sm" className="self-start">
-          <a href={getPluginsRoutePath()}>Open plugins</a>
-        </Button>
       </div>
     );
   }

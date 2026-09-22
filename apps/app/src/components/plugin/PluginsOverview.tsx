@@ -300,6 +300,7 @@ export function PluginsOverview({
                 onOpenPlugin={openPlugin}
               />
               <ResourceInfiniteScrollSentinel
+                itemCount={installedList.items.length}
                 hasMore={installedList.hasMore}
                 onLoadMore={installedList.loadMore}
               />
