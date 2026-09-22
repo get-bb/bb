@@ -138,6 +138,7 @@ interface ThreadRowContainerArgs {
   dragBindings?: SidebarSortableDragBindings;
   nestTargetState: SidebarNestTargetState | null;
   reorderPlacement: SidebarReorderPlacement | null;
+  onClick?: MouseEventHandler<HTMLDivElement>;
   onClickCapture?: ThreadRowClickCaptureHandler;
   onSplitDragPointerDown?: PointerEventHandler<HTMLElement>;
   stickyLevel?: number;
@@ -171,6 +172,7 @@ function renderThreadRowContainer({
   containerRef,
   dragBindings,
   nestTargetState,
+  onClick,
   onClickCapture,
   onSplitDragPointerDown,
   reorderPlacement,
@@ -185,6 +187,7 @@ function renderThreadRowContainer({
     "data-sidebar-reorder-placement": reorderPlacement ?? undefined,
     ...dragBindings?.attributes,
     ...(dragBindings?.listeners ?? {}),
+    onClick,
     onClickCapture,
     onPointerDown: onSplitDragPointerDown,
   };
@@ -448,6 +451,17 @@ function ThreadRowComponent({
   );
 
   const rowLinkRef = useRef<HTMLAnchorElement>(null);
+  const handleRowClick = useCallback<MouseEventHandler<HTMLDivElement>>(
+    (event) => {
+      if (event.target !== event.currentTarget) {
+        if (!(event.target instanceof Element)) return;
+        if (!event.target.closest("[data-sidebar-thread-trailing]")) return;
+        if (event.target.closest("a, button")) return;
+      }
+      rowLinkRef.current?.click();
+    },
+    [],
+  );
   const rowContent = (
     <>
       {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
@@ -566,6 +580,7 @@ function ThreadRowComponent({
         ) : null}
       </span>
       <span
+        data-sidebar-thread-trailing=""
         className={cn(
           "flex shrink-0 items-center gap-0.5",
           isEditing && "hidden",
@@ -683,6 +698,7 @@ function ThreadRowComponent({
     dragBindings: rowDragBindings,
     nestTargetState,
     reorderPlacement,
+    onClick: isEditing ? undefined : handleRowClick,
     onClickCapture:
       !isEditing && options.consumeClickSuppression
         ? handleRowClickCapture

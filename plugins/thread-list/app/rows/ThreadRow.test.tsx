@@ -999,6 +999,41 @@ describe("ThreadRow", () => {
     },
   );
 
+  it("routes a tap on the bare row through its navigation link", () => {
+    renderThreadRow();
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const row = link.closest("[data-sidebar-rename-row]");
+    expect(row).not.toBeNull();
+    const clickLink = vi.spyOn(link, "click");
+
+    fireEvent.click(row!);
+    expect(clickLink).toHaveBeenCalledOnce();
+
+    fireEvent.click(row!.querySelector("[data-sidebar-thread-trailing]")!);
+    expect(clickLink).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(link);
+    expect(clickLink).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not route a suppressed drag click on the trailing area", () => {
+    renderThreadRow({
+      options: {
+        ...DEFAULT_OPTIONS,
+        consumeClickSuppression: vi.fn(() => true),
+      },
+    });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const clickLink = vi.spyOn(link, "click");
+    const trailing = link
+      .closest("[data-sidebar-rename-row]")
+      ?.querySelector("[data-sidebar-thread-trailing]");
+    expect(trailing).not.toBeNull();
+
+    fireEvent.click(trailing!);
+    expect(clickLink).not.toHaveBeenCalled();
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread", displayTitle: "Parent thread" }),
