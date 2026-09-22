@@ -142,7 +142,13 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   });
 }
 
-function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
+function MachineModeProbe({
+  threads = [],
+  selectedThreadId,
+}: {
+  threads?: ThreadListEntry[];
+  selectedThreadId?: string;
+}) {
   const [collapsedSectionIds, setCollapsedSectionIds] = useAtom(
     collapsedSidebarSectionIdsAtom,
   );
@@ -181,6 +187,7 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
         onToggleCollapsed={handleToggleCollapsed}
         onToggleThreadCollapsed={vi.fn()}
         onToggleEnvironmentCollapsed={vi.fn()}
+        selectedThreadId={selectedThreadId}
       />
     </TooltipProvider>
   );
@@ -201,14 +208,24 @@ function renderMachineMode(
   {
     hosts = {},
     sdk,
+    selectedThreadId,
   }: {
     hosts?: Record<string, string>;
     sdk?: PluginSdkTestFakes;
+    selectedThreadId?: string;
   } = {},
 ) {
   return renderSlot(
     { component: Harness },
-    { store, children: <MachineModeProbe threads={threads} /> },
+    {
+      store,
+      children: (
+        <MachineModeProbe
+          threads={threads}
+          selectedThreadId={selectedThreadId}
+        />
+      ),
+    },
     {
       sidebarThreads: {
         threads: threads.map((thread) =>
@@ -366,6 +383,38 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("marks More and the hidden section as the breadcrumb to the selected thread", async () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine", "pinned"]);
+    store.set(sidebarHiddenGroupsAtom, ["machine:no-machine"]);
+
+    renderMachineMode(store, [makeThread()], {
+      selectedThreadId: "thr_machine",
+    });
+
+    const more = screen.getByRole("button", { name: "More machines" });
+    expect(more.getAttribute("data-selected")).toBe("true");
+    fireEvent.keyDown(more, { key: "Enter" });
+    const section = await screen.findByRole("menuitem", { name: /No machine/ });
+    expect(section.getAttribute("data-selected")).toBe("true");
+  });
+
+  it("leaves More unselected when the selected thread is visible elsewhere", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine", "pinned"]);
+    store.set(sidebarHiddenGroupsAtom, ["machine:no-machine"]);
+
+    renderMachineMode(store, [makeThread()], {
+      selectedThreadId: "thr_elsewhere",
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "More machines" })
+        .getAttribute("data-selected"),
+    ).toBeNull();
   });
 
   it("keeps hidden machine activity in More and restores the saved collapse state", async () => {

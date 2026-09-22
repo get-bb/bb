@@ -2210,6 +2210,7 @@ export const ChronologicalSectionThreadSections = memo(
         order={fullSectionOrder}
         onOrderChange={onTopLevelSectionOrderChange}
         label="Sections"
+        selectedThreadId={selectedThreadId}
       >
         {sectionDnd ? (
           <DndContext {...sectionDnd.dndContextProps}>

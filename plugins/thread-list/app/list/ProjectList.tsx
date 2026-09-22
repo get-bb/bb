@@ -760,6 +760,7 @@ function ProjectModeSections({
       order={persistedOrder}
       onOrderChange={onOrderChange}
       label="Projects"
+      selectedThreadId={selectedThreadId}
     >
       <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
         {(sectionId, consumeClickSuppression) => {
@@ -1220,6 +1221,7 @@ export function MachineModeSections({
       order={persistedOrder}
       onOrderChange={onOrderChange}
       label="Machines"
+      selectedThreadId={selectedThreadId}
     >
       <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
         {(sectionId, consumeClickSuppression) => {

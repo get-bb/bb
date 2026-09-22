@@ -45,6 +45,7 @@ interface ThreadListVisibilityState {
   restore: (id: string) => void;
   customize: () => void;
   label: string;
+  selectedThreadId?: string;
 }
 
 const VisibilityContext = createContext<ThreadListVisibilityState | null>(null);
@@ -55,12 +56,14 @@ export function ThreadListVisibility({
   order,
   onOrderChange,
   label,
+  selectedThreadId,
   children,
 }: {
   groups: readonly ThreadListVisibilityGroup[];
   order: readonly SidebarSectionId[];
   onOrderChange: (order: SidebarSectionId[]) => void;
   label: string;
+  selectedThreadId?: string;
   children: ReactNode;
 }) {
   const [hidden, setHidden] = useAtom(sidebarHiddenGroupsAtom);
@@ -110,6 +113,7 @@ export function ThreadListVisibility({
   const value: ThreadListVisibilityState = {
     hiddenGroups: orderedGroups.filter((group) => hiddenIds.has(group.id)),
     label,
+    selectedThreadId,
     customize: () => setCustomizing(true),
     hide: (id) => {
       focusTarget.current = "more";
@@ -208,16 +212,19 @@ function GroupActivity({ threads }: { threads: readonly ThreadListEntry[] }) {
 
 function HiddenGroup({
   group,
+  selected,
   close,
   restore,
 }: {
   group: ThreadListVisibilityGroup;
+  selected: boolean;
   close: () => void;
   restore: (id: string) => void;
 }) {
   return (
     <SidebarOverflowItem
       item={group}
+      selected={selected}
       empty={group.threads.length === 0}
       onClose={close}
       onAddToSidebar={restore}
@@ -233,6 +240,9 @@ export function ThreadListMore() {
   const state = useContext(VisibilityContext);
   if (!state || state.hiddenGroups.length === 0) return null;
   const groups = state.hiddenGroups;
+  const selectedGroupId = groups.find((group) =>
+    group.threads.some((thread) => thread.id === state.selectedThreadId),
+  )?.id;
   const threads = [
     ...new Map(
       groups
@@ -247,6 +257,7 @@ export function ThreadListMore() {
         listLabel={`Hidden ${state.label.toLowerCase()}`}
         customizeLabel="Customize list"
         onCustomize={state.customize}
+        selected={selectedGroupId !== undefined}
         activity={<GroupActivity threads={threads} />}
         testIdPrefix="sidebar-thread-list"
       >
@@ -257,6 +268,7 @@ export function ThreadListMore() {
                 <HiddenGroup
                   key={group.id}
                   group={group}
+                  selected={group.id === selectedGroupId}
                   close={close}
                   restore={state.restore}
                 />

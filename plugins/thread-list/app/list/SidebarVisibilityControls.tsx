@@ -25,7 +25,11 @@ import {
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SIDEBAR_DISCLOSURE_ACTION_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
+import {
+  PROJECT_LIST_ACTION_BUTTON_CLASS,
+  SIDEBAR_ROW_SELECTED_STATE_CLASS,
+} from "../rows/sidebarRowClasses.js";
+import { CONTEXT_SELECTION_SURFACE_CLASS } from "../ui/context-selection.js";
 
 const OVERFLOW_ROW_BUTTON_CLASS =
   "w-full justify-start gap-2 rounded-sm px-2 text-xs font-normal hover:bg-state-hover focus-visible:bg-state-hover";
@@ -73,6 +77,7 @@ export function SidebarMore({
   customizeLabel,
   listLabel,
   onCustomize,
+  selected = false,
   testIdPrefix = "sidebar-navigation",
 }: {
   activity?: ReactNode;
@@ -81,6 +86,7 @@ export function SidebarMore({
   customizeLabel: string;
   listLabel: string;
   onCustomize: () => void;
+  selected?: boolean;
   testIdPrefix?: string;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -106,8 +112,10 @@ export function SidebarMore({
                     PROJECT_LIST_ACTION_BUTTON_CLASS,
                     SIDEBAR_DISCLOSURE_ACTION_CLASS,
                     "w-full hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
+                    selected && SIDEBAR_ROW_SELECTED_STATE_CLASS,
                     isMenuOpen && "bg-sidebar-accent",
                   )}
+                  data-selected={selected ? "true" : undefined}
                   data-testid={`${testIdPrefix}-more-trigger`}
                 >
                   <Icon name="MoreHorizontal" aria-hidden="true" />
@@ -179,6 +187,7 @@ export function SidebarOverflowItem({
   onAddToSidebar,
   onClose,
   onNewThread,
+  selected = false,
 }: {
   activity?: ReactNode;
   children: (close: () => void) => ReactNode;
@@ -187,6 +196,7 @@ export function SidebarOverflowItem({
   onAddToSidebar: (id: string) => void;
   onClose: () => void;
   onNewThread?: () => void;
+  selected?: boolean;
 }) {
   const compact = useIsCompactViewport();
   const [isCompactOpen, setIsCompactOpen] = useState(false);
@@ -267,9 +277,11 @@ export function SidebarOverflowItem({
             className={cn(
               OVERFLOW_ROW_BUTTON_CLASS,
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+              selected && CONTEXT_SELECTION_SURFACE_CLASS,
             )}
             disabled={item.disabled}
             data-sidebar-overflow-item={item.id}
+            data-selected={selected ? "true" : undefined}
           >
             {label}
           </Button>
@@ -288,9 +300,13 @@ export function SidebarOverflowItem({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger
-        className="[&>[data-icon-root]:last-child]:hidden"
+        className={cn(
+          "[&>[data-icon-root]:last-child]:hidden",
+          selected && CONTEXT_SELECTION_SURFACE_CLASS,
+        )}
         disabled={item.disabled}
         data-sidebar-overflow-item={item.id}
+        data-selected={selected ? "true" : undefined}
         textValue={item.title}
       >
         {label}
