@@ -19,6 +19,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
+import { CLAUDE_BUILTIN_TOOL_UNIVERSE } from "../tool-profiles.js";
 
 const bridgeInstructionModeSchema = z.enum(instructionModeValues);
 const bridgePermissionEscalationSchema = z
@@ -54,6 +55,8 @@ export const claudeThreadStartParamsSchema = z.object({
   chromeEnabled: z.boolean(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
+  simpleSystemPrompt: z.boolean(),
+  tools: z.array(z.enum(CLAUDE_BUILTIN_TOOL_UNIVERSE)).nonempty().optional(),
   instructionMode: bridgeInstructionModeSchema,
   dynamicTools: z.array(dynamicToolSchema).optional(),
   disallowedTools: z.array(z.string()).optional(),

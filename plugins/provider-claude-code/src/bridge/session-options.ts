@@ -27,6 +27,8 @@ export interface BuildSessionOptionsArgs {
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
   memoryEnabled?: boolean;
+  simpleSystemPrompt?: boolean;
+  tools?: readonly string[];
 }
 
 export interface PermissionEscalationWorkContext {
@@ -49,6 +51,18 @@ const SUMMARIZED_ADAPTIVE_THINKING = {
   display: "summarized",
 } satisfies Exclude<Options["thinking"], undefined>;
 const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
+const CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT_ENV = "CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT";
+
+export function buildClaudeSdkEnvironment(
+  env: NodeJS.ProcessEnv,
+  simpleSystemPrompt: boolean,
+): NodeJS.ProcessEnv {
+  const sdkEnv = { ...env };
+  if (simpleSystemPrompt) {
+    sdkEnv[CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT_ENV] = "1";
+  }
+  return sdkEnv;
+}
 
 export function toSdkEffort(
   reasoningLevel: ReasoningLevel,
@@ -224,12 +238,16 @@ export function buildSessionOptions(
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
   const extraArgs = buildChromeExtraArgs(params.chromeEnabled);
+  const sdkEnv = buildClaudeSdkEnvironment(
+    env,
+    params.simpleSystemPrompt === true,
+  );
 
   return {
     cwd: params.cwd,
     systemPrompt,
     model,
-    env,
+    env: sdkEnv,
     permissionMode: params.permissionMode,
     ...(params.reasoningLevel
       ? { effort: toSdkEffort(params.reasoningLevel) }
@@ -241,6 +259,7 @@ export function buildSessionOptions(
     ...(extraArgs ? { extraArgs } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
+    ...(params.tools ? { tools: [...params.tools] } : {}),
     ...(sandbox ? { sandbox } : {}),
     ...(additionalDirectories.length > 0
       ? { additionalDirectories: [...additionalDirectories] }

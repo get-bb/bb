@@ -9,6 +9,29 @@ Start a thread, pick Claude Code, and let it work in your repository from bb. Th
   from your home directory and project.
 - Health, usage, and install status for Claude Code on each host, with an install or update action.
 
+## Provider profiles
+
+- `claude-code` keeps the complete Claude Code built-in tool set and remains
+  the default choice.
+- `claude-code-builder` allows `Agent`, `AskUserQuestion`, `Bash`, `Edit`,
+  `EnterPlanMode`, `EnterWorktree`, `ExitPlanMode`, `ExitWorktree`,
+  `ListAgents`, `Monitor`, `NotebookEdit`, `Read`, `SendMessage`, `Skill`,
+  `TaskOutput`, `TaskStop`, `WebFetch`, `WebSearch`, and `Write`.
+- `claude-code-review` allows `AskUserQuestion`, `Bash`, `EnterPlanMode`,
+  `ExitPlanMode`, `ListMcpResourcesTool`, `Read`, `ReadMcpResourceDirTool`,
+  `ReadMcpResourceTool`, `ReportFindings`, `Skill`, `WebFetch`, and
+  `WebSearch`. This is a context-reduction profile, not a read-only security
+  boundary; the selected bb permission mode still controls access.
+- `claude-code-simple` is an experimental full-tools comparison that enables
+  Claude Code's simple system prompt. It does not combine with the builder or
+  review profile. Standard variants preserve the incoming environment; record
+  the control flag value when comparing results.
+
+Choose a profile in the provider picker or pass its ID to
+`bb thread spawn --provider`. Profile allowlists apply only to Claude Code's
+built-in tools. BB dynamic tools and MCP tools are unchanged, and configured
+tool denials remain in force.
+
 ## Settings
 
 - `Claude Code memory`: let Claude Code read and write its auto-memory.

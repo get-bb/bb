@@ -572,8 +572,7 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
   args.bridge.sendRequest(1, "thread/start", {
     cwd: "/tmp/worktree",
     instructionMode: "append",
-    options: canonicalOptions({
-    }),
+    options: canonicalOptions({}),
     threadId: args.threadId,
   });
   await args.bridge.waitForResponse(1);
@@ -1016,6 +1015,63 @@ describe("bridge", () => {
       type: "adaptive",
       display: "summarized",
     });
+    expect(options).not.toHaveProperty("tools");
+    expect(options.env).not.toHaveProperty("CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT");
+  });
+
+  it("forwards a built-in tool allowlist without replacing policy denials", () => {
+    const options = buildSessionOptions(
+      {
+        chromeEnabled: false,
+        workflowsEnabled: false,
+        cwd: "/tmp/worktree",
+        disallowedTools: ["WebSearch", "Bash"],
+        instructionMode: "append",
+        permissionMode: "acceptEdits",
+        permissionScope: "workspace",
+        tools: ["Read", "ReportFindings"],
+      },
+      {},
+    );
+
+    expect(options.tools).toEqual(["Read", "ReportFindings"]);
+    expect(options.disallowedTools).toEqual(["WebSearch", "Bash"]);
+  });
+
+  it("isolates the simple prompt flag while preserving the composed environment", () => {
+    const composedEnvironment = {
+      INHERITED_VALUE: "inherited",
+      PROVIDER_VALUE: "provider",
+      CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: "unexpected-global-value",
+    };
+    const base = {
+      chromeEnabled: false,
+      workflowsEnabled: false,
+      cwd: "/tmp/worktree",
+      instructionMode: "append" as const,
+      permissionMode: "acceptEdits" as const,
+      permissionScope: "workspace" as const,
+    };
+
+    const standard = buildSessionOptions(base, composedEnvironment);
+    const simple = buildSessionOptions(
+      { ...base, simpleSystemPrompt: true },
+      composedEnvironment,
+    );
+
+    expect(standard.env).toEqual({
+      INHERITED_VALUE: "inherited",
+      PROVIDER_VALUE: "provider",
+      CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: "unexpected-global-value",
+    });
+    expect(simple.env).toEqual({
+      INHERITED_VALUE: "inherited",
+      PROVIDER_VALUE: "provider",
+      CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: "1",
+    });
+    expect(composedEnvironment.CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT).toBe(
+      "unexpected-global-value",
+    );
   });
 
   it("passes Claude local plugins through to the session", () => {
@@ -4552,6 +4608,62 @@ describe("canonical model context-window hint", () => {
     approvalReviewer: null,
     permissionEscalation: null,
   };
+
+  it("preserves inherited and provider environment values for the simple variant", async () => {
+    const inheritedKey = "CLAUDE_PROFILE_TEST_INHERITED";
+    const originalInheritedValue = process.env[inheritedKey];
+    process.env[inheritedKey] = "inherited";
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-simple-environment";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          ...canonicalOptions,
+          envVars: { CLAUDE_PROFILE_TEST_PROVIDER: "provider" },
+          providerOptions: {
+            toolProfile: "full",
+            simpleSystemPrompt: true,
+          },
+        },
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(startResponse);
+
+      expect(getLatestQueryOptions().env).toMatchObject({
+        CLAUDE_PROFILE_TEST_INHERITED: "inherited",
+        CLAUDE_PROFILE_TEST_PROVIDER: "provider",
+        CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: "1",
+      });
+
+      bridge.sendRequest(2, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(2);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+      if (originalInheritedValue === undefined) {
+        delete process.env[inheritedKey];
+      } else {
+        process.env[inheritedKey] = originalInheritedValue;
+      }
+    }
+  });
 
   it("rebuilds with the same provider session when the turn environment changes", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

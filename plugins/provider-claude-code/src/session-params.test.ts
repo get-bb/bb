@@ -5,6 +5,7 @@ import {
   buildClaudeTurnParams,
   type ClaudeSessionExecutionOptions,
 } from "./session-params.js";
+import { CLAUDE_BUILDER_TOOLS, CLAUDE_REVIEW_TOOLS } from "./tool-profiles.js";
 
 const EXECUTION_CONTEXT = {
   model: "claude-sonnet-5",
@@ -126,9 +127,11 @@ describe("buildClaudeSessionParams", () => {
     expect(params).toMatchObject({
       workflowsEnabled: false,
       chromeEnabled: false,
+      simpleSystemPrompt: false,
       permissionMode: "bypassPermissions",
       approvedPlanPermissionMode: "bypassPermissions",
     });
+    expect(params).not.toHaveProperty("tools");
 
     expect(
       buildClaudeSessionParams({
@@ -152,6 +155,98 @@ describe("buildClaudeSessionParams", () => {
         },
       }).workflowsEnabled,
     ).toBe(true);
+  });
+
+  it("maps builder and review profiles to exact tools while preserving denials", () => {
+    const builder = buildClaudeSessionParams({
+      threadId: "thread-builder",
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      disallowedTools: ["WebSearch", "Bash"],
+      options: {
+        ...WORKSPACE_ACCEPT_EDITS_POLICY,
+        providerOptions: { toolProfile: "builder" },
+      },
+    });
+    const review = buildClaudeSessionParams({
+      threadId: "thread-review",
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      disallowedTools: ["WebSearch", "Bash"],
+      options: {
+        ...WORKSPACE_ACCEPT_EDITS_POLICY,
+        providerOptions: { toolProfile: "review" },
+      },
+    });
+
+    expect(builder.tools).toEqual(CLAUDE_BUILDER_TOOLS);
+    expect(review.tools).toEqual(CLAUDE_REVIEW_TOOLS);
+    expect(builder.disallowedTools).toEqual(["WebSearch", "Bash"]);
+    expect(review.disallowedTools).toEqual(["WebSearch", "Bash"]);
+  });
+
+  it("omits tools for full and simple while isolating the simple prompt flag", () => {
+    const full = buildClaudeSessionParams({
+      threadId: "thread-full",
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      options: {
+        ...WORKSPACE_ACCEPT_EDITS_POLICY,
+        providerOptions: {
+          toolProfile: "full",
+          simpleSystemPrompt: false,
+        },
+      },
+    });
+    const simple = buildClaudeSessionParams({
+      threadId: "thread-simple",
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      options: {
+        ...WORKSPACE_ACCEPT_EDITS_POLICY,
+        providerOptions: {
+          toolProfile: "full",
+          simpleSystemPrompt: true,
+        },
+      },
+    });
+
+    expect(full).not.toHaveProperty("tools");
+    expect(simple).not.toHaveProperty("tools");
+    expect(full.simpleSystemPrompt).toBe(false);
+    expect(simple.simpleSystemPrompt).toBe(true);
+  });
+
+  it("rejects unknown and empty tool profile values", () => {
+    for (const toolProfile of ["unknown", ""]) {
+      expect(() =>
+        buildClaudeSessionParams({
+          threadId: "thread-invalid",
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: {
+            ...WORKSPACE_ACCEPT_EDITS_POLICY,
+            providerOptions: { toolProfile },
+          },
+        }),
+      ).toThrow();
+    }
+  });
+
+  it("leaves BB permission mode independent from the review profile", () => {
+    const params = buildClaudeSessionParams({
+      threadId: "thread-review",
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      options: {
+        ...WORKSPACE_AUTO_POLICY,
+        providerOptions: { toolProfile: "review" },
+      },
+    });
+
+    expect(params.permissionMode).toBe("auto");
+    expect(params.permissionScope).toBe("workspace");
+    expect(params.permissionEscalation).toBe("ask");
   });
 });
 

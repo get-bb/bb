@@ -333,6 +333,25 @@ describe("SdkSession", () => {
     );
   });
 
+  it("forwards tools and additive denials to the Agent SDK", () => {
+    const session = new SdkSession(
+      {
+        ...defaultOptions,
+        tools: ["Read", "ReportFindings"],
+        disallowedTools: ["WebFetch"],
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    session.start();
+
+    expect(getLatestQueryCall().options).toMatchObject({
+      tools: ["Read", "ReportFindings"],
+      disallowedTools: ["WebFetch"],
+    });
+  });
+
   it("only enables dangerous permission skipping for bypass mode", () => {
     mockProcessUid(1000);
     const onMessage = vi.fn();

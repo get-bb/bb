@@ -13,6 +13,10 @@ import {
   toClaudePermissionMode,
   type ClaudePermissionMode,
 } from "./interactive-contract.js";
+import {
+  claudeToolProfileSchema,
+  getClaudeToolProfileTools,
+} from "./tool-profiles.js";
 
 interface AdditionalWorkspaceWriteRootsParams {
   additionalWorkspaceWriteRoots: string[];
@@ -78,6 +82,8 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
+  simpleSystemPrompt?: boolean | undefined;
+  tools?: readonly string[] | undefined;
 };
 
 function resolveClaudeSessionPermissionMode(
@@ -136,6 +142,8 @@ function buildInternalSessionParams(
     chromeEnabled: args.options.chromeEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
+    simpleSystemPrompt: args.options.simpleSystemPrompt ?? false,
+    ...(args.options.tools ? { tools: [...args.options.tools] } : {}),
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
     ...(args.disallowedTools && args.disallowedTools.length > 0
       ? { disallowedTools: [...args.disallowedTools] }
@@ -151,6 +159,8 @@ const claudeProviderOptionsSchema = z
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
+    toolProfile: claudeToolProfileSchema.default("full"),
+    simpleSystemPrompt: z.boolean().default(false),
   })
   .passthrough();
 
@@ -179,6 +189,7 @@ export function buildClaudeSessionParams(
     args.options.providerOptions ?? {},
   );
   const config = buildClaudeCodeConfig(args.options.envVars);
+  const tools = getClaudeToolProfileTools(providerOptions.toolProfile);
   return buildInternalSessionParams({
     additionalWorkspaceWriteRoots:
       providerOptions.additionalWorkspaceWriteRoots ?? [],
@@ -195,6 +206,8 @@ export function buildClaudeSessionParams(
       chromeEnabled: providerOptions.chromeEnabled ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
+      simpleSystemPrompt: providerOptions.simpleSystemPrompt,
+      tools,
     },
   });
 }

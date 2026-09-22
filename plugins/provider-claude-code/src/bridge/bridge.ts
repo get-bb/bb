@@ -78,6 +78,7 @@ import {
 } from "./provider-maintenance.js";
 import {
   buildChromeExtraArgs,
+  buildClaudeSdkEnvironment,
   buildReadonlyDenialMessage,
   buildMutableFlagSettings,
   buildSessionOptions,
@@ -853,6 +854,8 @@ function toSessionConstructionConfig(
       permissionMode: params.permissionMode,
       permissionScope: params.permissionScope,
       plugins: params.plugins,
+      simpleSystemPrompt: params.simpleSystemPrompt,
+      tools: params.tools,
     },
   };
 }
@@ -1276,13 +1279,13 @@ async function getWritableThreadSession(
     return undefined;
   }
   const replacement: ClaudeSessionRestart | null = threadSession.streamEnded
-      ? {
-          reason: "Thread session replaced after Claude SDK stream ended",
-          showRuntimeNote: false,
-        }
-      : intent === "new-turn"
-        ? threadSession.restartBeforeNextTurn
-        : null;
+    ? {
+        reason: "Thread session replaced after Claude SDK stream ended",
+        showRuntimeNote: false,
+      }
+    : intent === "new-turn"
+      ? threadSession.restartBeforeNextTurn
+      : null;
   if (replacement === null) {
     return threadSession;
   }
@@ -1517,7 +1520,11 @@ function applyTurnEnvironment(
     ...attachment.sessionConstructionConfig,
     config,
   };
-  attachment.sessionOptions.env = buildSessionEnv(envOverrides);
+  attachment.sessionOptions.env = buildClaudeSdkEnvironment(
+    buildSessionEnv(envOverrides),
+    attachment.sessionConstructionConfig.sessionOptions.simpleSystemPrompt ===
+      true,
+  );
   if (attachment.residentSession) {
     attachment.residentSession.restartBeforeNextTurn = {
       reason:
