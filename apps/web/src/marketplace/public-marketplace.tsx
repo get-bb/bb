@@ -513,7 +513,7 @@ function MarketplaceToolbar({
         type="search"
         value={query}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
-        placeholder="Search plugins"
+        placeholder="Search"
       />
       {query.length > 0 ? (
         <button
