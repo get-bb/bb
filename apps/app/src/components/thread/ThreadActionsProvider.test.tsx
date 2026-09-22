@@ -233,6 +233,9 @@ describe("ThreadActionsProvider archive feedback", () => {
     const view = renderProvider(<ArchiveButton thread={thread} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Archive thread" }),
+    );
 
     await vi.waitFor(() => {
       expect(appToast.success).toHaveBeenCalledTimes(1);
@@ -267,6 +270,9 @@ describe("ThreadActionsProvider archive feedback", () => {
     const view = renderProvider(<ArchiveButton thread={thread} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Archive thread" }),
+    );
 
     await vi.waitFor(() => {
       expect(appToast.success).toHaveBeenCalledTimes(1);
