@@ -130,11 +130,7 @@ export function CatalogPluginDetail({
       leadingClassName="size-6"
       title={entry.displayName}
       titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
-      metadata={
-        <div className="pl-8">
-          <PluginCardAuthor entry={entry} />
-        </div>
-      }
+      metadata={<PluginCardAuthor entry={entry} />}
       actions={
         <PluginCatalogInstallControl
           displayName={entry.displayName}
@@ -337,7 +333,7 @@ export function PluginDetail({
         )
       }
       metadata={
-        <div className="space-y-1 pl-6">
+        <div className="space-y-1">
           {catalogEntry !== undefined ? (
             <PluginCardAuthor entry={catalogEntry} />
           ) : plugin.provenance === "builtin" ||

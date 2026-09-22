@@ -11,6 +11,7 @@ import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { ResourceDetailPage } from "@bb/shared-ui/resource-list";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
@@ -159,6 +160,32 @@ function renderPlugin(
     </MemoryRouter>,
   );
 }
+
+describe("Resource detail header", () => {
+  it("keeps wrapped title metadata in the title column beside the leading icon", () => {
+    render(
+      <ResourceDetailPage
+        leading={<span>Leading icon</span>}
+        title="A long resource title"
+        titleMeta={<span>Category</span>}
+      >
+        <div>Content</div>
+      </ResourceDetailPage>,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: "A long resource title",
+    });
+    const titleRow = heading.parentElement;
+    const titleColumn = titleRow?.parentElement;
+    const titleAndIcon = titleColumn?.parentElement;
+    const leading = screen.getByText("Leading icon");
+
+    expect(titleRow?.contains(screen.getByText("Category"))).toBe(true);
+    expect(titleColumn?.contains(leading)).toBe(false);
+    expect(titleAndIcon?.contains(leading)).toBe(true);
+  });
+});
 
 describe("Plugin detail recipe", () => {
   it("omits Capabilities when the plugin has no capability rows", () => {
