@@ -2,7 +2,8 @@ import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenera
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import ArrowUpRight01Icon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
+import ArrowRight02Icon from "@hugeicons/core-free-icons/ArrowRight02Icon";
+import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
 import AudioWave01Icon from "@hugeicons/core-free-icons/AudioWave01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
@@ -844,6 +845,7 @@ export function PublicMarketplaceDetailPage({
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
             <h1>{entry.displayName}</h1>
+            <p>{entry.description}</p>
           </div>
           <div className="marketplace-detail-facts">
             {authorPath === undefined ? (
@@ -879,7 +881,7 @@ export function PublicMarketplaceDetailPage({
               rel="noreferrer"
             >
               View source
-              <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
+              <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
             </a>
           </div>
           <div className="marketplace-detail-install">
@@ -899,8 +901,8 @@ export function PublicMarketplaceDetailPage({
               className="marketplace-detail-source"
               href="/download/macos"
             >
-              Get it for macOS
-              <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden />
+              Download bb for macOS
+              <HugeiconsIcon icon={ArrowRight02Icon} aria-hidden />
             </MarketplaceLink>
           </div>
         </header>
@@ -919,16 +921,12 @@ export function PublicMarketplaceDetailPage({
                 ))}
               </div>
             )}
-            <section className="marketplace-detail-section marketplace-overview-section">
-              <p className="marketplace-overview-lead">{entry.description}</p>
-              {entry.overview === undefined ? null : (
-                <>
-                  <hr className="marketplace-overview-rule" />
-                  <h2>Overview</h2>
-                  <MarketplaceOverview markdown={entry.overview} />
-                </>
-              )}
-            </section>
+            {entry.overview === undefined ? null : (
+              <section className="marketplace-detail-section marketplace-overview-section">
+                <h2>Overview</h2>
+                <MarketplaceOverview markdown={entry.overview} />
+              </section>
+            )}
             <MoreFromAuthor
               author={entry.author}
               entries={authorSiblings}
@@ -989,6 +987,7 @@ export function PublicMarketplaceAuthorPage({
             >
               <HugeiconsIcon icon={GithubIcon} aria-hidden />
               {author.github}
+              <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
             </a>
           )}
         </header>

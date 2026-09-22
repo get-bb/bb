@@ -601,7 +601,9 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: 12px 18px;
+  gap: 20px 18px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
 }
 
 .marketplace-detail-identity {
@@ -617,11 +619,11 @@
 }
 
 .marketplace-detail-identity > p {
-  max-width: 640px;
-  margin-top: 6px;
+  max-width: 62ch;
+  margin-top: 12px;
   color: var(--dim);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 17px;
+  line-height: 1.55;
 }
 
 .marketplace-detail-facts {
@@ -629,7 +631,7 @@
   min-width: 0;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 18px;
+  gap: 10px 16px;
   grid-column: 2 / -1;
   grid-row: 2;
   color: var(--subtle);
@@ -651,7 +653,7 @@ a.marketplace-detail-author:hover {
 .marketplace-detail-source {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   color: var(--dim);
   font-weight: 500;
 }
@@ -661,8 +663,9 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-detail-source svg {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 
 .marketplace-detail-install {
@@ -702,7 +705,7 @@ a.marketplace-detail-author:hover {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  object-fit: cover;
+  object-fit: contain;
   scroll-snap-align: start;
 }
 
@@ -712,21 +715,6 @@ a.marketplace-detail-author:hover {
   font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.01em;
-}
-
-.marketplace-overview-lead {
-  max-width: 62ch;
-  margin: 0;
-  color: var(--ink);
-  font-size: 17px;
-  line-height: 1.55;
-}
-
-.marketplace-overview-rule {
-  max-width: 720px;
-  margin: 16px 0;
-  border: 0;
-  border-top: 1px solid var(--border);
 }
 
 .marketplace-overview {
@@ -801,6 +789,14 @@ a.marketplace-detail-author:hover {
   margin: 16px 0;
   border: 0;
   border-top: 1px solid var(--border);
+}
+
+.marketplace-overview a svg {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  vertical-align: -2px;
 }
 
 .marketplace-overview a {
@@ -963,8 +959,13 @@ a.marketplace-detail-author:hover {
     font-size: 27px;
   }
 
+  .marketplace-detail-facts,
   .marketplace-detail-install {
     grid-column: 1 / -1;
+  }
+
+  .marketplace-detail-identity > p {
+    font-size: 15px;
   }
 
   .marketplace-screenshots {
