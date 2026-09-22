@@ -380,7 +380,7 @@ describe("BrowsePluginsTab", () => {
       "Open Memory details",
       "Open Tasks details",
     ]);
-    expect(screen.getByText("Memory & Context")).toBeTruthy();
+    expect(screen.queryByText("Memory & Context")).toBeNull();
   });
 
   it("puts entries without a published date last in both directions", async () => {
