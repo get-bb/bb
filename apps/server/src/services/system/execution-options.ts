@@ -460,7 +460,9 @@ async function resolveExecutionOptions(
   const modelsProvider =
     earlyModelResultPromise !== null
       ? configuredRequestedProvider
-      : (requestedProvider ?? providers[0]);
+      : query.providerId === undefined
+        ? providers[0]
+        : requestedProvider;
 
   const permissionCeiling = getHostPermissionCeiling(deps, hostId);
 

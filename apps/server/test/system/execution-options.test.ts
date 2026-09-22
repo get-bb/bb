@@ -1335,6 +1335,31 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
+  it("returns no models for an unknown provider instead of the first provider's catalog", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-unknown-provider",
+      });
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "totally-not-a-provider",
+      });
+
+      expect(response.models).toEqual([]);
+      expect(response.selectedOnlyModels).toEqual([]);
+      expect(
+        responder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("surfaces provider auth-required model load failures", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
