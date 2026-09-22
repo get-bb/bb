@@ -504,9 +504,11 @@ describe("ThreadDetailHeader", () => {
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThreadAsync).toHaveBeenCalledWith(
-      THREAD_ID,
-      "Renamed thread",
+    await waitFor(() =>
+      expect(mocks.renameThreadAsync).toHaveBeenCalledWith(
+        THREAD_ID,
+        "Renamed thread",
+      ),
     );
     await waitFor(() =>
       expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
