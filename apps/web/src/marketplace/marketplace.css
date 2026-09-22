@@ -805,9 +805,14 @@ a.marketplace-detail-author:hover {
 .marketplace-detail-actions .cmd-text {
   min-width: 0;
   overflow-x: auto;
+  scrollbar-width: none;
   white-space: nowrap;
   text-overflow: clip;
   text-align: left;
+}
+
+.marketplace-detail-actions .cmd-text::-webkit-scrollbar {
+  display: none;
 }
 
 .marketplace-detail-actions .cmd-copy {
@@ -1183,9 +1188,6 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
-  .marketplace-detail-attribution .marketplace-detail-source {
-    flex-basis: 100%;
-  }
 
   .marketplace-detail-download {
     display: none;
@@ -1205,7 +1207,7 @@ a.marketplace-detail-author:hover {
 
   .marketplace-detail-attribution {
     grid-column: 1 / -1;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     margin-top: 0;
     white-space: nowrap;
@@ -1391,4 +1393,21 @@ a.marketplace-detail-author:hover {
   .marketplace-controls {
     transition: none;
   }
+}
+
+.marketplace-overview-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.marketplace-overview-heading h2 {
+  margin-bottom: 0;
+}
+
+.marketplace-overview-heading .marketplace-detail-source {
+  color: var(--subtle);
+  white-space: nowrap;
 }
