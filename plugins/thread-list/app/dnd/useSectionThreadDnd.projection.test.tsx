@@ -28,8 +28,11 @@ import { getSidebarThreadRowDroppableId } from "../rows/sidebarThreadRowDroppabl
 import type { SectionThreadDndState } from "./useSectionThreadDnd.js";
 
 installTestPluginRuntime();
-const { collectSectionThreadDndLookup, NEST_HOVER_DELAY_MS, useSectionThreadDnd } =
-  await import("./useSectionThreadDnd.js");
+const {
+  collectSectionThreadDndLookup,
+  NEST_HOVER_DELAY_MS,
+  useSectionThreadDnd,
+} = await import("./useSectionThreadDnd.js");
 
 let updateThreadDeferred: {
   resolve: (value: never) => void;
@@ -277,12 +280,19 @@ describe("worktree group drop collisions", () => {
   it("keeps an empty Threads destination when hidden group children overlap the pointer", () => {
     const rootItems = buildSectionThreadList(
       [
-        createThread({
-          id: "first",
-          sectionId: "a",
-          environment: makeSidebarEnvironment({ id: "env", isWorktree: true }),
-          createdAt: 3,
-        }),
+        Object.assign(
+          createThread({
+            id: "first",
+            sectionId: "a",
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+              name: "Reviewer worktree group",
+            }),
+            createdAt: 3,
+          }),
+          { displayTitle: "Worktree root A" },
+        ),
         createThread({
           id: "second",
           sectionId: "a",
@@ -309,6 +319,15 @@ describe("worktree group drop collisions", () => {
     const { result } = renderSectionThreadDnd(rootItems);
     const props = () => result.current!.dndContextProps;
     act(() => props().onDragStart?.(dragStart(activeId)));
+    expect(result.current?.activeThread?.title).toBe(
+      "Reviewer worktree group (3 threads)",
+    );
+    expect(
+      result.current?.activeThread &&
+        "displayTitle" in result.current.activeThread
+        ? result.current.activeThread.displayTitle
+        : null,
+    ).toBe("Reviewer worktree group (3 threads)");
     act(() => props().onDragOver?.(dragOver(activeId, "threads")));
     expect(result.current?.dragOverParentKey).toBe(CHRONOLOGICAL_CONTAINER_ID);
 
