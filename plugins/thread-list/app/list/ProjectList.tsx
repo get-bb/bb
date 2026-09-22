@@ -729,7 +729,7 @@ function ProjectModeSections({
         id,
         title: row.project.name,
         threads: getProjectThreadItemDescendants(items),
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             projectId={row.project.id}
             rootItems={items}
@@ -1184,7 +1184,7 @@ export function MachineModeSections({
         id,
         title: section.label,
         threads: getProjectThreadItemDescendants(items),
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={items}
             threadListState={section.threadListState}

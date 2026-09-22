@@ -2143,7 +2143,7 @@ export const ChronologicalSectionThreadSections = memo(
         id: buildSidebarEntitySectionId("section", item.group.id),
         title: item.group.name,
         threads: getProjectThreadItemDescendants(item.group.items),
-        renderContent: (close) => (
+        renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={item.group.items}
             threadListState={{
