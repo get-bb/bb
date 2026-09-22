@@ -1614,3 +1614,10 @@ or with `bb settings general telemetryEnabled false`. The saved server-wide pref
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
+
+### Thread list lifecycle filter
+
+The Thread list plugin's `threadLifecycles` preference selects `["active"]`
+(the default), `["archived"]`, or `["active","archived"]`. Set it with
+`bb thread-list prefs set threadLifecycles '["archived"]'` or the header's
+Filter menu. It syncs to every window and rejects empty or duplicate values.

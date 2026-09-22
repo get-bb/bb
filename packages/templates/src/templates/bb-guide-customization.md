@@ -88,12 +88,14 @@ uses an automatic per-host limit of one thread per available processor. Use
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
 
 The sidebar thread list is owned by the Thread list builtin plugin. Its
-layout preferences (organization mode, sort, section order, hidden and
+layout preferences (active/archived filter, organization mode, sort, section order, hidden and
 collapsed groups) live in the plugin and sync to every window:
 `bb thread-list prefs list [--json]`, `prefs get <key>`,
 `prefs set <key> <value>`, and `prefs reset <key>`. `set` takes JSON; a bare
 word is a string. On first load the plugin copies non-default `sidebar.*`
-values from `bb settings ui` once.
+values from `bb settings ui` once. The `threadLifecycles` preference defaults
+to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
+shows archived threads, and `'["active","archived"]'` shows both.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or

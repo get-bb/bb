@@ -35,13 +35,17 @@ import {
 } from "@bb/client-core";
 import { useSectionThreadDnd } from "../dnd/useSectionThreadDnd.js";
 import { useNestDropPreview } from "../dnd/useNestDropPreview.js";
-import { getErrorCode, getMutationErrorMessage } from "../ui/mutation-errors.js";
+import {
+  getErrorCode,
+  getMutationErrorMessage,
+} from "../ui/mutation-errors.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSectionCreateDialog } from "./ThreadSectionCreateDialog.js";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "../ui/ConfirmDeleteDialog.js";
+import { Button } from "@bb/shared-ui/button";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   SidebarContentElementProvider,
@@ -297,7 +301,8 @@ export function getSidebarThreadComparator(
     const comparator: ThreadComparator = (left, right) =>
       multiplier * compareByTitleAscending(left, right, rename);
     comparator.compareItems = (left, right) =>
-      multiplier * compareProjectThreadItemsByTitleAscending(left, right, rename);
+      multiplier *
+      compareProjectThreadItemsByTitleAscending(left, right, rename);
     return comparator;
   }
   const base =
@@ -1219,7 +1224,7 @@ function ProjectListComponent({
 }: ProjectListProps) {
   const sdk = useSdk();
   const sidebarActions = experimental_useSidebarThreadActions();
-  const { status, sections, projects } = useSidebarData();
+  const { status, sections, projects, archived } = useSidebarData();
   const threads = useMemo<ThreadListEntry[]>(
     () => projects.flatMap((project) => project.threads),
     [projects],
@@ -1398,7 +1403,11 @@ function ProjectListComponent({
   const activeRename = useSidebarRenameState();
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
-      getSidebarThreadComparator(chronologicalSort, sortDirection, activeRename),
+      getSidebarThreadComparator(
+        chronologicalSort,
+        sortDirection,
+        activeRename,
+      ),
     [chronologicalSort, sortDirection, activeRename],
   );
   const collapsedThreadIds = useMemo(
@@ -1637,6 +1646,32 @@ function ProjectListComponent({
             />
           )}
         />
+        {archived !== null && (
+          <>
+            {status === "ready" && archived.status !== "ready" && (
+              <div role="status">
+                {archived.status === "error"
+                  ? "Archived threads unavailable"
+                  : "Loading archived threads…"}
+              </div>
+            )}
+            {archived.hasNextPage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={archived.isFetchingNextPage}
+                onClick={() => void archived.fetchNextPage()}
+                aria-label="Load more archived threads"
+              >
+                {archived.isFetchingNextPage
+                  ? "Loading…"
+                  : archived.isFetchNextPageError
+                    ? "Retry loading"
+                    : "Show more"}
+              </Button>
+            )}
+          </>
+        )}
       </ProjectListShell>
       {sectionCreateDialog}
       {sectionDeleteDialogContent}

@@ -10,13 +10,15 @@ export const collapsedEnvironmentIdsAtom = createSyncedPreferenceAtom(
 );
 export const collapsedSidebarSectionIdsAtom =
   createSyncedPreferenceAtom("collapsedSections");
-export const sidebarSectionOrderAtom = createSyncedPreferenceAtom("sectionOrder");
+export const sidebarSectionOrderAtom =
+  createSyncedPreferenceAtom("sectionOrder");
 export const sidebarManualSectionOrderAtom =
   createSyncedPreferenceAtom("manualSectionOrder");
 export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
   "machineSectionOrder",
 );
-export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom("hiddenGroups");
+export const sidebarHiddenGroupsAtom =
+  createSyncedPreferenceAtom("hiddenGroups");
 export const sidebarOrganizationModeAtom =
   createSyncedPreferenceAtom("organizationMode");
 export const sidebarEnvironmentGroupingAtom = createSyncedPreferenceAtom(
@@ -29,9 +31,13 @@ export const sidebarGroupThreadsByEnvironmentAtom = atom((get) => {
 });
 export const sidebarChronologicalSortAtom =
   createSyncedPreferenceAtom("chronologicalSort");
-export const sidebarSortDirectionAtom = createSyncedPreferenceAtom("sortDirection");
+export const sidebarSortDirectionAtom =
+  createSyncedPreferenceAtom("sortDirection");
 export const sidebarCollapsedThreadSectionsAtom = createSyncedPreferenceAtom(
   "collapsedThreadSections",
 );
 export const sidebarCollapsedMachinesAtom =
   createSyncedPreferenceAtom("collapsedMachines");
+
+export const sidebarThreadLifecyclesAtom =
+  createSyncedPreferenceAtom("threadLifecycles");

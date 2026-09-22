@@ -14,6 +14,7 @@ import {
   useSidebarThreadRowStatuses,
   useSidebarThreadShortcut,
   useSidebarThreads,
+  useSidebarThreadEntry,
 } from "./plugin-sidebar-hooks";
 import {
   clearPluginThreadRowStatuses,
@@ -46,6 +47,22 @@ const state = vi.hoisted(() => ({
         };
       }
     | undefined,
+}));
+
+const archiveQuery = vi.hoisted(() => ({
+  data: undefined as { pages: ThreadListEntry[][] } | undefined,
+  isLoadingError: false,
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  isFetchNextPageError: false,
+  fetchNextPage: vi.fn(async () => undefined),
+}));
+const archiveEnabled = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  useArchivedThreads: (_filters: object, options: { enabled: boolean }) => {
+    archiveEnabled(options.enabled);
+    return archiveQuery;
+  },
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
@@ -108,7 +125,9 @@ vi.mock("@/hooks/usePromptDraftStorage", async () => {
   };
   return {
     usePromptDraftHasInput: (scope: { threadId: string }) =>
-      useSyncExternalStore(subscribe, () => drafts.threadIds.has(scope.threadId)),
+      useSyncExternalStore(subscribe, () =>
+        drafts.threadIds.has(scope.threadId),
+      ),
     usePromptDraftInputThreadIds: (threads: readonly { id: string }[]) => {
       const snapshot = useSyncExternalStore(subscribe, () =>
         threads
@@ -134,6 +153,9 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   state.data = undefined;
+  archiveQuery.data = undefined;
+  archiveQuery.isLoadingError = false;
+  archiveQuery.hasNextPage = false;
   drafts.threadIds.clear();
   clearPluginThreadRowStatuses("plugin-a");
   environmentProviders.providers = undefined;
@@ -176,6 +198,74 @@ describe("useSidebarThreads", () => {
     second.rerender();
     expect(first.result.current.threads[0]).toBe(before);
     expect(second.result.current.threads[0]).toBe(before);
+  });
+});
+
+describe("sidebar lifecycle selection", () => {
+  it("keeps active reads archive-free and selects archived, both, and active again", async () => {
+    const active = makeThreadListEntry({ id: "thr_active", archivedAt: null });
+    const archived = makeThreadListEntry({
+      id: "thr_archived",
+      archivedAt: 42,
+    });
+    state.data = payload([active, archived]);
+    archiveQuery.data = { pages: [[archived, active], [archived]] };
+    archiveQuery.hasNextPage = true;
+    const { result, rerender } = renderHook(
+      ({ lifecycles }: { lifecycles: ("active" | "archived")[] }) =>
+        useSidebarThreads({ experimental_lifecycles: lifecycles }),
+      { initialProps: { lifecycles: ["active"] } },
+    );
+    expect(archiveEnabled).toHaveBeenLastCalledWith(false);
+    expect(result.current.threads.map((thread) => thread.id)).toEqual([
+      active.id,
+    ]);
+    expect(result.current.experimental_archived).toBeNull();
+    rerender({ lifecycles: ["archived"] });
+    expect(archiveEnabled).toHaveBeenLastCalledWith(true);
+    expect(result.current.threads.map((thread) => thread.id)).toEqual([
+      archived.id,
+    ]);
+    expect(result.current.experimental_archived?.hasNextPage).toBe(true);
+    await result.current.experimental_archived?.fetchNextPage();
+    expect(archiveQuery.fetchNextPage).toHaveBeenCalledOnce();
+    rerender({ lifecycles: ["active", "archived"] });
+    expect(result.current.threads.map((thread) => thread.id)).toEqual([
+      archived.id,
+      active.id,
+    ]);
+    rerender({ lifecycles: ["active"] });
+    expect(result.current.threads.map((thread) => thread.id)).toEqual([
+      active.id,
+    ]);
+  });
+
+  it("reports archive loading and errors without hiding active rows in a combined view", () => {
+    state.data = payload([makeThreadListEntry({ archivedAt: null })]);
+    const { result, rerender } = renderHook(
+      ({ lifecycles }: { lifecycles: ("active" | "archived")[] }) =>
+        useSidebarThreads({ experimental_lifecycles: lifecycles }),
+      { initialProps: { lifecycles: ["archived"] } },
+    );
+    expect(result.current.status).toBe("loading");
+    archiveQuery.isLoadingError = true;
+    rerender({ lifecycles: ["archived"] });
+    expect(result.current.status).toBe("error");
+    rerender({ lifecycles: ["active", "archived"] });
+    expect(result.current.status).toBe("ready");
+    expect(result.current.threads).toHaveLength(1);
+    expect(result.current.experimental_archived?.status).toBe("error");
+  });
+
+  it("resolves archived entries for host-owned row actions and status", () => {
+    const archived = makeThreadListEntry({
+      id: "thr_archived",
+      archivedAt: 42,
+    });
+    state.data = payload([]);
+    archiveQuery.data = { pages: [[archived]] };
+    const { result } = renderHook(() => useSidebarThreadEntry(archived.id));
+    expect(result.current).toBe(archived);
   });
 });
 

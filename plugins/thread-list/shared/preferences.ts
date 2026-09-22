@@ -45,12 +45,22 @@ function definePreference<Schema extends z.ZodTypeAny>(
   schema: Schema,
   defaultValue: z.infer<Schema>,
   description: string,
-  legacyKey: string,
+  legacyKey: string | null,
 ) {
   return { schema, defaultValue, description, legacyKey };
 }
 
 export const preferenceDefinitions = {
+  threadLifecycles: definePreference(
+    z
+      .array(z.enum(["active", "archived"]))
+      .min(1)
+      .max(2)
+      .refine((value) => new Set(value).size === value.length),
+    ["active"],
+    "Thread lifecycles shown in the list: active, archived, or both. At least one is required.",
+    null,
+  ),
   organizationMode: definePreference(
     organizationModeSchema,
     "chronological",

@@ -14,6 +14,7 @@ import {
 import type { HeaderCreationActions } from "./SidebarHeaderControls.js";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility.js";
 import {
+  sidebarThreadLifecyclesAtom,
   sidebarOrganizationModeAtom,
   sidebarChronologicalSortAtom,
   sidebarSortDirectionAtom,
@@ -33,7 +34,7 @@ const SIDEBAR_SORT_OPTIONS = [
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
 ] as const;
 
-type SidebarViewPage = "organize" | "sort";
+type SidebarViewPage = "organize" | "sort" | "filter";
 
 export function SidebarHeaderMenuContents({
   creation,
@@ -79,6 +80,7 @@ export function SidebarHeaderMenuContents({
         [
           { page: "organize", label: "Organize", icon: "Layers" },
           { page: "sort", label: "Sort by", icon: "ArrowUpDown" },
+          { page: "filter", label: "Filter", icon: "SlidersHorizontal" },
         ] as const
       ).map((item) =>
         compact ? (
@@ -126,12 +128,45 @@ export function SidebarHeaderMenuContents({
 }
 
 function SidebarViewItems({ page }: { page: SidebarViewPage }) {
+  const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
+  if (page === "filter") {
+    return (
+      <DropdownMenuGroup aria-label="Filter">
+        {(["active", "archived"] as const).map((lifecycle) => {
+          const checked = lifecycles.includes(lifecycle);
+          const required = checked && lifecycles.length === 1;
+          return (
+            <DropdownMenuItem
+              key={lifecycle}
+              role="menuitemcheckbox"
+              aria-checked={checked}
+              title={required ? "Keep at least one filter selected" : undefined}
+              onSelect={(event) => {
+                event.preventDefault();
+                if (required) return;
+                setLifecycles(
+                  checked
+                    ? lifecycles.filter((value) => value !== lifecycle)
+                    : [...lifecycles, lifecycle],
+                );
+              }}
+            >
+              {lifecycle === "active" ? "Active" : "Archived"}
+              <span className="ml-auto inline-flex size-4 items-center justify-center">
+                {checked && <Icon name="Check" className="size-4" />}
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuGroup>
+    );
+  }
   if (page === "organize") {
     return (
       <>

@@ -15,6 +15,7 @@ import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "../rows/sidebarRowClasses.js";
 import {
+  sidebarThreadLifecyclesAtom,
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
@@ -40,6 +41,7 @@ function setup(
   compact = false,
 ) {
   const store = createStore();
+  store.set(sidebarThreadLifecyclesAtom, ["active"]);
   store.set(sidebarOrganizationModeAtom, organization);
   store.set(sidebarChronologicalSortAtom, "updated");
   store.set(sidebarSortDirectionAtom, "default");
@@ -53,7 +55,10 @@ function setup(
           <SidebarHeaderActionsProvider value={{ onNewSection: newSection }}>
             <SidebarHeaderControls label={label} onNewThread={newThread}>
               {section && (
-                <SidebarSectionMenuItems onRename={vi.fn()} onRemove={vi.fn()} />
+                <SidebarSectionMenuItems
+                  onRename={vi.fn()}
+                  onRemove={vi.fn()}
+                />
               )}
             </SidebarHeaderControls>
           </SidebarHeaderActionsProvider>
@@ -164,7 +169,7 @@ describe("sidebar header controls", () => {
     await openMenu("Review");
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["New section", "Organize", "Sort by", "Rename", "Remove"]);
+    ).toEqual(["New section", "Organize", "Sort by", "Filter", "Rename", "Remove"]);
     expect(screen.getAllByRole("separator")).toHaveLength(3);
     fireEvent.click(screen.getByRole("menuitem", { name: "New section" }));
     expect(newSection).toHaveBeenCalledOnce();
@@ -326,3 +331,31 @@ describe("sidebar header controls", () => {
     expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
   });
 });
+
+it.each([false, true])(
+  "keeps at least one lifecycle selected in the filter (compact=%s)",
+  async (compact) => {
+    const { store } = setup("Pinned", false, "project", compact);
+    if (compact) {
+      fireEvent.click(screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Filter" }));
+    } else {
+      await openMenu();
+      await openSubmenu("Filter");
+    }
+    const active = await screen.findByRole("menuitemcheckbox", {
+      name: "Active",
+    });
+    fireEvent.click(active);
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
+      "active",
+      "archived",
+    ]);
+    fireEvent.click(active);
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
+  },
+);

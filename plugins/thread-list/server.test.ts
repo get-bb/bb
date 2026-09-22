@@ -171,3 +171,17 @@ describe("bb thread-list prefs", () => {
     });
   });
 });
+
+it("validates lifecycle selection through CLI and RPC and broadcasts it", async () => {
+  const { bb, harness } = setup();
+  await plugin(bb);
+  expect((await harness.behavior.runCli(["prefs", "set", "threadLifecycles", '["archived"]'])).exitCode).toBe(0);
+  await expect(bb.storage.kv.get("preference:threadLifecycles")).resolves.toEqual(["archived"]);
+  for (const value of [[], ["archived", "archived"], ["deleted"]]) {
+    await expect(harness.behavior.callRpc("setPreference", { key: "threadLifecycles", value })).rejects.toThrow(/Invalid value/);
+  }
+  await expect(bb.storage.kv.get("preference:threadLifecycles")).resolves.toEqual(["archived"]);
+  expect(harness.realtimeSignals).toContainEqual({
+    channel: "preferences", payload: { key: "threadLifecycles", value: ["archived"] },
+  });
+});

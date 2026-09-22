@@ -232,6 +232,7 @@ describe("buildSidebarData structural sharing", () => {
       threads: [makeSidebarThread({ id: "a1", projectId: "proj_a" })],
       projects,
       sections: [],
+      experimental_archived: null,
     };
     const data = getSidebarData(state);
     expect(getSidebarData({ ...state })).toBe(data);

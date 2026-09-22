@@ -121,7 +121,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
         bullets: [
           "Render every row, and decide the grouping, the ordering, and what each row shows",
-          "Read the same live thread, section, and project data and run statuses bb's own list reads; window long lists because the returned thread array is uncapped",
+          "Read live thread, section, project, and run-status data; select active or archived threads with experimental_lifecycles and load more archived pages through experimental_archived",
           "Use host-owned actions for navigation, pinning, read state, renaming, archiving, and deletion confirmation; opt into per-row pull-request state and drag-to-split support",
           "Render Original to delegate to bb's list; the deprecated searchQuery is always empty because the quick palette owns thread search",
           "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
@@ -130,6 +130,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadListRegistration",
           "PluginThreadListProps",
           "experimental_useSidebarThreads",
+          "PluginSidebarThreadsState.experimental_archived",
           "PluginSidebarThreadsState",
           "PluginSidebarThread",
           "PluginSidebarSection",

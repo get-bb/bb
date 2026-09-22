@@ -2479,6 +2479,14 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
 
+**Archive selection (Sep 2026).** `experimental_useSidebarThreads` accepts
+`experimental_lifecycles` (active, archived, or both; active by default).
+`PluginSidebarThreadsState.experimental_archived` is null for active-only reads;
+otherwise it exposes archive loading/error state, pagination flags, and
+`fetchNextPage`. Archive reads share the host query and realtime cache. Audit
+archive-only loading/errors, combined views, pagination retries, and archived
+row actions before stabilizing these additions.
+
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
 `useSidebarNavigation` query — the same cache and realtime subscriptions the

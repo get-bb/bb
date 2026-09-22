@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useAtomValue } from "jotai";
+import { sidebarThreadLifecyclesAtom } from "../preferences/atoms.js";
 import type { Host } from "@bb/domain";
 import {
   experimental_useSidebarThreads,
@@ -139,9 +141,7 @@ interface SidebarDataCacheEntry {
 
 let sidebarDataCache: SidebarDataCacheEntry | null = null;
 
-export function getSidebarData(
-  state: PluginSidebarThreadsState,
-): SidebarData {
+export function getSidebarData(state: PluginSidebarThreadsState): SidebarData {
   const cached = sidebarDataCache;
   if (
     cached !== null &&
@@ -182,9 +182,18 @@ export function useSidebarProjectName(
     : projects.find((project) => project.id === projectId)?.name;
 }
 
-export function useSidebarData(): SidebarData {
-  const state = experimental_useSidebarThreads();
-  return useMemo(() => getSidebarData(state), [state]);
+export function useSidebarData() {
+  const lifecycles = useAtomValue(sidebarThreadLifecyclesAtom);
+  const state = experimental_useSidebarThreads({
+    experimental_lifecycles: lifecycles,
+  });
+  return useMemo(
+    () => ({
+      ...getSidebarData(state),
+      archived: state.experimental_archived,
+    }),
+    [state],
+  );
 }
 
 export function toMachineHosts(

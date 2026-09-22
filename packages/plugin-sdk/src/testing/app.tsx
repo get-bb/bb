@@ -298,7 +298,11 @@ function createSdkFakeNode(
         !Array.isArray(provided)
           ? (provided as Record<string, unknown>)[key]
           : undefined;
-      return createSdkFakeNode(next, path === "" ? key : `${path}.${key}`, calls);
+      return createSdkFakeNode(
+        next,
+        path === "" ? key : `${path}.${key}`,
+        calls,
+      );
     },
   });
 }
@@ -1621,6 +1625,8 @@ export function renderSlot<
     Object.entries(options.sidebarShortcuts ?? {}),
   );
   const sidebarThreads: PluginSidebarThreadsState = {
+    experimental_archived:
+      options.sidebarThreads?.experimental_archived ?? null,
     status: options.sidebarThreads?.status ?? "ready",
     threads: options.sidebarThreads?.threads ?? [],
     projects: options.sidebarThreads?.projects ?? [],
