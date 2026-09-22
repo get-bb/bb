@@ -793,12 +793,22 @@ a.marketplace-detail-author:hover {
   min-width: 0;
 }
 
+.marketplace-detail-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.marketplace-detail-actions .cmd-btn {
+  max-width: 100%;
+}
+
 .marketplace-detail-actions .cmd-copy {
   font-size: 13px;
 }
 
 .marketplace-detail-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 40px;
   margin-top: 32px;
