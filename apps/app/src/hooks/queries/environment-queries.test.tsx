@@ -11,11 +11,12 @@ import {
   buildEnvironmentFilePreview,
   getEnvironmentPullRequestRefetchInterval,
   getEnvironmentPullRequestStaleTime,
+  useEnvironmentMergeBaseBranches,
   useEnvironmentPullRequest,
 } from "./environment-queries";
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { environments: { pullRequest: vi.fn() } },
+  sdk: { environments: { pullRequest: vi.fn(), diffBranches: vi.fn() } },
 }));
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
@@ -230,5 +231,38 @@ describe("buildEnvironmentFilePreview", () => {
 
     expect(preview.kind).toBe("image");
     expect(preview.url).toBe(`data:image/png;base64,${pngBase64}`);
+  });
+});
+
+describe("useEnvironmentMergeBaseBranches", () => {
+  it("only requests the query a typist settles on", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.environments.diffBranches).mockResolvedValue({
+      branches: ["main"],
+      branchesTruncated: false,
+      remoteBranches: [],
+      remoteBranchesTruncated: false,
+      selectedBranch: null,
+    });
+    const { rerender } = renderHook(
+      ({ query }: { query: string }) =>
+        useEnvironmentMergeBaseBranches(ENVIRONMENT_ID, { query }),
+      { wrapper, initialProps: { query: "" } },
+    );
+    await waitFor(() =>
+      expect(sdk.environments.diffBranches).toHaveBeenCalledTimes(1),
+    );
+
+    for (const query of ["m", "ma", "mai"]) {
+      rerender({ query });
+    }
+    rerender({ query: "main" });
+
+    await waitFor(() =>
+      expect(sdk.environments.diffBranches).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "main" }),
+      ),
+    );
+    expect(sdk.environments.diffBranches).toHaveBeenCalledTimes(2);
   });
 });

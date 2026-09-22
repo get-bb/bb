@@ -1,8 +1,6 @@
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useCallback, useMemo } from "react";
 import { useProjectSourceBranches } from "@/hooks/queries/project-queries";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { BRANCH_SEARCH_DEBOUNCE_MS } from "@/components/pickers/BranchPicker";
 import type {
   BranchesState,
   CheckoutState,
@@ -27,13 +25,12 @@ export function usePluginBranches({
     ) ?? sources?.find((source) => source.type === "local_path");
   const branchHostId = hostId ?? source?.hostId ?? null;
   const enabled = branchHostId !== null && projectId !== null;
-  const debouncedQuery = useDebouncedValue(query, BRANCH_SEARCH_DEBOUNCE_MS);
   const branchesQuery = useProjectSourceBranches(
     projectId ?? undefined,
     branchHostId,
     {
       enabled,
-      query: debouncedQuery,
+      query,
       selectedBranch: "",
     },
   );

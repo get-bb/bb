@@ -15,7 +15,6 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -80,7 +79,6 @@ export function getMergeBaseBranchCandidateGroups({
 
 const EMPTY_BRANCH_OPTIONS: readonly string[] = [];
 const BRANCH_LABEL_PREFIXES = ["Branch from:"] as const;
-export const BRANCH_SEARCH_DEBOUNCE_MS = 120;
 
 interface BranchPlainLabelParts {
   kind: "plain";
@@ -261,10 +259,6 @@ export function BranchPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
-  const debouncedNormalizedQuery = useDebouncedValue(
-    normalizedQuery,
-    BRANCH_SEARCH_DEBOUNCE_MS,
-  );
   const branchOptionGroups = useMemo(
     () =>
       buildBranchPickerOptionGroups({
@@ -329,12 +323,8 @@ export function BranchPicker({
       return;
     }
 
-    if (debouncedNormalizedQuery !== normalizedQuery) {
-      return;
-    }
-
-    onSearchQueryChange?.(debouncedNormalizedQuery);
-  }, [debouncedNormalizedQuery, normalizedQuery, onSearchQueryChange, open]);
+    onSearchQueryChange?.(normalizedQuery);
+  }, [normalizedQuery, onSearchQueryChange, open]);
 
   return (
     <Popover modal={modal} open={open} onOpenChange={updateOpen}>
