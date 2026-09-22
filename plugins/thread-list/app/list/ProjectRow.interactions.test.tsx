@@ -43,9 +43,8 @@ const {
   SectionThreadDragOverlay,
   ThreadTreeNodeRow,
 } = await import("./ProjectRow.js");
-const { useSidebarModeSectionOrder } = await import(
-  "./useSidebarModeSectionOrder.js"
-);
+const { useSidebarModeSectionOrder } =
+  await import("./useSidebarModeSectionOrder.js");
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   return makeThreadListEntry({
@@ -184,7 +183,8 @@ function renderProjectRow(
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
     />,
     {
-      threads: threadListState.status === "ready" ? threadListState.threads : [],
+      threads:
+        threadListState.status === "ready" ? threadListState.threads : [],
       store,
       ...options,
     },
@@ -627,14 +627,12 @@ describe("ProjectRow interactions", () => {
   });
 
   it("keeps a duplicate section name in place until corrected", async () => {
-    const update = vi
-      .fn(sdkResult({ ok: true }))
-      .mockRejectedValueOnce(
-        Object.assign(new Error("HTTP 409: Conflict"), {
-          status: 409,
-          code: "section_name_conflict",
-        }),
-      );
+    const update = vi.fn(sdkResult({ ok: true })).mockRejectedValueOnce(
+      Object.assign(new Error("HTTP 409: Conflict"), {
+        status: 409,
+        code: "section_name_conflict",
+      }),
+    );
     const { sdkCalls } = renderTree(
       <CustomSectionsVisibilityProbe threads={[]} onProjectSelect={vi.fn()} />,
       { sdk: { threadSections: { update } } },
@@ -777,35 +775,31 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByText("Inherited child")).toBeNull();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
     expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
-    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
-    const hiddenSections = await screen.findByRole("list", {
-      name: "Hidden sections",
+    fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
+      key: "Enter",
     });
-    expect(within(hiddenSections).getByText("Review parent")).not.toBeNull();
-    fireEvent.click(
-      within(hiddenSections).getByRole("link", {
-        name: "Open Inherited child",
-      }),
-    );
+    const section = await screen.findByRole("menuitem", { name: "Review" });
+    expect(screen.queryByText("Review parent")).toBeNull();
+    fireEvent.keyDown(section, { key: "ArrowRight" });
+    expect(await screen.findByText("Review parent")).not.toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "Open Inherited child" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("list", { name: "Hidden sections" }),
+        screen.queryByRole("group", { name: "Hidden sections" }),
       ).toBeNull(),
     );
     expect(onProjectSelect).toHaveBeenCalledOnce();
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
-    const reopenedSections = await screen.findByRole("list", {
-      name: "Hidden sections",
+    fireEvent.keyDown(screen.getByRole("button", { name: "More sections" }), {
+      key: "Enter",
     });
-    fireEvent.pointerDown(
-      within(reopenedSections).getByRole("button", { name: "Review options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Add to sidebar" }),
-    );
+    const reopenedSection = await screen.findByRole("menuitem", {
+      name: "Review",
+    });
+    expect(screen.queryByText("Review parent")).toBeNull();
+    fireEvent.keyDown(reopenedSection, { key: "ArrowRight" });
+    fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
 
     await waitFor(() =>
       expect(
