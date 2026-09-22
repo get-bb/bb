@@ -6,6 +6,9 @@ description: Use the Browser Automation BB plugin to inspect and automate persis
 Use `bb browser-automation`. Open one session, retain its session ID, then inspect,
 act, and verify in short scripts.
 
+`--machine` accepts an exact host ID or an unambiguous machine name. Exact IDs
+take precedence over names; unknown or ambiguous names fail before opening a session.
+
 Choose `--backend local --headless --machine <host-id>` for headless Chrome on
 an enrolled host. Choose `--backend desktop --machine <host-id> --desktop
 <instance-id>` for a new dedicated desktop automation tab. Starting desktop

@@ -13,6 +13,7 @@ import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderMod
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
@@ -28,20 +29,30 @@ import {
   useBbNavigate,
   useComposer,
   useComposerView,
+  useEnvironmentProviders,
   useProviders,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  useSdk,
   useSettings,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
 } from "./plugin-sdk-hooks";
 import {
   useSidebarThreadActions,
+  useSidebarThreadDraft,
+  useSidebarThreadDraftIds,
   useSidebarThreadPullRequest,
+  useSidebarThreadRowStatus,
+  useSidebarThreadRowStatuses,
+  useSidebarThreadShortcut,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
-import { useSidebarThreadSplit } from "./plugin-sidebar-split";
+import {
+  useSidebarSplitLayout,
+  useSidebarThreadSplit,
+} from "./plugin-sidebar-split";
 import { useAppNavigationHost } from "./app-navigation-host";
 import { useCodeTheme } from "./plugin-code-theme";
 
@@ -76,6 +87,15 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     experimental_useSidebarThreadActions: useSidebarThreadActions,
     experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
     experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+    useSidebarThreadDraft,
+    useSidebarThreadDraftIds,
+    useSidebarThreadRowStatus,
+    useSidebarThreadRowStatuses,
+    useSidebarSplitLayout,
+    useSidebarThreadShortcut,
+    ThreadTitle: PluginThreadTitle,
+    useEnvironmentProviders,
+    useSdk,
     experimental_useProviders: useProviders,
     experimental_useCodeTheme: useCodeTheme,
   } satisfies PluginSdkApp,

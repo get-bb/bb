@@ -48,7 +48,13 @@ import {
   type ExperimentalSidebarNavigationRegistration,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
+  type PluginBrowserBbSdk,
+  type PluginEnvironmentProvidersState,
+  type PluginSidebarSplitLayout,
+  type PluginSidebarThreadDraftState,
   type PluginSidebarThreadPullRequestState,
+  type PluginSidebarThreadRowStatus,
+  type PluginSidebarThreadShortcut,
   type PluginSidebarThreadSplit,
   type PluginProvidersState,
   type PluginSidebarThreadsState,
@@ -124,6 +130,24 @@ export interface RpcCall {
   method: string;
   input: unknown;
 }
+/** One recorded `useSdk()` call, as `"<area>.<method>"` plus its arguments. */
+export interface SdkCall {
+  method: string;
+  args: unknown[];
+}
+type PluginSdkFakeTree<T> = {
+  [Key in keyof T]?: T[Key] extends (...args: never[]) => unknown
+    ? T[Key]
+    : PluginSdkFakeTree<T[Key]>;
+};
+
+/**
+ * Nested partial fakes for `useSdk()`, mirroring the client's areas and
+ * sub-areas (`{ threads: { queuedMessages: { create } } }`). Provide only the
+ * methods the slot calls; a call to anything else throws with the missing
+ * dot-path so the test fails loudly instead of returning undefined.
+ */
+export type PluginSdkTestFakes = PluginSdkFakeTree<PluginBrowserBbSdk>;
 export type NavigateCall =
   | { method: "toThread"; threadId: string }
   | { method: "toProject"; projectId: string }
@@ -216,6 +240,13 @@ interface SlotEnv {
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
+  sidebarDraftThreadIds: ReadonlySet<string>;
+  sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
+  sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
+  sidebarSplitLayout: PluginSidebarSplitLayout | null;
+  environmentProviders: PluginEnvironmentProvidersState;
+  sdk: PluginBrowserBbSdk;
+  sdkCalls: SdkCall[];
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
   branchesState: BranchesState;
@@ -241,6 +272,53 @@ export interface SidebarActionCall {
   title?: string;
   pinned?: boolean;
   read?: boolean;
+}
+
+function createSdkFakeNode(
+  provided: unknown,
+  path: string,
+  calls: SdkCall[],
+): unknown {
+  const callable = function sdkFakeNode() {};
+  return new Proxy(callable, {
+    apply(_target, _thisArg, args: unknown[]) {
+      calls.push({ method: path, args });
+      if (typeof provided !== "function") {
+        throw new Error(
+          `no sdk fake for "${path}" — add it to renderSlot options.sdk`,
+        );
+      }
+      return (provided as (...input: unknown[]) => unknown)(...args);
+    },
+    get(_target, key) {
+      if (typeof key !== "string" || key === "then") return undefined;
+      const next =
+        provided !== null &&
+        typeof provided === "object" &&
+        !Array.isArray(provided)
+          ? (provided as Record<string, unknown>)[key]
+          : undefined;
+      return createSdkFakeNode(
+        next,
+        path === "" ? key : `${path}.${key}`,
+        calls,
+      );
+    },
+  });
+}
+
+function createSdkFake(
+  fakes: PluginSdkTestFakes,
+  calls: SdkCall[],
+): PluginBrowserBbSdk {
+  return createSdkFakeNode(fakes, "", calls) as PluginBrowserBbSdk;
+}
+
+function TestThreadTitle({ threadId }: { threadId: string }) {
+  const env = useSlotEnv("ThreadTitle");
+  const thread = env.sidebarThreads.threads.find((row) => row.id === threadId);
+  if (thread === undefined) return null;
+  return <span data-thread-title={threadId}>{thread.displayTitle}</span>;
 }
 
 function SlotLifecycleGuard({
@@ -927,6 +1005,40 @@ const testPluginSdkApp = {
       [env, threadId],
     );
   },
+  useSidebarThreadDraft(threadId): PluginSidebarThreadDraftState {
+    const env = useSlotEnv("useSidebarThreadDraft");
+    return useMemo(
+      () => ({ hasUnsubmittedDraft: env.sidebarDraftThreadIds.has(threadId) }),
+      [env, threadId],
+    );
+  },
+  useSidebarThreadDraftIds(): ReadonlySet<string> {
+    return useSlotEnv("useSidebarThreadDraftIds").sidebarDraftThreadIds;
+  },
+  useSidebarThreadRowStatus(threadId): PluginSidebarThreadRowStatus | null {
+    const env = useSlotEnv("useSidebarThreadRowStatus");
+    return env.sidebarRowStatuses.get(threadId) ?? null;
+  },
+  useSidebarThreadRowStatuses(): ReadonlyMap<
+    string,
+    PluginSidebarThreadRowStatus
+  > {
+    return useSlotEnv("useSidebarThreadRowStatuses").sidebarRowStatuses;
+  },
+  useSidebarSplitLayout(): PluginSidebarSplitLayout | null {
+    return useSlotEnv("useSidebarSplitLayout").sidebarSplitLayout;
+  },
+  useSidebarThreadShortcut(threadId): PluginSidebarThreadShortcut | null {
+    const env = useSlotEnv("useSidebarThreadShortcut");
+    return env.sidebarShortcuts.get(threadId) ?? null;
+  },
+  ThreadTitle: TestThreadTitle,
+  useEnvironmentProviders(): PluginEnvironmentProvidersState {
+    return useSlotEnv("useEnvironmentProviders").environmentProviders;
+  },
+  useSdk(): PluginBrowserBbSdk {
+    return useSlotEnv("useSdk").sdk;
+  },
   experimental_useSidebarThreadPullRequest(
     threadId,
   ): PluginSidebarThreadPullRequestState {
@@ -1235,6 +1347,35 @@ export interface RenderSlotOptions<
    * by thread id. Omitted → every thread reports none.
    */
   sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
+  /**
+   * Thread ids `useSidebarThreadDraft()` and `useSidebarThreadDraftIds()`
+   * report as holding an unsent draft. Omitted → none.
+   */
+  sidebarDraftThreadIds?: readonly string[];
+  /**
+   * Row statuses `useSidebarThreadRowStatus()` reports, keyed by thread id.
+   * Omitted → every thread reports null.
+   */
+  sidebarRowStatuses?: Record<string, PluginSidebarThreadRowStatus>;
+  /**
+   * Shortcuts `useSidebarThreadShortcut()` reports, keyed by thread id, as
+   * if the app command modifier were held. Omitted → every thread reports
+   * null.
+   */
+  sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
+  /** The split layout `useSidebarSplitLayout()` reports. Omitted → null. */
+  sidebarSplitLayout?: PluginSidebarSplitLayout;
+  /**
+   * The environment provider catalog `useEnvironmentProviders()` reports.
+   * Omitted → a ready, empty list. Pass `{ status: "loading" }` to test that
+   * branch.
+   */
+  environmentProviders?: Partial<PluginEnvironmentProvidersState>;
+  /**
+   * Fakes for `useSdk()`, one partial object per area. Calls are recorded
+   * in `inspection.sdkCalls`; a call to a method you did not provide throws.
+   */
+  sdk?: PluginSdkTestFakes;
   /** Host acceptance for `useBbNavigate().openThreadPanel`. */
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
@@ -1282,6 +1423,8 @@ export interface RenderedSlotInspectionState {
   readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
+  /** Every `useSdk()` call, in order, as `"<area>.<method>"`. */
+  readonly sdkCalls: SdkCall[];
   /** Everything written through `useComposer()`. */
   readonly composer: ComposerLog;
 }
@@ -1472,15 +1615,33 @@ export function renderSlot<
   const sidebarPullRequests = new Map(
     Object.entries(options.sidebarPullRequests ?? {}),
   );
+  const sidebarDraftThreadIds: ReadonlySet<string> = new Set(
+    options.sidebarDraftThreadIds ?? [],
+  );
+  const sidebarRowStatuses = new Map(
+    Object.entries(options.sidebarRowStatuses ?? {}),
+  );
+  const sidebarShortcuts = new Map(
+    Object.entries(options.sidebarShortcuts ?? {}),
+  );
   const sidebarThreads: PluginSidebarThreadsState = {
+    experimental_archived:
+      options.sidebarThreads?.experimental_archived ?? null,
     status: options.sidebarThreads?.status ?? "ready",
     threads: options.sidebarThreads?.threads ?? [],
     projects: options.sidebarThreads?.projects ?? [],
+    sections: options.sidebarThreads?.sections ?? [],
   };
   const providers: PluginProvidersState = {
     status: options.providers?.status ?? "ready",
     providers: options.providers?.providers ?? [],
   };
+  const environmentProviders: PluginEnvironmentProvidersState = {
+    status: options.environmentProviders?.status ?? "ready",
+    providers: options.environmentProviders?.providers ?? [],
+  };
+  const sdkCalls: SdkCall[] = [];
+  const sdk = createSdkFake(options.sdk ?? {}, sdkCalls);
   const codeTheme: PluginCodeThemeState = {
     mode: options.codeTheme?.mode ?? "light",
     name: options.codeTheme?.name ?? "pierre-light",
@@ -1737,6 +1898,13 @@ export function renderSlot<
     sidebarActions,
     sidebarActionCalls,
     sidebarPullRequests,
+    sidebarDraftThreadIds,
+    sidebarRowStatuses,
+    sidebarShortcuts,
+    sidebarSplitLayout: options.sidebarSplitLayout ?? null,
+    environmentProviders,
+    sdk,
+    sdkCalls,
     providers,
     codeTheme,
     branchesState: {
@@ -1824,6 +1992,7 @@ export function renderSlot<
     navigateCalls,
     experimental_fixedTabOpenCalls,
     sidebarActionCalls,
+    sdkCalls,
     composer: composerLog,
     behavior: {
       emitRealtime,
@@ -1836,6 +2005,7 @@ export function renderSlot<
       navigateCalls,
       experimental_fixedTabOpenCalls,
       sidebarActionCalls,
+      sdkCalls,
       composer: composerLog,
     },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },

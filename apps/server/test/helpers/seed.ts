@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import {
   createEnvironment,
   createQueuedThreadMessage,
@@ -10,6 +11,7 @@ import {
   createProject,
   createThread,
   openSession,
+  threads,
   upsertHost,
 } from "@bb/db";
 import {
@@ -38,6 +40,7 @@ import type {
   ThreadVisibility,
 } from "@bb/domain";
 import type { AppDeps } from "../../src/types.js";
+import { ARCHIVE_UNDO_GRACE_MS } from "../../src/constants.js";
 import { registerTestHostRpcCapture } from "./commands.js";
 
 interface SeedEventArgs<TType extends ThreadEventType> {
@@ -425,4 +428,15 @@ export function seedStoredEvent(
       data: JSON.stringify(args.data),
     },
   ]);
+}
+
+export function expireArchiveUndoGrace(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+): void {
+  deps.db
+    .update(threads)
+    .set({ archivedAt: Date.now() - ARCHIVE_UNDO_GRACE_MS - 1 })
+    .where(eq(threads.id, threadId))
+    .run();
 }

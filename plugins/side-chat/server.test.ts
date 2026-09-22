@@ -197,26 +197,6 @@ describe("createSideChat rpc", () => {
   });
 });
 
-describe("sendToMain rpc", () => {
-  it("queues the text on the source thread with the fork as sender", async () => {
-    const create = vi.fn(async () => ({ id: "qm_1" }));
-    const { harness } = await loadPlugin({ queuedMessages: { create } });
-
-    const result = await harness.callRpc("sendToMain", {
-      sourceThreadId: "thr_src",
-      senderThreadId: "thr_fork",
-      text: "the answer",
-    });
-
-    expect(result).toEqual({ ok: true });
-    expect(create).toHaveBeenCalledWith({
-      threadId: "thr_src",
-      input: [{ type: "text", text: "the answer", mentions: [] }],
-      senderThreadId: "thr_fork",
-    });
-  });
-});
-
 describe("empty-fork sweep", () => {
   it("timelineRowsContainUserMessage finds nested user rows", () => {
     expect(

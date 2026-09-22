@@ -121,22 +121,41 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Replaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:",
         bullets: [
           "Render every row, and decide the grouping, the ordering, and what each row shows",
-          "Read the same live thread data and run statuses bb's own list reads; window long lists because the returned thread array is uncapped",
+          "Read live thread, section, project, and run-status data; select active or archived threads with experimental_lifecycles and load more archived pages through experimental_archived",
           "Use host-owned actions for navigation, pinning, read state, renaming, archiving, and deletion confirmation; opt into per-row pull-request state and drag-to-split support",
-          "Render Original to delegate to bb's list; the deprecated searchQuery is always empty because the quick palette owns thread search",
+          "Own the whole region: bb ships no built-in list, so the sidebar shows a placeholder until a thread list plugin mounts; the deprecated searchQuery is always empty because the quick palette owns thread search",
           "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
         ],
         apiSymbols: [
           "PluginThreadListRegistration",
           "PluginThreadListProps",
           "experimental_useSidebarThreads",
+          "PluginSidebarThreadsState.experimental_archived",
           "PluginSidebarThreadsState",
+          "PluginSidebarThread",
+          "PluginSidebarSection",
           "experimental_useSidebarThreadActions",
           "PluginSidebarThreadActions",
           "experimental_useSidebarThreadPullRequest",
           "PluginSidebarThreadPullRequestState",
           "experimental_useSidebarThreadSplit",
           "PluginSidebarThreadSplit",
+          "useSidebarThreadDraft",
+          "PluginSidebarThreadDraftState",
+          "useSidebarThreadDraftIds",
+          "useSidebarThreadRowStatus",
+          "useSidebarThreadRowStatuses",
+          "PluginSidebarThreadRowStatus",
+          "useSidebarSplitLayout",
+          "PluginSidebarSplitLayout",
+          "useSidebarThreadShortcut",
+          "PluginSidebarThreadShortcut",
+          "ThreadTitle",
+          "PluginThreadTitleProps",
+          "useEnvironmentProviders",
+          "PluginEnvironmentProvidersState",
+          "useSdk",
+          "PluginBrowserBbSdk",
         ],
         experimental: true,
       },
@@ -176,27 +195,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render in the same row as bb's own header controls",
         ],
         apiSymbols: ["PluginThreadHeaderActionRegistration"],
-        experimental: true,
-      },
-      {
-        id: "browser-toolbar",
-        title: "Browser toolbar controls",
-        summary:
-          "Adds a plugin control to the toolbar of each open Browser tab. With this, a plugin can:",
-        bullets: [
-          "Act on the Browser tab currently in front of the user",
-          "Receive the owning thread id, tab id, and current URL",
-          "Render beside the Browser address bar and native controls",
-          "Use experimental_page on desktop to run scripts and receive messages without a CDP lease; it is null in the web app",
-          "Evaluate in an isolated world by default, with bb.postMessage for replies; the main world shares page globals and has no message bridge. Navigation removes installed scripts",
-        ],
-        apiSymbols: [
-          "ExperimentalPluginBrowserToolbarActionRegistration",
-          "ExperimentalPluginBrowserToolbarActionProps",
-          "ExperimentalPluginBrowserPage",
-          "ExperimentalPluginBrowserPageEvaluateOptions",
-          "ExperimentalPluginBrowserPageWorld",
-        ],
         experimental: true,
       },
       {
@@ -275,6 +273,27 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSourceCodeRendererProps",
           "PluginDiffRendererRegistration",
           "PluginDiffRendererProps",
+        ],
+        experimental: true,
+      },
+      {
+        id: "browser-toolbar",
+        title: "Browser toolbar controls",
+        summary:
+          "Adds a plugin control to the toolbar of each open Browser tab. With this, a plugin can:",
+        bullets: [
+          "Act on the Browser tab currently in front of the user",
+          "Receive the owning thread id, tab id, and current URL",
+          "Render beside the Browser address bar and native controls",
+          "Use experimental_page on desktop to run scripts and receive messages without a CDP lease; it is null in the web app",
+          "Evaluate in an isolated world by default, with bb.postMessage for replies; the main world shares page globals and has no message bridge. Navigation removes installed scripts",
+        ],
+        apiSymbols: [
+          "ExperimentalPluginBrowserToolbarActionRegistration",
+          "ExperimentalPluginBrowserToolbarActionProps",
+          "ExperimentalPluginBrowserPage",
+          "ExperimentalPluginBrowserPageEvaluateOptions",
+          "ExperimentalPluginBrowserPageWorld",
         ],
         experimental: true,
       },
@@ -398,6 +417,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Provider retry", "Workflows"],
       },
       {
+        id: "composer-state",
+        title: "Draft prompt state & locking",
+        summary:
+          "Reads the draft prompt, and can block typing while the plugin works. With this, a plugin can:",
+        bullets: [
+          "Read the draft prompt's text, whether it is empty, and how many files are attached",
+          "Read the prompt box's layout and whether the thread is already running a turn",
+          "Lock the input and release it again, so the draft prompt cannot change mid-operation",
+          "Release locks and text effects automatically when the slot unmounts or its composer scope changes; persistent [thread row status](thread-row-status) requires an app-wide script",
+        ],
+        apiSymbols: [
+          "useComposer",
+          "useComposerView",
+          "ComposerView",
+          "PluginComposerApi",
+        ],
+      },
+      {
         id: "mention-provider",
         title: "Mentions",
         summary:
@@ -435,31 +472,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
       },
       {
-        id: "composer-state",
-        title: "Draft prompt state & locking",
-        summary:
-          "Reads the draft prompt, and can block typing while the plugin works. With this, a plugin can:",
-        bullets: [
-          "Read the draft prompt's text, whether it is empty, and how many files are attached",
-          "Read the prompt box's layout and whether the thread is already running a turn",
-          "Lock the input and release it again, so the draft prompt cannot change mid-operation",
-          "Release locks and text effects automatically when the slot unmounts or its composer scope changes; persistent [thread row status](thread-row-status) requires an app-wide script",
-        ],
-        apiSymbols: [
-          "useComposer",
-          "useComposerView",
-          "ComposerView",
-          "PluginComposerApi",
-        ],
-      },
-      {
         id: "composer-plus-menu",
         title: "The + menu",
         summary:
           "Adds rows to the menu that opens from the + button beside the prompt box. With this, a plugin can:",
         bullets: [
           "Supply each row's icon, label, and disabled state; bb renders the row itself",
-          "Offer a submission action in the desktop send dropdown and mobile long-press menu with experimental_sendMenu",
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
           "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",
@@ -467,7 +485,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: [
           "ComposerPlusMenuItem",
-          "ComposerPlusMenuItem.experimental_sendMenu",
           "ExperimentalComposerSubmitOptions",
         ],
         firstParty: ["Drafts", "Send later"],
@@ -538,7 +555,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "homepage-section",
         title: "Home-screen sections",
         summary:
-          "Adds a full-width section to the page bb opens on, below the prompt box. With this, a plugin can:",
+          "Adds a full-width section to bb's home page: below the composer on desktop, or in the scrollable content above it on mobile. With this, a plugin can:",
         bullets: [
           "Render its own component across the width of the content area",
           "Render before any thread exists, which suits shortcuts and pinned work",

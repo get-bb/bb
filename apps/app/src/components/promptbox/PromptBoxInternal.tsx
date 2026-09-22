@@ -3315,7 +3315,7 @@ export function PromptBoxInternal({
             <div
               data-promptbox-action-row=""
               className={cn(
-                "relative flex shrink-0 select-none flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                "relative flex shrink-0 select-none flex-row items-center gap-3 pb-2 pl-3.5 pr-[13px] pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
               )}
             >

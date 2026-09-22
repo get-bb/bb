@@ -153,6 +153,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "thread-list",
+    pluginId: "thread-list",
+    defaultEnabled: true,
+  },
+  {
     name: "scheduled-send",
     pluginId: "scheduled-send",
     defaultEnabled: true,

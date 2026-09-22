@@ -9,6 +9,7 @@ import {
   finalizeSplitOutput,
   splitOutputOptions,
 } from "../../../scripts/build-utils.mjs";
+import { zodLocaleStubPlugin } from "../../../packages/plugin-build/src/zod-locale-stub.mjs";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
@@ -38,6 +39,7 @@ async function main() {
       format: "esm",
       legalComments: "none",
       minify: true,
+      plugins: [zodLocaleStubPlugin()],
       ...(split ? split.esbuild : { outfile: target.outfile }),
       platform: "node",
       sourcemap: false,

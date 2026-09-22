@@ -92,6 +92,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
@@ -108,6 +109,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
@@ -149,6 +151,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/turbo.json"
       ]
     },
@@ -157,6 +160,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/packages/bb-app/package.json"
       ],
@@ -223,7 +227,8 @@
         "$TURBO_ROOT$/packages/config/src/**",
         "$TURBO_ROOT$/packages/config/tsconfig.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/scripts/build-utils.mjs"
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
       ],
       "outputs": ["host-package/**"]
     },
@@ -506,6 +511,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
@@ -661,6 +667,7 @@
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       // The SVG validator suite reads every first-party branding SVG.
@@ -683,6 +690,7 @@
         "$TURBO_ROOT$/packages/plugin-sdk/src/**",
         "$TURBO_ROOT$/packages/provider-bridge-protocol/src/**",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**"
       ],
       "outputs": ["dist/test-bridges/**"]
@@ -802,12 +810,20 @@
     // hash: they are derived from sources already hashed here.
     "@get-bb/plugin-sdk#build:types": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
+      ],
       "outputs": ["bundled-types/**"]
     },
     "@get-bb/plugin-sdk#build": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
+      ],
       "outputs": ["dist/**"]
     },
     "@get-bb/plugin-sdk#typecheck": {
@@ -823,7 +839,11 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
     },
     "@get-bb/plugin-sdk#build:runtime": {
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
+      ],
       "outputs": ["dist/**"],
       "dependsOn": ["topo"]
     },

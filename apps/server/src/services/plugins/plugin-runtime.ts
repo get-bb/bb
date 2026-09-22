@@ -102,13 +102,13 @@ import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 
-const pluginSdkRuntimePath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "plugin-sdk-runtime.js",
-);
+const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
+const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
+const zodRuntimePath = join(serverRuntimeDir, "zod-runtime.js");
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
 
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+const ZOD_SPECIFIER = "zod";
 
 async function hashFile(
   path: string,
@@ -129,10 +129,29 @@ export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
   };
 }
 
+export function zodAliasFor(args: {
+  runtimePath: string | undefined;
+  sourceKind: InstalledPluginRow["sourceKind"];
+  serverEntry: string;
+}): Record<string, string> | undefined {
+  if (
+    args.runtimePath === undefined ||
+    args.sourceKind !== "builtin" ||
+    !args.serverEntry.endsWith(`${sep}dist${sep}server.js`)
+  ) {
+    return undefined;
+  }
+  return { [ZOD_SPECIFIER]: args.runtimePath };
+}
+
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
   pluginSdkRuntimePath,
 )
   ? pluginSdkAliasFor(pluginSdkRuntimePath)
+  : undefined;
+
+const availableZodRuntimePath = existsSync(zodRuntimePath)
+  ? zodRuntimePath
   : undefined;
 
 interface MutableRoot {
@@ -1609,13 +1628,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       ownedRootUrls.add(mutableRootUrl(mutableRootDir(row.rootDir)));
     }
     try {
+      const serverEntry = await resolveServerEntry(row, manifest);
+      const alias = {
+        ...pluginSdkAlias,
+        ...zodAliasFor({
+          runtimePath: availableZodRuntimePath,
+          sourceKind: row.sourceKind,
+          serverEntry,
+        }),
+      };
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,
-        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
+        ...(Object.keys(alias).length === 0 ? {} : { alias }),
       });
-      const mod = (await jiti.import(
-        await resolveServerEntry(row, manifest),
-      )) as {
+      const mod = (await jiti.import(serverEntry)) as {
         default?: unknown;
       };
       const factory = mod.default;

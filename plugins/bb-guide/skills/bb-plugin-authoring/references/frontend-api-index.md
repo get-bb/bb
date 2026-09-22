@@ -39,6 +39,24 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useSidebarThreadActions`
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
+- `useSidebarThreadDraft` — whether the composer holds an unsent draft for
+  one thread, for the pencil glyph bb's row paints
+- `useSidebarThreadDraftIds` — every thread id with an unsent draft, for
+  collapsed-group rollups
+- `useSidebarThreadRowStatus` — the row status another plugin's app-wide
+  script set on a thread, or null
+- `useSidebarThreadRowStatuses` — every row status by thread id, for
+  collapsed-group rollups
+- `useSidebarSplitLayout` — the whole split layout with the thread each pane
+  shows, or null when nothing is split
+- `useSidebarThreadShortcut` — the jump shortcut assigned to a row while the
+  app command modifier is held, or null
+- `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
+  and `@thread:` mentions rendered as bb's chips
+- `useEnvironmentProviders` — bb's environment provider catalog, for naming
+  and drawing the environment a thread runs in
+- `useSdk` — bb's public API client bound to this plugin, the same areas the
+  `bb` CLI and the backend `bb.sdk` expose
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
 
@@ -128,15 +146,25 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarPullRequest`
 - `PluginSidebarThreadPullRequestState`
 - `PluginSidebarProject`
+- `PluginSidebarSection`
 - `PluginSidebarThreadsState`
 - `PluginProvidersState`
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginSidebarThreadActions`
+- `PluginSidebarThreadDraftState`
+- `PluginSidebarThreadRowStatus`
+- `PluginSidebarThreadShortcut`
+- `PluginThreadTitleProps`
+- `PluginEnvironmentProvider`
+- `PluginEnvironmentProvidersState`
+- `PluginBoundThreadsArea`
+- `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
+- `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
 - `PluginFileOpenerRegistration`

@@ -257,8 +257,8 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(
       screen
         .getByRole("button", { name: "Install GitHub" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
@@ -1467,12 +1467,8 @@ describe("PluginDetail banner precedence", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.textContent).toContain("Degraded");
-    expect(alerts[0]?.textContent).toContain(
-      "A background service is still stopping.",
-    );
-    expect(alerts[0]?.textContent).toContain(
-      "Wait a moment, then reload the plugin.",
-    );
+    expect(alerts[0]?.textContent).toContain("A service is still stopping.");
+    expect(alerts[0]?.textContent).toContain("Wait, then reload.");
     expect(alerts[0]?.textContent).not.toContain("issue-sync");
     expect(alerts[0]?.textContent).not.toContain("handler");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
@@ -1591,7 +1587,7 @@ describe("PluginDetail runtime health", () => {
     expect(alert.textContent).toContain("Failed");
     expect(alert.textContent).toContain("The plugin couldn't start.");
     expect(alert.textContent).not.toContain("runtime reported");
-    expect(alert.textContent).toContain("Reload the plugin.");
+    expect(alert.textContent).toContain("Try reloading it.");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
 
     const about = container.querySelector(
@@ -1608,12 +1604,8 @@ describe("PluginDetail runtime health", () => {
     });
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain(
-      "A background service is still stopping.",
-    );
-    expect(alert.textContent).toContain(
-      "Wait a moment, then reload the plugin.",
-    );
+    expect(alert.textContent).toContain("A service is still stopping.");
+    expect(alert.textContent).toContain("Wait, then reload.");
     expect(alert.textContent).not.toContain("issue-sync");
     expect(alert.textContent).not.toContain("Restart bb");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
@@ -1643,16 +1635,8 @@ describe("PluginDetail runtime health", () => {
   );
 
   it.each([
-    [
-      "incompatible",
-      "This plugin version isn't compatible with your version of bb.",
-      "Update bb to load a compatible bundled plugin.",
-    ],
-    [
-      "missing",
-      "The plugin's files are missing.",
-      "Restart bb. If the files are still missing, reinstall bb.",
-    ],
+    ["incompatible", "This version is incompatible with bb.", "Update bb."],
+    ["missing", "Plugin files are missing.", "Update or reinstall bb."],
   ] as const)(
     "explains the %s condition and a supported recovery",
     (status, condition, recovery) => {
@@ -1672,10 +1656,7 @@ describe("PluginDetail runtime health", () => {
     });
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("An API token is required.");
-    expect(alert.textContent).toContain(
-      "Complete the Configuration section; bb reloads the plugin after you save.",
-    );
+    expect(alert.querySelector("p")?.textContent).toBe("Needs configuration");
     const settingsLink = within(alert).getByRole("link", {
       name: "Open settings",
     });
@@ -1693,9 +1674,7 @@ describe("PluginDetail runtime health", () => {
     expect(alert.textContent).toContain(
       "Set GITHUB_TOKEN in the server environment.",
     );
-    expect(alert.textContent).toContain(
-      "Add the required configuration, then reload the plugin.",
-    );
+    expect(alert.textContent).toContain("Then reload.");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     expect(
       within(alert).queryByRole("link", { name: "Open settings" }),

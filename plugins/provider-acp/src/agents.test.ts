@@ -300,6 +300,11 @@ describe("acpProviderDeclaration", () => {
     expect(byId.get("acp-opencode")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "opencode",
     });
+    expect(byId.get("acp-opencode")?.maintenance).toEqual({
+      health: true,
+      usage: true,
+      installation: false,
+    });
     expect(
       byId.get("acp-opencode")?.capabilities.supportsManualCompaction,
     ).toBe(true);

@@ -131,7 +131,7 @@ function ThreadSectionMoveMenu({
             onOpenDrawerStep?.();
           }}
         >
-          <Icon name="MoveTo" aria-hidden="true" />
+          <Icon name="SectionMove" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">Move to section</span>
           <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
         </DropdownMenuItem>
@@ -164,7 +164,7 @@ function ThreadSectionMoveMenu({
   return (
     <Sub>
       <SubTrigger>
-        <Icon name="MoveTo" aria-hidden="true" />
+        <Icon name="SectionMove" aria-hidden="true" />
         Move to section
       </SubTrigger>
       <SubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
@@ -347,9 +347,11 @@ function useThreadActionsMenuLifecycle(onOpenChange?: (open: boolean) => void) {
 export function ThreadArchiveQuickAction({
   thread,
   className,
+  disabled,
 }: {
   thread: Thread;
   className?: string;
+  disabled?: boolean;
 }) {
   const { archiveThreadAndChildren, unarchiveThread } = useThreadActions();
   const isArchived = thread.archivedAt != null;
@@ -363,6 +365,7 @@ export function ThreadArchiveQuickAction({
           size="icon"
           className={cn("rounded-md p-0", className)}
           aria-label={`${label} thread`}
+          disabled={disabled}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();

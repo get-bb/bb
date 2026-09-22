@@ -87,6 +87,17 @@ export const experimental_useSidebarThreadPullRequest =
   runtime.experimental_useSidebarThreadPullRequest;
 export const experimental_useSidebarThreadSplit =
   runtime.experimental_useSidebarThreadSplit;
+export const useSidebarThreadDraft = runtime.useSidebarThreadDraft;
+export const useSidebarThreadDraftIds = runtime.useSidebarThreadDraftIds;
+export const useSidebarThreadRowStatus = runtime.useSidebarThreadRowStatus;
+export const useSidebarThreadRowStatuses =
+  runtime.useSidebarThreadRowStatuses;
+export const useSidebarSplitLayout = runtime.useSidebarSplitLayout;
+export const useSidebarThreadShortcut = runtime.useSidebarThreadShortcut;
+export const ThreadTitle = runtime.ThreadTitle;
+export const useEnvironmentProviders = runtime.useEnvironmentProviders;
+// bb's public API client bound to the calling plugin.
+export const useSdk = runtime.useSdk;
 // The provider directory (experimental — see docs/api_to_audit.md).
 export const experimental_useProviders = runtime.experimental_useProviders;
 // The live code theme, for plugins that render code with their own engine

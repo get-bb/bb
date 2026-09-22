@@ -34,7 +34,54 @@ const {
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  useSdk,
 } = await import("../../app.js");
+
+function SdkProbe() {
+  const sdk = useSdk();
+  const [sectionId, setSectionId] = useState<string | null>(null);
+  const [queuedId, setQueuedId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  return (
+    <div>
+      <button
+        onClick={() => {
+          void sdk.threadSections
+            .create({ name: "Later" })
+            .then((section) => setSectionId(section.id));
+        }}
+      >
+        Create section
+      </button>
+      <button
+        onClick={() => {
+          try {
+            void sdk.threads.pin({ threadId: "thr_1" });
+          } catch (error) {
+            setFailure(error instanceof Error ? error.message : String(error));
+          }
+        }}
+      >
+        Pin without a fake
+      </button>
+      <button
+        onClick={() => {
+          void sdk.threads.queuedMessages
+            .create({
+              threadId: "thr_1",
+              input: [{ type: "text", text: "hi", mentions: [] }],
+            })
+            .then((queued) => setQueuedId(queued.id));
+        }}
+      >
+        Queue nested
+      </button>
+      {sectionId ? <output>created {sectionId}</output> : null}
+      {queuedId ? <output>queued {queuedId}</output> : null}
+      {failure ? <output>{failure}</output> : null}
+    </div>
+  );
+}
 
 type TestTaskTarget = {
   kind: "task";
@@ -1405,6 +1452,51 @@ describe("typed rpc test runtime", () => {
 });
 
 describe("renderSlot", () => {
+  it("serves useSdk() from per-area fakes, records calls, and throws for a missing method", async () => {
+    const slot = renderSlot(
+      { component: SdkProbe },
+      {},
+      {
+        sdk: {
+          threadSections: {
+            create: async ({ name }) => ({
+              id: "sec_1",
+              name,
+              createdAt: 1,
+              updatedAt: 1,
+            }),
+          },
+          threads: {
+            queuedMessages: {
+              create: async () => ({ id: "qm_9" }) as never,
+            },
+          },
+        },
+      },
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Create section" }));
+    await slot.findByText("created sec_1");
+    fireEvent.click(slot.getByRole("button", { name: "Pin without a fake" }));
+    await slot.findByText(
+      'no sdk fake for "threads.pin" — add it to renderSlot options.sdk',
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Queue nested" }));
+    await slot.findByText("queued qm_9");
+    expect(slot.inspection.sdkCalls).toEqual([
+      { method: "threadSections.create", args: [{ name: "Later" }] },
+      { method: "threads.pin", args: [{ threadId: "thr_1" }] },
+      {
+        method: "threads.queuedMessages.create",
+        args: [
+          {
+            threadId: "thr_1",
+            input: [{ type: "text", text: "hi", mentions: [] }],
+          },
+        ],
+      },
+    ]);
+  });
+
   it("records URL intents from links and imperative navigation through one host boundary", () => {
     const slot = renderSlot(
       { component: UrlNavigationProbe },

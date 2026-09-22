@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { collectComposerCustomization } from "../internal/composer-customization-validation.js";
 
-describe("composer send-menu contributions", () => {
-  it("preserves opted-in actions and existing plus-only registrations", () => {
+describe("composer plus-menu upgrade from SDK 0.4.108", () => {
+  it("retains legacy action callbacks in the plus menu after removing the send-menu API", () => {
     const legacy = { id: "legacy", label: "Legacy", run: vi.fn() };
     const scheduled = {
       id: "schedule",
@@ -16,27 +16,10 @@ describe("composer send-menu contributions", () => {
       new Set(),
       onRejected,
     );
-    expect(registration?.plusMenu).toEqual([legacy, scheduled]);
+    expect(registration?.plusMenu).toEqual([
+      legacy,
+      { id: scheduled.id, label: scheduled.label, run: scheduled.run },
+    ]);
     expect(onRejected).not.toHaveBeenCalled();
-  });
-
-  it("rejects an invalid send-menu flag without losing valid actions", () => {
-    const onRejected = vi.fn();
-    const valid = { id: "valid", label: "Valid", run: vi.fn() };
-    const registration = collectComposerCustomization(
-      {
-        id: "actions",
-        plusMenu: [
-          { ...valid, id: "invalid", experimental_sendMenu: "true" },
-          valid,
-        ],
-      },
-      new Set(),
-      onRejected,
-    );
-    expect(registration?.plusMenu).toEqual([valid]);
-    expect(onRejected).toHaveBeenCalledWith(
-      expect.stringContaining("experimental_sendMenu"),
-    );
   });
 });

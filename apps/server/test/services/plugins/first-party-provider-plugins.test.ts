@@ -67,7 +67,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsThreadRename: false,
     fork: "tip",
     supportsManualCompaction: true,
-    supportsUsage: false,
+    supportsUsage: true,
     visibility: "installed",
     hasLogo: true,
   },
@@ -339,9 +339,7 @@ describe("first-party provider plugins", () => {
           "ultracode",
           "max",
         ]);
-        expect(claude?.fallbackModels.map((model) => model.id)).toContain(
-          "claude-opus-5[1m]",
-        );
+        expect(claude?.fallbackModels).toEqual([]);
         expect(claude?.envPassthrough).toEqual(["BB_CLAUDE_CODE_EXECUTABLE"]);
         expect(
           harness.deps.providerRegistry

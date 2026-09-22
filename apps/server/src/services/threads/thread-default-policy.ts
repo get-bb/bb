@@ -9,7 +9,7 @@ import type {
 } from "@bb/domain";
 import { getEnvironment } from "@bb/db";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
-import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentArgs,
   ProviderEnvironmentArgs,
@@ -407,36 +407,6 @@ export function resolveThreadDefaultPermissionMode(
 }
 
 export function resolveThreadExecutionPermissionMode(
-  registry: ProviderRegistryService,
-  args: ResolveThreadExecutionPermissionModeArgs,
-): PermissionMode {
-  const permissionMode = resolvePreferredThreadExecutionPermissionMode(
-    registry,
-    args,
-  );
-  if (
-    !isManagedChildThread(args) ||
-    args.parentThreadExecutionPermissionMode === undefined
-  ) {
-    return permissionMode;
-  }
-
-  const ceiling = normalizeRecordedPermissionMode(
-    args.parentThreadExecutionPermissionMode,
-  );
-  const supported = registry.getSupportedPermissionModes(
-    args.thread.providerId,
-  );
-  return (
-    clampPermissionModeToCeiling({
-      ceiling,
-      permissionMode,
-      ...(supported ? { permissionModes: supported } : {}),
-    }) ?? ceiling
-  );
-}
-
-function resolvePreferredThreadExecutionPermissionMode(
   registry: ProviderRegistryService,
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {

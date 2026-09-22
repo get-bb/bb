@@ -97,7 +97,7 @@ async function requireSupportedProviderCliForThreadStart({
     command.type === "thread.rewind.prepare"
       ? ("thread_rewind" as const)
       : undefined;
-  await options.refreshShellEnv();
+  await options.refreshShellEnv({ allowStale: true });
   const status = await options.runtimeManager.providerInstallationGate.run(
     providerInstallationGateKey({
       providerId: command.providerId,

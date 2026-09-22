@@ -1,0 +1,59 @@
+{
+  "name": "bb-plugin-thread-list",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "bb's sidebar thread list: pinned threads, custom sections, projects, machines, and nested threads.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.5.7"
+  },
+  "bb": {
+    "name": "Thread list",
+    "description": "bb's sidebar thread list: pinned threads, custom sections, projects, machines, and nested threads.",
+    "branding": {
+      "icon": "ListView"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/client-core": "workspace:*",
+    "@bb/core-ui": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/shared-ui": "workspace:*",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@radix-ui/react-compose-refs": "^1.1.3",
+    "@radix-ui/react-slot": "^1.3.0",
+    "jotai": "^2.19.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@bb/test-helpers": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

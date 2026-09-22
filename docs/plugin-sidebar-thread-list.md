@@ -76,11 +76,6 @@ interface PluginThreadListProps {
    * @deprecated The quick palette owns thread search. Ignore this value.
    */
   searchQuery: string;
-  /**
-   * BB's thread list bound to this sidebar instance. Render it to delegate
-   * conditionally without re-entering plugin replacement resolution.
-   */
-  Original: ComponentType;
 }
 ```
 
@@ -91,18 +86,22 @@ lists cannot share one scroll area. The rules:
 
 1. Automatic is the default. It activates the first registered provider in
    deterministic slot order; disabling or removing it reveals the next.
-2. The user can choose Automatic, pin the built-in list, or pin a provider in
-   **Settings → Appearance → Sidebar**.
+2. The user can choose Automatic or pin a provider in
+   **Settings → Appearance → Sidebar**. bb ships its own list as the bundled
+   `thread-list` plugin; there is no separate built-in list, and a stored
+   `__builtin__` preference is read as Automatic.
 3. The choice is client-local, in `localStorage` under
    `bb.sidebar.threadListProvider`, next to the other sidebar layout
    preferences. A device with a plugin disabled falls back cleanly.
 4. If an explicitly chosen provider disappears — the plugin is uninstalled,
-   disabled, or fails to interpret — the host renders the built-in list and
-   keeps the preference. If the plugin comes back, so does its list.
+   disabled, or fails to interpret — the host shows the "No thread list
+   plugin is enabled" placeholder (with a link to Plugins) and keeps the
+   preference. If the plugin comes back, so does its list. While plugin
+   frontends are still booting, the placeholder shows skeleton rows instead.
 5. If the component throws, the host does **not** show the usual "plugin
    crashed" chip. A chip in place of the whole sidebar leaves the user
-   stranded. The host renders the built-in list instead, plus one toast that
-   names the plugin. `PluginSlotMount` gains this fallback mode.
+   stranded. The host shows a "stopped working" placeholder with a Reload
+   button that remounts the list, plus one toast that names the plugin.
 
 ---
 
@@ -637,15 +636,17 @@ Add these when the API lands.
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Exclusive: Automatic activates the first available provider, while
-the user can pin BB or one provider in client-local Settings. A crash or a
-missing explicitly selected plugin falls back to the built-in list.
+the user can pin one provider in client-local Settings. bb ships its own list
+as the bundled `thread-list` plugin. A missing explicitly selected plugin shows
+the "No thread list plugin is enabled" placeholder; a crash shows a "stopped
+working" placeholder with a Reload button.
 
 **Audit before stabilizing.**
 
 1. **Arbitration.** Confirm a client-local single choice is right, versus a
    per-project or per-workspace choice, and what a synced setting would mean.
-2. **Fallback.** Confirm the silent fallback to the built-in list is
-   discoverable enough, and that one toast is the right signal.
+2. **Fallback.** Confirm the placeholder plus one toast is discoverable
+   enough when the list crashes.
 3. **Region boundary.** The plugin claims the scroll area and nothing else.
    Confirm no real sidebar needs more, and that handing the shared regions
    down as props — letting a plugin place them, at the risk of dropping them —

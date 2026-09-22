@@ -5,13 +5,12 @@ import {
   definePluginApp,
   Markdown,
   ThreadChat,
-  useRpc,
+  useSdk,
   type PluginMessageActionContext,
   type PluginThreadPanelActionContext,
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
 } from "@get-bb/plugin-sdk/app";
-import type { sideChatRpcContract } from "./server.js";
 
 const PLUGIN_ID = "side-chat";
 const PANEL_ACTION_ID = "side-chat";
@@ -215,7 +214,7 @@ function ReplyingTo({ anchorText }: { anchorText: string }) {
 }
 
 function SideChatPanel({ params }: PluginThreadPanelProps) {
-  const rpc = useRpc<typeof sideChatRpcContract>();
+  const sdk = useSdk();
   const parsed = parsePanelParams(params);
   const sideChatThreadId = parsed?.threadId ?? null;
   const sourceThreadId = parsed?.sourceThreadId ?? null;
@@ -223,11 +222,13 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
   const sendToMain = useCallback(
     async (message: { text: string; threadId: string }) => {
       if (sourceThreadId === null || sideChatThreadId === null) return;
+      const text = message.text.trim();
+      if (text.length === 0) return;
       try {
-        await rpc.call("sendToMain", {
-          sourceThreadId,
+        await sdk.threads.queuedMessages.create({
+          threadId: sourceThreadId,
+          input: [{ type: "text", text, mentions: [] }],
           senderThreadId: sideChatThreadId,
-          text: message.text,
         });
         toast.success("Sent to main thread");
       } catch (error) {
@@ -238,7 +239,7 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
         );
       }
     },
-    [rpc, sideChatThreadId, sourceThreadId],
+    [sdk, sideChatThreadId, sourceThreadId],
   );
 
   if (parsed === null) {

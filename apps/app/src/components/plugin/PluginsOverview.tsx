@@ -300,6 +300,7 @@ export function PluginsOverview({
                 onOpenPlugin={openPlugin}
               />
               <ResourceInfiniteScrollSentinel
+                itemCount={installedList.items.length}
                 hasMore={installedList.hasMore}
                 onLoadMore={installedList.loadMore}
               />
@@ -329,14 +330,6 @@ export function PluginsOverview({
         initial={addDialog.initial}
         onOpenChange={(open) =>
           setAddDialog((current) => ({ ...current, open }))
-        }
-        onInstalled={(plugin) =>
-          navigate(
-            getPluginDetailRoutePath({
-              pluginId: plugin.id,
-              view: "installed",
-            }),
-          )
         }
       />
     </>

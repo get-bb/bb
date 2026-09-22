@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/react-query";
+import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import type {
   ProjectResponse,
@@ -383,6 +383,17 @@ export async function beginThreadReadStateTransaction({
   queryClient,
   threadId,
 }: BeginThreadReadStateTransactionArgs): Promise<ThreadReadStateTransaction> {
+  const interruptedQueryKeys = [
+    threadQueryKey(threadId),
+    threadsQueryKey(),
+    sidebarNavigationQueryKey(),
+  ].flatMap((queryKey) =>
+    queryClient
+      .getQueryCache()
+      .findAll({ queryKey })
+      .filter((query) => query.state.fetchStatus !== "idle")
+      .map((query) => query.queryKey),
+  );
   const transaction = await runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>
       applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
@@ -402,11 +413,27 @@ export async function beginThreadReadStateTransaction({
     queryClient,
     threadId,
   });
-  return { ...transaction, lastReadAt };
+  return { ...transaction, lastReadAt, interruptedQueryKeys };
 }
 
 export interface ThreadReadStateTransaction extends ThreadListMutationTransaction {
   lastReadAt: number | null;
+  interruptedQueryKeys: QueryKey[];
+}
+
+export function settleThreadReadStateTransaction({
+  queryClient,
+  transaction,
+}: {
+  queryClient: QueryClient;
+  transaction: ThreadReadStateTransaction | undefined;
+}): void {
+  for (const queryKey of transaction?.interruptedQueryKeys ?? []) {
+    void queryClient.invalidateQueries(
+      { exact: true, queryKey },
+      { cancelRefetch: false },
+    );
+  }
 }
 
 export function rollbackThreadReadStateTransaction({
@@ -600,7 +627,22 @@ export function beginUnarchiveThreadTransaction({
   threadId,
 }: ThreadIdCacheArgs): Promise<ThreadListMutationTransaction> {
   return runOptimisticThreadFieldTransaction({
-    applyToLists: removeThreadFromLists,
+    applyToLists: (queryClient, threadId) => {
+      const thread = getCachedThreadLists(queryClient, {
+        queryKey: threadsQueryKey(),
+      })
+        .flatMap(({ data }) => [...iterateThreadListCacheEntries(data)])
+        .find((candidate) => candidate.id === threadId);
+      removeThreadFromLists(queryClient, threadId);
+      if (!thread) return;
+      applyToCachedSidebarNavigationThreads({
+        queryClient,
+        mapper: (list, projectId) =>
+          projectId === thread.projectId
+            ? [...list, { ...thread, archivedAt: null }]
+            : list,
+      });
+    },
     patch: { archivedAt: null },
     queryClient,
     threadId,

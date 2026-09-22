@@ -651,6 +651,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
 
   function renderMachineMenu(overrides?: {
     hosts?: readonly Host[];
+    host?: Host;
     value?: string;
     selectedProviderHostId?: string | null;
     multiMachinePickerEnabled?: boolean;
@@ -665,7 +666,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       <EnvironmentPickerUI
         value={overrides?.value ?? "provider:project-checkout"}
         sources={machineSources}
-        host={thisMachine}
+        host={overrides?.host ?? thisMachine}
         isLocal
         machines={{
           hosts: overrides?.hosts ?? [thisMachine, studio, devVm],
@@ -835,6 +836,42 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(screen.getByText("On Mac Studio")).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: /Project checkout/u }));
     expect(onSelectProvider).toHaveBeenCalledWith(checkoutProvider, studio.id);
+  });
+
+  it("initially highlights the selected offline machine", () => {
+    renderMachineMenu({
+      host: devVm,
+      selectedProviderHostId: devVm.id,
+    });
+
+    const localMachine = screen.getByRole("option", {
+      name: "MacBook Pro",
+    });
+    const offlineMachine = screen.getByRole("option", { name: "dev-vm" });
+    expect(localMachine.getAttribute("aria-selected")).toBe("false");
+    expect(offlineMachine.getAttribute("aria-selected")).toBe("true");
+    expect(offlineMachine.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByText("On dev-vm")).toBeTruthy();
+
+    fireEvent.click(localMachine);
+    expect(localMachine.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("On MacBook Pro")).toBeTruthy();
+
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+
+    expect(
+      screen
+        .getByRole("option", { name: "MacBook Pro" })
+        .getAttribute("aria-selected"),
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("option", { name: "dev-vm" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByText("On dev-vm")).toBeTruthy();
   });
 
   it("shows a selected hostless target without a machine environment section", () => {

@@ -6,18 +6,24 @@ import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 interface UseCreateThreadInEnvironmentArgs {
   projectId: string;
   environmentId: string;
+  sectionId: string | null;
 }
 
 export function useCreateThreadInEnvironment({
   projectId,
   environmentId,
+  sectionId,
 }: UseCreateThreadInEnvironmentArgs): () => void {
   const navigate = useRouteNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   return useCallback(() => {
     setRootComposeProjectId(projectId);
     navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true, reuseEnvironmentId: environmentId },
+      state: {
+        focusPrompt: true,
+        reuseEnvironmentId: environmentId,
+        sectionId,
+      },
     });
-  }, [environmentId, navigate, projectId, setRootComposeProjectId]);
+  }, [environmentId, navigate, projectId, sectionId, setRootComposeProjectId]);
 }

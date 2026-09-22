@@ -10,7 +10,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import type { PromptTextMention } from "@bb/domain";
@@ -24,6 +24,9 @@ import type {
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
+  PluginBrowserBbSdk,
+  PluginEnvironmentProvider,
+  PluginEnvironmentProvidersState,
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalAppPanel,
@@ -50,7 +53,9 @@ import {
   usePluginComposerHostDraft,
 } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
+import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
+import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import { createKeyedListeners } from "@/lib/keyed-listeners";
@@ -283,6 +288,36 @@ export function useProviders(): PluginProvidersState {
           }
         : { status: "ready", providers },
     [providers, query.isError],
+  );
+}
+
+export function useSdk(): PluginBrowserBbSdk {
+  const pluginId = usePluginId();
+  const queryClient = useQueryClient();
+  return getPluginBoundSdk(sdk, pluginId, queryClient);
+}
+
+const EMPTY_ENVIRONMENT_PROVIDERS: readonly PluginEnvironmentProvider[] = [];
+
+export function useEnvironmentProviders(): PluginEnvironmentProvidersState {
+  const { providers } = useSystemEnvironmentProviders();
+  return useMemo<PluginEnvironmentProvidersState>(
+    () =>
+      providers === undefined
+        ? { status: "loading", providers: EMPTY_ENVIRONMENT_PROVIDERS }
+        : {
+            status: "ready",
+            providers: providers.map((provider) => ({
+              id: provider.id,
+              displayName: provider.displayName,
+              description: provider.description,
+              icon: provider.icon,
+              logoUrl: provider.logoUrl,
+              pluginId: provider.pluginId,
+              machineProviderId: provider.machineProviderId,
+            })),
+          },
+    [providers],
   );
 }
 

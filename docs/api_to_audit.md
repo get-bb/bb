@@ -133,7 +133,7 @@ then `PluginRowLabels` in SDK 0.4.102, the type of `presentation.label`.
   that warns on its first render, then renders `UrlLink`),
   `BbNavigate.experimental_openUrl` (warns on its first call, then calls
   `openUrl`), and the delegation prop `experimental_Original` passed beside
-  `Original` on the thread-list, file-opener, source-code renderer and diff
+  `Original` on the file-opener, source-code renderer and diff
   renderer props (the timeline renderer never carried the old name; the
   alias warns on its first render). A bundle that never uses an alias never
   warns. All go in bb 0.42. The two 0.4.14 `app` exports
@@ -599,7 +599,10 @@ means. The component retains the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
 loading state, and a `refresh()` operation
-that performs a blocking remote refresh. `experimental_BranchPicker` is built
+that performs a blocking remote refresh. `query` is debounced before the host
+request, so a control can pass every keystroke; the previous results remain
+available while the next request settles, and filtering them stays the
+caller's job. `experimental_BranchPicker` is built
 on this hook.
 `experimental_useCheckoutState({ hostId, projectId })` exposes the checkout's
 git, unborn, detached, dirty, current-branch, and operation facts. The checkout
@@ -2269,23 +2272,24 @@ one list at a time fills the scroll area. Automatic activation is the default.
 If several are registered, the first in the slot snapshot wins (plugin ids are
 sorted, then each plugin's registration order is preserved); removing the
 automatic winner reveals the next. The user can override that behavior under
-Settings → Appearance by pinning BB's list or a specific provider; the choice
-is stored per client. A plugin-owned enable/disable setting can also live in
-the component, which renders `Original` when disabled.
+Settings → Appearance by pinning a specific provider; the choice is stored per
+client. bb ships its own list as the bundled `thread-list` plugin and has no
+separate built-in list, so there is no `Original` prop on this slot.
 
-Fallbacks keep the sidebar usable: no automatic provider renders BB's list; an
-unavailable pinned provider temporarily renders BB's list without erasing the
-choice; and a crashing component renders BB's list (not the usual "plugin
-crashed" chip, which in place of a whole sidebar would strand the user) plus
-one toast.
+Placeholders keep the sidebar usable: while plugin frontends boot the region
+shows skeleton rows; with no provider it shows "No thread list plugin is
+enabled" with a link to Plugins; an unavailable pinned provider shows the same
+without erasing the choice; and a crashing component shows a "stopped working"
+placeholder with a Reload button (not the usual "plugin crashed" chip, which in
+place of a whole sidebar would strand the user) plus one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
+1. **Arbitration.** Confirm automatic/pinned is the right long-term
    selection model and alphabetical plugin-id order is an acceptable default
    tie-breaker when multiple replacements are enabled.
-2. **Fallback discoverability.** Confirm one toast is the right signal when a
-   crash silently swaps the user's sidebar back.
+2. **Fallback discoverability.** Confirm one toast plus the placeholder's
+   Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
    the New-thread button, search action, plugin nav rows, and footer stay
    host-rendered, because they are shared surfaces (other plugins live in two
@@ -2479,6 +2483,14 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
 
+**Archive selection (Sep 2026).** `experimental_useSidebarThreads` accepts
+`experimental_lifecycles` (active, archived, or both; active by default).
+`PluginSidebarThreadsState.experimental_archived` is null for active-only reads;
+otherwise it exposes archive loading/error state, pagination flags, and
+`fetchNextPage`. Archive reads share the host query and realtime cache. Audit
+archive-only loading/errors, combined views, pagination retries, and archived
+row actions before stabilizing these additions.
+
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
 `useSidebarNavigation` query — the same cache and realtime subscriptions the
@@ -2497,7 +2509,14 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
 1. **DTO scope.** Confirm every field earns its place and that the copy stays
    worth its maintenance over `ThreadListEntry`. `hasUnsubmittedDraft` is
    deliberately absent (client-local composer state); confirm plugins do not
-   need it. `host` is resolved host-side to `{ id, name }` because a plugin
+   need it. **Widened (Sep 2026)** with the columns bb's own list reads that
+   the copy had dropped: `status`, `runtimeStatus`, `queuedWork`,
+   `pinSortKey`, `isHidden`, `lifecycleOwnerThreadId`, `sourceThreadId`, and
+   `environment.path` / `environment.isWorktree`; `indicator` now reports
+   `queued-failed` and `queued-waiting` instead of coercing them to `none`.
+   `status` and `runtimeStatus` freeze the domain enums into the contract the
+   way `indicator` already does; the same treat-unknown-as-fallback rule
+   applies. `host` is resolved host-side to `{ id, name }` because a plugin
    cannot turn a host id into a machine name — confirm resolution belongs here
    rather than in a separate hosts hook, and that falling back to the id for an
    unknown host is the right failure.
@@ -2522,14 +2541,22 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    row. An idle unread thread holding a draft therefore reads as
    "unread-success" where the built-in row paints "draft". Decide whether to
    close that gap (a per-thread draft hook) or keep it documented.
-6. **Action surface.** Destructive and dialog-bearing actions route through
+6. **Sections (Sep 2026).** `sections` rides on the state (same bootstrap
+   payload, no extra request) as the read side; writes are deliberately not
+   wrapped as actions because they are plain public API calls with realtime
+   fan-out. Confirm that split holds once a replaced list ships section
+   drag-and-drop, where the built-in list's optimistic cache transactions
+   have no plugin equivalent. `openNewThread` gained `sectionId` and
+   `environmentId`, which today ride on router state; confirm router state
+   stays the right transport.
+7. **Action surface.** Destructive and dialog-bearing actions route through
    `useThreadActions()`, so `archive` closes panes and repairs the route, and
    `requestDelete` opens bb's confirmation rather than deleting silently.
    Confirm that split (silent `rename`, host-confirmed delete) is the right
    line, and decide whether bulk actions and undo belong here.
-7. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
+8. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
    permission gate beyond installation trust.
-8. **`experimental_useSidebarThreadPullRequest`.** Per-row and opt-in, because
+9. **`experimental_useSidebarThreadPullRequest`.** Per-row and opt-in, because
    a PR lookup hits the git host and therefore cannot sit on the payload every
    sidebar loads. It reuses the host's environment-keyed query, so threads
    sharing a worktree share one lookup and the host keeps its own staleness and
@@ -2538,7 +2565,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
-9. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
+10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
    drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
    on `isAvailable`, and read `layout` to paint where the thread already sits.
    The host owns every rule — the drag engages only after the pointer leaves the
@@ -3202,12 +3229,3 @@ remain forbidden. New-machine selections continue through creation.
 
 Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
 progress, cross-project ownership, and concurrent creation before binding.
-
-## `ComposerPlusMenuItem.experimental_sendMenu`
-
-Also offers a registered composer plus-menu action in the send button's
-dropdown on desktop and long-press menu on mobile, with the same scope,
-disabled state, callback, and plugin
-lifecycle. The existing plus-menu entry remains available. Requires SDK 0.4.108.
-Audit discoverability, gesture cancellation, draft preservation, and ordering
-with the host's alternate Queue or Steer action before stabilization.

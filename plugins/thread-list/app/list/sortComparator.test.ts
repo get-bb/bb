@@ -1,0 +1,416 @@
+import { describe, expect, it } from "vitest";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import { getSidebarThreadComparator } from "./ProjectList.js";
+import { getThreadSidebarExpansion } from "./useSidebarThreadReveal.js";
+import {
+  CHRONOLOGICAL_CONTAINER_ID,
+  type ProjectThreadNode,
+  type ProjectThreadItem,
+  type ThreadComparator,
+} from "@bb/client-core";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+
+function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
+  return makeThreadListEntry({
+    id: "thr_1",
+    projectId: "proj_1",
+    title: "Thread",
+    titleFallback: "Thread",
+    lastReadAt: 0,
+    latestAttentionAt: 2,
+    createdAt: 1,
+    updatedAt: 2,
+    ...overrides,
+  });
+}
+
+function resolved(entry: ThreadListEntry, displayTitle: string): SidebarThread {
+  return { ...entry, href: `/threads/${entry.id}`, displayTitle };
+}
+
+function threadNode(entry: ThreadListEntry): ProjectThreadNode {
+  return {
+    thread: entry,
+    children: [],
+    depth: 0,
+    stats: {
+      childCount: 0,
+      childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+    },
+  };
+}
+
+function threadItem(entry: ThreadListEntry): ProjectThreadItem {
+  return { kind: "thread", node: threadNode(entry) };
+}
+
+function environmentItem(
+  representative: ThreadListEntry,
+  sibling: ThreadListEntry,
+): ProjectThreadItem {
+  return {
+    kind: "environment",
+    group: {
+      environmentId: representative.environmentId ?? "env_test",
+      environmentProviderId: "git-worktree",
+      nodes: [threadNode(representative), threadNode(sibling)],
+      stats: {
+        childCount: 0,
+        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+      },
+    },
+  };
+}
+
+function sectionItem(name: string): ProjectThreadItem {
+  return {
+    kind: "section",
+    group: {
+      id: "sec_literal",
+      key: "section:sec_literal",
+      name,
+      items: [],
+      threadCount: 0,
+      activity: NO_COLLAPSED_CHILD_ACTIVITY,
+    },
+  };
+}
+
+function itemRepresentativeId(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread.id;
+    case "environment":
+      return item.group.nodes[0].thread.id;
+    case "section":
+      return item.group.id;
+  }
+}
+
+const apple = thread({
+  id: "thr_a",
+  title: "Apple",
+  createdAt: 100,
+  latestAttentionAt: 100,
+});
+const banana = thread({
+  id: "thr_b",
+  title: "Banana",
+  createdAt: 200,
+  latestAttentionAt: 200,
+});
+const cherry = thread({
+  id: "thr_c",
+  title: "Cherry",
+  createdAt: 300,
+  latestAttentionAt: 300,
+});
+
+function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
+  return [...entries].sort(comparator).map((entry) => entry.id);
+}
+
+describe("getSidebarThreadComparator", () => {
+  it.each(["updated", "none"] as const)(
+    "keeps active threads first in both directions for %s",
+    (sort) => {
+      const entries = [
+        thread({
+          id: "idle_new",
+          status: "idle",
+          createdAt: 30,
+          latestAttentionAt: 200,
+        }),
+        thread({
+          id: "active_old",
+          status: "active",
+          createdAt: 10,
+          latestAttentionAt: 2000,
+        }),
+        thread({
+          id: "idle_old",
+          status: "idle",
+          createdAt: 40,
+          latestAttentionAt: 100,
+        }),
+        thread({
+          id: "active_new",
+          status: "active",
+          createdAt: 20,
+          latestAttentionAt: 1500,
+        }),
+      ];
+
+      expect(
+        order(
+          getSidebarThreadComparator(sort, "ascending"),
+          entries,
+        ),
+      ).toEqual(["active_old", "active_new", "idle_old", "idle_new"]);
+      for (const direction of ["default", "descending"] as const) {
+        expect(
+          order(
+            getSidebarThreadComparator(sort, direction),
+            entries,
+          ),
+        ).toEqual(["active_new", "active_old", "idle_new", "idle_old"]);
+      }
+    },
+  );
+
+  it("reverses created dates", () => {
+    expect(
+      order(getSidebarThreadComparator("created", "ascending"), [
+        cherry,
+        apple,
+        banana,
+      ]),
+    ).toEqual(["thr_a", "thr_b", "thr_c"]);
+  });
+
+  it("reverses both thread and group alphabetical comparison", () => {
+    const comparator = getSidebarThreadComparator("alpha", "descending");
+    expect(order(comparator, [apple, banana, cherry])).toEqual([
+      "thr_c",
+      "thr_b",
+      "thr_a",
+    ]);
+    expect(
+      comparator.compareItems?.(sectionItem("Apple"), sectionItem("Zebra")),
+    ).toBeGreaterThan(0);
+  });
+
+  it("created lists newest first", () => {
+    expect(
+      order(getSidebarThreadComparator("created"), [apple, banana, cherry]),
+    ).toEqual(["thr_c", "thr_b", "thr_a"]);
+  });
+
+  it("updated lists most recent first", () => {
+    expect(
+      order(getSidebarThreadComparator("updated"), [apple, banana, cherry]),
+    ).toEqual(["thr_c", "thr_b", "thr_a"]);
+  });
+
+  it("alphabetical lists A→Z", () => {
+    expect(
+      order(getSidebarThreadComparator("alpha"), [cherry, apple, banana]),
+    ).toEqual(["thr_a", "thr_b", "thr_c"]);
+  });
+
+  it("alphabetizes resolved section, project, and thread mention labels", () => {
+    const alphaTarget = thread({
+      id: "thr_target_z",
+      title: "Alpha target",
+      titleFallback: "Alpha target",
+    });
+    const zuluTarget = thread({
+      id: "thr_target_a",
+      title: "Zulu target",
+      titleFallback: "Zulu target",
+    });
+    const resolvedFirst = resolved(
+      thread({
+        id: "thr_sort_z",
+        title: "@section:sec_z @project:proj_z @thread:thr_target_z",
+      }),
+      `Alpha section Alpha project ${alphaTarget.title}`,
+    );
+    const resolvedLast = resolved(
+      thread({
+        id: "thr_sort_a",
+        title: "@section:sec_a @project:proj_a @thread:thr_target_a",
+      }),
+      `Zulu section Zulu project ${zuluTarget.title}`,
+    );
+
+    expect(
+      "@section:sec_z @project:proj_z @thread:thr_target_z".localeCompare(
+        "@section:sec_a @project:proj_a @thread:thr_target_a",
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      order(getSidebarThreadComparator("alpha"), [resolvedLast, resolvedFirst]),
+    ).toEqual(["thr_sort_z", "thr_sort_a"]);
+  });
+
+  it("uses resolved representative labels for environment items", () => {
+    const zuluTarget = thread({
+      id: "thr_target",
+      title: "Zulu environment",
+      titleFallback: "Zulu environment",
+    });
+    const environmentRepresentative = resolved(
+      thread({
+        id: "thr_env_a",
+        environmentId: "env_a",
+        title: "@thread:thr_target",
+      }),
+      zuluTarget.title ?? "",
+    );
+    const plainThread = thread({ id: "thr_plain", title: "Apple thread" });
+    const comparator = getSidebarThreadComparator("alpha");
+
+    expect(comparator.compareItems).toBeDefined();
+    expect(
+      [
+        environmentItem(
+          environmentRepresentative,
+          thread({ id: "thr_env_b", environmentId: "env_a" }),
+        ),
+        threadItem(plainThread),
+      ]
+        .sort(comparator.compareItems)
+        .map(itemRepresentativeId),
+    ).toEqual(["thr_plain", "thr_env_a"]);
+  });
+
+  it("sorts mention-shaped section names as literal text", () => {
+    const comparator = getSidebarThreadComparator("alpha");
+
+    expect(
+      [
+        threadItem(thread({ id: "thr_plain", title: "Apple thread" })),
+        sectionItem("@thread:thr_target"),
+      ]
+        .sort(comparator.compareItems)
+        .map(itemRepresentativeId),
+    ).toEqual(["sec_literal", "thr_plain"]);
+  });
+
+  it("breaks equal resolved titles by thread id", () => {
+    const sameTarget = thread({
+      id: "thr_target",
+      title: "Same label",
+      titleFallback: "Same label",
+    });
+    const comparator = getSidebarThreadComparator("alpha");
+    const laterId = resolved(
+      thread({ id: "thr_z", title: "@thread:thr_target" }),
+      sameTarget.title ?? "",
+    );
+    const earlierId = resolved(
+      thread({ id: "thr_a", title: "@thread:thr_target" }),
+      sameTarget.title ?? "",
+    );
+
+    expect(order(comparator, [laterId, earlierId])).toEqual(["thr_a", "thr_z"]);
+    expect(
+      [threadItem(laterId), threadItem(earlierId)]
+        .sort(comparator.compareItems)
+        .map((item) =>
+          item.kind === "thread" ? item.node.thread.id : "unexpected",
+        ),
+    ).toEqual(["thr_a", "thr_z"]);
+  });
+
+  it("alphabetical leaf and item comparators agree", () => {
+    const comparator = getSidebarThreadComparator("alpha");
+    expect(comparator.compareItems).toBeDefined();
+    const leafSign = Math.sign(comparator(apple, banana));
+    const itemSign = Math.sign(
+      comparator.compareItems!(threadItem(apple), threadItem(banana)),
+    );
+    expect(itemSign).toBe(leafSign);
+  });
+});
+
+describe("getThreadSidebarExpansion", () => {
+  it("expands the personal threads section in project mode", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "project",
+        isPinned: false,
+        sidebarProjectId: PERSONAL_PROJECT_ID,
+        thread: thread({ projectId: PERSONAL_PROJECT_ID }),
+      }),
+    ).toEqual({ sidebarSectionId: "threads" });
+  });
+
+  it("expands the owning project in project mode", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "project",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        thread: thread({ projectId: "proj_app" }),
+      }),
+    ).toEqual({ projectId: "proj_app" });
+  });
+
+  it("expands the root ancestor's project for a cross-project child in project mode", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "project",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        thread: thread({
+          projectId: "proj_web",
+          parentThreadId: "thr_parent",
+        }),
+      }),
+    ).toEqual({ projectId: "proj_app" });
+  });
+
+  it("expands the threads section for unsectioned project threads in sections mode", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "chronological",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        thread: thread({ sectionId: null, projectId: "proj_app" }),
+      }),
+    ).toEqual({ sidebarSectionId: "threads" });
+  });
+
+  it("expands the containing section for sectioned threads in sections mode", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "chronological",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        thread: thread({
+          sectionId: "sec_work",
+          projectId: "proj_app",
+        }),
+      }),
+    ).toEqual({
+      sectionKey: `${CHRONOLOGICAL_CONTAINER_ID}::sec_work`,
+    });
+  });
+
+  it("expands the owning machine group in machine mode", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "machine",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        thread: thread({
+          projectId: "proj_app",
+          environmentHostId: "host_a",
+        }),
+      }),
+    ).toEqual({ machineKey: "host_a" });
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "machine",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        thread: thread({ projectId: "proj_app" }),
+      }),
+    ).toEqual({ machineKey: "no-machine" });
+  });
+
+  it("expands the pinned section for pinned threads", () => {
+    expect(
+      getThreadSidebarExpansion({
+        organizationMode: "chronological",
+        isPinned: true,
+        sidebarProjectId: "proj_app",
+        thread: thread({ sectionId: null, projectId: "proj_app" }),
+      }),
+    ).toEqual({ sidebarSectionId: "pinned" });
+  });
+});

@@ -23,6 +23,7 @@ import {
   threadQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
+import { usePaletteRecentArchivedThreads } from "./palette-thread-queries";
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
@@ -60,6 +61,7 @@ vi.mock("@/lib/sdk", () => ({
     threads: {
       get: vi.fn(),
       list: vi.fn(),
+      search: vi.fn(),
       queuedMessages: { list: vi.fn() },
       interactions: { list: vi.fn() },
       storageLocation: vi.fn(),
@@ -342,6 +344,39 @@ describe("useThreadDetailBootstrap", () => {
 });
 
 describe("useArchivedThreads", () => {
+  it("fetches pages only while selected and continues from the loaded offset", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.threads.list)
+      .mockResolvedValueOnce(
+        Array.from({ length: ARCHIVED_THREADS_PAGE_SIZE }, (_, index) =>
+          makeThreadListEntry({
+            id: `archived-${index}`,
+            archivedAt: 1,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce([]);
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useArchivedThreads({}, { enabled }),
+      { wrapper, initialProps: { enabled: false } },
+    );
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    expect(vi.mocked(sdk.threads.list).mock.calls[1]?.[0]?.offset).toBe(
+      ARCHIVED_THREADS_PAGE_SIZE,
+    );
+    await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+    rerender({ enabled: false });
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(sdk.threads.list).toHaveBeenCalledTimes(2);
+  });
+
   it("loads archived threads across all projects when no scope is selected", async () => {
     const { wrapper } = createQueryClientTestHarness();
 
@@ -819,4 +854,25 @@ describe("useThreadTimeline segment limit", () => {
       signal: expect.any(AbortSignal),
     });
   });
+});
+
+describe("palette lifecycle queries", () => {
+  it("loads bounded archived recents only while selected before typing", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const archived = makeThreadListEntry({ id: "archived", archivedAt: 1 });
+    vi.mocked(sdk.threads.list).mockResolvedValue([archived]);
+    const { result, rerender } = renderHook(
+      ({ recent, selected }) => usePaletteRecentArchivedThreads({ enabled: recent && selected }),
+      { wrapper, initialProps: { recent: true, selected: false } },
+    );
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+    rerender({ recent: false, selected: true });
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+    rerender({ recent: true, selected: true });
+    await waitFor(() => expect(result.current.data).toEqual([archived]));
+    expect(sdk.threads.list).toHaveBeenCalledExactlyOnceWith({
+      archived: true, limit: 20, signal: expect.any(AbortSignal),
+    });
+  });
+
 });

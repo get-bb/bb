@@ -87,6 +87,16 @@ uses an automatic per-host limit of one thread per available processor. Use
 `bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
 
+The sidebar thread list is owned by the Thread list builtin plugin. Its
+layout preferences (active/archived filter, organization mode, sort, section order, hidden and
+collapsed groups) live in the plugin and sync to every window:
+`bb thread-list prefs list [--json]`, `prefs get <key>`,
+`prefs set <key> <value>`, and `prefs reset <key>`. `set` takes JSON; a bare
+word is a string. On first load the plugin copies non-default `sidebar.*`
+values from `bb settings ui` once. The `threadLifecycles` preference defaults
+to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
+shows archived threads, and `'["active","archived"]'` shows both.
+
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
@@ -293,6 +303,13 @@ an upgrade uploads the old browser-stored layout once.
   bb settings ui set <key> <value> [--json]
   bb settings ui reset <key> [--json]
 
+The sidebar thread list uses an explicit plugin selection and defaults to the bundled
+Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
+`__builtin__` selections resolve to that default; other plugin selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
+
 `bb settings ui list` prints every key with its value, revision, and a short
 description. `set` takes plain strings for enum and provider keys and JSON for
 lists and `null`; it reads the current revision, writes with it, and retries
@@ -305,11 +322,25 @@ to By project (`project`). Explicit server choices take precedence over legacy
 browser choices, which take precedence over this installation fallback. Reset
 saves the installation fallback as an explicit choice.
 
+The built-in sidebar's Filter selects Active and Archived, defaulting to Active.
+The selection is browser-local, not a server-backed preference or SDK/CLI setting.
+Active includes threads with saved messages; there is no separate
+Drafts section or filter. Archived threads use their preserved placement and a
+restore action. Archived pages load only while selected.
+Plugin sidebar replacements own their filters.
+
+The palette's Filter uses Active and Archived independently of the
+sidebar, defaulting to Active. Its selection is browser-local, not configurable
+through SDK/CLI. Active includes threads with saved messages; Search threads retains
+the existing title and conversation search behavior. Archived fetches bounded recent rows only when
+selected.
+
 Every thread-list header's actions menu offers New project, New section,
-Organize, and Sort by. Organize selects By project, By machine, or Custom, and
-its By environment toggle decides whether sibling threads sharing one worktree
-collapse into a single worktree row inside their section, in every organization
-mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
+Organize, Sort by, and Filter. Organize selects By project,
+By machine, or Custom and retains Groups → By environment.
+The separate `sidebar.threadGrouping.environment` preference
+decides whether sibling threads sharing one worktree collapse into a single row.
+It defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
 false` keeps every thread on its own row, and `true` groups them in every mode.
 Sort by selects a field, and selecting it again reverses its arrow/direction.
@@ -319,26 +350,25 @@ A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascend
 
 Thread-list visibility
 
-A project, custom section, or machine's menu offers Hide from list; its menu
-inside More offers Add to sidebar. Customize list manages visibility and
+Threads, a project, custom section, or machine's menu offers Hide from list;
+its menu inside More offers Add to list. Customize list manages visibility and
 order for the current organization. Hiding preserves the group's threads, order,
 and collapse state. Pinned threads remain in Pinned; More carries hidden activity.
 
-`sidebar.hiddenGroups` defaults to `[]`. Its keys are `project:<projectId>`,
-`section:<sectionId>`, and `machine:<hostId>` (`machine:no-machine` for the
-unassigned group). Each organization uses its own keys. Pinned and Threads cannot
-be hidden. Duplicate keys are deduplicated, and unavailable IDs remain saved
-without producing rows. New groups default visible.
+The Thread list plugin's `hiddenGroups` preference defaults to `[]`. Its keys
+are `threads`, `project:<projectId>`, `section:<sectionId>`, and
+`machine:<hostId>` (`machine:no-machine` for the unassigned group). Each
+organization uses its own keys, while `threads` applies to every organization.
+Pinned cannot be hidden. Duplicate keys are deduplicated, and unavailable IDs
+remain saved without producing rows. New groups default visible.
 
-  bb settings ui get sidebar.hiddenGroups
-  bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
-  bb settings ui reset sidebar.hiddenGroups
+  bb thread-list prefs get hiddenGroups
+  bb thread-list prefs set hiddenGroups '["threads","project:proj_example","section:sec_example"]'
+  bb thread-list prefs reset hiddenGroups
 
 `set` replaces the entire list across organizations; include existing keys you
-want to keep hidden. `reset` shows all groups. SDK callers use
-`sdk.system.uiPreferences.list()` to read the current revision, then
-`.set({ key: "sidebar.hiddenGroups", value, expectedRevision })` or
-`.reset({ key: "sidebar.hiddenGroups" })`.
+want to keep hidden. `reset` shows all groups. The plugin's `setPreference` and
+`resetPreference` RPCs expose the same operations to its app client.
 
 Sidebar footer actions
 

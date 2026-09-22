@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +10,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { StrictMode } from "react";
+import { appToast } from "@/components/ui/app-toast";
+import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type {
   PluginCatalogSearchData,
   PluginCatalogSearchEntry,
@@ -376,7 +380,7 @@ describe("BrowsePluginsTab", () => {
       "Open Memory details",
       "Open Tasks details",
     ]);
-    expect(screen.getByText("Memory & Context")).toBeTruthy();
+    expect(screen.queryByText("Memory & Context")).toBeNull();
   });
 
   it("puts entries without a published date last in both directions", async () => {
@@ -516,6 +520,7 @@ describe("BrowsePluginsTab", () => {
   });
 
   it("uses the shared error state and retries catalog searches", async () => {
+    const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
     let searchAttempts = 0;
     vi.stubGlobal(
       "fetch",
@@ -547,6 +552,63 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Memory")).toBeTruthy();
     expect(searchAttempts).toBe(2);
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it("notifies once while saved results remain available after failed refreshes", async () => {
+    const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
+    let unavailable = false;
+    let description = MEMORY_ENTRY.description;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/api/v1/plugin-catalog/search")) {
+          return unavailable
+            ? jsonResponse({ error: "unavailable" }, 503)
+            : jsonResponse({ results: [{ ...MEMORY_ENTRY, description }], collections: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={["/plugins?category=memory-and-context"]}>
+          <BrowsePluginsTab
+            onInstall={() => undefined}
+            onOpenPlugin={() => undefined}
+            onInstallFromSource={() => undefined}
+          />
+        </MemoryRouter>
+      </StrictMode>,
+      { wrapper },
+    );
+    await screen.findByRole("button", { name: "Open Memory details" });
+    const refresh = async () => {
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: pluginCatalogSearchQueryKey(""),
+          exact: true,
+        });
+      });
+    };
+    unavailable = true;
+    await refresh();
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(1));
+    expect(warning).toHaveBeenCalledWith("Couldn’t refresh plugins.");
+    expect(
+      screen.getByRole("button", { name: "Open Memory details" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await refresh();
+    expect(warning).toHaveBeenCalledTimes(1);
+    unavailable = false;
+    description = "Refreshed memory catalog";
+    await refresh();
+    await screen.findByText("Refreshed memory catalog");
+    unavailable = true;
+    await refresh();
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(2));
   });
 
   it("marks installed entries instead of offering install", async () => {

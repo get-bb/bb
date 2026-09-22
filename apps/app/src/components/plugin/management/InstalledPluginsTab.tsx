@@ -87,7 +87,6 @@ export function InstalledPluginRow({
 }) {
   const { toggle, enabled } = usePluginEnabledMutation(plugin);
   const isLocal = plugin.source.startsWith("path:");
-  const category = catalogEntry?.category ?? plugin.category;
   const signal = pluginRowSignal(plugin);
   const statusSignal = signal?.kind === "status" ? signal : null;
   const updateSignal = signal?.kind === "update" ? signal : null;
@@ -117,7 +116,7 @@ export function InstalledPluginRow({
         }
         title={plugin.name ?? plugin.id}
         byline={
-          isLocal ? null : catalogEntry !== undefined ? (
+          isLocal ? "Local" : catalogEntry !== undefined ? (
             <PluginCardAuthor entry={catalogEntry} />
           ) : plugin.publisherLabel !== null ? (
             <PluginAuthorByline
@@ -134,17 +133,6 @@ export function InstalledPluginRow({
                 : plugin.publisherLabel}
             </PluginAuthorByline>
           ) : null
-        }
-        badge={
-          isLocal
-            ? { kind: "local" }
-            : category === undefined
-              ? null
-              : {
-                  kind: "category",
-                  categoryId: catalogEntry?.categoryId ?? plugin.categoryId,
-                  label: category,
-                }
         }
         description={
           runtimeStatus === null ? (
@@ -164,7 +152,7 @@ export function InstalledPluginRow({
         }
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
-        headerAction={
+        footerAction={
           <span className="flex items-center gap-2">
             {updateSignal !== null ? (
               <span data-testid={`plugin-update-signal-${plugin.id}`}>

@@ -232,17 +232,19 @@ Automatic, BB, or one plugin under Settings → Appearance → Navigation.
 list fills the sidebar's scroll area. Registering activates the replacement
 while the plugin is enabled. If multiple plugins register one, the first in
 deterministic slot order is active by default; removing it reveals the next.
-The user can pin BB's list or a specific provider under
-**Settings → Appearance → Sidebar**. The choice is per client.
+The user can pin a specific provider under **Settings → Appearance →
+Sidebar**. The choice is per client. bb ships its own list as the bundled
+`thread-list` plugin; there is no separate built-in list.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
 the search action, the plugin nav rows, and the footer stay host-rendered —
 other plugins live in two of those, so a replaced list must not remove them.
 Put your own controls at the top of your scroll area instead.
 
-If the chosen plugin is disabled, uninstalled, or its component throws, bb
-renders its own list again (plus a toast on a crash), so the sidebar is never
-empty.
+If no thread list plugin is enabled, bb shows a placeholder that links to
+Plugins. If the active component throws, bb shows a "stopped working"
+placeholder with a Reload button plus one toast; nothing else in the sidebar
+is affected.
 
 The component receives:
 
@@ -256,27 +258,64 @@ interface PluginThreadListProps {
   /** Deprecated compatibility value for the removed sidebar search field.
       The host always supplies "". */
   searchQuery: string;
-  /** BB's bound thread list. Render it to delegate conditionally without
-      re-entering plugin replacement resolution. */
-  Original: ComponentType;
 }
 ```
 
 **Reading and acting on threads.** Two hooks back a replaced list:
 
 ```tsx
-const { status, threads, projects } = experimental_useSidebarThreads();
+const { status, threads, projects, sections } = experimental_useSidebarThreads();
 const actions = experimental_useSidebarThreadActions();
 
-// threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
-// parentThreadId, sectionId, originKind, originPluginId, providerId,
-// hasPendingInteraction, activity, isUnread/isPinned/isArchived,
-// environment { id, name, branchName, providerId, workspaceDisplayKind },
-// where workspaceDisplayKind is deprecated compatibility data; host { id, name },
-// createdAt, updatedAt, lastReadAt, latestAttentionAt, and
-// `indicator` (bb's resolved status kind) + `indicatorLabel` (its a11y string).
-// Draw your own glyph for `indicator`; the SDK ships no status component.
-// Treat an unknown indicator value as "none" — bb adds kinds over time.
+// sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
+// server order. A thread's `sectionId` names one of these or is null for the
+// loose "Threads" bucket. Create, rename, and delete sections and move
+// threads between them through the public API client; the sidebar refreshes
+// over realtime:
+const sdk = useSdk();
+await sdk.threadSections.create({ name: "Later" });
+await sdk.threads.update({ id: thread.id, sectionId });
+
+// threads: PluginSidebarThread[] — id, projectId, href (put it on the row's
+// anchor; the host routes clicks in place), title, titleFallback,
+// displayTitle, parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
+// originKind, originPluginId, providerId, status (execution status; busy
+// threads sort first in bb's list), runtimeStatus (status refined by host
+// readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
+// activity, isUnread/isPinned/pinnedAt/isArchived/archivedAt, pinSortKey
+// (manual pin order),
+// isHidden (bb's list filters these out; the array keeps them),
+// environment { id, name, branchName, path, isWorktree, providerId,
+// workspaceDisplayKind }, where workspaceDisplayKind is deprecated
+// compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
+// latestAttentionAt, and `indicator` (bb's resolved status kind) +
+// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`;
+// the SDK ships no status component. Treat an unknown indicator, status, or
+// runtimeStatus value as its documented fallback — bb adds kinds over time.
+
+// Three more per-row facts are client-local, so they are hooks rather than
+// fields on the thread: an unsent composer draft (bb paints a pencil, or a
+// "working-draft" glyph when the thread is busy), a row status another
+// plugin's app-wide script set (bb draws it in place of the draft glyph), and
+// the jump shortcut bb assigns while the app command modifier is held (bb
+// shows a key pill). Compose them with `indicator` yourself:
+const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
+const rowStatus = useSidebarThreadRowStatus(thread.id); // { icon, label, tone? } | null
+const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcuts } | null
+const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
+const rowStatuses = useSidebarThreadRowStatuses(); // ReadonlyMap, for group rollups
+const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, threadId, isFocused }] } | null
+// projects: PluginSidebarProject[] — { id, name, isPersonal, href, settingsHref }
+
+// Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`
+// is the resolved plain text (sort on it, use it for aria-label); <ThreadTitle>
+// renders the same text with bb's mention chips:
+<span className="truncate"><ThreadTitle threadId={thread.id} /></span>
+
+// `environment.providerId` names an entry in bb's environment provider
+// catalog; resolve it for a display name, and draw it with
+// <experimental_ProviderIcon providerKind="environment" provider={entry} />:
+const { providers: environmentProviders } = useEnvironmentProviders();
 
 // Pull requests are per row and opt-in — a lookup hits the git host, so it is
 // deliberately NOT on the thread payload every sidebar loads:
@@ -285,6 +324,8 @@ const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
 
 actions.open(id, { split: true }); // bb's split placement rules
 actions.openNewThread({ projectId, focusPrompt: true });
+actions.openNewThread({ projectId, sectionId }); // file it under a section
+actions.openNewThread({ projectId, environmentId }); // reuse an environment
 actions.setPinned(id, true);
 actions.setRead(id, false);
 actions.rename(id, "New title"); // silent; for inline editing
@@ -297,7 +338,8 @@ is no silent `delete`: deletion is recursive, and only bb can show the
 confirmation that counts the child threads.
 
 Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
-seed rows with the `sidebarThreads` option and assert against
+seed rows with the `sidebarThreads` option (plus `sidebarDraftThreadIds`,
+`sidebarRowStatuses`, and `sidebarShortcuts` for the per-row hooks) and assert against
 `inspection.sidebarActionCalls`.
 
 **Splits.** Rows can drag out to the split area:

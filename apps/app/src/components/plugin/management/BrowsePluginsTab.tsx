@@ -1,9 +1,10 @@
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
+import { appToast } from "@/components/ui/app-toast";
 import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -82,6 +83,16 @@ export function BrowsePluginsTab({
     () => catalog.entries.filter((entry) => entry.compatible),
     [catalog.entries],
   );
+  const savedResultsError =
+    entries.length > 0 &&
+    (activeQuery.isRefetchError || searchQuery.isRefetchError);
+  const notifiedSavedResultsError = useRef(false);
+  useEffect(() => {
+    if (savedResultsError && !notifiedSavedResultsError.current) {
+      appToast.warning("Couldn’t refresh plugins.");
+    }
+    notifiedSavedResultsError.current = savedResultsError;
+  }, [savedResultsError]);
   const selectedShelf = useMemo(
     () =>
       shelfKey === null
@@ -256,12 +267,6 @@ export function BrowsePluginsTab({
               action={isCompact && shelfKey === null ? createAction : undefined}
             />
 
-            {(searchQuery.isError || activeQuery.isError) &&
-            entries.length > 0 ? (
-              <p className="text-xs text-warning-text" role="status">
-                The latest search failed. The page shows saved catalog results.
-              </p>
-            ) : null}
             {activeQuery.isPending ||
             (shelfKey !== null &&
               debouncedQuery !== "" &&
@@ -309,7 +314,6 @@ export function BrowsePluginsTab({
             ) : (
               <PluginCatalogGrid
                 entries={flatEntries}
-                showCategory={!isCategoryShelf}
                 onInstall={onInstall}
                 onUninstall={onUninstall}
                 onOpenPlugin={onOpenPlugin}
@@ -390,7 +394,6 @@ function BrowseShelf({
             <PluginCatalogCard
               key={`${entry.marketplace}/${entry.entryId}`}
               entry={entry}
-              showCategory={false}
               onInstall={onInstall}
               onUninstall={onUninstall}
               onOpenPlugin={onOpenPlugin}
