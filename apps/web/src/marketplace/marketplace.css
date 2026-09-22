@@ -224,7 +224,7 @@
 .marketplace-category-options {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
   width: 280px;
   max-width: calc(100vw - 40px);
   max-height: min(480px, 60dvh);
