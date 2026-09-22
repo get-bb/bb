@@ -296,6 +296,8 @@
 }
 
 .marketplace-card {
+  width: 100%;
+  max-width: 360px;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -601,9 +603,9 @@
 
 .marketplace-detail-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) minmax(280px, 340px);
   align-items: start;
-  gap: 20px 18px;
+  gap: 20px 24px;
   padding-bottom: 32px;
   border-bottom: 1px solid var(--border);
 }
@@ -621,7 +623,7 @@
 }
 
 .marketplace-detail-identity > p {
-  max-width: 62ch;
+  max-width: none;
   margin-top: 8px;
   color: var(--dim);
   font-size: 14px;
@@ -632,7 +634,7 @@
   display: grid;
   min-width: 0;
   gap: 10px;
-  grid-column: 2 / -1;
+  grid-column: 2;
   grid-row: 2;
 }
 
@@ -718,9 +720,10 @@ a.marketplace-detail-author:hover {
   display: grid;
   justify-items: start;
   gap: 8px;
-  grid-column: 2 / -1;
-  grid-row: 3;
-  margin-top: 0;
+  grid-column: 3;
+  grid-row: 1 / 3;
+  min-width: 0;
+  margin-top: 4px;
 }
 
 .marketplace-detail-body {
@@ -849,24 +852,20 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-author-teasers {
-  display: flex;
-  overflow: hidden;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 420px));
+  gap: 14px;
 }
 
 .marketplace-author-teasers > a {
   display: grid;
+  min-width: 0;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--border-soft);
-}
-
-.marketplace-author-teasers > a:first-child {
-  border-top: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 
 .marketplace-author-teasers > a:hover {
@@ -889,11 +888,14 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-author-teasers small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
   color: var(--subtle);
   font-size: 12.5px;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.5;
 }
 
 .marketplace-author-head {
@@ -942,6 +944,21 @@ a.marketplace-detail-author:hover {
 
 .marketplace-author-search {
   margin-bottom: 8px;
+}
+
+@media (max-width: 960px) {
+  .marketplace-detail-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .marketplace-detail-facts {
+    grid-column: 2;
+  }
+
+  .marketplace-detail-install {
+    grid-column: 2;
+    grid-row: 3;
+  }
 }
 
 @media (max-width: 860px) {
