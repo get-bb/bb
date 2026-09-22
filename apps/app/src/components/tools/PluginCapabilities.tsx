@@ -546,7 +546,12 @@ function PluginRuntimeStatusAlert({
         canOpenSettings || canReload ? (
           <span className="flex items-center gap-2">
             {canOpenSettings ? (
-              <Button asChild size="sm" className="h-7 gap-0.5 px-2.5 text-xs">
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-0.5 px-2.5 text-xs"
+              >
                 <Link
                   to={
                     configurationPath ??
@@ -563,7 +568,6 @@ function PluginRuntimeStatusAlert({
                 icon="RotateCcw"
                 className="[&_[data-icon-root]]:size-3.5"
                 label={reloadPending ? "Reloading…" : "Reload"}
-                tooltipLabel={reloadPending ? "Reloading…" : "Reload"}
                 loading={reloadPending}
                 disabled={reloadPending}
                 onClick={onReload}

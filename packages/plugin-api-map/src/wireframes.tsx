@@ -2147,11 +2147,11 @@ export function ExtensionsPluginPageWireframe({
           <span className="min-w-0 flex-1 font-medium text-foreground">
             Needs configuration
           </span>
-          <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-foreground px-2.5 text-xs text-background">
+          <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-md px-2.5 text-xs text-foreground">
             Open settings
             <MiniIcon
               icon="ChevronRight"
-              className="size-3.5 text-background"
+              className="size-3.5"
             />
           </span>
         </Mark>
