@@ -265,14 +265,19 @@ describe("PluginPendingInteractionComposer", () => {
     };
     renderComposer(
       <PluginPendingInteractionComposer
-        interaction={interaction}
+        interaction={{
+          id: "pint_provider",
+          threadId: "thr_test",
+          createdAt: 1,
+          expiresAt: 2,
+        }}
         request={{
           pluginId: "provider-pi",
           rendererId: "extension-ui",
           title: "Allow access?",
           data,
         }}
-        dismissal="cancel"
+        origin="provider"
       />,
     );
 
