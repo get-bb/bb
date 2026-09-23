@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a5527561-dfe3-47a4-81ef-97a038b45cab",
+  "id": "34b3bcc9-7840-4c66-be0f-715695014ab2",
   "prevId": "7ff3fbcf-840d-4547-8d1f-94d571998114",
   "tables": {
     "account": {
@@ -123,39 +123,6 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "ai_global_usage_day": {
-      "name": "ai_global_usage_day",
-      "columns": {
-        "day": {
-          "name": "day",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "spent_micros": {
-          "name": "spent_micros",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "reserved_micros": {
-          "name": "reserved_micros",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

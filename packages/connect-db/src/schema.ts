@@ -191,17 +191,10 @@ export const aiUsageDay = sqliteTable(
   ],
 );
 
-export const aiGlobalUsageDay = sqliteTable("ai_global_usage_day", {
-  day: text("day").primaryKey(),
-  spentMicros: integer("spent_micros").notNull().default(0),
-  reservedMicros: integer("reserved_micros").notNull().default(0),
-});
-
 export const aiRequestOutcomes = [
   "ok",
   "invalid_request",
   "budget_exhausted",
-  "global_budget_exhausted",
   "rate_limited",
   "unavailable",
   "upstream_error",
@@ -249,6 +242,5 @@ export const schema = {
   connectCode,
   auditLog,
   aiUsageDay,
-  aiGlobalUsageDay,
   aiRequestLog,
 };

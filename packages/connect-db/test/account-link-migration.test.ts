@@ -3,7 +3,6 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
-  aiGlobalUsageDay,
   aiRequestLog,
   aiUsageDay,
   connectCode,
@@ -144,7 +143,6 @@ describe("0006 account link and AI usage", () => {
       expect(() =>
         db.insert(aiUsageDay).values({ userId: "u1", day: "2026-09-22" }).run(),
       ).toThrow(/UNIQUE|PRIMARY/u);
-      db.insert(aiGlobalUsageDay).values({ day: "2026-09-22" }).run();
       db.insert(aiRequestLog)
         .values({
           id: "r1",
@@ -159,7 +157,6 @@ describe("0006 account link and AI usage", () => {
       db.delete(user).where(eq(user.id, "u1")).run();
       expect(db.select().from(aiUsageDay).all()).toHaveLength(0);
       expect(db.select().from(aiRequestLog).all()).toHaveLength(0);
-      expect(db.select().from(aiGlobalUsageDay).all()).toHaveLength(1);
     } finally {
       sqlite.close();
     }

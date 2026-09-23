@@ -45,7 +45,7 @@ Still to do: deploying the migration and the gateway; phase 2 voice.
    instead of holding its own credential.
 2. A hosted service on getbb.app that writes thread titles and commit messages
    for signed-in users. Branch names come from the title, so they improve too.
-   It runs on OpenRouter and is metered at $2 of model spend per account per
+   It runs on OpenRouter and is metered at 50¢ of model spend per account per
    day.
 3. Later, the same service and budget also cover voice transcription
    (Part 8). Phase 1 is shaped so voice adds no new plumbing.
@@ -268,7 +268,7 @@ hold is on.
 
 - **Scope.** The budget is per account (`user_id`), not per server, so extra
   servers don't multiply it. Days are UTC. The limit is the worker variable
-  `AI_DAILY_BUDGET_MICROS=2000000`.
+  `AI_DAILY_BUDGET_MICROS=500000`.
 - **Table.** `ai_usage_day(user_id, day, spent_micros, reserved_micros, requests)`.
 - **Reserve, then settle.**
   1. Before calling OpenRouter, reserve a fixed worst case of 0.5¢ with one
@@ -281,10 +281,8 @@ hold is on.
   reserve and is charged only what OpenRouter billed.
 - **Burst limit.** 60 requests per minute per account, via the Rate Limiting
   binding.
-- **Backstops.**
-  - A global daily cap in the worker (`AI_GLOBAL_DAILY_BUDGET_MICROS`). When it
-    is hit, the worker answers `unavailable`.
-  - A credit limit with a daily reset on the OpenRouter key itself.
+- **Backstop.** Total spend is bounded by a credit limit with a daily reset on
+  the OpenRouter key itself. The worker has no global cap.
 
 ## Part 4: model
 
@@ -320,11 +318,11 @@ With these settings, user code only goes to endpoints that don't retain it.
 | Title | about 1K tokens | about $0.0001 |
 | Commit message at core's 32 KB patch cap | about 10K tokens | about $0.0008 |
 
-- $2 a day covers about 2,500 max-size commits or 20,000 titles.
+- 50¢ a day covers about 600 max-size commits or 5,000 titles.
 - A heavy user (50 threads and 20 commits a day) spends about 2¢ a day, or
   about $0.65 a month.
-- The $2 cap therefore only matters for abuse. The worst case is $60 a month
-  per account, and the global cap bounds the total.
+- The 50¢ cap therefore only matters for abuse. The worst case is $15 a month
+  per account, and the OpenRouter key's credit limit bounds the total.
 
 **Step 0 of implementation checks the pick.**
 
@@ -520,7 +518,7 @@ A small builtin plugin, enabled by default.
 - `status()` reports "Sign in to your bb account" when signed out and "Daily
   limit reached, resets 00:00 UTC" when the budget is spent, so Automatic
   skips it in both cases.
-- Its Settings section shows today's usage ("$0.03 of $2.00 today, resets
+- Its Settings section shows today's usage ("$0.03 of $0.50 today, resets
   00:00 UTC"), read from `/api/ai/v1/usage`, and says what is sent where.
 - CLI: `bb ai status | usage`.
 
@@ -538,7 +536,7 @@ chain. Phase 2 adds:
   response carries `usage: {seconds, cost}`, so metering is unchanged.
   - Caps: 5 minutes of audio and 10 MB per request.
   - Reserve 2¢ per call, then settle to the actual cost.
-  - Voice draws from the same $2 daily budget.
+  - Voice draws from the same 50¢ daily budget.
 - **Vocabulary hints.** `hint` goes through `provider.options.<slug>.prompt`,
   because OpenRouter ignores the top-level `prompt` field.
 - **bb-ai.** Registers `transcribe`. Voice's Automatic chain then becomes
@@ -668,8 +666,8 @@ chain. Phase 2 adds:
 
    Running bb cloud first would give everyone the same fast model, but it
    would send Codex users' diffs through getbb.app.
-2. **Budget.** $2 per account per UTC day, as requested, shared by text and
-   voice, plus a global cap. Proposed starting global cap: $50 a day.
+2. **Budget.** 50¢ per account per UTC day, shared by text and voice. Total
+   spend is bounded by the OpenRouter key's credit limit, not a worker cap.
 3. **Tunnel tickets now or later?** Recommended: now. Without them, bb-account
    has to hand connect the raw credential over an RPC that any local process
    can call.

@@ -1,9 +1,3 @@
-CREATE TABLE `ai_global_usage_day` (
-	`day` text PRIMARY KEY NOT NULL,
-	`spent_micros` integer DEFAULT 0 NOT NULL,
-	`reserved_micros` integer DEFAULT 0 NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE `ai_request_log` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,

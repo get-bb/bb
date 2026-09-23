@@ -172,11 +172,12 @@ export async function handleComplete(
   }
 
   const key = { userId: account.userId, day: utcDay(startedAt) };
-  const reserved = await reserveBudget(deps.db, key, {
-    userLimitMicros: deps.config.dailyBudgetMicros,
-    globalLimitMicros: deps.config.globalDailyBudgetMicros,
-  });
-  if (reserved === "user_exhausted") {
+  const reserved = await reserveBudget(
+    deps.db,
+    key,
+    deps.config.dailyBudgetMicros,
+  );
+  if (!reserved) {
     await logRequest(deps, {
       ...base,
       ...noUsage,
@@ -185,14 +186,6 @@ export async function handleComplete(
     return errorResponse("budget_exhausted", "daily limit reached", {
       resetsAt: nextUtcMidnight(startedAt),
     });
-  }
-  if (reserved === "global_exhausted") {
-    await logRequest(deps, {
-      ...base,
-      ...noUsage,
-      outcome: "global_budget_exhausted",
-    });
-    return errorResponse("unavailable", "hosted generation is busy; try later");
   }
 
   const result = await callUpstream({

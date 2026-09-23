@@ -2,7 +2,6 @@ export interface Env {
   DB: D1Database;
   AI_RATE_LIMITER: RateLimit;
   AI_DAILY_BUDGET_MICROS: string;
-  AI_GLOBAL_DAILY_BUDGET_MICROS: string;
   AI_MODELS: string;
   AI_UPSTREAM_BASE_URL: string;
   OPENROUTER_API_KEY?: string;
@@ -10,7 +9,6 @@ export interface Env {
 
 export interface GatewayConfig {
   dailyBudgetMicros: number;
-  globalDailyBudgetMicros: number;
   models: string[];
   upstreamBaseUrl: string;
   apiKey: string | null;
@@ -49,10 +47,6 @@ export function parseGatewayConfig(
     dailyBudgetMicros: parseMicros(
       "AI_DAILY_BUDGET_MICROS",
       env.AI_DAILY_BUDGET_MICROS,
-    ),
-    globalDailyBudgetMicros: parseMicros(
-      "AI_GLOBAL_DAILY_BUDGET_MICROS",
-      env.AI_GLOBAL_DAILY_BUDGET_MICROS,
     ),
     models: parseModels(env.AI_MODELS),
     upstreamBaseUrl: parseBaseUrl(env.AI_UPSTREAM_BASE_URL),

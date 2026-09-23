@@ -1,7 +1,6 @@
 import { and, eq, lt, sql } from "drizzle-orm";
 import {
   type ConnectDb,
-  aiGlobalUsageDay,
   aiRequestLog,
   aiUsageDay,
   rowsChanged,
@@ -24,8 +23,6 @@ export function nextUtcMidnight(now: number): number {
   );
 }
 
-export type ReserveOutcome = "reserved" | "user_exhausted" | "global_exhausted";
-
 export interface BudgetKey {
   userId: string;
   day: string;
@@ -34,9 +31,9 @@ export interface BudgetKey {
 export async function reserveBudget(
   db: ConnectDb,
   key: BudgetKey,
-  limits: { userLimitMicros: number; globalLimitMicros: number },
+  limitMicros: number,
   reserveMicros: number = RESERVE_MICROS,
-): Promise<ReserveOutcome> {
+): Promise<boolean> {
   await db
     .insert(aiUsageDay)
     .values({ userId: key.userId, day: key.day })
@@ -52,43 +49,11 @@ export async function reserveBudget(
       and(
         eq(aiUsageDay.userId, key.userId),
         eq(aiUsageDay.day, key.day),
-        sql`${aiUsageDay.spentMicros} + ${aiUsageDay.reservedMicros} + ${reserveMicros} <= ${limits.userLimitMicros}`,
+        sql`${aiUsageDay.spentMicros} + ${aiUsageDay.reservedMicros} + ${reserveMicros} <= ${limitMicros}`,
       ),
     )
     .run();
-  if (rowsChanged(userReserved) === 0) return "user_exhausted";
-
-  await db
-    .insert(aiGlobalUsageDay)
-    .values({ day: key.day })
-    .onConflictDoNothing()
-    .run();
-  const globalReserved = await db
-    .update(aiGlobalUsageDay)
-    .set({
-      reservedMicros: sql`${aiGlobalUsageDay.reservedMicros} + ${reserveMicros}`,
-    })
-    .where(
-      and(
-        eq(aiGlobalUsageDay.day, key.day),
-        sql`${aiGlobalUsageDay.spentMicros} + ${aiGlobalUsageDay.reservedMicros} + ${reserveMicros} <= ${limits.globalLimitMicros}`,
-      ),
-    )
-    .run();
-  if (rowsChanged(globalReserved) === 0) {
-    await db
-      .update(aiUsageDay)
-      .set({
-        reservedMicros: sql`max(${aiUsageDay.reservedMicros} - ${reserveMicros}, 0)`,
-        requests: sql`max(${aiUsageDay.requests} - 1, 0)`,
-      })
-      .where(
-        and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)),
-      )
-      .run();
-    return "global_exhausted";
-  }
-  return "reserved";
+  return rowsChanged(userReserved) > 0;
 }
 
 export async function settleBudget(
@@ -98,14 +63,6 @@ export async function settleBudget(
   reserveMicros: number = RESERVE_MICROS,
 ): Promise<{ spentTodayMicros: number }> {
   const charged = Math.max(0, Math.round(costMicros));
-  await db
-    .update(aiGlobalUsageDay)
-    .set({
-      reservedMicros: sql`max(${aiGlobalUsageDay.reservedMicros} - ${reserveMicros}, 0)`,
-      spentMicros: sql`${aiGlobalUsageDay.spentMicros} + ${charged}`,
-    })
-    .where(eq(aiGlobalUsageDay.day, key.day))
-    .run();
   const settled = await db
     .update(aiUsageDay)
     .set({

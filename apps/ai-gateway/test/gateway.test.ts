@@ -3,7 +3,6 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  aiGlobalUsageDay,
   aiRequestLog,
   aiUsageDay,
   schema,
@@ -68,7 +67,6 @@ function harness(
     db,
     config: {
       dailyBudgetMicros: 2_000_000,
-      globalDailyBudgetMicros: 50_000_000,
       models: MODELS,
       upstreamBaseUrl: "https://openrouter.test/api/v1",
       apiKey: "sk-or-test",
@@ -126,14 +124,6 @@ function usageRow(userId: string, day: string) {
     .select()
     .from(aiUsageDay)
     .where(and(eq(aiUsageDay.userId, userId), eq(aiUsageDay.day, day)))
-    .get();
-}
-
-function globalRow(day: string) {
-  return db
-    .select()
-    .from(aiGlobalUsageDay)
-    .where(eq(aiGlobalUsageDay.day, day))
     .get();
 }
 
@@ -229,11 +219,6 @@ describe("POST /api/ai/v1/complete", () => {
       spentMicros: 850,
       reservedMicros: 0,
       requests: 1,
-    });
-    expect(globalRow(day)).toEqual({
-      day,
-      spentMicros: 850,
-      reservedMicros: 0,
     });
     const logs = db.select().from(aiRequestLog).all();
     expect(logs).toHaveLength(1);
@@ -357,10 +342,6 @@ describe("POST /api/ai/v1/complete", () => {
       reservedMicros: 0,
       requests: 5,
     });
-    expect(globalRow(day)).toMatchObject({
-      spentMicros: 20_000,
-      reservedMicros: 0,
-    });
   });
 
   it("answers 402 with the next UTC midnight once the daily budget is spent", async () => {
@@ -432,34 +413,6 @@ describe("POST /api/ai/v1/complete", () => {
       spentMicros: 1_000,
       limitMicros: 2_000_000,
       resetsAt: Date.UTC(2026, 8, 24),
-    });
-  });
-
-  it("answers 503 when the global cap is reached and releases the user reserve", async () => {
-    const { deps, calls } = harness({
-      config: { globalDailyBudgetMicros: RESERVE_MICROS },
-      upstream: () => okCompletion(0.003),
-    });
-    expect((await complete(deps, { prompt: "a" })).status).toBe(200);
-    const blocked = await complete(
-      deps,
-      { prompt: "a" },
-      { authorization: "Bearer bbcred_u2" },
-    );
-    expect(blocked.status).toBe(503);
-    expect(await blocked.json()).toMatchObject({
-      error: { code: "unavailable" },
-    });
-    expect(calls).toHaveLength(1);
-    const day = utcDay(NOON);
-    expect(usageRow("u2", day)).toMatchObject({
-      spentMicros: 0,
-      reservedMicros: 0,
-      requests: 0,
-    });
-    expect(globalRow(day)).toMatchObject({
-      spentMicros: 3_000,
-      reservedMicros: 0,
     });
   });
 

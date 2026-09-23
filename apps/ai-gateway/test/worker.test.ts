@@ -27,7 +27,6 @@ async function bundleWorker(): Promise<string> {
 
 const VARS = {
   AI_DAILY_BUDGET_MICROS: "2000000",
-  AI_GLOBAL_DAILY_BUDGET_MICROS: "50000000",
   AI_MODELS: "nvidia/nemotron-3.5-lightning,inception/mercury-2.5",
   AI_UPSTREAM_BASE_URL: "https://openrouter.test/api/v1",
 };
