@@ -749,24 +749,30 @@ describe("worktree group section dragging", () => {
           createThread({
             id: "first",
             parentThreadId: "outside",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
             createdAt: 10,
           }),
           createThread({
             id: "second",
             parentThreadId: "outside",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
             createdAt: 9,
           }),
           createThread({
             id: "child",
             parentThreadId: "first",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
           }),
         ],

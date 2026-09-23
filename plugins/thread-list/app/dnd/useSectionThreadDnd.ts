@@ -569,7 +569,7 @@ function resolveNestDecision(
 function resolveNestGroupDecision(
   lookup: SectionThreadDndLookup,
   activeId: string,
-  groupThreads: readonly ThreadListEntry[],
+  groupThreads: readonly SidebarThread[],
   parentThreadId: string,
   options: ResolveSectionThreadDropDecisionOptions,
 ): SectionThreadDropDecision | null {
@@ -614,7 +614,7 @@ function resolveNestGroupDecision(
 }
 
 function getGroupRootThreadIds(
-  groupThreads: readonly ThreadListEntry[],
+  groupThreads: readonly SidebarThread[],
 ): string[] {
   const groupThreadIds = new Set(groupThreads.map((thread) => thread.id));
   return groupThreads
@@ -627,9 +627,9 @@ function getGroupRootThreadIds(
 }
 
 function getGroupDragPreviewThread(
-  thread: ThreadListEntry,
-  groupThreads: readonly ThreadListEntry[],
-): ThreadListEntry & { displayTitle: string } {
+  thread: SidebarThread,
+  groupThreads: readonly SidebarThread[],
+): SidebarThread & { displayTitle: string } {
   const title = `${thread.environment?.name ?? thread.environment?.branchName ?? "Worktree group"} (${groupThreads.length} threads)`;
   return { ...thread, title, titleFallback: title, displayTitle: title };
 }
