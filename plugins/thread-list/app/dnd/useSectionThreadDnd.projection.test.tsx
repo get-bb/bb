@@ -20,6 +20,7 @@ import {
   CHRONOLOGICAL_CONTAINER_ID,
   type ProjectThreadItem,
 } from "../model/project-thread-groups.js";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
 import {
   installTestPluginRuntime,
   renderSlot,
@@ -111,8 +112,14 @@ interface HarnessProps {
   rootItems: readonly ProjectThreadItem[];
 }
 
-function renderSectionThreadDnd(initialRootItems = ROOT_ITEMS) {
+function renderSectionThreadDnd(
+  initialRootItems = ROOT_ITEMS,
+  pinnedThreads: readonly SidebarThread[] = [],
+) {
   const result: { current: SectionThreadDndState | null } = { current: null };
+  const pinnedRootNodes = buildPinnedSidebarState({
+    threads: pinnedThreads,
+  }).rootNodes;
   function Harness({ rootItems }: HarnessProps) {
     result.current = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
@@ -121,7 +128,8 @@ function renderSectionThreadDnd(initialRootItems = ROOT_ITEMS) {
       topLevelSectionOrder: ["pinned", "section:a", "section:b", "threads"],
       onTopLevelSectionOrderChange: vi.fn(),
       pinnedReorderPending: false,
-      pinnedThreads: [],
+      pinnedThreads,
+      pinnedRootNodes,
       onReorderPinnedThread: vi.fn(),
     });
     return null;
@@ -132,10 +140,52 @@ function renderSectionThreadDnd(initialRootItems = ROOT_ITEMS) {
     { sdk: { threads: { update: updateThreadFake } } },
   );
   return {
+    inspection: slot.inspection,
     result,
     rerender: (props: HarnessProps) => slot.rerender(<Harness {...props} />),
   };
 }
+
+describe("useSectionThreadDnd pin mutations", () => {
+  it("routes drag pinning through the optimistic sidebar action", async () => {
+    const { inspection, result } = renderSectionThreadDnd();
+    const props = () => result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart("loose")));
+    act(() => props().onDragEnd?.(dragEnd("loose", "pinned")));
+    await flushTasks();
+
+    expect(inspection.sidebarActionCalls).toEqual([
+      { method: "setPinned", threadId: "loose", pinned: true },
+    ]);
+    expect(inspection.sdkCalls).not.toContainEqual({
+      method: "threads.pin",
+      args: [{ threadId: "loose" }],
+    });
+  });
+
+  it("routes drag unpinning through the optimistic sidebar action", async () => {
+    const pinned = createThread({
+      id: "pinned-thread",
+      pinnedAt: 42,
+      sectionId: "a",
+    });
+    const { inspection, result } = renderSectionThreadDnd(ROOT_ITEMS, [pinned]);
+    const props = () => result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart(pinned.id)));
+    act(() => props().onDragEnd?.(dragEnd(pinned.id, "section:a")));
+    await flushTasks();
+
+    expect(inspection.sidebarActionCalls).toEqual([
+      { method: "setPinned", threadId: pinned.id, pinned: false },
+    ]);
+    expect(inspection.sdkCalls).not.toContainEqual({
+      method: "threads.unpin",
+      args: [{ threadId: pinned.id }],
+    });
+  });
+});
 
 function notePointerMove() {
   document.dispatchEvent(

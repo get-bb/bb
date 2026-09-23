@@ -20,7 +20,10 @@ import {
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import { useSdk } from "@get-bb/plugin-sdk/app";
+import {
+  experimental_useSidebarThreadActions,
+  useSdk,
+} from "@get-bb/plugin-sdk/app";
 import type { NeighborReorderRequest } from "../model/neighbor-reorder.js";
 import {
   getSidebarDndItemId,
@@ -1134,6 +1137,7 @@ export function useSectionThreadDnd({
     ],
   );
   const sdk = useSdk();
+  const sidebarActions = experimental_useSidebarThreadActions();
   const { handleDragEnd: handlePinnedDragEnd, itemIds: pinnedItemIds } =
     useNeighborReorderSortable({
       disabled: pinnedReorderPending || pinnedThreads.length < 2,
@@ -1336,13 +1340,19 @@ export function useSectionThreadDnd({
           sectionId: decision.sectionId,
         });
       const request = decision.unpin
-        ? sdk.threads.unpin({ threadId: decision.activeId }).then(applyNest)
-        : applyNest();
-      void request
-        .catch(() => toast.error("Failed to move thread."))
-        .finally(onSettled);
+        ? sidebarActions.setPinned(decision.activeId, false).then(() =>
+            applyNest().catch((error) => {
+              toast.error("Failed to move thread.");
+              throw error;
+            }),
+          )
+        : applyNest().catch((error) => {
+            toast.error("Failed to move thread.");
+            throw error;
+          });
+      void request.catch(() => undefined).finally(onSettled);
     },
-    [sdk],
+    [sdk, sidebarActions],
   );
 
   const handleDragEnd = useCallback(
@@ -1386,9 +1396,14 @@ export function useSectionThreadDnd({
         clearProjectedDrag();
         return;
       }
-      const settle = (request: Promise<unknown>, failureMessage: string) => {
+      const settle = (
+        request: Promise<unknown>,
+        failureMessage: string | null,
+      ) => {
         void request
-          .catch(() => toast.error(failureMessage))
+          .catch(() => {
+            if (failureMessage !== null) toast.error(failureMessage);
+          })
           .finally(clearProjectedDrag);
       };
       switch (decision.kind) {
@@ -1473,7 +1488,7 @@ export function useSectionThreadDnd({
             ? buildPinInsertRequest(lookup, decision.activeId, reorderTarget)
             : null;
           const pin = () =>
-            sdk.threads.pin({ threadId: decision.activeId }).then(() => {
+            sidebarActions.setPinned(decision.activeId, true).then(() => {
               if (insertRequest) {
                 onReorderPinnedThread(insertRequest, {
                   onSettled: () => undefined,
@@ -1484,26 +1499,33 @@ export function useSectionThreadDnd({
             decision.detach
               ? sdk.threads
                   .update({ threadId: decision.activeId, parentThreadId: null })
+                  .catch((error) => {
+                    toast.error("Failed to pin thread.");
+                    throw error;
+                  })
                   .then(pin)
               : pin(),
-            "Failed to pin thread.",
+            null,
           );
           break;
         }
         case "unpin": {
-          const unpin = sdk.threads.unpin({ threadId: decision.activeId });
+          const unpin = sidebarActions.setPinned(decision.activeId, false);
           settle(
             decision.move
               ? unpin.then(() =>
-                  sdk.threads.update({
-                    threadId: decision.activeId,
-                    sectionId: decision.sectionId,
-                  }),
+                  sdk.threads
+                    .update({
+                      threadId: decision.activeId,
+                      sectionId: decision.sectionId,
+                    })
+                    .catch((error) => {
+                      toast.error("Failed to unpin and move thread.");
+                      throw error;
+                    }),
                 )
               : unpin,
-            decision.move
-              ? "Failed to unpin and move thread."
-              : "Failed to unpin thread.",
+            null,
           );
           break;
         }
@@ -1533,6 +1555,7 @@ export function useSectionThreadDnd({
       projectedNestParentId,
       reorderTarget,
       sdk,
+      sidebarActions,
       topLevelSectionIds,
       topLevelSectionOrder,
     ],
