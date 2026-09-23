@@ -297,6 +297,32 @@ const acpLooseConfigOptionSchema = z
   })
   .passthrough();
 
+const acpConfigOptionSelectGroupSchema = z
+  .object({
+    group: z.string(),
+    options: z.array(z.unknown()),
+  })
+  .passthrough();
+
+// ACP allows a select option's `options` to be a flat value list or a list of
+// groups; bb keeps only the values.
+function flattenAcpConfigOptionGroups(option: unknown): unknown {
+  if (typeof option !== "object" || option === null) {
+    return option;
+  }
+  const { options } = option as { options?: unknown };
+  if (!Array.isArray(options)) {
+    return option;
+  }
+  return {
+    ...option,
+    options: options.flatMap((entry) => {
+      const group = acpConfigOptionSelectGroupSchema.safeParse(entry);
+      return group.success ? group.data.options : [entry];
+    }),
+  };
+}
+
 function parseAcpConfigOptions(
   options: unknown[] | null | undefined,
   ctx: z.RefinementCtx,
@@ -305,7 +331,8 @@ function parseAcpConfigOptions(
     return undefined;
   }
   const parsedOptions: AcpConfigOption[] = [];
-  for (const option of options) {
+  for (const rawOption of options) {
+    const option = flattenAcpConfigOptionGroups(rawOption);
     const loose = acpLooseConfigOptionSchema.safeParse(option);
     if (!loose.success) {
       continue;
