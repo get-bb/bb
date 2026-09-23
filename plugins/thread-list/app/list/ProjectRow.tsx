@@ -50,6 +50,10 @@ import {
 } from "../ui/environment-workspace-display.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import {
+  resolveSectionName,
+  sectionNameOverridesAtom,
+} from "../model/section-name-overrides.js";
+import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "../ui/ConfirmDeleteDialog.js";
@@ -1379,13 +1383,46 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   sortableStyle,
 }: SectionTreeItemRowProps) {
   const sdk = useSdk();
+  const sectionNameOverrides = useAtomValue(sectionNameOverridesAtom);
+  const setSectionNameOverrides = useSetAtom(sectionNameOverridesAtom);
+  const sectionName = resolveSectionName(
+    section.id,
+    section.name,
+    sectionNameOverrides,
+  );
   const rename = useSidebarRename({
     kind: "section",
     id: section.id,
     ownerKey: `section:${section.id}:${variant}:${depthOffset}`,
-    name: section.name,
+    name: sectionName,
     label: "Section name",
-    onSave: (name) => sdk.threadSections.update({ id: section.id, name }),
+    onSave: async (name) => {
+      const previousName =
+        sectionNameOverrides.get(section.id)?.previousName ?? section.name;
+      setSectionNameOverrides((current) =>
+        new Map(current).set(section.id, {
+          previousName,
+          name,
+        }),
+      );
+      try {
+        const result = await sdk.threadSections.update({ id: section.id, name });
+        setSectionNameOverrides((current) =>
+          new Map(current).set(section.id, {
+            previousName,
+            name: result.name ?? name,
+          }),
+        );
+        return result;
+      } catch (error) {
+        setSectionNameOverrides((current) => {
+          const next = new Map(current);
+          next.delete(section.id);
+          return next;
+        });
+        throw error;
+      }
+    },
   });
   const [isTopLevelActionsOpen, setIsTopLevelActionsOpen] = useState(false);
   const collapsedSections = useAtomValue(sidebarCollapsedThreadSectionsAtom);
@@ -1471,7 +1508,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   if (variant === "section" && depthOffset === 0) {
     const topLevelActions = (
       <SidebarHeaderControls
-        label={`${section.name} section`}
+        label={`${sectionName} section`}
         sectionId={buildSidebarEntitySectionId("section", section.id)}
         onNewThread={
           onCreateThreadInSection
@@ -1491,7 +1528,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     );
     return (
       <TopLevelSidebarSection
-        label={section.name}
+        label={sectionName}
         labelEditor={rename.editor}
         onRename={rename.startEditing}
         sectionId={section.id}
@@ -1527,8 +1564,8 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         <SectionDropTargetOverlay state={threadDropState} />
       ) : null}
       <SidebarSectionRow
-        name={section.name}
-        label={section.name}
+        name={sectionName}
+        label={sectionName}
         sectionId={buildSidebarEntitySectionId("section", section.id)}
         labelEditor={rename.editor}
         onRename={rename.startEditing}

@@ -718,6 +718,12 @@ describe("ProjectRow interactions", () => {
         screen.queryByRole("textbox", { name: "Section name" }),
       ).toBeNull(),
     );
+    expect(
+      screen.getByRole("button", { name: "New section section actions" }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Building section actions" }),
+    ).toBeNull();
   });
 
   it("uses shared runtime precedence when a top-level section is collapsed", () => {

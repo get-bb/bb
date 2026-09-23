@@ -1,6 +1,10 @@
-import { useMemo } from "react";
-import { useAtomValue } from "jotai";
+import { useEffect, useMemo } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
 import { sidebarThreadLifecyclesAtom } from "../preferences/atoms.js";
+import {
+  resolveSectionName,
+  sectionNameOverridesAtom,
+} from "./section-name-overrides.js";
 import {
   experimental_useSidebarThreads,
   type PluginSidebarProject,
@@ -182,15 +186,48 @@ export function useSidebarProjectName(
 
 export function useSidebarData() {
   const lifecycles = useAtomValue(sidebarThreadLifecyclesAtom);
+  const sectionNameOverrides = useAtomValue(sectionNameOverridesAtom);
+  const setSectionNameOverrides = useSetAtom(sectionNameOverridesAtom);
   const state = experimental_useSidebarThreads({
     experimental_lifecycles: lifecycles,
   });
+  useEffect(() => {
+    const settledIds = state.sections
+      .filter((section) => {
+        const override = sectionNameOverrides.get(section.id);
+        return override && override.previousName !== section.name;
+      })
+      .map((section) => section.id);
+    if (settledIds.length === 0) return;
+    setSectionNameOverrides((current) => {
+      const next = new Map(current);
+      for (const id of settledIds) next.delete(id);
+      return next;
+    });
+  }, [state.sections, sectionNameOverrides, setSectionNameOverrides]);
   return useMemo(
-    () => ({
-      ...getSidebarData(state),
-      archived: state.experimental_archived,
-    }),
-    [state],
+    () => {
+      const sections = state.sections.map((section) => {
+        const name = resolveSectionName(
+          section.id,
+          section.name,
+          sectionNameOverrides,
+        );
+        return name === section.name ? section : { ...section, name };
+      });
+      return {
+        ...getSidebarData({
+          ...state,
+          sections: sections.every(
+            (section, index) => section === state.sections[index],
+          )
+            ? state.sections
+            : sections,
+        }),
+        archived: state.experimental_archived,
+      };
+    },
+    [state, sectionNameOverrides],
   );
 }
 
