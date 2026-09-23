@@ -38,6 +38,7 @@ import {
   resolveServerListenerUrl,
   resolveWorktreeRuntimePolicy,
   runBbApp,
+  shouldRunSourceAppUpdateShim,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
@@ -768,6 +769,17 @@ describe("bb-app launcher", () => {
       },
       positionals: ["host-daemon", "join"],
     });
+  });
+
+  it("runs the source update shim only for a start with --in-app-updates", () => {
+    expect(shouldRunSourceAppUpdateShim(["--in-app-updates"])).toBe(true);
+    expect(shouldRunSourceAppUpdateShim(["start", "--in-app-updates"])).toBe(
+      true,
+    );
+    expect(shouldRunSourceAppUpdateShim(["start"])).toBe(false);
+    expect(shouldRunSourceAppUpdateShim(["stop", "--in-app-updates"])).toBe(
+      false,
+    );
   });
 
   it("reports the server bind host separately from the loopback connection URL", async () => {

@@ -112,7 +112,7 @@ function unsupportedMessage(support: SystemAppUpdateSupport): string {
     case "desktop":
       return "The desktop app updates itself; use its update controls.";
     case "unmanaged":
-      return "In-app updates need bb started with `npx bb-app` or `pnpm start`.";
+      return "In-app updates are off. Start bb with `npx bb-app start --in-app-updates` or `pnpm start --in-app-updates` to turn them on.";
   }
 }
 

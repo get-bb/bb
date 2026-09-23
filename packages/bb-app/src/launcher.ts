@@ -345,6 +345,7 @@ interface LauncherCliOptions {
   dataDir?: string;
   enrollKey?: string;
   help: boolean;
+  inAppUpdates?: boolean;
   hostDaemonPort?: string;
   hostId?: string;
   joinCode?: string;
@@ -810,6 +811,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "data-dir": { type: "string" },
       "enroll-key": { type: "string" },
       "host-daemon-port": { type: "string" },
+      "in-app-updates": { type: "boolean" },
       "host-id": { type: "string" },
       "join-code": { type: "string" },
       "server-bind-host": { type: "string" },
@@ -829,6 +831,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   }
   if (readBooleanOption(parsed.values.bundled)) {
     options.bundled = true;
+  }
+  if (readBooleanOption(parsed.values["in-app-updates"])) {
+    options.inAppUpdates = true;
   }
   const dataDir = readStringOption(parsed.values["data-dir"]);
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
@@ -2903,11 +2908,12 @@ function printBbAppHelp(): void {
   process.stdout.write(`bb-app
 
 Usage:
-  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>] [--bundled]
+  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>] [--in-app-updates] [--bundled]
   bb-app start
 
-  bb-app runs the newest of this package and any version installed by an
-  in-app update; --bundled runs this package regardless.
+  --in-app-updates lets Settings → Updates and bb updates app update and
+  restart bb. bb-app then runs the newest of this package and any version
+  installed by an in-app update; --bundled runs this package regardless.
 
   bb-app stop
   bb-app config set <key> <value>
@@ -3676,10 +3682,12 @@ function isRunningUnderAppUpdateShim(env: NodeJS.ProcessEnv): boolean {
 
 function shouldRunNpmAppUpdateShim(args: {
   options: RunBbAppOptions;
+  requested: boolean;
   runtime: BbAppRuntimeState;
   underShim: boolean;
 }): boolean {
   return (
+    args.requested &&
     !args.underShim &&
     args.options.worktreePolicy === null &&
     !runsFromSourceCheckout(import.meta.url) &&
@@ -3719,9 +3727,10 @@ const shimOutput: ShimOutput = {
   warn: (message) => log(yellow("!"), message),
 };
 
-export function isBbAppStartCommand(cliArgs: string[]): boolean {
+export function shouldRunSourceAppUpdateShim(cliArgs: string[]): boolean {
   const parsed = parseLauncherArgs(cliArgs);
   return (
+    parsed.options.inAppUpdates === true &&
     !parsed.options.help &&
     resolveBbAppCommand(parsed.positionals).kind === "start"
   );
@@ -3910,6 +3919,7 @@ export async function runBbApp(
   if (
     shouldRunNpmAppUpdateShim({
       options,
+      requested: parsedArgs.options.inAppUpdates === true,
       runtime,
       underShim: underAppUpdateShim,
     })

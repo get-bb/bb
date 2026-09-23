@@ -145,10 +145,10 @@ export async function main(args = process.argv.slice(2)) {
     );
   }
   const {
-    isBbAppStartCommand,
     resolveWorktreeRuntimePolicy,
     runBbApp,
     runSourceAppUpdateShim,
+    shouldRunSourceAppUpdateShim,
   } = await import("../packages/bb-app/src/launcher.ts");
   const worktreePolicy = parsedArgs.useWorktreeRuntimePolicy
     ? resolveWorktreeRuntimePolicy({
@@ -159,7 +159,7 @@ export async function main(args = process.argv.slice(2)) {
   if (
     dryRun ||
     worktreePolicy !== null ||
-    !isBbAppStartCommand(parsedArgs.cliArgs)
+    !shouldRunSourceAppUpdateShim(parsedArgs.cliArgs)
   ) {
     await runBbApp(parsedArgs.cliArgs, {
       dryRun,

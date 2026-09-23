@@ -139,9 +139,12 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 
 ## In-App Updates
 
-`npx bb-app` (or a global `bb-app`) and `pnpm start` from a source checkout
-start bb under a small update shim, so Settings → Updates and
-`bb updates app apply` can update bb without a terminal:
+In-app updates are off unless you start bb with `--in-app-updates`:
+`npx bb-app start --in-app-updates` (or a global `bb-app`), or
+`pnpm start --in-app-updates` from a source checkout. bb then runs under a small
+update shim, so Settings → Updates and `bb updates app apply` can update bb
+without a terminal. Without the flag, bb starts as before and Settings → Updates
+shows the upgrade command.
 
 - **npm installs** download the new release into
   `<dataDir>/app-versions/<version>/` while bb keeps running, then restart into
