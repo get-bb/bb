@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Node, Slice } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import type { PromptTextMention } from "@bb/domain";
 import { PromptMentionExtension } from "./prompt-mention-extension";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
+  promptEditorCopiedSlice,
   promptEditorInlineContentFromValue,
-  promptEditorSliceWithoutSelectionAncestors,
   promptMentionResourceFromSuggestion,
   promptEditorValueFromDoc,
   type PromptEditorValue,
@@ -181,13 +182,18 @@ describe("prompt editor clipboard serialization", () => {
   });
 });
 
-describe("promptEditorSliceWithoutSelectionAncestors", () => {
-  function copiedText(markdown: string, from: string, to: string): string {
+describe("promptEditorCopiedSlice", () => {
+  function copiedText(
+    markdown: string,
+    from: string,
+    to: string,
+    richTextMarkdown = true,
+  ): string {
     const doc = Node.fromJSON(
       schema,
       promptEditorContentFromValue(
         { text: markdown, mentions: [] },
-        { richTextMarkdown: true },
+        { richTextMarkdown },
       ),
     );
     const positionOf = (needle: string): number => {
@@ -203,35 +209,50 @@ describe("promptEditorSliceWithoutSelectionAncestors", () => {
       }
       return position;
     };
+    const selection = TextSelection.create(
+      doc,
+      positionOf(from),
+      positionOf(to) + to.length,
+    );
     return promptEditorClipboardTextFromSlice(
-      promptEditorSliceWithoutSelectionAncestors(
-        doc.slice(positionOf(from), positionOf(to), true),
-        schema,
-      ),
+      promptEditorCopiedSlice(selection.content(), selection),
       schema,
     );
   }
 
-  it("drops the quote, list, and heading around text selected inside one block", () => {
-    expect(copiedText("> hello world", "ello", "world")).toBe("ello ");
-    expect(copiedText("- hello world", "ello", "world")).toBe("ello ");
-    expect(copiedText("# hello world", "ello", "world")).toBe("ello ");
+  it("drops the quote, list, and heading around part of a line", () => {
+    expect(copiedText("> hello world", "ello", "ello")).toBe("ello");
+    expect(copiedText("- hello world", "ello", "ello")).toBe("ello");
+    expect(copiedText("# hello world", "ello", "ello")).toBe("ello");
   });
 
-  it("drops a quote around a selection spanning several of its paragraphs", () => {
-    expect(copiedText("> first\n>\n> second", "irst", "ond")).toBe(
+  it("keeps the quote, list, and heading around a whole line", () => {
+    expect(copiedText("> hello world", "hello", "world")).toBe("> hello world");
+    expect(copiedText("- hello world", "hello", "world")).toBe("- hello world");
+    expect(copiedText("# hello world", "hello", "world")).toBe("# hello world");
+  });
+
+  it("keeps the quote around one whole line of a multi-line quote", () => {
+    expect(copiedText("> first\n> second", "second", "second", false)).toBe(
+      "> second",
+    );
+    expect(copiedText("> first\n> second", "econ", "econ", false)).toBe("econ");
+  });
+
+  it("drops a quote around a partial selection spanning several of its paragraphs", () => {
+    expect(copiedText("> first\n>\n> second", "irst", "sec")).toBe(
       "irst\n\nsec",
     );
   });
 
   it("keeps list items when the selection spans several of them", () => {
-    expect(copiedText("- first\n- second", "irst", "ond")).toBe(
+    expect(copiedText("- first\n- second", "irst", "sec")).toBe(
       "- irst\n- sec",
     );
   });
 
   it("keeps a quote the selection only partly covers", () => {
-    expect(copiedText("> quoted\n\nafter", "uoted", "ter")).toBe(
+    expect(copiedText("> quoted\n\nafter", "uoted", "af")).toBe(
       "> uoted\n\naf",
     );
   });

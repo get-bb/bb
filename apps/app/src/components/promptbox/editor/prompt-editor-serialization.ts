@@ -12,6 +12,7 @@ import {
   type Node as ProseMirrorNode,
   type Schema,
 } from "@tiptap/pm/model";
+import type { Selection } from "@tiptap/pm/state";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -1124,10 +1125,24 @@ export function promptEditorValueFromSlice(
   };
 }
 
-export function promptEditorSliceWithoutSelectionAncestors(
+function selectionCoversWholeLines({ $from, $to }: Selection): boolean {
+  const startsLine =
+    $from.parentOffset === 0 || $from.nodeBefore?.type.name === "hardBreak";
+  const endsLine =
+    $to.parentOffset === $to.parent.content.size ||
+    $to.nodeAfter?.type.name === "hardBreak";
+  return startsLine && endsLine;
+}
+
+export function promptEditorCopiedSlice(
   slice: Slice,
-  schema: Schema,
+  selection: Selection,
 ): Slice {
+  if (selectionCoversWholeLines(selection)) {
+    return slice;
+  }
+
+  const schema = selection.$from.doc.type.schema;
   let { content, openStart, openEnd } = slice;
   let result = slice;
   while (openStart > 0 && openEnd > 0 && content.childCount === 1) {
