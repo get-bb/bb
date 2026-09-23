@@ -43,6 +43,7 @@ export function useArmTopLevelTimelineRowContainment(
       if (secondFrame !== null) {
         cancelAnimationFrame(secondFrame);
       }
+      wrapper.classList.remove(CONTENT_VISIBILITY_CLASS_NAME);
     };
   }, [enabled, wrapperRef]);
 }

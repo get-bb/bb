@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import {
   estimateTimelineRowIntrinsicBlockSizePx,
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+  useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment";
 
 function stubCssSupports(supportedProperties: readonly string[]): void {
@@ -215,5 +216,24 @@ describe("ThreadTimelineRows row containment", () => {
       "overflow-anchor",
       "contain-intrinsic-block-size",
     ]);
+  });
+});
+
+describe("useArmTopLevelTimelineRowContainment", () => {
+  // Windowing can switch on after rows mounted (its experiment flag loads
+  // later); an armed row must then lose content-visibility again.
+  it("removes content-visibility when containment is switched off", async () => {
+    const wrapper = document.createElement("div");
+    const ref = { current: wrapper };
+    const { rerender } = renderHook(
+      ({ enabled }) => useArmTopLevelTimelineRowContainment(ref, enabled),
+      { initialProps: { enabled: true } },
+    );
+    await act(nextAnimationFrame);
+    await act(nextAnimationFrame);
+    await act(nextAnimationFrame);
+    expect(wrapper.classList).toContain("[content-visibility:auto]");
+    rerender({ enabled: false });
+    expect(wrapper.classList).not.toContain("[content-visibility:auto]");
   });
 });
