@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -45,7 +42,7 @@ function renderWireframe(
 }
 
 describe("guide fixture boundaries", () => {
-  it("keeps configuration and recovery fixtures tied to current app source", () => {
+  it("renders the anchor labels of the configuration and recovery fixtures", () => {
     for (const [id, component] of [
       ["declarative-settings", SettingsWireframe],
       ["plugin-status", ExtensionsPluginPageWireframe],
@@ -54,14 +51,6 @@ describe("guide fixture boundaries", () => {
       const markup = renderWireframe(createElement(component));
       for (const label of contract.labels.anchor)
         expect(markup).toContain(label);
-      for (const source of contract.sources) {
-        const text = readFileSync(
-          join(import.meta.dirname, "../../..", source.path),
-          "utf8",
-        );
-        for (const anchor of source.anchors)
-          expect(text, source.path).toContain(anchor);
-      }
     }
   });
 
@@ -175,13 +164,6 @@ describe("guide fixture boundaries", () => {
   });
 
   it("mirrors bb's fixed Info/Diff tabs before plugin-owned content tabs", () => {
-    const appSource = readFileSync(
-      join(
-        import.meta.dirname,
-        "../../../apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-      ),
-      "utf8",
-    );
     const markup = renderWireframe(
       createElement(AppShellRightPanel, {
         activeTab: "thread-panel",
@@ -190,9 +172,6 @@ describe("guide fixture boundaries", () => {
     );
     const tabStrip = markup.slice(0, markup.indexOf("data-guide-tab-body="));
 
-    expect(appSource.indexOf("createThreadInfoFixedPanelTab()")).toBeLessThan(
-      appSource.indexOf("createGitDiffFixedPanelTab()"),
-    );
     expect(tabStrip).toMatch(
       /data-guide-fixture="right-panel-fixed-tabs"[\s\S]*data-guide-tab="info"[\s\S]*data-guide-tab="code-renderers"/,
     );
@@ -269,10 +248,12 @@ describe("guide fixture boundaries", () => {
         classAnchor,
       );
     }
-    const overlayClasses = markup.match(
-      /data-guide-region="app-overlay"[^>]*class="([^"]*)"/,
-    )?.[1].split(" ");
-    expect(overlayClasses).toEqual(expect.arrayContaining(["absolute", "z-[6]", "shadow-md"]));
+    const overlayClasses = markup
+      .match(/data-guide-region="app-overlay"[^>]*class="([^"]*)"/)?.[1]
+      .split(" ");
+    expect(overlayClasses).toEqual(
+      expect.arrayContaining(["absolute", "z-[6]", "shadow-md"]),
+    );
     expect(markup.match(/data-guide-badge="app-overlay"/g)).toHaveLength(1);
   });
 

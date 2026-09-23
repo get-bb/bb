@@ -3,10 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const PLUGIN_ROOT = join(
-  import.meta.dirname,
-  "../../../plugins/plugin-api-docs",
-);
+const PLUGIN_ROOT = join(import.meta.dirname, "..");
 
 describe("Plugin Guide app layout", () => {
   it("keeps desktop footer spacing from manufacturing page overflow", () => {

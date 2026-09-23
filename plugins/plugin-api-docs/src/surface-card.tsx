@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { GROUP_BY_SURFACE_ID, type PluginSurface } from "./surfaces";

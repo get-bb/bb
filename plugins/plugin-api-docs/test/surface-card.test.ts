@@ -2,13 +2,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { firstPartyPluginId, SurfaceCard, SURFACE_GROUPS } from "../src/index";
+import { firstPartyPluginId } from "../src/plugin-icons";
+import { SurfaceCard } from "../src/surface-card";
+import { SURFACE_GROUPS } from "../src/surfaces";
 import { SurfaceMapContext } from "../src/wireframes";
 
 const surfaces = SURFACE_GROUPS[0]!.surfaces;
 
 describe("SurfaceCard annotation navigation", () => {
-  it("resolves every first-party example to a bundled plugin", () => {
+  it("resolves every first-party example to a plugin in the first-party table", () => {
     const names = SURFACE_GROUPS.flatMap((group) =>
       group.surfaces.flatMap((surface) => surface.firstParty ?? []),
     );

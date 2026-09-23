@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ANATOMY_MANIFEST as anatomy } from "../src/index";
+import anatomy from "../src/anatomy-manifest.json";
+import { SURFACE_NUMBERS } from "../src/product-map";
 import {
   fixtureResponsiveStrategy,
   SURFACE_GROUPS,
-  SURFACE_NUMBERS,
   SURFACES_BY_ID,
-} from "../src/index";
+} from "../src/surfaces";
 import {
   ANATOMY_RENDERER_KEYS,
   APP_SHELL_MARKS,
@@ -15,7 +15,7 @@ import {
   COMPOSER_MARKS,
   EXTENSIONS_MARKS,
   SETTINGS_MARKS,
-} from "../src/index";
+} from "../src/wireframes";
 
 const groupById = new Map(SURFACE_GROUPS.map((group) => [group.id, group]));
 

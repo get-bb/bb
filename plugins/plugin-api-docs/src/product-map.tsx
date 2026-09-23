@@ -8,12 +8,12 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 
-import { cn } from "./cn";
+import { cn } from "@/lib/utils";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
 import { surfaceIcon } from "./plugin-icons";
 import {

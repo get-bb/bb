@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { scrollUsedBy, usedByScrollStep } from "../src/index";
+import { scrollUsedBy, usedByScrollStep } from "../src/used-by";
 import { scrollEdgeState } from "../src/scroll-edges";
 
 const FITS = { scrollLeft: 0, scrollWidth: 180, clientWidth: 240 };

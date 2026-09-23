@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 
-import { cn } from "./cn";
+import { cn } from "@/lib/utils";
 import { FOCUS_RING_CLASS } from "./annotation";
 import {
   SCROLLBAR_HIDDEN_CLASS,

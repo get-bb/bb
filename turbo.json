@@ -49,27 +49,10 @@
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
         "$TURBO_ROOT$/changelog-parser.ts",
-        "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
+        "$TURBO_ROOT$/plugins/plugin-api-docs/src/anatomy-manifest.json",
         "$TURBO_ROOT$/plugins/theme-preview/taxonomy.ts",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
-    },
-    // The Plugin Guide's API inventory is checked against the SDK's committed
-    // declarations, so those files are inputs to this test.
-    "@bb/plugin-api-map#test": {
-      "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        // wireframes.test.ts asserts fixture fidelity against the real app
-        // source, and plugin-app-layout.test.ts reads the Plugin Guide source;
-        // both are inputs to prevent stale cache hits.
-        "$TURBO_ROOT$/apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-        "$TURBO_ROOT$/plugins/plugin-api-docs/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
-      ]
-    },
-    "@bb/plugin-api-map#scaffold:surface-entry": {
-      "cache": false
     },
     "@bb/app#build": {
       "env": [
@@ -167,10 +150,6 @@
         "$TURBO_ROOT$/packages/bb-app/package.json"
       ],
       "outputs": ["dist/**"]
-    },
-    "@bb/plugin-api-map#topo": {
-      "dependsOn": ["^topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/plugins/*/package.json"]
     },
     "prepare:bundled": {
       "dependsOn": ["topo", "^build"],
@@ -565,6 +544,7 @@
         "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json",
         "$TURBO_ROOT$/plugins/*/package.json",
+        "$TURBO_ROOT$/plugins/plugin-api-docs/src/first-party-plugins.json",
         "$TURBO_ROOT$/packages/bundled-plugins/package.json",
         "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
         "$TURBO_ROOT$/vitest.shared.ts"
@@ -870,7 +850,25 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-plugin-api-docs#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-plugin-api-docs#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-plugin-api-docs#scaffold:surface-entry": {
+      "cache": false
     },
     "bb-plugin-echo-provider#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]

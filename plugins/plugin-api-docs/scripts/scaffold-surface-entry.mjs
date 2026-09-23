@@ -7,10 +7,6 @@ const REQUIRED_STATES = {
   flow: ["anchor", "triggered", "outcome"],
 };
 
-/**
- * Picks the minimum honest Guide fixture from observable surface behavior.
- * The result is deterministic: the highest applicable behavior wins.
- */
 export function classifyFixtureFidelity({
   spatialOwner,
   transient,
@@ -23,7 +19,6 @@ export function classifyFixtureFidelity({
   return "anchor";
 }
 
-/** Responsive behavior follows spatial ownership, never author preference. */
 export function fixtureResponsiveStrategy({ spatialOwner }) {
   return spatialOwner ? "scale-together" : "reflow";
 }
@@ -163,7 +158,7 @@ export function renderSurfaceEntryScaffold(input) {
 
 function usage() {
   return `Usage:
-  pnpm exec turbo run scaffold:surface-entry --filter=@bb/plugin-api-map -- \\
+  pnpm exec turbo run scaffold:surface-entry --filter=bb-plugin-plugin-api-docs -- \\
     --id <surface-id> --title <title> --group <group-id> \\
     --source <repo-path> --api-symbol <SDK-symbol> \\
     [--transient] [--outcome] [--replacement] [--no-spatial-owner]

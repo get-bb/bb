@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { annotationNeighbors, panCarets, SURFACE_GROUPS } from "../src/index";
+import { annotationNeighbors, panCarets } from "../src/product-map";
+import { SURFACE_GROUPS } from "../src/surfaces";
 
 const LAST = SURFACE_GROUPS.length - 1;
 

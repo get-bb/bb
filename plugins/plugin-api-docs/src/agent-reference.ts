@@ -1,4 +1,4 @@
-import { escapeHtmlText } from "@bb/text-utils";
+import { escapeHtmlText } from "./html-escape";
 import { SURFACES_BY_ID, type PluginSurface } from "./surfaces";
 
 export const PLUGIN_GUIDE_PLUGIN_ID = "plugin-api-docs";

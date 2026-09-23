@@ -8,8 +8,8 @@ import {
   PLUGIN_GUIDE_PLUGIN_ID,
   pluginSurfaceAgentClipboardContent,
   pluginSurfaceAgentContext,
-  SURFACES_BY_ID,
-} from "../src/index";
+} from "../src/agent-reference";
+import { SURFACES_BY_ID } from "../src/surfaces";
 
 afterEach(() => {
   vi.unstubAllGlobals();

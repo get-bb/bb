@@ -9,10 +9,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { Switch } from "@bb/shared-ui/switch";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { Switch } from "@/components/ui/switch";
 
-import { cn } from "./cn";
+import { cn } from "@/lib/utils";
 import {
   annotationChipClass,
   annotationChipCounterScale,
