@@ -2,6 +2,11 @@ import { z } from "zod";
 import { delimiter } from "node:path";
 import { defaultFeatureFlags } from "@bb/domain";
 import { DEFAULTS } from "./defaults.js";
+import {
+  APP_UPDATE_MODE_ENV_NAME,
+  appUpdateModeSchema,
+  type AppUpdateMode,
+} from "./app-update.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
@@ -50,6 +55,16 @@ function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
     return parsed;
   }
   throw new Error(`${args.name} must be one of ${formatAppSurfaceValues()}`);
+}
+
+function parseAppUpdateModeEnvValue(args: EnvVarParseArgs): AppUpdateMode {
+  const parsed = appUpdateModeSchema.safeParse(args.value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error(
+    `${args.name} must be one of ${appUpdateModeSchema.options.join(", ")}`,
+  );
 }
 
 function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
@@ -182,6 +197,13 @@ export const BB_SERVER_LAUNCH_ID_ENV = defineEnvVar<string>({
     "Internal per-spawn identity the bb-app launcher hands its server child. The server echoes it on /health so the launcher can tell its own child apart from another bb server that already owns the port.",
   name: "BB_SERVER_LAUNCH_ID",
   parse: parseNonEmptyStringEnvValue,
+});
+
+export const BB_APP_UPDATE_MODE_ENV = defineEnvVar<AppUpdateMode>({
+  description:
+    "Internal marker the bb-app launcher hands its server child when it runs under the in-app update shim: npm for package installs, source for pnpm start checkouts. The server offers in-app updates only when it is set.",
+  name: APP_UPDATE_MODE_ENV_NAME,
+  parse: parseAppUpdateModeEnvValue,
 });
 
 export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({

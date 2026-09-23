@@ -231,6 +231,118 @@ export const systemVersionQuerySchema = z.object({
 });
 export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
 
+export const systemAppUpdateRevisionSchema = z.object({
+  commit: z.string().nullable(),
+  version: z.string(),
+});
+export type SystemAppUpdateRevision = z.infer<
+  typeof systemAppUpdateRevisionSchema
+>;
+
+export const systemAppUpdateSupportSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("supported"),
+    mode: z.enum(["npm", "source"]),
+  }),
+  z.object({
+    kind: z.literal("unsupported"),
+    reason: z.enum(["development", "desktop", "unmanaged"]),
+  }),
+]);
+export type SystemAppUpdateSupport = z.infer<
+  typeof systemAppUpdateSupportSchema
+>;
+
+export const systemAppUpdateAvailableSchema = z.object({
+  channel: z.enum(["latest", "nightly", "main"]),
+  commit: z.string().nullable(),
+  commitCount: z.number().int().nonnegative().nullable(),
+  subjects: z.array(z.string()),
+  version: z.string(),
+});
+export type SystemAppUpdateAvailable = z.infer<
+  typeof systemAppUpdateAvailableSchema
+>;
+
+export const systemAppUpdateBlockedSchema = z.object({
+  message: z.string(),
+  reason: z.enum([
+    "detached-head",
+    "not-on-main",
+    "uncommitted-changes",
+    "diverged",
+    "fetch-failed",
+  ]),
+});
+export type SystemAppUpdateBlocked = z.infer<
+  typeof systemAppUpdateBlockedSchema
+>;
+
+export const systemAppUpdateActivitySchema = z.discriminatedUnion("phase", [
+  z.object({ phase: z.literal("idle") }),
+  z.object({
+    output: z.array(z.string()),
+    phase: z.literal("preparing"),
+    startedAt: z.string(),
+    step: z.string(),
+    targetVersion: z.string(),
+  }),
+  z.object({
+    phase: z.literal("restarting"),
+    startedAt: z.string(),
+    targetVersion: z.string(),
+  }),
+]);
+export type SystemAppUpdateActivity = z.infer<
+  typeof systemAppUpdateActivitySchema
+>;
+
+export const systemAppUpdateResultSchema = z.object({
+  acknowledged: z.boolean(),
+  finishedAt: z.string(),
+  from: systemAppUpdateRevisionSchema,
+  id: z.string(),
+  logTail: z.array(z.string()),
+  message: z.string().nullable(),
+  outcome: z.enum(["updated", "failed", "rolled-back", "rollback-failed"]),
+  phase: z
+    .enum(["prepare", "install", "startup", "probation", "rollback"])
+    .nullable(),
+  to: systemAppUpdateRevisionSchema,
+});
+export type SystemAppUpdateResult = z.infer<typeof systemAppUpdateResultSchema>;
+
+export const systemAppUpdateStatusSchema = z.object({
+  activity: systemAppUpdateActivitySchema,
+  available: systemAppUpdateAvailableSchema.nullable(),
+  blocked: systemAppUpdateBlockedSchema.nullable(),
+  current: systemAppUpdateRevisionSchema,
+  lastResult: systemAppUpdateResultSchema.nullable(),
+  probation: z.boolean(),
+  runningThreadCount: z.number().int().nonnegative(),
+  support: systemAppUpdateSupportSchema,
+});
+export type SystemAppUpdateStatus = z.infer<typeof systemAppUpdateStatusSchema>;
+
+export const systemAppUpdateQuerySchema = z.object({
+  force: z.enum(["true", "false"]).optional(),
+});
+export type SystemAppUpdateQuery = z.infer<typeof systemAppUpdateQuerySchema>;
+
+export const systemAppUpdateApplyRequestSchema = z.object({
+  confirmInterruptingThreads: z.boolean(),
+});
+export type SystemAppUpdateApplyRequest = z.infer<
+  typeof systemAppUpdateApplyRequestSchema
+>;
+
+export const systemAppUpdateAcknowledgeRequestSchema = z.object({
+  id: z.string().min(1),
+});
+export type SystemAppUpdateAcknowledgeRequest = z.infer<
+  typeof systemAppUpdateAcknowledgeRequestSchema
+>;
+
 export const systemConfigReloadResponseSchema = z.object({
   ok: z.literal(true),
 });

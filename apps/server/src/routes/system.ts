@@ -640,4 +640,41 @@ export function registerSystemRoutes(
       }),
     ),
   );
+
+  get(routes.appUpdate, async (context, query) =>
+    context.json(
+      await deps.appUpdate.getStatus({
+        forceRefresh:
+          query.force === "true" && getGateAuthKind(context) !== "machine",
+      }),
+    ),
+  );
+
+  post(routes.applyAppUpdate, async (context, body) => {
+    assertAppUpdateAllowed(context);
+    return context.json(
+      await deps.appUpdate.apply({
+        confirmInterruptingThreads: body.confirmInterruptingThreads,
+      }),
+    );
+  });
+
+  post(routes.acknowledgeAppUpdate, async (context, body) => {
+    assertAppUpdateAllowed(context);
+    return context.json(
+      await deps.appUpdate.acknowledgeResult({ id: body.id }),
+    );
+  });
+}
+
+function assertAppUpdateAllowed(
+  context: Parameters<typeof getGateAuthKind>[0],
+): void {
+  if (getGateAuthKind(context) === "machine") {
+    throw new ApiError(
+      403,
+      "forbidden",
+      "Machine credentials cannot update the bb server",
+    );
+  }
 }

@@ -137,6 +137,52 @@ Two things read that file:
 Both confirm that the recorded process really is a bb launcher before they
 signal it, so a stale file left by a crash cannot stop an unrelated process.
 
+## In-App Updates
+
+`npx bb-app` (or a global `bb-app`) and `pnpm start` from a source checkout
+start bb under a small update shim, so Settings → Updates and
+`bb updates app apply` can update bb without a terminal:
+
+- **npm installs** download the new release into
+  `<dataDir>/app-versions/<version>/` while bb keeps running, then restart into
+  it. The shim runs whichever is newer, that install or the `npx` copy you
+  launched; pass `--bundled` to run the launched copy regardless. bb keeps the
+  running and previous versions and deletes older ones. Stable installs follow
+  the `latest` dist-tag and nightly builds follow `nightly`.
+- **Source checkouts** update only from a clean `main` that fast-forwards to
+  `origin/main`. bb stops, fast-forwards, runs `pnpm install --frozen-lockfile`,
+  rebuilds, and restarts. Other branches, local commits, and uncommitted tracked
+  changes block the update with an explanation.
+
+When the new version adds database migrations, bb copies `bb.db` to
+`<dataDir>/app-update-backups/<id>/` after stopping (a copy-on-write clone where
+the filesystem supports it; otherwise it checks free space first). If the new
+version fails to start, or its server or host daemon stops three times in its
+first three minutes, the shim restores that copy and restarts the previous
+version. The outcome is recorded in `<dataDir>/bb-app-update.json` and shown in
+Settings → Updates, `bb updates app`, and the API until dismissed. Do not edit
+that file. Plugin databases under `plugins/` are not rolled back, so a plugin
+that wrote state while the failed version ran can reference data the restored
+`bb.db` no longer has.
+
+If bb stops during that confirmation window, the next start keeps the new
+version when it had started cleanly and rolls back otherwise; it never resumes
+a half-finished update. Only one launcher manages updates for a data directory:
+a second `bb-app start` on the same data directory runs with in-app updates off,
+and `bb-app stop` stops the managing launcher. If threads start while an update
+downloads and you did not agree to interrupt threads, bb cancels the restart and
+asks you to update again.
+
+A server the desktop app starts updates with the desktop app instead. When the
+desktop app connects to a server it did not start, Settings → Updates lists
+**bb server** (updated in-app on that server's machine) and **bb desktop** (this
+app's own relaunch update) separately. `pnpm dev`, `bb-server`, and a standalone
+`bb-host-daemon` do not offer in-app updates. Updating restarts bb,
+which interrupts running threads; the app and CLI ask first.
+
+`BB_APP_UPDATE_MODE` is an internal marker the launcher passes to its server
+child; do not set it yourself.
+
 ## Common Keys
 
 | Key                            | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                                       |

@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
-import type { HostProviderCliStatusResponse } from "@bb/server-contract";
+import type {
+  HostProviderCliStatusResponse,
+  SystemAppUpdateStatus,
+} from "@bb/server-contract";
 import {
   collectLogPayloads,
+  readlineMocks,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -231,5 +235,297 @@ describe("bb updates command output", () => {
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "No updates bb can apply. Run bb updates status for manual updates.",
     ]);
+  });
+
+  it("bb updates points at the in-app update when the launcher supports it", async () => {
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => version),
+      "v1.system.app-update.$get": vi.fn(async () => appUpdateStatus()),
+      "v1.hosts.$get": vi.fn(async () => []),
+    });
+
+    await runCommand(["updates"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("0.0.32 -> 0.0.33");
+    expect(output).toContain("Update available (run: bb updates app apply)");
+  });
+});
+
+function appUpdateStatus(
+  overrides: Partial<SystemAppUpdateStatus> = {},
+): SystemAppUpdateStatus {
+  return {
+    activity: { phase: "idle" },
+    available: {
+      channel: "latest",
+      commit: null,
+      commitCount: null,
+      subjects: [],
+      version: "0.0.33",
+    },
+    blocked: null,
+    current: { commit: null, version: "0.0.32" },
+    lastResult: null,
+    probation: false,
+    runningThreadCount: 0,
+    support: { kind: "supported", mode: "npm" },
+    ...overrides,
+  };
+}
+
+describe("bb updates app command output", () => {
+  setupCommandOutputTestEnvironment();
+
+  const register: CommandRegistrar = (program) =>
+    registerUpdatesCommands(program, () => "http://server");
+
+  it("bb updates app shows the available version and how to apply it", async () => {
+    const getStatus = vi.fn(async () => appUpdateStatus());
+    stubServerApi({ "v1.system.app-update.$get": getStatus });
+
+    await runCommand(["updates", "app"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "bb-app 0.0.32 -> 0.0.33",
+      "Run bb updates app apply to update and restart bb.",
+    ]);
+    expect(getStatus).toHaveBeenCalledWith({ query: { force: "true" } });
+  });
+
+  it("bb updates app lists incoming commits and blockers for a source checkout", async () => {
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({
+          available: {
+            channel: "main",
+            commit: "b".repeat(40),
+            commitCount: 12,
+            subjects: ["Fix bug", "Add feature"],
+            version: "0.0.32",
+          },
+          blocked: {
+            message: "The working tree has uncommitted changes.",
+            reason: "uncommitted-changes",
+          },
+          current: { commit: "a".repeat(40), version: "0.0.32" },
+          support: { kind: "supported", mode: "source" },
+        }),
+      ),
+    });
+
+    await runCommand(["updates", "app"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      `bb-app 0.0.32 (${"a".repeat(10)}) -> ${"b".repeat(10)} (+12 commits)`,
+      "  Fix bug",
+      "  Add feature",
+      "  … 10 more",
+      "Blocked: The working tree has uncommitted changes.",
+    ]);
+  });
+
+  it("bb updates app apply confirms before interrupting threads, then follows the restart", async () => {
+    const statuses = [
+      appUpdateStatus({ runningThreadCount: 2 }),
+      appUpdateStatus({
+        activity: {
+          output: [],
+          phase: "preparing",
+          startedAt: "2026-09-23T00:00:00.000Z",
+          step: "Downloading bb-app 0.0.33",
+          targetVersion: "0.0.33",
+        },
+      }),
+      appUpdateStatus({
+        available: null,
+        current: { commit: null, version: "0.0.33" },
+        lastResult: {
+          acknowledged: false,
+          finishedAt: "2026-09-23T00:00:10.000Z",
+          from: { commit: null, version: "0.0.32" },
+          id: "update-1",
+          logTail: [],
+          message: null,
+          outcome: "updated",
+          phase: null,
+          to: { commit: null, version: "0.0.33" },
+        },
+      }),
+    ];
+    const apply = vi.fn(async () => statuses[1]);
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
+      "v1.system.app-update.apply.$post": apply,
+    });
+    readlineMocks.question.mockResolvedValue("y");
+
+    await runCommand(["updates", "app", "apply"], register);
+
+    expect(readlineMocks.question).toHaveBeenCalledWith(
+      expect.stringContaining("2 threads are running"),
+    );
+    expect(apply).toHaveBeenCalledWith({
+      json: { confirmInterruptingThreads: true },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Updating bb to 0.0.33",
+      "Downloading bb-app 0.0.33…",
+      "Updated bb to 0.0.33.",
+    ]);
+  });
+
+  it("bb updates app apply waits for probation and reports a rollback that follows", async () => {
+    const updated = {
+      acknowledged: false,
+      finishedAt: "2026-09-23T00:00:10.000Z",
+      from: { commit: null, version: "0.0.32" },
+      id: "update-1",
+      logTail: [],
+      message: null,
+      outcome: "updated" as const,
+      phase: null,
+      to: { commit: null, version: "0.0.33" },
+    };
+    const statuses = [
+      appUpdateStatus(),
+      appUpdateStatus({ lastResult: updated, probation: true }),
+      appUpdateStatus({
+        lastResult: {
+          ...updated,
+          message: "The server stopped 3 times.",
+          outcome: "rolled-back",
+          phase: "probation",
+        },
+      }),
+    ];
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
+      "v1.system.app-update.apply.$post": vi.fn(async () => appUpdateStatus()),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(collectLogPayloads(vi.mocked(console.log))).toContain(
+      "bb 0.0.33 is running; confirming it over the next few minutes (Ctrl+C stops waiting).",
+    );
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Update to 0.0.33 failed and bb rolled back to 0.0.32: The server stopped 3 times.",
+    );
+  });
+
+  it("bb updates app apply exits non-zero when the update rolls back", async () => {
+    const statuses = [
+      appUpdateStatus(),
+      appUpdateStatus({
+        lastResult: {
+          acknowledged: false,
+          finishedAt: "2026-09-23T00:00:10.000Z",
+          from: { commit: null, version: "0.0.32" },
+          id: "update-1",
+          logTail: ["boom"],
+          message: "Server failed to start",
+          outcome: "rolled-back",
+          phase: "startup",
+          to: { commit: null, version: "0.0.33" },
+        },
+      }),
+    ];
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
+      "v1.system.app-update.apply.$post": vi.fn(async () => appUpdateStatus()),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Update to 0.0.33 failed and bb rolled back to 0.0.32: Server failed to start",
+    );
+  });
+
+  it("bb updates app apply refuses to interrupt threads without a terminal or --yes", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 1 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("bb updates app apply --yes --no-wait starts the update and returns", async () => {
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 3 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+    });
+
+    await runCommand(
+      ["updates", "app", "apply", "--yes", "--no-wait"],
+      register,
+    );
+
+    expect(apply).toHaveBeenCalledWith({
+      json: { confirmInterruptingThreads: true },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Updating bb to 0.0.33. Run bb updates app to follow it.",
+    ]);
+  });
+
+  it("bb updates app apply explains when bb cannot update itself", async () => {
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({
+          support: { kind: "unsupported", reason: "unmanaged" },
+        }),
+      ),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: In-app updates need bb started with `npx bb-app` or `pnpm start`.",
+    );
+  });
+
+  it("bb updates app dismiss acknowledges an unseen result", async () => {
+    const acknowledge = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({
+          lastResult: {
+            acknowledged: false,
+            finishedAt: "2026-09-23T00:00:10.000Z",
+            from: { commit: null, version: "0.0.32" },
+            id: "update-1",
+            logTail: [],
+            message: "boom",
+            outcome: "failed",
+            phase: "install",
+            to: { commit: null, version: "0.0.33" },
+          },
+        }),
+      ),
+      "v1.system.app-update.acknowledge.$post": acknowledge,
+    });
+
+    await runCommand(["updates", "app", "dismiss"], register);
+
+    expect(acknowledge).toHaveBeenCalledWith({ json: { id: "update-1" } });
   });
 });

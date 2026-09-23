@@ -201,6 +201,10 @@ import type {
   SystemProvidersQuery,
   SystemProviderStatesResponse,
   SystemUsageLimitsQuery,
+  SystemAppUpdateAcknowledgeRequest,
+  SystemAppUpdateApplyRequest,
+  SystemAppUpdateQuery,
+  SystemAppUpdateStatus,
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -349,6 +353,9 @@ import {
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
+  systemAppUpdateAcknowledgeRequestSchema,
+  systemAppUpdateApplyRequestSchema,
+  systemAppUpdateQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
@@ -1898,6 +1905,30 @@ export const publicApiRoutes = {
         systemVersionQuerySchema,
       ),
       response: jsonResponse<SystemVersionResponse>(),
+    }),
+    appUpdate: defineRoute({
+      path: "/system/app-update",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, SystemAppUpdateQuery>(
+        systemAppUpdateQuerySchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    applyAppUpdate: defineRoute({
+      path: "/system/app-update/apply",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemAppUpdateApplyRequest>(
+        systemAppUpdateApplyRequestSchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    acknowledgeAppUpdate: defineRoute({
+      path: "/system/app-update/acknowledge",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemAppUpdateAcknowledgeRequest>(
+        systemAppUpdateAcknowledgeRequestSchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
     }),
   },
 };

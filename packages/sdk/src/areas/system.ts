@@ -13,6 +13,10 @@ import type {
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import type {
+  SystemAppUpdateAcknowledgeRequest,
+  SystemAppUpdateApplyRequest,
+  SystemAppUpdateQuery,
+  SystemAppUpdateStatus,
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
@@ -57,6 +61,15 @@ export interface SystemVersionArgs {
   force?: boolean;
   signal?: AbortSignal;
 }
+
+export interface SystemAppUpdateArgs {
+  force?: boolean;
+  signal?: AbortSignal;
+}
+
+export type SystemApplyAppUpdateArgs = SystemAppUpdateApplyRequest;
+export type SystemAcknowledgeAppUpdateArgs = SystemAppUpdateAcknowledgeRequest;
+export type SystemAppUpdateStatusResult = SystemAppUpdateStatus;
 
 export interface SystemVoiceTranscriptionArgs {
   file: Blob;
@@ -152,9 +165,24 @@ export interface SystemArea {
   ): Promise<SystemProviderStatesResult>;
   usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
+  appUpdate(args?: SystemAppUpdateArgs): Promise<SystemAppUpdateStatusResult>;
+  applyAppUpdate(
+    args: SystemApplyAppUpdateArgs,
+  ): Promise<SystemAppUpdateStatusResult>;
+  acknowledgeAppUpdate(
+    args: SystemAcknowledgeAppUpdateArgs,
+  ): Promise<SystemAppUpdateStatusResult>;
 }
 
 function versionQuery(args: SystemVersionArgs | undefined): SystemVersionQuery {
+  return args?.force === undefined
+    ? {}
+    : { force: args.force ? "true" : "false" };
+}
+
+function appUpdateQuery(
+  args: SystemAppUpdateArgs | undefined,
+): SystemAppUpdateQuery {
   return args?.force === undefined
     ? {}
     : { force: args.force ? "true" : "false" };
@@ -322,6 +350,26 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
           { query: versionQuery(input) },
           ...signalRequestArgs(input?.signal),
         ),
+      );
+    },
+    async appUpdate(input) {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].$get(
+          { query: appUpdateQuery(input) },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async applyAppUpdate(input) {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].apply.$post({ json: input }),
+      );
+    },
+    async acknowledgeAppUpdate(input) {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].acknowledge.$post({
+          json: input,
+        }),
       );
     },
   };

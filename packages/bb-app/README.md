@@ -118,6 +118,16 @@ npx bb-app stop
 recorded process really is that launcher, then stops it. Pass `--data-dir` when
 the bb you want to stop does not use the default `~/.bb/`.
 
+### Updating from the app
+
+When bb has an update, Settings → Updates shows an **Update** button (or run
+`bb updates app apply`). bb downloads the new version into
+`~/.bb/app-versions/`, restarts into it, and reconnects the page. If the new
+version fails to start or keeps crashing in its first minutes, bb rolls back to
+the previous version, restores the database if the update migrated it, and
+shows what went wrong. Later `npx bb-app` runs use the newer installed version;
+pass `--bundled` to run the copy npx downloaded instead.
+
 After the server moves to another machine, the old data directory keeps
 `server-moved.json`. `bb-app` there starts no server: it runs this computer's
 host daemon against the new server address in `config.json`, restarting it when

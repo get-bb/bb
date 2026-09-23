@@ -144,17 +144,41 @@ export async function main(args = process.argv.slice(2)) {
       "Source startup: --dryrun prepares artifacts and prints resolved paths/ports without starting services. It writes build outputs and may repair native modules.\n\n",
     );
   }
-  const { resolveWorktreeRuntimePolicy, runBbApp } =
-    await import("../packages/bb-app/src/launcher.ts");
-  await runBbApp(parsedArgs.cliArgs, {
-    dryRun,
-    beforeServerStart: () => runNativeModulePreflight({ checkOnly: true }),
-    worktreePolicy: parsedArgs.useWorktreeRuntimePolicy
-      ? resolveWorktreeRuntimePolicy({
-          env: process.env,
-          homeDir: homedir(),
-        })
-      : null,
+  const {
+    isBbAppStartCommand,
+    resolveWorktreeRuntimePolicy,
+    runBbApp,
+    runSourceAppUpdateShim,
+  } = await import("../packages/bb-app/src/launcher.ts");
+  const worktreePolicy = parsedArgs.useWorktreeRuntimePolicy
+    ? resolveWorktreeRuntimePolicy({
+        env: process.env,
+        homeDir: homedir(),
+      })
+    : null;
+  if (
+    dryRun ||
+    worktreePolicy !== null ||
+    !isBbAppStartCommand(parsedArgs.cliArgs)
+  ) {
+    await runBbApp(parsedArgs.cliArgs, {
+      dryRun,
+      beforeServerStart: () => runNativeModulePreflight({ checkOnly: true }),
+      worktreePolicy,
+    });
+    return;
+  }
+  process.exitCode = await runSourceAppUpdateShim({
+    cliArgs: parsedArgs.cliArgs,
+    launcherArgs: [
+      "--conditions=source",
+      "--import",
+      "tsx",
+      resolve(scriptDir, "start-bb-launcher.mjs"),
+      ...parsedArgs.cliArgs,
+    ],
+    prepareRuntime,
+    repoRoot,
   });
 }
 

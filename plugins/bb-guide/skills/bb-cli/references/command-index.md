@@ -122,6 +122,10 @@ move and downloads the new server's bb-app package for its service.
 - `bb updates`
 - `bb updates status`
 - `bb updates apply`
+- `bb updates app`
+- `bb updates app status`
+- `bb updates app apply`
+- `bb updates app dismiss`
 
 ## terminal
 

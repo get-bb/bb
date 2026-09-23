@@ -6,7 +6,7 @@ import type { ServerConfig } from "@bb/config/server";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
-import { getAppSettings } from "@bb/db";
+import { getAppSettings, listRunningThreads } from "@bb/db";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
@@ -16,7 +16,9 @@ import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
 import { createProviderNativeRootsCache } from "./services/providers/native-roots.js";
 import { createAiServiceRegistry } from "./services/ai/ai-service-registry.js";
+import { createAppUpdateService } from "./services/system/app-update.js";
 import { createAppVersionService } from "./services/system/app-version.js";
+import { createLauncherChannel } from "./services/system/launcher-channel.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
@@ -231,6 +233,17 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
+  const appUpdateMode = serverConfig.BB_APP_UPDATE_MODE ?? null;
+  const appUpdate = createAppUpdateService({
+    appSurface: serverConfig.BB_APP_SURFACE,
+    appVersion,
+    config: runtimeConfig,
+    countRunningThreads: () => listRunningThreads(db).length,
+    launcher: appUpdateMode === null ? null : createLauncherChannel(process),
+    logger,
+    mode: appUpdateMode,
+    notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+  });
   const {
     app,
     closeWebSockets,
@@ -240,6 +253,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverMove,
   } = createApp(
     {
+      appUpdate,
       appVersion,
       bbAppManagedConfig,
       config: runtimeConfig,
@@ -376,6 +390,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     }
     shutdownPromise = (async () => {
       serverMove.dispose();
+      appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
       eventLoopStallMonitor.stop();
       if (sweepInterval !== null) {

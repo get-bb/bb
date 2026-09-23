@@ -103,8 +103,10 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
 - `bb updates` runs the default `bb updates status` action. It aggregates BB and provider
   CLI update state across every machine — the CLI counterpart of Settings →
   Updates. `bb updates apply [--machine <id-or-name>]` runs every available
-  provider CLI install/update sequentially; update bb-app itself with the
-  printed upgrade command or the desktop relaunch.
+  provider CLI install/update sequentially. `bb updates app` shows whether bb
+  can update itself; `bb updates app apply [--yes] [--no-wait]` downloads the
+  update, restarts bb into it, and rolls back automatically if it fails.
+  Running it from a thread restarts bb and interrupts that thread.
 - Use `bb project create --name <name> --root <path> --machine <id-or-name>`
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Without a selector, the CLI asks its local host daemon.

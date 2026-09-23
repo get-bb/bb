@@ -1,5 +1,6 @@
 import type { FeatureFlags } from "@bb/domain";
 import type { AppSurface } from "./app-surface.js";
+import type { AppUpdateMode } from "./app-update.js";
 import {
   loadCommonConfig,
   type CommonConfig,
@@ -24,6 +25,7 @@ import {
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
+  BB_APP_UPDATE_MODE_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
@@ -62,6 +64,7 @@ export interface ServerConfig
   BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
+  BB_APP_UPDATE_MODE?: AppUpdateMode;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
   OPENAI_API_KEY: string;
@@ -200,6 +203,15 @@ export function loadServerConfig(
     key: "BB_DEV_APP_PORT",
     target: config,
     value: devAppConfig.BB_DEV_APP_PORT,
+  });
+  assignIfDefined({
+    key: "BB_APP_UPDATE_MODE",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_APP_UPDATE_MODE_ENV,
+      env: loader.env,
+    }),
   });
   assignIfDefined({
     key: "BB_SERVER_LAUNCH_ID",

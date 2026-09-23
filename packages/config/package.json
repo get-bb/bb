@@ -108,6 +108,11 @@
       "types": "./src/app-runtime-file.ts",
       "default": "./src/app-runtime-file.ts"
     },
+    "./app-update": {
+      "source": "./src/app-update.ts",
+      "types": "./src/app-update.ts",
+      "default": "./src/app-update.ts"
+    },
     "./app-surface": {
       "source": "./src/app-surface.ts",
       "types": "./src/app-surface.ts",

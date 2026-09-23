@@ -327,6 +327,22 @@ describe("consumer-specific config", () => {
     ).toBe("launch-123");
   });
 
+  it("carries the launcher's in-app update mode and rejects unknown modes", () => {
+    expect(
+      loadServerConfig({ env: createServerRuntimeEnv({}) }),
+    ).not.toHaveProperty("BB_APP_UPDATE_MODE");
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_APP_UPDATE_MODE: "source" }),
+      }).BB_APP_UPDATE_MODE,
+    ).toBe("source");
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_APP_UPDATE_MODE: "brew" }),
+      }),
+    ).toThrow("BB_APP_UPDATE_MODE must be one of npm, source");
+  });
+
   it("defaults the server bind host to loopback", () => {
     const serverConfig = loadServerConfig({
       env: createServerRuntimeEnv({
