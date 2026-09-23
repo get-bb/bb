@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Button } from "@bb/shared-ui/button";
-import { Checkbox } from "@bb/shared-ui/checkbox";
-import { Icon } from "@bb/shared-ui/icon";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Icon } from "@/components/ui/icon";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/coarse-pointer-sizing";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chrome-style-tokens";
+import { cn } from "@/lib/utils";
 import type {
   SidebarVisibilityItem,
   SidebarActivationModifiers,

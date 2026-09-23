@@ -9,7 +9,12 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "customConditions": ["source"]
+    "paths": {
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
+    }
   },
   "include": [
     "server.ts",

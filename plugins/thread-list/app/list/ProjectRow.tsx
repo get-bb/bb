@@ -45,9 +45,9 @@ import {
 import {
   findEnvironmentDisplayProvider,
   getEnvironmentLabelIconName,
+  resolveEnvironmentDisplayName,
   UNNAMED_ENVIRONMENT_LABEL,
 } from "../ui/environment-workspace-display.js";
-import { resolveEnvironmentDisplayName } from "@bb/core-ui";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import {
   ConfirmDeleteDialog,
@@ -55,14 +55,14 @@ import {
 } from "../ui/ConfirmDeleteDialog.js";
 import { getMutationErrorMessage } from "../ui/mutation-errors.js";
 import { useSidebarRename, useSidebarRenameState } from "../rows/SidebarInlineRename.js";
-import { Button } from "@bb/shared-ui/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
+} from "@/components/ui/dropdown-menu";
+import { Icon } from "@/components/ui/icon";
 import { ThreadListEmptyState } from "../ui/ThreadListEmptyState.js";
 import {
   SidebarMenuSkeleton,
@@ -78,7 +78,7 @@ import {
   COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
+} from "@/components/ui/coarse-pointer-sizing";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -94,7 +94,7 @@ import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
 } from "../model/thread-activity.js";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   CollapsedThreadStatusGlyph,
   REORDER_PLACEMENT_CLASS,

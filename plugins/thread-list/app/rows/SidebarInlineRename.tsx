@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { SidebarRenameEditor, renameError } from "./SidebarRenameEditor.js";
 
 interface SidebarRenameArgs {

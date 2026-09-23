@@ -1,6 +1,6 @@
-import { Icon } from "@bb/shared-ui/icon";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@/components/ui/icon";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
+import { cn } from "@/lib/utils";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,

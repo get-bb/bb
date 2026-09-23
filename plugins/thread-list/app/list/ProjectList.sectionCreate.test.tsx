@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   installTestPluginRuntime,
   renderSlot,

@@ -1,5 +1,5 @@
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import {
   getThreadListIndicatorLabel,
   resolveThreadListIndicator,

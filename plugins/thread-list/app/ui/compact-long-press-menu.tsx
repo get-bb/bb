@@ -9,7 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import { Slot } from "@radix-ui/react-slot";
-import { DropdownMenu, DropdownMenuContent } from "@bb/shared-ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+} from "@/components/ui/dropdown-menu";
 
 const LONG_PRESS_MS = 700;
 const LONG_PRESS_MOVE_SLOP_PX = 10;

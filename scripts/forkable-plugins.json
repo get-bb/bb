@@ -1,0 +1,6 @@
+{
+  "$comment": "Built-in plugins kept forkable: a copy of the directory builds with published packages only. They import @get-bb/plugin-sdk, npm packages, their own files, and component registry items through the scaffold's @/ alias. In this repository the plugin's tsconfig maps @/* onto packages/shared-ui/src, the source the registry is generated from, and @/components/ui/icon onto the registry's host-backed icon; apps/app/vite-forkable-plugin-paths.ts applies the same mapping when app tests import the plugin. A fork writes the registry items it imports into the copy instead.",
+  "plugins": [
+    "plugins/thread-list"
+  ]
+}

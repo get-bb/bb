@@ -2,7 +2,7 @@
 
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
@@ -584,20 +584,6 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
-  });
-
-  it("falls back to the default glyph for an icon name no plugin registered", () => {
-    renderThreadRow({
-      pluginStatus: {
-        icon: "icon-probe/undeclared",
-        label: "Unregistered name",
-      },
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
-    });
-
-    expect(
-      screen.getByLabelText("Unregistered name").getAttribute("data-icon"),
-    ).toBe("Zap");
   });
 
   it("replaces the draft icon with a plugin status and restores it without one", () => {

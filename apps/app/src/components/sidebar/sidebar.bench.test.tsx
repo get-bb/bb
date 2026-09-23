@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -25,6 +26,7 @@ import {
 } from "@/hooks/queries/query-keys";
 import { updateCachedThreadListStatusState } from "@/hooks/cache-owners/query-cache";
 import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
+import { isPluginAppDefinition } from "@/lib/plugin-app-definition";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
@@ -82,11 +84,21 @@ function stubPluginRpcFetch(): void {
   });
 }
 
+const THREAD_LIST_APP_MODULE = resolve(
+  __dirname,
+  "../../../../../plugins/thread-list/app.tsx",
+);
+
 async function loadPluginThreadListReplacement(): Promise<
   ResolvedReplacement<PluginThreadListSlot>
 > {
   installPluginRuntime();
-  const module = await import("../../../../../plugins/thread-list/app");
+  const module: { default?: unknown } = await import(
+    /* @vite-ignore */ THREAD_LIST_APP_MODULE
+  );
+  if (!isPluginAppDefinition(module.default)) {
+    throw new Error("thread-list's app.tsx exports no plugin app definition");
+  }
   const collected = collectPluginAppRegistrations(module.default);
   const registration = collected.threadLists[0];
   if (registration === undefined) {

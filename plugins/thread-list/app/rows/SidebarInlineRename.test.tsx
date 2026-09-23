@@ -9,11 +9,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import {
   SidebarRenameProvider,
   useSidebarRename,
 } from "./SidebarInlineRename.js";
 import { renameError } from "./SidebarRenameEditor.js";
+
+installTestPluginRuntime();
 
 afterEach(cleanup);
 

@@ -7,12 +7,15 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import {
   SidebarMore,
   SidebarOverflowItem,
 } from "./SidebarVisibilityControls.js";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityCustomize.js";
+
+installTestPluginRuntime();
 
 afterEach(() => {
   cleanup();

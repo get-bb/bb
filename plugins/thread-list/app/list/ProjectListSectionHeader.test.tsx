@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import type {
