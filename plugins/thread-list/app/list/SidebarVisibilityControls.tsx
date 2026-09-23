@@ -255,14 +255,12 @@ export function SidebarOverflowItem({
       <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
         {item.icon}
         <span className="min-w-0 truncate">{item.title}</span>
-        {compact ? (
-          <span className="inline-flex size-6 shrink-0 items-center justify-center text-subtle-foreground">
-            <Icon name="ChevronRight" className="size-3" aria-hidden="true" />
-          </span>
-        ) : null}
       </span>
       {activity ? (
         <span className="ml-auto flex shrink-0">{activity}</span>
+      ) : null}
+      {compact ? (
+        <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
       ) : null}
     </>
   );
