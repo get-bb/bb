@@ -238,7 +238,10 @@ describe("tunnel dial with a ticket", () => {
 
   it("does not accept server tickets on machine labels", async () => {
     const { ticket } = await createTunnelTicket(
-      { id: "machine-air", credentialHash: await sha256Hex(MACHINE_CREDENTIAL) },
+      {
+        id: "machine-air",
+        credentialHash: await sha256Hex(MACHINE_CREDENTIAL),
+      },
       SECRET,
     );
     const { response } = await dial("sawyer-air.getbb.app", ticket);

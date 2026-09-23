@@ -24,13 +24,13 @@ describe("tunnel tickets", () => {
     const { ticket, expiresAt } = await createTunnelTicket(srv, SECRET, NOW);
     expect(isTunnelTicket(ticket)).toBe(true);
     expect(expiresAt).toBe(NOW + TUNNEL_TICKET_TTL_MS);
-    await expect(
-      verifyTunnelTicket(ticket, SECRET, srv, NOW),
-    ).resolves.toEqual({
-      sid: "srv-1",
-      cred: srv.credentialHash.slice(0, 16),
-      exp: expiresAt,
-    });
+    await expect(verifyTunnelTicket(ticket, SECRET, srv, NOW)).resolves.toEqual(
+      {
+        sid: "srv-1",
+        cred: srv.credentialHash.slice(0, 16),
+        exp: expiresAt,
+      },
+    );
     await expect(
       verifyTunnelTicket(ticket, SECRET, srv, expiresAt - 1),
     ).resolves.not.toBeNull();
@@ -102,7 +102,12 @@ describe("tunnel tickets", () => {
       ),
     ).resolves.toBeNull();
     await expect(
-      verifyTunnelTicket(ticket.slice(0, ticket.indexOf(".")), SECRET, srv, NOW),
+      verifyTunnelTicket(
+        ticket.slice(0, ticket.indexOf(".")),
+        SECRET,
+        srv,
+        NOW,
+      ),
     ).resolves.toBeNull();
   });
 
