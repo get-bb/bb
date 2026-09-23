@@ -264,7 +264,7 @@ it.each([
   ({ phase, destroyedAt, teardownStatus, status }) => {
     const { db, hostId, hub } = setup();
     try {
-      const { thread } = createThreadWithEnvironment({
+      createThreadWithEnvironment({
         db,
         hostId,
         status: "error",
@@ -285,18 +285,6 @@ it.each([
           { environmentHostId: hostId, status: "error" },
         ),
       ).toEqual(expected);
-      const entries = toThreadListEntryResponses(
-        { db, hub, providerRegistry },
-        {
-          threads: [
-            createThreadListEntry({
-              thread: { ...thread, pinSortKey: null },
-              environmentHostId: hostId,
-            }),
-          ],
-        },
-      );
-      expect(entries[0]?.runtime).toEqual(expected);
     } finally {
       db.$client.close();
     }

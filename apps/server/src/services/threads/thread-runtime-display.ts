@@ -1,8 +1,6 @@
-import { inArray } from "drizzle-orm";
 import {
   getEnvironment,
   getHost,
-  hosts,
   getLatestSessionForHost,
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -86,7 +84,6 @@ interface ToThreadListEntryResponsesArgs {
 }
 
 interface ToThreadListEntryResponseFromLatestSessionArgs {
-  machineRemoval: ThreadRuntimeState["machineRemoval"];
   activity: ThreadActivityState;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
@@ -588,19 +585,6 @@ export function toThreadListEntryResponses(
     deps,
     args.threads,
   );
-  const hostIds = [
-    ...new Set(
-      args.threads.flatMap((thread) =>
-        thread.environmentHostId === null ? [] : [thread.environmentHostId],
-      ),
-    ),
-  ];
-  const hostById = new Map(
-    (hostIds.length === 0
-      ? []
-      : deps.db.select().from(hosts).where(inArray(hosts.id, hostIds)).all()
-    ).map((host) => [host.id, host]),
-  );
   const activeHostIds = [
     ...new Set(
       args.threads.flatMap((thread) =>
@@ -626,11 +610,6 @@ export function toThreadListEntryResponses(
   );
   return args.threads.map((thread) => {
     return toThreadListEntryResponseFromLatestSession({
-      machineRemoval: machineRemovalState(
-        thread.environmentHostId === null
-          ? null
-          : (hostById.get(thread.environmentHostId) ?? null),
-      ),
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
       queuedWork: queuedWorkByThreadId.get(thread.id) ?? "none",
       hostConnected:
@@ -652,9 +631,8 @@ function toThreadListEntryResponseFromLatestSession(
   const thread = toPublicThread(args.thread);
   return {
     ...thread,
-    activity:
-      args.machineRemoval === undefined ? args.activity : EMPTY_THREAD_ACTIVITY,
-    queuedWork: args.machineRemoval === undefined ? args.queuedWork : "none",
+    activity: args.activity,
+    queuedWork: args.queuedWork,
     pinSortKey: args.thread.pinSortKey,
     environmentBranchName: args.thread.environmentBranchName,
     environmentHostId: args.thread.environmentHostId,
@@ -668,7 +646,7 @@ function toThreadListEntryResponseFromLatestSession(
     }),
     hasPendingInteraction: args.thread.hasPendingInteraction,
     runtime: resolveThreadRuntimeStateFromLatestSession({
-      machineRemoval: args.machineRemoval,
+      machineRemoval: undefined,
       environmentHostId: args.thread.environmentHostId,
       hostConnected: args.hostConnected,
       latestSession: args.latestSession,
