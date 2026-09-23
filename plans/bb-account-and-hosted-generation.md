@@ -132,10 +132,17 @@ refreshes from `GET /api/account/me` at start and every 6 hours.
       `https://getbb.app/link?code=ABCD-EFGH`. The UI opens the link. The CLI
       prints it, and opens it when the server is local.
    3. On getbb.app the user signs in with GitHub. If they have no handle yet,
-      they claim one, prefilled with their GitHub login. They choose "new
-      server" or an existing server to replace, then approve.
+      they claim one, prefilled with their GitHub login. The page shows the
+      client name (control and bidi characters stripped) and when and from
+      which city and country the request started. They choose "new server"
+      or an existing server, then approve; replacing a server that already
+      has a bb requires typing the code the bb shows.
    4. The plugin polls `POST /api/account/link/poll` with the secret device
-      code and receives the `bbcred_` credential.
+      code and receives the `bbcred_` credential. An approved code delivers
+      even if it expired meanwhile, but not after the server was
+      disconnected. A later poll within the code's window gets a freshly
+      rotated credential if the server still holds the last one delivered,
+      so a lost response is recoverable.
 
    This works for headless and remote servers because the approving browser
    can be on any device.
@@ -226,7 +233,10 @@ hold is on.
     new columns `device_code_hash` and `approved_at` (connect-db migration
     0006).
   - Codes are single-use and expire after 10 minutes.
-  - Polling is rate limited per device code.
+  - Polling is rate limited per device code. `link/start` is rate limited per
+    client IP (Workers Rate Limiting, 429 `rate-limited`), and each start
+    deletes a bounded batch of unapproved requests that expired over an hour
+    ago.
 - Add `POST /api/connect/tunnel-ticket`. It returns an HMAC-signed
   `{serverId, credential-hash prefix, exp}` under a gate secret, valid for 5
   minutes. Rotating the server's credential invalidates its tickets.

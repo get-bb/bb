@@ -131,6 +131,20 @@ function linkApprovalValidator(input: {
   if (target?.kind === "existing" && typeof target.serverId === "string") {
     return { code, target: { kind: "existing", serverId: target.serverId } };
   }
+  if (
+    target?.kind === "replace" &&
+    typeof target.serverId === "string" &&
+    typeof target.typedCode === "string"
+  ) {
+    return {
+      code,
+      target: {
+        kind: "replace",
+        serverId: target.serverId,
+        typedCode: target.typedCode,
+      },
+    };
+  }
   return { code, target: null };
 }
 

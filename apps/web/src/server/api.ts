@@ -138,7 +138,7 @@ async function hasMachineCapacity(
   return active.length < MAX_PER_ACCOUNT;
 }
 
-export async function consumeConnectCode(
+async function consumeConnectCode(
   db: ConnectDb,
   code: string,
 ): Promise<boolean> {
@@ -718,7 +718,7 @@ export async function redeemConnectCode(
   };
 }
 
-export async function mintServerCredential(
+async function mintServerCredential(
   db: ConnectDb,
   serverId: string,
 ): Promise<{ credential: string; server: ServerRow | undefined }> {

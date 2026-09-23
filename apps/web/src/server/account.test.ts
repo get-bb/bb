@@ -18,18 +18,27 @@ import {
   readConnectDbMigration,
 } from "@bb/connect-db/testing";
 import {
+  LINK_EXPIRED_ROW_PRUNE_LIMIT,
+  LINK_EXPIRED_ROW_RETENTION_MS,
   LINK_POLL_INTERVAL_MS,
   approveServerLink,
   denyServerLink,
   getAccountMe,
   getLinkRequestView,
   issueTunnelTicket,
+  linkRequestOrigin,
   pollServerLink,
+  stripControlCharacters,
   startServerLink,
   suggestHandle,
   suggestServerLabel,
 } from "./account.js";
-import { type Deps, claimHandle, redeemConnectCode } from "./api.js";
+import {
+  type Deps,
+  claimHandle,
+  disconnectServer,
+  redeemConnectCode,
+} from "./api.js";
 
 let sqlite: Database.Database;
 let db: ReturnType<typeof drizzle>;
@@ -76,10 +85,36 @@ function seedUser(
     .run();
 }
 
+const ORIGIN = { clientIp: "203.0.113.7", location: "Lisbon, Portugal" };
+
+function startDeps(allow: (key: string) => boolean = () => true) {
+  const keys: string[] = [];
+  return {
+    keys,
+    deps: {
+      ...deps,
+      rateLimiter: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: allow(key) };
+        },
+      },
+    },
+  };
+}
+
+function startWith(clientName: unknown, now = T0) {
+  return startServerLink(startDeps().deps, { clientName, ...ORIGIN }, now);
+}
+
 async function start(now = T0) {
-  const started = await startServerLink(deps, "sawyer-mbp", now);
+  const started = await startWith("sawyer-mbp", now);
   if (started.status !== 200) throw new Error("link start failed");
   return started.body;
+}
+
+function linkRow(code: string) {
+  return db.select().from(connectCode).where(eq(connectCode.code, code)).get();
 }
 
 function currentOwner(serverId: string) {
@@ -113,39 +148,127 @@ describe("startServerLink", () => {
     expect(started.expiresAt).toBe(T0 + CONNECT_CODE_TTL_MS);
     expect(started.intervalMs).toBe(LINK_POLL_INTERVAL_MS);
 
-    const row = db
-      .select()
-      .from(connectCode)
-      .where(eq(connectCode.code, started.userCode))
-      .get();
-    expect(row).toMatchObject({
+    expect(linkRow(started.userCode)).toMatchObject({
       purpose: "server-link",
       userId: null,
       serverId: null,
       clientName: "sawyer-mbp",
+      requestLocation: "Lisbon, Portugal",
       deviceCodeHash: await sha256Hex(started.deviceCode),
     });
   });
 
   it("rejects missing or oversized client names", async () => {
-    expect(await startServerLink(deps, "", T0)).toEqual({
-      status: 400,
-      body: { error: "invalid-client-name" },
+    for (const name of ["", 42, "x".repeat(101), "\u202e\u0007 \u200f"]) {
+      expect(await startWith(name)).toEqual({
+        status: 400,
+        body: { error: "invalid-client-name" },
+      });
+    }
+    expect((await startWith("x".repeat(100))).status).toBe(200);
+  });
+
+  it("strips control and bidi-control characters from the client name", async () => {
+    const started = await startWith(" \u202ebb\u0007 desktop\u2066\u200f\n");
+    if (started.status !== 200) throw new Error("link start failed");
+    expect(linkRow(started.body.userCode)?.clientName).toBe("bb desktop");
+    expect(stripControlCharacters("Sawyer’s MacBook Pro")).toBe(
+      "Sawyer’s MacBook Pro",
+    );
+  });
+
+  it("answers 429 per client IP once the rate limiter refuses", async () => {
+    const { deps: limited, keys } = startDeps((key) => key !== "198.51.100.9");
+    const refused = await startServerLink(
+      limited,
+      { clientName: "bb", clientIp: "198.51.100.9", location: null },
+      T0,
+    );
+    expect(refused).toEqual({ status: 429, body: { error: "rate-limited" } });
+    expect(db.select().from(connectCode).all()).toHaveLength(0);
+    const admitted = await startServerLink(
+      limited,
+      { clientName: "bb", clientIp: "203.0.113.7", location: null },
+      T0,
+    );
+    expect(admitted.status).toBe(200);
+    expect(keys).toEqual(["198.51.100.9", "203.0.113.7"]);
+  });
+
+  it("prunes a bounded batch of long-expired, unapproved link requests", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const staleAt =
+      T0 - LINK_EXPIRED_ROW_RETENTION_MS - CONNECT_CODE_TTL_MS - 1;
+    const stale = LINK_EXPIRED_ROW_PRUNE_LIMIT + 3;
+    for (let index = 0; index < stale; index += 1) {
+      expect((await startWith(`stale-${index}`, staleAt)).status).toBe(200);
+    }
+    const approvedOld = await start(staleAt);
+    await approveServerLink(
+      deps,
+      "u1",
+      approvedOld.userCode,
+      { kind: "existing", serverId: primaryServerId("u1") },
+      staleAt,
+    );
+    const recentlyExpired = await start(T0 - CONNECT_CODE_TTL_MS - 1);
+
+    const fresh = await start(T0);
+
+    const remaining = db
+      .select({ code: connectCode.code })
+      .from(connectCode)
+      .all()
+      .map((row) => row.code);
+    expect(remaining).toHaveLength(3 + 3);
+    expect(remaining).toEqual(
+      expect.arrayContaining([
+        approvedOld.userCode,
+        recentlyExpired.userCode,
+        fresh.userCode,
+      ]),
+    );
+  });
+});
+
+describe("linkRequestOrigin", () => {
+  function withCf(cf: unknown, headers: Record<string, string> = {}) {
+    const request = new Request("https://getbb.app/api/account/link/start", {
+      method: "POST",
+      headers,
     });
-    expect(await startServerLink(deps, 42, T0)).toEqual({
-      status: 400,
-      body: { error: "invalid-client-name" },
+    Object.defineProperty(request, "cf", { value: cf });
+    return request;
+  }
+
+  it("records the Cloudflare city and country, not the IP", () => {
+    expect(
+      linkRequestOrigin(
+        withCf(
+          { city: "Lisbon", country: "PT", clientTcpRtt: 12 },
+          { "cf-connecting-ip": "203.0.113.7" },
+        ),
+      ),
+    ).toEqual({ clientIp: "203.0.113.7", location: "Lisbon, Portugal" });
+    expect(linkRequestOrigin(withCf({ country: "JP" }))).toEqual({
+      clientIp: "unknown",
+      location: "Japan",
     });
-    expect(await startServerLink(deps, "x".repeat(101), T0)).toEqual({
-      status: 400,
-      body: { error: "invalid-client-name" },
-    });
-    expect((await startServerLink(deps, "x".repeat(100), T0)).status).toBe(200);
+  });
+
+  it("treats missing or unknown geolocation as an unknown place", () => {
+    expect(linkRequestOrigin(withCf(undefined)).location).toBeNull();
+    expect(linkRequestOrigin(withCf({ country: "XX" })).location).toBeNull();
+    expect(
+      linkRequestOrigin(withCf({ city: "\u202eOslo\u0000", country: 7 }))
+        .location,
+    ).toBe("Oslo");
   });
 });
 
 describe("link flow", () => {
-  it("goes pending, approved once with a new server, then already-used", async () => {
+  it("goes pending, then approved with a new server", async () => {
     seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
@@ -166,7 +289,12 @@ describe("link flow", () => {
       state: "choose-server",
       handle: "sawyer",
       suggestedLabel: "sawyer-sawyer-mbp",
-      request: { userCode: started.userCode, clientName: "sawyer-mbp" },
+      request: {
+        userCode: started.userCode,
+        clientName: "sawyer-mbp",
+        requestedAt: T0,
+        location: "Lisbon, Portugal",
+      },
     });
 
     expect(
@@ -201,14 +329,6 @@ describe("link flow", () => {
     expect(resolved?.server.subdomain).toBe("sawyer-laptop");
     expect(resolved?.userId).toBe("u1");
     expect(closeTunnel).not.toHaveBeenCalled();
-
-    expect(
-      await pollServerLink(
-        deps,
-        started.deviceCode,
-        T0 + 2 * LINK_POLL_INTERVAL_MS,
-      ),
-    ).toEqual({ status: 409, body: { error: "already-used" } });
     expect(
       await getLinkRequestView(
         deps,
@@ -223,7 +343,7 @@ describe("link flow", () => {
     });
   });
 
-  it("replaces an existing server's credential and closes its tunnel", async () => {
+  it("replaces an existing server's credential only after the code is typed", async () => {
     seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const primary = primaryServerId("u1");
@@ -239,6 +359,29 @@ describe("link flow", () => {
         "u1",
         started.userCode,
         { kind: "existing", serverId: primary },
+        T0,
+      ),
+    ).toEqual({ error: "confirm-replace" });
+    expect(
+      await approveServerLink(
+        deps,
+        "u1",
+        started.userCode,
+        { kind: "replace", serverId: primary, typedCode: "ZZZZ-ZZZZ" },
+        T0,
+      ),
+    ).toEqual({ error: "code-mismatch" });
+    expect(linkRow(started.userCode)?.approvedAt).toBeNull();
+    expect(
+      await approveServerLink(
+        deps,
+        "u1",
+        started.userCode,
+        {
+          kind: "replace",
+          serverId: primary,
+          typedCode: ` ${started.userCode.replace("-", "").toLowerCase()} `,
+        },
         T0,
       ),
     ).toEqual({ ok: true, serverUrl: "https://sawyer.getbb.app" });
@@ -388,6 +531,165 @@ describe("link flow", () => {
       status: 200,
       body: { status: "pending" },
     });
+  });
+
+  it("still delivers a code approved before it expired", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const started = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      started.userCode,
+      { kind: "new", label: "sawyer-laptop" },
+      T0 + CONNECT_CODE_TTL_MS - 1,
+    );
+    const late = await pollServerLink(
+      deps,
+      started.deviceCode,
+      T0 + CONNECT_CODE_TTL_MS + LINK_POLL_INTERVAL_MS,
+    );
+    if (late.status !== 200 || late.body.status !== "approved") {
+      throw new Error(`expected approval, got ${JSON.stringify(late)}`);
+    }
+    expect(
+      (await resolveServerCredential(db, late.body.credential))?.server
+        .subdomain,
+    ).toBe("sawyer-laptop");
+  });
+
+  it("refuses to deliver when the server was disconnected after approval", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = primaryServerId("u1");
+    const started = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      started.userCode,
+      { kind: "existing", serverId: primary },
+      T0,
+    );
+    expect(await disconnectServer(deps, "u1", primary)).toEqual({ ok: true });
+
+    expect(
+      await pollServerLink(deps, started.deviceCode, T0 + CONNECT_CODE_TTL_MS),
+    ).toEqual({ status: 403, body: { error: "denied" } });
+    expect(
+      db.select().from(server).where(eq(server.id, primary)).get(),
+    ).toMatchObject({ credentialHash: null, revokedAt: expect.any(Date) });
+  });
+
+  it("links a server that was disconnected before the approval", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = primaryServerId("u1");
+    db.update(server)
+      .set({ revokedAt: new Date(T0 - 1) })
+      .where(eq(server.id, primary))
+      .run();
+    const started = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      started.userCode,
+      { kind: "existing", serverId: primary },
+      T0,
+    );
+    const approved = await pollServerLink(deps, started.deviceCode, T0);
+    if (approved.status !== 200 || approved.body.status !== "approved") {
+      throw new Error("expected approval");
+    }
+    expect(
+      (await resolveServerCredential(db, approved.body.credential))?.server.id,
+    ).toBe(primary);
+  });
+
+  it("re-delivers a fresh credential when a poll response is lost", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const started = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      started.userCode,
+      { kind: "new", label: "sawyer-laptop" },
+      T0,
+    );
+    const lost = await pollServerLink(deps, started.deviceCode, T0);
+    if (lost.status !== 200 || lost.body.status !== "approved") {
+      throw new Error("expected approval");
+    }
+    closeTunnel.mockClear();
+
+    const retried = await pollServerLink(
+      deps,
+      started.deviceCode,
+      T0 + LINK_POLL_INTERVAL_MS,
+    );
+    if (retried.status !== 200 || retried.body.status !== "approved") {
+      throw new Error(`expected re-delivery, got ${JSON.stringify(retried)}`);
+    }
+    expect(retried.body).toMatchObject({
+      serverId: lost.body.serverId,
+      handle: "sawyer-laptop",
+    });
+    expect(retried.body.credential).not.toBe(lost.body.credential);
+    expect(await resolveServerCredential(db, lost.body.credential)).toBeNull();
+    expect(
+      (await resolveServerCredential(db, retried.body.credential))?.server.id,
+    ).toBe(lost.body.serverId);
+    expect(closeTunnel).toHaveBeenCalledWith("sawyer-laptop");
+
+    expect(
+      await pollServerLink(deps, started.deviceCode, T0 + CONNECT_CODE_TTL_MS),
+    ).toEqual({ status: 409, body: { error: "already-used" } });
+    expect(
+      (await resolveServerCredential(db, retried.body.credential))?.server.id,
+    ).toBe(lost.body.serverId);
+  });
+
+  it("does not re-deliver once the server was replaced or disconnected", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = primaryServerId("u1");
+    const first = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      first.userCode,
+      { kind: "existing", serverId: primary },
+      T0,
+    );
+    expect((await pollServerLink(deps, first.deviceCode, T0)).status).toBe(200);
+
+    const second = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      second.userCode,
+      { kind: "replace", serverId: primary, typedCode: second.userCode },
+      T0,
+    );
+    const replaced = await pollServerLink(deps, second.deviceCode, T0);
+    if (replaced.status !== 200 || replaced.body.status !== "approved") {
+      throw new Error("expected approval");
+    }
+
+    expect(
+      await pollServerLink(deps, first.deviceCode, T0 + LINK_POLL_INTERVAL_MS),
+    ).toEqual({ status: 409, body: { error: "already-used" } });
+    expect(
+      (await resolveServerCredential(db, replaced.body.credential))?.server.id,
+    ).toBe(primary);
+
+    expect(await disconnectServer(deps, "u1", primary)).toEqual({ ok: true });
+    expect(
+      await pollServerLink(deps, second.deviceCode, T0 + LINK_POLL_INTERVAL_MS),
+    ).toEqual({ status: 403, body: { error: "denied" } });
+    expect(
+      db.select().from(server).where(eq(server.id, primary)).get(),
+    ).toMatchObject({ credentialHash: null });
   });
 
   it("expires after ten minutes for polling and approval", async () => {
@@ -616,7 +918,7 @@ describe("issueTunnelTicket", () => {
       deps,
       "u1",
       started.userCode,
-      { kind: "existing", serverId: primary },
+      { kind: "replace", serverId: primary, typedCode: started.userCode },
       T0,
     );
     const approved = await pollServerLink(deps, started.deviceCode, T0);

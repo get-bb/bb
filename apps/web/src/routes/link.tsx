@@ -18,7 +18,12 @@ import {
   claimErrorCopy,
 } from "@/components/connect-ui";
 import { cn } from "@/lib/utils";
-import type { LinkApprovalResult, LinkRequestView } from "@/server/account";
+import type {
+  LinkApprovalResult,
+  LinkApprovalTarget,
+  LinkRequestSummary,
+  LinkRequestView,
+} from "@/server/account";
 import type { ServerSummary } from "@/server/api";
 import {
   approveLinkFn,
@@ -71,6 +76,10 @@ function decisionErrorCopy(error: string, maxServers: number): string {
       return "This code isn't valid.";
     case "not-found":
       return "That server no longer exists. Pick another.";
+    case "confirm-replace":
+      return "A bb is now linked to that server. Type the code to replace it.";
+    case "code-mismatch":
+      return "That code doesn't match this request. Type the code your bb shows.";
     default:
       return claimErrorCopy(error, maxServers);
   }
@@ -133,8 +142,7 @@ function LinkView({ code, view }: { code: string; view: LinkRequestView }) {
     case "claim-handle":
       return (
         <ClaimHandleStep
-          code={view.request.userCode}
-          clientName={view.request.clientName}
+          request={view.request}
           suggestedHandle={view.suggestedHandle}
           serverUrlTemplate={view.serverUrlTemplate}
         />
@@ -208,24 +216,45 @@ function CodeEntry({
   );
 }
 
+function requestedAgo(requestedAt: number): string {
+  const mins = Math.floor(Math.max(0, Date.now() - requestedAt) / 60_000);
+  if (mins === 0) return "just now";
+  return mins === 1 ? "1 minute ago" : `${mins} minutes ago`;
+}
+
 function RequestHeader({
-  clientName,
-  code,
+  request,
+  showCode,
 }: {
-  clientName: string;
-  code: string;
+  request: LinkRequestSummary;
+  showCode: boolean;
 }) {
   return (
     <>
       <h3 className="text-base font-semibold tracking-tight">
-        Sign in <span className="font-mono">{clientName}</span>?
+        Sign in <span className="font-mono">{request.clientName}</span>?
       </h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Check that your bb shows this code:
+      <p
+        className="mt-1 text-xs text-subtle-foreground"
+        suppressHydrationWarning
+      >
+        Requested {requestedAgo(request.requestedAt)} from{" "}
+        {request.location ?? "an unknown location"}
       </p>
-      <p className="mt-2.5 mb-4 rounded-lg border border-dashed border-border bg-surface-recessed px-4 py-3 text-center font-mono text-2xl font-semibold tracking-widest">
-        {code}
-      </p>
+      {showCode ? (
+        <>
+          <p className="mt-2.5 text-sm text-muted-foreground">
+            Check that your bb shows this code:
+          </p>
+          <p className="mt-2.5 mb-4 rounded-lg border border-dashed border-border bg-surface-recessed px-4 py-3 text-center font-mono text-2xl font-semibold tracking-widest">
+            {request.userCode}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2.5 mb-4 text-sm text-muted-foreground">
+          Only approve a request you started on your own bb.
+        </p>
+      )}
     </>
   );
 }
@@ -250,13 +279,11 @@ function DenyButton({ code }: { code: string }) {
 }
 
 function ClaimHandleStep({
-  code,
-  clientName,
+  request,
   suggestedHandle,
   serverUrlTemplate,
 }: {
-  code: string;
-  clientName: string;
+  request: LinkRequestSummary;
   suggestedHandle: string;
   serverUrlTemplate: string;
 }) {
@@ -264,7 +291,7 @@ function ClaimHandleStep({
   return (
     <Shell title={BRAND.title} tagline={BRAND.tagline}>
       <WebCard>
-        <RequestHeader clientName={clientName} code={code} />
+        <RequestHeader request={request} showCode />
         <h4 className="text-sm font-semibold">First, pick your address</h4>
         <p className="mt-1 mb-3 text-sm text-muted-foreground">
           Your account gets a permanent address, and your first bb lives there.
@@ -288,7 +315,7 @@ function ClaimHandleStep({
           }}
         />
         <div className="mt-3 flex justify-end">
-          <DenyButton code={code} />
+          <DenyButton code={request.userCode} />
         </div>
       </WebCard>
     </Shell>
@@ -318,6 +345,7 @@ function ChooseServerStep({
   const [choice, setChoice] = useState<ServerChoice>(() =>
     defaultChoice(view.servers, view.maxServers),
   );
+  const [typedCode, setTypedCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const atCap = view.servers.length >= view.maxServers;
@@ -330,20 +358,36 @@ function ChooseServerStep({
       await router.invalidate();
       return null;
     }
-    return result.error === "unauthenticated"
-      ? "Your session ended. Sign in again."
-      : decisionErrorCopy(result.error, view.maxServers);
+    if (result.error === "unauthenticated") {
+      return "Your session ended. Sign in again.";
+    }
+    if (result.error === "confirm-replace") await router.invalidate();
+    return decisionErrorCopy(result.error, view.maxServers);
   }
 
   const selectedServer =
     choice.kind === "existing"
       ? view.servers.find((server) => server.id === choice.serverId)
       : undefined;
+  const replacing = selectedServer?.connected ?? false;
+
+  function approveExisting() {
+    if (selectedServer === undefined) return;
+    const target: LinkApprovalTarget = replacing
+      ? { kind: "replace", serverId: selectedServer.id, typedCode }
+      : { kind: "existing", serverId: selectedServer.id };
+    setBusy(true);
+    setError(null);
+    void approveLinkFn({ data: { code, target } })
+      .then(finish)
+      .then((message) => setError(message))
+      .finally(() => setBusy(false));
+  }
 
   return (
     <Shell title={BRAND.title} tagline={BRAND.tagline}>
       <WebCard>
-        <RequestHeader clientName={view.request.clientName} code={code} />
+        <RequestHeader request={view.request} showCode={!replacing} />
         <h4 className="text-sm font-semibold">Where should this bb live?</h4>
         <div className="mt-2 flex flex-col gap-1.5" role="radiogroup">
           {view.servers.map((server) => {
@@ -404,42 +448,58 @@ function ChooseServerStep({
             />
           </div>
         ) : (
-          <div className="mt-4">
-            {selectedServer?.connected ? (
-              <p className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
-                The bb currently linked to{" "}
-                <b className="font-semibold">
-                  {hostOf(selectedServer.serverUrl)}
-                </b>{" "}
-                will be signed out and lose remote access.
-              </p>
+          <form
+            className="mt-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              approveExisting();
+            }}
+          >
+            {selectedServer !== undefined && replacing ? (
+              <>
+                <p className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
+                  The bb currently linked to{" "}
+                  <b className="font-semibold">
+                    {hostOf(selectedServer.serverUrl)}
+                  </b>{" "}
+                  will be signed out and lose remote access.
+                </p>
+                <div className="mt-3 space-y-1.5">
+                  <Label htmlFor="link-replace-code">
+                    Type the code your bb shows
+                  </Label>
+                  <Input
+                    id="link-replace-code"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="ABCD-EFGH"
+                    value={typedCode}
+                    onChange={(event) => {
+                      setError(null);
+                      setTypedCode(event.target.value);
+                    }}
+                  />
+                </div>
+              </>
             ) : null}
             {error ? <ErrorBox>{error}</ErrorBox> : null}
             <Button
               className="mt-3.5 w-full justify-center"
-              disabled={busy || selectedServer === undefined}
-              onClick={() => {
-                if (choice.kind !== "existing") return;
-                setBusy(true);
-                setError(null);
-                void approveLinkFn({
-                  data: {
-                    code,
-                    target: { kind: "existing", serverId: choice.serverId },
-                  },
-                })
-                  .then(finish)
-                  .then((message) => setError(message))
-                  .finally(() => setBusy(false));
-              }}
+              type="submit"
+              disabled={
+                busy ||
+                selectedServer === undefined ||
+                (replacing && typedCode.trim() === "")
+              }
             >
               {busy
                 ? "Approving…"
-                : selectedServer?.connected
+                : selectedServer !== undefined && replacing
                   ? `Approve and replace ${hostOf(selectedServer.serverUrl)}`
                   : "Approve"}
             </Button>
-          </div>
+          </form>
         )}
         <div className="mt-3 flex justify-end">
           <DenyButton code={code} />

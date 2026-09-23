@@ -1,7 +1,8 @@
-import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import {
   CONNECT_CODE_TTL_MS,
   HANDLE_MAX_LENGTH,
+  type ConnectDb,
   connectCode,
   createTunnelTicket,
   resolveServerCredential,
@@ -15,10 +16,8 @@ import {
   type CreateServerError,
   type Deps,
   type ServerSummary,
-  consumeConnectCode,
   createServer,
   findProfile,
-  mintServerCredential,
   serverUrlForLabel,
   toServerSummary,
   tunnelUrlForServerUrl,
@@ -27,8 +26,13 @@ import { generateConnectCode, generateToken } from "./tokens.js";
 
 export const LINK_POLL_INTERVAL_MS = 2_000;
 export const LINK_CLIENT_NAME_MAX_LENGTH = 100;
+export const LINK_EXPIRED_ROW_RETENTION_MS = 60 * 60 * 1000;
+export const LINK_EXPIRED_ROW_PRUNE_LIMIT = 100;
+const LINK_LOCATION_PART_MAX_LENGTH = 60;
 const LINK_PURPOSE = "server-link";
 const USER_CODE_INSERT_ATTEMPTS = 5;
+const UNKNOWN_CLIENT_IP = "unknown";
+const INVISIBLE_CONTROL_CHARACTERS = /[\p{Cc}\p{Bidi_Control}]/gu;
 
 type ErrorResult<S extends number, E extends string> = {
   status: S;
@@ -149,23 +153,101 @@ export function linkVerificationUrl(appUrl: string, userCode: string): string {
   return url.toString();
 }
 
+export function stripControlCharacters(value: string): string {
+  return value.replace(INVISIBLE_CONTROL_CHARACTERS, "").trim();
+}
+
+function cfText(cf: unknown, key: string): string | null {
+  const value =
+    typeof cf === "object" && cf !== null ? Reflect.get(cf, key) : undefined;
+  if (typeof value !== "string") return null;
+  const clean = stripControlCharacters(value).slice(
+    0,
+    LINK_LOCATION_PART_MAX_LENGTH,
+  );
+  return clean === "" ? null : clean;
+}
+
+function countryName(code: string | null): string | null {
+  if (code === null || code === "XX") return null;
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+export interface LinkRequestOrigin {
+  clientIp: string;
+  location: string | null;
+}
+
+export function linkRequestOrigin(request: Request): LinkRequestOrigin {
+  const cf: unknown = Reflect.get(request, "cf");
+  const place = [cfText(cf, "city"), countryName(cfText(cf, "country"))]
+    .filter((part) => part !== null)
+    .join(", ");
+  return {
+    clientIp:
+      request.headers.get("cf-connecting-ip")?.trim() || UNKNOWN_CLIENT_IP,
+    location: place === "" ? null : place,
+  };
+}
+
+export interface LinkStartRateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+async function pruneExpiredLinkRequests(
+  db: ConnectDb,
+  now: number,
+): Promise<void> {
+  const stale = db
+    .select({ code: connectCode.code })
+    .from(connectCode)
+    .where(
+      and(
+        eq(connectCode.purpose, LINK_PURPOSE),
+        isNull(connectCode.approvedAt),
+        lt(
+          connectCode.expiresAt,
+          new Date(now - LINK_EXPIRED_ROW_RETENTION_MS),
+        ),
+      ),
+    )
+    .limit(LINK_EXPIRED_ROW_PRUNE_LIMIT);
+  try {
+    await db.delete(connectCode).where(inArray(connectCode.code, stale)).run();
+  } catch (error) {
+    console.error("bb account: pruning expired link requests failed", error);
+  }
+}
+
 export async function startServerLink(
-  deps: Pick<Deps, "db" | "appUrl">,
-  rawClientName: unknown,
+  deps: Pick<Deps, "db" | "appUrl"> & { rateLimiter: LinkStartRateLimiter },
+  input: { clientName: unknown } & LinkRequestOrigin,
   now: number = Date.now(),
 ): Promise<
   | OkResult<LinkStartResponse>
   | ErrorResult<400, "invalid-client-name">
+  | ErrorResult<429, "rate-limited">
   | ErrorResult<503, "unavailable">
 > {
   const clientName =
-    typeof rawClientName === "string" ? rawClientName.trim() : "";
+    typeof input.clientName === "string"
+      ? stripControlCharacters(input.clientName)
+      : "";
   if (
     clientName.length === 0 ||
     clientName.length > LINK_CLIENT_NAME_MAX_LENGTH
   ) {
     return { status: 400, body: { error: "invalid-client-name" } };
   }
+  const admitted = await deps.rateLimiter.limit({ key: input.clientIp });
+  if (!admitted.success) {
+    return { status: 429, body: { error: "rate-limited" } };
+  }
+  await pruneExpiredLinkRequests(deps.db, now);
   const deviceCode = generateToken("bbdev_");
   const deviceCodeHash = await sha256Hex(deviceCode);
   const expiresAt = now + CONNECT_CODE_TTL_MS;
@@ -180,6 +262,7 @@ export async function startServerLink(
         purpose: LINK_PURPOSE,
         deviceCodeHash,
         clientName,
+        requestLocation: input.location,
         expiresAt: new Date(expiresAt),
         createdAt: new Date(now),
       })
@@ -256,45 +339,105 @@ export async function pollServerLink(
     return { status: 429, body: { error: "slow-down" } };
   }
 
-  if (row.consumedAt !== null) {
-    return { status: 409, body: { error: "already-used" } };
-  }
   if (row.deniedAt !== null) return { status: 403, body: { error: "denied" } };
-  if (row.expiresAt.getTime() <= now) {
-    return { status: 410, body: { error: "expired" } };
-  }
   if (row.approvedAt === null || row.serverId === null) {
-    return { status: 200, body: { status: "pending" } };
+    return row.expiresAt.getTime() <= now
+      ? { status: 410, body: { error: "expired" } }
+      : { status: 200, body: { status: "pending" } };
   }
+  return deliverLinkCredential(
+    deps,
+    { ...row, approvedAt: row.approvedAt, serverId: row.serverId },
+    now,
+  );
+}
 
-  const serverId = row.serverId;
-  const previous = await deps.db
-    .select({ credentialHash: server.credentialHash })
+async function deliverLinkCredential(
+  deps: Pick<Deps, "db" | "serverUrlTemplate" | "closeTunnel">,
+  row: LinkRow & { approvedAt: Date; serverId: string },
+  now: number,
+): Promise<OkResult<LinkPollResponse> | LinkPollError> {
+  const target = await deps.db
+    .select()
     .from(server)
-    .where(eq(server.id, serverId))
+    .where(eq(server.id, row.serverId))
     .get();
-  if (!previous) return { status: 404, body: { error: "invalid-code" } };
-  if (!(await consumeConnectCode(deps.db, row.code))) {
-    return { status: 409, body: { error: "already-used" } };
+  if (!target) return { status: 404, body: { error: "invalid-code" } };
+  if (
+    target.revokedAt !== null &&
+    target.revokedAt.getTime() >= row.approvedAt.getTime()
+  ) {
+    return { status: 403, body: { error: "denied" } };
   }
-  const minted = await mintServerCredential(deps.db, serverId);
-  if (!minted.server) return { status: 404, body: { error: "invalid-code" } };
-  if (previous.credentialHash !== null) {
+  const credential = generateToken("bbcred_");
+  const credentialHash = await sha256Hex(credential);
+  if (row.consumedAt === null) {
+    const claimed = await deps.db
+      .update(connectCode)
+      .set({
+        consumedAt: new Date(now),
+        deliveredCredentialHash: credentialHash,
+      })
+      .where(
+        and(eq(connectCode.code, row.code), isNull(connectCode.consumedAt)),
+      )
+      .run();
+    if (rowsChanged(claimed) === 0) {
+      return { status: 409, body: { error: "already-used" } };
+    }
+    const minted = await deps.db
+      .update(server)
+      .set({ credentialHash, revokedAt: null })
+      .where(
+        and(
+          eq(server.id, target.id),
+          or(isNull(server.revokedAt), lt(server.revokedAt, row.approvedAt)),
+        ),
+      )
+      .run();
+    if (rowsChanged(minted) === 0) {
+      return { status: 403, body: { error: "denied" } };
+    }
+  } else {
+    if (
+      row.expiresAt.getTime() <= now ||
+      row.deliveredCredentialHash === null
+    ) {
+      return { status: 409, body: { error: "already-used" } };
+    }
+    const rotated = await deps.db
+      .update(server)
+      .set({ credentialHash })
+      .where(
+        and(
+          eq(server.id, target.id),
+          eq(server.credentialHash, row.deliveredCredentialHash),
+          isNull(server.revokedAt),
+        ),
+      )
+      .run();
+    if (rowsChanged(rotated) === 0) {
+      return { status: 409, body: { error: "already-used" } };
+    }
+    await deps.db
+      .update(connectCode)
+      .set({ deliveredCredentialHash: credentialHash })
+      .where(eq(connectCode.code, row.code))
+      .run();
+  }
+  if (target.credentialHash !== null) {
     try {
-      await deps.closeTunnel(minted.server.subdomain);
+      await deps.closeTunnel(target.subdomain);
     } catch {}
   }
-  const serverUrl = serverUrlForLabel(
-    minted.server.subdomain,
-    deps.serverUrlTemplate,
-  );
+  const serverUrl = serverUrlForLabel(target.subdomain, deps.serverUrlTemplate);
   return {
     status: 200,
     body: {
       status: "approved",
-      credential: minted.credential,
-      serverId,
-      handle: minted.server.subdomain,
+      credential,
+      serverId: target.id,
+      handle: target.subdomain,
       serverUrl,
       tunnelUrl: tunnelUrlForServerUrl(serverUrl),
     },
@@ -337,6 +480,8 @@ export function suggestServerLabel(handle: string, clientName: string): string {
 export interface LinkRequestSummary {
   userCode: string;
   clientName: string;
+  requestedAt: number;
+  location: string | null;
   expiresAt: number;
 }
 
@@ -410,9 +555,11 @@ export async function getLinkRequestView(
   if (row.deniedAt !== null) return { state: "denied" };
   if (row.expiresAt.getTime() <= now) return { state: "expired" };
 
-  const request = {
+  const request: LinkRequestSummary = {
     userCode: row.code,
     clientName: row.clientName ?? "",
+    requestedAt: row.createdAt.getTime(),
+    location: row.requestLocation,
     expiresAt: row.expiresAt.getTime(),
   };
   const prof = await findProfile(deps.db, userId);
@@ -458,14 +605,17 @@ export async function getLinkRequestView(
 
 export type LinkApprovalTarget =
   | { kind: "new"; label: string }
-  | { kind: "existing"; serverId: string };
+  | { kind: "existing"; serverId: string }
+  | { kind: "replace"; serverId: string; typedCode: string };
 
 type LinkDecisionError =
   | "invalid"
   | "expired"
   | "used"
   | "denied"
-  | "not-found";
+  | "not-found"
+  | "confirm-replace"
+  | "code-mismatch";
 
 export type LinkApprovalResult =
   | { ok: true; serverUrl: string }
@@ -522,11 +672,27 @@ export async function approveServerLink(
     created = true;
   } else {
     const existing = await deps.db
-      .select({ id: server.id, subdomain: server.subdomain })
+      .select({
+        id: server.id,
+        subdomain: server.subdomain,
+        credentialHash: server.credentialHash,
+        revokedAt: server.revokedAt,
+      })
       .from(server)
       .where(and(eq(server.id, target.serverId), eq(server.userId, userId)))
       .get();
     if (!existing) return { error: "not-found" };
+    const linked =
+      existing.credentialHash !== null && existing.revokedAt === null;
+    if (target.kind === "existing" && linked) {
+      return { error: "confirm-replace" };
+    }
+    if (
+      target.kind === "replace" &&
+      normalizeUserCode(target.typedCode) !== row.code
+    ) {
+      return { error: "code-mismatch" };
+    }
     serverId = existing.id;
     subdomain = existing.subdomain;
   }
