@@ -184,7 +184,7 @@ export function PluginCategoryLabel({
 }) {
   return (
     <span
-      className="max-w-full rounded border px-1.5 py-1 text-right text-2xs leading-snug"
+      className="inline-block max-w-full rounded border px-1.5 py-1 align-middle text-right text-2xs leading-snug"
       style={pluginCatalogCategoryPillStyle(categoryId)}
     >
       {label}

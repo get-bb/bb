@@ -10,6 +10,26 @@
     "fork",
     "plugin-actions"
   ],
+  "mobileLayout": {
+    "sources": [
+      {
+        "path": "packages/shared-ui/src/components/ui/hooks/use-compact-viewport.tsx",
+        "anchors": ["(max-width: 767px)"]
+      },
+      {
+        "path": "apps/app/src/views/RootComposeSecondaryContent.tsx",
+        "anchors": ["RootComposeCompactHome composer={children}", "PluginHomepageSections"]
+      },
+      {
+        "path": "apps/app/src/components/secondary-panel/CompactSecondaryPanelShelf.tsx",
+        "anchors": ["CompactSecondaryPanelShelf"]
+      },
+      {
+        "path": "apps/app/src/components/ui/sidebar.tsx",
+        "anchors": ["SIDEBAR_WIDTH_MOBILE", "SIDEBAR_MOBILE_VIEWPORT_FRACTION"]
+      }
+    ]
+  },
   "surfaceFixtures": {
     "command-palette-actions": {
       "groupId": "command-palette",
@@ -40,7 +60,7 @@
           "anchors": [
             "top-[12%] max-w-[640px] translate-y-0 gap-0 p-0",
             "aria-selected={isActive}",
-            "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm outline-none",
+            "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none",
             "bg-state-hover text-foreground"
           ]
         },
@@ -86,22 +106,22 @@
           "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.tsx",
           "anchors": [
             "data-testid=\"sidebar-navigation-region\"",
-            "PluginReplacementSlot",
-            "experimental_activate"
+            "NavigationProvider",
+            "SidebarNavigationCustomize"
           ]
         },
         {
-          "path": "apps/app/src/components/sidebar/BuiltInSidebarNavigation.tsx",
+          "path": "plugins/navigation/app/Navigation.tsx",
           "anchors": [
-            "data-testid=\"app-sidebar-primary-actions\"",
-            "PluginNavSidebarItems"
+            "data-testid=\"plugin-nav-sidebar-items\"",
+            "experimental_useSidebarNavigation"
           ]
         },
         {
           "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.test.tsx",
           "anchors": [
             "routes Search through the quick palette without inline search UI",
-            "delegates and falls back after a crash without owner remounts"
+            "replaces a crashed provider with a reload placeholder"
           ]
         }
       ]
@@ -210,7 +230,7 @@
         "anchor": [
           "Needs configuration",
           "Open settings",
-          "Release",
+          "Details",
           "Capabilities"
         ]
       },
@@ -226,16 +246,14 @@
         },
         {
           "path": "apps/app/src/components/plugin/management/plugin-status.ts",
-          "anchors": [
-            "Complete the Configuration section; bb reloads the plugin after you save."
-          ]
+          "anchors": ["Complete the required settings."]
         },
         {
           "path": "apps/app/src/components/tools/PluginDetail.tsx",
           "anchors": [
-            "label=\"Release\"",
+            "label=\"Details\"",
             "label={updatesWithBb ? \"Delivery\" : \"Installed\"}",
-            "<PluginIncludes plugin={plugin} />"
+            "<PluginIncludes plugin={plugin} configurationPath={configurationPath} />"
           ]
         }
       ]

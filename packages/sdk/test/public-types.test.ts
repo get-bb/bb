@@ -376,7 +376,6 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
-  | "saveImageMetadata"
   | "getPluginMetadata"
   | "updatePluginMetadata"
   | "context"

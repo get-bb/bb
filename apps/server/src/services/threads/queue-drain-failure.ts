@@ -6,11 +6,16 @@ import {
   QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH,
   type Thread,
 } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { dispatchEnvironmentAndHost } from "./dispatch-hooks.js";
 
 type QueueDrainFailureDeps = Pick<AppDeps, "db" | "hub">;
+
+export const QUEUED_MESSAGE_RETRY_DELAYS_MS: readonly number[] = [
+  15_000, 60_000, 300_000,
+];
 
 /**
  * What a failed dispatch says to the person whose message did not go.
@@ -26,7 +31,7 @@ export function describeDispatchFailure(error: unknown): string {
       : "The message could not be sent.";
   return message.length <= QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH
     ? message
-    : `${message.slice(0, QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH - 1)}…`;
+    : `${sliceUtf16Head(message, QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH - 1)}…`;
 }
 
 /**
@@ -39,7 +44,10 @@ export function describeDispatchFailure(error: unknown): string {
  * host-reconnect drain clears when the machine comes back. Any other failure
  * is recorded as the row's failure reason, leaving its existing wait alone —
  * the row is still waiting on whatever it was waiting on, and what went wrong
- * last time is a different fact from what it is waiting for.
+ * last time is a different fact from what it is waiting for — and spends one
+ * of the row's attempts, booking the next on
+ * {@link QUEUED_MESSAGE_RETRY_DELAYS_MS}. The row gives up only once that
+ * budget runs out.
  *
  * Only the drain calls this. An inline attempt has a caller still listening
  * and surfaces its error to them instead, which is why a queued row never
@@ -49,6 +57,7 @@ export function recordQueuedMessageDrainFailure(
   deps: QueueDrainFailureDeps,
   args: {
     error: unknown;
+    now: number;
     row: { id: string; threadId: string };
     thread: Thread;
   },
@@ -71,5 +80,7 @@ export function recordQueuedMessageDrainFailure(
     id: args.row.id,
     threadId: args.row.threadId,
     failureReason: describeDispatchFailure(args.error),
+    now: args.now,
+    retryDelaysMs: QUEUED_MESSAGE_RETRY_DELAYS_MS,
   });
 }

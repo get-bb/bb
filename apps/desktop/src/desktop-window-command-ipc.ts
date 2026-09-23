@@ -13,3 +13,5 @@ export const BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL =
 export const CLOSE_WINDOW_REQUEST_TIMEOUT_MS = 1000;
 export const BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL =
   "bb-desktop:set-split-navigation-enabled";
+export const BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL =
+  "bb-desktop:open-window-find";

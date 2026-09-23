@@ -116,6 +116,22 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("text"),
     text: z.string(),
+    mentions: z
+      .array(
+        z.object({
+          start: z.number().int().nonnegative(),
+          end: z.number().int().nonnegative(),
+          resource: z
+            .object({
+              kind: z.string(),
+              trigger: z.string().optional(),
+              name: z.string().optional(),
+              source: z.string().optional(),
+            })
+            .passthrough(),
+        }),
+      )
+      .default([]),
   }),
   z.object({
     type: z.literal("image"),
@@ -2359,6 +2375,31 @@ function localAttachmentMarker(args: {
   return `[Attached ${args.kind}${namePart}${suffix}. It is on disk at ${args.path} — use the Read tool to view it.]`;
 }
 
+function normalizeClaudeSkillMentions(
+  entry: Extract<z.infer<typeof promptInputItemSchema>, { type: "text" }>,
+): string {
+  const replacements = new Set<number>();
+  for (const mention of entry.mentions) {
+    const resource = mention.resource;
+    if (
+      resource.kind === "command" &&
+      resource.source === "skill" &&
+      resource.trigger === "$" &&
+      typeof resource.name === "string" &&
+      mention.end <= entry.text.length &&
+      entry.text.slice(mention.start, mention.end) === `$${resource.name}`
+    ) {
+      replacements.add(mention.start);
+    }
+  }
+
+  let normalized = entry.text;
+  for (const start of replacements) {
+    normalized = `${normalized.slice(0, start)}/${normalized.slice(start + 1)}`;
+  }
+  return normalized;
+}
+
 function buildPromptText(input: unknown): string | undefined {
   if (typeof input === "string") {
     return input.length > 0 ? input : undefined;
@@ -2372,7 +2413,8 @@ function buildPromptText(input: unknown): string | undefined {
     const entry = parsed.data;
     switch (entry.type) {
       case "text":
-        if (entry.text.length > 0) chunks.push(entry.text);
+        if (entry.text.length > 0)
+          chunks.push(normalizeClaudeSkillMentions(entry));
         break;
       case "image":
         chunks.push(`[Attached image: ${entry.url}]`);

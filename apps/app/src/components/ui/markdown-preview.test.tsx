@@ -436,13 +436,13 @@ describe("MarkdownPreview", () => {
     );
 
     expect(
-      container.querySelector('img[alt="absolute"]')?.getAttribute("data-markdown-image-src"),
+      container.querySelector('img[alt="absolute"]')?.getAttribute("src"),
     ).toBe("/api/files/content?path=%2Fworkspace%2Fgenerated.png");
     expect(
-      container.querySelector('img[alt="relative"]')?.getAttribute("data-markdown-image-src"),
+      container.querySelector('img[alt="relative"]')?.getAttribute("src"),
     ).toBe("/api/files/content?path=%2Fworkspace%2Fart%2Fchart.png");
     expect(
-      container.querySelector('img[alt="remote"]')?.getAttribute("data-markdown-image-src"),
+      container.querySelector('img[alt="remote"]')?.getAttribute("src"),
     ).toBe("https://example.com/image.png");
     expect(resolveSrc).toHaveBeenCalledTimes(2);
   });
@@ -479,6 +479,18 @@ describe("MarkdownPreview", () => {
     expect(link.getAttribute("href")).toBe(
       `${window.location.protocol}//${window.location.hostname}:5173/demo`,
     );
+  });
+
+  it("keeps a rewritten link mounted across unrelated preview rerenders", () => {
+    const content = "Open [preview](http://localhost:5173/demo).";
+    const { rerender } = render(
+      <MarkdownPreview className="first" content={content} />,
+    );
+    const link = screen.getByRole("link", { name: "preview" });
+
+    rerender(<MarkdownPreview className="second" content={content} />);
+
+    expect(screen.getByRole("link", { name: "preview" })).toBe(link);
   });
 
   it("renders inline LaTeX math with KaTeX", async () => {

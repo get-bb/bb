@@ -39,6 +39,7 @@
     "format:check": "oxfmt . --check",
     "storybook": "turbo run storybook --filter=@bb/app",
     "lint": "turbo run lint",
+    "check:plugin-forks": "node scripts/check-plugin-forks.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",

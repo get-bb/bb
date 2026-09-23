@@ -1043,6 +1043,21 @@ const SidebarInset = React.forwardRef<
     }
   }, []);
 
+  const recoverInterruptedMobileSwipe = React.useCallback(() => {
+    clearSwipeSession();
+    clearMobileDragSettleTimeout();
+    flushSync(() => {
+      setSuppressMobileCloseAnimation(true);
+      setOpenMobile(false);
+    });
+    clearSidebarMobileDragStyles();
+  }, [
+    clearMobileDragSettleTimeout,
+    clearSwipeSession,
+    setOpenMobile,
+    setSuppressMobileCloseAnimation,
+  ]);
+
   const clearWheelSwipe = React.useCallback(() => {
     wheelSwipeDeltaRef.current = 0;
     if (wheelSwipeResetTimeoutRef.current !== null) {
@@ -1241,9 +1256,12 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
+      if (event.type === "pointerup") {
+        continueSwipe(event.clientX, event.clientY, event);
+      }
       finishMobileSwipe(event);
     },
-    [finishMobileSwipe],
+    [continueSwipe, finishMobileSwipe],
   );
 
   const handleTouchMove = React.useCallback(
@@ -1270,13 +1288,17 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      if (getTrackedSwipeTouch(event, session.id) === null) {
+      const touch = findTouchById(event.changedTouches, session.id);
+      if (touch === null) {
         return;
       }
 
+      if (event.type === "touchend") {
+        continueSwipe(touch.clientX, touch.clientY, event);
+      }
       finishMobileSwipe(event);
     },
-    [finishMobileSwipe],
+    [continueSwipe, finishMobileSwipe],
   );
 
   const startTouchSwipe = React.useCallback(
@@ -1284,7 +1306,6 @@ const SidebarInset = React.forwardRef<
       if (
         event.defaultPrevented ||
         !isCompactViewport ||
-        openMobile ||
         event.touches.length !== 1 ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
@@ -1300,7 +1321,14 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      clearSwipeSession();
+      if (openMobile) {
+        if (!swipeSessionRef.current?.isDragging) {
+          return;
+        }
+        recoverInterruptedMobileSwipe();
+      } else {
+        clearSwipeSession();
+      }
 
       const canPreventDefault = isSidebarSwipeEdgeZoneTouch(touch.clientX);
       swipeSessionRef.current = createSidebarInsetSwipeSession({
@@ -1331,6 +1359,7 @@ const SidebarInset = React.forwardRef<
       handleTouchMove,
       isCompactViewport,
       openMobile,
+      recoverInterruptedMobileSwipe,
     ],
   );
 
@@ -1339,7 +1368,6 @@ const SidebarInset = React.forwardRef<
       if (
         event.defaultPrevented ||
         !isCompactViewport ||
-        openMobile ||
         event.pointerType !== "touch" ||
         !event.isPrimary ||
         event.button !== 0 ||
@@ -1350,7 +1378,14 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      clearSwipeSession();
+      if (openMobile) {
+        if (!swipeSessionRef.current?.isDragging) {
+          return;
+        }
+        recoverInterruptedMobileSwipe();
+      } else {
+        clearSwipeSession();
+      }
       swipeSessionRef.current = createSidebarInsetSwipeSession({
         kind: "pointer",
         id: event.pointerId,
@@ -1379,18 +1414,25 @@ const SidebarInset = React.forwardRef<
       handleSwipeMove,
       isCompactViewport,
       openMobile,
+      recoverInterruptedMobileSwipe,
     ],
   );
 
   React.useEffect(() => {
     const cancelSwipeForTextSelection = () => {
-      const selectionRoot = swipeSessionRef.current?.selectionRoot;
+      const session = swipeSessionRef.current;
+      const selectionRoot = session?.selectionRoot;
       if (
+        session !== null &&
         selectionRoot !== null &&
         selectionRoot !== undefined &&
         hasTextSelectionWithin(selectionRoot)
       ) {
-        clearSwipeSession();
+        if (session.isDragging) {
+          recoverInterruptedMobileSwipe();
+        } else {
+          clearSwipeSession();
+        }
       }
     };
 
@@ -1415,7 +1457,12 @@ const SidebarInset = React.forwardRef<
         cancelSwipeForTextSelection,
       );
     };
-  }, [clearSwipeSession, startPointerSwipe, startTouchSwipe]);
+  }, [
+    clearSwipeSession,
+    recoverInterruptedMobileSwipe,
+    startPointerSwipe,
+    startTouchSwipe,
+  ]);
 
   const handleWheelSwipe = React.useCallback(
     (event: WheelEvent) => {

@@ -1788,6 +1788,58 @@ describe("bridge", () => {
     }
   });
 
+  it("translates tagged dollar skill mentions without changing plain dollar text", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-dollar-skill";
+      await startBridgeThread({ bridge, threadId });
+      const call = getLatestQueryCall();
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          input: [
+            {
+              type: "text",
+              text: "Use $review but keep $PATH and $review",
+              mentions: [
+                {
+                  start: 4,
+                  end: 11,
+                  resource: {
+                    kind: "command",
+                    trigger: "$",
+                    name: "review",
+                    source: "skill",
+                    origin: "user",
+                    label: "review",
+                    argumentHint: null,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      expect(await readNextPromptText(call)).toBe(
+        "Use /review but keep $PATH and $review",
+      );
+      await bridge.waitForResponse(2);
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("switches a live session into Plan mode when a later turn carries /plan", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -2362,10 +2414,7 @@ describe("bridge", () => {
       PATH: binDir,
     });
     expect(models.map((model) => model.model)).toEqual([
-      "claude-fable-5-1",
       "claude-opus-5[1m]",
-      "claude-opus-4-8[1m]",
-      "claude-opus-4-7[1m]",
       "claude-sonnet-5",
     ]);
     expect(models.filter((model) => model.isDefault)).toEqual([
@@ -2386,6 +2435,22 @@ describe("bridge", () => {
         persistSession: false,
       }),
     });
+    const probeOptions = queryMock.mock.calls.at(-1)?.[0]?.options;
+    expect(probeOptions).not.toHaveProperty("allowDangerouslySkipPermissions");
+    expect(probeOptions).not.toHaveProperty("permissionMode");
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("treats an empty Claude model report as a discovery failure", async () => {
+    const close = vi.fn();
+    queryMock.mockReturnValueOnce({
+      initializationResult: vi.fn().mockResolvedValue({ models: [] }),
+      close,
+    });
+
+    await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
+      "Claude Code reported no models.",
+    );
     expect(close).toHaveBeenCalledOnce();
   });
 

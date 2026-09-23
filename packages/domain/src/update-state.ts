@@ -15,6 +15,7 @@ const UPDATE_STATES = [
   "restart-required",
   "not-installed",
   "update-manually",
+  "latest-unknown",
   "failed",
   "offline",
 ] as const;
@@ -63,6 +64,11 @@ export const UPDATE_STATE_PRESENTATION: Record<
   "update-manually": {
     icon: "Terminal",
     label: "Update in terminal",
+    tone: "muted",
+  },
+  "latest-unknown": {
+    icon: "CircleQuestion",
+    label: "Latest unknown",
     tone: "muted",
   },
   failed: {

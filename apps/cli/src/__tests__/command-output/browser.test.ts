@@ -105,63 +105,66 @@ describe("browser cookie import output", () => {
       'chrome  ready  Default "Person 1" (4)\nsafari  needsFullDiskAccess',
     ]);
   });
-  it("sends the import request and reports skipped hosts or the failure reason", async () => {
-    const importCookies = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        imported: 3,
-        skipped: 1,
-        skippedDomains: ["a.test"],
-      })
-      .mockResolvedValueOnce({ ok: false, reason: "browserRunning" });
-    stubServerApi({
-      "v1.desktop-browsers.import-cookies.$post": importCookies,
-    });
-    await runCommand(
-      [
-        "browser",
-        "import-cookies",
-        ...instanceFlags,
-        "--from",
-        "chrome",
-        "--profile",
-        "Default",
-        "--into",
-        "automation:agent-1",
-      ],
-      (program) => registerBrowserCommands(program, () => "http://server"),
-    );
-    expect(importCookies).toHaveBeenCalledWith({
-      json: {
-        hostId: "host",
-        instanceId: "instance",
-        generation: "generation",
-        sourceId: "chrome",
-        sourceProfileDirectory: "Default",
-        profile: { kind: "automation", id: "agent-1" },
-      },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Imported 3 cookies, skipped 1 (a.test)",
-    ]);
-    vi.mocked(console.log).mockClear();
-    await runCommand(
-      [
-        "browser",
-        "import-cookies",
-        ...instanceFlags,
-        "--from",
-        "chrome",
-        "--profile",
-        "Default",
-      ],
-      (program) => registerBrowserCommands(program, () => "http://server"),
-    );
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Import failed: Quit the browser first so its cookie database can be read.",
-    ]);
-    expect(process.exitCode).toBe(1);
-    process.exitCode = undefined;
-  });
+  it.each(["chrome", `storage-${"a".repeat(64)}`])(
+    "sends the %s import request and reports skipped hosts or the failure reason",
+    async (sourceId) => {
+      const importCookies = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          imported: 3,
+          skipped: 1,
+          skippedDomains: ["a.test"],
+        })
+        .mockResolvedValueOnce({ ok: false, reason: "browserRunning" });
+      stubServerApi({
+        "v1.desktop-browsers.import-cookies.$post": importCookies,
+      });
+      await runCommand(
+        [
+          "browser",
+          "import-cookies",
+          ...instanceFlags,
+          "--from",
+          sourceId,
+          "--profile",
+          "Default",
+          "--into",
+          "automation:agent-1",
+        ],
+        (program) => registerBrowserCommands(program, () => "http://server"),
+      );
+      expect(importCookies).toHaveBeenCalledWith({
+        json: {
+          hostId: "host",
+          instanceId: "instance",
+          generation: "generation",
+          sourceId,
+          sourceProfileDirectory: "Default",
+          profile: { kind: "automation", id: "agent-1" },
+        },
+      });
+      expect(collectLogLines(vi.mocked(console.log))).toEqual([
+        "Imported 3 cookies, skipped 1 (a.test)",
+      ]);
+      vi.mocked(console.log).mockClear();
+      await runCommand(
+        [
+          "browser",
+          "import-cookies",
+          ...instanceFlags,
+          "--from",
+          sourceId,
+          "--profile",
+          "Default",
+        ],
+        (program) => registerBrowserCommands(program, () => "http://server"),
+      );
+      expect(collectLogLines(vi.mocked(console.log))).toEqual([
+        "Import failed: Quit the browser first so its cookie database can be read.",
+      ]);
+      expect(process.exitCode).toBe(1);
+      process.exitCode = undefined;
+    },
+  );
 });

@@ -26,6 +26,13 @@ const BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   },
 };
 
+async function settleRevalidation(
+  revalidation: Promise<ProviderInstallationStatus>,
+): Promise<void> {
+  await revalidation.catch(() => undefined);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 function status(
   overrides: Partial<ProviderInstallationStatus> = {},
 ): ProviderInstallationStatus {
@@ -169,13 +176,17 @@ describe("createProviderInstallationGate", () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
-  it("probes again once the remembered status expires", async () => {
+  it("revalidates in the background once the remembered status expires", async () => {
     let currentTime = 0;
     const gate = createProviderInstallationGate({
       ttlMs: 100,
       now: () => currentTime,
     });
-    const probe = vi.fn(async () => status());
+    const revalidation = createDeferredPromise<ProviderInstallationStatus>();
+    const probe = vi
+      .fn<() => Promise<ProviderInstallationStatus>>()
+      .mockResolvedValueOnce(status())
+      .mockReturnValueOnce(revalidation.promise);
 
     await gate.run("codex", probe);
     currentTime = 99;
@@ -183,8 +194,68 @@ describe("createProviderInstallationGate", () => {
     expect(probe).toHaveBeenCalledOnce();
 
     currentTime = 100;
-    await gate.run("codex", probe);
+    await expect(gate.run("codex", probe)).resolves.toEqual(status());
     expect(probe).toHaveBeenCalledTimes(2);
+
+    revalidation.resolve(status({ currentVersion: "0.150.0" }));
+    await settleRevalidation(revalidation.promise);
+    currentTime = 150;
+    await expect(gate.run("codex", probe)).resolves.toEqual(
+      status({ currentVersion: "0.150.0" }),
+    );
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgets the remembered status when revalidation reports an unsupported version", async () => {
+    let currentTime = 0;
+    const gate = createProviderInstallationGate({
+      ttlMs: 100,
+      now: () => currentTime,
+    });
+    const unsupported = status({
+      currentVersion: "0.135.0",
+      versionUnsupported: true,
+    });
+    const revalidation = createDeferredPromise<ProviderInstallationStatus>();
+    const probe = vi
+      .fn<() => Promise<ProviderInstallationStatus>>()
+      .mockResolvedValueOnce(status())
+      .mockReturnValueOnce(revalidation.promise)
+      .mockResolvedValue(unsupported);
+
+    await gate.run("codex", probe);
+    currentTime = 100;
+    await expect(gate.run("codex", probe)).resolves.toEqual(status());
+
+    revalidation.resolve(unsupported);
+    await settleRevalidation(revalidation.promise);
+    await expect(gate.run("codex", probe)).resolves.toEqual(unsupported);
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+
+  it("forgets the remembered status when revalidation fails", async () => {
+    let currentTime = 0;
+    const gate = createProviderInstallationGate({
+      ttlMs: 100,
+      now: () => currentTime,
+    });
+    const revalidation = createDeferredPromise<ProviderInstallationStatus>();
+    const probe = vi
+      .fn<() => Promise<ProviderInstallationStatus>>()
+      .mockResolvedValueOnce(status())
+      .mockReturnValueOnce(revalidation.promise)
+      .mockResolvedValue(status({ currentVersion: "0.150.0" }));
+
+    await gate.run("codex", probe);
+    currentTime = 100;
+    await expect(gate.run("codex", probe)).resolves.toEqual(status());
+
+    revalidation.reject(new Error("bridge unavailable"));
+    await settleRevalidation(revalidation.promise);
+    await expect(gate.run("codex", probe)).resolves.toEqual(
+      status({ currentVersion: "0.150.0" }),
+    );
+    expect(probe).toHaveBeenCalledTimes(3);
   });
 
   it("forgets settled entries on clear", async () => {

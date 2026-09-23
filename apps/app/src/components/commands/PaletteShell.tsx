@@ -11,13 +11,25 @@ import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOv
 import { TabPill } from "@/components/ui/tab-pill";
 
 export const PALETTE_SECTION_LABEL_CLASS =
-  "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground opacity-60";
+  "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground";
+
+export function PaletteShortcut({ children }: { children: string }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover/50 px-1.5 py-1 font-sans text-xs font-normal leading-none tabular-nums text-subtle-foreground"
+    >
+      {children}
+    </kbd>
+  );
+}
 
 interface PaletteModeChipProps {
   clearLabel: string;
   icon: Parameters<typeof Icon>[0]["name"];
   label: string;
   onClear: () => void;
+  hideShortcut?: boolean;
 }
 
 interface PaletteShellProps {
@@ -30,6 +42,7 @@ interface PaletteShellProps {
   listLabel: string;
   listRef?: Ref<HTMLDivElement>;
   modeChip?: PaletteModeChipProps;
+  inputAccessory?: ReactNode;
   onInputChange: (value: string) => void;
   onInputKeyDown: KeyboardEventHandler<HTMLInputElement>;
   placeholder: string;
@@ -46,6 +59,7 @@ export function PaletteShell({
   listLabel,
   listRef,
   modeChip,
+  inputAccessory,
   onInputChange,
   onInputKeyDown,
   placeholder,
@@ -93,6 +107,7 @@ export function PaletteShell({
           <span id={inputDescriptionId} className="sr-only">
             {inputDescription}
           </span>
+          {inputAccessory}
         </div>
       </div>
       <div
@@ -135,6 +150,7 @@ function PaletteModeChip({
   icon,
   label,
   onClear,
+  hideShortcut,
 }: PaletteModeChipProps) {
   return (
     <span
@@ -156,7 +172,7 @@ function PaletteModeChip({
         closeAction={{
           onClose: onClear,
           closeLabel: clearLabel,
-          tooltip: `${clearLabel} (Esc)`,
+          tooltip: hideShortcut ? clearLabel : `${clearLabel} (Esc)`,
         }}
       />
     </span>

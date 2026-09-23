@@ -84,8 +84,6 @@ function collectRootNodes(
         return [item.node];
       case "environment":
         return item.group.nodes;
-      case "section":
-        return collectRootNodes(item.group.items);
     }
   });
 }

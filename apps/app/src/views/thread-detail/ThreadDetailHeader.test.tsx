@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -14,14 +15,15 @@ import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 
 const mocks = vi.hoisted(() => ({
-  renameThread: vi.fn(),
+  renameThreadAsync: vi.fn(),
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    renameThread: mocks.renameThread,
+    renameThreadAsync: mocks.renameThreadAsync,
   }),
 }));
 
@@ -74,9 +76,10 @@ const PANE_CONTEXT: PaneContextValue = {
 afterEach(() => {
   cleanup();
   viewportState.isCompactViewport = false;
-  mocks.renameThread.mockReset();
+  mocks.renameThreadAsync.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
+  delete window.bbDesktop;
 });
 
 describe("ThreadDetailHeader", () => {
@@ -478,7 +481,8 @@ describe("ThreadDetailHeader", () => {
     expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
   });
 
-  it("edits the title inline after a double click and commits on Enter", () => {
+  it("edits the title inline after a double click and commits on Enter", async () => {
+    mocks.renameThreadAsync.mockResolvedValue(undefined);
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
@@ -495,21 +499,25 @@ describe("ThreadDetailHeader", () => {
     );
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Focused thread");
 
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(
-      THREAD_ID,
-      "Renamed thread",
+    await waitFor(() =>
+      expect(mocks.renameThreadAsync).toHaveBeenCalledWith(
+        THREAD_ID,
+        "Renamed thread",
+      ),
     );
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
+    );
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });
 
-  it("cancels an inline header rename on Escape without saving", () => {
+  it("cancels an inline header rename on Escape without saving", async () => {
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
@@ -526,16 +534,137 @@ describe("ThreadDetailHeader", () => {
     );
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     fireEvent.change(input, { target: { value: "Scratch name" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
-    expect(mocks.renameThread).not.toHaveBeenCalled();
+    expect(mocks.renameThreadAsync).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });
 
-  it("does not start a pane drag while the header title is being edited", () => {
+  it("discards an unsaved header draft when switching threads", async () => {
+    const header = (threadId: string, threadTitle: string) => (
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={threadId}
+          threadTitle={threadTitle}
+        />
+      </PaneContext.Provider>
+    );
+    const { rerender } = render(header(THREAD_ID, "Focused thread"));
+
+    fireEvent.doubleClick(screen.getByText("Focused thread"));
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
+    fireEvent.change(input, { target: { value: "Unsaved draft" } });
+
+    rerender(header("thr_other", "Other thread"));
+
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByText("Other thread")).not.toBeNull();
+    expect(mocks.renameThreadAsync).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(screen.getByText("Other thread"));
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty(
+      "value",
+      "Other thread",
+    );
+  });
+
+  it("keeps the draft visible while a header rename saves after click-away", async () => {
+    let resolveSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    mocks.renameThreadAsync.mockReturnValue(pendingSave);
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Focused thread"
+        />
+        <button>Elsewhere</button>
+      </PaneContext.Provider>,
+    );
+
+    fireEvent.doubleClick(screen.getByText("Focused thread"));
+    const input = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "Thread name",
+    });
+    fireEvent.change(input, { target: { value: "Renamed thread" } });
+    await act(async () => new Promise(requestAnimationFrame));
+    act(() => screen.getByRole("button", { name: "Elsewhere" }).focus());
+
+    await waitFor(() =>
+      expect(mocks.renameThreadAsync).toHaveBeenCalledExactlyOnceWith(
+        THREAD_ID,
+        "Renamed thread",
+      ),
+    );
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Thread name" }),
+    ).toHaveProperty(
+      "value",
+      "Renamed thread",
+    );
+    expect(input.hasAttribute("readonly")).toBe(true);
+    expect(screen.getByRole("status", { name: "Saving name" })).not.toBeNull();
+    expect(screen.queryByText("Focused thread")).toBeNull();
+
+    await act(async () => resolveSave());
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+  });
+
+  it("keeps the header title out of the macOS window-drag region so double click renames", async () => {
+    window.bbDesktop = createBbDesktopApi({
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    });
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Focused thread"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const title = screen.getByText("Focused thread").closest("p");
+    expect(title?.className).toContain("[-webkit-app-region:no-drag]");
+
+    fireEvent.doubleClick(screen.getByText("Focused thread"));
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
+    expect(input.closest("p")?.className).toContain(
+      "[-webkit-app-region:no-drag]",
+    );
+  });
+
+  it("does not start a pane drag while the header title is being edited", async () => {
     const beginPaneDrag = vi.fn();
     render(
       <PaneContext.Provider
@@ -559,7 +688,7 @@ describe("ThreadDetailHeader", () => {
     );
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     fireEvent.pointerDown(input, { button: 0 });
 
     expect(beginPaneDrag).not.toHaveBeenCalled();

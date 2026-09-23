@@ -183,23 +183,52 @@ describe("Theme Preview", () => {
     }
   });
 
-  it("navigates views with bb's tabs and offers themes with bb's select", async () => {
-    renderPreview({
-      themeCatalog: () => DEFAULT_CATALOG,
-      setTheme: () => DEFAULT_CATALOG,
-    });
+  it.each([390, 700, 807, 808, 1280])("offers supported views in bb's tabs and themes in bb's select at %ipx", async (panelWidth) => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(panelWidth);
+    try {
+      renderPreview({
+        themeCatalog: () => DEFAULT_CATALOG,
+        setTheme: () => DEFAULT_CATALOG,
+      });
 
-    const tabs = within(screen.getByRole("tablist", { name: "Preview view" })).getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Thread", "New thread", "Split", "Settings"]);
-    const threadTab = screen.getByRole("tab", { name: "Thread" });
-    expect(threadTab.className).toContain("focus-visible:outline-none");
-    expect(threadTab.className).toContain("focus-visible:ring-2");
-    expect(threadTab.className).toContain("cursor-pointer");
+      const tabs = within(screen.getByRole("tablist", { name: "Preview view" })).getAllByRole("tab");
+      expect(tabs.map((tab) => tab.textContent)).toEqual(panelWidth < 808
+        ? ["Thread", "New thread", "Settings"]
+        : ["Thread", "New thread", "Split", "Settings"]);
+      const threadTab = screen.getByRole("tab", { name: "Thread" });
+      expect(threadTab.className).toContain("focus-visible:outline-none");
+      expect(threadTab.className).toContain("focus-visible:ring-2");
+      expect(threadTab.className).toContain("cursor-pointer");
 
-    const control = themeControl();
-    expect(control.getAttribute("role")).toBe("combobox");
-    expect(control.className).toContain("focus:outline-none");
-    expect(control.className).toContain("focus:ring-1");
+      const control = themeControl();
+      expect(control.getAttribute("role")).toBe("combobox");
+      expect(control.className).toContain("focus:outline-none");
+      expect(control.className).toContain("focus:ring-1");
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  it("keeps Split availability and its preview aligned across compact widths", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(700);
+    try {
+      renderPreview({ themeCatalog: () => DEFAULT_CATALOG, setTheme: () => DEFAULT_CATALOG }, "split");
+      expect(screen.queryByRole("tab", { name: "Split" })).toBeNull();
+      expect(screen.getByRole("tab", { name: "Thread" }).getAttribute("aria-selected")).toBe("true");
+      expect(document.querySelector("[data-tp-mobile-scene]")).not.toBeNull();
+      expect(document.querySelector("[data-tp-split-pane]")).toBeNull();
+      width.mockReturnValue(808);
+      fireEvent(window, new Event("resize"));
+      expect(screen.getByRole("tab", { name: "Split" }).getAttribute("aria-selected")).toBe("true");
+      expect(document.querySelector("[data-tp-mobile-scene]")).toBeNull();
+      expect(document.querySelectorAll("[data-tp-split-pane]")).toHaveLength(2);
+      width.mockReturnValue(700);
+      fireEvent(window, new Event("resize"));
+      expect(screen.queryByRole("tab", { name: "Split" })).toBeNull();
+      expect(document.querySelector("[data-tp-mobile-scene]")).not.toBeNull();
+    } finally {
+      width.mockRestore();
+    }
   });
 
   it("keeps the thread table of contents open and interactive", async () => {
@@ -388,17 +417,17 @@ describe("Theme Preview", () => {
     expect(dark.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("restacks the main areas on mobile with the read-only style sheet last", async () => {
-    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(480);
+  it.each([390, 600, 1199])("restacks the main areas at %ipx with the read-only style sheet last", async (panelWidth) => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(panelWidth);
     try {
       renderPreview({
         themeCatalog: () => DEFAULT_CATALOG,
         setTheme: () => DEFAULT_CATALOG,
       });
 
-      await waitFor(() => expect(document.querySelector("[data-tp-band=mobile]")).not.toBeNull());
+      await waitFor(() => expect(document.querySelector(`[data-tp-band=${panelWidth < 600 ? "mobile" : "narrow"}]`)).not.toBeNull());
       expect(screen.queryByRole("button", { name: /full style guide/i })).toBeNull();
-      // The compact interaction areas stay together before the style sheet.
+      expect(document.querySelector("[data-tp-section=rail]")).toBeNull();
       const areas = [...document.querySelectorAll("[data-tp-area]")].map((el) => el.getAttribute("data-tp-area"));
       expect(areas).toEqual(["mock", "overlays", "components", "stylesheet"]);
       expect(document.querySelector("[data-tp-style-readonly]")).not.toBeNull();
@@ -521,6 +550,37 @@ describe("Theme Preview", () => {
     }
   });
 
+  it("opens and closes mobile shelves and resets them when the preview view changes", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(390);
+    try {
+      const mounted = renderPreview({ themeCatalog: () => DEFAULT_CATALOG, setTheme: () => DEFAULT_CATALOG });
+      await screen.findByRole("button", { name: "Show navigation preview" });
+      fireEvent.click(screen.getByRole("button", { name: "Show navigation preview" }));
+      expect(document.querySelector("[data-tp-mobile-navigation]")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close navigation preview" }));
+      expect(document.querySelector("[data-tp-mobile-navigation]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show right panel preview" }));
+      expect(screen.getByText("Pull request")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Return to conversation preview" }));
+      expect(document.querySelector("[data-tp-mobile-panel]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show navigation preview" }));
+      const Component = panel.component;
+      mounted.rerender(<Component subPath="new" />);
+      await waitFor(() => expect(document.querySelector("[data-tp-mobile-navigation]")).toBeNull());
+      expect(screen.getByText("Recent threads")).toBeDefined();
+      expect(screen.getByText("Ask anything…")).toBeDefined();
+      mounted.rerender(<Component subPath="split" />);
+      expect(screen.getByRole("tab", { name: "Thread" }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByRole("tab", { name: "Split" })).toBeNull();
+      expect(document.querySelector("[data-tp-split-pane]")).toBeNull();
+      width.mockReturnValue(1280);
+      fireEvent(window, new Event("resize"));
+      expect(screen.getByRole("tab", { name: "Split" }).getAttribute("aria-selected")).toBe("true");
+    } finally {
+      width.mockRestore();
+    }
+  });
+
   it("keeps the style sheet passive while showing every visual system", async () => {
     renderPreview({
       themeCatalog: () => DEFAULT_CATALOG,
@@ -562,6 +622,7 @@ describe("Theme Preview", () => {
     });
 
     expect(screen.getByText("Overlays")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Overlays" }));
     for (const name of ["Menu", "Dialog", "Popover", "Tooltip", "Hover card", "Toast"]) {
       expect(screen.getByRole("button", { name })).toBeDefined();
     }
@@ -609,7 +670,7 @@ describe("Theme Preview", () => {
     }
   });
 
-  it("keeps badges on one row and the component specimens evenly grouped", async () => {
+  it("wraps badges and keeps the component specimens evenly grouped", async () => {
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1280);
     try {
       renderPreview({
@@ -619,8 +680,8 @@ describe("Theme Preview", () => {
       await waitFor(() => expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull());
 
       const badges = document.querySelector<HTMLElement>("[data-tp-badge-row]");
-      expect(badges?.style.flexWrap).toBe("nowrap");
-      expect(badges?.style.overflowX).toBe("auto");
+      expect(badges?.style.flexWrap).toBe("wrap");
+      expect(badges?.style.overflowX).toBe("");
 
       const components = document.querySelector<HTMLElement>("[data-tp-components]");
       expect(components?.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
@@ -663,6 +724,7 @@ describe("Theme Preview", () => {
       setTheme: () => DEFAULT_CATALOG,
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Overlays" }));
     const trigger = document.querySelector<HTMLButtonElement>("[data-tp-hovercard-trigger]");
     if (!trigger) throw new Error("Hover card trigger was not rendered");
 
@@ -694,6 +756,13 @@ describe("Theme Preview", () => {
       setTheme: () => DEFAULT_CATALOG,
     });
 
+    for (const name of ["Overlays", "Components", "Style sheet"]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-expanded")).toBe("false");
+    }
+    expect(screen.queryByRole("textbox", { name: "Search threads" })).toBeNull();
+    const components = screen.getByRole("button", { name: "Components" });
+    fireEvent.click(components);
+
     // Input accepts typing.
     const search = await screen.findByRole("textbox", { name: "Search threads" });
     fireEvent.change(search, { target: { value: "endless color" } });
@@ -713,6 +782,14 @@ describe("Theme Preview", () => {
 
     // Disabled states are real, not painted.
     expect((screen.getByRole("button", { name: "Disabled" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(components);
+    expect(screen.queryByRole("textbox", { name: "Search threads" })).toBeNull();
+    fireEvent.click(components);
+    expect(screen.getByRole("textbox", { name: "Search threads" })).toBe(search);
+    expect((search as HTMLInputElement).value).toBe("endless color");
+    expect(screen.getByRole("switch", { name: "Notifications" }).getAttribute("aria-checked")).not.toBe(before);
+    expect(screen.getByRole("checkbox", { name: "Include drafts" }).getAttribute("aria-checked")).not.toBe(checkedBefore);
   });
 
   it("gives the tooltip a dismissal delay and keyboard focus support", async () => {
@@ -720,6 +797,7 @@ describe("Theme Preview", () => {
       themeCatalog: () => DEFAULT_CATALOG,
       setTheme: () => DEFAULT_CATALOG,
     });
+    fireEvent.click(screen.getByRole("button", { name: "Overlays" }));
     const trigger = await waitFor(() => {
       const found = document.querySelector<HTMLButtonElement>("[data-tp-tooltip-trigger]");
       expect(found).not.toBeNull();
@@ -752,7 +830,9 @@ describe("Theme Preview", () => {
       const sheet = document.querySelector("[data-tp-area=stylesheet]");
       const blocks = [...(sheet?.querySelectorAll("[data-tp-block]") ?? [])].map((el) => el.getAttribute("data-tp-block"));
       expect(blocks).toEqual(["surfaces", "ink", "accent", "status", "lines", "typography", "rhythm", "radius", "shadow"]);
-      expect(sheet?.querySelector("input, select, [role=slider], button")).toBeNull();
+      expect(sheet?.querySelector("input, select, [role=slider]")).toBeNull();
+      expect(sheet?.querySelectorAll("button")).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Style sheet" }).getAttribute("aria-expanded")).toBe("true");
       const ratios = await waitFor(() => {
         const found = document.querySelectorAll("[data-tp-contrast-ratio]");
         expect(found).toHaveLength(13);

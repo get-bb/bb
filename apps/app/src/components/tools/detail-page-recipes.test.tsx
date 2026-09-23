@@ -11,6 +11,7 @@ import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { ResourceDetailPage } from "@bb/shared-ui/resource-list";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
@@ -160,13 +161,39 @@ function renderPlugin(
   );
 }
 
+describe("Resource detail header", () => {
+  it("keeps wrapped title metadata in the title column beside the leading icon", () => {
+    render(
+      <ResourceDetailPage
+        leading={<span>Leading icon</span>}
+        title="A long resource title"
+        titleMeta={<span>Category</span>}
+      >
+        <div>Content</div>
+      </ResourceDetailPage>,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: "A long resource title",
+    });
+    const titleRow = heading.parentElement;
+    const titleColumn = titleRow?.parentElement;
+    const titleAndIcon = titleColumn?.parentElement;
+    const leading = screen.getByText("Leading icon");
+
+    expect(titleRow?.contains(screen.getByText("Category"))).toBe(true);
+    expect(titleColumn?.contains(leading)).toBe(false);
+    expect(titleAndIcon?.contains(leading)).toBe(true);
+  });
+});
+
 describe("Plugin detail recipe", () => {
   it("omits Capabilities when the plugin has no capability rows", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["release", "Release"],
+      ["release", "Details"],
     ]);
   });
 
@@ -188,7 +215,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["release", "Release"],
+      ["release", "Details"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -202,7 +229,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["release", "Release"],
+      ["release", "Details"],
       ["activity", "Background services"],
     ]);
   });
@@ -435,10 +462,12 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(renderedRecipe(container)).toContainEqual([
+    expect(
+      screen.getByRole("button", { name: "GitHub settings" }),
+    ).toBeTruthy();
+    expect(renderedRecipe(container).map(([kind]) => kind)).not.toContain(
       "configuration",
-      "Configuration",
-    ]);
+    );
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
@@ -639,7 +668,7 @@ describe("Skill detail recipe", () => {
     );
 
     expect(
-      screen.getByRole("img", { name: "example" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "example" }).getAttribute("src"),
     ).toBe("/skill-preview/assets/example.png");
   });
 

@@ -34,11 +34,6 @@
       "types": "./src/thread-visibility.ts",
       "default": "./src/thread-visibility.ts"
     },
-    "./utf16": {
-      "source": "./src/utf16.ts",
-      "types": "./src/utf16.ts",
-      "default": "./src/utf16.ts"
-    },
     "./update-state": {
       "source": "./src/update-state.ts",
       "types": "./src/update-state.ts",
@@ -68,6 +63,11 @@
       "source": "./src/plugin-interaction-limits.ts",
       "types": "./src/plugin-interaction-limits.ts",
       "default": "./src/plugin-interaction-limits.ts"
+    },
+    "./prompt-attachment-limits": {
+      "source": "./src/prompt-attachment-limits.ts",
+      "types": "./src/prompt-attachment-limits.ts",
+      "default": "./src/prompt-attachment-limits.ts"
     }
   },
   "types": "./src/index.ts",

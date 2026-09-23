@@ -677,6 +677,7 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 
 function dropEventToolNameColumn(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS provider_model_catalogs").run();
+  db.$client.prepare("DROP TABLE IF EXISTS ui_preference_defaults").run();
   db.$client.prepare("DROP TABLE IF EXISTS ui_preferences").run();
   db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
@@ -780,7 +781,20 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
     );
 }
 
+function dropQueuedMessageAttemptColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of ["failure_count", "next_attempt_at"]) {
+    if (!columns.some((column) => column.name === name)) continue;
+    db.$client
+      .prepare(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`)
+      .run();
+  }
+}
+
 function dropQueueReworkSchema(db: DbConnection): void {
+  dropQueuedMessageAttemptColumns(db);
   rewindEnvironmentProvisioningMigration(db);
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
@@ -858,6 +872,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
@@ -876,7 +891,6 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS project_attachment_backfills");
   db.$client.exec("DROP INDEX IF EXISTS threads_project_id_idx");
   db.$client.exec("DROP TABLE IF EXISTS environment_variables");
-  db.$client.exec("DROP TABLE IF EXISTS thread_image_metadata");
   db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
   db.$client.exec("DROP TABLE IF EXISTS provider_model_catalogs");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
@@ -1751,6 +1765,7 @@ describe("migrate", () => {
       const eventData = JSON.stringify({ message: "existing event" });
 
       db.$client.prepare("DROP TABLE provider_model_catalogs").run();
+      db.$client.prepare("DROP TABLE IF EXISTS ui_preference_defaults").run();
       db.$client.prepare("DROP TABLE ui_preferences").run();
       db.$client.prepare("DROP TABLE retained_event_outputs").run();
       db.$client
@@ -5704,10 +5719,12 @@ describe("environment providers migration", () => {
 
   function seedPreProviderEnvironments(db: DbConnection): void {
     db.$client.prepare("DROP TABLE provider_model_catalogs").run();
+    db.$client.prepare("DROP TABLE IF EXISTS ui_preference_defaults").run();
     db.$client.prepare("DROP TABLE ui_preferences").run();
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
     rewindEnvironmentProvidersMigration(db);
+    dropQueuedMessageAttemptColumns(db);
     db.$client
       .prepare<[number]>(
         "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
@@ -6121,6 +6138,7 @@ describe("environment and thread startup ownership migration", () => {
       try {
         rewindMachineProvidersMigration(db);
         rewindEnvironmentProvisioningMigration(db);
+        dropQueuedMessageAttemptColumns(db);
         const legacySchema = readFileSync(
           resolve(
             dirname(fileURLToPath(import.meta.url)),

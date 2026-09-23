@@ -9,6 +9,7 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
+import { sliceUtf16Tail } from "@bb/text-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -119,14 +120,16 @@ function buildProviderProcessExitDetail(
   if (!info.stderr) {
     return undefined;
   }
-  return `stderr:\n${info.stderr.slice(-PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH)}`;
+  return `stderr:\n${sliceUtf16Tail(info.stderr, PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH)}`;
 }
 
 export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
+  shellEnvGeneration: number;
   skillCatalogHash: string | null;
-  lastWarnedStaleSkillCatalogHash: string | null;
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+  retainedSkillCatalogHashes: Set<string>;
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
@@ -259,6 +262,7 @@ export class RuntimeManager {
   private readonly hostWatcher;
   private readonly provisionWorkspace;
   private baseShellEnv;
+  private shellEnvGeneration = 0;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
   private readonly pendingCatalogHashes = new Map<string, string>();
@@ -558,6 +562,7 @@ export class RuntimeManager {
     }
 
     this.baseShellEnv = { ...shellEnv };
+    this.shellEnvGeneration += 1;
     this.providerInstallationGate.clear();
     await this.shutdownProviderMaintenanceRuntime();
     await this.evictIdleRuntimeEntries();
@@ -645,9 +650,9 @@ export class RuntimeManager {
         keepCatalogHashes: [
           ...pendingCatalogHashes,
           ...this.pendingCatalogHashes.values(),
-          ...[...this.entries.values()].flatMap((entry) =>
-            entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
-          ),
+          ...[...this.entries.values()].flatMap((entry) => [
+            ...entry.retainedSkillCatalogHashes,
+          ]),
         ],
         logger: this.getInjectedSkillsLogger(),
       });
@@ -689,6 +694,19 @@ export class RuntimeManager {
     args: EnsureCompatibleEntryArgs,
   ): Promise<RuntimeEntry | null> {
     if (
+      args.entry.shellEnvGeneration !== this.shellEnvGeneration &&
+      !this.entryHasActiveRuntimeWork(args.entry) &&
+      !this.hasInFlightThreadCommand(args.entry, args.targetThreadId)
+    ) {
+      this.entries.delete(args.entry.environmentId);
+      await args.entry.runtime.shutdown();
+      await this.cleanupUnusedInjectedSkillStagingDirs(
+        args.skillConfig ? [args.skillConfig.catalogHash] : [],
+      );
+      return null;
+    }
+
+    if (
       args.skillConfig === null ||
       args.entry.skillCatalogHash === args.skillConfig.catalogHash ||
       (args.entry.skillCatalogHash === null &&
@@ -702,23 +720,12 @@ export class RuntimeManager {
       (this.entryHasActiveRuntimeWork(args.entry) ||
         this.hasInFlightThreadCommand(args.entry, args.targetThreadId))
     ) {
-      if (
-        args.entry.lastWarnedStaleSkillCatalogHash !==
-        args.skillConfig.catalogHash
-      ) {
-        args.entry.lastWarnedStaleSkillCatalogHash =
-          args.skillConfig.catalogHash;
-        this.options.logger?.warn(
-          {
-            environmentId: args.entry.environmentId,
-            threadId: args.targetThreadId,
-            activeCatalogHash: args.entry.skillCatalogHash,
-            requestedCatalogHash: args.skillConfig.catalogHash,
-          },
-          "Deferring injected skill catalog refresh for busy runtime",
-        );
-      }
-      return args.entry;
+      args.entry.retainedSkillCatalogHashes.add(args.skillConfig.catalogHash);
+      return {
+        ...args.entry,
+        skillCatalogHash: args.skillConfig.catalogHash,
+        skillRoots: args.skillConfig.skillRoots,
+      };
     }
 
     await this.replaceEntryForSkillCatalog({
@@ -1187,6 +1194,7 @@ export class RuntimeManager {
     });
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
+    const shellEnvGeneration = this.shellEnvGeneration;
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath: workspace.path,
@@ -1247,8 +1255,12 @@ export class RuntimeManager {
     return {
       environmentId: args.environmentId,
       runtime,
+      shellEnvGeneration,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
-      lastWarnedStaleSkillCatalogHash: null,
+      skillRoots: args.skillConfig?.skillRoots ?? [],
+      retainedSkillCatalogHashes: new Set(
+        args.skillConfig ? [args.skillConfig.catalogHash] : [],
+      ),
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,

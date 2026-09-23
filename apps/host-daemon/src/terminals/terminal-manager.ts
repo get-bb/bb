@@ -18,6 +18,7 @@ import {
   killProcessGroup,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
+import { displayWidth, truncateToWidth } from "@bb/text-utils";
 import type { HostDaemonServerTerminalMessage } from "../server-connection-support.js";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -394,10 +395,10 @@ function terminalTitleFromShell(shell: string): string {
 
 function terminalTitleFromCommand(command: string): string {
   const normalized = command.trim().replace(/\s+/g, " ");
-  if (normalized.length <= 80) {
+  if (displayWidth(normalized) <= 80) {
     return normalized;
   }
-  return `${normalized.slice(0, 77)}...`;
+  return `${truncateToWidth(normalized, 77)}...`;
 }
 
 function terminalSpawnArgsForStart(message: TerminalOpenMessage): string[] {

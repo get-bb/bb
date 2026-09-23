@@ -3,6 +3,7 @@ import {
   desktopBrowserCommandSchema,
   desktopBrowserResultSchemas,
 } from "../src/desktop-browser.js";
+import { desktopBrowserImportSourceIdSchema } from "../src/desktop-browser-import.js";
 
 const scope = {
   instanceId: "window",
@@ -10,6 +11,49 @@ const scope = {
   threadId: "thread",
 };
 describe("desktop browser command boundaries", () => {
+  it.each(["dia", "zen", `storage-${"a".repeat(64)}`])(
+    "accepts %s import discovery and selection across the wire",
+    (sourceId) => {
+      expect(
+        desktopBrowserCommandSchema.safeParse({
+          type: "desktop.browser.import_cookies",
+          instanceId: scope.instanceId,
+          generation: scope.generation,
+          sourceId,
+          sourceProfileDirectory: "Default",
+          profile: { kind: "personal" },
+        }).success,
+      ).toBe(true);
+      expect(
+        desktopBrowserResultSchemas[
+          "desktop.browser.list_import_sources"
+        ].safeParse({
+          sources: [
+            {
+              id: sourceId,
+              name: "Browser",
+              profiles: [{ directory: "Default", name: "Personal" }],
+            },
+          ],
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it("rejects path-shaped and malformed discovered source IDs", () => {
+    for (const id of [
+      "/tmp/Cookies",
+      "../profile",
+      "storage-",
+      "storage-anything",
+      `storage-${"a".repeat(65)}`,
+    ]) {
+      expect(desktopBrowserImportSourceIdSchema.safeParse(id).success).toBe(
+        false,
+      );
+    }
+  });
+
   it("rejects arbitrary RPC, endpoints, unsupported navigation schemes, and duplicate grants", () => {
     expect(
       desktopBrowserCommandSchema.safeParse({

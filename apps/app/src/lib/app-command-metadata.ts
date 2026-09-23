@@ -82,6 +82,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       ),
       command("window.new", "New window", "Open another bb desktop window."),
       command(
+        "window.find",
+        "Find in window",
+        "Search the text shown in the current bb desktop window.",
+      ),
+      command(
         "app.back",
         "Back to app",
         "Return from Settings, Plugins, or Skills to the app.",

@@ -550,12 +550,13 @@ describe("PluginsOverview", () => {
     );
   });
 
-  it("opens the canonical detail returned by a Browse install", async () => {
+  it("keeps Browse and its filters open after installation", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/plugins?view=browse"]}>
+      <MemoryRouter initialEntries={["/plugins?view=browse&query=GitHub&sort=name"]}>
         <QueryClientWrapper>
+          <LocationPath />
           <Routes>
             <Route path="/plugins" element={<PluginsOverview />} />
             <Route path="*" element={<LocationPath />} />
@@ -572,8 +573,13 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
 
-    expect((await screen.findByTestId("location-path")).textContent).toBe(
-      "/settings/plugins/github",
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Install GitHub?" })).toBeNull();
+    });
+    expect(screen.getByTestId("location-path").textContent).toBe("/plugins");
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toHaveProperty(
+      "value",
+      "GitHub",
     );
   });
 
@@ -639,11 +645,72 @@ describe("PluginsOverview", () => {
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "Plugin 01" } },
     );
+    await waitFor(() => expect(screen.queryByText("Plugin 14")).toBeNull());
     expect(screen.getByText("Plugin 01")).toBeTruthy();
-    expect(screen.queryByText("Plugin 14")).toBeNull();
   });
 
-  it("sorts enabled plugins before inactive plugins and published plugins first within enabled", async () => {
+  it("keeps loading in Settings while the sentinel stays visible so disabled plugins are reachable", async () => {
+    const plugins = Array.from({ length: 40 }, (_, index) => ({
+      ...AUTOMATIONS_PLUGIN,
+      id: `plugin-${String(index).padStart(2, "0")}`,
+      name: `Plugin ${String(index).padStart(2, "0")}`,
+      enabled: index < 36,
+      status: index < 36 ? "running" : "disabled",
+    }));
+    let atBottom = false;
+    const observers = new Set<IntersectionObserverMock>();
+    class IntersectionObserverMock {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe() {
+        observers.add(this);
+        queueMicrotask(() => {
+          if (observers.has(this)) this.check();
+        });
+      }
+      check() {
+        this.callback(
+          [
+            {
+              isIntersecting:
+                atBottom ||
+                document.querySelectorAll('[data-testid^="plugin-row-"]')
+                  .length <= 24,
+            } as IntersectionObserverEntry,
+          ],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {
+        observers.delete(this);
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
+    installFetch(plugins);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/settings/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview mode="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Plugin 35")).toBeTruthy();
+    expect(screen.queryByText("Plugin 36")).toBeNull();
+    await act(async () => {
+      atBottom = true;
+      for (const observer of observers) observer.check();
+    });
+    expect(
+      screen.getByRole("switch", { name: "Enable plugin-39" }),
+    ).toBeTruthy();
+    expect(
+      document.querySelector("[data-resource-infinite-sentinel]"),
+    ).toBeNull();
+  });
+
+  it("keeps disabled plugins in place, sorting published plugins first", async () => {
     installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
@@ -699,9 +766,9 @@ describe("PluginsOverview", () => {
     expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-official",
       "plugin-row-enabled-local-alpha",
       "plugin-row-inactive-local",
-      "plugin-row-inactive-official",
     ]);
     const officialPills = screen.getAllByText("BB Official");
     expect(officialPills).toHaveLength(2);
@@ -741,9 +808,9 @@ describe("PluginsOverview", () => {
     expect(rowIds()).toEqual([
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-official",
       "plugin-row-enabled-local-alpha",
       "plugin-row-inactive-local",
-      "plugin-row-inactive-official",
     ]);
     expect(
       screen

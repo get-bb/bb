@@ -113,10 +113,12 @@ describe("GET /api/v1/system/usage-limits", () => {
         ),
       ).toBe(false);
       expect(
-        responder.requests.some(
-          (request) => request.command.type === "provider.health",
+        responder.requests.flatMap((request) =>
+          request.command.type === "provider.health"
+            ? [request.command.providerId]
+            : [],
         ),
-      ).toBe(false);
+      ).toEqual(["acp-opencode"]);
     });
   });
 

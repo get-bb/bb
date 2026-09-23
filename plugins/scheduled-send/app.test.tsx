@@ -11,8 +11,6 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
-// Load through the thunk so the test runtime is installed before app.tsx binds
-// `definePluginApp`; pull the pure helpers from the same evaluation.
 const app = await loadPluginApp(() => import("./app"));
 const { composerScopeKey, openSendLater, resetSendLaterState } =
   await import("./app");
@@ -91,12 +89,7 @@ describe("registration", () => {
         // neither owns a dispatchable submission of its own.
         scopes: ["thread", "new-thread"],
         plusMenu: [
-          {
-            id: "send-later",
-            label: "Send later…",
-            icon: "Calendar",
-            experimental_sendMenu: true,
-          },
+          { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
         // The picker is a portalled dialog, so the mount point wears no card
         // chrome.

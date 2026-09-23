@@ -73,6 +73,7 @@ const EXCLUDED_SEGMENTS = new Set([
  * today: it selects behavior by the agent's dialect, never by a provider id.
  */
 const EXCLUDED_PREFIXES = [
+  join("apps", "cli", ".packaged-plugin-build-"),
   join("plugins", "provider-"),
   join("plugins", "environment-"),
   // Account Pool proxies one named provider's traffic; it is provider-side

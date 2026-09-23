@@ -562,6 +562,33 @@ describe("TerminalManager", () => {
     expect(
       harness.runtimeManager.get("env-1")?.terminals.has("term-command"),
     ).toBe(true);
+
+    const wideCommand = "调".repeat(100);
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      contributedEnv: [],
+      requestId: "open-wide-command",
+      terminalId: "term-wide-command",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: wideCommand },
+    });
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        terminalId: "term-wide-command",
+        title: `${"调".repeat(38)}...`,
+      }),
+    );
+
     await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
     expect(harness.runtimeManager.get("env-1")).toBeDefined();
     expect(harness.runtime.shutdown).not.toHaveBeenCalled();

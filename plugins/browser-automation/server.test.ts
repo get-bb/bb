@@ -1,6 +1,7 @@
 import {
   createFakePluginHost,
   makePluginAgentConfigurationContext,
+  makeHostResponse,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -94,6 +95,10 @@ async function setup() {
       { tabId: "created", profile: { kind: "automation", id: "profile" } },
     ],
   }));
+  host.harness.sdk.stub("hosts.list", async () => [
+    makeHostResponse({ id: "local-host", name: "Lab workstation" }),
+    makeHostResponse({ id: "desktop-host", name: "Lab desktop" }),
+  ]);
   await plugin(host.bb);
   async function open(tabId?: string) {
     const result = await host.harness.behavior.callRpc("open", {
@@ -111,6 +116,102 @@ async function setup() {
 }
 
 describe("server session ownership", () => {
+  it.each([
+    ["local", "Lab workstation", "local-host"],
+    ["desktop", "Lab desktop", "desktop-host"],
+    ["local", "local-host", "local-host"],
+  ])(
+    "resolves %s machine selector %s before opening",
+    async (backend, target, hostId) => {
+      const h = await setup();
+      try {
+        const result = await h.harness.behavior.runCli(
+          [
+            "open",
+            "--backend",
+            backend,
+            "--machine",
+            target,
+            ...(backend === "local"
+              ? ["--headless"]
+              : ["--desktop", "desktop"]),
+            "--json",
+          ],
+          { threadId: "thread-test" },
+        );
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({ hostId });
+        expect(h.worker).toHaveBeenCalledWith(
+          expect.objectContaining({ method: "prepare", hostId }),
+        );
+      } finally {
+        await h.harness.lifecycle.dispose();
+      }
+    },
+  );
+
+  it("prefers an exact machine ID over a matching name", async () => {
+    const h = await setup();
+    h.harness.sdk.stub("hosts.list", async () => [
+      makeHostResponse({ id: "other-host", name: "local-host" }),
+      makeHostResponse({ id: "local-host", name: "Lab workstation" }),
+    ]);
+    try {
+      const result = await h.harness.behavior.runCli(
+        [
+          "open",
+          "--backend",
+          "local",
+          "--machine",
+          " local-host ",
+          "--headless",
+          "--json",
+        ],
+        { threadId: "thread-test" },
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ hostId: "local-host" });
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it.each([
+    ["Shared lab", "ambiguous"],
+    ["Missing lab", "not found"],
+  ])(
+    "rejects machine selector %s before creating a session",
+    async (target, message) => {
+      const h = await setup();
+      h.harness.sdk.stub("hosts.list", async () => [
+        makeHostResponse({ id: "host-a", name: "Shared lab" }),
+        makeHostResponse({ id: "host-b", name: "Shared lab" }),
+      ]);
+      try {
+        const result = await h.harness.behavior.runCli(
+          [
+            "open",
+            "--backend",
+            "local",
+            "--machine",
+            target,
+            "--headless",
+            "--json",
+          ],
+          { threadId: "thread-test" },
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain(message);
+        expect(h.worker).not.toHaveBeenCalled();
+        expect(
+          await h.harness.behavior.callRpc("list", { threadId: "thread-test" }),
+        ).toEqual([]);
+      } finally {
+        await h.harness.lifecycle.dispose();
+      }
+    },
+  );
+
   it("returns browser-host image paths through the CLI without registering tools", async () => {
     const h = await setup();
     try {

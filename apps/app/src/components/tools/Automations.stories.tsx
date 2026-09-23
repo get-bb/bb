@@ -331,6 +331,8 @@ export function OverviewRows() {
                 project={project}
                 onNavigate={noop}
                 onEnabledChange={async () => {}}
+                onRunNow={async () => {}}
+                onDelete={() => {}}
               />
             </div>
           ) : null}
@@ -346,6 +348,8 @@ export function OverviewRows() {
             project={{ id: "proj_personal", name: "Personal" }}
             onNavigate={noop}
             onEnabledChange={async () => {}}
+            onRunNow={async () => {}}
+            onDelete={() => {}}
           />
         </div>
       </StoryRow>

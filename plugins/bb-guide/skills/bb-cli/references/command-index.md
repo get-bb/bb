@@ -79,7 +79,6 @@ This index lists every command path that the core CLI registers, including alias
 - `bb machine create`
 - `bb machine list`
 - `bb machine show`
-- `bb machine join-code`
 - `bb machine rename`
 - `bb machine remove`
 - `bb machine suspend`
@@ -165,7 +164,6 @@ server.
 - `bb thread section delete`
 - `bb thread search`
 - `bb thread history`
-- `bb thread image-metadata`
 - `bb thread read`
 - `bb thread unread`
 - `bb thread reorder-pinned`
@@ -343,3 +341,7 @@ Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--project <id>` for project overrides and `--json`. Omit `--project` for global settings.
 
 Standalone `bb machine create` machines remain until explicitly removed.
+
+To enroll an existing machine, run `bb machine create --provider manual`, then
+run its printed enrollment command on the target. The CLI waits until the daemon
+connects. With `--no-wait`, it returns the creating host ID immediately.

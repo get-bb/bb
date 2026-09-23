@@ -16,7 +16,7 @@ export const SETTINGS_NAV_SECTIONS = [
     label: "Environment variables",
   },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
-  { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },
+  { icon: "Plug02", id: "plugins", label: "Installed plugins" },
   { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },

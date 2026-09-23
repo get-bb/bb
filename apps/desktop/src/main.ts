@@ -179,6 +179,7 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
+  BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
@@ -194,6 +195,10 @@ import {
 } from "./desktop-browser-view.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import {
+  createDesktopFindViewManager,
+  type DesktopFindViewManager,
+} from "./desktop-find-view.js";
 import { createBrowserImportService } from "./browser-import/browser-import.js";
 import { readMacAppIcon } from "./browser-import/mac-app-icon.js";
 import {
@@ -201,7 +206,10 @@ import {
   type DesktopBrowserBroker,
 } from "./desktop-browser-broker.js";
 import { createDesktopBrowserBrokerClient } from "./desktop-browser-broker-client.js";
-import { bbDesktopBrowserTabRefSchema } from "@bb/desktop-contract";
+import {
+  bbDesktopBrowserTabRefSchema,
+  bbDesktopWindowFindRequestSchema,
+} from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_TARGET_CHANNEL,
   BB_DESKTOP_BROWSER_GET_CONTROL_CHANNEL,
@@ -343,6 +351,7 @@ const logViewerCopyRequestSchema = z
 
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
+let desktopFindViewManager: DesktopFindViewManager | null = null;
 let desktopBrowserBroker: DesktopBrowserBroker | null = null;
 let desktopBrowserBrokerClient: ReturnType<
   typeof createDesktopBrowserBrokerClient
@@ -1050,9 +1059,16 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
         if (isMainFrame && !isInPlace) {
           splitNavigationEnabledWebContentsIds.delete(webContentsId);
           splitNavigationCommandsByWebContentsId.delete(webContentsId);
+          desktopFindViewManager?.close(nativeWindow);
         }
       },
     );
+    const layoutFindView = () => {
+      desktopFindViewManager?.layout(nativeWindow);
+    };
+    nativeWindow.on("resize", layoutFindView);
+    nativeWindow.on("enter-full-screen", layoutFindView);
+    nativeWindow.on("leave-full-screen", layoutFindView);
   }
   registerApplicationRendererReloadShortcut(
     (browserWindow as BrowserWindow).webContents,
@@ -1065,6 +1081,7 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
     sendDesktopWindowStateChanged(browserWindow);
   });
   browserWindow.on("closed", () => {
+    desktopFindViewManager?.releaseWindow(webContentsId);
     desktopBrowserBroker?.releaseWindow(webContentsId);
     applicationWindowWebContentsIds.delete(webContentsId);
     splitNavigationEnabledWebContentsIds.delete(webContentsId);
@@ -1863,6 +1880,7 @@ async function finishQuit(): Promise<void> {
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
+  desktopFindViewManager?.destroyAll();
   await desktopWindowFactory?.persistOpenWindows();
   await stopOwnedRuntime();
 }
@@ -2403,6 +2421,11 @@ async function runDesktopApp(): Promise<void> {
     "dist",
     "browser-page-preload.cjs",
   );
+  const findBarPreloadPath = join(
+    paths.appPath,
+    "dist",
+    "find-bar-preload.cjs",
+  );
   const resolvedExistingServerDialogPreloadPath = join(
     paths.appPath,
     "dist",
@@ -2438,6 +2461,10 @@ async function runDesktopApp(): Promise<void> {
   assertPathExists({
     label: "browser page preload script",
     path: browserPagePreloadPath,
+  });
+  assertPathExists({
+    label: "find bar preload script",
+    path: findBarPreloadPath,
   });
   assertPathExists({
     label: "server URL dialog preload script",
@@ -2558,6 +2585,23 @@ async function runDesktopApp(): Promise<void> {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
+  desktopFindViewManager = createDesktopFindViewManager({
+    preloadPath: findBarPreloadPath,
+  });
+  ipcMain.on(BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL, (event, payload: unknown) => {
+    if (
+      !applicationWindowWebContentsIds.has(event.sender.id) ||
+      event.senderFrame !== event.sender.mainFrame
+    ) {
+      return;
+    }
+    const parsed = bbDesktopWindowFindRequestSchema.safeParse(payload);
+    const browserWindow = resolveApplicationWindow(event.sender);
+    if (!parsed.success || browserWindow === null) {
+      return;
+    }
+    desktopFindViewManager?.open(browserWindow, parsed.data);
+  });
   desktopBrowserViewManager = createDesktopBrowserViewManager({
     pagePreloadPath: browserPagePreloadPath,
     dispatchAppCommand({ command, hostWebContentsId }) {
@@ -2595,7 +2639,12 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
   const browserImportService = createBrowserImportService({
-    context: { platform: process.platform, home: homedir() },
+    context: {
+      platform: process.platform,
+      home: homedir(),
+      configHome: process.env.XDG_CONFIG_HOME,
+      excludedDirectories: [app.getPath("userData")],
+    },
     resolveIcon: (appPath) => readMacAppIcon(appPath),
     log(message, details) {
       desktopLogger.info(

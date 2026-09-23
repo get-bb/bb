@@ -5,6 +5,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNotNull,
@@ -37,10 +38,12 @@ import {
   environments,
   pendingInteractions,
   projects,
+  terminalSessions,
   threadSearchSegments,
   threads,
 } from "../schema.js";
 import { createThreadId } from "../ids.js";
+import { NON_TERMINAL_SESSION_STATUSES } from "./terminal-sessions.js";
 import { createOrderKeyBetween } from "./order-keys.js";
 import { insertThreadPluginMetadata } from "./thread-plugin-metadata.js";
 
@@ -1310,7 +1313,7 @@ export interface RunningThreadRow {
  * projection of the threads table.
  *
  * Archived and deleted rows are excluded because neither runs: archival stops
- * a thread, and a soft-deleted row is gone. Hidden threads are NOT excluded —
+ * a thread once its undo grace expires, and a soft-deleted row is gone. Hidden threads are NOT excluded —
  * visibility is a UI fact and a hidden thread burns a slot like any other, so
  * hiding it here would under-report real occupancy.
  *
@@ -1335,6 +1338,57 @@ export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
     .orderBy(asc(threads.id))
     .all()
     .map((row) => ({ ...row, hostId: row.hostId ?? null }));
+}
+
+const ARCHIVED_TEARDOWN_THREAD_STATUSES: readonly ThreadStatus[] = [
+  "pending",
+  "starting",
+  "active",
+  "stopping",
+];
+
+export interface ArchivedTeardownThreadRow {
+  archivedAt: number | null;
+  environmentId: string | null;
+  id: string;
+  status: ThreadStatus;
+}
+
+export function listArchivedThreadsPendingTeardown(
+  db: DbQueryConnection,
+): ArchivedTeardownThreadRow[] {
+  return db
+    .select({
+      archivedAt: threads.archivedAt,
+      environmentId: threads.environmentId,
+      id: threads.id,
+      status: threads.status,
+    })
+    .from(threads)
+    .where(
+      and(
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        or(
+          inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES]),
+          exists(
+            db
+              .select({ id: terminalSessions.id })
+              .from(terminalSessions)
+              .where(
+                and(
+                  eq(terminalSessions.threadId, threads.id),
+                  inArray(
+                    terminalSessions.status,
+                    NON_TERMINAL_SESSION_STATUSES,
+                  ),
+                ),
+              ),
+          ),
+        ),
+      ),
+    )
+    .all();
 }
 
 export function listThreadsWithPendingInteractionState(

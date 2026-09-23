@@ -112,6 +112,7 @@ export interface HostsArea {
   experimental_getEnrollmentCommand(
     args: HostGetArgs,
   ): Promise<HostEnrollmentCommandResult>;
+  /** @deprecated Use experimental_create() and experimental_getEnrollmentCommand() for bootstrap enrollment. */
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
   delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
   experimental_deleteOldServerCopy(

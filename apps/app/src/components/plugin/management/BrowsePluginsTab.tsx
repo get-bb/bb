@@ -1,13 +1,13 @@
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
+import { appToast } from "@/components/ui/app-toast";
 import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   ResourceCollectionViewport,
   ResourceListState,
@@ -71,17 +71,25 @@ export function BrowsePluginsTab({
   const [requestedCreationView, setRequestedCreationView] =
     useState(creationViewActive);
   const [composing, setComposing] = useState(false);
-  const debouncedQuery = useDebouncedValue(query.trim(), 300);
-  const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  const catalogQuery = usePluginCatalogSearch("", {
-    enabled: shelfKey !== null,
-  });
+  const trimmedQuery = query.trim();
+  const searchQuery = usePluginCatalogSearch(trimmedQuery, { enabled: true });
+  const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const activeQuery = shelfKey === null ? searchQuery : catalogQuery;
   const catalog = activeQuery.data ?? { entries: [], collections: [] };
   const entries = useMemo(
     () => catalog.entries.filter((entry) => entry.compatible),
     [catalog.entries],
   );
+  const savedResultsError =
+    entries.length > 0 &&
+    (activeQuery.isRefetchError || searchQuery.isRefetchError);
+  const notifiedSavedResultsError = useRef(false);
+  useEffect(() => {
+    if (savedResultsError && !notifiedSavedResultsError.current) {
+      appToast.warning("Couldn’t refresh plugins.");
+    }
+    notifiedSavedResultsError.current = savedResultsError;
+  }, [savedResultsError]);
   const selectedShelf = useMemo(
     () =>
       shelfKey === null
@@ -107,7 +115,7 @@ export function BrowsePluginsTab({
   const filteredEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
     const matchingSearch =
-      shelfKey !== null && debouncedQuery !== ""
+      shelfKey !== null && trimmedQuery !== ""
         ? new Set(
             searchQuery.data?.entries.map(
               (entry) => `${entry.marketplace}/${entry.entryId}`,
@@ -121,19 +129,25 @@ export function BrowsePluginsTab({
           matchingSearch.has(`${entry.marketplace}/${entry.entryId}`)),
     );
   }, [
-    debouncedQuery,
+    trimmedQuery,
     searchQuery.data?.entries,
     selectedCategories,
     shelfEntries,
     shelfKey,
   ]);
+  const shelvesMode =
+    sort === null && shelfKey === null && selectedCategories.length === 0;
   const shelves = useMemo(
     () =>
-      pluginBrowseShelves({
-        entries: filteredEntries,
-        collections: catalog.collections,
-      }),
-    [catalog.collections, filteredEntries],
+      shelvesMode
+        ? pluginBrowseShelves({
+            entries: (catalogQuery.data?.entries ?? []).filter(
+              (entry) => entry.compatible,
+            ),
+            collections: catalogQuery.data?.collections ?? [],
+          })
+        : [],
+    [catalogQuery.data, shelvesMode],
   );
   const flatEntries = useMemo(
     () =>
@@ -243,7 +257,7 @@ export function BrowsePluginsTab({
         {composing && shelfKey === null ? (
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
-          <section className="space-y-6 [--resource-source-shelf-inset:0px]">
+          <section className="space-y-6 [--resource-source-shelf-header-inset:calc(var(--spacing)*3)] [--resource-source-shelf-inset:0px]">
             <PluginCollectionToolbar
               query={query}
               selectedCategories={selectedCategories}
@@ -256,15 +270,9 @@ export function BrowsePluginsTab({
               action={isCompact && shelfKey === null ? createAction : undefined}
             />
 
-            {(searchQuery.isError || activeQuery.isError) &&
-            entries.length > 0 ? (
-              <p className="text-xs text-warning-text" role="status">
-                The latest search failed. The page shows saved catalog results.
-              </p>
-            ) : null}
             {activeQuery.isPending ||
             (shelfKey !== null &&
-              debouncedQuery !== "" &&
+              trimmedQuery !== "" &&
               searchQuery.isPending) ? (
               <ResourceListState state="loading" message="Loading plugins" />
             ) : activeQuery.isError && entries.length === 0 ? (
@@ -291,11 +299,21 @@ export function BrowsePluginsTab({
                 state="empty"
                 message="No plugins match these category filters."
               />
-            ) : sort === null &&
-              shelfKey === null &&
-              selectedCategories.length === 0 &&
-              query.trim().length === 0 ? (
-              <div className="space-y-8" data-testid="plugin-browse-shelves">
+            ) : shelvesMode && trimmedQuery === "" ? null : (
+              <PluginCatalogGrid
+                resetKey={searchParams.toString()}
+                entries={flatEntries}
+                onInstall={onInstall}
+                onUninstall={onUninstall}
+                onOpenPlugin={onOpenPlugin}
+              />
+            )}
+            {shelves.length > 0 ? (
+              <div
+                className="space-y-8"
+                data-testid="plugin-browse-shelves"
+                hidden={trimmedQuery !== ""}
+              >
                 {shelves.map((shelf) => (
                   <BrowseShelf
                     key={shelf.key}
@@ -306,15 +324,7 @@ export function BrowsePluginsTab({
                   />
                 ))}
               </div>
-            ) : (
-              <PluginCatalogGrid
-                entries={flatEntries}
-                showCategory={!isCategoryShelf}
-                onInstall={onInstall}
-                onUninstall={onUninstall}
-                onOpenPlugin={onOpenPlugin}
-              />
-            )}
+            ) : null}
           </section>
         )}
       </div>
@@ -390,7 +400,6 @@ function BrowseShelf({
             <PluginCatalogCard
               key={`${entry.marketplace}/${entry.entryId}`}
               entry={entry}
-              showCategory={false}
               onInstall={onInstall}
               onUninstall={onUninstall}
               onOpenPlugin={onOpenPlugin}

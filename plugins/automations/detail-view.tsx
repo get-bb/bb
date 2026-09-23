@@ -31,7 +31,6 @@ import {
   ResourcePromptPreview,
   ResourceDetailStack,
   ResourceMeta,
-  ResourceOverflowMenu,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -55,6 +54,7 @@ import {
   PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule";
 import { AutomationMetadataItem } from "./metadata";
+import { AutomationActionsMenu } from "./actions-menu";
 
 interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -685,10 +685,7 @@ export function AgentAutomationDefinition({
 export function ScriptAutomationDefinition({
   execution,
 }: {
-  execution: Extract<
-    AutomationDetailResponse["execution"],
-    { mode: "script" }
-  >;
+  execution: Extract<AutomationDetailResponse["execution"], { mode: "script" }>;
 }) {
   const { resolvedWorkingDirectory } = execution;
   const workingDirectoryLabel =
@@ -823,27 +820,16 @@ export function AutomationDetailView({
         />
       }
       overflowMenu={
-        <ResourceOverflowMenu
-          label={`${automation.name} actions`}
-          disabled={actionPending}
-          items={[
-            {
-              label: "Run now",
-              icon: "Play",
-              disabled: requiresPrompt,
-              disabledReason: requiresPrompt
-                ? "Add a prompt before running this automation."
-                : undefined,
-              onSelect: onRunNow,
-            },
-            { kind: "separator" },
-            {
-              label: "Delete",
-              icon: "Trash2",
-              tone: "destructive",
-              onSelect: onDelete,
-            },
-          ]}
+        <AutomationActionsMenu
+          name={automation.name}
+          pending={actionPending}
+          runDisabledReason={
+            requiresPrompt
+              ? "Add a prompt before running this automation."
+              : undefined
+          }
+          onRunNow={onRunNow}
+          onDelete={onDelete}
         />
       }
     >

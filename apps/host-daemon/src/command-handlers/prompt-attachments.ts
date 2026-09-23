@@ -1,6 +1,10 @@
 import { mkdir, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ClientTurnRequestId, PromptInput } from "@bb/domain";
+import {
+  PROMPT_ATTACHMENT_MAX_BYTES,
+  type ClientTurnRequestId,
+  type PromptInput,
+} from "@bb/domain";
 import { resolveContainedPath } from "@bb/process-utils";
 import {
   CommandDispatchError,
@@ -12,8 +16,6 @@ type AttachmentPromptInput = Extract<
   { type: "localFile" | "localImage" }
 >;
 
-const IMAGE_ATTACHMENT_LIMIT_BYTES = 10 * 1024 * 1024;
-const FILE_ATTACHMENT_LIMIT_BYTES = 25 * 1024 * 1024;
 const STAGED_ATTACHMENT_MODE = 0o600;
 
 interface StagePromptAttachmentsArgs {
@@ -84,12 +86,6 @@ function attachmentFetchErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function attachmentSizeLimitBytes(attachment: AttachmentPromptInput): number {
-  return attachment.type === "localImage"
-    ? IMAGE_ATTACHMENT_LIMIT_BYTES
-    : FILE_ATTACHMENT_LIMIT_BYTES;
-}
-
 function expectedAttachmentSizeBytes(
   attachment: AttachmentPromptInput,
 ): number | undefined {
@@ -98,11 +94,13 @@ function expectedAttachmentSizeBytes(
 
 function validateExpectedAttachmentSize(args: StageAttachmentArgs): void {
   const expectedSizeBytes = expectedAttachmentSizeBytes(args.attachment);
-  const maxBytes = attachmentSizeLimitBytes(args.attachment);
-  if (expectedSizeBytes !== undefined && expectedSizeBytes > maxBytes) {
+  if (
+    expectedSizeBytes !== undefined &&
+    expectedSizeBytes > PROMPT_ATTACHMENT_MAX_BYTES
+  ) {
     throw new CommandDispatchError(
       "attachment_unavailable",
-      `Attachment ${args.attachment.path} exceeds ${maxBytes} byte limit`,
+      `Attachment ${args.attachment.path} exceeds ${PROMPT_ATTACHMENT_MAX_BYTES} byte limit`,
     );
   }
 }
@@ -122,11 +120,10 @@ function validateFetchedAttachmentSize(
     );
   }
 
-  const maxBytes = attachmentSizeLimitBytes(attachment);
-  if (bytes.byteLength > maxBytes) {
+  if (bytes.byteLength > PROMPT_ATTACHMENT_MAX_BYTES) {
     throw new CommandDispatchError(
       "attachment_unavailable",
-      `Attachment ${attachment.path} exceeds ${maxBytes} byte limit`,
+      `Attachment ${attachment.path} exceeds ${PROMPT_ATTACHMENT_MAX_BYTES} byte limit`,
     );
   }
 }
@@ -203,7 +200,7 @@ async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
   try {
     const attachment = await args.fetchProjectAttachment({
       expectedSizeBytes: expectedAttachmentSizeBytes(args.attachment),
-      maxBytes: attachmentSizeLimitBytes(args.attachment),
+      maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
       projectId: args.projectId,
       threadId: args.threadId,
       path: args.attachment.path,

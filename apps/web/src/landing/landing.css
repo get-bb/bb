@@ -32,6 +32,8 @@
   --ink: oklch(0.3211 0 0);
   --dim: oklch(0.44 0 0);
   --subtle: oklch(0.5 0 0);
+  --label-muted: color-mix(in oklch, var(--subtle) 90%, var(--bg));
+  --text-label-small: 12px;
   /* Display type sits a step darker than the body ink (and a step lighter in
      dark) so headings lead without a weight change; --ink-strong is the same
      idea for emphasized body copy inside the app mocks. */
@@ -73,6 +75,7 @@
   --ink: oklch(0.81 0 0);
   --dim: oklch(0.75 0 0);
   --subtle: oklch(0.68 0 0);
+  --label-muted: color-mix(in oklch, var(--subtle) 90%, var(--bg));
   --heading: oklch(0.93 0 0);
   --heading-sub: oklch(0.88 0 0);
   --ink-strong: oklch(0.85 0 0);

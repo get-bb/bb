@@ -11,6 +11,7 @@ import {
   type ThreadQueuedMessage,
   type ThreadTurnInitiator,
 } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import type {
   ExecutionInputFieldSource,
   ThreadResponse,
@@ -472,7 +473,7 @@ export function dispatchWaitReasonForPass(
       ? outcome.waiter.reason
       : `${outcome.waiter.reason} (also waiting on ${extra})`;
   return reason.length > QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH
-    ? `${reason.slice(0, QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH - 1)}…`
+    ? `${sliceUtf16Head(reason, QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH - 1)}…`
     : reason;
 }
 

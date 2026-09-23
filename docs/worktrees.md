@@ -126,6 +126,10 @@ worktree it made and removes the ones nothing is using:
 - Archiving the last thread starts a five-minute grace period. Unarchive a
   thread within it and the worktree is kept; let it elapse and the worktree
   goes.
+- Archiving is not an instant stop. For 30 seconds an archived thread keeps its
+  terminals, and one that is mid-turn keeps running, so Undo on the archive
+  toast — or an unarchive within those 30 seconds — picks up exactly where it
+  was. After that bb stops the thread and closes its terminals.
 
 Removal runs `.bb-env-teardown.sh` inside the worktree first, then stops
 every process whose working directory is inside the worktree — the agent's

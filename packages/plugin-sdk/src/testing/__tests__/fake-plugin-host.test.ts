@@ -1666,6 +1666,29 @@ describe("dispose", () => {
     await replacement.harness.dispose();
   });
 
+  it("runs install handlers in order and isolates a throwing one", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const order: string[] = [];
+    bb.onInstall(() => {
+      order.push("first");
+      throw new Error("install exploded");
+    });
+    bb.onInstall(async () => {
+      order.push("second");
+    });
+
+    await harness.lifecycle.install();
+
+    expect(order).toEqual(["first", "second"]);
+    expect(harness.logEntries).toContainEqual(
+      expect.objectContaining({
+        level: "warn",
+        message: "install handler failed: install exploded",
+      }),
+    );
+    await harness.dispose();
+  });
+
   it("aborts services, runs hooks LIFO, closes the database, and poisons the handle", async () => {
     const { bb, harness } = createFakePluginHost();
     const order: string[] = [];

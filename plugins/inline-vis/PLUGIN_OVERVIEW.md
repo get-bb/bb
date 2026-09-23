@@ -6,6 +6,7 @@ See an agent's chart, demo, report, or Markdown document in the conversation wit
 - A default viewport height of 224 pixels. The agent can set a height from 120 to 1200 pixels.
 - A header action that opens the source file in bb's sidebar viewer, for workspace and thread-storage previews alike.
 - An Export menu: save the source (HTML or Markdown), convert to Word (.docx) with rendered charts embedded as images, or print (choose "Save as PDF" in the dialog).
+- A collapse control that remembers whether inline previews should stay collapsed on the current client.
 - A clear inline error when the file is missing, too large, or unsupported.
 
 ## How it works

@@ -1,0 +1,47 @@
+{
+  "name": "bb-plugin-navigation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "bb's sidebar navigation: New thread, Search, Plugins, Skills, and plugin panels.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.5.13"
+  },
+  "bb": {
+    "name": "Navigation",
+    "description": "bb's sidebar navigation: New thread, Search, Plugins, Skills, and plugin panels.",
+    "branding": {
+      "icon": "PanelLeft"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

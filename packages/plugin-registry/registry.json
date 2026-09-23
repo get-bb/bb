@@ -1,5 +1,5 @@
 {
-  "$comment": "Source manifest for the BB plugin component registry (plugin design §5.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill, empty-state) are excluded until deliberately listed.",
+  "$comment": "Source manifest for the BB plugin component registry (plugin design §5.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill) are excluded until deliberately listed. `pluginFlavors` replaces a shared-ui file with a plugin-side version: the app's icon module carries the full glyph map, while a plugin's icon draws from the host's icon registry through the SDK.",
   "uiItems": [
     "accordion",
     "alert",
@@ -14,12 +14,14 @@
     "carousel",
     "chart",
     "checkbox",
+    "chrome-style-tokens",
     "collapsible",
     "command",
     "context-menu",
     "dialog",
     "drawer",
     "dropdown-menu",
+    "empty-state",
     "form",
     "hover-card",
     "input",
@@ -45,5 +47,8 @@
     "toggle",
     "toggle-group",
     "tooltip"
-  ]
+  ],
+  "pluginFlavors": {
+    "components/ui/icon.tsx": "flavors/components/ui/icon.tsx"
+  }
 }

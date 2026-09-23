@@ -10,6 +10,7 @@ import {
   sidebarNavigationQueryKey,
 } from "../queries/query-keys";
 import { invalidateProjectDeleteQueries } from "./mutation-cache-effects";
+import { patchCachedQueryData } from "./cache-effect-utils";
 
 interface ApplyProjectCreateResultArgs {
   project: ProjectResponse;
@@ -116,7 +117,8 @@ export function applyProjectCreateResult({
         ? applyProjectToProjectList(currentProjects, project)
         : [project],
   );
-  queryClient.setQueryData<SidebarBootstrapResponse>(
+  patchCachedQueryData<SidebarBootstrapResponse>(
+    queryClient,
     sidebarNavigationQueryKey(),
     (currentNavigation) =>
       currentNavigation
@@ -157,7 +159,8 @@ export function applyProjectDeleteResult({
         ? removeProjectFromProjectList(currentProjects, projectId)
         : currentProjects,
   );
-  queryClient.setQueryData<SidebarBootstrapResponse>(
+  patchCachedQueryData<SidebarBootstrapResponse>(
+    queryClient,
     sidebarNavigationQueryKey(),
     (currentNavigation) =>
       currentNavigation

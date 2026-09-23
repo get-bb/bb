@@ -287,6 +287,7 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
       typeahead={options.typeahead}
       promptActions={options.promptActions}
       collapseResetKey={options.collapseResetKey}
+      preferExpanded
       focusEndKey={`${options.focusSessionKey}:${options.editFocusNonce}`}
       isPrimaryComposer={false}
       showScrollToBottomButton={false}

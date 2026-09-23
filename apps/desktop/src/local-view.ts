@@ -1,5 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
-import { escapeHtmlText } from "@bb/domain";
+import { escapeHtmlText } from "@bb/text-utils";
 
 export const STARTUP_RETRY_CHANNEL = "bb-desktop:retry-startup";
 

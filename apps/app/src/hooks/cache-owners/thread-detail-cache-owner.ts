@@ -1,8 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type {
-  ThreadImageMetadata,
-  ThreadTimelineResponse,
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
@@ -11,7 +9,6 @@ import {
   hostQueryKey,
   hostsQueryKey,
   threadQueryKey,
-  threadTimelineQueryKey,
 } from "../queries/query-keys";
 
 type HostList = Host[];
@@ -74,24 +71,4 @@ export function ingestThreadDetailBootstrap({
       upsertHostList({ host, hosts }),
     );
   }
-}
-
-export function ingestThreadImageMetadata(
-  queryClient: QueryClient,
-  threadId: string,
-  image: ThreadImageMetadata,
-): void {
-  queryClient.setQueryData<ThreadTimelineResponse>(
-    threadTimelineQueryKey(threadId),
-    (timeline) =>
-      timeline && {
-        ...timeline,
-        imageMetadata: [
-          ...(timeline.imageMetadata ?? []).filter(
-            (entry) => entry.source !== image.source,
-          ),
-          image,
-        ],
-      },
-  );
 }

@@ -11,7 +11,7 @@ describe("getSupportedReasoningLevelsForProvider", () => {
     ).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(
       getSupportedReasoningLevelsForProvider(registry, "acp-grok"),
-    ).toEqual(["low", "medium", "high"]);
+    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(
       getSupportedReasoningLevelsForProvider(registry, "acp-my-agent"),
     ).toEqual([]);

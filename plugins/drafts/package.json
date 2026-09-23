@@ -5,8 +5,7 @@
   "type": "module",
   "description": "Save a composer draft as a manually sent queued message.",
   "engines": {
-    "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.108"
+    "bb": ">=0.0"
   },
   "bb": {
     "name": "Drafts",

@@ -509,6 +509,7 @@ export function SkillsOverview({
         ))}
       </ResourceListPanel>
       <ResourceInfiniteScrollSentinel
+        itemCount={libraryList.items.length}
         hasMore={libraryList.hasMore}
         onLoadMore={libraryList.loadMore}
       />

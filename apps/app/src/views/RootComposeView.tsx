@@ -140,7 +140,9 @@ import {
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
 import {
+  useRootComposeForkSeed,
   useRootComposeProjectId,
+  useRootComposeSectionId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import {
@@ -510,9 +512,8 @@ export function RootComposeView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
-  const [rootComposeSectionId, setRootComposeSectionId] = useState<
-    string | null
-  >(() => readSectionIdFromLocationState(location.state));
+  const [rootComposeSectionId, setRootComposeSectionId] =
+    useRootComposeSectionId();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
@@ -521,16 +522,14 @@ export function RootComposeView() {
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
-  const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
-    readForkThreadCreateSeedFromLocationState(location.state),
-  );
+  const [forkSeed, setForkSeed] = useRootComposeForkSeed();
 
   const handleProjectChange = useCallback(
     (projectId: string) => {
       setForkSeed(null);
       setRootComposeProjectId(projectId);
     },
-    [setRootComposeProjectId],
+    [setForkSeed, setRootComposeProjectId],
   );
   const handleSubmit = useCallback(
     async (request: NewThreadComposerSubmission) => {
@@ -587,6 +586,8 @@ export function RootComposeView() {
       navigate,
       navigateToThreadAfterCreate,
       rootComposeSectionId,
+      setForkSeed,
+      setRootComposeSectionId,
     ],
   );
   const composerSeed = useMemo(

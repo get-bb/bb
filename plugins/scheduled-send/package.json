@@ -5,8 +5,7 @@
   "type": "module",
   "description": "Schedule the current composer draft to send at a later time.",
   "engines": {
-    "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.108"
+    "bb": ">=0.0"
   },
   "bb": {
     "name": "Send later",

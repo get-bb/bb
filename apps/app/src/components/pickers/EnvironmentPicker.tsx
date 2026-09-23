@@ -164,6 +164,33 @@ function mergeHostProviders(
     return hostProvider === undefined ? [] : [hostProvider];
   });
 }
+
+function contextualActiveHost({
+  machines,
+  previewHostId,
+  selectedHostId,
+  hasSelectedHostlessProvider,
+}: {
+  machines: EnvironmentPickerMachines;
+  previewHostId: string | null;
+  selectedHostId: string | null;
+  hasSelectedHostlessProvider: boolean;
+}): Host | undefined {
+  return (
+    machines.hosts.find((machineHost) => machineHost.id === previewHostId) ??
+    machines.hosts.find((machineHost) => machineHost.id === selectedHostId) ??
+    (hasSelectedHostlessProvider
+      ? undefined
+      : (machines.hosts.find(
+          (machineHost) => machineHost.id === machines.localDaemonHostId,
+        ) ??
+        machines.hosts.find(
+          (machineHost) => machineHost.id === machines.primaryHostId,
+        ) ??
+        machines.hosts[0]))
+  );
+}
+
 export function EnvironmentPickerUI({
   value,
   sources,
@@ -194,6 +221,9 @@ export function EnvironmentPickerUI({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [previewHostId, setPreviewHostId] = useState<string | null>(null);
+  const [commandValueOverride, setCommandValueOverride] = useState<
+    string | null
+  >(null);
   const commandRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
@@ -259,6 +289,29 @@ export function EnvironmentPickerUI({
       provider.machineProviderId &&
       provider.requires.projectless === projectless,
   );
+  const selectedHostlessProvider = hostlessProviders.find((provider) =>
+    providerValueSelected(value, provider),
+  );
+  const contextualSelectedHostId =
+    parsed?.type === "provider" ? selectedProviderHostId : hostId;
+  const contextualHost =
+    showSearch && availableMachines
+      ? contextualActiveHost({
+          machines: availableMachines,
+          previewHostId,
+          selectedHostId: contextualSelectedHostId,
+          hasSelectedHostlessProvider: selectedHostlessProvider !== undefined,
+        })
+      : undefined;
+  const selectedCommandValue = contextualHost
+    ? `machine:${contextualHost.id}`
+    : selectedHostlessProvider
+      ? `provider:any:${selectedHostlessProvider.id}`
+      : parsed?.type === "reuse"
+        ? "reuse"
+        : selectedProvider !== undefined && selectedProviderHostId !== null
+          ? `provider:${selectedProviderHostId}:${selectedProvider.id}`
+          : "";
   const selected = useMemo((): SelectedEnvironment => {
     if (
       selectedProvider !== undefined &&
@@ -306,6 +359,7 @@ export function EnvironmentPickerUI({
   const handleOpenChange = (nextOpen: boolean) => {
     setUncontrolledOpen(nextOpen);
     onOpenChange?.(nextOpen);
+    setCommandValueOverride(null);
     if (!nextOpen) {
       setSearchQuery("");
       setPreviewHostId(null);
@@ -416,6 +470,8 @@ export function EnvironmentPickerUI({
             ref={commandRef}
             label="Search machines"
             shouldFilter={false}
+            value={commandValueOverride ?? selectedCommandValue}
+            onValueChange={setCommandValueOverride}
             className="min-h-0"
           >
             {showSearch ? (
@@ -776,18 +832,12 @@ function MachineContextualEnvironmentOptions({
   const selectedHostlessProvider = hostlessProviders.find((provider) =>
     providerValueSelected(value, provider),
   );
-  const activeHost =
-    orderedHosts.find((machineHost) => machineHost.id === previewHostId) ??
-    orderedHosts.find((machineHost) => machineHost.id === selectedHostId) ??
-    (selectedHostlessProvider === undefined
-      ? (orderedHosts.find(
-          (machineHost) => machineHost.id === machines.localDaemonHostId,
-        ) ??
-        orderedHosts.find(
-          (machineHost) => machineHost.id === machines.primaryHostId,
-        ) ??
-        orderedHosts[0])
-      : undefined);
+  const activeHost = contextualActiveHost({
+    machines: { ...machines, hosts: orderedHosts },
+    previewHostId,
+    selectedHostId,
+    hasSelectedHostlessProvider: selectedHostlessProvider !== undefined,
+  });
 
   return (
     <>

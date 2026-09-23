@@ -164,7 +164,7 @@ describe("bb project command output", () => {
         new Response(
           JSON.stringify({
             code: "invalid_request",
-            message: "Attachment exceeds 10MB limit",
+            message: "huge.png is 36MB, over the 35MB attachment limit",
           }),
           {
             status: 400,
@@ -187,7 +187,7 @@ describe("bb project command output", () => {
         ),
       ).rejects.toThrow("process.exit:1");
       expect(console.error).toHaveBeenCalledWith(
-        "Error: HTTP 400: Attachment exceeds 10MB limit",
+        "Error: HTTP 400: huge.png is 36MB, over the 35MB attachment limit",
       );
     } finally {
       await rm(clientDir, { force: true, recursive: true });

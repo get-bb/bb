@@ -5,7 +5,10 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const message = {
   id: "msg_1",
@@ -255,6 +258,60 @@ describe("InlineVisDirective", () => {
       return el as HTMLIFrameElement;
     });
     expect(iframe.style.height).toBe("480px");
+  });
+
+  it("persists the collapsed preference for subsequent previews", async () => {
+    const options = {
+      rpc: {
+        preparePreview: () => ({
+          kind: "html" as const,
+          file: "demo.html",
+          source: "workspace" as const,
+          target: {
+            kind: "workspace" as const,
+            environmentId: "env_1",
+            path: "demo.html",
+          },
+        }),
+      },
+    };
+    const props = {
+      attributes: { file: "demo.html" },
+      source: '::inline-vis{file="demo.html"}',
+      message,
+      openWorkspaceFile: null,
+    };
+    const first = renderSlot(app.messageDirectives[0]!, props, options);
+
+    await waitFor(() => {
+      expect(first.container.querySelector("iframe")).toBeTruthy();
+    });
+    const collapse = first.getByRole("button", {
+      name: "Collapse visualization demo.html",
+    });
+    const header = collapse.parentElement!;
+    expect(header.classList.contains("border-b")).toBe(true);
+    fireEvent.click(collapse);
+
+    expect(first.container.querySelector("iframe")).toBeNull();
+    expect(header.classList.contains("border-b")).toBe(false);
+    expect(window.localStorage.getItem("bb.inline-vis.collapsed")).toBe("true");
+    first.unmount();
+
+    const second = renderSlot(app.messageDirectives[0]!, props, options);
+    const expand = await second.findByRole("button", {
+      name: "Expand visualization demo.html",
+    });
+    expect(second.container.querySelector("iframe")).toBeNull();
+
+    fireEvent.click(expand);
+
+    await waitFor(() => {
+      expect(second.container.querySelector("iframe")).toBeTruthy();
+    });
+    expect(window.localStorage.getItem("bb.inline-vis.collapsed")).toBe(
+      "false",
+    );
   });
 
   it("reserves the preview height while loading so the timeline does not jump", async () => {

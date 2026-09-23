@@ -34,8 +34,7 @@ Commit `.bb-env-setup.sh` when a managed worktree needs repository setup.
 Commit `.bb-env-teardown.sh` when bb must release external resources before it
 removes that worktree. See [Worktrees, setup scripts, and teardown
 scripts](worktrees.md) for the lifecycle, environment, timeout, and failure
-contracts. On native Windows the hooks are `.bb-env-setup.ps1` and
-`.bb-env-teardown.ps1` — see [docs/windows.md](windows.md).
+contracts.
 
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
@@ -519,6 +518,21 @@ so a configured agent shows the generic tool glyph, and bb drops the field when
 it reads the old array. A setting entry wins over a config entry with the same
 `id`.
 
+## OpenCode Go Usage
+
+OpenCode Go subscription usage uses the credentials configured on the selected
+machine. Sign in to Go in OpenCode there, then select that machine in Provider
+usage or run `bb settings usage --machine <id-or-name> --json`. BB reads
+`OPENCODE_API_KEY` first, then the active official Console account and organization
+from `$XDG_DATA_HOME/opencode/opencode.db`, then `OPENCODE_AUTH_CONTENT` or
+`$XDG_DATA_HOME/opencode/auth.json` (default data directory `~/.local/share/opencode`).
+Console account storage is read only; OpenCode owns refreshing expired sessions.
+The `opencode-go` API key takes precedence over the shared `opencode` key.
+Custom ACP launch `env` overrides apply to credential lookup; a custom wrapper
+must declare `dialect: "opencode"` and `providerUsage: true`. The endpoint requires
+an active Go subscription and reports its five-hour, weekly, and monthly quota
+windows, not other providers' usage or Zen pay-as-you-go spending.
+
 ## Custom Models
 
 Register extra picker models by editing top-level `customModels` in
@@ -585,10 +599,13 @@ runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
 `<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
 as absent.
 
-No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
-(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) remain
-provider-specific. bb reads the files above itself and injects them, so use them
-for guidance you want every bb thread to receive regardless of provider.
+No agent loads `.bb/AGENTS.md` natively. Provider-native instruction files
+remain separate. Codex reads a repo-root `AGENTS.md`. Claude Code 2.1.277 and
+later also reads `AGENTS.md` when no project or ancestor `CLAUDE.md` or
+`CLAUDE.local.md` takes precedence. Older Claude Code versions and sessions
+without its built-in `AGENTS.md` support still require `CLAUDE.md`. bb reads
+the files above itself and injects them, so use them for guidance you want every
+bb thread to receive regardless of provider.
 
 ## Skills
 
@@ -698,28 +715,29 @@ schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                                  | Value                                                    |
-| ------------------------------------ | -------------------------------------------------------- |
-| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                 |
-| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                               |
-| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                 |
-| `sidebar.sectionOrder`               | Section id list for **By project**                       |
-| `sidebar.manualSectionOrder`         | Section id list for **Manually**                         |
-| `sidebar.machineSectionOrder`        | Section id list for **By machine**                       |
-| `sidebar.hiddenGroups`               | Project, custom section, and machine ids moved into More |
-| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)        |
-| `sidebar.collapsedProjects`          | Collapsed project ids                                    |
-| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                  |
-| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                |
-| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                             |
-| `sidebar.collapsedMachines`          | Collapsed machine ids                                    |
-| `sidebar.footerOrder`                | Footer action order                                      |
-| `sidebar.hiddenFooterItems`          | Footer actions moved into More                           |
-| `sidebar.pluginPanelOrder`           | Navigation entry order                                   |
-| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry      |
-| `sidebar.navigationProvider`         | Plugin key, `__automatic__`, or `__builtin__`            |
-| `sidebar.threadListProvider`         | Plugin key, `__automatic__`, or `__builtin__`            |
-| `terminal.shellId`                   | Shell id from `bb terminal shells`, or `__automatic__`   |
+| Key                               | Value                                               |
+| --------------------------------- | --------------------------------------------------- |
+| `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
+| `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
+| `sidebar.sectionOrder`            | Section id list for **By project**                  |
+| `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
+| `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
+| `sidebar.hiddenGroups`            | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
+| `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
+| `sidebar.collapsedProjects`       | Collapsed project ids                               |
+| `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
+| `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
+| `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
+| `sidebar.collapsedMachines`       | Collapsed machine ids                               |
+| `sidebar.footerOrder`             | Footer action order                                 |
+| `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
+| `sidebar.pluginPanelOrder`        | Navigation entry order                              |
+| `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
+| `sidebar.navigationProvider`      | Plugin key; defaults to `navigation/navigation`     |
+| `sidebar.headerProvider`          | Plugin key, or `__builtin__` for bb's header only   |
+| `sidebar.threadListProvider`      | Plugin key; defaults to `thread-list/thread-list` |
+| `terminal.shellId`                | Shell id from `bb terminal shells`, or `__automatic__` |
 
 <!-- bb-fork(windows): the fork adds the terminal shell preference; see docs/windows.md. -->
 
@@ -728,19 +746,63 @@ choice. It defaults to `__automatic__`, which leaves the launch to the machine's
 own default shell; unknown ids also fall back to that default. Read and write it
 with the commands below, or pick a shell in the Start terminal row in the app.
 
-<!-- bb-fork(windows): the fork defaults an unset organization to By project; see docs/windows.md. -->
+The sidebar thread list uses an explicit plugin selection and defaults to the bundled
+Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
+`__builtin__` selections resolve to that default; other plugin selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
 
-By project (`project`) is the default for `sidebar.organizationMode` when no
-value is saved. Existing server and legacy browser choices are preserved.
+The sidebar navigation also uses an explicit plugin selection and defaults to the
+bundled Navigation plugin (`navigation/navigation`). Existing `__automatic__` and
+`__builtin__` selections resolve to that default. Order and visibility stay in
+`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, shared by every
+navigation plugin.
+
+`sidebar.headerProvider` picks a plugin that draws controls in the sidebar header
+row, between the sidebar toggle and the back and forward buttons. It defaults to
+`__builtin__`, which leaves only bb's controls there. Set it with
+`bb settings ui set sidebar.headerProvider <plugin-id>/<slot-id>`.
+
+<!-- bb-fork(windows): the fork defaults an unset organization to By project; see docs/windows.md. -->
+By project (`project`) is the default for `sidebar.organizationMode` on new
+installs and for migrated installations with existing projects, threads, or UI
+preferences. Explicit server choices take precedence over legacy browser
+choices, which take precedence over this installation fallback. Reset saves
+the installation fallback as an explicit choice.
+
+The built-in sidebar defaults to Active, including threads with saved messages.
+Filter selects Active and Archived and remembers the selection in this browser,
+not in the server-backed preferences or SDK/CLI. There is no separate
+Drafts section or filter; saved messages remain in their owning thread. The
+selected archived threads retain their section, project, machine, and pin placement.
+Choose Filter in a sidebar header's combined actions menu to change the selection.
+The combined menu offers Organize, Sort by, and Filter.
+Organize retains its Sections choices and Groups → By environment toggle.
+Desktop archived rows have a persistent Unarchive icon
+that restores the thread without navigating away.
+Archived loads pages only while selected.
+Plugin sidebar replacements own their rendering.
+
+The palette's Filter independently selects Active and Archived before
+and after typing. It defaults to Active and remembers its selection in this
+browser only; it is not configurable through SDK/CLI.
+Active includes threads with saved messages. Search threads retains the existing
+title and conversation search behavior and opens the owning thread.
+Archived loads a bounded list in most-recently-archived order only while selected.
+Search uses the existing
+ranked Active/Archived response and displays the selected groups, with six initial
+rows in one group or three each when both are nonempty, plus Show more.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads
 that share one worktree environment collapse into a single worktree row inside
 their section. `true` groups them and `false` keeps every thread on its own row,
 in every organization mode. The default, `auto`, groups them in **By project**
 and **By machine** and leaves them flat in **Custom**, which is how each mode
-behaved before the preference existed. The thread-list header's Organize menu
-exposes it under Groups as the By environment toggle, which writes `true` or
-`false` and so applies to every mode once you use it.
+behaved before the preference existed. Set this preference through Organize →
+Groups → By environment, settings, or
+`bb settings ui set sidebar.threadGrouping.environment true`; an explicit
+`true` or `false` applies to every mode.
 
 Each `sidebar.threadGrouping.*` key toggles one grouping dimension
 independently, so a future dimension adds a key rather than changing this one.
@@ -777,32 +839,31 @@ window size.
 
 ### Thread-list visibility
 
-Choose **Hide from list** in a project, custom section, or machine's menu to
-move it into **More**. Its menu in More offers **Add to sidebar** to restore it.
+Choose **Hide from list** in Threads, a project, custom section, or machine's menu to
+move it into **More**. Its menu in More offers **Add to list** to restore it.
 **Customize list** manages visibility and order for the current
 organization. Hiding a group preserves its threads, saved order, and collapse
 state; pinned threads stay in Pinned. Hidden work remains reachable through More,
 search, and direct links. More shows activity without automatically restoring
 hidden groups.
 
-`sidebar.hiddenGroups` defaults to `[]` and accepts `project:<projectId>`,
-`section:<sectionId>`, and `machine:<hostId>` keys (`machine:no-machine` for the
-unassigned machine group). Each organization uses only its matching keys.
-Built-in Pinned and Threads sections cannot be hidden. Duplicate keys are
-deduplicated; unavailable IDs are retained without creating sidebar rows, and
-new groups default to visible.
+The Thread list plugin's `hiddenGroups` preference defaults to `[]` and accepts `threads`,
+`project:<projectId>`, `section:<sectionId>`, and `machine:<hostId>` keys
+(`machine:no-machine` for the unassigned machine group). Each organization uses
+only its matching keys; `threads` applies to every organization. Pinned cannot
+be hidden. Duplicate keys are deduplicated; unavailable IDs are retained
+without creating sidebar rows, and new groups default to visible.
 
 ```sh
-bb settings ui get sidebar.hiddenGroups
-bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
-bb settings ui reset sidebar.hiddenGroups
+bb thread-list prefs get hiddenGroups
+bb thread-list prefs set hiddenGroups '["threads","project:proj_example","section:sec_example"]'
+bb thread-list prefs reset hiddenGroups
 ```
 
 `set` replaces the complete list across organizations, so include any existing
 keys you want to keep hidden. `reset` restores the default empty list and shows
-every group. SDK callers use `sdk.system.uiPreferences.list()` for the current
-value and revision, `.set({ key: "sidebar.hiddenGroups", value, expectedRevision })`
-to replace the list, and `.reset({ key: "sidebar.hiddenGroups" })` to show all.
+every group. The plugin's `setPreference` and `resetPreference` RPCs expose the
+same operations to its app client.
 
 ### Sidebar footer
 
@@ -1192,6 +1253,15 @@ refused — use `bb plugin update`. Before activation bb snapshots the plugin
 database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
+
+### Claude Code provider
+
+bb forwards only two environment variables to the Claude Code CLI, stripping
+every other. `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary;
+`CLAUDE_CODE_OAUTH_TOKEN` authenticates it on a machine with no interactive
+login, such as a CI runner. Mint the token with `claude setup-token`, which is
+long-lived where the credentials from `/login` are not. A logged-in machine
+needs neither.
 
 ### Provider retry plugin
 
@@ -1595,3 +1665,23 @@ or with `bb settings general telemetryEnabled false`. The saved server-wide pref
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
+
+### Thread list lifecycle filter
+
+The Thread list plugin's `threadLifecycles` preference selects `["active"]`
+(the default), `["archived"]`, or `["active","archived"]`. Set it with
+`bb thread-list prefs set threadLifecycles '["archived"]'` or the header's
+Filter menu. It syncs to every window and rejects empty or duplicate values.
+
+## Desktop browser cookie discovery
+
+The desktop app combines known-browser definitions with schema-based discovery
+of Chromium and Firefox cookie stores matched to registered web browsers.
+Known-browser entries remain available without registration metadata.
+On Linux, an absolute `XDG_CONFIG_HOME`
+in the desktop process environment replaces `~/.config` for discovery and known
+Chromium profile locations; relative values are ignored. Flatpak and Snap data
+directories are also searched. On macOS, discovery searches Application Support.
+The desktop app's own profile is excluded. See `bb guide browser` for search
+bounds, encryption limitations, and the `import-sources` / `import-cookies`
+commands. No additional BB setting is required to enable discovery.

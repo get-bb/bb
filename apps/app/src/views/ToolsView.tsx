@@ -1,5 +1,6 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useAtom } from "jotai";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
@@ -53,6 +54,7 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   REGISTRY_SKILLS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
+  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
@@ -150,6 +152,46 @@ function PluginsToolView({
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const routeOwnsDetail =
+    location.pathname === getPluginDetailRoutePath({ pluginId }) ||
+    location.pathname === getPluginConfigurationRoutePath({ pluginId });
+  const [locallyConfiguredPluginId, setLocallyConfiguredPluginId] = useState<
+    string | null
+  >(null);
+  const configurationOpen = routeOwnsDetail
+    ? new URLSearchParams(location.search).get("configure") === pluginId
+    : locallyConfiguredPluginId === pluginId;
+  const setConfigurationOpen = (open: boolean) => {
+    if (!routeOwnsDetail) {
+      setLocallyConfiguredPluginId(open ? pluginId : null);
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    if (open) params.set("configure", pluginId);
+    else params.delete("configure");
+    navigate({ pathname: location.pathname, search: params.toString() });
+  };
+  const configurationParams = new URLSearchParams(location.search);
+  configurationParams.set("configure", pluginId);
+  const configurationPath = routeOwnsDetail
+    ? `${location.pathname}?${configurationParams.toString()}`
+    : undefined;
+  useEffect(() => {
+    if (!routeOwnsDetail || location.hash !== "#configuration") return;
+    const params = new URLSearchParams(location.search);
+    params.set("configure", pluginId);
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true },
+    );
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    pluginId,
+    routeOwnsDetail,
+  ]);
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
@@ -287,6 +329,13 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         maxWidthClassName="max-w-5xl"
       />
     );
+  } else if (selectedPlugin !== null && configurationOpen) {
+    detailContent = (
+      <PluginSettingsPage
+        pluginId={pluginId}
+        onBackToDetails={() => setConfigurationOpen(false)}
+      />
+    );
   } else if (selectedPlugin !== null) {
     detailContent = (
       <PluginDetail
@@ -298,6 +347,8 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         onEdit={handleEditPlugin}
         onOpenSource={handleOpenPluginSource}
         onDelete={setDeleteTarget}
+        onConfigure={() => setConfigurationOpen(true)}
+        configurationPath={configurationPath}
         catalogEntry={selectedCatalogEntry ?? undefined}
         catalogEntries={catalogQuery.data?.entries ?? []}
         onOpenPlugin={handleOpenCatalogPlugin}
@@ -355,7 +406,10 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
-        <PluginDetailBanners plugin={selectedPlugin} />
+        <PluginDetailBanners
+          plugin={selectedPlugin}
+          configurationPath={configurationPath}
+        />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
         <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
       ) : null}
@@ -446,6 +500,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const selectPlugin = useCallback(
     (nextPluginId: string) => {
       const params = new URLSearchParams(location.search);
+      params.delete("configure");
       navigate({
         pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
         search: params.toString(),
@@ -470,6 +525,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
     setIsPluginDetailFullPage(false);
     setWorkspace((current) => ({ ...current, activePluginId: null }));
     const params = new URLSearchParams(location.search);
+    params.delete("configure");
     navigate({ pathname: getPluginsRoutePath(), search: params.toString() });
     restoreFocus();
   }, [location.search, navigate, restoreFocus, setWorkspace]);

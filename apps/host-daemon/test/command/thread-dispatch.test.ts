@@ -10,6 +10,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
+  PROMPT_ATTACHMENT_MAX_BYTES,
   type ClientTurnRequestId,
   type PromptInput,
 } from "@bb/domain";
@@ -35,8 +36,6 @@ import {
 afterEach(cleanupTempDirs);
 
 let nextClientRequestIdValue = 1;
-const IMAGE_ATTACHMENT_LIMIT_BYTES = 10 * 1024 * 1024;
-const FILE_ATTACHMENT_LIMIT_BYTES = 25 * 1024 * 1024;
 
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
 
@@ -235,7 +234,7 @@ describe("thread command dispatch", () => {
       1,
       expect.objectContaining({
         expectedSizeBytes: Buffer.byteLength(uploadedNotesContent),
-        maxBytes: FILE_ATTACHMENT_LIMIT_BYTES,
+        maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
         projectId: "project-attachments",
         threadId: "thread-attachments",
         path: "notes-uploaded.txt",
@@ -244,7 +243,7 @@ describe("thread command dispatch", () => {
     expect(fetchProjectAttachment).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        maxBytes: IMAGE_ATTACHMENT_LIMIT_BYTES,
+        maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
         projectId: "project-attachments",
         threadId: "thread-attachments",
         path: "screenshot-uploaded.png",
@@ -348,7 +347,7 @@ describe("thread command dispatch", () => {
 
     expect(fetchProjectAttachment).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxBytes: FILE_ATTACHMENT_LIMIT_BYTES,
+        maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
         projectId: "project-submit-attachments",
         threadId: "thread-submit-attachments",
         path: "follow-up-uploaded.har",

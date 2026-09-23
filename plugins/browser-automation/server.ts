@@ -465,6 +465,21 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   ) {
     try {
       const input = { ...request.input };
+      if (request.method === "open" && input.selection) {
+        const target = input.selection.hostId.trim();
+        const hosts = await bb.sdk.hosts.list({ signal: context.signal });
+        const idMatch = hosts.find((candidate) => candidate.id === target);
+        const matches = idMatch
+          ? [idMatch]
+          : hosts.filter((candidate) => candidate.name === target);
+        if (matches.length === 0)
+          throw new Error(`Machine '${target}' was not found`);
+        if (matches.length > 1)
+          throw new Error(
+            `Machine name '${target}' is ambiguous; use an exact host ID`,
+          );
+        input.selection = { ...input.selection, hostId: matches[0].id };
+      }
       if (request.scriptFile) {
         if (!request.scriptHost)
           throw new Error("Script file requires an explicit source host");

@@ -34,6 +34,7 @@ import {
   environmentQueryKey,
   environmentWorkStatusQueryKey,
 } from "./query-keys";
+import { useDebouncedBranchSearchQuery } from "./branch-search-debounce";
 import {
   resolveEnvironmentDiffFilesPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
@@ -200,7 +201,7 @@ export function useEnvironmentMergeBaseBranches(
   environmentId: string,
   options?: BranchQueryOptions,
 ) {
-  const query = options?.query?.trim() ?? "";
+  const query = useDebouncedBranchSearchQuery(options?.query?.trim() ?? "");
   const selectedBranch = options?.selectedBranch?.trim();
   const limit = options?.limit ?? MERGE_BASE_BRANCHES_LIMIT;
   const enabled = (options?.enabled ?? true) && Boolean(environmentId);
