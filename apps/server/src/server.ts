@@ -562,21 +562,34 @@ export function createApp(
     });
   });
   app.get("/install/bb-app.tgz", async (context) => {
-    const artifact = await bbAppArtifactService.getArtifact();
-    const etag = `"sha256-${artifact.digest}"`;
-    const headers = {
-      "cache-control": "public, max-age=300",
-      "content-type": "application/gzip",
-      etag,
-      "x-bb-artifact-sha256": artifact.digest,
-    };
-    if (context.req.header("if-none-match") === etag) {
-      return new Response(null, { headers, status: 304 });
+    try {
+      const artifact = await bbAppArtifactService.getArtifact();
+      const etag = `"sha256-${artifact.digest}"`;
+      const headers = {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/gzip",
+        etag,
+        "x-bb-artifact-sha256": artifact.digest,
+      };
+      if (context.req.header("if-none-match") === etag) {
+        return new Response(null, { headers, status: 304 });
+      }
+      const tarball = await readFile(artifact.path);
+      return new Response(tarball, {
+        headers: { ...headers, "content-length": String(artifact.size) },
+      });
+    } catch (error) {
+      deps.logger.error({ err: error }, "Host package download failed");
+      const reason = error instanceof Error ? error.message : String(error);
+      return context.json(
+        {
+          code: "host_package_unavailable",
+          message: `Could not prepare the host package: ${reason}`,
+        },
+        500,
+        { "cache-control": "no-store" },
+      );
     }
-    const tarball = await readFile(artifact.path);
-    return new Response(tarball, {
-      headers: { ...headers, "content-length": String(artifact.size) },
-    });
   });
   app.use("/api/v1/*", async (context, next) => {
     const startedAt = performance.now();

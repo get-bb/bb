@@ -746,9 +746,11 @@ and strong ETag. That package contains the daemon, its workers and native
 dependencies, and the bundled `bb` CLI; it omits the server and web app. The
 installer verifies the digest and skips the download and npm install when its
 recorded installed digest receives `304 Not Modified`. It falls back to the npm
-registry only when the package route returns 404. It installs the package under
-the machine's bb data directory rather than npm's system-wide prefix, so
-enrollment needs neither `sudo` nor a global npm configuration.
+registry only when the package route returns 404. When the server cannot prepare
+the package, the route returns the underlying error message and the installer
+prints it; the full exception is logged as "Host package download failed". It
+installs the package under the machine's bb data directory rather than npm's
+system-wide prefix, so enrollment needs neither `sudo` nor a global npm configuration.
 Installed services enable `--auto-update`; remove that flag from the launchd
 plist or systemd user unit and reload the service to opt out. Updates only move
 to a newer server protocol, retry failures with a persisted exponential backoff

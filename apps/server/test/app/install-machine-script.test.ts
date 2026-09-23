@@ -172,9 +172,10 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
-  artifactStatus: 200 | 404,
+  artifactStatus: 200 | 404 | 500,
   artifactDigest = FIXTURE_ARTIFACT_DIGEST,
   transientFailures = 0,
+  artifactBody = "fixture-tarball",
 ): void {
   const curlLog = join(fixture.dataDir, "curl.log");
   const curlConfigLog = join(fixture.dataDir, "curl-config.log");
@@ -213,7 +214,7 @@ case "$*" in
     if [ "$unchanged" = yes ] && [ '${artifactStatus}' = 200 ]; then
       printf '%s' 304
     else
-      [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
+      [ -z "$output" ] || printf '%s' '${Buffer.from(artifactBody).toString("base64")}' | base64 --decode >"$output"
       printf '%s' '${artifactStatus}'
     fi
     ;;
@@ -867,6 +868,29 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
     process.kill(daemonPid, "SIGTERM");
+  });
+
+  it.each([
+    [
+      JSON.stringify({
+        message:
+          "Could not prepare the host package: ENOSPC: no space left on device",
+      }),
+      "Server: Could not prepare the host package: ENOSPC: no space left on device",
+    ],
+    ["<html>upstream failure</html>", null],
+    ["{invalid json", null],
+  ])("handles failed package response %s", (body, expected) => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 500, FIXTURE_ARTIFACT_DIGEST, 0, body);
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("HTTP 500");
+    if (expected !== null) expect(result.stderr).toContain(expected);
+    else expect(result.stderr).not.toContain("Server:");
+    expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
   });
 
   it("retries a transient server artifact download failure", () => {

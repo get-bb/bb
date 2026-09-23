@@ -706,6 +706,22 @@ package_digest=$(node -e '
   } catch {}
 ' "$package_headers")
 
+if [ "$package_status" -ge 400 ] && [ "$package_status" -le 599 ]; then
+  package_error=$(node -e '
+    const fs = require("node:fs");
+    try {
+      if (fs.statSync(process.argv[1]).size > 16384) process.exit(0);
+      const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      if (body && typeof body.message === "string") {
+        process.stdout.write(body.message.replace(/[\x00-\x1f\x7f-\x9f]/g, " ").slice(0, 2000));
+      }
+    } catch {}
+  ' "$package_file")
+  if [ -n "$package_error" ]; then
+    detail "Server: $package_error" >&2
+  fi
+fi
+
 bb_app=
 bb_app_npm_prefix=
 if [ "$package_status" = 304 ] && [ -n "$installed_artifact_digest" ]; then

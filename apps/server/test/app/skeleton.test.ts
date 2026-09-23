@@ -113,6 +113,39 @@ describe("server skeleton", () => {
     }
   });
 
+  it("reports the host package failure to the installer", async () => {
+    const harness = await createTestAppHarness();
+    const error = new Error(
+      "ENOENT: no such file or directory, copyfile 'host-daemon/dist/daemon-bundle.mjs'",
+    );
+    const log = vi.spyOn(harness.deps.logger, "error");
+    const { app } = createApp(harness.deps, {
+      bbAppArtifactService: {
+        getArtifact: async () => {
+          throw error;
+        },
+        getVersion: async () => "test",
+      },
+    });
+    try {
+      const response = await app.request("/install/bb-app.tgz");
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await readJson(response)).toEqual({
+        code: "host_package_unavailable",
+        message:
+          "Could not prepare the host package: ENOENT: no such file or directory, copyfile 'host-daemon/dist/daemon-bundle.mjs'",
+      });
+      expect(log).toHaveBeenCalledWith(
+        { err: error },
+        "Host package download failed",
+      );
+    } finally {
+      log.mockRestore();
+      await harness.cleanup();
+    }
+  });
+
   it("echoes the launcher's launch id on /health only when one was given", async () => {
     await withTestHarness({ launchId: "launch-123" }, async (harness) => {
       const response = await harness.app.request("/health");
