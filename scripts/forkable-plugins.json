@@ -6,8 +6,10 @@
     "plugins/browser-automation",
     "plugins/concurrency-limit",
     "plugins/custom-instructions",
+    "plugins/docs",
     "plugins/drafts",
     "plugins/environment-personal-workspace",
+    "plugins/github",
     "plugins/inline-vis",
     "plugins/keep-awake",
     "plugins/memory",
@@ -20,6 +22,8 @@
     "plugins/push-notifications",
     "plugins/scheduled-send",
     "plugins/side-chat",
-    "plugins/thread-list"
+    "plugins/theme-preview",
+    "plugins/thread-list",
+    "plugins/workflows"
   ]
 }

@@ -4,19 +4,19 @@ import {
   useRealtime,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
-import { Badge as BbBadge } from "@bb/shared-ui/badge";
-import { Button as BbButton } from "@bb/shared-ui/button";
-import { Checkbox as BbCheckbox } from "@bb/shared-ui/checkbox";
+import { Badge as BbBadge } from "@/components/ui/badge";
+import { Button as BbButton } from "@/components/ui/button";
+import { Checkbox as BbCheckbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@bb/shared-ui/collapsible";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+} from "@/components/ui/collapsible";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chrome-style-tokens";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
+} from "@/components/ui/coarse-pointer-sizing";
 import Moon02Icon from "@hugeicons/core-free-icons/Moon02Icon";
 import Sun03Icon from "@hugeicons/core-free-icons/Sun03Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -29,7 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@bb/shared-ui/dialog";
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,32 +37,36 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from "@bb/shared-ui/hover-card";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { Input as BbInput } from "@bb/shared-ui/input";
-import { PluginCompactIconMask } from "@bb/shared-ui/plugin-icon";
-import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+} from "@/components/ui/hover-card";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { Input as BbInput } from "@/components/ui/input";
+import { PluginCompactIconMask } from "@/components/ui/plugin-icon";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
-} from "@bb/shared-ui/select";
-import { Switch as BbSwitch } from "@bb/shared-ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
+} from "@/components/ui/select";
+import { Switch as BbSwitch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   useEffect,
@@ -116,7 +120,6 @@ const VIEW_LABEL = Object.fromEntries(
 const STUDIO_MAX_WIDTH = 1600;
 const MOCK_PROVIDER_ICON_URL =
   "/api/v1/plugins/provider-claude-code/assets/icon";
-
 const CLIENT_RPC_TIMEOUT_MS = 20_000;
 
 function withRpcTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
@@ -2551,7 +2554,6 @@ function StyleSheetSection({
     </div>
   );
 }
-
 const HOVER_OPEN_DELAY_MS = 300;
 const HOVER_CLOSE_DELAY_MS = 150;
 
@@ -2759,7 +2761,6 @@ function OverlaySpecimens() {
           align="start"
           sideOffset={6}
           collisionPadding={12}
-
           style={{ width: "max(var(--radix-hover-card-trigger-width), 15rem)" }}
           className="p-3"
         >
@@ -3444,7 +3445,6 @@ function useColorMode(): [Mode, (next: Mode) => void] {
   const set = (next: Mode) => {
     const previous = localStorage.getItem(MODE_KEY);
     localStorage.setItem(MODE_KEY, next);
-
     window.dispatchEvent(
       new StorageEvent("storage", {
         key: MODE_KEY,
@@ -3528,7 +3528,6 @@ function PreviewPage({ subPath }: { subPath: string }) {
     };
     loadRef.current = load;
     load();
-
     const timer = setInterval(load, 8000);
     return () => {
       cancelled = true;
@@ -3581,7 +3580,6 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const applySelection = (selection: ThemeSelection) => {
     if (selectionPending.current) return;
     setMode(selection.mode);
-
     selectionPending.current = true;
     setPendingSelection(selection);
     setFailedSelection(null);

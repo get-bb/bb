@@ -40,7 +40,6 @@ describe("parseThemeSwatches", () => {
     expect(light?.primary).toBe("#2e6f95");
     expect(light?.canvas).toBe("#f4f4f4");
     expect(dark?.primary).toBe("#ffffff");
-
     expect(dark?.sidebar).toBe("#0a0a0a");
   });
 
@@ -491,7 +490,6 @@ describe("buildCatalog", () => {
       "plugin:endless:endless-color",
       "default",
     ]);
-
     const nord = out.themes.find((t) => t.id === "nord");
     expect(nord?.dark?.primary).toBe("#88c0d0");
     expect(nord?.light?.canvas).toBe("#eceff4");

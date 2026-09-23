@@ -33,7 +33,7 @@ threads, reports cache and result state, and can stop an active run. It may also
 be opened directly from the thread panel action, in which case it shows that
 thread's latest run.
 
-Both surfaces are implemented by the plugin app with `@bb/shared-ui` controls
+Both surfaces are implemented by the plugin app with bb's registry components
 and BB theme tokens. Directive attributes and restored panel parameters are
 treated as untrusted input. The backend additionally binds every requested run
 to the directive message or panel thread, so a run ID from another thread

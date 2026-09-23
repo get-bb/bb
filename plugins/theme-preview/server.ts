@@ -80,7 +80,6 @@ export function classifySelector(
       sawDark = true;
     else return null;
   }
-
   if (sawShared) return "shared";
   if (sawDark && !sawLight) return "dark";
   if (sawLight && !sawDark) return "light";
@@ -98,7 +97,6 @@ export function parseThemeSwatches(css: string): {
     light: new Map(),
     dark: new Map(),
   };
-
   const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const blocks = source.matchAll(/([^{}]+)\{([^{}]*)\}/g);
   for (const block of blocks) {
@@ -369,7 +367,6 @@ export async function buildCatalog(
     if (!entries.some((entry) => entry.id === builtin.id))
       entries.push(builtin);
   }
-
   if (activeThemeId && !entries.some((entry) => entry.id === activeThemeId)) {
     entries.unshift({ id: activeThemeId, name: activeThemeId });
   }
@@ -613,7 +610,6 @@ export function createCatalogLoader(bb: BbPluginApi) {
   const setTheme = async (themeId: string) => {
     selectionGeneration += 1;
     const generation = selectionGeneration;
-
     const apply = selectionQueue.then(async () => {
       await warnIfSlow(`theme apply (${themeId})`, () =>
         bb.sdk.theme.set(themeId),

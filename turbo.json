@@ -50,6 +50,7 @@
         "$TURBO_ROOT$/changelog-metadata.ts",
         "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
+        "$TURBO_ROOT$/plugins/theme-preview/taxonomy.ts",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
@@ -967,10 +968,40 @@
       ]
     },
     "bb-plugin-simple-notes#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-simple-notes#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-github#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-github#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-inline-vis#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
@@ -1182,7 +1213,22 @@
       ]
     },
     "bb-plugin-theme-preview#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-theme-preview#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-navigation#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
@@ -1224,7 +1270,22 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-workflows#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-workflows#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "@bb/plugin-registry#typecheck": {
       "dependsOn": ["topo"],
