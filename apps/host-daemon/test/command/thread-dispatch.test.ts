@@ -280,7 +280,10 @@ describe("thread command dispatch", () => {
     await expect(fs.readFile(stagedImage.path, "utf8")).resolves.toBe(
       "content:screenshot-uploaded.png",
     );
-    expect((await fs.stat(stagedFile.path)).mode & 0o777).toBe(0o600);
+    // bb-fork(windows): Windows does not enforce POSIX file modes.
+    if (process.platform !== "win32") {
+      expect((await fs.stat(stagedFile.path)).mode & 0o777).toBe(0o600);
+    }
 
     await fs.rm(path.join(threadStorageRootPath, "thread-attachments"), {
       recursive: true,

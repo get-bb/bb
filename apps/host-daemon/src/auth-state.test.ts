@@ -69,7 +69,10 @@ describe("auth state", () => {
       "serverUrl",
     );
     const stats = await fs.stat(authStatePath);
-    expect(stats.mode & 0o777).toBe(0o600);
+    // bb-fork(windows): Windows does not enforce POSIX file modes.
+    if (process.platform !== "win32") {
+      expect(stats.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("reads legacy auth state that still contains server URL", async () => {

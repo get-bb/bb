@@ -227,9 +227,12 @@ describe("injected skill staging", () => {
     await expect(readFile(stagedScript, "utf8")).resolves.toBe(
       "#!/bin/sh\necho synced\n",
     );
-    await expect(
-      lstat(stagedScript).then((stat) => stat.mode & 0o777),
-    ).resolves.toBe(0o755);
+    // bb-fork(windows): Windows does not enforce POSIX file modes.
+    if (process.platform !== "win32") {
+      await expect(
+        lstat(stagedScript).then((stat) => stat.mode & 0o777),
+      ).resolves.toBe(0o755);
+    }
     expect(fetchSkillTree).toHaveBeenCalledTimes(1);
     expect(fetchSkillTree).toHaveBeenCalledWith(payload.treeHash);
   });
