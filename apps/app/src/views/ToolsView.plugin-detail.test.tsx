@@ -2348,6 +2348,83 @@ describe("plugin detail source and settings", () => {
     );
   });
 
+  function stubConfigurablePlugin(status: "running" | "needs-configuration") {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return Response.json({
+            enabled: true,
+            plugins: [
+              makeInstalledPlugin({
+                id: "github",
+                name: "GitHub",
+                hasSettings: true,
+                status,
+              }),
+            ],
+          });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return Response.json({ results: [], collections: [] });
+        }
+        if (url === "/api/v1/plugins/github/settings") {
+          return Response.json({
+            ok: true,
+            schema: { repository: { type: "string", label: "Repository" } },
+            values: { repository: "get-bb/bb" },
+          });
+        }
+        return Response.json({ error: "not found" }, { status: 404 });
+      }),
+    );
+  }
+
+  it("points the needs-configuration banner at settings in place", async () => {
+    stubConfigurablePlugin("needs-configuration");
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins/github?view=installed"]}>
+        <TooltipProvider>
+          <PluginDetailPaneView pluginId="github" />
+        </TooltipProvider>
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    const openSettings = await screen.findByRole("link", {
+      name: "Open settings",
+    });
+    expect(openSettings.getAttribute("href")).toBe(
+      "/plugins/github?view=installed&configure=github",
+    );
+  });
+
+  it("opens settings in place for a legacy #configuration link", async () => {
+    stubConfigurablePlugin("running");
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter
+        initialEntries={["/plugins/github?view=installed#configuration"]}
+      >
+        <TooltipProvider>
+          <PluginDetailPaneView pluginId="github" />
+        </TooltipProvider>
+        <LocationProbe />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?view=installed&configure=github",
+    );
+  });
+
   it("keeps in-place settings out of the URL when the detail pane is embedded in a thread", async () => {
     vi.stubGlobal(
       "fetch",

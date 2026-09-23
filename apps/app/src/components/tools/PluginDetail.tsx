@@ -225,7 +225,13 @@ export function pluginFrontendDiagnosticRequiresFailureBanner(
   return diagnostic?.status === "failed";
 }
 
-export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
+export function PluginDetailBanners({
+  plugin,
+  configurationPath,
+}: {
+  plugin: PluginListItem;
+  configurationPath?: string;
+}) {
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
@@ -237,6 +243,7 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
   return (
     <PluginHealthBanner
       plugin={banner.plugin}
+      configurationPath={configurationPath}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
     />
   );
@@ -255,6 +262,7 @@ export function PluginDetail({
   catalogEntries,
   onOpenPlugin,
   onConfigure,
+  configurationPath,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -268,6 +276,7 @@ export function PluginDetail({
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
   onConfigure?: () => void;
+  configurationPath?: string;
 }) {
   const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
@@ -451,7 +460,7 @@ export function PluginDetail({
             </div>
           ) : null}
         </ResourceDetailReleaseSection>
-        <PluginIncludes plugin={plugin} />
+        <PluginIncludes plugin={plugin} configurationPath={configurationPath} />
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">
             <PluginServices plugin={plugin} />

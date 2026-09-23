@@ -171,6 +171,27 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     else params.delete("configure");
     navigate({ pathname: location.pathname, search: params.toString() });
   };
+  const configurationParams = new URLSearchParams(location.search);
+  configurationParams.set("configure", pluginId);
+  const configurationPath = routeOwnsDetail
+    ? `${location.pathname}?${configurationParams.toString()}`
+    : undefined;
+  useEffect(() => {
+    if (!routeOwnsDetail || location.hash !== "#configuration") return;
+    const params = new URLSearchParams(location.search);
+    params.set("configure", pluginId);
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true },
+    );
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    pluginId,
+    routeOwnsDetail,
+  ]);
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
@@ -327,6 +348,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         onOpenSource={handleOpenPluginSource}
         onDelete={setDeleteTarget}
         onConfigure={() => setConfigurationOpen(true)}
+        configurationPath={configurationPath}
         catalogEntry={selectedCatalogEntry ?? undefined}
         catalogEntries={catalogQuery.data?.entries ?? []}
         onOpenPlugin={handleOpenCatalogPlugin}
@@ -384,7 +406,10 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
-        <PluginDetailBanners plugin={selectedPlugin} />
+        <PluginDetailBanners
+          plugin={selectedPlugin}
+          configurationPath={configurationPath}
+        />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
         <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
       ) : null}
