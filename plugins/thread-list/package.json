@@ -6,7 +6,7 @@
   "description": "bb's sidebar thread list: pinned threads, custom sections, projects, machines, and nested threads.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.5.7"
+    "bbPluginSdk": ">=0.5.16"
   },
   "bb": {
     "name": "Thread list",

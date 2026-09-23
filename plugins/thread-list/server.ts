@@ -196,7 +196,7 @@ export default async function threadListPlugin(bb: BbPluginApi) {
 
   bb.cli.register(
     defineCli({
-      name: "thread-list",
+      name: bb.pluginId,
       summary: "Inspect and change the sidebar thread list's layout preferences",
       description:
         "Organization mode, sort, section order, hidden groups, and collapsed groups for bb's sidebar thread list. Values are JSON; a bare word is read as a string.",

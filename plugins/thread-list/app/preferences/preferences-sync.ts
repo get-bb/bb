@@ -12,8 +12,11 @@ import {
   type PreferenceValues,
 } from "../../shared/preferences.js";
 
-export const PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1";
 const WRITE_DEBOUNCE_MS = 150;
+
+export function preferencesMirrorStorageKey(pluginId: string): string {
+  return `bb.${pluginId}.preferences.v1`;
+}
 
 export interface PreferencesRpc {
   call(method: "listPreferences", input: null): Promise<unknown>;
@@ -32,6 +35,7 @@ interface SyncState {
   >;
   rpc: PreferencesRpc | null;
   store: PreferencesStore | null;
+  pluginId: string | null;
   hydrateGeneration: number;
 }
 
@@ -42,6 +46,7 @@ function createSyncState(): SyncState {
     pendingWrites: new Map(),
     rpc: null,
     store: null,
+    pluginId: null,
     hydrateGeneration: 0,
   };
 }
@@ -52,8 +57,22 @@ function activeStore(): PreferencesStore {
   return state.store ?? getDefaultStore();
 }
 
-export function attachPreferencesStore(store: PreferencesStore): void {
+export function attachPreferencesStore(
+  store: PreferencesStore,
+  pluginId: string,
+): void {
   state.store = store;
+  state.pluginId = pluginId;
+}
+
+function mirrorStorageKey(): string | null {
+  return state.pluginId === null
+    ? null
+    : preferencesMirrorStorageKey(state.pluginId);
+}
+
+function logPrefix(): string {
+  return state.pluginId === null ? "" : `${state.pluginId}: `;
 }
 
 function valueAtomFor<Key extends PreferenceKey>(
@@ -78,10 +97,11 @@ export function preferencesReadyAtom(): PrimitiveAtom<boolean> {
 }
 
 function readMirror(storage: Storage | null): Partial<PreferenceValues> | null {
-  if (storage === null) return null;
+  const storageKey = mirrorStorageKey();
+  if (storage === null || storageKey === null) return null;
   let raw: string | null;
   try {
-    raw = storage.getItem(PREFERENCES_MIRROR_STORAGE_KEY);
+    raw = storage.getItem(storageKey);
   } catch {
     return null;
   }
@@ -106,14 +126,15 @@ function readMirror(storage: Storage | null): Partial<PreferenceValues> | null {
 }
 
 function writeMirror(storage: Storage | null): void {
-  if (storage === null) return;
+  const storageKey = mirrorStorageKey();
+  if (storage === null || storageKey === null) return;
   const store = activeStore();
   const snapshot: Record<string, unknown> = {};
   for (const key of PREFERENCE_KEYS) {
     snapshot[key] = store.get(valueAtomFor(key));
   }
   try {
-    storage.setItem(PREFERENCES_MIRROR_STORAGE_KEY, JSON.stringify(snapshot));
+    storage.setItem(storageKey, JSON.stringify(snapshot));
   } catch {
     return;
   }
@@ -204,7 +225,7 @@ function flushWrite(key: PreferenceKey): void {
     .call("setPreference", { key, value })
     .catch((error: unknown) => {
       console.warn(
-        `thread-list: saving preference ${key} failed: ${
+        `${logPrefix()}saving preference ${key} failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -263,4 +284,5 @@ export function resetPreferencesSyncForTest(): void {
   }
   store.set(state.readyAtom, false);
   state.store = null;
+  state.pluginId = null;
 }

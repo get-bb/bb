@@ -133,6 +133,18 @@ describe("migration from bb's sidebar preferences", () => {
 });
 
 describe("bb thread-list prefs", () => {
+  it("names the CLI after the plugin id", async () => {
+    const builtIn = setup();
+    await plugin(builtIn.bb);
+    expect(builtIn.harness.inspection.registrations.cli?.name).toBe(
+      "thread-list",
+    );
+
+    const copy = createFakePluginHost({ pluginId: "my-sidebar" });
+    await plugin(copy.bb);
+    expect(copy.harness.inspection.registrations.cli?.name).toBe("my-sidebar");
+  });
+
   it("lists, gets, sets, and resets through the CLI", async () => {
     const { bb, harness } = setup();
     await plugin(bb);

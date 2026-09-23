@@ -219,6 +219,20 @@ describe("thread-list plugin", () => {
     expect(within(threadsGroup).getByText("Personal thread")).not.toBeNull();
   });
 
+  it("keys its slot and preferences mirror by its own plugin id", async () => {
+    window.localStorage.clear();
+    expect(registration.id).toBe("thread-list");
+    renderList({ organizationMode: "machine" }, { pluginId: "thread-list" });
+
+    await screen.findByText("Pinned thread");
+    expect(
+      JSON.parse(
+        window.localStorage.getItem("bb.thread-list.preferences.v1") ?? "{}",
+      ).organizationMode,
+    ).toBe("machine");
+    window.localStorage.clear();
+  });
+
   it("calls onNavigate when a thread row is opened", async () => {
     setPreferencesMirrorStorageForTest(null);
     const listProps = props();
