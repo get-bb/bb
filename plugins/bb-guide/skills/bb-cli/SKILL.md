@@ -104,8 +104,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   all running work. `bb server export --out <file>` backs
   up a running server. `bb server import`, `unlock`, `allow-connect`, and
   `delete-old-copy` act on this computer's data directory without calling a
-  server. An imported server keeps its connect tunnel off until
-  `bb server allow-connect`. On the computer a server moved away from,
+  server. An imported server keeps its connect tunnel and bb account off
+  until `bb server allow-connect`. On the computer a server moved away from,
   `bb server install-machine-service` installs the persistent, self-updating
   machine service (needs Node.js 22.19+ on the PATH).
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose

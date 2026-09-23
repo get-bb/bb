@@ -9,9 +9,12 @@ When you start an HTTP server the user should open, give them a connect share
 URL — not a localhost URL. Shares work from threads running on any enrolled
 host, and the command resolves the thread's host automatically.
 
-1. Check pairing: run `bb connect status --json`. If not paired / not
-   connected, give the localhost URL and mention that `bb connect` enables
-   remote URLs once paired from the getbb.app dashboard.
+1. Check remote access: run `bb connect status --json`. If `paired` is
+   false, give the localhost URL and mention that remote URLs work once this
+   bb is signed in to its bb account (`bb account login`). If `enabled` is
+   false, the user turned remote access off with `bb connect off`; give the
+   localhost URL and mention `bb connect on`. Don't turn it on or sign in
+   yourself unless the user asks.
 2. From the thread that started the HTTP server, run `bb connect expose
 <port>`. It prints that host's share URL. Use `--host <name-or-id>` only
    when you intentionally need another enrolled host; outside a thread,
@@ -33,6 +36,17 @@ the server tunnel. Other enrolled hosts use
 `https://<machine-label>--<port>.<base-domain>` through their daemon. If a
 machine was not enrolled through Connect, expose fails with instructions to
 remove and re-add it under Settings > Machines.
+
+## Remote access and the bb account
+
+Remote access runs through the bb account plugin, which holds the getbb.app
+pairing. `bb connect off` turns remote access off and keeps the account
+signed in; `bb connect on` turns it back on. Both set the connect
+`remoteAccess` setting (`bb plugin config connect set remoteAccess false`).
+`bb account logout` forgets the
+pairing, and `bb account status` shows which account is signed in.
+`bb connect --code <code>` still pairs with a dashboard code as an alias of
+`bb account login --code <code>`.
 
 ## Agent instructions setting
 

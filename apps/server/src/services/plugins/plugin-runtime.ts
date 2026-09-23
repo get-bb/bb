@@ -309,7 +309,7 @@ interface PluginRuntimeContext {
 }
 
 export interface PluginLoadHold {
-  source: string;
+  sources: readonly string[];
   detail: string;
   isActive(): Promise<boolean>;
 }
@@ -1347,7 +1347,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   async function heldDetail(row: InstalledPluginRow): Promise<string | null> {
     const hold = loadHold;
-    if (hold === null || !row.enabled || row.source !== hold.source) {
+    if (hold === null || !row.enabled || !hold.sources.includes(row.source)) {
       return null;
     }
     return (await hold.isActive()) ? hold.detail : null;
