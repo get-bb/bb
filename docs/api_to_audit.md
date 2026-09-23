@@ -1855,6 +1855,32 @@ returns `renderSlot`'s `pluginId` option, `test-plugin` by default.
 3. **Consumer count.** One consumer today. Confirm a second plugin needs it
    before the prefix drops.
 
+## `app.experimental_useQuestionFormHost` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Returns the answer shortcuts bb binds while a pending
+interaction is open (`question.select.1` and on, which users can remap), keyed
+by zero-based option index, and `registerChoiceHandler`, which receives the
+index a person chose with a shortcut while the thread's pane is focused. A
+`pendingInteraction` component shows each option's shortcut and decides what
+choosing it means. Outside a pending interaction the map is empty and handlers
+never run; the test harness returns that empty host. The registry's
+`question-form-host` item re-exports it as `useQuestionFormHost`, so the
+registry's `question-form` works in any plugin. Before this, the built-in Ask
+User Question and pi plugins reached the same host context through a private
+`@bb/shared-ui` module the build shimmed, which a copy of either plugin could
+not import.
+
+**Audit before stabilizing.**
+
+1. **Props or hook.** The host already renders the pending-interaction slot;
+   decide whether the shortcuts belong in `PluginPendingInteractionProps`
+   instead of a hook any component can call.
+2. **Scope.** Only pending interactions bind the shortcuts. Confirm no other
+   surface (a message action form, a panel) should get them.
+3. **Consumer count.** Two first-party consumers (Ask User Question, pi's
+   extension dialogs). Confirm a third-party form needs it before the prefix
+   drops.
+
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero shipped registrations — first-party

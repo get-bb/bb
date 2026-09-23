@@ -123,6 +123,32 @@ export interface PluginPendingInteractionProps {
   cancel(): Promise<void>;
 }
 
+/** Display and accessibility metadata for a host-owned answer shortcut. */
+export interface ExperimentalQuestionShortcut {
+  label: string;
+  ariaKeyshortcuts: string;
+}
+
+/**
+ * The keyboard shortcuts bb binds while a pending interaction is open. The
+ * host owns the bindings (users can remap them); a form shows them and decides
+ * what choosing an option means.
+ */
+export interface ExperimentalQuestionFormHost {
+  /**
+   * Shortcut per zero-based option index, as a string (`"0"` is the first
+   * option). Missing entries have no binding.
+   */
+  shortcuts: ReadonlyMap<string, ExperimentalQuestionShortcut>;
+  /**
+   * Receive the index of the option the person chose with a shortcut while
+   * the thread's pane is focused. Return true when the index names an option
+   * the form handled. The last registered handler wins; call the returned
+   * function to unregister.
+   */
+  registerChoiceHandler(handler: (index: number) => boolean): () => void;
+}
+
 /**
  * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
  * Deliberately empty; the registration's `run` carries the behavior.
@@ -3100,6 +3126,13 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_usePluginId(): string;
+  /**
+   * The answer shortcuts bb binds while a pending interaction is open. Inside
+   * a `pendingInteraction` component the form shows each option's shortcut and
+   * registers a handler that chooses the option; outside one, the map is empty
+   * and handlers never run. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useQuestionFormHost(): ExperimentalQuestionFormHost;
   useBbNavigate(): BbNavigate;
   /** Select one of this plugin's eligible fixed tabs on the current surface. */
   experimental_useAppPanel(): ExperimentalAppPanel;

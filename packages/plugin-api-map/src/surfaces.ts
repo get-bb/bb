@@ -264,6 +264,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Replace the prompt box with a form the plugin draws, even after the agent's turn has ended",
           "Receive the submitted answer, or a cancellation and its reason",
           "Leave a row in the thread timeline: the plugin names its header and describes what a submission shows, so the transcript keeps exactly what the plugin chooses",
+          "Show bb's answer shortcuts next to each option and act when the person presses one, with experimental_useQuestionFormHost",
         ],
         apiSymbols: [
           "PluginUi",
@@ -271,6 +272,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginInteractionDescription",
           "PluginRowPresentation",
           "PluginPendingInteractionRegistration",
+          "experimental_useQuestionFormHost",
         ],
         firstParty: ["Ask User Question", "Secrets"],
       },

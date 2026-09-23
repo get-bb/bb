@@ -38,6 +38,7 @@
     "plugin-icon",
     "popover",
     "progress",
+    "question-form",
     "radio-group",
     "resizable",
     "resource-list",
@@ -58,6 +59,7 @@
     "workflow-progress"
   ],
   "pluginFlavors": {
-    "components/ui/icon.tsx": "flavors/components/ui/icon.tsx"
+    "components/ui/icon.tsx": "flavors/components/ui/icon.tsx",
+    "components/ui/question-form-host.tsx": "flavors/components/ui/question-form-host.tsx"
   }
 }

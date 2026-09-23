@@ -383,6 +383,8 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalNativeRootsResolveAnswer`
 - `ExperimentalNativeRootsResolveInput`
 - `ExperimentalNativeRootsResolveOutput`
+- `ExperimentalQuestionFormHost`
+- `ExperimentalQuestionShortcut`
 - `ExperimentalSanitizeInheritedChildProcessEnvArgs`
 - `ExperimentalVendorPlugin`
 - `ExperimentalVendorPluginRoots`
