@@ -8,6 +8,12 @@ const MOBILE_ROOT = join(HERE, "..", "..");
 const SRC_ROOT = join(MOBILE_ROOT, "src");
 const APP_ROOT = join(MOBILE_ROOT, "app");
 
+// bb-fork(windows): `relative` separates with `\` on Windows, while the scan and
+// its assertions compare POSIX-style paths.
+function relativePosix(file: string): string {
+  return relative(MOBILE_ROOT, file).replaceAll("\\", "/");
+}
+
 const ALLOWED_FILES = new Set([
   "src/ui/Icon.ios.tsx",
   "src/ui/sf-symbol-map.ts",
@@ -64,7 +70,7 @@ function unguardedOccurrences(): Occurrence[] {
     ...listSourceFiles(APP_ROOT, []),
   ];
   for (const file of files) {
-    const relPath = relative(MOBILE_ROOT, file);
+    const relPath = relativePosix(file);
     if (ALLOWED_FILES.has(relPath) || isIosSibling(relPath)) continue;
     const lines = readFileSync(file, "utf8").split("\n");
     lines.forEach((line, index) => {
@@ -103,7 +109,7 @@ describe("platform neutrality", () => {
       ...listSourceFiles(APP_ROOT, []),
     ];
     for (const file of files) {
-      const relPath = relative(MOBILE_ROOT, file);
+      const relPath = relativePosix(file);
       if (ALLOWED_FILES.has(relPath) || isIosSibling(relPath)) continue;
       readFileSync(file, "utf8")
         .split("\n")
@@ -119,7 +125,7 @@ describe("platform neutrality", () => {
 
   it("never puts platform siblings under app/ (expo-router would route them)", () => {
     const siblings = listSourceFiles(APP_ROOT, [])
-      .map((file) => relative(MOBILE_ROOT, file))
+      .map((file) => relativePosix(file))
       .filter((relPath) => /\.(ios|android|native|web)\.tsx?$/.test(relPath));
     expect(siblings).toEqual([]);
   });
@@ -135,7 +141,7 @@ describe("platform neutrality", () => {
           return true;
         }
       })
-      .map((file) => relative(MOBILE_ROOT, file));
+      .map((file) => relativePosix(file));
     expect(missing).toEqual([]);
   });
 
@@ -151,7 +157,7 @@ describe("platform neutrality", () => {
       );
       source.split("\n").forEach((line, index) => {
         if (selfImport.test(line)) {
-          offenders.push(`${relative(MOBILE_ROOT, file)}:${index + 1}`);
+          offenders.push(`${relativePosix(file)}:${index + 1}`);
         }
       });
     }
@@ -160,7 +166,7 @@ describe("platform neutrality", () => {
 
   it("the scan sees the iOS adapters it exempts", () => {
     const files = listSourceFiles(SRC_ROOT, []).map((file) =>
-      relative(MOBILE_ROOT, file),
+      relativePosix(file),
     );
     expect(files).toContain("src/ui/Icon.ios.tsx");
     expect(files).toContain("src/ui/GlassSurface.ios.tsx");

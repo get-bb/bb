@@ -459,10 +459,14 @@ describe("ConversationMessageContent assistant directives", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Open workspace file" }),
     );
-    expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineRange: null,
-      path: "/workspace/project/charts/demo.html",
-    });
+    expect(onOpenLocalFileLink).toHaveBeenCalledWith(
+      {
+        lineRange: null,
+        path: "/workspace/project/charts/demo.html",
+      },
+      // bb-fork(windows): the fork opens directive files with the built-in viewer.
+      { viewer: "builtin" },
+    );
   });
 
   it("scopes directive thread-panel actions to the registering plugin", () => {

@@ -1,6 +1,8 @@
 /// <reference types="vitest/jsdom" />
 
 import "@bb/shared-ui/icon-extended";
+// bb-fork(windows): deterministic en-US formatting and slower-host timeouts.
+import "./fork-test-setup.js";
 
 if (typeof globalThis.navigator === "undefined") {
   Object.defineProperty(globalThis, "navigator", {

@@ -406,7 +406,8 @@ describe("automations server plugin harness", () => {
       mode: "script",
       scriptFile: "script.sh",
       storedScriptPath: expect.stringMatching(
-        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+        // bb-fork(windows): `join` stores `\`-separated paths on Windows.
+        new RegExp(`[/\\\\]scripts[/\\\\]${created.id}[/\\\\]script\\.sh$`),
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },
@@ -424,7 +425,8 @@ describe("automations server plugin harness", () => {
       mode: "script",
       script: "echo updated",
       storedScriptPath: expect.stringMatching(
-        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+        // bb-fork(windows): `join` stores `\`-separated paths on Windows.
+        new RegExp(`[/\\\\]scripts[/\\\\]${created.id}[/\\\\]script\\.sh$`),
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },

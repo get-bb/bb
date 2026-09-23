@@ -21,25 +21,31 @@ afterEach(async () => {
 });
 
 describe("secret file", () => {
-  it("reuses the same secret across repeated reads", async () => {
-    const dataDir = await makeTempDir();
+  // bb-fork(windows): `chmod 0600` is a no-op, so the mode assertion cannot hold.
+  it.skipIf(process.platform === "win32")(
+    "reuses the same secret across repeated reads",
+    async () => {
+      const dataDir = await makeTempDir();
 
-    const first = await readOrCreateSecretFile({
-      bytes: 32,
-      dataDir,
-      encoding: "base64",
-      fileName: "secret",
-    });
-    const second = await readOrCreateSecretFile({
-      bytes: 32,
-      dataDir,
-      encoding: "base64",
-      fileName: "secret",
-    });
+      const first = await readOrCreateSecretFile({
+        bytes: 32,
+        dataDir,
+        encoding: "base64",
+        fileName: "secret",
+      });
+      const second = await readOrCreateSecretFile({
+        bytes: 32,
+        dataDir,
+        encoding: "base64",
+        fileName: "secret",
+      });
 
-    expect(second).toBe(first);
-    expect((await stat(path.join(dataDir, "secret"))).mode & 0o777).toBe(0o600);
-  });
+      expect(second).toBe(first);
+      expect((await stat(path.join(dataDir, "secret"))).mode & 0o777).toBe(
+        0o600,
+      );
+    },
+  );
 
   it("returns the same secret to concurrent creators", async () => {
     const dataDir = await makeTempDir();

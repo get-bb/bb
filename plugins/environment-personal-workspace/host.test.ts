@@ -42,32 +42,37 @@ afterEach(async () => {
 });
 
 describe("personal workspace host entry", () => {
-  it("kills processes still running inside a workspace before removing it", async () => {
-    const dataDir = await createDataDir();
-    const harness = createHarness(dataDir);
-    const created = await harness.experimental_call("createWorkspace", {
-      pathKey: "thr_busy",
-    });
-    const child = spawn("sleep", ["300"], {
-      cwd: created.path,
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
-
-    try {
-      const removed = await harness.experimental_call("removeWorkspace", {
+  // bb-fork(windows): `experimental_killProcessesWithCwdUnder` is POSIX-only, so
+  // a Windows child keeps the directory locked and `rm` fails with EBUSY.
+  it.skipIf(process.platform === "win32")(
+    "kills processes still running inside a workspace before removing it",
+    async () => {
+      const dataDir = await createDataDir();
+      const harness = createHarness(dataDir);
+      const created = await harness.experimental_call("createWorkspace", {
         pathKey: "thr_busy",
-        path: created.path,
       });
+      const child = spawn("sleep", ["300"], {
+        cwd: created.path,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
 
-      expect(removed).toEqual({ removed: true });
-      expect(existsSync(created.path)).toBe(false);
-      expect(isPidAlive(child.pid ?? 0)).toBe(false);
-    } finally {
-      child.kill("SIGKILL");
-    }
-  });
+      try {
+        const removed = await harness.experimental_call("removeWorkspace", {
+          pathKey: "thr_busy",
+          path: created.path,
+        });
+
+        expect(removed).toEqual({ removed: true });
+        expect(existsSync(created.path)).toBe(false);
+        expect(isPidAlive(child.pid ?? 0)).toBe(false);
+      } finally {
+        child.kill("SIGKILL");
+      }
+    },
+  );
 
   it("creates a thread's workspace under the plugin data dir and removes it with its contents", async () => {
     const dataDir = await createDataDir();

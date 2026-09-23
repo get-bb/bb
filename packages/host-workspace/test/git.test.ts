@@ -210,25 +210,29 @@ describe("runGitWithNullRecordLimit", () => {
     });
   });
 
-  it("does not confuse a regular numstat path ending in a tab with a rename", async () => {
-    const repoPath = await initReadGitBlobRepo();
-    const unusualPath = "trailing-tab\t";
-    await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
-    await runGit(["add", unusualPath], { cwd: repoPath });
+  // bb-fork(windows): a Windows filename cannot end in a tab.
+  it.skipIf(process.platform === "win32")(
+    "does not confuse a regular numstat path ending in a tab with a rename",
+    async () => {
+      const repoPath = await initReadGitBlobRepo();
+      const unusualPath = "trailing-tab\t";
+      await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
+      await runGit(["add", unusualPath], { cwd: repoPath });
 
-    const result = await runGitWithNullRecordLimit(
-      ["diff", "--cached", "--numstat", "-z", "HEAD"],
-      { cwd: repoPath },
-      "numstat",
-      1,
-    );
+      const result = await runGitWithNullRecordLimit(
+        ["diff", "--cached", "--numstat", "-z", "HEAD"],
+        { cwd: repoPath },
+        "numstat",
+        1,
+      );
 
-    expect(result.recordLimitReached).toBe(true);
-    expect(result.recordCount).toBe(1);
-    expect(parseNumstatEntriesZ(result.stdout)).toEqual([
-      { path: unusualPath, insertions: 1, deletions: 0 },
-    ]);
-  });
+      expect(result.recordLimitReached).toBe(true);
+      expect(result.recordCount).toBe(1);
+      expect(parseNumstatEntriesZ(result.stdout)).toEqual([
+        { path: unusualPath, insertions: 1, deletions: 0 },
+      ]);
+    },
+  );
 });
 
 describe("detectGitRepoKind", () => {
@@ -441,7 +445,8 @@ describe("command timeouts", () => {
   });
 });
 
-describe("fetchRemoteBranches", () => {
+// bb-fork(windows): the fake ssh/git shims are `#!/bin/sh` scripts plus `chmod`.
+describe.skipIf(process.platform === "win32")("fetchRemoteBranches", () => {
   it("keeps a non-interactive fetch from prompting for ssh or git credentials", async () => {
     const { repoPath, sshLogPath } = await initSshRemoteRepo();
 
@@ -467,30 +472,33 @@ describe("fetchRemoteBranches", () => {
   });
 });
 
-describe("user-shell Git resolution", () => {
-  it("uses the resolved shell PATH for Git commands and Git pipelines", async () => {
-    const workspacePath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "bb-git-shell-path-workspace-"),
-    );
-    const binPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "bb-git-shell-path-bin-"),
-    );
-    tempDirs.push(workspacePath, binPath);
-    const gitPath = path.join(binPath, "git");
-    await fs.writeFile(gitPath, "#!/bin/sh\nprintf 'user-shell-git\\n'\n");
-    await fs.chmod(gitPath, 0o755);
+describe.skipIf(process.platform === "win32")(
+  "user-shell Git resolution",
+  () => {
+    it("uses the resolved shell PATH for Git commands and Git pipelines", async () => {
+      const workspacePath = await fs.mkdtemp(
+        path.join(os.tmpdir(), "bb-git-shell-path-workspace-"),
+      );
+      const binPath = await fs.mkdtemp(
+        path.join(os.tmpdir(), "bb-git-shell-path-bin-"),
+      );
+      tempDirs.push(workspacePath, binPath);
+      const gitPath = path.join(binPath, "git");
+      await fs.writeFile(gitPath, "#!/bin/sh\nprintf 'user-shell-git\\n'\n");
+      await fs.chmod(gitPath, 0o755);
 
-    await expect(
-      runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
-    ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
-    await expect(
-      runShellPipeline("git --version", [], {
-        cwd: workspacePath,
-        shellPath: binPath,
-      }),
-    ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
-  });
-});
+      await expect(
+        runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
+      ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
+      await expect(
+        runShellPipeline("git --version", [], {
+          cwd: workspacePath,
+          shellPath: binPath,
+        }),
+      ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
+    });
+  },
+);
 
 describe("readGitBlob", () => {
   it("reads a blob at a git ref and reports the returned byte size", async () => {

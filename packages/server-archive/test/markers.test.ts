@@ -65,74 +65,82 @@ const IMPORT_FILE: ServerImportFile = {
 };
 
 describe("server move marker files", () => {
-  it("returns null for absent markers and round trips each marker with mode 0600", async () => {
-    const dataDir = await makeTempDir();
-    expect(await readServerMovedFile(dataDir)).toBeNull();
-    expect(await readServerImportFile(dataDir)).toBeNull();
-    expect(await readLastServerMoveFile(dataDir)).toBeNull();
+  // bb-fork(windows): `chmod 0600` modes are not enforced on Windows.
+  it.skipIf(process.platform === "win32")(
+    "returns null for absent markers and round trips each marker with mode 0600",
+    async () => {
+      const dataDir = await makeTempDir();
+      expect(await readServerMovedFile(dataDir)).toBeNull();
+      expect(await readServerImportFile(dataDir)).toBeNull();
+      expect(await readLastServerMoveFile(dataDir)).toBeNull();
 
-    const lastMove = {
-      version: 1 as const,
-      moveId: "move-1",
-      fromHostId: "host-old",
-      fromHostName: "laptop",
-      toHostId: "host-new",
-      toHostName: "desktop",
-      completedAt: 1_757_000_000_000,
-      oldCopyDeletedAt: null,
-    };
-    await writeServerMovedFile(dataDir, MOVED_FILE);
-    await writeServerImportFile(dataDir, IMPORT_FILE);
-    await writeLastServerMoveFile(dataDir, lastMove);
+      const lastMove = {
+        version: 1 as const,
+        moveId: "move-1",
+        fromHostId: "host-old",
+        fromHostName: "laptop",
+        toHostId: "host-new",
+        toHostName: "desktop",
+        completedAt: 1_757_000_000_000,
+        oldCopyDeletedAt: null,
+      };
+      await writeServerMovedFile(dataDir, MOVED_FILE);
+      await writeServerImportFile(dataDir, IMPORT_FILE);
+      await writeLastServerMoveFile(dataDir, lastMove);
 
-    expect(await readServerMovedFile(dataDir)).toEqual(MOVED_FILE);
-    expect(await readServerImportFile(dataDir)).toEqual(IMPORT_FILE);
-    expect(await readLastServerMoveFile(dataDir)).toEqual(lastMove);
-    expect((await readdir(dataDir)).sort()).toEqual(
-      [
-        LAST_SERVER_MOVE_FILE_NAME,
-        SERVER_IMPORT_FILE_NAME,
-        SERVER_MOVED_FILE_NAME,
-      ].sort(),
-    );
-    for (const fileName of await readdir(dataDir)) {
-      expect((await stat(path.join(dataDir, fileName))).mode & 0o777).toBe(
-        0o600,
+      expect(await readServerMovedFile(dataDir)).toEqual(MOVED_FILE);
+      expect(await readServerImportFile(dataDir)).toEqual(IMPORT_FILE);
+      expect(await readLastServerMoveFile(dataDir)).toEqual(lastMove);
+      expect((await readdir(dataDir)).sort()).toEqual(
+        [
+          LAST_SERVER_MOVE_FILE_NAME,
+          SERVER_IMPORT_FILE_NAME,
+          SERVER_MOVED_FILE_NAME,
+        ].sort(),
       );
-    }
-  });
+      for (const fileName of await readdir(dataDir)) {
+        expect((await stat(path.join(dataDir, fileName))).mode & 0o777).toBe(
+          0o600,
+        );
+      }
+    },
+  );
 
-  it("round trips the bb connect hold with mode 0600 and removes it once", async () => {
-    const dataDir = await makeTempDir();
-    expect(SERVER_CONNECT_HOLD_FILE_NAME).toBe("server-connect-hold.json");
-    expect(await readServerConnectHoldFile(dataDir)).toBeNull();
-    expect(await removeServerConnectHoldFile(dataDir)).toBe(false);
+  // bb-fork(windows): `chmod 0600` modes are not enforced on Windows.
+  it.skipIf(process.platform === "win32")(
+    "round trips the bb connect hold with mode 0600 and removes it once",
+    async () => {
+      const dataDir = await makeTempDir();
+      expect(SERVER_CONNECT_HOLD_FILE_NAME).toBe("server-connect-hold.json");
+      expect(await readServerConnectHoldFile(dataDir)).toBeNull();
+      expect(await removeServerConnectHoldFile(dataDir)).toBe(false);
 
-    const hold: ServerConnectHoldFile = {
-      version: 1,
-      reason: "manual-import",
-      createdAt: 1_757_000_000_000,
-    };
-    await writeServerConnectHoldFile(dataDir, hold);
+      const hold: ServerConnectHoldFile = {
+        version: 1,
+        reason: "manual-import",
+        createdAt: 1_757_000_000_000,
+      };
+      await writeServerConnectHoldFile(dataDir, hold);
 
-    expect(await readServerConnectHoldFile(dataDir)).toEqual(hold);
-    expect(
-      (await stat(path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME))).mode &
-        0o777,
-    ).toBe(0o600);
+      expect(await readServerConnectHoldFile(dataDir)).toEqual(hold);
+      expect(
+        (await stat(path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME))).mode &
+          0o777,
+      ).toBe(0o600);
 
-    await writeFile(
-      path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME),
-      JSON.stringify({ ...hold, reason: "move" }),
-    );
-    await expect(readServerConnectHoldFile(dataDir)).rejects.toThrow(
-      /Invalid/u,
-    );
+      await writeFile(
+        path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME),
+        JSON.stringify({ ...hold, reason: "move" }),
+      );
+      await expect(readServerConnectHoldFile(dataDir)).rejects.toThrow(
+        /Invalid/u,
+      );
 
-    expect(await removeServerConnectHoldFile(dataDir)).toBe(true);
-    expect(await removeServerConnectHoldFile(dataDir)).toBe(false);
-    expect(await readdir(dataDir)).toEqual([]);
-  });
+      expect(await removeServerConnectHoldFile(dataDir)).toBe(true);
+      expect(await removeServerConnectHoldFile(dataDir)).toBe(false);
+      expect(await readdir(dataDir)).toEqual([]);
+    },
+  );
 
   it("throws on invalid JSON and on markers that fail the schema", async () => {
     const dataDir = await makeTempDir();

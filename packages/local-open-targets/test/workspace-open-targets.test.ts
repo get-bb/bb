@@ -1988,209 +1988,235 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("opens local directories in Terminal with a short cd command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({ calls });
+  // bb-fork(windows): macOS Terminal AppleScript escaping of `\` paths.
+  it.skipIf(process.platform === "win32")(
+    "opens local directories in Terminal with a short cd command",
+    async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const calls: ExecFileCall[] = [];
+      const execFile = createAvailableExecFile({ calls });
 
-    try {
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: workspacePath,
-          targetId: "terminal",
-        },
-        createRuntime({ execFile }),
-      );
+      try {
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: workspacePath,
+            targetId: "terminal",
+          },
+          createRuntime({ execFile }),
+        );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain('tell application "Terminal" to do script');
-      expect(script).toContain(`cd '${workspacePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+        const osascriptCall = calls.find((call) => call.file === "osascript");
+        expect(osascriptCall).toBeDefined();
+        const script = osascriptCall?.args.join("\n") ?? "";
+        expect(script).toContain('tell application "Terminal" to do script');
+        expect(script).toContain(`cd '${workspacePath}'`);
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    },
+  );
 
-  it("opens local directories in iTerm2 with a short cd command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableBundleIdSubstrings: ["com.googlecode.iterm2"],
-      calls,
-    });
+  // bb-fork(windows): macOS iTerm2 AppleScript escaping of `\` paths.
+  it.skipIf(process.platform === "win32")(
+    "opens local directories in iTerm2 with a short cd command",
+    async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const calls: ExecFileCall[] = [];
+      const execFile = createAvailableExecFile({
+        availableBundleIdSubstrings: ["com.googlecode.iterm2"],
+        calls,
+      });
 
-    try {
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: workspacePath,
-          targetId: "iterm2",
-        },
-        createRuntime({ execFile }),
-      );
+      try {
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: workspacePath,
+            targetId: "iterm2",
+          },
+          createRuntime({ execFile }),
+        );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain(
-        'tell application "iTerm" to create window with default profile',
-      );
-      expect(script).toContain(
-        'tell application "iTerm" to tell current session of current window to write text',
-      );
-      expect(script).toContain(`cd '${workspacePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+        const osascriptCall = calls.find((call) => call.file === "osascript");
+        expect(osascriptCall).toBeDefined();
+        const script = osascriptCall?.args.join("\n") ?? "";
+        expect(script).toContain(
+          'tell application "iTerm" to create window with default profile',
+        );
+        expect(script).toContain(
+          'tell application "iTerm" to tell current session of current window to write text',
+        );
+        expect(script).toContain(`cd '${workspacePath}'`);
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    },
+  );
 
-  it("opens local files in Terminal with a resolved terminal editor command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "src", "file.ts");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableExecutables: ["vim"],
-      calls,
-    });
+  // bb-fork(windows): macOS Terminal AppleScript escaping of `\` paths.
+  it.skipIf(process.platform === "win32")(
+    "opens local files in Terminal with a resolved terminal editor command",
+    async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "src", "file.ts");
+      const calls: ExecFileCall[] = [];
+      const execFile = createAvailableExecFile({
+        availableExecutables: ["vim"],
+        calls,
+      });
 
-    try {
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, "export const value = 1;\n");
+      try {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, "export const value = 1;\n");
 
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "terminal",
-        },
-        createRuntime({ execFile }),
-      );
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 4,
+            lineNumber: 22,
+            path: filePath,
+            targetId: "terminal",
+          },
+          createRuntime({ execFile }),
+        );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain('tell application "Terminal" to do script');
-      expect(script).toContain(
-        `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
-      );
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+        const osascriptCall = calls.find((call) => call.file === "osascript");
+        expect(osascriptCall).toBeDefined();
+        const script = osascriptCall?.args.join("\n") ?? "";
+        expect(script).toContain('tell application "Terminal" to do script');
+        expect(script).toContain(
+          `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
+        );
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    },
+  );
 
-  it("opens local files in iTerm2 with a resolved terminal editor command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "README.md");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableBundleIdSubstrings: ["com.googlecode.iterm2"],
-      availableExecutables: ["vim"],
-      calls,
-    });
+  // bb-fork(windows): macOS iTerm2 AppleScript escaping of `\` paths.
+  it.skipIf(process.platform === "win32")(
+    "opens local files in iTerm2 with a resolved terminal editor command",
+    async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "README.md");
+      const calls: ExecFileCall[] = [];
+      const execFile = createAvailableExecFile({
+        availableBundleIdSubstrings: ["com.googlecode.iterm2"],
+        availableExecutables: ["vim"],
+        calls,
+      });
 
-    try {
-      await writeFile(filePath, "# Test\n");
+      try {
+        await writeFile(filePath, "# Test\n");
 
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: filePath,
-          targetId: "iterm2",
-        },
-        createRuntime({ execFile }),
-      );
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: filePath,
+            targetId: "iterm2",
+          },
+          createRuntime({ execFile }),
+        );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain(
-        'tell application "iTerm" to create window with default profile',
-      );
-      expect(script).toContain(
-        'tell application "iTerm" to tell current session of current window to write text',
-      );
-      expect(script).toContain(`cd '${workspacePath}' && 'vim' '${filePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+        const osascriptCall = calls.find((call) => call.file === "osascript");
+        expect(osascriptCall).toBeDefined();
+        const script = osascriptCall?.args.join("\n") ?? "";
+        expect(script).toContain(
+          'tell application "iTerm" to create window with default profile',
+        );
+        expect(script).toContain(
+          'tell application "iTerm" to tell current session of current window to write text',
+        );
+        expect(script).toContain(
+          `cd '${workspacePath}' && 'vim' '${filePath}'`,
+        );
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    },
+  );
 
-  it("inserts terminal editor location args before explicit editor args separator", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "src", "file.ts");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      calls,
-    });
+  // bb-fork(windows): macOS Terminal AppleScript escaping of `\` paths.
+  it.skipIf(process.platform === "win32")(
+    "inserts terminal editor location args before explicit editor args separator",
+    async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "src", "file.ts");
+      const calls: ExecFileCall[] = [];
+      const execFile = createAvailableExecFile({
+        calls,
+      });
 
-    try {
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, "export const value = 1;\n");
+      try {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, "export const value = 1;\n");
 
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "terminal",
-        },
-        createRuntime({
-          env: { VISUAL: "vim --clean --" },
-          execFile,
-        }),
-      );
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 4,
+            lineNumber: 22,
+            path: filePath,
+            targetId: "terminal",
+          },
+          createRuntime({
+            env: { VISUAL: "vim --clean --" },
+            execFile,
+          }),
+        );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain(
-        `cd '${path.dirname(filePath)}' && 'vim' '--clean' '+call cursor(22,4)' '--' '${filePath}'`,
-      );
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+        const osascriptCall = calls.find((call) => call.file === "osascript");
+        expect(osascriptCall).toBeDefined();
+        const script = osascriptCall?.args.join("\n") ?? "";
+        expect(script).toContain(
+          `cd '${path.dirname(filePath)}' && 'vim' '--clean' '+call cursor(22,4)' '--' '${filePath}'`,
+        );
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    },
+  );
 
-  it("opens local files in Terminal at the containing directory when no terminal editor is available", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "README.md");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({ calls });
+  // bb-fork(windows): macOS Terminal AppleScript escaping of `\` paths.
+  it.skipIf(process.platform === "win32")(
+    "opens local files in Terminal at the containing directory when no terminal editor is available",
+    async () => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "README.md");
+      const calls: ExecFileCall[] = [];
+      const execFile = createAvailableExecFile({ calls });
 
-    try {
-      await writeFile(filePath, "# Test\n");
+      try {
+        await writeFile(filePath, "# Test\n");
 
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "terminal",
-        },
-        createRuntime({ execFile }),
-      );
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 4,
+            lineNumber: 22,
+            path: filePath,
+            targetId: "terminal",
+          },
+          createRuntime({ execFile }),
+        );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain('tell application "Terminal" to do script');
-      expect(script).toContain(`cd '${workspacePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+        const osascriptCall = calls.find((call) => call.file === "osascript");
+        expect(osascriptCall).toBeDefined();
+        const script = osascriptCall?.args.join("\n") ?? "";
+        expect(script).toContain('tell application "Terminal" to do script');
+        expect(script).toContain(`cd '${workspacePath}'`);
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
+      }
+    },
+  );
 
   it("opens local files in Warp at the containing directory", async () => {
     const root = await mkdtemp(

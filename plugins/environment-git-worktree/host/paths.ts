@@ -76,8 +76,20 @@ export function deriveRepoDirName(sourcePath: string): string {
   return isSafeRepoDirName(candidate) ? candidate : slugRepoDirName(candidate);
 }
 
+// bb-fork(windows): keep the data dir's own path convention. A native Windows
+// data dir must not be joined with `/`, and a POSIX one must not use `\`.
+function joinUnderDataDir(base: string, ...segments: string[]): string {
+  const api =
+    /^[A-Za-z]:[\\/]/u.test(base) || base.startsWith("\\\\")
+      ? path.win32
+      : path.posix;
+  return api.join(base, ...segments);
+}
+
+// bb-fork(windows): the worktree root is under the local plugin data dir, so it
+// must keep that dir's separators rather than always using `/`.
 export function resolveWorktreesRoot(dataDir: string): string {
-  return path.posix.join(dataDir, "worktrees");
+  return joinUnderDataDir(dataDir, "worktrees");
 }
 
 export function resolveWorktreeAttemptRoot(args: {
@@ -97,7 +109,7 @@ export function resolveWorktreeAttemptRoot(args: {
       "A worktree path key must be a single path segment",
     );
   }
-  return path.posix.join(resolveWorktreesRoot(args.dataDir), args.pathKey);
+  return joinUnderDataDir(resolveWorktreesRoot(args.dataDir), args.pathKey);
 }
 
 export function resolveWorktreeTargetPath(args: {
@@ -105,7 +117,7 @@ export function resolveWorktreeTargetPath(args: {
   pathKey: string;
   sourcePath: string;
 }): string {
-  return path.posix.join(
+  return joinUnderDataDir(
     resolveWorktreeAttemptRoot(args),
     deriveRepoDirName(args.sourcePath),
   );
@@ -127,5 +139,5 @@ export function resolveWorktreeChildPath(args: {
       "A managed worktree directory name must be a safe path segment",
     );
   }
-  return path.posix.join(resolveWorktreeAttemptRoot(args), args.childName);
+  return joinUnderDataDir(resolveWorktreeAttemptRoot(args), args.childName);
 }

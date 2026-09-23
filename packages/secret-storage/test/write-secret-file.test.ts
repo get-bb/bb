@@ -21,15 +21,19 @@ afterEach(async () => {
 });
 
 describe("writeSecretFile", () => {
-  it("writes the value with 0600 mode, creating parent directories", async () => {
-    const dir = await makeTempDir();
-    const secretPath = path.join(dir, "plugins", "slack", "secrets", "token");
+  // bb-fork(windows): `chmod 0600` is a no-op, so the mode assertion cannot hold.
+  it.skipIf(process.platform === "win32")(
+    "writes the value with 0600 mode, creating parent directories",
+    async () => {
+      const dir = await makeTempDir();
+      const secretPath = path.join(dir, "plugins", "slack", "secrets", "token");
 
-    await writeSecretFile(secretPath, "xoxb-123");
+      await writeSecretFile(secretPath, "xoxb-123");
 
-    expect(await readFile(secretPath, "utf8")).toBe("xoxb-123");
-    expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
-  });
+      expect(await readFile(secretPath, "utf8")).toBe("xoxb-123");
+      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it("overwrites an existing secret and leaves no temp files behind", async () => {
     const dir = await makeTempDir();

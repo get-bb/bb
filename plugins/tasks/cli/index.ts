@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolveHostPath } from "./host-path.fork.js";
 import {
   PluginCliError,
   cliCommand,
@@ -229,7 +229,7 @@ async function readTextOption(
   file: string | undefined,
 ): Promise<string | undefined> {
   if (file === undefined) return inline;
-  const path = resolve(ctx.cwd ?? process.cwd(), file);
+  const path = resolveHostPath(ctx.cwd ?? process.cwd(), file);
   try {
     const { text } = await readClientFile(bb, hostId, path);
     if (text === null) {
@@ -1203,7 +1203,7 @@ export function registerTasksCli(
           run(input, ctx) {
             return guard(async () => {
               const attachPaths = input.options.attach.map((path) =>
-                resolve(ctx.cwd ?? process.cwd(), path),
+                resolveHostPath(ctx.cwd ?? process.cwd(), path),
               );
               const descriptionFile = input.options["description-file"];
               const usesClientFiles =
@@ -2005,7 +2005,7 @@ export function registerTasksCli(
           run(input, ctx) {
             return guard(async () => {
               const ownerAddress = input.positionals["key-or-comment-id"];
-              const sourcePath = resolve(
+              const sourcePath = resolveHostPath(
                 ctx.cwd ?? process.cwd(),
                 input.options.file,
               );
@@ -2077,7 +2077,7 @@ export function registerTasksCli(
           },
           run(input, ctx) {
             return guard(async () => {
-              const outPath = resolve(
+              const outPath = resolveHostPath(
                 ctx.cwd ?? process.cwd(),
                 input.options.out,
               );

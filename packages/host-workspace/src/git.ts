@@ -15,6 +15,9 @@ import {
   supportsProcessGroups,
 } from "@bb/process-utils";
 
+// bb-fork(windows): resolve a POSIX shell for the patch-id pipelines.
+import { resolvePosixShell } from "./shell-windows.fork.js";
+
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
 
@@ -549,7 +552,7 @@ export async function runShellPipeline(
   }
   try {
     const result = await execFileAsync(
-      "/bin/sh",
+      resolvePosixShell(),
       ["-c", script, "sh", ...positionalArgs],
       {
         cwd: options.cwd,

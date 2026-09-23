@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const PLUGIN_ROOT = realpathSync(resolve(import.meta.dirname, ".."));
@@ -135,7 +135,8 @@ function collectFrontendModules(entry: string): Map<string, string[]> {
 describe("automations frontend bundle", () => {
   const reached = collectFrontendModules(FRONTEND_ENTRY);
   const reachedPaths = [...reached.keys()].map((file) =>
-    relative(PLUGIN_ROOT, file),
+    // bb-fork(windows): `relative` returns `\`-separated paths on Windows.
+    relative(PLUGIN_ROOT, file).replaceAll(sep, "/"),
   );
 
   it("walks the real frontend graph", () => {

@@ -6,7 +6,10 @@ import {
 export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
-    testTimeout: 15_000,
+    // bb-fork(windows): clone/push/fetch tests need more than the CI budget.
+    testTimeout: 30_000,
+    // bb-fork(windows): force Git's default rename detection for the suite.
+    setupFiles: ["./test/fork-test-setup.ts"],
     projects: sharedWorkerProjects({
       pkgDir: __dirname,
       name: "@bb/host-workspace",

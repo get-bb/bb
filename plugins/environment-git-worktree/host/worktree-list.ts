@@ -1,3 +1,5 @@
+import path from "node:path";
+
 export interface GitWorktreeEntry {
   path: string;
   branch: string | null;
@@ -68,12 +70,21 @@ export function selectAdoptableWorktrees(args: {
 }
 
 function isInside(root: string, candidate: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}/`);
+  const relative = path.relative(comparisonKey(root), comparisonKey(candidate));
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 export function findWorktreeEntry(
   entries: readonly GitWorktreeEntry[],
   path: string,
 ): GitWorktreeEntry | null {
-  return entries.find((entry) => entry.path === path) ?? null;
+  const key = comparisonKey(path);
+  return entries.find((entry) => comparisonKey(entry.path) === key) ?? null;
+}
+
+// bb-fork(windows): git prints worktree paths with `/`; compare native resolved
+// paths and fold case on Windows.
+function comparisonKey(value: string): string {
+  const normalized = path.resolve(value);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }

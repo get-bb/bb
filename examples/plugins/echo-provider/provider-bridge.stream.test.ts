@@ -157,234 +157,247 @@ function completedItem<T extends ItemEvent["item"]["type"]>(
 }
 
 describe("the echo bridge's grammar v3 stream", () => {
-  it("runs the whole scripted turn through the runtime assembler", async () => {
-    await request("initialize", {
-      protocolVersion: 2,
-      client: { name: "echo-stream-test", version: "0.0.0" },
-      grammarVersions: [3, 3],
-    });
-    const providerThreadId = await startSession({
-      dynamicTools: [STAMP_TOOL_DEFINITION],
-      providerOptions: { shout: true, model: "echo-1", promptMode: null },
-    });
-    await request("turn/start", {
-      threadId: THREAD_ID,
-      providerThreadId,
-      input: textInput(PROMPT),
-      clientRequestId: "creq_ech2345678",
-      options: {
-        ...FULL_OPTIONS,
-        providerOptions: { shout: true, model: "echo-1", promptMode: null },
-      },
-    });
-
-    const callParams = answerToolCall(() => ({
-      success: true,
-      contentItems: [{ type: "inputText", text: `stamped: ${PROMPT}` }],
-    }));
-    expect(callParams).toMatchObject({
-      providerThreadId,
-      threadId: THREAD_ID,
-      turnId: null,
-      tool: ECHO_STAMP_TOOL_NAME,
-      arguments: { text: PROMPT },
-      providerNativeIds: true,
-    });
-
-    const events = assembledEvents();
-    const types = events.map((event) => event.type);
-
-    expect(
-      harness.messages.find((message) => message.method === "thread/identity")
-        ?.params,
-    ).toEqual({ threadId: THREAD_ID, providerThreadId });
-    expect(types.slice(0, 2)).toEqual(["turn/started", "turn/input/accepted"]);
-    expect(types.filter((type) => type === "turn/input/accepted")).toHaveLength(
-      1,
-    );
-    expect(types.filter((type) => type === "turn/started")).toHaveLength(2);
-    expect(types.filter((type) => type === "turn/completed")).toHaveLength(2);
-    expect(types.at(-1)).toBe("turn/completed");
-
-    const items = itemEvents(events);
-    expect(items.length).toBeGreaterThanOrEqual(18);
-    for (const event of items) {
-      expect(
-        "presentation" in event.item ? event.item.presentation : undefined,
-        `${event.type} ${event.item.type} ${event.item.id} has presentation`,
-      ).toMatchObject({
-        label: { pending: expect.any(String), completed: expect.any(String) },
-        icon: { glyph: expect.any(String) },
+  // bb-fork(windows): the fixture workspace root is POSIX (`/workspace/echo`).
+  it.skipIf(process.platform === "win32")(
+    "runs the whole scripted turn through the runtime assembler",
+    async () => {
+      await request("initialize", {
+        protocolVersion: 2,
+        client: { name: "echo-stream-test", version: "0.0.0" },
+        grammarVersions: [3, 3],
       });
-    }
-    const completedTypes = items
-      .filter((event) => event.type === "item/completed")
-      .map((event) => event.item.type);
-    expect(completedTypes).toEqual([
-      "commandExecution",
-      "fileRead",
-      "search",
-      "agentMessage",
-      "delegation",
-      "planSteps",
-      "toolCall",
-      "toolCall",
-      "extension",
-      "agentMessage",
-    ]);
-
-    const command = completedItem(events, "commandExecution");
-    expect(command).toMatchObject({
-      command: `echo "${PROMPT}"`,
-      cwd: CWD,
-      status: "completed",
-      exitCode: 0,
-      aggregatedOutput: `${PROMPT}\n`,
-      presentation: {
-        label: { pending: "Running command", completed: "Ran command" },
-        icon: { glyph: "Terminal" },
-        title: `echo "${PROMPT}"`,
-      },
-    });
-    expect(
-      events.some(
-        (event) => event.type === "item/commandExecution/outputDelta",
-      ),
-    ).toBe(true);
-
-    expect(completedItem(events, "fileRead")).toMatchObject({
-      path: `${CWD}/README.md`,
-      status: "completed",
-      presentation: { icon: { glyph: "FileText" }, title: `${CWD}/README.md` },
-    });
-    expect(completedItem(events, "search")).toMatchObject({
-      mode: "content",
-      query: PROMPT,
-      path: CWD,
-      status: "completed",
-      presentation: { icon: { glyph: "Search" }, title: PROMPT },
-    });
-
-    const delegation = completedItem(events, "delegation");
-    expect(delegation).toMatchObject({
-      background: false,
-      status: "completed",
-      summary: `child echo: ${PROMPT}`,
-      presentation: {
-        label: {
-          pending: "Running echo child",
-          completed: "Echo child finished",
+      const providerThreadId = await startSession({
+        dynamicTools: [STAMP_TOOL_DEFINITION],
+        providerOptions: { shout: true, model: "echo-1", promptMode: null },
+      });
+      await request("turn/start", {
+        threadId: THREAD_ID,
+        providerThreadId,
+        input: textInput(PROMPT),
+        clientRequestId: "creq_ech2345678",
+        options: {
+          ...FULL_OPTIONS,
+          providerOptions: { shout: true, model: "echo-1", promptMode: null },
         },
-        icon: { glyph: "UserRound" },
-        detail: expect.stringContaining("parentRef"),
-      },
-    });
-    const childTurn = events.find(
-      (event) =>
-        event.type === "turn/started" &&
-        "parentToolCallId" in event &&
-        event.parentToolCallId !== undefined,
-    );
-    expect(childTurn).toMatchObject({ parentToolCallId: delegation.id });
-    const childMessage = items.find(
-      (event) =>
-        event.type === "item/completed" &&
-        event.item.type === "agentMessage" &&
-        event.item.parentToolCallId !== undefined,
-    );
-    expect(childMessage?.item).toMatchObject({
-      text: `child echo: ${PROMPT}`,
-      parentToolCallId: delegation.id,
-    });
-    expect(childMessage?.scope).toEqual(childTurn?.scope);
+      });
 
-    expect(completedItem(events, "planSteps")).toMatchObject({
-      steps: [
-        { step: "Hear the prompt", status: "completed" },
-        { step: `Echo "${PROMPT}"`, status: "completed" },
-        { step: "Write the receipt", status: "completed" },
-      ],
-      explanation: "The echo agent's three-step plan.",
-      presentation: { icon: { glyph: "ListTodo" }, title: "Write the receipt" },
-    });
+      const callParams = answerToolCall(() => ({
+        success: true,
+        contentItems: [{ type: "inputText", text: `stamped: ${PROMPT}` }],
+      }));
+      expect(callParams).toMatchObject({
+        providerThreadId,
+        threadId: THREAD_ID,
+        turnId: null,
+        tool: ECHO_STAMP_TOOL_NAME,
+        arguments: { text: PROMPT },
+        providerNativeIds: true,
+      });
 
-    const tools = items
-      .filter(
+      const events = assembledEvents();
+      const types = events.map((event) => event.type);
+
+      expect(
+        harness.messages.find((message) => message.method === "thread/identity")
+          ?.params,
+      ).toEqual({ threadId: THREAD_ID, providerThreadId });
+      expect(types.slice(0, 2)).toEqual([
+        "turn/started",
+        "turn/input/accepted",
+      ]);
+      expect(
+        types.filter((type) => type === "turn/input/accepted"),
+      ).toHaveLength(1);
+      expect(types.filter((type) => type === "turn/started")).toHaveLength(2);
+      expect(types.filter((type) => type === "turn/completed")).toHaveLength(2);
+      expect(types.at(-1)).toBe("turn/completed");
+
+      const items = itemEvents(events);
+      expect(items.length).toBeGreaterThanOrEqual(18);
+      for (const event of items) {
+        expect(
+          "presentation" in event.item ? event.item.presentation : undefined,
+          `${event.type} ${event.item.type} ${event.item.id} has presentation`,
+        ).toMatchObject({
+          label: { pending: expect.any(String), completed: expect.any(String) },
+          icon: { glyph: expect.any(String) },
+        });
+      }
+      const completedTypes = items
+        .filter((event) => event.type === "item/completed")
+        .map((event) => event.item.type);
+      expect(completedTypes).toEqual([
+        "commandExecution",
+        "fileRead",
+        "search",
+        "agentMessage",
+        "delegation",
+        "planSteps",
+        "toolCall",
+        "toolCall",
+        "extension",
+        "agentMessage",
+      ]);
+
+      const command = completedItem(events, "commandExecution");
+      expect(command).toMatchObject({
+        command: `echo "${PROMPT}"`,
+        cwd: CWD,
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: `${PROMPT}\n`,
+        presentation: {
+          label: { pending: "Running command", completed: "Ran command" },
+          icon: { glyph: "Terminal" },
+          title: `echo "${PROMPT}"`,
+        },
+      });
+      expect(
+        events.some(
+          (event) => event.type === "item/commandExecution/outputDelta",
+        ),
+      ).toBe(true);
+
+      expect(completedItem(events, "fileRead")).toMatchObject({
+        path: `${CWD}/README.md`,
+        status: "completed",
+        presentation: {
+          icon: { glyph: "FileText" },
+          title: `${CWD}/README.md`,
+        },
+      });
+      expect(completedItem(events, "search")).toMatchObject({
+        mode: "content",
+        query: PROMPT,
+        path: CWD,
+        status: "completed",
+        presentation: { icon: { glyph: "Search" }, title: PROMPT },
+      });
+
+      const delegation = completedItem(events, "delegation");
+      expect(delegation).toMatchObject({
+        background: false,
+        status: "completed",
+        summary: `child echo: ${PROMPT}`,
+        presentation: {
+          label: {
+            pending: "Running echo child",
+            completed: "Echo child finished",
+          },
+          icon: { glyph: "UserRound" },
+          detail: expect.stringContaining("parentRef"),
+        },
+      });
+      const childTurn = events.find(
         (event) =>
-          event.type === "item/completed" && event.item.type === "toolCall",
-      )
-      .map((event) => event.item);
-    expect(tools[0]).toMatchObject({
-      tool: "echo_noop",
-      result: "ahem",
-      presentation: { suppress: true, icon: { glyph: "Toolbox" } },
-    });
-    expect(tools[0]).not.toHaveProperty("server");
-    expect(tools[1]).toMatchObject({
-      tool: ECHO_STAMP_TOOL_NAME,
-      server: "bb",
-      arguments: { text: PROMPT },
-      result: `stamped: ${PROMPT}`,
-      status: "completed",
-      presentation: ECHO_STAMP_TOOL_PRESENTATION,
-    });
-    expect(
-      collector.assembler.getBbItemId(THREAD_ID, String(callParams.callId)),
-    ).toBe(tools[1]?.id);
-
-    expect(completedItem(events, "extension")).toMatchObject({
-      kind: ECHO_RECEIPT_KIND,
-      payload: { prompt: PROMPT, itemCount: 7, shouted: true },
-      status: "completed",
-      presentation: {
-        label: { pending: "Writing receipt", completed: "Wrote receipt" },
-        icon: { glyph: ECHO_RECEIPT_ICON_GLYPH },
-        title: PROMPT,
-        detail: "Echoed 7 items, shouting.",
-        tint: { light: "#047857", dark: "#6ee7b7" },
-      },
-    });
-    const mood = events.find(
-      (event) => event.type === "thread/extensionState/updated",
-    );
-    expect(mood).toMatchObject({
-      kind: ECHO_MOOD_KIND,
-      payload: { mood: "cheerful", turnsEchoed: 1 },
-    });
-
-    const message = items
-      .filter(
+          event.type === "turn/started" &&
+          "parentToolCallId" in event &&
+          event.parentToolCallId !== undefined,
+      );
+      expect(childTurn).toMatchObject({ parentToolCallId: delegation.id });
+      const childMessage = items.find(
         (event) =>
           event.type === "item/completed" &&
           event.item.type === "agentMessage" &&
-          event.item.parentToolCallId === undefined,
-      )
-      .map((event) => event.item)
-      .at(-1);
-    expect(message).toMatchObject({
-      text: [
-        "echo: HELLO WORLD",
-        "providerOptions (server): shout=true model=echo-1 promptMode=none",
-        `${ECHO_GREETING_ENV}=hi from the daemon`,
-        `${ECHO_STAMP_TOOL_NAME}: stamped: ${PROMPT}`,
-      ].join("\n"),
-      presentation: { label: { pending: "Echoing", completed: "Echoed" } },
-    });
+          event.item.parentToolCallId !== undefined,
+      );
+      expect(childMessage?.item).toMatchObject({
+        text: `child echo: ${PROMPT}`,
+        parentToolCallId: delegation.id,
+      });
+      expect(childMessage?.scope).toEqual(childTurn?.scope);
 
-    expect(
-      events.find((event) => event.type === "thread/tokenUsage/updated"),
-    ).toMatchObject({
-      tokenUsage: {
-        total: { inputTokens: PROMPT.length },
-        last: { inputTokens: PROMPT.length },
-      },
-    });
-    expect(
-      events.some(
-        (event) => event.type === "thread/contextWindowUsage/updated",
-      ),
-    ).toBe(true);
-  });
+      expect(completedItem(events, "planSteps")).toMatchObject({
+        steps: [
+          { step: "Hear the prompt", status: "completed" },
+          { step: `Echo "${PROMPT}"`, status: "completed" },
+          { step: "Write the receipt", status: "completed" },
+        ],
+        explanation: "The echo agent's three-step plan.",
+        presentation: {
+          icon: { glyph: "ListTodo" },
+          title: "Write the receipt",
+        },
+      });
+
+      const tools = items
+        .filter(
+          (event) =>
+            event.type === "item/completed" && event.item.type === "toolCall",
+        )
+        .map((event) => event.item);
+      expect(tools[0]).toMatchObject({
+        tool: "echo_noop",
+        result: "ahem",
+        presentation: { suppress: true, icon: { glyph: "Toolbox" } },
+      });
+      expect(tools[0]).not.toHaveProperty("server");
+      expect(tools[1]).toMatchObject({
+        tool: ECHO_STAMP_TOOL_NAME,
+        server: "bb",
+        arguments: { text: PROMPT },
+        result: `stamped: ${PROMPT}`,
+        status: "completed",
+        presentation: ECHO_STAMP_TOOL_PRESENTATION,
+      });
+      expect(
+        collector.assembler.getBbItemId(THREAD_ID, String(callParams.callId)),
+      ).toBe(tools[1]?.id);
+
+      expect(completedItem(events, "extension")).toMatchObject({
+        kind: ECHO_RECEIPT_KIND,
+        payload: { prompt: PROMPT, itemCount: 7, shouted: true },
+        status: "completed",
+        presentation: {
+          label: { pending: "Writing receipt", completed: "Wrote receipt" },
+          icon: { glyph: ECHO_RECEIPT_ICON_GLYPH },
+          title: PROMPT,
+          detail: "Echoed 7 items, shouting.",
+          tint: { light: "#047857", dark: "#6ee7b7" },
+        },
+      });
+      const mood = events.find(
+        (event) => event.type === "thread/extensionState/updated",
+      );
+      expect(mood).toMatchObject({
+        kind: ECHO_MOOD_KIND,
+        payload: { mood: "cheerful", turnsEchoed: 1 },
+      });
+
+      const message = items
+        .filter(
+          (event) =>
+            event.type === "item/completed" &&
+            event.item.type === "agentMessage" &&
+            event.item.parentToolCallId === undefined,
+        )
+        .map((event) => event.item)
+        .at(-1);
+      expect(message).toMatchObject({
+        text: [
+          "echo: HELLO WORLD",
+          "providerOptions (server): shout=true model=echo-1 promptMode=none",
+          `${ECHO_GREETING_ENV}=hi from the daemon`,
+          `${ECHO_STAMP_TOOL_NAME}: stamped: ${PROMPT}`,
+        ].join("\n"),
+        presentation: { label: { pending: "Echoing", completed: "Echoed" } },
+      });
+
+      expect(
+        events.find((event) => event.type === "thread/tokenUsage/updated"),
+      ).toMatchObject({
+        tokenUsage: {
+          total: { inputTokens: PROMPT.length },
+          last: { inputTokens: PROMPT.length },
+        },
+      });
+      expect(
+        events.some(
+          (event) => event.type === "thread/contextWindowUsage/updated",
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("emits the malformed receipt payload the server must reject", async () => {
     await request("initialize", {

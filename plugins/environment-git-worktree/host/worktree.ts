@@ -710,7 +710,10 @@ export async function resolveAdoptableWorktree(args: {
   | { status: "failed"; message: string }
 > {
   const adoptable = await listAdoptableWorktrees(args);
-  const entry = findWorktreeEntry(adoptable, await realpathOrResolved(args.path));
+  // bb-fork(windows): return the canonical requested path, not git's `/`-joined
+  // porcelain path.
+  const canonicalPath = await realpathOrResolved(args.path);
+  const entry = findWorktreeEntry(adoptable, canonicalPath);
   if (entry === null) {
     return {
       status: "failed",
@@ -723,5 +726,5 @@ export async function resolveAdoptableWorktree(args: {
       message: `${args.path} is a prunable worktree; run \`git worktree prune\` or repair it first.`,
     };
   }
-  return { status: "resolved", path: entry.path, branch: entry.branch };
+  return { status: "resolved", path: canonicalPath, branch: entry.branch };
 }

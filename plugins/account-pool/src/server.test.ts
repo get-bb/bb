@@ -5049,100 +5049,108 @@ describe("Account Pool plugin", () => {
     });
   });
 
-  it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {
-    let now = 1_800_000_000_000;
-    let refreshCalls = 0;
-    const authorizations: Array<string | undefined> = [];
-    const upstream = await startUpstream(async (request, response) => {
-      if (request.url === "/oauth/token") {
-        refreshCalls += 1;
+  // bb-fork(windows): `chmod 0600` is a no-op, so the mode assertion cannot hold.
+  it.skipIf(process.platform === "win32")(
+    "serializes refresh, writes new tokens with 0600 mode, and uses them",
+    async () => {
+      let now = 1_800_000_000_000;
+      let refreshCalls = 0;
+      const authorizations: Array<string | undefined> = [];
+      const upstream = await startUpstream(async (request, response) => {
+        if (request.url === "/oauth/token") {
+          refreshCalls += 1;
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              access_token: "oauth-new",
+              refresh_token: "refresh-new",
+              expires_in: 3600,
+            }),
+          );
+          return;
+        }
+        authorizations.push(request.headers.authorization);
+        await readRequestBody(request);
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            access_token: "oauth-new",
-            refresh_token: "refresh-new",
-            expires_in: 3600,
-          }),
+        response.end("{}");
+      });
+      cleanups.push(upstream.close);
+      const fixture = await createFixture({
+        upstreamUrl: upstream.url,
+        source: "import",
+        options: {
+          now: () => now,
+          importCredentials: async () =>
+            importedCredentials({ expiresAt: now + 10 * 60 * 1_000 }),
+          refreshUrl: `${upstream.url}/oauth/token`,
+        },
+      });
+      expect(refreshCalls).toBe(0);
+      now += 6 * 60 * 1_000;
+      let releaseSecretReads = () => {};
+      const secretReadsReleased = new Promise<void>((resolve) => {
+        releaseSecretReads = resolve;
+      });
+      const readSecret = AccountStore.prototype.readSecret;
+      const pendingSecretReads: ReturnType<typeof readSecret>[] = [];
+      const readSecretSpy = vi
+        .spyOn(AccountStore.prototype, "readSecret")
+        .mockImplementation(async function (this: AccountStore, accountId) {
+          const reading = readSecret.call(this, accountId);
+          pendingSecretReads.push(reading);
+          const secret = await reading;
+          await secretReadsReleased;
+          return secret;
+        });
+      const recordUsed = vi.spyOn(AccountStore.prototype, "recordUsed");
+      const requests = [1, 2].map(() =>
+        fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+          headers: authHeaders(fixture.key),
+          body: "{}",
+        }),
+      );
+      try {
+        await vi.waitFor(() => {
+          expect(recordUsed).toHaveBeenCalledTimes(2);
+        });
+        await Promise.all(
+          recordUsed.mock.results.map((result) => result.value),
         );
-        return;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await Promise.all(pendingSecretReads);
+        releaseSecretReads();
+        const responses = await Promise.all(requests);
+        expect(responses.map((response) => response.status)).toEqual([
+          200, 200,
+        ]);
+        await Promise.all(responses.map((response) => response.text()));
+      } finally {
+        releaseSecretReads();
+        await Promise.allSettled(requests);
+        readSecretSpy.mockRestore();
+        recordUsed.mockRestore();
       }
-      authorizations.push(request.headers.authorization);
-      await readRequestBody(request);
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end("{}");
-    });
-    cleanups.push(upstream.close);
-    const fixture = await createFixture({
-      upstreamUrl: upstream.url,
-      source: "import",
-      options: {
-        now: () => now,
-        importCredentials: async () =>
-          importedCredentials({ expiresAt: now + 10 * 60 * 1_000 }),
-        refreshUrl: `${upstream.url}/oauth/token`,
-      },
-    });
-    expect(refreshCalls).toBe(0);
-    now += 6 * 60 * 1_000;
-    let releaseSecretReads = () => {};
-    const secretReadsReleased = new Promise<void>((resolve) => {
-      releaseSecretReads = resolve;
-    });
-    const readSecret = AccountStore.prototype.readSecret;
-    const pendingSecretReads: ReturnType<typeof readSecret>[] = [];
-    const readSecretSpy = vi
-      .spyOn(AccountStore.prototype, "readSecret")
-      .mockImplementation(async function (this: AccountStore, accountId) {
-        const reading = readSecret.call(this, accountId);
-        pendingSecretReads.push(reading);
-        const secret = await reading;
-        await secretReadsReleased;
-        return secret;
+      expect(refreshCalls).toBe(1);
+      expect(authorizations).toEqual(["Bearer oauth-new", "Bearer oauth-new"]);
+      const secretPath = path.join(
+        fixture.dataDir,
+        "plugins",
+        "account-pool",
+        "secrets",
+        "accounts",
+        `account-${fixture.account.id}.json`,
+      );
+      const secret = accountSecretSchema.parse(
+        JSON.parse(await fs.readFile(secretPath, "utf8")),
+      );
+      expect(secret).toMatchObject({
+        kind: "oauth",
+        accessToken: "oauth-new",
+        refreshToken: "refresh-new",
       });
-    const recordUsed = vi.spyOn(AccountStore.prototype, "recordUsed");
-    const requests = [1, 2].map(() =>
-      fixture.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
-        headers: authHeaders(fixture.key),
-        body: "{}",
-      }),
-    );
-    try {
-      await vi.waitFor(() => {
-        expect(recordUsed).toHaveBeenCalledTimes(2);
-      });
-      await Promise.all(recordUsed.mock.results.map((result) => result.value));
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      await Promise.all(pendingSecretReads);
-      releaseSecretReads();
-      const responses = await Promise.all(requests);
-      expect(responses.map((response) => response.status)).toEqual([200, 200]);
-      await Promise.all(responses.map((response) => response.text()));
-    } finally {
-      releaseSecretReads();
-      await Promise.allSettled(requests);
-      readSecretSpy.mockRestore();
-      recordUsed.mockRestore();
-    }
-    expect(refreshCalls).toBe(1);
-    expect(authorizations).toEqual(["Bearer oauth-new", "Bearer oauth-new"]);
-    const secretPath = path.join(
-      fixture.dataDir,
-      "plugins",
-      "account-pool",
-      "secrets",
-      "accounts",
-      `account-${fixture.account.id}.json`,
-    );
-    const secret = accountSecretSchema.parse(
-      JSON.parse(await fs.readFile(secretPath, "utf8")),
-    );
-    expect(secret).toMatchObject({
-      kind: "oauth",
-      accessToken: "oauth-new",
-      refreshToken: "refresh-new",
-    });
-    expect((await fs.stat(secretPath)).mode & 0o777).toBe(0o600);
-  });
+      expect((await fs.stat(secretPath)).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it("refreshes unrelated accounts independently", async () => {
     let now = 1_800_000_000_000;

@@ -209,88 +209,96 @@ async function extractCrafted(entries: CraftedEntry[]): Promise<{
 }
 
 describe("writeServerArchive and extractServerArchive", () => {
-  it("round trips a gzip archive with long, unicode, empty, and executable files", async () => {
-    const tree = await createSourceTree();
-    const outPath = path.join(tree.root, "out", "server.tar.gz");
+  // bb-fork(windows): `chmod` modes are not enforced on Windows.
+  it.skipIf(process.platform === "win32")(
+    "round trips a gzip archive with long, unicode, empty, and executable files",
+    async () => {
+      const tree = await createSourceTree();
+      const outPath = path.join(tree.root, "out", "server.tar.gz");
 
-    const written = await writeServerArchive({
-      outPath,
-      files: tree.files,
-      manifest: MANIFEST_INPUT,
-    });
-
-    const archiveBytes = await readFile(outPath);
-    expect(archiveBytes.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
-    expect(written.sizeBytes).toBe(archiveBytes.length);
-    expect(written.sha256).toBe(sha256(archiveBytes));
-    expect((await stat(outPath)).mode & 0o777).toBe(0o600);
-    expect(await readdir(path.dirname(outPath))).toEqual(["server.tar.gz"]);
-    expect(written.manifest.entries).toEqual(
-      tree.files.map((file) => {
-        const body = tree.contents.get(file.archivePath) ?? Buffer.alloc(0);
-        return {
-          path: file.archivePath,
-          size: body.length,
-          sha256: sha256(body),
-        };
-      }),
-    );
-
-    const destinationDir = path.join(tree.root, "staging");
-    const manifest = await extractServerArchive({
-      archivePath: outPath,
-      destinationDir,
-    });
-
-    expect(manifest).toEqual(written.manifest);
-    await expectExtractedTree(destinationDir, tree);
-    const toolPath = path.join(
-      destinationDir,
-      "files",
-      ...(tree.files[3]?.archivePath ?? "").split("/"),
-    );
-    expect((await stat(toolPath)).mode & 0o100).toBe(0o100);
-  });
-
-  it("refuses symbolic link sources and unsafe or conflicting archive paths", async () => {
-    const tree = await createSourceTree();
-    const linkPath = path.join(tree.root, "link");
-    await symlink(tree.files[0]?.sourcePath ?? "", linkPath);
-    const write = (files: ServerArchiveSourceFile[]) =>
-      writeServerArchive({
-        outPath: path.join(tree.root, "out.tar.gz"),
-        files,
+      const written = await writeServerArchive({
+        outPath,
+        files: tree.files,
         manifest: MANIFEST_INPUT,
       });
-    const sourcePath = tree.files[0]?.sourcePath ?? "";
 
-    await expectArchiveError(
-      write([{ sourcePath: linkPath, archivePath: "bb.db" }]),
-      ["unsafe_entry"],
-    );
-    for (const archivePath of [
-      "../escape",
-      "/absolute",
-      "attachments/./b",
-      "attachments//b",
-      "attachments\\b",
-      "auth.json",
-      "systemd/bb-host-daemon.service",
-      "plugins/docs/host-data/vault.md",
-    ]) {
-      await expectArchiveError(write([{ sourcePath, archivePath }]), [
-        "unsafe_entry",
-      ]);
-    }
-    await expectArchiveError(
-      write([
-        { sourcePath, archivePath: "attachments/thr_1" },
-        { sourcePath, archivePath: "attachments/thr_1/image.png" },
-      ]),
-      ["unsafe_entry"],
-    );
-    expect(await readdir(tree.root)).not.toContain("out.tar.gz");
-  });
+      const archiveBytes = await readFile(outPath);
+      expect(archiveBytes.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+      expect(written.sizeBytes).toBe(archiveBytes.length);
+      expect(written.sha256).toBe(sha256(archiveBytes));
+      expect((await stat(outPath)).mode & 0o777).toBe(0o600);
+      expect(await readdir(path.dirname(outPath))).toEqual(["server.tar.gz"]);
+      expect(written.manifest.entries).toEqual(
+        tree.files.map((file) => {
+          const body = tree.contents.get(file.archivePath) ?? Buffer.alloc(0);
+          return {
+            path: file.archivePath,
+            size: body.length,
+            sha256: sha256(body),
+          };
+        }),
+      );
+
+      const destinationDir = path.join(tree.root, "staging");
+      const manifest = await extractServerArchive({
+        archivePath: outPath,
+        destinationDir,
+      });
+
+      expect(manifest).toEqual(written.manifest);
+      await expectExtractedTree(destinationDir, tree);
+      const toolPath = path.join(
+        destinationDir,
+        "files",
+        ...(tree.files[3]?.archivePath ?? "").split("/"),
+      );
+      expect((await stat(toolPath)).mode & 0o100).toBe(0o100);
+    },
+  );
+
+  // bb-fork(windows): symlink creation needs privileges Windows may not grant.
+  it.skipIf(process.platform === "win32")(
+    "refuses symbolic link sources and unsafe or conflicting archive paths",
+    async () => {
+      const tree = await createSourceTree();
+      const linkPath = path.join(tree.root, "link");
+      await symlink(tree.files[0]?.sourcePath ?? "", linkPath);
+      const write = (files: ServerArchiveSourceFile[]) =>
+        writeServerArchive({
+          outPath: path.join(tree.root, "out.tar.gz"),
+          files,
+          manifest: MANIFEST_INPUT,
+        });
+      const sourcePath = tree.files[0]?.sourcePath ?? "";
+
+      await expectArchiveError(
+        write([{ sourcePath: linkPath, archivePath: "bb.db" }]),
+        ["unsafe_entry"],
+      );
+      for (const archivePath of [
+        "../escape",
+        "/absolute",
+        "attachments/./b",
+        "attachments//b",
+        "attachments\\b",
+        "auth.json",
+        "systemd/bb-host-daemon.service",
+        "plugins/docs/host-data/vault.md",
+      ]) {
+        await expectArchiveError(write([{ sourcePath, archivePath }]), [
+          "unsafe_entry",
+        ]);
+      }
+      await expectArchiveError(
+        write([
+          { sourcePath, archivePath: "attachments/thr_1" },
+          { sourcePath, archivePath: "attachments/thr_1/image.png" },
+        ]),
+        ["unsafe_entry"],
+      );
+      expect(await readdir(tree.root)).not.toContain("out.tar.gz");
+    },
+  );
 
   it("refuses to extract into a non-empty destination", async () => {
     const tree = await createSourceTree();

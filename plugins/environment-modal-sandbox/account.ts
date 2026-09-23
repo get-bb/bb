@@ -15,7 +15,7 @@ import {
   type PluginCliContext,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
-import path from "node:path";
+import { isHostAbsolutePath, resolveHostPath } from "./host-path.fork.js";
 import { z } from "zod";
 import { dockerfileSchema, type ImageDefinition } from "./image-definition.js";
 import { errorMessage } from "./error-message.js";
@@ -103,11 +103,11 @@ export function registerRpcAndCli(
         throw new Error("The current thread has no machine workspace");
       hostId = environment.hostId;
     }
-    if (!path.isAbsolute(file) && !context.cwd)
+    if (!isHostAbsolutePath(file) && !context.cwd)
       throw new Error("A relative --file requires the CLI working directory");
     const result = await bb.sdk.files.read({
       hostId,
-      path: path.resolve(context.cwd ?? "/", file),
+      path: resolveHostPath(context.cwd ?? "/", file),
       signal: context.signal,
     });
     if (result.contentEncoding !== "utf8")

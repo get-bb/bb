@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ChildToParentMessage,
@@ -426,8 +427,8 @@ describe("createParcelWatcherProxy", () => {
     current().exit();
     await flush();
     expect([...received].sort()).toEqual([
-      "/storage/thread-1",
-      "/storage/thread-2",
+      path.join("/storage", "thread-1"),
+      path.join("/storage", "thread-2"),
     ]);
     proxy.dispose();
   });
@@ -559,7 +560,10 @@ describe("createParcelWatcherProxy", () => {
 
       expect(children).toHaveLength(3);
       expect(current().parcel.activeDirs().sort()).toEqual(["/other", "/root"]);
-      expect(received.sort()).toEqual(["/other/gap-file", "/root/gap-file"]);
+      expect(received.sort()).toEqual([
+        path.join("/other", "gap-file"),
+        path.join("/root", "gap-file"),
+      ]);
       proxy.dispose();
     } finally {
       vi.useRealTimers();

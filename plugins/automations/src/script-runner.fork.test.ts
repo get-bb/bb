@@ -28,13 +28,13 @@ describe("bbProbeCandidates", () => {
 
 describe("bbProbeCommand", () => {
   it("runs candidates directly off Windows", () => {
-    expect(bbProbeCommand("/usr/bin/bb", ["--version"], "linux", "/node")).toEqual(
-      {
-        command: "/usr/bin/bb",
-        args: ["--version"],
-        shell: false,
-      },
-    );
+    expect(
+      bbProbeCommand("/usr/bin/bb", ["--version"], "linux", "/node"),
+    ).toEqual({
+      command: "/usr/bin/bb",
+      args: ["--version"],
+      shell: false,
+    });
   });
 
   it("runs a Windows .cmd launcher through the shell", () => {
@@ -101,7 +101,10 @@ describe("bbProbeCommand on real entries", () => {
 
   it("hosts an installed host's extensionless bundle on Node", async () => {
     const bundle = join(tempRoot, "bb");
-    await writeFile(bundle, '#!/usr/bin/env node\nimport "./bb-chunks/a.js";\n');
+    await writeFile(
+      bundle,
+      '#!/usr/bin/env node\nimport "./bb-chunks/a.js";\n',
+    );
     expect(isPosixShellEntry(bundle)).toBe(false);
     expect(bbProbeCommand(bundle, ["--version"], "win32", "C:\\node")).toEqual({
       command: "C:\\node",
@@ -191,3 +194,36 @@ describe("bb CLI injection into a script run", () => {
     }
   });
 });
+
+// bb-fork(windows): Git Bash descendants survive `taskkill /T`, so the runner must
+// still resolve a timed-out run instead of waiting on the pipe they keep open.
+describe.runIf(process.platform === "win32")(
+  "Windows timeout with a lingering descendant",
+  () => {
+    it("resolves a timed-out script whose descendant holds stdout open", async () => {
+      const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-fork-timeout-"));
+      const scriptDir = automationScriptDir(pluginDataDir, "auto_fork_timeout");
+      await mkdir(scriptDir, { recursive: true });
+      await writeFile(
+        join(scriptDir, "script.sh"),
+        "sleep 5 &\nprintf 'started\n'\nwait\n",
+      );
+      try {
+        const result = await executeStoredScript({
+          pluginDataDir,
+          automationId: "auto_fork_timeout",
+          runId: "run_fork_timeout",
+          projectId: "proj_test",
+          scriptFile: "script.sh",
+          interpreter: "bash",
+          timeoutMs: 500,
+          workingDir: scriptDir,
+          serverUrl: "http://127.0.0.1:38886",
+        });
+        expect(result.timedOut).toBe(true);
+      } finally {
+        await rm(pluginDataDir, { recursive: true, force: true });
+      }
+    }, 15_000);
+  },
+);

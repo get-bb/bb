@@ -59,7 +59,10 @@ it("ships a recorded cell for the echo provider", () => {
   });
 });
 
-it.each(cells.map((cell) => [cellKey(cell), cell] as const))(
+// bb-fork(windows): the recorded lanes embed the recording host's POSIX cwd.
+it
+  .skipIf(process.platform === "win32")
+  .each(cells.map((cell) => [cellKey(cell), cell] as const))(
   "%s replays through the current bridge with zero diffs",
   async (_key, cell) => {
     const recorded = assembleRecordedEvents(
@@ -134,68 +137,72 @@ it.each(cells.map((cell) => [cellKey(cell), cell] as const))(
   120_000,
 );
 
-it("re-records the bridge lane beside a copy of the recording and replays from it", async () => {
-  const cell = cells[0]!;
-  const copy = mkdtempSync(join(tmpdir(), "bb-echo-rerecord-"));
-  try {
-    cpSync(cell.dir, copy, { recursive: true });
-    const result = await rerecordCurrentBridgeLane({
-      recordingDir: copy,
-      providerId: cell.provider,
-      bridge: resolveProviderBridgeLaunch({
-        modulePath: BRIDGE_MODULE,
-        pluginId: PLUGIN_ID,
-      }),
-      createAssembler,
-      timeoutMs: 60_000,
-    });
-    expect(result.stalls).toEqual([]);
-    expect(result.file).toBe(join(copy, CURRENT_BRIDGE_LANE_FILE));
+it.skipIf(process.platform === "win32")(
+  "re-records the bridge lane beside a copy of the recording and replays from it",
+  async () => {
+    const cell = cells[0]!;
+    const copy = mkdtempSync(join(tmpdir(), "bb-echo-rerecord-"));
+    try {
+      cpSync(cell.dir, copy, { recursive: true });
+      const result = await rerecordCurrentBridgeLane({
+        recordingDir: copy,
+        providerId: cell.provider,
+        bridge: resolveProviderBridgeLaunch({
+          modulePath: BRIDGE_MODULE,
+          pluginId: PLUGIN_ID,
+        }),
+        createAssembler,
+        timeoutMs: 60_000,
+      });
+      expect(result.stalls).toEqual([]);
+      expect(result.file).toBe(join(copy, CURRENT_BRIDGE_LANE_FILE));
 
-    const lane = readFileSync(join(copy, CURRENT_BRIDGE_LANE_FILE), "utf8");
-    const recordedCwd = (
-      JSON.parse(
-        readBridgeRecording(cell.dir).entries.find(
-          (entry) => entry.dir === "runtime→bridge",
-        )!.line,
-      ) as { params: { cwd: string } }
-    ).params.cwd;
-    expect(lane).toContain(recordedCwd);
-    expect(lane).not.toContain("bb-parity-ws-");
-    const toolCallIds = lane
-      .split("\n")
-      .filter((raw) => raw.length > 0)
-      .map(
-        (raw) =>
-          JSON.parse((JSON.parse(raw) as { line: string }).line) as {
-            id?: string;
-            method?: string;
-          },
-      )
-      .filter((message) => message.method === "item/tool/call")
-      .map((message) => message.id);
-    expect(toolCallIds).toEqual(["echo-req-1"]);
+      const lane = readFileSync(join(copy, CURRENT_BRIDGE_LANE_FILE), "utf8");
+      const recordedCwd = (
+        JSON.parse(
+          readBridgeRecording(cell.dir).entries.find(
+            (entry) => entry.dir === "runtime→bridge",
+          )!.line,
+        ) as { params: { cwd: string } }
+      ).params.cwd;
+      expect(lane).toContain(recordedCwd);
+      expect(lane).not.toContain("bb-parity-ws-");
+      const toolCallIds = lane
+        .split("\n")
+        .filter((raw) => raw.length > 0)
+        .map(
+          (raw) =>
+            JSON.parse((JSON.parse(raw) as { line: string }).line) as {
+              id?: string;
+              method?: string;
+            },
+        )
+        .filter((message) => message.method === "item/tool/call")
+        .map((message) => message.id);
+      expect(toolCallIds).toEqual(["echo-req-1"]);
 
-    const recorded = assembleRecordedEvents(
-      withCurrentBridgeLane(readBridgeRecording(cell.dir)),
-      createAssembler,
-      cell.provider,
-    );
-    const current = assembleRecordedEvents(
-      withCurrentBridgeLane(readBridgeRecording(copy)),
-      createAssembler,
-      cell.provider,
-    );
-    expect(current.invalidDeltas).toEqual([]);
-    const comparison = compareParity(
-      { events: recorded.events, rows: [] },
-      { events: current.events, rows: [] },
-      [],
-      { provider: cell.provider, cell: cell.cell },
-    );
-    expect(comparison.events).toEqual({ onlyInOld: [], onlyInNew: [] });
-    expect(current.events.length).toBe(recorded.events.length);
-  } finally {
-    rmSync(copy, { recursive: true, force: true });
-  }
-}, 120_000);
+      const recorded = assembleRecordedEvents(
+        withCurrentBridgeLane(readBridgeRecording(cell.dir)),
+        createAssembler,
+        cell.provider,
+      );
+      const current = assembleRecordedEvents(
+        withCurrentBridgeLane(readBridgeRecording(copy)),
+        createAssembler,
+        cell.provider,
+      );
+      expect(current.invalidDeltas).toEqual([]);
+      const comparison = compareParity(
+        { events: recorded.events, rows: [] },
+        { events: current.events, rows: [] },
+        [],
+        { provider: cell.provider, cell: cell.cell },
+      );
+      expect(comparison.events).toEqual({ onlyInOld: [], onlyInNew: [] });
+      expect(current.events.length).toBe(recorded.events.length);
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+    }
+  },
+  120_000,
+);
