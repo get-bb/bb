@@ -315,7 +315,7 @@ describe("bb/forkable-plugin-imports", () => {
 
   it("leaves plugins that are not forkable alone", () => {
     const visitors = rules["forkable-plugin-imports"].create({
-      filename: join(ROOT, "plugins", "tasks", "app.tsx"),
+      filename: join(ROOT, "plugins", "unlisted-plugin", "app.tsx"),
       report: () => {
         throw new Error("unexpected report");
       },

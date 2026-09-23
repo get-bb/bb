@@ -1267,7 +1267,22 @@
       ]
     },
     "bb-plugin-tasks#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-tasks#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-workflows#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],

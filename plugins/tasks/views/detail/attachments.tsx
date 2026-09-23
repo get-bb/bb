@@ -4,7 +4,7 @@ import type { Attachment } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
 import { formatFileSize } from "../activity/time.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 
 let tokenPromise: Promise<string> | null = null;
 

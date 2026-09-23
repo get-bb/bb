@@ -29,11 +29,11 @@ import {
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import { isActiveThread } from "../detail/meta.js";
 import { STATUS_LABELS } from "../list/lib.js";
-import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
-import { Icon } from "@bb/shared-ui/icon";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@/components/ui/button";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
+import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 const DRAG_THRESHOLD_PX = 5;
 

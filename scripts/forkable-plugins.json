@@ -22,6 +22,7 @@
     "plugins/push-notifications",
     "plugins/scheduled-send",
     "plugins/side-chat",
+    "plugins/tasks",
     "plugins/theme-preview",
     "plugins/thread-list",
     "plugins/workflows"

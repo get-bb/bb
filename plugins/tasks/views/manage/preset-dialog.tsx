@@ -16,17 +16,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@bb/shared-ui/dialog";
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@bb/shared-ui/select";
-import { Button } from "@bb/shared-ui/button";
-import { Input } from "@bb/shared-ui/input";
-import { Textarea } from "@bb/shared-ui/textarea";
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Field } from "./shared.js";
 
 type ReasoningLevel = ExperimentalProviderModelPickerValue["reasoningLevel"];

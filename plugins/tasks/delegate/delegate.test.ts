@@ -201,9 +201,11 @@ describe("task delegation", () => {
       presetId: preset.id,
     });
 
-    const title = harness.sdk.callsTo("threads.spawn")[0]?.[0].title;
-    expect(title).toBe(`TASK-1 · ${"调".repeat(55)}`);
-    expect(displayWidth(title ?? "")).toBeLessThanOrEqual(120);
+    const title = `TASK-1 · ${"调".repeat(55)}`;
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([
+      [expect.objectContaining({ title })],
+    ]);
+    expect(displayWidth(title)).toBeLessThanOrEqual(120);
 
     await harness.dispose();
   });
