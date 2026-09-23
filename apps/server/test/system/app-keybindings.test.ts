@@ -595,6 +595,7 @@ describe("app keybindings", () => {
         "browser.focusLocation",
         "browser.reload",
         "browser.find",
+        "window.find",
         "window.new",
       ]);
     });
