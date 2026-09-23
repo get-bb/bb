@@ -1199,7 +1199,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginAiServiceDeclaration",
           "PluginAiServiceStatus",
         ],
-        firstParty: ["Codex provider"],
+        firstParty: ["Codex provider", "bb cloud AI"],
         experimental: true,
       },
       {
