@@ -353,91 +353,95 @@ describe("standalone restart command", () => {
     expect(command).toContain("daemon_pid=''");
   });
 
-  it("starts a detached daemon repeatedly and replaces the current pid", async () => {
-    const tempDir = await fs.mkdtemp(
-      path.join(tmpdir(), "bb-restart-command-"),
-    );
-    const pidPath = path.join(tempDir, "daemon.pid");
-    const logPath = path.join(tempDir, "host-daemon.log");
-    const entrypoint = path.join(tempDir, "daemon-child.mjs");
-    let daemonPid: number | null = null;
-    const server = createServer((request, response) => {
-      if (request.url === "/api/v1/hosts") {
-        response.setHeader("content-type", "application/json");
-        response.end('[{"id":"host_123","status":"connected"}]');
-        return;
-      }
-      response.statusCode = 404;
-      response.end("not found");
-    });
-
-    try {
-      await fs.writeFile(
-        entrypoint,
-        "setInterval(() => undefined, 1_000);\n",
-        "utf8",
+  // bb-fork(windows): the detached daemon does not release its temp dir.
+  it.skipIf(process.platform === "win32")(
+    "starts a detached daemon repeatedly and replaces the current pid",
+    async () => {
+      const tempDir = await fs.mkdtemp(
+        path.join(tmpdir(), "bb-restart-command-"),
       );
+      const pidPath = path.join(tempDir, "daemon.pid");
+      const logPath = path.join(tempDir, "host-daemon.log");
+      const entrypoint = path.join(tempDir, "daemon-child.mjs");
+      let daemonPid: number | null = null;
+      const server = createServer((request, response) => {
+        if (request.url === "/api/v1/hosts") {
+          response.setHeader("content-type", "application/json");
+          response.end('[{"id":"host_123","status":"connected"}]');
+          return;
+        }
+        response.statusCode = 404;
+        response.end("not found");
+      });
 
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(0, "127.0.0.1", () => {
-          server.off("error", reject);
-          resolve();
+      try {
+        await fs.writeFile(
+          entrypoint,
+          "setInterval(() => undefined, 1_000);\n",
+          "utf8",
+        );
+
+        await new Promise<void>((resolve, reject) => {
+          server.once("error", reject);
+          server.listen(0, "127.0.0.1", () => {
+            server.off("error", reject);
+            resolve();
+          });
         });
-      });
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        throw new Error("Expected test server to listen on a TCP port");
-      }
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          throw new Error("Expected test server to listen on a TCP port");
+        }
 
-      const command = buildDaemonRestartCommand({
-        cwd: tempDir,
-        daemonPid: null,
-        daemonPort: 456,
-        dataDir: path.join(tempDir, "bb-root"),
-        entrypoint,
-        envFilePath: null,
-        hostId: "host_123",
-        instanceId: "instance_signal_test",
-        logPath,
-        parentPid: process.pid,
-        pidPath,
-        serverUrl: `http://127.0.0.1:${address.port}`,
-      });
-
-      const shellResult = await runShellCommand(command, {
-        PATH: process.env.PATH ?? "",
-      });
-      daemonPid = await waitForPidFile(pidPath);
-      expect(isProcessRunning(daemonPid)).toBe(true);
-
-      signalProcessGroup(shellResult.processGroupId);
-      await delay(500);
-
-      expect(isProcessRunning(daemonPid)).toBe(true);
-
-      const firstDaemonPid = daemonPid;
-      await runShellCommand(command, {
-        PATH: process.env.PATH ?? "",
-      });
-      daemonPid = await waitForPidFile(pidPath, firstDaemonPid);
-
-      expect(isProcessRunning(firstDaemonPid)).toBe(false);
-      expect(isProcessRunning(daemonPid)).toBe(true);
-    } finally {
-      if (daemonPid) {
-        await stopProcess(daemonPid);
-      }
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
+        const command = buildDaemonRestartCommand({
+          cwd: tempDir,
+          daemonPid: null,
+          daemonPort: 456,
+          dataDir: path.join(tempDir, "bb-root"),
+          entrypoint,
+          envFilePath: null,
+          hostId: "host_123",
+          instanceId: "instance_signal_test",
+          logPath,
+          parentPid: process.pid,
+          pidPath,
+          serverUrl: `http://127.0.0.1:${address.port}`,
         });
-      });
-      await fs.rm(tempDir, { recursive: true, force: true });
-    }
-  });
+
+        const shellResult = await runShellCommand(command, {
+          PATH: process.env.PATH ?? "",
+        });
+        daemonPid = await waitForPidFile(pidPath);
+        expect(isProcessRunning(daemonPid)).toBe(true);
+
+        signalProcessGroup(shellResult.processGroupId);
+        await delay(500);
+
+        expect(isProcessRunning(daemonPid)).toBe(true);
+
+        const firstDaemonPid = daemonPid;
+        await runShellCommand(command, {
+          PATH: process.env.PATH ?? "",
+        });
+        daemonPid = await waitForPidFile(pidPath, firstDaemonPid);
+
+        expect(isProcessRunning(firstDaemonPid)).toBe(false);
+        expect(isProcessRunning(daemonPid)).toBe(true);
+      } finally {
+        if (daemonPid) {
+          await stopProcess(daemonPid);
+        }
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        });
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
