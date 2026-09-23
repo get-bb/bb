@@ -111,6 +111,7 @@ interface UseSectionThreadDndArgs {
   groups?: boolean;
   pinnedReorderPending: boolean;
   pinnedThreads: readonly SidebarThread[];
+  pinnedRootItems?: readonly ProjectThreadItem[];
   pinnedRootNodes?: readonly ProjectThreadNode[];
   onReorderPinnedThread: (
     request: NeighborReorderRequest,
@@ -145,6 +146,7 @@ export type SectionThreadDropDecision =
       threadIds: string[];
       parentThreadId: string;
       sectionId?: string | null;
+      unpinRootThreadIds?: string[];
     }
   | {
       kind: "detach-group";
@@ -160,6 +162,15 @@ export type SectionThreadDropDecision =
       rootThreadIds: string[];
       detachRootThreadIds: string[];
       pinRootThreadIds: string[];
+    }
+  | {
+      kind: "unpin-group";
+      activeId: string;
+      threadIds: string[];
+      rootThreadIds: string[];
+      sectionId: string | null;
+      move: boolean;
+      toParentKey: string;
     }
   | {
       kind: "move";
@@ -234,6 +245,7 @@ type RowDropState = SectionThreadNestTarget;
 
 interface CollectSectionThreadDndLookupOptions {
   groups?: boolean;
+  pinnedRootItems?: readonly ProjectThreadItem[];
 }
 
 function parseGroupSectionId(key: string): SidebarSectionId {
@@ -355,6 +367,9 @@ export function collectSectionThreadDndLookup(
     }
   };
 
+  if (options.pinnedRootItems) {
+    walk(options.pinnedRootItems, PINNED_THREAD_PARENT_KEY);
+  }
   walk(items, containerId);
   return lookup;
 }
@@ -620,6 +635,16 @@ function resolveNestGroupDecision(
     threadIds: rootThreadIds,
     parentThreadId,
     sectionId,
+    ...(rootThreadIds.some(
+      (threadId) => lookup.threadByItemId.get(threadId)?.pinnedAt !== null,
+    )
+      ? {
+          unpinRootThreadIds: rootThreadIds.filter(
+            (threadId) =>
+              lookup.threadByItemId.get(threadId)?.pinnedAt !== null,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -706,6 +731,17 @@ export function resolveSectionThreadDropDecision(
     }
     if (!lookup.sectionIdByParentKey.has(toParentKey)) return null;
     const sectionId = lookup.sectionIdByParentKey.get(toParentKey) ?? null;
+    if (fromParentKey === PINNED_THREAD_PARENT_KEY) {
+      return {
+        kind: "unpin-group",
+        activeId,
+        threadIds: groupThreads.map((thread) => thread.id),
+        rootThreadIds: getGroupRootThreadIds(groupThreads),
+        sectionId,
+        move: groupThreads.some((thread) => thread.sectionId !== sectionId),
+        toParentKey,
+      };
+    }
     const rootThreadIds = getGroupRootThreadIds(groupThreads).filter(
       (threadId) =>
         lookup.threadByItemId.get(threadId)?.parentThreadId !== null,
@@ -876,6 +912,7 @@ function resolveTargetParentKey(
       return PINNED_THREAD_PARENT_KEY;
     case "move-group":
     case "detach-group":
+    case "unpin-group":
     case "move":
     case "detach":
     case "unpin":
@@ -979,6 +1016,11 @@ function hasDropDecisionLanded(
         (threadId) =>
           lookup.parentKeyByItemId.get(threadId) === PINNED_THREAD_PARENT_KEY,
       );
+    case "unpin-group":
+      return decision.threadIds.every(
+        (threadId) =>
+          lookup.parentKeyByItemId.get(threadId) === decision.toParentKey,
+      );
     case "unpin":
       return (
         lookup.parentKeyByItemId.get(decision.activeId) === decision.toParentKey
@@ -1000,6 +1042,7 @@ export function useSectionThreadDnd({
   groups = false,
   pinnedReorderPending,
   pinnedThreads,
+  pinnedRootItems,
   pinnedRootNodes,
   onReorderPinnedThread,
 }: UseSectionThreadDndArgs): SectionThreadDndState | null {
@@ -1010,9 +1053,16 @@ export function useSectionThreadDnd({
         containerId,
         pinnedThreads,
         pinnedRootNodes,
-        { groups },
+        { groups, pinnedRootItems },
       ),
-    [containerId, groups, pinnedRootNodes, pinnedThreads, rootItems],
+    [
+      containerId,
+      groups,
+      pinnedRootItems,
+      pinnedRootNodes,
+      pinnedThreads,
+      rootItems,
+    ],
   );
   const decisionOptions = useMemo(() => ({ groups }), [groups]);
   const topLevelSectionIds = useMemo(
@@ -1171,7 +1221,7 @@ export function useSectionThreadDnd({
   );
   const sdk = useSdk();
   const sidebarActions = experimental_useSidebarThreadActions();
-  const { handleDragEnd: handlePinnedDragEnd, itemIds: pinnedItemIds } =
+  const { handleDragEnd: handlePinnedDragEnd } =
     useNeighborReorderSortable({
       disabled: pinnedReorderPending || pinnedThreads.length < 2,
       getId: (thread: SidebarThread) => thread.id,
@@ -1478,19 +1528,29 @@ export function useSectionThreadDnd({
           break;
         }
         case "nest-group":
-          void Promise.allSettled(
-            decision.threadIds.map((threadId) =>
-              sdk.threads.update({
-                threadId,
-                parentThreadId: decision.parentThreadId,
-                sectionId: decision.sectionId,
-              }),
+          void Promise.all(
+            (decision.unpinRootThreadIds ?? []).map((threadId) =>
+              sidebarActions.setPinned(threadId, false),
             ),
           )
+            .then(() =>
+              Promise.allSettled(
+                decision.threadIds.map((threadId) =>
+                  sdk.threads.update({
+                    threadId,
+                    parentThreadId: decision.parentThreadId,
+                    sectionId: decision.sectionId,
+                  }),
+                ),
+              ),
+            )
             .then((results) => {
               if (results.some((result) => result.status === "rejected")) {
                 toast.error("Failed to move threads.");
               }
+            })
+            .catch(() => {
+              toast.error("Failed to unpin worktree group.");
             })
             .finally(clearProjectedDrag);
           break;
@@ -1512,6 +1572,29 @@ export function useSectionThreadDnd({
               ),
             ),
             null,
+          );
+          break;
+        }
+        case "unpin-group": {
+          const unpinRequest = Promise.all(
+            decision.rootThreadIds.map((threadId) =>
+              sidebarActions.setPinned(threadId, false),
+            ),
+          );
+          settle(
+            decision.move
+              ? unpinRequest.then(() =>
+                  Promise.all(
+                    decision.threadIds.map((threadId) =>
+                      sdk.threads.update({
+                        threadId,
+                        sectionId: decision.sectionId,
+                      }),
+                    ),
+                  ),
+                )
+              : unpinRequest,
+            "Failed to unpin worktree group.",
           );
           break;
         }
@@ -1651,7 +1734,8 @@ export function useSectionThreadDnd({
     nestTarget: dropDecisionLanded ? null : rowDrop,
     nestPreviewBeforeKey: null,
     reorderTarget: dropDecisionLanded ? null : reorderTarget,
-    pinnedItemIds,
+    pinnedItemIds:
+      lookup.itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
     pinnedReorderPending,
   };
 }

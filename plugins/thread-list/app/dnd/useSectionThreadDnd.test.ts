@@ -788,6 +788,47 @@ describe("worktree group section dragging", () => {
     );
   }
 
+  function pinnedGroupLookup() {
+    const environment = makeSidebarEnvironment({
+      id: "env",
+      isWorktree: true,
+    });
+    const pinnedRoots = [
+      createThread({
+        id: "first",
+        environment,
+        pinnedAt: 10,
+        sectionId: "a",
+        createdAt: 10,
+      }),
+      createThread({
+        id: "second",
+        environment,
+        pinnedAt: 9,
+        sectionId: "a",
+        createdAt: 9,
+      }),
+    ];
+    const pinnedState = buildPinnedSidebarState({
+      groupEnvironmentThreads: true,
+      threads: pinnedRoots,
+    });
+    return collectSectionThreadDndLookup(
+      buildSectionThreadList(
+        [createThread({ id: "outside", sectionId: "b", createdAt: 11 })],
+        undefined,
+        [
+          { id: "a", name: "A" },
+          { id: "b", name: "B" },
+        ],
+      ),
+      CHRONOLOGICAL_CONTAINER_ID,
+      pinnedRoots,
+      pinnedState.rootNodes,
+      { pinnedRootItems: pinnedState.rootItems },
+    );
+  }
+
   it("moves only the represented group, including descendants, to another section", () => {
     const lookup = groupLookup();
     const activeId = [...lookup.groupThreadsByItemId.keys()][0];
@@ -927,6 +968,41 @@ describe("worktree group section dragging", () => {
       rootThreadIds: ["first", "second"],
       detachRootThreadIds: ["first", "second"],
       pinRootThreadIds: ["first", "second"],
+    });
+  });
+
+  it("unpins a pinned environment group when it moves to a section", () => {
+    const lookup = pinnedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(lookup, activeId, "section:b"),
+    ).toMatchObject({
+      kind: "unpin-group",
+      activeId,
+      threadIds: ["first", "second"],
+      rootThreadIds: ["first", "second"],
+      sectionId: "b",
+      move: true,
+    });
+  });
+
+  it("unpins a pinned environment group when it nests under a thread", () => {
+    const lookup = pinnedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(
+        lookup,
+        activeId,
+        getSidebarThreadRowDroppableId("outside"),
+      ),
+    ).toMatchObject({
+      kind: "nest-group",
+      activeId,
+      threadIds: ["first", "second"],
+      parentThreadId: "outside",
+      unpinRootThreadIds: ["first", "second"],
     });
   });
 });

@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
+  getSidebarDndItemId,
   type ProjectThreadItem,
 } from "../model/project-thread-groups.js";
 import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
@@ -117,9 +118,10 @@ function renderSectionThreadDnd(
   pinnedThreads: readonly SidebarThread[] = [],
 ) {
   const result: { current: SectionThreadDndState | null } = { current: null };
-  const pinnedRootNodes = buildPinnedSidebarState({
+  const pinnedState = buildPinnedSidebarState({
+    groupEnvironmentThreads: true,
     threads: pinnedThreads,
-  }).rootNodes;
+  });
   function Harness({ rootItems }: HarnessProps) {
     result.current = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
@@ -129,7 +131,8 @@ function renderSectionThreadDnd(
       onTopLevelSectionOrderChange: vi.fn(),
       pinnedReorderPending: false,
       pinnedThreads,
-      pinnedRootNodes,
+      pinnedRootItems: pinnedState.rootItems,
+      pinnedRootNodes: pinnedState.rootNodes,
       onReorderPinnedThread: vi.fn(),
     });
     return null;
@@ -250,6 +253,66 @@ describe("useSectionThreadDnd pin mutations", () => {
       { method: "setPinned", threadId: "first", pinned: true },
       { method: "setPinned", threadId: "second", pinned: true },
     ]);
+  });
+
+  it("unpins every root when a pinned environment group moves to a section", async () => {
+    const environment = makeSidebarEnvironment({
+      id: "worktree",
+      isWorktree: true,
+    });
+    const pinnedThreads = [
+      createThread({
+        id: "first",
+        sectionId: "a",
+        environment,
+        pinnedAt: 2,
+        createdAt: 3,
+      }),
+      createThread({
+        id: "second",
+        sectionId: "a",
+        environment,
+        pinnedAt: 1,
+        createdAt: 2,
+      }),
+    ];
+    const pinnedState = buildPinnedSidebarState({
+      groupEnvironmentThreads: true,
+      threads: pinnedThreads,
+    });
+    const pinnedGroup = pinnedState.rootItems[0];
+    if (pinnedGroup?.kind !== "environment") {
+      throw new Error("Expected a pinned environment group");
+    }
+    const activeId = getSidebarDndItemId(pinnedGroup);
+    updateThreadFake.mockResolvedValueOnce(undefined as never);
+    updateThreadFake.mockResolvedValueOnce(undefined as never);
+    const { inspection, result } = renderSectionThreadDnd(
+      ROOT_ITEMS,
+      pinnedThreads,
+    );
+    const props = () => result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart(activeId)));
+    act(() => props().onDragEnd?.(dragEnd(activeId, "section:b")));
+    await flushTasks();
+
+    expect(inspection.sidebarActionCalls).toEqual([
+      { method: "setPinned", threadId: "first", pinned: false },
+      { method: "setPinned", threadId: "second", pinned: false },
+    ]);
+    expect(inspection.sdkCalls).toEqual(
+      expect.arrayContaining([
+        {
+          method: "threads.update",
+          args: [{ threadId: "first", sectionId: "b" }],
+        },
+        {
+          method: "threads.update",
+          args: [{ threadId: "second", sectionId: "b" }],
+        },
+      ]),
+    );
   });
 });
 

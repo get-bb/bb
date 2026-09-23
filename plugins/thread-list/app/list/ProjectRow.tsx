@@ -247,6 +247,7 @@ interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps
   fullSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
+  pinnedRootItems?: readonly ProjectThreadItem[];
   pinnedRootNodes?: readonly ProjectThreadNode[];
   pinnedThreads: readonly SidebarThread[];
   onReorderPinnedThread: (
@@ -1144,6 +1145,59 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   );
 });
 
+interface PinnedEnvironmentThreadGroupRowProps {
+  group: EnvironmentThreadGroup;
+  selectedThreadId?: string;
+  collapsedThreadIds: Set<string>;
+  collapsedEnvironmentIds: Set<string>;
+  onProjectSelect?: () => void;
+  onToggleThreadCollapsed: (threadId: string) => void;
+  onToggleEnvironmentCollapsed: (environmentId: string) => void;
+}
+
+export const PinnedEnvironmentThreadGroupRow = memo(
+  function PinnedEnvironmentThreadGroupRow({
+    group,
+    selectedThreadId,
+    collapsedThreadIds,
+    collapsedEnvironmentIds,
+    onProjectSelect,
+    onToggleThreadCollapsed,
+    onToggleEnvironmentCollapsed,
+  }: PinnedEnvironmentThreadGroupRowProps) {
+    const sectionDnd = useChronologicalSectionThreadDnd();
+    const itemId = getSidebarDndItemId({ kind: "environment", group });
+    const { dragBindings, setNodeRef, style } = useSidebarSortable({
+      id: itemId,
+      disabled: sectionDnd === null,
+      displace: false,
+    });
+    return (
+      <EnvironmentThreadGroupRow
+        projectId={group.nodes[0].thread.projectId}
+        environmentThreadGroup={group}
+        sectionDnd={sectionDnd ?? undefined}
+        dragBindings={dragBindings}
+        sortableRef={setNodeRef}
+        sortableStyle={
+          sectionDnd?.activeItemId === itemId
+            ? { ...style, opacity: 0.35, pointerEvents: "none" }
+            : style
+        }
+        depthOffset={0}
+        selectedThreadId={selectedThreadId}
+        isCollapsed={collapsedEnvironmentIds.has(group.environmentId)}
+        collapsedThreadIds={collapsedThreadIds}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
+        variant="section"
+        onProjectSelect={onProjectSelect}
+        onToggleThreadCollapsed={onToggleThreadCollapsed}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      />
+    );
+  },
+);
+
 const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   isEnvGrouped = false,
   projectId,
@@ -1981,6 +2035,7 @@ export const ChronologicalSectionThreadSections = memo(
     fullSectionOrder,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
+    pinnedRootItems,
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
     pinnedThreads,
     onReorderPinnedThread,
@@ -2031,6 +2086,7 @@ export const ChronologicalSectionThreadSections = memo(
       onExpandThread: expandThread,
       pinnedReorderPending,
       pinnedThreads,
+      pinnedRootItems,
       pinnedRootNodes,
       onReorderPinnedThread,
     });
