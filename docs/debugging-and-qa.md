@@ -329,9 +329,11 @@ To exercise the whole chain without OpenRouter, export
 `BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL` (for example `http://127.0.0.1:4599/api/v1`)
 pointing at a local OpenAI-compatible fake, plus any non-empty
 `OPENROUTER_API_KEY`.
-Deployed gateways read the key from `wrangler secret put OPENROUTER_API_KEY`
-(`--env staging` for staging); use a dedicated OpenRouter key with account-wide
-zero data retention and a daily credit limit.
+The production gateway gets the key from the repository's `OPENROUTER_API_KEY`
+Actions secret, which `deploy-ai-gateway.yml` uploads with each deploy. Set the
+staging key with `wrangler secret put OPENROUTER_API_KEY --env staging` from
+`apps/ai-gateway`. Use a dedicated OpenRouter key with account-wide zero data
+retention and a daily credit limit.
 
 Ctrl-C stops the local services. Local D1 state is kept under
 `.wrangler/cloud-dev`.
