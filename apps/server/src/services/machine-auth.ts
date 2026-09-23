@@ -25,7 +25,9 @@ const machineAuthSchema = {
 const currentMachineCredentialMetadataSchema = z
   .object({
     hostId: z.string().min(1),
-    enrollSource: z.enum(["loopback", "public-multi-machine"]).optional(),
+    enrollSource: z
+      .enum(["loopback", "public-multi-machine", "reconnect"])
+      .optional(),
   })
   .strict();
 
@@ -52,7 +54,7 @@ type MachineCredentialMetadata = z.infer<
 
 interface IssueHostEnrollKeyArgs {
   hostId: string;
-  enrollSource: "loopback" | "public-multi-machine";
+  enrollSource: "loopback" | "public-multi-machine" | "reconnect";
 }
 
 interface RevokeHostAuthKeysArgs {

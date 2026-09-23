@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -133,6 +133,91 @@ describe("machine enroll", () => {
     expect(
       JSON.parse(await readFile(join(h.dir, "config.json"), "utf8")),
     ).toMatchObject({ serverHeaders: headers });
+  });
+
+  it("re-exchanges an existing identity for a reconnect bundle, replacing its key and access headers", async () => {
+    const h = await harness();
+    await h.run();
+    await writeFile(
+      join(h.dir, "config.json"),
+      JSON.stringify({
+        serverUrl: "https://server.example",
+        serverHeaders: { "x-access-token": "old-access" },
+        machineCredential: "legacy-credential",
+        connectMachineId: "legacy-machine",
+        keep: true,
+      }),
+    );
+    const headers = { "x-access-token": "new-access" };
+    h.env.BB_ENROLLMENT = JSON.stringify({
+      ...bundle(),
+      headers,
+      reconnect: true,
+    });
+    h.fetchFn.mockImplementationOnce(async () =>
+      Response.json(
+        { hostId: "host_test", hostKey: "replacement-durable" },
+        { status: 201 },
+      ),
+    );
+    await expect(h.run()).resolves.toEqual({ hostId: "host_test" });
+    expect(h.fetchFn).toHaveBeenCalledTimes(2);
+    expect(h.fetchFn.mock.calls[1]?.[1]?.headers).toMatchObject(headers);
+    expect(
+      JSON.parse(await readFile(join(h.dir, "auth.json"), "utf8")),
+    ).toEqual({ hostId: "host_test", hostKey: "replacement-durable" });
+    expect(
+      JSON.parse(await readFile(join(h.dir, "config.json"), "utf8")),
+    ).toEqual({
+      serverUrl: "https://server.example",
+      serverHeaders: headers,
+      keep: true,
+    });
+  });
+
+  it("uses the default BB data directory only when it already holds this machine", async () => {
+    const h = await harness();
+    const defaultDir = join(h.dir, ".bb");
+    h.env.BB_DATA_DIR = defaultDir;
+    await expect(h.run()).rejects.toThrow(
+      "cannot use the default BB data directory",
+    );
+    await mkdir(defaultDir);
+    await writeFile(join(defaultDir, "host-id"), "host_other\n");
+    h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), reconnect: true });
+    await expect(h.run()).rejects.toThrow(
+      "cannot use the default BB data directory",
+    );
+    expect(h.fetchFn).not.toHaveBeenCalled();
+    await writeFile(join(defaultDir, "host-id"), "host_test\n");
+    await writeFile(
+      join(defaultDir, "auth.json"),
+      JSON.stringify({ hostId: "host_test", hostKey: "moved-server-key" }),
+    );
+    await writeFile(
+      join(defaultDir, "config.json"),
+      JSON.stringify({
+        serverUrl: "https://server.example",
+        serverHeaders: { "x-access-token": "old-access" },
+      }),
+    );
+    h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), reconnect: true });
+    await expect(h.run()).resolves.toEqual({ hostId: "host_test" });
+    expect(
+      JSON.parse(await readFile(join(defaultDir, "auth.json"), "utf8")),
+    ).toEqual({ hostId: "host_test", hostKey: "private-durable" });
+  });
+
+  it("refuses a reconnect bundle where this machine was never installed", async () => {
+    const h = await harness();
+    h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), reconnect: true });
+    await expect(h.run()).rejects.toThrow(
+      "No existing installation of machine host_test",
+    );
+    expect(h.fetchFn).not.toHaveBeenCalled();
+    await expect(readFile(join(h.dir, "config.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });
 

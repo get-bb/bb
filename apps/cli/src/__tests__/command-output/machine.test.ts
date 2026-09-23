@@ -99,6 +99,32 @@ describe("bb machine command output", () => {
     );
   });
 
+  it("prints a reconnect command and waits for the same host", async () => {
+    const reconnect = vi.fn(async () => ({
+      command: "curl -fsSL reconnect | sh",
+      expiresAt: Date.now() + 60_000,
+      hostId: "host-remote",
+    }));
+    const get = vi.fn(async () => ({
+      ...hosts[1]!,
+      status: "connected" as const,
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.reconnect-commands.$post": reconnect,
+      "v1.hosts.:id.$get": get,
+    });
+    await runCommand(["machine", "reconnect", "laptop"], register);
+    expect(reconnect).toHaveBeenCalledOnce();
+    expect(get).toHaveBeenCalledOnce();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Machine host-remote keeps its host ID. Run this command on the machine within 15 minutes:",
+      "",
+      "curl -fsSL reconnect | sh",
+      "Machine host-remote reconnected successfully.",
+    ]);
+  });
+
   it("prints the manual enrollment command while following", async () => {
     const command = "curl -fsSL https://machine.example/install.sh | sh";
     stubServerApi({

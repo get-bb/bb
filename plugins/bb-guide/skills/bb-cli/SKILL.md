@@ -112,6 +112,13 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
   failed provider teardown immediately.
+- Use `bb machine reconnect <id-or-name>` when a disconnected machine's
+  server access or host key is rejected but its BB host ID must remain.
+  Run the printed short-lived command on that machine (with the same
+  `BB_DATA_DIR` if it was installed with one, or `BB_DATA_DIR=~/.bb` on a
+  computer a server moved away from); it refreshes access and
+  re-enrolls under the same host ID. Connected machines are refused, and
+  `--json` returns without waiting.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. With `--project <id> --machine <id>`
   it also prints that machine's availability (`available`, `setup-required`,

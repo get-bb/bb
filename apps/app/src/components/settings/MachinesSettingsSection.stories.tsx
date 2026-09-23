@@ -59,6 +59,7 @@ function Row({
           now={now}
           onRename={noop}
           onRemove={noop}
+          onReconnect={noop}
           onRetryUpdate={noop}
           onSuspend={noop}
           onResume={noop}

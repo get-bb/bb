@@ -1520,7 +1520,8 @@ into the corresponding request header when loading an existing machine.
 
 For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
 `~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
-directory and a conflicting host or server identity. Local `bb machine
+directory unless its `host-id` already names this machine, and it refuses a
+conflicting host or server identity. Local `bb machine
 start|stop|uninstall --host-id <id>` treats `BB_DATA_DIR` (or `--data-dir`) as an
 ownership assertion, not permission to act on arbitrary files: lifecycle commands
 require a canonical installer-owned directory under `~/.bb-machines` and verify

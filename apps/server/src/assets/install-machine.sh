@@ -28,6 +28,7 @@ lifecycle_action=
 requested_data_dir=
 adopt=no
 adopted_identity=
+reconnect=no
 
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
@@ -365,6 +366,7 @@ else
       process.stdout.write(url.href.replace(/\/$/u, ""));
     } catch { process.exit(2); }
   ' "$bootstrap_env") || usage
+  reconnect=$(node -e 'process.stdout.write(JSON.parse(process.env[process.argv[1]]).reconnect === true ? "yes" : "no")' "$bootstrap_env")
   bootstrap_payload=$(node -e 'process.stdout.write(process.env[process.argv[1]])' "$bootstrap_env")
   unset "$bootstrap_env"
 fi
@@ -882,7 +884,41 @@ if [ "$platform" = linux ] &&
   BB_INSTALL_SKIP_SERVICE=1
 fi
 
+stop_recorded_daemon() {
+  recorded_pid=
+  recorded_command=
+  if [ -f "$data_dir/install-daemon.pid" ]; then recorded_pid=$(sed -n '1p' "$data_dir/install-daemon.pid"); fi
+  case "$recorded_pid" in
+    ''|*[!0-9]*|0|1) ;;
+    *) recorded_command=$(ps -p "$recorded_pid" -o command= 2>/dev/null || true) ;;
+  esac
+  case " $recorded_command " in
+    *" host-daemon "*" --host-daemon-port $host_daemon_port "*) ;;
+    *)
+      fail_step "A bb host daemon that this installer did not start is running on port $host_daemon_port."
+      detail "Stop it, then run this command again so the daemon uses the new credentials." >&2
+      exit 1
+      ;;
+  esac
+  active_step "Stopping the host daemon so it uses the new credentials"
+  kill "$recorded_pid" 2>/dev/null || true
+  stop_attempts=0
+  while kill -0 "$recorded_pid" 2>/dev/null || daemon_status_matches "$host_daemon_port" no; do
+    stop_attempts=$((stop_attempts + 1))
+    if [ "$stop_attempts" -ge "$DAEMON_WAIT_ATTEMPTS" ]; then
+      fail_step "The bb host daemon did not stop."
+      exit 1
+    fi
+    sleep 1
+  done
+  rm -f "$data_dir/install-daemon.pid"
+  complete_step "Stopped the host daemon"
+}
+
 if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
+  if [ "$reconnect" = yes ] && [ -z "$join_pid" ] && daemon_status_matches "$host_daemon_port" no; then
+    stop_recorded_daemon
+  fi
   if [ -z "$join_pid" ] && ! daemon_status_matches "$host_daemon_port" no; then
     daemon_log="$data_dir/install-daemon.log"
     active_step "Starting the host daemon"

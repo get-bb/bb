@@ -770,6 +770,62 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     }
   });
 
+  it("restarts its own running daemon on reconnect when service setup is skipped", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    const daemonPidPath = join(fixture.dataDir, "install-daemon.pid");
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(fixture, invocationPath);
+    const reconnectEnv = {
+      BB_INSTALL_SKIP_SERVICE: "1",
+      BB_ENROLLMENT: JSON.stringify({
+        ...JSON.parse(bootstrapBundle()),
+        reconnect: true,
+      }),
+    };
+    const running = new Set<number>();
+    const isRunning = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const readPid = () => {
+      const pid = Number(readFileSync(daemonPidPath, "utf8"));
+      running.add(pid);
+      return pid;
+    };
+    try {
+      const installed = runScript(BOOTSTRAP_ARGS, fixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+      });
+      expect(installed.status, installed.stderr).toBe(0);
+      const oldPid = readPid();
+
+      const reconnected = runScript(BOOTSTRAP_ARGS, fixture, reconnectEnv);
+      expect(reconnected.status, reconnected.stderr).toBe(0);
+      expect(reconnected.stdout).toContain("Stopped the host daemon");
+      const newPid = readPid();
+      expect(newPid).not.toBe(oldPid);
+      expect(isRunning(oldPid)).toBe(false);
+      expect(isRunning(newPid)).toBe(true);
+
+      rmSync(daemonPidPath);
+      const unowned = runScript(BOOTSTRAP_ARGS, fixture, reconnectEnv);
+      expect(unowned.status).toBe(1);
+      expect(unowned.stdout + unowned.stderr).toContain(
+        "this installer did not start",
+      );
+      expect(isRunning(newPid)).toBe(true);
+    } finally {
+      for (const pid of running) {
+        if (isRunning(pid)) process.kill(pid, "SIGTERM");
+      }
+    }
+  });
+
   it("accepts the daemon's normalized loopback server URL", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");

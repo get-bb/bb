@@ -2,34 +2,20 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
 import type { SystemMachineProvider } from "@bb/server-contract";
-import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  ResourceOverflowMenu,
   ResourceRowDetailChevron,
   targetsResourceAction,
 } from "@bb/shared-ui/resource-list";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { appToast } from "@/components/ui/app-toast";
-import { MachineLifecycleActions } from "@/components/machines/MachineLifecycleActions";
-import {
-  MachineRemoveDialog,
-  serverMachineRemoveDisabledReason,
-} from "@/components/machines/MachineRemoveDialog";
+import { machineActions } from "@/components/machines/machine-actions";
+import { MachineReconnectDialog } from "@/components/machines/MachineReconnectDialog";
+import { MachineRemoveDialog } from "@/components/machines/MachineRemoveDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { MoveServerDialog } from "@/components/machines/MoveServerDialog";
 import {
@@ -61,10 +47,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import {
-  formatHostUpdateStatus,
-  hostCanRetryUpdate,
-} from "@/lib/host-update-status";
+import { formatHostUpdateStatus } from "@/lib/host-update-status";
 
 const PERMISSION_MODE_PRESENTATION: Record<
   PermissionMode,
@@ -72,8 +55,6 @@ const PERMISSION_MODE_PRESENTATION: Record<
 > = Object.fromEntries(
   PERMISSION_MODE_OPTIONS.map((option) => [option.value, option]),
 ) as Record<PermissionMode, (typeof PERMISSION_MODE_OPTIONS)[number]>;
-
-const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
@@ -92,6 +73,7 @@ interface MachineRowProps {
   now: number;
   onRename: () => void;
   onRemove: () => void;
+  onReconnect: () => void;
   onRetryUpdate: () => void;
   onSuspend: () => void;
   onResume: () => void;
@@ -114,6 +96,7 @@ export function MachineRowContent({
   now,
   onRename,
   onRemove,
+  onReconnect,
   onRetryUpdate,
   onSuspend,
   onResume,
@@ -131,26 +114,6 @@ export function MachineRowContent({
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel = machineStatusLabel({ host, now });
   const updateStatus = formatHostUpdateStatus(host);
-  const removeItem = (
-    <DropdownMenuItem
-      variant="destructive"
-      aria-disabled={isPrimary || undefined}
-      className={cn(
-        MACHINE_MENU_ITEM_CLASS,
-        isPrimary && "cursor-not-allowed focus:bg-transparent",
-      )}
-      onSelect={(event) => {
-        if (isPrimary) {
-          event.preventDefault();
-          return;
-        }
-        onRemove();
-      }}
-    >
-      <Icon name="Trash2" aria-hidden />
-      <span className="min-w-0 truncate">Remove machine</span>
-    </DropdownMenuItem>
-  );
 
   return (
     <SettingsRow>
@@ -206,71 +169,26 @@ export function MachineRowContent({
             </div>
           </Link>
           <div className="flex shrink-0 items-center gap-1">
-            <TooltipProvider delayDuration={250}>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-                    aria-label={`${host.name} actions`}
-                  >
-                    <Icon name="MoreHorizontal" className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-max min-w-0">
-                  <DropdownMenuItem
-                    className={MACHINE_MENU_ITEM_CLASS}
-                    onSelect={onRename}
-                  >
-                    <Icon name="Edit" aria-hidden />
-                    <span className="min-w-0 truncate">Rename</span>
-                  </DropdownMenuItem>
-                  {hostCanRetryUpdate(host) ? (
-                    <DropdownMenuItem
-                      className={MACHINE_MENU_ITEM_CLASS}
-                      disabled={retryUpdatePending}
-                      onSelect={onRetryUpdate}
-                    >
-                      <Icon name={RETRY_ACTION_ICON} aria-hidden />
-                      <span className="min-w-0 truncate">
-                        {retryUpdatePending
-                          ? "Retrying update…"
-                          : "Retry update"}
-                      </span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  <MachineLifecycleActions
-                    host={host}
-                    machineProvider={machineProvider}
-                    pending={lifecycleActionPending}
-                    presentation="menu"
-                    onSuspend={onSuspend}
-                    onResume={onResume}
-                    onRetryCleanup={onRetryCleanup}
-                  />
-                  {canMoveServerHere ? (
-                    <DropdownMenuItem
-                      className={MACHINE_MENU_ITEM_CLASS}
-                      onSelect={onMoveServerHere}
-                    >
-                      <Icon name="MoveTo" aria-hidden />
-                      <span className="min-w-0 truncate">Move server here</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {isPrimary ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
-                      <TooltipContent side="left">
-                        {serverMachineRemoveDisabledReason(serverMoveEnabled)}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    removeItem
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TooltipProvider>
+            <ResourceOverflowMenu
+              label={`${host.name} actions`}
+              items={machineActions({
+                host,
+                machineProvider,
+                isPrimary,
+                canMoveServerHere,
+                serverMoveEnabled,
+                lifecycleActionPending,
+                retryUpdatePending,
+                onRename,
+                onReconnect,
+                onRetryUpdate,
+                onSuspend,
+                onResume,
+                onRetryCleanup,
+                onMoveServerHere,
+                onRemove,
+              })}
+            />
             <ResourceRowDetailChevron />
           </div>
         </div>
@@ -295,6 +213,9 @@ export function MachinesSettingsSection() {
   const [showAllMachines, setShowAllMachines] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Host | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
+  const [reconnectTargetId, setReconnectTargetId] = useState<string | null>(
+    null,
+  );
   const [moveServerTarget, setMoveServerTarget] = useState<Host | null>(null);
 
   const hosts = hostsQuery.data;
@@ -355,6 +276,9 @@ export function MachinesSettingsSection() {
           }}
           onRemove={() => {
             setRemoveTarget(host);
+          }}
+          onReconnect={() => {
+            setReconnectTargetId(host.id);
           }}
           onRetryUpdate={() =>
             retryHostUpdate.mutate(host.id, {
@@ -512,6 +436,13 @@ export function MachinesSettingsSection() {
             { onSuccess: () => setRenameTarget(null) },
           )
         }
+      />
+
+      <MachineReconnectDialog
+        target={hosts?.find((host) => host.id === reconnectTargetId) ?? null}
+        onOpenChange={(open) => {
+          if (!open) setReconnectTargetId(null);
+        }}
       />
 
       <MachineRemoveDialog

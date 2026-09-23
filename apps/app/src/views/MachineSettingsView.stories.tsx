@@ -62,6 +62,7 @@ function Row({
         onResume={noop}
         onRetryCleanup={noop}
         onRename={noop}
+        onReconnect={noop}
         canMoveServerHere={false}
         onMoveServerHere={noop}
         {...overrides}
