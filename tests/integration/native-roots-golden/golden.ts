@@ -67,11 +67,13 @@ export const applyProcessEnv: ApplyEnv = (env) => {
 };
 
 function placeholderPath(value: string, paths: FixturePaths): string {
+  // bb-fork(windows): the golden files store `/`-separated paths.
   return value
     .split(paths.home)
     .join("<home>")
     .split(paths.root)
-    .join("<root>");
+    .join("<root>")
+    .replaceAll("\\", "/");
 }
 
 function compareStrings(left: string, right: string): number {

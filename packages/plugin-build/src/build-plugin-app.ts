@@ -3,13 +3,13 @@ import {
   mkdtemp,
   readFile,
   realpath,
-  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
+import { renameWithRetry } from "./rename-with-retry.fork.js";
 import { derivePluginId } from "@bb/domain";
 import type { Metafile, Plugin } from "esbuild";
 import {
@@ -468,9 +468,9 @@ export async function buildPluginApp(
       ) + "\n",
     );
 
-    await rename(stagedJsPath, jsPath);
-    await rename(stagedCssPath, cssPath);
-    await rename(stagedMetaPath, metaPath);
+    await renameWithRetry(stagedJsPath, jsPath);
+    await renameWithRetry(stagedCssPath, cssPath);
+    await renameWithRetry(stagedMetaPath, metaPath);
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }

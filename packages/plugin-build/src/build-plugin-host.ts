@@ -4,12 +4,12 @@ import {
   mkdtemp,
   readFile,
   readdir,
-  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
+import { renameWithRetry } from "./rename-with-retry.fork.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import {
   isRecord,
@@ -502,9 +502,9 @@ export async function buildPluginHost(
         2,
       ) + "\n",
     );
-    await rename(stagedJsPath, jsPath);
-    await rename(join(stageDir, "host.js.map"), mapPath);
-    await rename(stagedMetaPath, metaPath);
+    await renameWithRetry(stagedJsPath, jsPath);
+    await renameWithRetry(join(stageDir, "host.js.map"), mapPath);
+    await renameWithRetry(stagedMetaPath, metaPath);
     return { jsPath, mapPath, metaPath, artifactDigest };
   } finally {
     await rm(stageDir, { recursive: true, force: true });
