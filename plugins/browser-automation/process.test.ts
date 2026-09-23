@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { supervise } from "./process.js";
 
-describe("process ownership", () => {
-  it.each([false, true])(
+// bb-fork(windows): these tests kill process groups by PID, which Windows lacks.
+describe.skipIf(process.platform === "win32")("process ownership", () => {
+  // bb-fork(windows): the launcher is an extensionless Node-shebang script.
+  it.skipIf(process.platform === "win32").each([false, true])(
     "runs the supervisor in Node mode without leaking it to external children (Electron: %s)",
     async (electron) => {
       const root = await mkdtemp(join(tmpdir(), "db-supervisor-environment-"));

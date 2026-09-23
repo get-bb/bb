@@ -212,7 +212,8 @@ beforeEach(async () => {
   await configureNpm({});
 });
 
-describe("runtime installer", () => {
+// bb-fork(windows): the fake npm is a `#!/bin/sh` wrapper + POSIX PATH entry.
+describe.skipIf(process.platform === "win32")("runtime installer", () => {
   it("installs the exact pinned package once and reuses it without npm or network", async () => {
     const dir = await dataDir();
     const progress: string[] = [];

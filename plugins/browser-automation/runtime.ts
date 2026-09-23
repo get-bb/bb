@@ -8,7 +8,7 @@ import {
   realpath,
   rm,
 } from "node:fs/promises";
-import { delimiter, isAbsolute, join, relative } from "node:path";
+import { delimiter, isAbsolute, join, posix, relative, win32 } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { outputSchema, type RunOutput } from "./contracts.js";
@@ -59,7 +59,11 @@ export function runtimeEnvironment(home: string): NodeJS.ProcessEnv {
     if (process.env[key]) env[key] = process.env[key];
   }
   env.DEV_BROWSER_HOME = home;
-  env.DEV_BROWSER_SOCKET = join(home, "daemon.sock");
+  // bb-fork(windows): keep the browser host's home convention; a POSIX remote
+  // home must not become `\tmp\...`.
+  const homeApi =
+    /^[A-Za-z]:[\\/]/u.test(home) || home.startsWith("\\\\") ? win32 : posix;
+  env.DEV_BROWSER_SOCKET = homeApi.join(home, "daemon.sock");
   return env;
 }
 

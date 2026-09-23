@@ -103,113 +103,117 @@ async function loadWithSyncServiceOnce(
   return { bb, harness };
 }
 
-describe("github plugin gh auth probe (#1758)", () => {
-  it("re-probes gh after a transient auth-status failure instead of latching", async () => {
-    writeFileSync(offlineFlag, "");
-    const { harness } = await loadWithSyncServiceOnce();
-    const before = (await harness.callRpc("status")) as {
-      ghOk: boolean;
-      ghState: string;
-    };
-    expect(before.ghOk).toBe(false);
-    expect(before.ghState).toBe("unavailable");
-    const callsWhileOffline = ghCalls().length;
+// bb-fork(windows): the fake `gh` is a bash script with a POSIX PATH entry.
+describe.skipIf(process.platform === "win32")(
+  "github plugin gh auth probe (#1758)",
+  () => {
+    it("re-probes gh after a transient auth-status failure instead of latching", async () => {
+      writeFileSync(offlineFlag, "");
+      const { harness } = await loadWithSyncServiceOnce();
+      const before = (await harness.callRpc("status")) as {
+        ghOk: boolean;
+        ghState: string;
+      };
+      expect(before.ghOk).toBe(false);
+      expect(before.ghState).toBe("unavailable");
+      const callsWhileOffline = ghCalls().length;
 
-    rmSync(offlineFlag);
+      rmSync(offlineFlag);
 
-    const after = (await harness.callRpc("status")) as {
-      ghOk: boolean;
-      ghState: string;
-      ghError: string | null;
-    };
-    expect(ghCalls().length).toBeGreaterThan(callsWhileOffline);
-    expect(after.ghOk).toBe(true);
-    expect(after.ghState).toBe("ready");
-  });
-
-  it('does not report needs-configuration ("run gh auth login") for a transient probe failure', async () => {
-    writeFileSync(offlineFlag, "");
-    const { harness } = await loadWithSyncServiceOnce();
-    expect(harness.needsConfigurationMessages).toEqual([]);
-  });
-
-  it("still reports needs-configuration when gh has no credentials at all", async () => {
-    writeFileSync(noTokenFlag, "");
-    const { harness } = await loadWithSyncServiceOnce();
-    expect(harness.needsConfigurationMessages.length).toBeGreaterThan(0);
-    expect(harness.needsConfigurationMessages[0]).toContain("gh auth login");
-    const status = (await harness.callRpc("status")) as { ghState: string };
-    expect(status.ghState).toBe("needs_configuration");
-  });
-
-  it("control: with gh working from the start the plugin never reports needs-configuration", async () => {
-    const { harness } = await loadWithSyncServiceOnce();
-    expect(harness.needsConfigurationMessages).toEqual([]);
-    const status = (await harness.callRpc("status")) as { ghOk: boolean };
-    expect(status.ghOk).toBe(true);
-  });
-
-  it("probes only the active github.com account, so a broken secondary account does not block sync", async () => {
-    writeFileSync(badSecondaryFlag, "");
-    const { harness } = await loadWithSyncServiceOnce();
-    expect(harness.needsConfigurationMessages).toEqual([]);
-    const status = (await harness.callRpc("status")) as { ghState: string };
-    expect(status.ghState).toBe("ready");
-    const statusCalls = ghCalls().filter((call) =>
-      call.startsWith("auth status"),
-    );
-    expect(statusCalls.length).toBeGreaterThan(0);
-    for (const call of statusCalls) {
-      expect(call).toContain("--hostname github.com");
-      expect(call).toContain("--active");
-    }
-    const tokenCalls = ghCalls().filter((call) =>
-      call.startsWith("auth token"),
-    );
-    for (const call of tokenCalls) {
-      expect(call).toContain("--hostname github.com");
-    }
-  });
-
-  it("shares one in-flight probe between concurrent status calls", async () => {
-    writeFileSync(offlineFlag, "");
-    const { harness } = await loadWithSyncServiceOnce();
-    rmSync(offlineFlag);
-    writeFileSync(slowStatusFlag, "");
-    const callsBefore = ghCalls().length;
-    const [a, b] = (await Promise.all([
-      harness.callRpc("status"),
-      harness.callRpc("status"),
-    ])) as Array<{ ghState: string }>;
-    expect(a.ghState).toBe("ready");
-    expect(b.ghState).toBe("ready");
-    const probes = ghCalls()
-      .slice(callsBefore)
-      .filter((call) => call.startsWith("auth status"));
-    expect(probes).toHaveLength(1);
-  });
-
-  it("stops promptly when aborted during an all-repos failure and keeps the old sync time", async () => {
-    writeFileSync(apiDownFlag, "");
-    writeFileSync(slowStatusFlag, "");
-    const { bb, harness } = await loadWithSyncServiceOnce({
-      settings: { extraRepos: "acme/one acme/two" },
+      const after = (await harness.callRpc("status")) as {
+        ghOk: boolean;
+        ghState: string;
+        ghError: string | null;
+      };
+      expect(ghCalls().length).toBeGreaterThan(callsWhileOffline);
+      expect(after.ghOk).toBe(true);
+      expect(after.ghState).toBe("ready");
     });
-    rmSync(slowStatusFlag);
-    expect(harness.needsConfigurationMessages).toEqual([]);
-    expect(await bb.storage.kv.get("sync-cursor")).toBeUndefined();
-    expect(harness.logEntries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          level: "warn",
-          message: expect.stringMatching(/all 2 repo/),
-        }),
-      ]),
-    );
 
-    rmSync(apiDownFlag);
-    const result = (await harness.callRpc("refresh")) as { repos: number };
-    expect(result.repos).toBe(2);
-    expect(await bb.storage.kv.get("sync-cursor")).toBeDefined();
-  }, 20_000);
-});
+    it('does not report needs-configuration ("run gh auth login") for a transient probe failure', async () => {
+      writeFileSync(offlineFlag, "");
+      const { harness } = await loadWithSyncServiceOnce();
+      expect(harness.needsConfigurationMessages).toEqual([]);
+    });
+
+    it("still reports needs-configuration when gh has no credentials at all", async () => {
+      writeFileSync(noTokenFlag, "");
+      const { harness } = await loadWithSyncServiceOnce();
+      expect(harness.needsConfigurationMessages.length).toBeGreaterThan(0);
+      expect(harness.needsConfigurationMessages[0]).toContain("gh auth login");
+      const status = (await harness.callRpc("status")) as { ghState: string };
+      expect(status.ghState).toBe("needs_configuration");
+    });
+
+    it("control: with gh working from the start the plugin never reports needs-configuration", async () => {
+      const { harness } = await loadWithSyncServiceOnce();
+      expect(harness.needsConfigurationMessages).toEqual([]);
+      const status = (await harness.callRpc("status")) as { ghOk: boolean };
+      expect(status.ghOk).toBe(true);
+    });
+
+    it("probes only the active github.com account, so a broken secondary account does not block sync", async () => {
+      writeFileSync(badSecondaryFlag, "");
+      const { harness } = await loadWithSyncServiceOnce();
+      expect(harness.needsConfigurationMessages).toEqual([]);
+      const status = (await harness.callRpc("status")) as { ghState: string };
+      expect(status.ghState).toBe("ready");
+      const statusCalls = ghCalls().filter((call) =>
+        call.startsWith("auth status"),
+      );
+      expect(statusCalls.length).toBeGreaterThan(0);
+      for (const call of statusCalls) {
+        expect(call).toContain("--hostname github.com");
+        expect(call).toContain("--active");
+      }
+      const tokenCalls = ghCalls().filter((call) =>
+        call.startsWith("auth token"),
+      );
+      for (const call of tokenCalls) {
+        expect(call).toContain("--hostname github.com");
+      }
+    });
+
+    it("shares one in-flight probe between concurrent status calls", async () => {
+      writeFileSync(offlineFlag, "");
+      const { harness } = await loadWithSyncServiceOnce();
+      rmSync(offlineFlag);
+      writeFileSync(slowStatusFlag, "");
+      const callsBefore = ghCalls().length;
+      const [a, b] = (await Promise.all([
+        harness.callRpc("status"),
+        harness.callRpc("status"),
+      ])) as Array<{ ghState: string }>;
+      expect(a.ghState).toBe("ready");
+      expect(b.ghState).toBe("ready");
+      const probes = ghCalls()
+        .slice(callsBefore)
+        .filter((call) => call.startsWith("auth status"));
+      expect(probes).toHaveLength(1);
+    });
+
+    it("stops promptly when aborted during an all-repos failure and keeps the old sync time", async () => {
+      writeFileSync(apiDownFlag, "");
+      writeFileSync(slowStatusFlag, "");
+      const { bb, harness } = await loadWithSyncServiceOnce({
+        settings: { extraRepos: "acme/one acme/two" },
+      });
+      rmSync(slowStatusFlag);
+      expect(harness.needsConfigurationMessages).toEqual([]);
+      expect(await bb.storage.kv.get("sync-cursor")).toBeUndefined();
+      expect(harness.logEntries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: "warn",
+            message: expect.stringMatching(/all 2 repo/),
+          }),
+        ]),
+      );
+
+      rmSync(apiDownFlag);
+      const result = (await harness.callRpc("refresh")) as { repos: number };
+      expect(result.repos).toBe(2);
+      expect(await bb.storage.kv.get("sync-cursor")).toBeDefined();
+    }, 20_000);
+  },
+);
