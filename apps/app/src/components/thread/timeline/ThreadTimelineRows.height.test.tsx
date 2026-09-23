@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  BottomAnchorContext,
+  type BottomAnchorContextValue,
+} from "@/components/ui/bottom-anchored-scroll-body";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
 class ResizeObserverStub implements ResizeObserver {
-  constructor(readonly callback: ResizeObserverCallback) {}
+  static instances: ResizeObserverStub[] = [];
+
+  constructor(readonly callback: ResizeObserverCallback) {
+    ResizeObserverStub.instances.push(this);
+  }
 
   observe: ResizeObserver["observe"] = vi.fn();
   unobserve: ResizeObserver["unobserve"] = vi.fn();
@@ -16,6 +24,7 @@ class ResizeObserverStub implements ResizeObserver {
 }
 
 afterEach(() => {
+  ResizeObserverStub.instances.length = 0;
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -147,14 +156,96 @@ function renderTimelineWithContainmentSupport(
   return wrapper;
 }
 
-it("snaps idle timeline growth once row containment is armed", () => {
+it("keeps idle growth animated once row containment is armed", () => {
   expect(
     renderTimelineWithContainmentSupport(false).style.transition,
-  ).toContain("height 0ms");
+  ).toContain("height 180ms");
 });
 
 it("keeps idle growth animated when timeline windowing disables containment", () => {
   expect(
     renderTimelineWithContainmentSupport(true).style.transition,
   ).toContain("height 180ms");
+});
+
+function growArmedTimelineAfterSettle(
+  hasRecentViewportChange: () => boolean,
+  timelineWindowingEnabled = false,
+): string {
+  vi.useFakeTimers();
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  stubFullContainmentSupport();
+  try {
+    const anchor: BottomAnchorContextValue = {
+      getScrollElement: () => null,
+      isAtBottom: true,
+      scrollToBottom: vi.fn(),
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      captureScrollAnchor: vi.fn(),
+      hasRecentViewportChange,
+    };
+    const rows = [turnRow({ id: "idle_turn", seq: 1, status: "completed" })];
+    const view = render(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <BottomAnchorContext.Provider value={anchor}>
+            <ThreadTimelineRows
+              threadId="thr_main"
+              timelineRows={rows}
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+              timelineWindowingEnabled={timelineWindowingEnabled}
+            />
+          </BottomAnchorContext.Provider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const rowList = view.container.querySelector<HTMLElement>(
+      '[data-timeline-row-list="top-level"]',
+    );
+    const inner = rowList?.parentElement;
+    const wrapper = inner?.parentElement;
+    const observer = ResizeObserverStub.instances.find((instance) =>
+      vi
+        .mocked(instance.observe)
+        .mock.calls.some(([target]) => target === inner),
+    );
+    if (!inner || !wrapper || !observer) {
+      throw new Error("Timeline height wrapper was not observed");
+    }
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    act(() => {
+      observer.callback(
+        [
+          {
+            target: inner,
+            contentRect: new DOMRect(0, 0, 200, 500),
+            borderBoxSize: [{ blockSize: 500, inlineSize: 200 }],
+            contentBoxSize: [{ blockSize: 500, inlineSize: 200 }],
+            devicePixelContentBoxSize: [{ blockSize: 500, inlineSize: 200 }],
+          },
+        ],
+        observer,
+      );
+    });
+    expect(wrapper.style.height).toBe("500px");
+    return wrapper.style.transitionDuration;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+it("snaps idle growth right after a viewport change while containment is armed", () => {
+  expect(growArmedTimelineAfterSettle(() => true)).toBe("0s");
+});
+
+it("eases idle growth while containment is armed and the viewport is still", () => {
+  expect(growArmedTimelineAfterSettle(() => false)).toBe("");
+});
+
+it("ignores viewport changes when windowing keeps containment off", () => {
+  expect(growArmedTimelineAfterSettle(() => true, true)).toBe("");
 });

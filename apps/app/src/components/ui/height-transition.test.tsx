@@ -166,9 +166,9 @@ function stubScrollAnchoringSupport(supported: boolean): void {
 }
 
 describe("AutoHeightContainer growth easing", () => {
-  function renderWrapper(containmentArmed = false): HTMLElement {
+  function renderWrapper(): HTMLElement {
     const view = render(
-      <AutoHeightContainer containmentArmed={containmentArmed}>
+      <AutoHeightContainer>
         <span>Streaming response</span>
       </AutoHeightContainer>,
     );
@@ -186,14 +186,6 @@ describe("AutoHeightContainer growth easing", () => {
     stubScrollAnchoringSupport(true);
 
     expect(renderWrapper().style.transition).toContain("height 180ms");
-  });
-
-  it("snaps growth while timeline row containment is armed", () => {
-    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-    stubMediaQueries(new Set());
-    stubScrollAnchoringSupport(true);
-
-    expect(renderWrapper(true).style.transition).toContain("height 0ms");
   });
 
   it("snaps growth on a coarse pointer", () => {
@@ -218,5 +210,46 @@ describe("AutoHeightContainer growth easing", () => {
     stubScrollAnchoringSupport(false);
 
     expect(renderWrapper().style.transition).toContain("height 0ms");
+  });
+});
+
+describe("AutoHeightContainer growth snap callback", () => {
+  function growAfterInitialSettle(shouldSnapGrowth: () => boolean): string {
+    vi.useFakeTimers();
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMediaQueries(new Set());
+    stubScrollAnchoringSupport(true);
+    try {
+      const view = render(
+        <AutoHeightContainer shouldSnapGrowth={shouldSnapGrowth}>
+          <span>Idle response</span>
+        </AutoHeightContainer>,
+      );
+      const inner = view.getByText("Idle response").parentElement;
+      const wrapper = inner?.parentElement;
+      const observer = ResizeObserverStub.instances[0];
+      if (!inner || !wrapper || !observer) {
+        throw new Error("AutoHeightContainer did not render");
+      }
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      act(() => {
+        observer.callback([makeResizeEntry(inner, 120, 120)], observer);
+      });
+      expect(wrapper.style.height).toBe("120px");
+      expect(wrapper.style.transition).toContain("height 180ms");
+      return wrapper.style.transitionDuration;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("eases growth while the callback does not ask for a snap", () => {
+    expect(growAfterInitialSettle(() => false)).toBe("");
+  });
+
+  it("snaps a growth the callback marks", () => {
+    expect(growAfterInitialSettle(() => true)).toBe("0s");
   });
 });

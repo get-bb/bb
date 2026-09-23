@@ -1940,6 +1940,35 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
   );
 }
 
+interface TimelineAutoHeightContainerProps {
+  children: ReactNode;
+  snapRevision: string;
+  animateGrowth: boolean;
+  rowContainmentArmed: boolean;
+}
+
+// Reads the bottom anchor here rather than in the timeline view so an
+// at-bottom change re-renders only this wrapper, not the whole timeline.
+function TimelineAutoHeightContainer({
+  children,
+  snapRevision,
+  animateGrowth,
+  rowContainmentArmed,
+}: TimelineAutoHeightContainerProps) {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <AutoHeightContainer
+      snapRevision={snapRevision}
+      animateGrowth={animateGrowth}
+      shouldSnapGrowth={
+        rowContainmentArmed ? bottomAnchor?.hasRecentViewportChange : undefined
+      }
+    >
+      {children}
+    </AutoHeightContainer>
+  );
+}
+
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const getViewRows = useTimelineViewRowsCache();
   const [windowingMeasurements] = useState(() => new Map<string, number>());
@@ -2193,10 +2222,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                     <TimelineWindowingEnabledContext.Provider
                       value={props.timelineWindowingEnabled ?? false}
                     >
-                      <AutoHeightContainer
+                      <TimelineAutoHeightContainer
                         snapRevision={heightSnapRevision}
                         animateGrowth={!scopeActive}
-                        containmentArmed={rowContainmentArmed}
+                        rowContainmentArmed={rowContainmentArmed}
                       >
                         <TimelineRowsList
                           hasOlderTimelineRows={props.hasOlderTimelineRows}
@@ -2219,7 +2248,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                             props.unreadDividerPlacement ?? null
                           }
                         />
-                      </AutoHeightContainer>
+                      </TimelineAutoHeightContainer>
                     </TimelineWindowingEnabledContext.Provider>
                   </TimelineWindowingMeasurementsContext.Provider>
                   {hasSelectionActions ? (

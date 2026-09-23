@@ -28,6 +28,12 @@ export interface BottomAnchorContextValue {
     args: ScrollElementIntoViewClampedToMaxScrollArgs,
   ) => void;
   captureScrollAnchor: () => void;
+  /**
+   * True shortly after the scroll area scrolled or changed size. Row
+   * containment swaps placeholder and real row heights exactly then, so
+   * height transitions snap instead of easing during that window.
+   */
+  hasRecentViewportChange?: () => boolean;
 }
 
 interface BottomAnchoredScrollBodyProps {
@@ -57,6 +63,7 @@ interface ElementVisibilityArgs {
 const BOTTOM_ANCHOR_THRESHOLD_PX = 4;
 const USER_SCROLL_INTENT_MS = 1_000;
 const SCROLLBAR_IDLE_DELAY_MS = 600;
+const VIEWPORT_CHANGE_SNAP_WINDOW_MS = 250;
 const BOTTOM_RESTORE_SETTLE_FRAME_COUNT = 3;
 const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
 const COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 250;
@@ -322,6 +329,7 @@ export function BottomAnchoredScrollBody({
     trailingTimeout: number | null;
   }>({ lastWriteAt: 0, trailingTimeout: null });
   const userDetachedFromBottomRef = useRef(false);
+  const lastViewportChangeAtRef = useRef(Number.NEGATIVE_INFINITY);
   const maxScrollOffsetRef = useRef(0);
   const resizeObserverHasDeliveredRef = useRef(false);
   const observedScrollGeometryRef = useRef<{
@@ -341,6 +349,13 @@ export function BottomAnchoredScrollBody({
   }, [scrollAnchorThreadId, store]);
 
   const getScrollElement = useCallback(() => scrollAreaRef.current, []);
+
+  const hasRecentViewportChange = useCallback(
+    () =>
+      window.performance.now() - lastViewportChangeAtRef.current <
+      VIEWPORT_CHANGE_SNAP_WINDOW_MS,
+    [],
+  );
 
   const refreshMaxScrollOffset = useCallback((scrollArea: HTMLElement) => {
     const maxScrollOffset = getMaxScrollOffset(scrollArea);
@@ -793,6 +808,7 @@ export function BottomAnchoredScrollBody({
         const observedGeometry = observedScrollGeometryRef.current;
         for (const entry of entries) {
           if (entry.target === scrollArea) {
+            lastViewportChangeAtRef.current = window.performance.now();
             observedGeometry.scrollAreaClientHeight =
               entry.contentBoxSize[0]?.blockSize ?? entry.contentRect.height;
           } else if (entry.target === scrollContentRef.current) {
@@ -861,6 +877,7 @@ export function BottomAnchoredScrollBody({
       scrollElementIntoView,
       scrollElementIntoViewClampedToMaxScroll,
       captureScrollAnchor,
+      hasRecentViewportChange,
     }),
     [
       getScrollElement,
@@ -869,6 +886,7 @@ export function BottomAnchoredScrollBody({
       scrollElementIntoView,
       scrollElementIntoViewClampedToMaxScroll,
       captureScrollAnchor,
+      hasRecentViewportChange,
     ],
   );
 
@@ -901,6 +919,7 @@ export function BottomAnchoredScrollBody({
 
     let scrollbarIdleTimeout: number | null = null;
     const handleScrollEvent = () => {
+      lastViewportChangeAtRef.current = window.performance.now();
       if (scrollArea.dataset.scrollbarScrolling !== "true") {
         scrollArea.dataset.scrollbarScrolling = "true";
       }
