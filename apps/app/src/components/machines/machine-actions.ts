@@ -47,7 +47,7 @@ export function machineActions(args: MachineActionsArgs): MachineAction[] {
     actions.push({
       id: "reconnect",
       label: "Reconnect machine",
-      icon: "Plug02",
+      icon: "RotateCcw",
       onSelect: args.onReconnect,
     });
 
