@@ -865,6 +865,39 @@ describe("ThreadTableOfContents", () => {
     expect(loadOlder).not.toHaveBeenCalled();
   });
 
+  it("waits for a loaded but unmounted message to render instead of paginating", async () => {
+    const loadOlder = vi.fn();
+    const onNavigateToRow = vi.fn((rowId: string) => {
+      queueMicrotask(() => {
+        scrollElement.appendChild(timelineRowElement(rowId));
+      });
+    });
+    const timelineRows = [1, 2, 3].map((index) => userConversationRow(index));
+
+    render(
+      <TocHost
+        timelineRows={timelineRows}
+        hasOlderTimelineRows
+        loadOlderTimelineRows={loadOlder}
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(
+      await screen.findByText("Loaded after client-side navigation 1"),
+    );
+
+    await waitFor(() =>
+      expect(scrollElementIntoView).toHaveBeenCalledWith({
+        element: scrollElement.querySelector(
+          '[data-timeline-row-id="row_user_1"]',
+        ),
+        options: { block: "start", inline: "nearest" },
+      }),
+    );
+    expect(loadOlder).not.toHaveBeenCalled();
+  });
+
   it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {
     const loadOlder = vi.fn(() => {
       scrollElement.appendChild(timelineRowElement("u_old"));
