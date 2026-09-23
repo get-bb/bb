@@ -54,7 +54,6 @@ function status(
     blocked: null,
     current: { commit: null, version: "1.1.0" },
     lastResult: null,
-    probation: false,
     runningThreadCount: 0,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
@@ -112,29 +111,29 @@ describe("AppUpdateHost", () => {
     expect(appToast.success).toHaveBeenCalledOnce();
   });
 
-  it("keeps a rollback visible until dismissed from its details", async () => {
-    const rolledBack = result({
-      logTail: ["Error: migration 0131 failed"],
-      message: "Server failed to start",
-      outcome: "rolled-back",
-      phase: "startup",
+  it("keeps a failure visible until dismissed from its details", async () => {
+    const failed = result({
+      logTail: ["npm error code E404"],
+      message: "npm install failed",
+      outcome: "failed",
+      phase: "install",
     });
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       status({
         current: { commit: null, version: "1.0.0" },
-        lastResult: rolledBack,
+        lastResult: failed,
       }),
     );
     vi.mocked(sdk.system.acknowledgeAppUpdate).mockResolvedValue(
-      status({ lastResult: { ...rolledBack, acknowledged: true } }),
+      status({ lastResult: { ...failed, acknowledged: true } }),
     );
 
     renderHost();
 
     await waitFor(() => {
       expect(appToast.error).toHaveBeenCalledWith(
-        "Update to 1.1.0 failed — rolled back to 1.0.0",
-        expect.objectContaining({ description: "Server failed to start" }),
+        "Update to 1.1.0 failed",
+        expect.objectContaining({ description: "npm install failed" }),
       );
     });
     expect(sdk.system.acknowledgeAppUpdate).not.toHaveBeenCalled();
@@ -142,10 +141,8 @@ describe("AppUpdateHost", () => {
     expect(vi.mocked(appToast.error).mock.calls[0]?.[1]?.action).toMatchObject({
       label: "Details",
     });
-    act(() => openAppUpdateResultDetails(rolledBack));
-    expect(
-      await screen.findByText("Error: migration 0131 failed"),
-    ).toBeDefined();
+    act(() => openAppUpdateResultDetails(failed));
+    expect(await screen.findByText("npm error code E404")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     await waitFor(() => {
@@ -205,39 +202,6 @@ describe("AppUpdateHost", () => {
     await waitFor(() => expect(onRevisionChanged).toHaveBeenCalledOnce());
     expect(appToast.success).not.toHaveBeenCalled();
     expect(sdk.system.acknowledgeAppUpdate).not.toHaveBeenCalled();
-  });
-
-  it("announces a rollback that follows an announced success", async () => {
-    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
-      status({ lastResult: result(), probation: true }),
-    );
-    vi.mocked(sdk.system.acknowledgeAppUpdate).mockResolvedValue(
-      status({ lastResult: result({ acknowledged: true }) }),
-    );
-    const { queryClient } = renderHost();
-    await waitFor(() => expect(appToast.success).toHaveBeenCalledOnce());
-    await waitFor(() =>
-      expect(sdk.system.acknowledgeAppUpdate).toHaveBeenCalledOnce(),
-    );
-
-    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
-      status({
-        current: { commit: null, version: "1.1.0" },
-        lastResult: result({
-          message: "The server stopped 3 times.",
-          outcome: "rolled-back",
-          phase: "probation",
-        }),
-      }),
-    );
-    await act(() => queryClient.invalidateQueries());
-
-    await waitFor(() => {
-      expect(appToast.error).toHaveBeenCalledWith(
-        "Update to 1.1.0 failed — rolled back to 1.0.0",
-        expect.objectContaining({ description: "The server stopped 3 times." }),
-      );
-    });
   });
 
   it("lets the user dismiss a restart overlay that outlasts its patience", async () => {

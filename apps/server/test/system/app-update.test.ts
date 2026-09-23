@@ -74,7 +74,6 @@ class FakeLauncher implements LauncherChannel {
         current: { kind: "npm", packageRoot: "/pkg/1.0.0", version: "1.0.0" },
         lastResult: null,
         mode: "npm",
-        probation: false,
         ...status,
       });
     }
@@ -204,7 +203,7 @@ describe("app update service", () => {
     );
   });
 
-  it("rejects an update while one is running or confirming", async () => {
+  it("rejects an update while one is running", async () => {
     const { launcher, service } = createService({});
     launcher?.push({
       activity: {
@@ -219,12 +218,6 @@ describe("app update service", () => {
     await expectApiError(
       service.apply({ confirmInterruptingThreads: true }),
       "app_update_in_progress",
-    );
-
-    launcher?.push({ probation: true });
-    await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
-      "app_update_confirming",
     );
   });
 
@@ -242,7 +235,7 @@ describe("app update service", () => {
     expect(error.body.message).toContain("not source");
   });
 
-  it("maps launcher status into activity, result, and probation", async () => {
+  it("maps launcher status into activity and result", async () => {
     const { launcher, notifyChanged, service } = createService({});
     notifyChanged.mockClear();
 
@@ -259,9 +252,9 @@ describe("app update service", () => {
         from: { kind: "npm", packageRoot: "/pkg/0.9.0", version: "0.9.0" },
         id: "result-1",
         logTail: ["boom"],
-        message: "Server failed to start",
-        outcome: "rolled-back",
-        phase: "startup",
+        message: "npm install failed",
+        outcome: "failed",
+        phase: "install",
         to: { kind: "npm", packageRoot: "/pkg/1.0.0", version: "1.0.0" },
       },
     });
@@ -275,7 +268,7 @@ describe("app update service", () => {
     });
     expect(status.lastResult).toMatchObject({
       from: { commit: null, version: "0.9.0" },
-      outcome: "rolled-back",
+      outcome: "failed",
     });
   });
 
@@ -556,7 +549,6 @@ describe("launcher channel", () => {
         current: { kind: "npm", packageRoot: "/pkg", version: "1.0.0" },
         lastResult: null,
         mode: "npm",
-        probation: false,
       },
     });
 

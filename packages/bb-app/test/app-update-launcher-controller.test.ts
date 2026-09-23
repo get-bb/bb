@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  formatAppUpdateStatePath,
+  formatAppUpdateVersionsDir,
   launcherToServerMessageSchema,
   mutateAppUpdateState,
   readAppUpdateState,
@@ -24,7 +26,6 @@ import {
 } from "../src/app-update/launcher-controller.js";
 import {
   formatNpmRevisionPackageRoot,
-  NPM_REVISION_MIGRATION_JOURNAL,
   NPM_REVISION_REQUIRED_FILES,
 } from "../src/app-update/npm-revision.js";
 import type { RunCommand } from "../src/app-update/run-command.js";
@@ -44,7 +45,6 @@ function scratchDir(): string {
 }
 
 function stagePackage(args: {
-  migrations: string[];
   packageRoot: string;
   version: string;
 }): NpmAppRevision {
@@ -55,13 +55,6 @@ function stagePackage(args: {
   writeFileSync(
     join(args.packageRoot, "package.json"),
     JSON.stringify({ name: "bb-app", version: args.version }),
-  );
-  mkdirSync(dirname(join(args.packageRoot, NPM_REVISION_MIGRATION_JOURNAL)), {
-    recursive: true,
-  });
-  writeFileSync(
-    join(args.packageRoot, NPM_REVISION_MIGRATION_JOURNAL),
-    JSON.stringify({ entries: args.migrations.map((tag) => ({ tag })) }),
   );
   return { kind: "npm", packageRoot: args.packageRoot, version: args.version };
 }
@@ -118,58 +111,46 @@ const failingRunner: RunCommand = async () => ({
   stdout: "",
 });
 
-function setUp(
-  args: {
-    currentMigrations?: string[];
-    runner?: RunCommand;
-    stageTarget?: boolean;
-    targetMigrations?: string[];
-  } = {},
-) {
+function createController(args: {
+  current: NpmAppRevision;
+  dataDir: string;
+  runner?: RunCommand | undefined;
+  shutdowns?: string[];
+}) {
+  return createLauncherAppUpdateController({
+    current: args.current,
+    dataDir: args.dataDir,
+    log: () => undefined,
+    mode: "npm",
+    repoRoot: null,
+    requestShutdown: (message) => args.shutdowns?.push(message),
+    restartNoticeMs: 0,
+    runner: args.runner ?? failingRunner,
+  });
+}
+
+function setUp(args: { runner?: RunCommand; stageTarget?: boolean } = {}) {
   const dataDir = scratchDir();
-  const dbPath = join(dataDir, "bb.db");
-  writeFileSync(dbPath, "database");
   const current = stagePackage({
-    migrations: args.currentMigrations ?? ["0001_a"],
     packageRoot: join(dataDir, "npx", "bb-app"),
     version: "1.0.0",
   });
   if (args.stageTarget !== false) {
     stagePackage({
-      migrations: args.targetMigrations ?? ["0001_a"],
       packageRoot: formatNpmRevisionPackageRoot(dataDir, "1.1.0"),
       version: "1.1.0",
     });
   }
   const shutdowns: string[] = [];
-  let fullStackRunning = true;
-  const controller = createLauncherAppUpdateController({
+  const controller = createController({
     current,
     dataDir,
-    dbPath,
-    isFullStackRunning: () => fullStackRunning,
-    log: () => undefined,
-    mode: "npm",
-    probationMaxExits: 3,
-    probationMs: 30,
-    repoRoot: null,
-    requestShutdown: (message) => shutdowns.push(message),
-    restartNoticeMs: 0,
-    runner: args.runner ?? failingRunner,
+    runner: args.runner,
+    shutdowns,
   });
   const port = new FakeServerPort();
   controller.attachServer(port);
-  return {
-    controller,
-    current,
-    dataDir,
-    dbPath,
-    port,
-    setFullStackRunning: (running: boolean) => {
-      fullStackRunning = running;
-    },
-    shutdowns,
-  };
+  return { controller, current, dataDir, port, shutdowns };
 }
 
 function applyRequest() {
@@ -190,8 +171,13 @@ async function stageAndRestart(port: FakeServerPort): Promise<void> {
 }
 
 describe("launcher app update controller", () => {
-  it("stages, waits for the restart decision, and records the switch only after stopping", async () => {
-    const { controller, dataDir, port, shutdowns } = setUp();
+  it("stages, waits for the restart decision, and switches versions only after stopping", async () => {
+    const { controller, current, dataDir, port, shutdowns } = setUp();
+    const target = {
+      kind: "npm",
+      packageRoot: formatNpmRevisionPackageRoot(dataDir, "1.1.0"),
+      version: "1.1.0",
+    };
 
     await stageAndRestart(port);
     await vi.waitFor(() => expect(shutdowns).toHaveLength(1));
@@ -199,33 +185,26 @@ describe("launcher app update controller", () => {
     expect(port.statuses().map((status) => status.activity.phase)).toEqual(
       expect.arrayContaining(["preparing", "ready", "restarting"]),
     );
-    expect((await readAppUpdateState(dataDir)).pending).toBeNull();
+    expect(await readAppUpdateState(dataDir)).toMatchObject({
+      current: null,
+      pending: null,
+    });
     expect(await controller.finalizeExit()).toBe(75);
-    expect((await readAppUpdateState(dataDir)).pending).toMatchObject({
-      databaseBackupDir: null,
-      rollbackStartedAt: null,
-      to: {
-        packageRoot: formatNpmRevisionPackageRoot(dataDir, "1.1.0"),
-        version: "1.1.0",
-      },
+    expect(await readAppUpdateState(dataDir)).toMatchObject({
+      current: { ...target, nodeAbi: process.versions.modules },
+      pending: { from: current, to: target },
     });
   });
 
-  it("backs up the database before recording the switch when the target adds migrations", async () => {
-    const { controller, dataDir, port, shutdowns } = setUp({
-      targetMigrations: ["0001_a", "0002_b"],
-    });
+  it("keeps the current version when the switch cannot be recorded", async () => {
+    const { controller, dataDir, port, shutdowns } = setUp();
 
     await stageAndRestart(port);
     await vi.waitFor(() => expect(shutdowns).toHaveLength(1));
-    expect((await readAppUpdateState(dataDir)).pending).toBeNull();
+    writeFileSync(formatAppUpdateStatePath(dataDir), "{");
 
     expect(await controller.finalizeExit()).toBe(75);
-    const backupDir = (await readAppUpdateState(dataDir)).pending
-      ?.databaseBackupDir;
-    expect(readFileSync(join(backupDir ?? "", "bb.db"), "utf8")).toBe(
-      "database",
-    );
+    expect(readFileSync(formatAppUpdateStatePath(dataDir), "utf8")).toBe("{");
   });
 
   it("records nothing pending when bb stops before the restart decision", async () => {
@@ -318,24 +297,6 @@ describe("launcher app update controller", () => {
     expect(await controller.finalizeExit()).toBeNull();
   });
 
-  it("keeps the current version and records nothing pending when the database backup fails", async () => {
-    const { controller, dataDir, port, shutdowns } = setUp({
-      targetMigrations: ["0001_a", "0002_b"],
-    });
-    writeFileSync(join(dataDir, "app-update-backups"), "not a directory");
-
-    await stageAndRestart(port);
-    await vi.waitFor(() => expect(shutdowns).toHaveLength(1));
-
-    expect(await controller.finalizeExit()).toBe(75);
-    const state = await readAppUpdateState(dataDir);
-    expect(state.pending).toBeNull();
-    expect(state.lastResult).toMatchObject({
-      outcome: "failed",
-      phase: "prepare",
-    });
-  });
-
   it("refuses a second update while one is in flight", async () => {
     const { port } = setUp();
 
@@ -347,127 +308,102 @@ describe("launcher app update controller", () => {
     });
   });
 
-  it("marks the new version updated, then confirms it after probation", async () => {
+  it("records the update and prunes older installs once the new version is healthy", async () => {
     const dataDir = scratchDir();
-    const from: NpmAppRevision = {
-      kind: "npm",
-      packageRoot: join(dataDir, "old"),
+    const from = stagePackage({
+      packageRoot: join(dataDir, "npx", "bb-app"),
       version: "1.0.0",
-    };
-    const current: NpmAppRevision = {
-      kind: "npm",
-      packageRoot: join(dataDir, "new"),
+    });
+    const stale = formatNpmRevisionPackageRoot(dataDir, "1.0.5");
+    stagePackage({ packageRoot: stale, version: "1.0.5" });
+    const current = stagePackage({
+      packageRoot: formatNpmRevisionPackageRoot(dataDir, "1.1.0"),
       version: "1.1.0",
-    };
-    const backupDir = join(dataDir, "app-update-backups", "update-1");
-    const orphanedBackupDir = join(dataDir, "app-update-backups", "leaked");
-    mkdirSync(backupDir, { recursive: true });
-    mkdirSync(orphanedBackupDir, { recursive: true });
+    });
     const pending: AppUpdatePending = {
-      databaseBackupDir: backupDir,
-      failure: null,
       from,
-      healthyAt: null,
       id: "update-1",
       requestedAt: "2026-09-23T00:00:00.000Z",
-      rollbackStartedAt: null,
       to: current,
     };
     await mutateAppUpdateState(dataDir, (state) => ({ ...state, pending }));
     const port = new FakeServerPort();
-    const controller = createLauncherAppUpdateController({
-      current,
-      dataDir,
-      dbPath: join(dataDir, "bb.db"),
-      isFullStackRunning: () => true,
-      log: () => undefined,
-      mode: "npm",
-      probationMs: 20,
-      repoRoot: null,
-      requestShutdown: () => undefined,
-      restartNoticeMs: 0,
-      runner: failingRunner,
-    });
+    const controller = createController({ current, dataDir });
     controller.attachServer(port);
 
     await controller.onFullStackReady();
-    const healthy = await readAppUpdateState(dataDir);
-    expect(healthy.lastResult).toMatchObject({
+
+    const state = await readAppUpdateState(dataDir);
+    expect(state.pending).toBeNull();
+    expect(state.lastResult).toMatchObject({
       id: "update-1",
+      message: null,
       outcome: "updated",
     });
-    expect(healthy.pending?.healthyAt).not.toBeNull();
-    expect(port.statuses().at(-1)?.probation).toBe(true);
-
-    await vi.waitFor(async () =>
-      expect((await readAppUpdateState(dataDir)).pending).toBeNull(),
-    );
-    expect(existsSync(backupDir)).toBe(false);
-    expect(existsSync(orphanedBackupDir)).toBe(false);
-    controller.dispose();
+    expect(port.statuses().at(-1)?.lastResult?.outcome).toBe("updated");
+    expect(readdirSync(formatAppUpdateVersionsDir(dataDir))).toEqual(["1.1.0"]);
   });
 
-  it("fails probation after repeated crashes and asks the shim to roll back", async () => {
+  it("keeps unknown fields a newer bb added to the state file", async () => {
     const dataDir = scratchDir();
-    const current: NpmAppRevision = {
-      kind: "npm",
-      packageRoot: join(dataDir, "new"),
+    const current = stagePackage({
+      packageRoot: formatNpmRevisionPackageRoot(dataDir, "1.1.0"),
       version: "1.1.0",
-    };
+    });
+    writeFileSync(
+      formatAppUpdateStatePath(dataDir),
+      JSON.stringify({
+        current: null,
+        futureField: { keep: true },
+        lastResult: null,
+        pending: {
+          from: current,
+          id: "update-1",
+          requestedAt: "2026-09-23T00:00:00.000Z",
+          to: current,
+        },
+        schemaVersion: 1,
+      }),
+    );
+
+    await createController({ current, dataDir }).onFullStackReady();
+
+    expect(
+      JSON.parse(readFileSync(formatAppUpdateStatePath(dataDir), "utf8")),
+    ).toMatchObject({ futureField: { keep: true }, pending: null });
+  });
+
+  it("records a failure when bb starts a different version than the pending update", async () => {
+    const dataDir = scratchDir();
+    const current = stagePackage({
+      packageRoot: join(dataDir, "npx", "bb-app"),
+      version: "1.0.0",
+    });
+    const target = stagePackage({
+      packageRoot: formatNpmRevisionPackageRoot(dataDir, "1.1.0"),
+      version: "1.1.0",
+    });
     await mutateAppUpdateState(dataDir, (state) => ({
       ...state,
       pending: {
-        databaseBackupDir: null,
-        failure: null,
-        from: {
-          kind: "npm",
-          packageRoot: join(dataDir, "old"),
-          version: "1.0.0",
-        },
-        healthyAt: null,
+        from: current,
         id: "update-1",
         requestedAt: "2026-09-23T00:00:00.000Z",
-        rollbackStartedAt: null,
-        to: current,
+        to: target,
       },
     }));
-    const shutdowns: string[] = [];
-    const controller = createLauncherAppUpdateController({
-      current,
-      dataDir,
-      dbPath: join(dataDir, "bb.db"),
-      isFullStackRunning: () => true,
-      log: () => undefined,
-      mode: "npm",
-      probationMaxExits: 3,
-      probationMs: 60_000,
-      repoRoot: null,
-      requestShutdown: (message) => shutdowns.push(message),
-      restartNoticeMs: 0,
-      runner: failingRunner,
-    });
-
-    await controller.onFullStackReady();
-    expect(await controller.onManagedProcessExit()).toBe("continue");
-    expect(await controller.onManagedProcessExit()).toBe("continue");
-    expect(await controller.onManagedProcessExit()).toBe("probation-failed");
-
-    expect(shutdowns).toHaveLength(1);
-    expect((await readAppUpdateState(dataDir)).pending?.failure).toMatchObject({
-      phase: "probation",
-    });
-    expect(await controller.finalizeExit()).toBe(76);
-    controller.dispose();
-  });
-
-  it("ignores managed process exits outside probation", async () => {
-    const { controller } = setUp();
+    const controller = createController({ current, dataDir });
 
     await controller.onFullStackReady();
 
-    expect(await controller.onManagedProcessExit()).toBe("continue");
-    expect(await controller.onManagedProcessExit()).toBe("continue");
-    expect(await controller.onManagedProcessExit()).toBe("continue");
+    const state = await readAppUpdateState(dataDir);
+    expect(state.pending).toBeNull();
+    expect(state.lastResult).toMatchObject({
+      message: "bb started 1.0.0 instead of 1.1.0.",
+      outcome: "failed",
+      phase: "startup",
+    });
+    expect(readdirSync(formatAppUpdateVersionsDir(dataDir))).toEqual(["1.1.0"]);
   });
 
   it("acknowledges the last result on request", async () => {
@@ -481,8 +417,8 @@ describe("launcher app update controller", () => {
         id: "result-1",
         logTail: [],
         message: "boom",
-        outcome: "rolled-back",
-        phase: "startup",
+        outcome: "failed",
+        phase: "install",
         to: current,
       },
     }));

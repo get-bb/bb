@@ -58,7 +58,6 @@ const IN_APP_UPDATE: SystemAppUpdateStatus = {
   blocked: null,
   current: { commit: null, version: "0.38.0" },
   lastResult: null,
-  probation: false,
   runningThreadCount: 0,
   support: { kind: "supported", mode: "npm" },
 };
@@ -452,8 +451,8 @@ export function UpdateStates() {
         </State>
 
         <State
-          name="In-app update rolled back"
-          note="The new version failed, bb restored the previous one, and the row keeps the details until dismissed."
+          name="In-app update failed"
+          note="The download failed, bb kept running the current version, and the row keeps the details until dismissed."
         >
           <StoryAppState>
             <BbAppUpdateRows
@@ -465,10 +464,10 @@ export function UpdateStates() {
                   finishedAt: "2026-09-23T00:00:00.000Z",
                   from: { commit: null, version: "0.38.0" },
                   id: "update-1",
-                  logTail: ["Error: migration 0131 failed"],
-                  message: "Server failed to start",
-                  outcome: "rolled-back",
-                  phase: "startup",
+                  logTail: ["npm error code E404"],
+                  message: "npm install failed",
+                  outcome: "failed",
+                  phase: "install",
                   to: { commit: null, version: "0.39.0" },
                 },
               }}

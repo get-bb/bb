@@ -202,10 +202,6 @@ function describeAppUpdateResult(result: SystemAppUpdateResult): string {
       return `Updated bb to ${target}.`;
     case "failed":
       return `Update to ${target} failed: ${result.message ?? "unknown error"}`;
-    case "rolled-back":
-      return `Update to ${target} failed and bb rolled back to ${formatRevision(result.from)}: ${result.message ?? "unknown error"}`;
-    case "rollback-failed":
-      return `Update to ${target} failed and the rollback also failed: ${result.message ?? "unknown error"}`;
   }
 }
 
@@ -276,10 +272,6 @@ function printAppUpdateStatus(status: SystemAppUpdateStatus): void {
     );
   } else if (status.activity.phase === "restarting") {
     console.log(`Restarting into ${status.activity.targetVersion}`);
-  } else if (status.probation) {
-    console.log(
-      "Confirming the last update (bb rolls back if it keeps failing).",
-    );
   }
   const subjects = status.available?.subjects ?? [];
   for (const subject of subjects.slice(0, INCOMING_SUBJECTS_SHOWN)) {
@@ -326,13 +318,7 @@ async function waitForAppUpdate(args: {
     }
     const result = status.lastResult;
     if (result !== null && result.id !== args.previousResultId) {
-      if (result.outcome !== "updated" || !status.probation) {
-        return status;
-      }
-      report(
-        `bb ${formatRevision(result.to)} is running; confirming it over the next few minutes (Ctrl+C stops waiting).`,
-      );
-      continue;
+      return status;
     }
     if (status.activity.phase === "preparing") {
       report(`${status.activity.step}…`);
@@ -341,7 +327,7 @@ async function waitForAppUpdate(args: {
     }
   }
   throw new CliExitError(
-    "Timed out waiting for the update to finish. Run bb updates app to check on it.",
+    "Timed out waiting for the update to finish. Run bb updates app to check on it; if bb did not come back, check the terminal running it.",
     1,
   );
 }

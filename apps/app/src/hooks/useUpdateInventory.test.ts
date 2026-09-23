@@ -100,7 +100,6 @@ describe("resolveAppUpdateAvailable", () => {
       blocked: null,
       current: { commit: null, version: "1.0.0" },
       lastResult: null,
-      probation: false,
       runningThreadCount: 0,
       support: { kind: "supported", mode: "npm" },
       ...overrides,

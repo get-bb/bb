@@ -4,7 +4,6 @@ import { runCommand } from "../src/app-update/run-command.js";
 import {
   fastForwardSource,
   inspectSourceCheckout,
-  revertSource,
 } from "../src/app-update/source-checkout.js";
 import {
   commitVersion,
@@ -135,7 +134,7 @@ describe("source checkout inspection", () => {
 });
 
 describe("source checkout switching", () => {
-  it("fast-forwards to the offered commit and resets back on rollback", async () => {
+  it("fast-forwards to the offered commit", async () => {
     const { checkout, upstream } = await createCheckout();
     const from = await git(checkout, "rev-parse", "HEAD");
     const to = await publish(upstream, "1.1.0", "Add feature");
@@ -148,9 +147,6 @@ describe("source checkout switching", () => {
       to,
     });
     expect(await git(checkout, "rev-parse", "HEAD")).toBe(to);
-
-    await revertSource({ repoRoot: checkout, runner: runCommand, to: from });
-    expect(await git(checkout, "rev-parse", "HEAD")).toBe(from);
     expect(await git(checkout, "symbolic-ref", "--short", "HEAD")).toBe("main");
   });
 

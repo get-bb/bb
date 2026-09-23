@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
-  APP_UPDATE_PROBATION_FAILED_EXIT_CODE,
   APP_UPDATE_RESTART_EXIT_CODE,
-  formatAppUpdateBackupsDir,
   mutateAppUpdateState,
   readAppUpdateState,
   serverToLauncherMessageSchema,
@@ -19,36 +15,22 @@ import {
   type LauncherToServerMessage,
 } from "@bb/config/app-update";
 import {
-  backupDatabase,
-  parseMigrationTags,
-  requiresDatabaseBackup,
-} from "./database-backup.js";
-import {
   formatNpmRevisionPackageRoot,
   installNpmRevision,
-  NPM_REVISION_MIGRATION_JOURNAL,
   pruneNpmRevisions,
   resolveNpmCliPath,
 } from "./npm-revision.js";
 import type { RunCommand } from "./run-command.js";
+import { inspectSourceCheckout } from "./source-checkout.js";
 import {
-  inspectSourceCheckout,
-  readSourceFileAt,
-  SOURCE_MIGRATION_JOURNAL_PATH,
-} from "./source-checkout.js";
-import {
-  discardDatabaseBackup,
   formatRevision,
+  installedNpmRevision,
   isSameRevision,
-  sweepDatabaseBackups,
 } from "./shim-support.js";
 
 const ACTIVITY_OUTPUT_LINES = 12;
 const STATUS_PUSH_INTERVAL_MS = 250;
 const DEFAULT_RESTART_NOTICE_MS = 1_500;
-const DEFAULT_PROBATION_MS = 3 * 60 * 1000;
-const DEFAULT_PROBATION_MAX_EXITS = 3;
-const PROBATION_RECHECK_MS = 30 * 1000;
 const READY_DECISION_TIMEOUT_MS = 60 * 1000;
 
 type RestartDecision =
@@ -59,13 +41,9 @@ type RestartDecision =
 export interface LauncherAppUpdateControllerArgs {
   current: AppRevision;
   dataDir: string;
-  dbPath: string;
-  isFullStackRunning: () => boolean;
   log: (message: string) => void;
   mode: AppUpdateMode;
   now?: () => Date;
-  probationMaxExits?: number;
-  probationMs?: number;
   repoRoot: string | null;
   requestShutdown: (message: string) => void;
   restartNoticeMs?: number;
@@ -87,14 +65,6 @@ export interface LauncherAppUpdateController {
   dispose(): void;
   finalizeExit(): Promise<number | null>;
   onFullStackReady(): Promise<void>;
-  onManagedProcessExit(): Promise<"continue" | "probation-failed">;
-  onStartupFailed(message: string): Promise<void>;
-}
-
-interface Probation {
-  exits: number;
-  pendingId: string;
-  timer: ReturnType<typeof setTimeout> | null;
 }
 
 function errorMessage(error: unknown): string {
@@ -105,30 +75,16 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
-async function readOptionalFile(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return null;
-  }
-}
-
 export function createLauncherAppUpdateController(
   args: LauncherAppUpdateControllerArgs,
 ): LauncherAppUpdateController {
   const now = args.now ?? (() => new Date());
   const restartNoticeMs = args.restartNoticeMs ?? DEFAULT_RESTART_NOTICE_MS;
-  const probationMs = args.probationMs ?? DEFAULT_PROBATION_MS;
-  const probationMaxExits =
-    args.probationMaxExits ?? DEFAULT_PROBATION_MAX_EXITS;
   let server: LauncherServerPort | null = null;
   let activity: AppUpdateActivity = { phase: "idle" };
   let lastResult: AppUpdateResult | null = null;
-  let probation: Probation | null = null;
   let restartPending: AppUpdatePending | null = null;
-  let probationFailed = false;
   let statusTimer: ReturnType<typeof setTimeout> | null = null;
-  let disposed = false;
   const abortController = new AbortController();
   let decideRestart: ((decision: RestartDecision) => void) | null = null;
 
@@ -178,7 +134,6 @@ export function createLauncherAppUpdateController(
         current: args.current,
         lastResult,
         mode: args.mode,
-        probation: probation !== null,
       },
     });
   };
@@ -213,41 +168,6 @@ export function createLauncherAppUpdateController(
       },
     }));
     lastResult = state.lastResult;
-  };
-
-  const readMigrationJournals = async (
-    to: AppRevision,
-  ): Promise<{ from: string | null; to: string | null }> => {
-    if (args.current.kind === "npm" && to.kind === "npm") {
-      return {
-        from: await readOptionalFile(
-          join(args.current.packageRoot, NPM_REVISION_MIGRATION_JOURNAL),
-        ),
-        to: await readOptionalFile(
-          join(to.packageRoot, NPM_REVISION_MIGRATION_JOURNAL),
-        ),
-      };
-    }
-    if (
-      args.current.kind === "source" &&
-      to.kind === "source" &&
-      args.repoRoot !== null
-    ) {
-      const git = { repoRoot: args.repoRoot, runner: args.runner };
-      return {
-        from: await readSourceFileAt({
-          ...git,
-          commit: args.current.commit,
-          path: SOURCE_MIGRATION_JOURNAL_PATH,
-        }),
-        to: await readSourceFileAt({
-          ...git,
-          commit: to.commit,
-          path: SOURCE_MIGRATION_JOURNAL_PATH,
-        }),
-      };
-    }
-    return { from: null, to: null };
   };
 
   const stageTarget = async (
@@ -345,21 +265,10 @@ export function createLauncherAppUpdateController(
     }
 
     if (abortController.signal.aborted) return;
-    const journals = await readMigrationJournals(to);
-    const id = randomUUID();
     const pending: AppUpdatePending = {
-      databaseBackupDir: requiresDatabaseBackup({
-        fromTags: parseMigrationTags(journals.from),
-        toTags: parseMigrationTags(journals.to),
-      })
-        ? join(formatAppUpdateBackupsDir(args.dataDir), id)
-        : null,
-      failure: null,
       from: args.current,
-      healthyAt: null,
-      id,
+      id: randomUUID(),
       requestedAt: startedAt,
-      rollbackStartedAt: null,
       to,
     };
     activity = { phase: "ready", startedAt, target, targetVersion };
@@ -402,11 +311,6 @@ export function createLauncherAppUpdateController(
         }
         if (activity.phase !== "idle" || restartPending !== null) {
           throw new Error("An update is already in progress.");
-        }
-        if (probation !== null) {
-          throw new Error(
-            "bb is still confirming the previous update. Try again in a few minutes.",
-          );
         }
         void runApply(request.target, request.targetVersion).catch(
           (error: unknown) => {
@@ -474,39 +378,6 @@ export function createLauncherAppUpdateController(
     );
   };
 
-  const commitProbation = async (pendingId: string): Promise<void> => {
-    if (probation?.pendingId !== pendingId || disposed) return;
-    if (!args.isFullStackRunning()) {
-      probation.timer = setTimeout(
-        () => void commitProbation(pendingId),
-        PROBATION_RECHECK_MS,
-      );
-      return;
-    }
-    probation = null;
-    const finished = (await readAppUpdateState(args.dataDir)).pending;
-    if (finished?.id === pendingId) {
-      await mutateAppUpdateState(args.dataDir, (state) =>
-        state.pending?.id === pendingId ? { ...state, pending: null } : state,
-      );
-      await discardDatabaseBackup(finished.databaseBackupDir);
-      await sweepDatabaseBackups(args.dataDir, null);
-      if (finished.to.kind === "npm") {
-        await pruneNpmRevisions({
-          dataDir: args.dataDir,
-          keepPackageRoots: [
-            finished.to.packageRoot,
-            ...(finished.from.kind === "npm"
-              ? [finished.from.packageRoot]
-              : []),
-          ],
-        }).catch(() => undefined);
-      }
-      args.log(`Update to ${formatRevision(finished.to)} confirmed`);
-    }
-    pushStatus();
-  };
-
   return {
     attachServer(child) {
       server = child;
@@ -516,31 +387,28 @@ export function createLauncherAppUpdateController(
       });
     },
     dispose() {
-      disposed = true;
       abortController.abort();
       if (statusTimer !== null) clearTimeout(statusTimer);
-      if (probation?.timer) clearTimeout(probation.timer);
     },
     async finalizeExit() {
-      if (probationFailed) return APP_UPDATE_PROBATION_FAILED_EXIT_CODE;
       const pending = restartPending;
       if (pending === null) return null;
       try {
-        if (pending.databaseBackupDir !== null) {
-          args.log("Backing up the database before updating");
-          await backupDatabase({
-            backupDir: pending.databaseBackupDir,
-            dbPath: args.dbPath,
-          });
-        }
         await mutateAppUpdateState(args.dataDir, (state) => ({
           ...state,
+          ...(pending.to.kind === "npm"
+            ? {
+                current: installedNpmRevision(
+                  pending.to,
+                  process.versions.modules,
+                ),
+              }
+            : {}),
           pending,
         }));
       } catch (error) {
         const message = `Could not prepare the restart: ${errorMessage(error)}`;
         args.log(`${message} Keeping ${formatRevision(args.current)}.`);
-        await discardDatabaseBackup(pending.databaseBackupDir);
         await mutateAppUpdateState(args.dataDir, (state) => ({
           ...state,
           lastResult: {
@@ -560,81 +428,44 @@ export function createLauncherAppUpdateController(
       return APP_UPDATE_RESTART_EXIT_CODE;
     },
     async onFullStackReady() {
-      const state = await readAppUpdateState(args.dataDir);
-      const pending = state.pending;
-      if (pending === null || !isSameRevision(pending.to, args.current)) {
-        lastResult = state.lastResult;
-        pushStatus();
-        return;
-      }
-      const healthyAt = pending.healthyAt ?? now().toISOString();
-      const next = await mutateAppUpdateState(args.dataDir, (current) =>
-        current.pending?.id !== pending.id
-          ? current
-          : {
-              ...current,
-              lastResult: {
-                acknowledged: false,
-                finishedAt: healthyAt,
-                from: pending.from,
-                id: pending.id,
-                logTail: [],
-                message: null,
-                outcome: "updated",
-                phase: null,
-                to: pending.to,
-              },
-              pending: { ...current.pending, healthyAt },
-            },
-      );
-      lastResult = next.lastResult;
-      if (probation?.timer) clearTimeout(probation.timer);
-      probation = {
-        exits: 0,
-        pendingId: pending.id,
-        timer: setTimeout(() => void commitProbation(pending.id), probationMs),
-      };
-      pushStatus();
-    },
-    async onManagedProcessExit() {
-      if (probation === null) return "continue";
-      probation.exits += 1;
-      if (probation.exits < probationMaxExits) return "continue";
-      const pendingId = probation.pendingId;
-      if (probation.timer) clearTimeout(probation.timer);
-      probation = null;
-      probationFailed = true;
-      await mutateAppUpdateState(args.dataDir, (state) =>
-        state.pending?.id !== pendingId
-          ? state
-          : {
-              ...state,
-              pending: {
-                ...state.pending,
-                failure: {
-                  message: `The server or host daemon stopped ${String(probationMaxExits)} times shortly after the update.`,
-                  phase: "probation",
+      const pending = (await readAppUpdateState(args.dataDir)).pending;
+      if (pending !== null) {
+        const updated = isSameRevision(pending.to, args.current);
+        await mutateAppUpdateState(args.dataDir, (state) =>
+          state.pending?.id !== pending.id
+            ? state
+            : {
+                ...state,
+                lastResult: {
+                  acknowledged: false,
+                  finishedAt: now().toISOString(),
+                  from: pending.from,
+                  id: pending.id,
+                  logTail: [],
+                  message: updated
+                    ? null
+                    : `bb started ${formatRevision(args.current)} instead of ${formatRevision(pending.to)}.`,
+                  outcome: updated ? "updated" : "failed",
+                  phase: updated ? null : "startup",
+                  to: pending.to,
                 },
+                pending: null,
               },
-            },
-      );
-      args.requestShutdown("Stopping bb: the update keeps failing");
-      return "probation-failed";
-    },
-    async onStartupFailed(message) {
-      await mutateAppUpdateState(args.dataDir, (state) =>
-        state.pending === null ||
-        !isSameRevision(state.pending.to, args.current) ||
-        state.pending.failure !== null
-          ? state
-          : {
-              ...state,
-              pending: {
-                ...state.pending,
-                failure: { message, phase: "startup" },
-              },
-            },
-      );
+        );
+        if (updated && pending.to.kind === "npm") {
+          await pruneNpmRevisions({
+            dataDir: args.dataDir,
+            keepPackageRoots: [
+              pending.to.packageRoot,
+              ...(pending.from.kind === "npm"
+                ? [pending.from.packageRoot]
+                : []),
+            ],
+          }).catch(() => undefined);
+        }
+      }
+      await refreshLastResult();
+      pushStatus();
     },
   };
 }

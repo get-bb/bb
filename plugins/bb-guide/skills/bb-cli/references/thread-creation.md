@@ -105,7 +105,7 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   Updates. `bb updates apply [--machine <id-or-name>]` runs every available
   provider CLI install/update sequentially. `bb updates app` shows whether bb
   can update itself; `bb updates app apply [--yes] [--no-wait]` downloads the
-  update, restarts bb into it, and rolls back automatically if it fails.
+  update and restarts bb into it, without rolling back if it fails to start.
   Running it from a thread restarts bb and interrupts that thread.
 - Use `bb project create --name <name> --root <path> --machine <id-or-name>`
   to bind a new project's local path to a connected enrolled machine. Use

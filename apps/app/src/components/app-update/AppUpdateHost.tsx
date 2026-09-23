@@ -50,7 +50,7 @@ export function AppUpdateHost({
 } = {}) {
   const status = useAppUpdateStatus();
   const acknowledge = useAcknowledgeAppUpdate();
-  const announcedResultKeys = useRef(new Set<string>());
+  const announcedResultIds = useRef(new Set<string>());
   const loadedRevision = useRef<string | null>(null);
   const reloading = useRef(false);
   const [dismissedRestart, setDismissedRestart] = useState<string | null>(null);
@@ -78,9 +78,8 @@ export function AppUpdateHost({
 
   useEffect(() => {
     if (pendingResult === null || reloading.current) return;
-    const key = `${pendingResult.id}:${pendingResult.outcome}`;
-    if (announcedResultKeys.current.has(key)) return;
-    announcedResultKeys.current.add(key);
+    if (announcedResultIds.current.has(pendingResult.id)) return;
+    announcedResultIds.current.add(pendingResult.id);
     const presentation = describeAppUpdateResult(pendingResult);
     if (presentation.tone === "success") {
       appToast.success(presentation.title);

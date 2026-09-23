@@ -40,20 +40,17 @@ describe("app update presentation", () => {
     ).toBe("abcdef1 (+1 commit)");
   });
 
-  it("names both versions when an update rolled back", () => {
+  it("names the target version and carries the failure message", () => {
     expect(
       describeAppUpdateResult(
-        result({ message: "Server failed to start", outcome: "rolled-back" }),
+        result({ message: "npm install failed", outcome: "failed" }),
       ),
     ).toEqual({
-      description: "Server failed to start",
-      title: "Update to 1.1.0 failed — rolled back to 1.0.0",
+      description: "npm install failed",
+      title: "Update to 1.1.0 failed",
       tone: "error",
     });
     expect(describeAppUpdateResult(result({})).tone).toBe("success");
-    expect(
-      describeAppUpdateResult(result({ outcome: "rollback-failed" })).title,
-    ).toBe("Update to 1.1.0 failed and the rollback failed too");
   });
 
   it("warns in the singular and plural", () => {

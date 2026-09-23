@@ -12,8 +12,6 @@ const UPSTREAM_REF = `${SOURCE_REMOTE}/${SOURCE_BRANCH}`;
 const FETCH_TIMEOUT_MS = 2 * 60 * 1000;
 const INCOMING_SUBJECT_LIMIT = 20;
 const BB_APP_PACKAGE_JSON_PATH = "packages/bb-app/package.json";
-export const SOURCE_MIGRATION_JOURNAL_PATH =
-  "packages/db/drizzle/meta/_journal.json";
 
 const packageJsonSchema = z
   .object({ version: z.string().min(1) })
@@ -64,7 +62,7 @@ async function tryGit(
   return result.code === 0 ? result.stdout.trim() : null;
 }
 
-export async function readSourceFileAt(
+async function readSourceFileAt(
   args: SourceGitArgs & { commit: string; path: string },
 ): Promise<string | null> {
   return tryGit(args, ["show", `${args.commit}:${args.path}`]);
@@ -225,12 +223,4 @@ export async function fastForwardSource(
     );
   }
   await git(args, ["merge", "--ff-only", "--quiet", args.to]);
-}
-
-export async function revertSource(
-  args: SourceGitArgs & { to: string },
-): Promise<void> {
-  const head = await git(args, ["rev-parse", "HEAD"]);
-  if (head === args.to) return;
-  await git(args, ["reset", "--keep", args.to]);
 }

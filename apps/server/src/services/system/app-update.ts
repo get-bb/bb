@@ -311,7 +311,6 @@ export function createAppUpdateService(
         status?.lastResult === null || status?.lastResult === undefined
           ? null
           : toPublicResult(status.lastResult),
-      probation: status?.probation ?? false,
       runningThreadCount: args.countRunningThreads(),
       support,
     };
@@ -346,13 +345,6 @@ export function createAppUpdateService(
           409,
           "app_update_in_progress",
           "An update is already in progress.",
-        );
-      }
-      if (launcherStatus?.probation === true) {
-        throw new ApiError(
-          409,
-          "app_update_confirming",
-          "bb is still confirming the previous update. Try again in a few minutes.",
         );
       }
       const support = resolveSupport();

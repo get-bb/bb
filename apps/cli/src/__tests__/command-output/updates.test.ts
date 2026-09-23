@@ -267,7 +267,6 @@ function appUpdateStatus(
     blocked: null,
     current: { commit: null, version: "0.0.32" },
     lastResult: null,
-    probation: false,
     runningThreadCount: 0,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
@@ -375,47 +374,7 @@ describe("bb updates app command output", () => {
     ]);
   });
 
-  it("bb updates app apply waits for probation and reports a rollback that follows", async () => {
-    const updated = {
-      acknowledged: false,
-      finishedAt: "2026-09-23T00:00:10.000Z",
-      from: { commit: null, version: "0.0.32" },
-      id: "update-1",
-      logTail: [],
-      message: null,
-      outcome: "updated" as const,
-      phase: null,
-      to: { commit: null, version: "0.0.33" },
-    };
-    const statuses = [
-      appUpdateStatus(),
-      appUpdateStatus({ lastResult: updated, probation: true }),
-      appUpdateStatus({
-        lastResult: {
-          ...updated,
-          message: "The server stopped 3 times.",
-          outcome: "rolled-back",
-          phase: "probation",
-        },
-      }),
-    ];
-    stubServerApi({
-      "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
-      "v1.system.app-update.apply.$post": vi.fn(async () => appUpdateStatus()),
-    });
-
-    await expect(
-      runCommand(["updates", "app", "apply"], register),
-    ).rejects.toThrow("process.exit:1");
-    expect(collectLogPayloads(vi.mocked(console.log))).toContain(
-      "bb 0.0.33 is running; confirming it over the next few minutes (Ctrl+C stops waiting).",
-    );
-    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "Error: Update to 0.0.33 failed and bb rolled back to 0.0.32: The server stopped 3 times.",
-    );
-  });
-
-  it("bb updates app apply exits non-zero when the update rolls back", async () => {
+  it("bb updates app apply exits non-zero when the update fails", async () => {
     const statuses = [
       appUpdateStatus(),
       appUpdateStatus({
@@ -424,10 +383,10 @@ describe("bb updates app command output", () => {
           finishedAt: "2026-09-23T00:00:10.000Z",
           from: { commit: null, version: "0.0.32" },
           id: "update-1",
-          logTail: ["boom"],
-          message: "Server failed to start",
-          outcome: "rolled-back",
-          phase: "startup",
+          logTail: ["npm error 404"],
+          message: "npm install failed",
+          outcome: "failed",
+          phase: "install",
           to: { commit: null, version: "0.0.33" },
         },
       }),
@@ -441,7 +400,7 @@ describe("bb updates app command output", () => {
       runCommand(["updates", "app", "apply"], register),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "Error: Update to 0.0.33 failed and bb rolled back to 0.0.32: Server failed to start",
+      "Error: Update to 0.0.33 failed: npm install failed",
     );
   });
 

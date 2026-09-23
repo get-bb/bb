@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -51,13 +51,9 @@ async function setUpIncomingCommit(): Promise<SourceUpdateSetup> {
     dataDir,
     from,
     pending: {
-      databaseBackupDir: null,
-      failure: null,
       from: { commit: from, kind: "source", version: "1.0.0" },
-      healthyAt: null,
       id: "update-1",
       requestedAt: "2026-09-23T00:00:00.000Z",
-      rollbackStartedAt: null,
       to: { commit: to, kind: "source", version: "1.1.0" },
     },
     to,
@@ -100,6 +96,7 @@ function shimArgs(args: {
   checkout: string;
   dataDir: string;
   installDependencies?: () => Promise<void>;
+  output?: ShimOutput;
   prepareRuntime?: () => Promise<void>;
   readHead?: () => Promise<string>;
   spawnLauncher: (mode: LauncherUpdateMode) => LauncherRun;
@@ -109,10 +106,8 @@ function shimArgs(args: {
       ? {}
       : { acquireLock: args.acquireLock }),
     dataDir: args.dataDir,
-    dbPath: join(args.dataDir, "bb.db"),
     installDependencies: args.installDependencies ?? (async () => undefined),
-    logDir: join(args.dataDir, "logs"),
-    output: output(),
+    output: args.output ?? output(),
     prepareRuntime: args.prepareRuntime ?? (async () => undefined),
     readHead: args.readHead ?? (() => git(args.checkout, "rev-parse", "HEAD")),
     repoRoot: args.checkout,
@@ -155,9 +150,9 @@ describe("runSourceShim", () => {
     expect(calls).toEqual(["install", "build"]);
   });
 
-  it("reverts the checkout when the rebuild fails", async () => {
+  it("stops on the new commit and keeps the pending update when the rebuild fails", async () => {
     const setup = await setUpIncomingCommit();
-    let builds = 0;
+    const shimOutput = output();
     const launcher = scriptedLauncher(setup.checkout, [
       async () => {
         await mutateAppUpdateState(setup.dataDir, (state) => ({
@@ -166,110 +161,29 @@ describe("runSourceShim", () => {
         }));
         return { code: APP_UPDATE_RESTART_EXIT_CODE, signal: null };
       },
-      async () => ({ code: 0, signal: null }),
-    ]);
-
-    await runSourceShim(
-      shimArgs({
-        checkout: setup.checkout,
-        dataDir: setup.dataDir,
-        prepareRuntime: async () => {
-          builds += 1;
-          if (builds === 1) throw new Error("turbo build failed");
-        },
-        spawnLauncher: launcher.spawnLauncher,
-      }),
-    );
-
-    expect(launcher.launchedHeads).toEqual([setup.from, setup.from]);
-    expect(builds).toBe(2);
-    expect((await readAppUpdateState(setup.dataDir)).lastResult).toMatchObject({
-      message: "turbo build failed",
-      outcome: "rolled-back",
-      phase: "install",
-    });
-  });
-
-  it("rolls back the checkout and database when the new commit fails to start", async () => {
-    const setup = await setUpIncomingCommit();
-    const dbPath = join(setup.dataDir, "bb.db");
-    const backupDir = join(setup.dataDir, "backup");
-    const launcher = scriptedLauncher(setup.checkout, [
-      async () => {
-        mkdirSync(backupDir);
-        writeFileSync(join(backupDir, "bb.db"), "before");
-        writeFileSync(dbPath, "before");
-        await mutateAppUpdateState(setup.dataDir, (state) => ({
-          ...state,
-          pending: { ...setup.pending, databaseBackupDir: backupDir },
-        }));
-        return { code: APP_UPDATE_RESTART_EXIT_CODE, signal: null };
-      },
-      async () => {
-        writeFileSync(dbPath, "migrated");
-        return { code: 1, signal: null };
-      },
-      async () => ({ code: 0, signal: null }),
-    ]);
-
-    await runSourceShim(
-      shimArgs({
-        checkout: setup.checkout,
-        dataDir: setup.dataDir,
-        spawnLauncher: launcher.spawnLauncher,
-      }),
-    );
-
-    expect(launcher.launchedHeads).toEqual([setup.from, setup.to, setup.from]);
-    expect(await git(setup.checkout, "rev-parse", "HEAD")).toBe(setup.from);
-    expect(readFileSync(dbPath, "utf8")).toBe("before");
-    expect((await readAppUpdateState(setup.dataDir)).lastResult).toMatchObject({
-      outcome: "rolled-back",
-      phase: "startup",
-    });
-  });
-
-  it("restores the database even when the rolled-back commit cannot rebuild", async () => {
-    const setup = await setUpIncomingCommit();
-    const dbPath = join(setup.dataDir, "bb.db");
-    const backupDir = join(setup.dataDir, "backup");
-    let builds = 0;
-    const launcher = scriptedLauncher(setup.checkout, [
-      async () => {
-        mkdirSync(backupDir);
-        writeFileSync(join(backupDir, "bb.db"), "before");
-        writeFileSync(dbPath, "before");
-        await mutateAppUpdateState(setup.dataDir, (state) => ({
-          ...state,
-          pending: { ...setup.pending, databaseBackupDir: backupDir },
-        }));
-        return { code: APP_UPDATE_RESTART_EXIT_CODE, signal: null };
-      },
-      async () => {
-        writeFileSync(dbPath, "migrated");
-        return { code: 1, signal: null };
-      },
     ]);
 
     const code = await runSourceShim(
       shimArgs({
         checkout: setup.checkout,
         dataDir: setup.dataDir,
+        output: shimOutput,
         prepareRuntime: async () => {
-          builds += 1;
-          if (builds > 1) throw new Error("turbo build failed");
+          throw new Error("turbo build failed");
         },
         spawnLauncher: launcher.spawnLauncher,
       }),
     );
 
     expect(code).toBe(1);
-    expect(await git(setup.checkout, "rev-parse", "HEAD")).toBe(setup.from);
-    expect(readFileSync(dbPath, "utf8")).toBe("before");
-    expect((await readAppUpdateState(setup.dataDir)).lastResult).toMatchObject({
-      outcome: "rollback-failed",
-      phase: "rollback",
-    });
+    expect(launcher.launchedHeads).toEqual([setup.from]);
+    expect(await git(setup.checkout, "rev-parse", "HEAD")).toBe(setup.to);
+    expect((await readAppUpdateState(setup.dataDir)).pending?.id).toBe(
+      "update-1",
+    );
+    expect(shimOutput.lines).toContainEqual(
+      expect.stringContaining("turbo build failed"),
+    );
   });
 
   it("keeps the current commit when the checkout changed before the restart", async () => {
@@ -303,7 +217,7 @@ describe("runSourceShim", () => {
     });
   });
 
-  it("does not start a pending update on the next launch", async () => {
+  it("leaves a pending update found at startup to the launcher", async () => {
     const setup = await setUpIncomingCommit();
     await mutateAppUpdateState(setup.dataDir, (state) => ({
       ...state,
@@ -322,57 +236,9 @@ describe("runSourceShim", () => {
     );
 
     expect(launcher.launchedHeads).toEqual([setup.from]);
-    const state = await readAppUpdateState(setup.dataDir);
-    expect(state.pending).toBeNull();
-    expect(state.lastResult).toMatchObject({ outcome: "failed" });
-  });
-
-  it("rolls back a fast-forwarded commit that never became healthy", async () => {
-    const setup = await setUpIncomingCommit();
-    await git(setup.checkout, "merge", "--ff-only", "-q", setup.to);
-    await mutateAppUpdateState(setup.dataDir, (state) => ({
-      ...state,
-      pending: setup.pending,
-    }));
-    const launcher = scriptedLauncher(setup.checkout, [
-      async () => ({ code: 0, signal: null }),
-    ]);
-
-    await runSourceShim(
-      shimArgs({
-        checkout: setup.checkout,
-        dataDir: setup.dataDir,
-        spawnLauncher: launcher.spawnLauncher,
-      }),
+    expect((await readAppUpdateState(setup.dataDir)).pending?.id).toBe(
+      "update-1",
     );
-
-    expect(launcher.launchedHeads).toEqual([setup.from]);
-    expect((await readAppUpdateState(setup.dataDir)).lastResult).toMatchObject({
-      outcome: "rolled-back",
-    });
-  });
-
-  it("confirms a fast-forwarded commit that was healthy before bb stopped", async () => {
-    const setup = await setUpIncomingCommit();
-    await git(setup.checkout, "merge", "--ff-only", "-q", setup.to);
-    await mutateAppUpdateState(setup.dataDir, (state) => ({
-      ...state,
-      pending: { ...setup.pending, healthyAt: "2026-09-23T00:00:05.000Z" },
-    }));
-    const launcher = scriptedLauncher(setup.checkout, [
-      async () => ({ code: 0, signal: null }),
-    ]);
-
-    await runSourceShim(
-      shimArgs({
-        checkout: setup.checkout,
-        dataDir: setup.dataDir,
-        spawnLauncher: launcher.spawnLauncher,
-      }),
-    );
-
-    expect(launcher.launchedHeads).toEqual([setup.to]);
-    expect((await readAppUpdateState(setup.dataDir)).pending).toBeNull();
   });
 
   it("runs without update handling when another shim manages the data directory", async () => {

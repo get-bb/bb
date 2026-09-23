@@ -7,14 +7,11 @@ export const APP_UPDATE_SHIM_PROTOCOL_ENV_NAME = "BB_APP_UPDATE_SHIM_PROTOCOL";
 export const APP_UPDATE_SHIM_PROTOCOL_VERSION = 1;
 export const APP_UPDATE_MODE_ENV_NAME = "BB_APP_UPDATE_MODE";
 export const APP_UPDATE_RESTART_EXIT_CODE = 75;
-export const APP_UPDATE_PROBATION_FAILED_EXIT_CODE = 76;
 export const APP_UPDATE_STATE_FILE_NAME = "bb-app-update.json";
 export const APP_UPDATE_SHIM_LOCK_FILE_NAME = "bb-app-update-shim.json";
 export const APP_UPDATE_VERSIONS_DIR_NAME = "app-versions";
-export const APP_UPDATE_BACKUPS_DIR_NAME = "app-update-backups";
 export const APP_UPDATE_PASSIVE_MODE = "passive";
 export const APP_UPDATE_STATE_SCHEMA_VERSION = 1;
-export const APP_UPDATE_LOG_TAIL_LINES = 40;
 
 export const appUpdateModeSchema = z.enum(["npm", "source"]);
 export type AppUpdateMode = z.infer<typeof appUpdateModeSchema>;
@@ -49,37 +46,20 @@ export const appUpdateFailurePhaseSchema = z.enum([
   "prepare",
   "install",
   "startup",
-  "probation",
-  "rollback",
 ]);
 export type AppUpdateFailurePhase = z.infer<typeof appUpdateFailurePhaseSchema>;
 
 export const appUpdatePendingSchema = z
   .object({
-    databaseBackupDir: z.string().min(1).nullable(),
-    failure: z
-      .object({
-        message: z.string(),
-        phase: appUpdateFailurePhaseSchema,
-      })
-      .passthrough()
-      .nullable(),
     from: appRevisionSchema,
-    healthyAt: z.string().min(1).nullable(),
     id: z.string().min(1),
     requestedAt: z.string().min(1),
-    rollbackStartedAt: z.string().min(1).nullable(),
     to: appRevisionSchema,
   })
   .passthrough();
 export type AppUpdatePending = z.infer<typeof appUpdatePendingSchema>;
 
-export const appUpdateOutcomeSchema = z.enum([
-  "updated",
-  "failed",
-  "rolled-back",
-  "rollback-failed",
-]);
+export const appUpdateOutcomeSchema = z.enum(["updated", "failed"]);
 export type AppUpdateOutcome = z.infer<typeof appUpdateOutcomeSchema>;
 
 export const appUpdateResultSchema = z
@@ -127,10 +107,6 @@ export function formatAppUpdateStatePath(dataDir: string): string {
 
 export function formatAppUpdateVersionsDir(dataDir: string): string {
   return join(dataDir, APP_UPDATE_VERSIONS_DIR_NAME);
-}
-
-export function formatAppUpdateBackupsDir(dataDir: string): string {
-  return join(dataDir, APP_UPDATE_BACKUPS_DIR_NAME);
 }
 
 export function formatAppUpdateShimLockPath(dataDir: string): string {
@@ -258,7 +234,6 @@ export const launcherAppUpdateStatusSchema = z.object({
   current: appRevisionSchema,
   lastResult: appUpdateResultSchema.nullable(),
   mode: appUpdateModeSchema,
-  probation: z.boolean(),
 });
 export type LauncherAppUpdateStatus = z.infer<
   typeof launcherAppUpdateStatusSchema

@@ -304,10 +304,8 @@ export const systemAppUpdateResultSchema = z.object({
   id: z.string(),
   logTail: z.array(z.string()),
   message: z.string().nullable(),
-  outcome: z.enum(["updated", "failed", "rolled-back", "rollback-failed"]),
-  phase: z
-    .enum(["prepare", "install", "startup", "probation", "rollback"])
-    .nullable(),
+  outcome: z.enum(["updated", "failed"]),
+  phase: z.enum(["prepare", "install", "startup"]).nullable(),
   to: systemAppUpdateRevisionSchema,
 });
 export type SystemAppUpdateResult = z.infer<typeof systemAppUpdateResultSchema>;
@@ -318,7 +316,6 @@ export const systemAppUpdateStatusSchema = z.object({
   blocked: systemAppUpdateBlockedSchema.nullable(),
   current: systemAppUpdateRevisionSchema,
   lastResult: systemAppUpdateResultSchema.nullable(),
-  probation: z.boolean(),
   runningThreadCount: z.number().int().nonnegative(),
   support: systemAppUpdateSupportSchema,
 });

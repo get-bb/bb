@@ -1,30 +1,16 @@
 import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
-import {
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { z } from "zod";
 import {
-  APP_UPDATE_LOG_TAIL_LINES,
   APP_UPDATE_MODE_ENV_NAME,
   APP_UPDATE_PASSIVE_MODE,
   APP_UPDATE_SHIM_PROTOCOL_ENV_NAME,
   APP_UPDATE_SHIM_PROTOCOL_VERSION,
-  formatAppUpdateBackupsDir,
   formatAppUpdateShimLockPath,
-  mutateAppUpdateState,
   type AppRevision,
-  type AppUpdateFailurePhase,
   type AppUpdateMode,
-  type AppUpdateOutcome,
-  type AppUpdatePending,
   type InstalledNpmAppRevision,
   type NpmAppRevision,
 } from "@bb/config/app-update";
@@ -33,11 +19,8 @@ import {
   type ChildProcessExitResult,
 } from "@bb/config/child-process-exit";
 import { isProcessRunning } from "@bb/config/verified-process-stop";
-import { restoreDatabase } from "./database-backup.js";
 
-const LOG_TAIL_BYTES = 64 * 1024;
 const SHUTDOWN_KILL_AFTER_MS = 12 * 1000;
-export const ROLLBACK_FAILURE_WINDOW_MS = 3 * 60 * 1000;
 
 export type LauncherUpdateMode = AppUpdateMode | typeof APP_UPDATE_PASSIVE_MODE;
 
@@ -50,17 +33,6 @@ export interface ShimOutput {
   error(message: string): void;
   info(message: string): void;
   warn(message: string): void;
-}
-
-export interface ShimPaths {
-  dataDir: string;
-  dbPath: string;
-  logDir: string;
-}
-
-export interface UpdateFailure {
-  message: string;
-  phase: AppUpdateFailurePhase;
 }
 
 export interface ShimLock {
@@ -193,11 +165,6 @@ export function toShimExitCode(exit: ChildProcessExitResult): number {
   return exit.signal === "SIGINT" || exit.signal === "SIGTERM" ? 0 : 1;
 }
 
-export function formatExit(exit: ChildProcessExitResult): string {
-  if (exit.code !== null) return `exit code ${String(exit.code)}`;
-  return `signal ${exit.signal ?? "unknown"}`;
-}
-
 function canonicalPath(path: string): string {
   try {
     return realpathSync(path);
@@ -239,220 +206,4 @@ export function formatRevision(revision: AppRevision): string {
   return revision.kind === "npm"
     ? revision.version
     : `${revision.version} (${revision.commit.slice(0, 10)})`;
-}
-
-export function shouldCommitPendingAtStartup(
-  pending: AppUpdatePending,
-): boolean {
-  return (
-    pending.healthyAt !== null &&
-    pending.failure === null &&
-    pending.rollbackStartedAt === null
-  );
-}
-
-export function describeLauncherFailure(
-  pending: AppUpdatePending,
-  exit: ChildProcessExitResult,
-): UpdateFailure {
-  if (pending.failure !== null) {
-    return { message: pending.failure.message, phase: pending.failure.phase };
-  }
-  const label = formatRevision(pending.to);
-  return pending.healthyAt === null
-    ? {
-        message: `bb ${label} did not start (${formatExit(exit)}).`,
-        phase: "startup",
-      }
-    : {
-        message: `bb ${label} stopped unexpectedly (${formatExit(exit)}).`,
-        phase: "probation",
-      };
-}
-
-export function describeInterruptedPending(
-  pending: AppUpdatePending,
-): UpdateFailure {
-  if (pending.failure !== null) {
-    return { message: pending.failure.message, phase: pending.failure.phase };
-  }
-  return {
-    message: `bb stopped before the update to ${formatRevision(pending.to)} finished starting.`,
-    phase: "startup",
-  };
-}
-
-export async function readLogTail(
-  path: string,
-  fromOffset = 0,
-  lines = APP_UPDATE_LOG_TAIL_LINES,
-): Promise<string[]> {
-  let handle;
-  try {
-    handle = await open(path, "r");
-  } catch {
-    return [];
-  }
-  try {
-    const { size } = await handle.stat();
-    const start = Math.max(
-      fromOffset > size ? 0 : fromOffset,
-      size - LOG_TAIL_BYTES,
-    );
-    const length = size - start;
-    const buffer = Buffer.alloc(length);
-    await handle.read(buffer, 0, length, start);
-    return buffer
-      .toString("utf8")
-      .split(/\r?\n/u)
-      .filter((line) => line.trim() !== "")
-      .slice(-lines);
-  } finally {
-    await handle.close();
-  }
-}
-
-function serverLogPath(logDir: string): string {
-  return join(logDir, "server-stdio.log");
-}
-
-export async function readServerLogOffset(logDir: string): Promise<number> {
-  try {
-    return (await stat(serverLogPath(logDir))).size;
-  } catch {
-    return 0;
-  }
-}
-
-export function readServerLogTail(
-  logDir: string,
-  fromOffset = 0,
-): Promise<string[]> {
-  return readLogTail(serverLogPath(logDir), fromOffset);
-}
-
-export async function discardDatabaseBackup(
-  backupDir: string | null,
-): Promise<void> {
-  if (backupDir !== null) {
-    await rm(backupDir, { force: true, recursive: true }).catch(
-      () => undefined,
-    );
-  }
-}
-
-export async function sweepDatabaseBackups(
-  dataDir: string,
-  keepBackupDir: string | null,
-): Promise<void> {
-  const backupsDir = formatAppUpdateBackupsDir(dataDir);
-  let entries: string[];
-  try {
-    entries = await readdir(backupsDir);
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const backupDir = join(backupsDir, entry);
-    if (keepBackupDir !== null && isSamePath(backupDir, keepBackupDir)) {
-      continue;
-    }
-    await rm(backupDir, { force: true, recursive: true }).catch(
-      () => undefined,
-    );
-  }
-}
-
-export async function markRollbackStarted(args: {
-  dataDir: string;
-  pendingId: string;
-}): Promise<void> {
-  await mutateAppUpdateState(args.dataDir, (state) =>
-    state.pending?.id !== args.pendingId ||
-    state.pending.rollbackStartedAt !== null
-      ? state
-      : {
-          ...state,
-          pending: {
-            ...state.pending,
-            rollbackStartedAt: new Date().toISOString(),
-          },
-        },
-  );
-}
-
-export async function restorePendingDatabase(args: {
-  dbPath: string;
-  pending: AppUpdatePending;
-}): Promise<string | null> {
-  if (args.pending.databaseBackupDir === null) return null;
-  try {
-    await restoreDatabase({
-      backupDir: args.pending.databaseBackupDir,
-      dbPath: args.dbPath,
-    });
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-}
-
-export async function commitPendingUpdate(args: {
-  dataDir: string;
-  pending: AppUpdatePending;
-}): Promise<void> {
-  await mutateAppUpdateState(args.dataDir, (state) =>
-    state.pending?.id === args.pending.id ? { ...state, pending: null } : state,
-  );
-  await discardDatabaseBackup(args.pending.databaseBackupDir);
-}
-
-export async function recordUpdateResult(args: {
-  current?: InstalledNpmAppRevision;
-  dataDir: string;
-  discardBackup: boolean;
-  failure: UpdateFailure | null;
-  logTail: string[];
-  outcome: AppUpdateOutcome;
-  pending: AppUpdatePending;
-}): Promise<void> {
-  await mutateAppUpdateState(args.dataDir, (state) => ({
-    ...state,
-    ...(args.current === undefined ? {} : { current: args.current }),
-    lastResult: {
-      acknowledged: false,
-      finishedAt: new Date().toISOString(),
-      from: args.pending.from,
-      id: args.pending.id,
-      logTail: args.logTail,
-      message: args.failure?.message ?? null,
-      outcome: args.outcome,
-      phase: args.failure?.phase ?? null,
-      to: args.pending.to,
-    },
-    pending: state.pending?.id === args.pending.id ? null : state.pending,
-  }));
-  if (args.discardBackup) {
-    await discardDatabaseBackup(args.pending.databaseBackupDir);
-  }
-}
-
-export async function markRollbackFailed(args: {
-  dataDir: string;
-  message: string;
-}): Promise<void> {
-  await mutateAppUpdateState(args.dataDir, (state) =>
-    state.lastResult === null
-      ? state
-      : {
-          ...state,
-          lastResult: {
-            ...state.lastResult,
-            acknowledged: false,
-            message: `${state.lastResult.message ?? "The update failed."} ${args.message}`,
-            outcome: "rollback-failed",
-            phase: "rollback",
-          },
-        },
-  );
 }

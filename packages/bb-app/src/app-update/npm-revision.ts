@@ -35,14 +35,6 @@ export const NPM_REVISION_REQUIRED_FILES = [
   join("app", "dist", "index.html"),
 ] as const;
 
-export const NPM_REVISION_MIGRATION_JOURNAL = join(
-  "server",
-  "dist",
-  "drizzle",
-  "meta",
-  "_journal.json",
-);
-
 export function readPackageVersion(packageRoot: string): string | null {
   try {
     const parsed = packageJsonSchema.safeParse(

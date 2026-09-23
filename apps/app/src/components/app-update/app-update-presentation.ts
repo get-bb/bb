@@ -46,18 +46,6 @@ export function describeAppUpdateResult(
         title: `Update to ${target} failed`,
         tone: "error",
       };
-    case "rolled-back":
-      return {
-        description: result.message,
-        title: `Update to ${target} failed — rolled back to ${formatAppUpdateRevision(result.from)}`,
-        tone: "error",
-      };
-    case "rollback-failed":
-      return {
-        description: result.message,
-        title: `Update to ${target} failed and the rollback failed too`,
-        tone: "error",
-      };
   }
 }
 

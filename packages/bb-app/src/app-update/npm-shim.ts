@@ -2,55 +2,31 @@ import { join } from "node:path";
 import semver from "semver";
 import {
   APP_UPDATE_RESTART_EXIT_CODE,
-  mutateAppUpdateState,
   readAppUpdateStateFile,
-  type AppUpdatePending,
   type AppUpdateState,
   type InstalledNpmAppRevision,
   type NpmAppRevision,
 } from "@bb/config/app-update";
+import type { ChildProcessExitResult } from "@bb/config/child-process-exit";
 import { isUsableNpmRevision } from "./npm-revision.js";
 import {
   acquireShimLock,
-  commitPendingUpdate,
   createLauncherEnv,
-  describeInterruptedPending,
-  describeLauncherFailure,
-  discardDatabaseBackup,
-  formatExit,
-  installedNpmRevision,
   installShimSignalForwarding,
-  isSameRevision,
-  markRollbackFailed,
-  markRollbackStarted,
-  readServerLogOffset,
-  readServerLogTail,
-  recordUpdateResult,
-  restorePendingDatabase,
-  ROLLBACK_FAILURE_WINDOW_MS,
-  shouldCommitPendingAtStartup,
   spawnLauncherProcess,
-  sweepDatabaseBackups,
   toShimExitCode,
   type AcquireShimLock,
   type LauncherRun,
   type LauncherUpdateMode,
   type ShimOutput,
-  type ShimPaths,
-  type UpdateFailure,
 } from "./shim-support.js";
 
-type NpmPending = AppUpdatePending & {
-  from: NpmAppRevision;
-  to: NpmAppRevision;
-};
-
-export interface RunNpmShimArgs extends ShimPaths {
+export interface RunNpmShimArgs {
   acquireLock?: AcquireShimLock;
   bundled: NpmAppRevision;
+  dataDir: string;
   isUsable?: (revision: NpmAppRevision) => boolean;
   nodeAbi?: string;
-  now?: () => number;
   output: ShimOutput;
   spawnLauncher: (
     revision: NpmAppRevision,
@@ -101,21 +77,10 @@ export function spawnNpmLauncher(args: {
   });
 }
 
-function asNpmPending(pending: AppUpdatePending | null): NpmPending | null {
-  if (
-    pending === null ||
-    pending.from.kind !== "npm" ||
-    pending.to.kind !== "npm"
-  ) {
-    return null;
-  }
-  return { ...pending, from: pending.from, to: pending.to };
-}
-
 export async function runNpmShim(args: RunNpmShimArgs): Promise<number> {
-  const now = args.now ?? Date.now;
   const isUsable = args.isUsable ?? isUsableNpmRevision;
   const nodeAbi = args.nodeAbi ?? process.versions.modules;
+  let useBundled = args.useBundled;
   let shuttingDown = false;
   let running: LauncherRun | null = null;
   const removeSignalForwarding = installShimSignalForwarding({
@@ -125,8 +90,8 @@ export async function runNpmShim(args: RunNpmShimArgs): Promise<number> {
     },
   });
 
-  const select = (state: AppUpdateState | null): NpmAppRevision => {
-    if (args.useBundled || state === null) return args.bundled;
+  const select = (state: AppUpdateState): NpmAppRevision => {
+    if (useBundled) return args.bundled;
     const selection = selectNpmRevision({
       bundled: args.bundled,
       current: state.current,
@@ -145,183 +110,46 @@ export async function runNpmShim(args: RunNpmShimArgs): Promise<number> {
     return selection.revision;
   };
 
-  const rollBack = async (
-    pending: NpmPending,
-    failure: UpdateFailure,
-    logOffset: number | null,
-  ): Promise<NpmAppRevision> => {
-    await markRollbackStarted({ dataDir: args.dataDir, pendingId: pending.id });
-    const restoreError = await restorePendingDatabase({
-      dbPath: args.dbPath,
-      pending,
-    });
-    const from = isUsable(pending.from) ? pending.from : args.bundled;
-    const recordedFailure: UpdateFailure =
-      restoreError === null
-        ? failure
-        : {
-            message: `${failure.message} Restoring the database backup failed: ${restoreError}`,
-            phase: "rollback",
-          };
-    await recordUpdateResult({
-      current: installedNpmRevision(from, nodeAbi),
-      dataDir: args.dataDir,
-      discardBackup: restoreError === null,
-      failure: recordedFailure,
-      logTail:
-        logOffset === null
-          ? []
-          : await readServerLogTail(args.logDir, logOffset),
-      outcome: restoreError === null ? "rolled-back" : "rollback-failed",
-      pending,
-    });
-    args.output.warn(
-      `bb-app ${pending.to.version} failed: ${recordedFailure.message} Rolling back to ${from.version}.`,
-    );
-    return from;
-  };
-
-  const cancel = async (pending: AppUpdatePending): Promise<void> => {
-    await recordUpdateResult({
-      dataDir: args.dataDir,
-      discardBackup: true,
-      failure: {
-        message: `bb was stopped before it restarted into ${pending.to.version}.`,
-        phase: "prepare",
-      },
-      logTail: [],
-      outcome: "failed",
-      pending,
-    });
-  };
-
-  const switchTo = async (pending: NpmPending): Promise<NpmAppRevision> => {
-    if (!isUsable(pending.to)) {
-      return rollBack(
-        pending,
-        {
-          message: `The downloaded bb-app ${pending.to.version} is missing or incomplete.`,
-          phase: "install",
-        },
-        null,
-      );
-    }
-    await mutateAppUpdateState(args.dataDir, (state) => ({
-      ...state,
-      current: installedNpmRevision(pending.to, nodeAbi),
-    }));
-    args.output.info(`Restarting into bb-app ${pending.to.version}`);
-    return pending.to;
-  };
-
-  const resolveStartupPending = async (
-    state: AppUpdateState,
-  ): Promise<NpmAppRevision | null> => {
-    if (state.pending === null) {
-      await sweepDatabaseBackups(args.dataDir, null);
-      return null;
-    }
-    const pending = asNpmPending(state.pending);
-    if (pending === null) {
-      await mutateAppUpdateState(args.dataDir, (current) => ({
-        ...current,
-        pending: null,
-      }));
-      await discardDatabaseBackup(state.pending.databaseBackupDir);
-      return null;
-    }
-    if (shouldCommitPendingAtStartup(pending)) {
-      await commitPendingUpdate({ dataDir: args.dataDir, pending });
-      args.output.info(`Confirmed the update to bb-app ${pending.to.version}`);
-      return null;
-    }
-    return rollBack(pending, describeInterruptedPending(pending), null);
-  };
-
-  const runPassive = async (reason: string, launch: NpmAppRevision) => {
-    args.output.info(reason);
-    running = args.spawnLauncher(launch, "passive");
+  const run = async (
+    revision: NpmAppRevision,
+    mode: LauncherUpdateMode,
+  ): Promise<ChildProcessExitResult> => {
+    running = args.spawnLauncher(revision, mode);
     const exit = await running.exit;
     running = null;
-    return toShimExitCode(exit);
+    return exit;
   };
 
   const lock = await (args.acquireLock ?? acquireShimLock)(args.dataDir);
   try {
     const initialState = await readAppUpdateStateFile(args.dataDir);
     if (lock === null) {
-      return await runPassive(
+      args.output.info(
         "Another bb-app is managing this data directory; in-app updates are off for this run.",
-        select(initialState),
+      );
+      return toShimExitCode(
+        await run(
+          initialState === null ? args.bundled : select(initialState),
+          "passive",
+        ),
       );
     }
     if (initialState === null) {
-      return await runPassive(
+      args.output.info(
         "bb-app-update.json was written by a newer bb; in-app updates are off for this run.",
-        args.bundled,
       );
+      return toShimExitCode(await run(args.bundled, "passive"));
     }
-    let launch =
-      (await resolveStartupPending(initialState)) ??
-      select(await readAppUpdateStateFile(args.dataDir));
-    let launchIsRollback = false;
-    let switchedPendingId: string | null = null;
+    let launch = select(initialState);
     for (;;) {
+      const exit = await run(launch, "npm");
+      if (exit.code !== APP_UPDATE_RESTART_EXIT_CODE) {
+        return toShimExitCode(exit);
+      }
       if (shuttingDown) return 0;
-      const startedAt = now();
-      const logOffset = await readServerLogOffset(args.logDir);
-      running = args.spawnLauncher(launch, "npm");
-      const exit = await running.exit;
-      running = null;
-
+      useBundled = false;
       const state = await readAppUpdateStateFile(args.dataDir);
-      const pending = asNpmPending(state?.pending ?? null);
-      const restartRequested = exit.code === APP_UPDATE_RESTART_EXIT_CODE;
-      if (shuttingDown) {
-        if (
-          restartRequested &&
-          pending !== null &&
-          isSameRevision(pending.from, launch)
-        ) {
-          await cancel(pending);
-        }
-        return restartRequested ? 0 : toShimExitCode(exit);
-      }
-      if (restartRequested) {
-        launchIsRollback = false;
-        if (pending !== null && isSameRevision(pending.from, launch)) {
-          launch = await switchTo(pending);
-          switchedPendingId = launch === pending.to ? pending.id : null;
-        }
-        continue;
-      }
-      if (
-        pending !== null &&
-        pending.id === switchedPendingId &&
-        isSameRevision(pending.to, launch)
-      ) {
-        if (exit.code === 0) return 0;
-        launch = await rollBack(
-          pending,
-          describeLauncherFailure(pending, exit),
-          logOffset,
-        );
-        switchedPendingId = null;
-        launchIsRollback = true;
-        continue;
-      }
-      if (
-        launchIsRollback &&
-        exit.code !== 0 &&
-        now() - startedAt < ROLLBACK_FAILURE_WINDOW_MS
-      ) {
-        const message = `bb-app ${launch.version} also failed after the rollback (${formatExit(exit)}).`;
-        await markRollbackFailed({ dataDir: args.dataDir, message });
-        args.output.error(
-          `${message} Check ${join(args.logDir, "server-stdio.log")} and restart bb-app.`,
-        );
-      }
-      return toShimExitCode(exit);
+      if (state !== null) launch = select(state);
     }
   } finally {
     removeSignalForwarding();

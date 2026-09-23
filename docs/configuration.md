@@ -154,20 +154,20 @@ start bb under a small update shim, so Settings → Updates and
   rebuilds, and restarts. Other branches, local commits, and uncommitted tracked
   changes block the update with an explanation.
 
-When the new version adds database migrations, bb copies `bb.db` to
-`<dataDir>/app-update-backups/<id>/` after stopping (a copy-on-write clone where
-the filesystem supports it; otherwise it checks free space first). If the new
-version fails to start, or its server or host daemon stops three times in its
-first three minutes, the shim restores that copy and restarts the previous
-version. The outcome is recorded in `<dataDir>/bb-app-update.json` and shown in
-Settings → Updates, `bb updates app`, and the API until dismissed. Do not edit
-that file. Plugin databases under `plugins/` are not rolled back, so a plugin
-that wrote state while the failed version ran can reference data the restored
-`bb.db` no longer has.
+bb does not roll back an update. If the new version fails to start, bb exits
+with its error and the next start runs the new version again, as it would after
+a manual upgrade. Run a newer release (`npx bb-app@latest`) or fix the cause; an
+older release may not open a database the new version migrated. A source
+checkout whose rebuild fails stays on the new commit; fix the build and run
+`pnpm start` again. Download, install, and fast-forward failures happen before
+bb stops, so the current version keeps running.
 
-If bb stops during that confirmation window, the next start keeps the new
-version when it had started cleanly and rolls back otherwise; it never resumes
-a half-finished update. Only one launcher manages updates for a data directory:
+The outcome is recorded in `<dataDir>/bb-app-update.json` once bb starts
+cleanly, and shown in Settings → Updates, `bb updates app`, and the API until
+dismissed. Do not edit that file. If bb is stopped during the restart, an npm
+install starts the new version next time, while a source checkout stays on its
+current commit and reports the update as failed. Only one launcher manages
+updates for a data directory:
 a second `bb-app start` on the same data directory runs with in-app updates off,
 and `bb-app stop` stops the managing launcher. If threads start while an update
 downloads and you did not agree to interrupt threads, bb cancels the restart and
@@ -761,28 +761,28 @@ schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                               | Value                                               |
-| --------------------------------- | --------------------------------------------------- |
-| `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
-| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
-| `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
-| `sidebar.sectionOrder`            | Section id list for **By project**                  |
-| `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
-| `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
-| `sidebar.hiddenGroups`            | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
-| `sidebar.collapsedProjects`       | Collapsed project ids                               |
-| `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
-| `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
-| `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
-| `sidebar.collapsedMachines`       | Collapsed machine ids                               |
-| `sidebar.footerOrder`             | Footer action order                                 |
-| `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
-| `sidebar.pluginPanelOrder`        | Navigation entry order                              |
-| `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
-| `sidebar.navigationProvider`      | Plugin key; defaults to `navigation/navigation`     |
-| `sidebar.headerProvider`          | Plugin key, or `__builtin__` for bb's header only   |
-| `sidebar.threadListProvider`      | Plugin key; defaults to `thread-list/thread-list` |
+| Key                                  | Value                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                  |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                |
+| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                  |
+| `sidebar.sectionOrder`               | Section id list for **By project**                                                        |
+| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
+| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
+| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
+| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                         |
+| `sidebar.collapsedProjects`          | Collapsed project ids                                                                     |
+| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                   |
+| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                 |
+| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                              |
+| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
+| `sidebar.footerOrder`                | Footer action order                                                                       |
+| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
+| `sidebar.pluginPanelOrder`           | Navigation entry order                                                                    |
+| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                       |
+| `sidebar.navigationProvider`         | Plugin key; defaults to `navigation/navigation`                                           |
+| `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
+| `sidebar.threadListProvider`         | Plugin key; defaults to `thread-list/thread-list`                                         |
 
 The sidebar thread list uses an explicit plugin selection and defaults to the bundled
 Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and

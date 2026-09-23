@@ -135,9 +135,9 @@ bb updates app dismiss Mark the last update result as seen
 `bb updates apply` covers provider CLIs only. `bb updates app apply` updates
 bb itself when it was started with `npx bb-app` (or a global `bb-app`) or
 `pnpm start` from a `main` checkout: it installs the new version next to the
-running one, restarts, and rolls back automatically — database included — if
-the new version fails to start or keeps crashing in its first minutes. Source
-checkouts update only from a clean `main` that fast-forwards to `origin/main`.
+running one and restarts into it. It does not roll back if the new version
+fails to start. Source checkouts update only from a clean `main` that
+fast-forwards to `origin/main`.
 Desktop users update through the desktop app's relaunch; development servers
 and `bb-server` cannot update themselves. Connected daemons follow the server
 version automatically.
