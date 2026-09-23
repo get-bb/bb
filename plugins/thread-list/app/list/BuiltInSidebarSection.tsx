@@ -5,12 +5,12 @@ import {
   type TopLevelSidebarSectionProps,
 } from "./TopLevelSidebarSection.js";
 import { useSidebarSortable } from "../rows/sortableMotion.js";
-import {
-  CHRONOLOGICAL_CONTAINER_ID,
-  type CollapsedChildActivity,
-  type CollapsibleSidebarSectionId,
-  type SidebarSectionId,
-} from "@bb/client-core";
+import { CHRONOLOGICAL_CONTAINER_ID } from "../model/project-thread-groups.js";
+import type {
+  CollapsibleSidebarSectionId,
+  SidebarSectionId,
+} from "../model/sidebar-section-id.js";
+import type { CollapsedChildActivity } from "../model/thread-activity.js";
 import { PINNED_THREAD_PARENT_KEY } from "../dnd/useSectionThreadDnd.js";
 import type { ThreadSplitIndicatorTarget } from "./groupRollups.js";
 

@@ -4650,15 +4650,9 @@ importers:
 
   plugins/thread-list:
     dependencies:
-      '@bb/client-core':
-        specifier: workspace:*
-        version: link:../../packages/client-core
       '@bb/core-ui':
         specifier: workspace:*
         version: link:../../packages/core-ui
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../../packages/domain
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
@@ -4687,9 +4681,6 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
-      '@bb/test-helpers':
-        specifier: workspace:*
-        version: link:../../packages/test-helpers
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk

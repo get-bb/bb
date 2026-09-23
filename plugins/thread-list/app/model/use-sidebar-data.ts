@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useAtomValue } from "jotai";
 import { sidebarThreadLifecyclesAtom } from "../preferences/atoms.js";
-import type { Host } from "@bb/domain";
 import {
   experimental_useSidebarThreads,
   type PluginSidebarProject,
@@ -9,7 +8,7 @@ import {
   type PluginSidebarThread,
   type PluginSidebarThreadsState,
 } from "@get-bb/plugin-sdk/app";
-import { toSidebarThread, type SidebarThread } from "./sidebar-thread.js";
+import type { SidebarThread } from "./sidebar-thread.js";
 
 export interface SidebarProject {
   id: string;
@@ -78,12 +77,11 @@ export function buildSidebarData(
   const threadsByProjectId = new Map<string, SidebarThread[]>();
   const hostsById = new Map<string, SidebarHost>();
   for (const thread of threads) {
-    const entry = toSidebarThread(thread);
-    const bucket = threadsByProjectId.get(entry.projectId);
+    const bucket = threadsByProjectId.get(thread.projectId);
     if (bucket === undefined) {
-      threadsByProjectId.set(entry.projectId, [entry]);
+      threadsByProjectId.set(thread.projectId, [thread]);
     } else {
-      bucket.push(entry);
+      bucket.push(thread);
     }
     if (thread.host !== null && !hostsById.has(thread.host.id)) {
       hostsById.set(thread.host.id, thread.host);
@@ -196,16 +194,8 @@ export function useSidebarData() {
   );
 }
 
-export function toMachineHosts(
-  hostsById: ReadonlyMap<string, SidebarHost>,
-): Host[] {
-  return [...hostsById.values()].map(
-    (host) => ({ id: host.id, name: host.name }) as Host,
-  );
-}
-
 export function useSidebarMachineHosts(
   hostsById: ReadonlyMap<string, SidebarHost>,
-): Host[] {
-  return useMemo(() => toMachineHosts(hostsById), [hostsById]);
+): SidebarHost[] {
+  return useMemo(() => [...hostsById.values()], [hostsById]);
 }

@@ -1,10 +1,15 @@
-import type { ThreadListEntry } from "@bb/domain";
-import { describe, expect, it } from "vitest";
 import {
-  buildPinnedSidebarState,
+  makeSidebarEnvironment,
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { describe, expect, it } from "vitest";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
+import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
 import {
   buildPinInsertRequest,
   collectSectionThreadDndLookup,
@@ -18,10 +23,9 @@ import {
   resolveThreadRowNestCollisions,
 } from "./useSectionThreadDnd.js";
 import { getSidebarThreadRowDroppableId } from "../rows/sidebarThreadRowDroppable.js";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
-function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
-  return makeThreadListEntry({
+function createThread(overrides: SidebarThreadOverrides): SidebarThread {
+  return makeSidebarThread({
     id: "thread",
     projectId: "project",
     title: "Thread",
@@ -51,9 +55,7 @@ function createLookup() {
   );
 }
 
-function createLookupWithPinnedThread(
-  overrides: Partial<ThreadListEntry> = {},
-) {
+function createLookupWithPinnedThread(overrides: SidebarThreadOverrides = {}) {
   return collectSectionThreadDndLookup(
     buildSectionThreadList(
       [
@@ -268,7 +270,7 @@ describe("section thread pin drop decisions", () => {
   });
 });
 
-function createNestedLookup(pinnedThreads: ThreadListEntry[] = []) {
+function createNestedLookup(pinnedThreads: SidebarThread[] = []) {
   return collectSectionThreadDndLookup(
     buildSectionThreadList(
       [
@@ -699,29 +701,37 @@ describe("worktree group section dragging", () => {
         [
           createThread({
             id: "first",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
             createdAt: 10,
           }),
           createThread({
             id: "second",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
             createdAt: 9,
           }),
           createThread({
             id: "child",
             parentThreadId: "first",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
           }),
           createThread({
             id: "other-section",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "b",
           }),
         ],

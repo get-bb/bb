@@ -26,7 +26,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { isThreadRead } from "@bb/client-core";
 import {
   experimental_useSidebarThreadActions,
   useSdk,
@@ -208,7 +207,7 @@ function ThreadActionsMenuItems({
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
   const showSeparators = !isDrawer;
-  const isRead = isThreadRead(thread);
+  const isRead = !thread.isUnread;
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
   const threadUrl = getThreadUrl(thread);

@@ -15,9 +15,8 @@ import {
   type PluginSdkTestFakes,
   type RenderedSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import { makeSidebarThread } from "../model/fixtures.js";
-import { toSidebarThread } from "../model/sidebar-thread.js";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -78,7 +77,7 @@ function ThreadRowHarness({
   const row = (
     <ThreadRow
       projectId={thread.projectId}
-      thread={toSidebarThread(thread)}
+      thread={thread}
       crossProjectId={crossProjectId}
       isActive={isActive}
       options={options}
@@ -1388,6 +1387,7 @@ describe("ThreadRow", () => {
       status: "idle",
       runtimeStatus: "idle",
       latestAttentionAt: 2_000,
+      isUnread: true,
     });
 
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();

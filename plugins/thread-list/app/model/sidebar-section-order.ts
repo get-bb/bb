@@ -1,4 +1,8 @@
-import type { SidebarSectionId } from "./sidebarSectionId.js";
+import {
+  applyNeighborReorder,
+  buildNeighborReorderRequest,
+} from "./neighbor-reorder.js";
+import type { SidebarSectionId } from "./sidebar-section-id.js";
 
 type SidebarEntitySectionKind = "project" | "section" | "machine";
 export type LegacySidebarEntityAnchor = "projects" | "sections" | "machines";
@@ -18,6 +22,28 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
     value.startsWith("section:") ||
     value.startsWith("machine:")
   );
+}
+
+interface ReorderSidebarSectionOrderArgs {
+  activeId: string;
+  overId: string;
+  order: readonly SidebarSectionId[];
+}
+
+export function reorderSidebarSectionOrder({
+  activeId,
+  overId,
+  order,
+}: ReorderSidebarSectionOrderArgs): SidebarSectionId[] | null {
+  if (!isSidebarSectionId(activeId) || !isSidebarSectionId(overId)) {
+    return null;
+  }
+  const items = order.map((id) => ({ id }));
+  const request = buildNeighborReorderRequest({ activeId, overId, items });
+  if (!request) return null;
+  return applyNeighborReorder({ items, request })
+    .map((item) => item.id)
+    .filter(isSidebarSectionId);
 }
 
 interface NormalizeSidebarSectionOrderArgs {
@@ -97,5 +123,37 @@ export function normalizeSidebarSectionOrder({
     normalized.push("threads");
   }
 
+  return normalized;
+}
+
+interface InsertSidebarSectionAfterArgs {
+  storedOrder: readonly string[];
+  entitySectionIds: readonly SidebarSectionId[];
+  legacyEntityAnchor: LegacySidebarEntityAnchor;
+  anchorSectionId: SidebarSectionId;
+  sectionId: SidebarSectionId;
+}
+
+export function insertSidebarSectionAfter({
+  storedOrder,
+  entitySectionIds,
+  legacyEntityAnchor,
+  anchorSectionId,
+  sectionId,
+}: InsertSidebarSectionAfterArgs): SidebarSectionId[] | null {
+  if (anchorSectionId === sectionId) {
+    return null;
+  }
+  const normalized = normalizeSidebarSectionOrder({
+    storedOrder,
+    entitySectionIds: [...entitySectionIds, sectionId],
+    legacyEntityAnchor,
+    hasPinnedSection: true,
+  }).filter((id) => id !== sectionId);
+  const anchorIndex = normalized.indexOf(anchorSectionId);
+  if (anchorIndex === -1) {
+    return null;
+  }
+  normalized.splice(anchorIndex + 1, 0, sectionId);
   return normalized;
 }

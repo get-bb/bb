@@ -5,7 +5,7 @@ import {
   resolveThreadListIndicator,
   type ThreadListIndicatorKind,
   type ThreadListIndicatorState,
-} from "@bb/client-core";
+} from "../model/thread-activity.js";
 import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import {
   SIDEBAR_STATUS_ICON_CLASS,

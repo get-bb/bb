@@ -11,7 +11,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuPortal,
 } from "@bb/shared-ui/dropdown-menu";
-import type { SidebarSectionId } from "@bb/client-core";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import type { HeaderCreationActions } from "./SidebarHeaderControls.js";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility.js";
 import {

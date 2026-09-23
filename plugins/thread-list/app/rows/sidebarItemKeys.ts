@@ -1,4 +1,4 @@
-import type { ProjectThreadItem } from "@bb/client-core";
+import type { ProjectThreadItem } from "../model/project-thread-groups.js";
 
 export function getSidebarItemKey(item: ProjectThreadItem): string {
   switch (item.kind) {

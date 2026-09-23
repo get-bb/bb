@@ -5,7 +5,7 @@ import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
   type NeighborReorderRequest,
-} from "@bb/client-core";
+} from "../model/neighbor-reorder.js";
 
 interface NeighborReorderSortableCallbacks {
   onSettled: () => void;

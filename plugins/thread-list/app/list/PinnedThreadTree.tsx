@@ -4,14 +4,14 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { NeighborReorderRequest } from "@bb/client-core";
+import type { NeighborReorderRequest } from "../model/neighbor-reorder.js";
 import { ThreadTreeNodeRow } from "./ProjectRow.js";
 import {
   useSidebarSortable,
   type SidebarSortableDragBindings,
 } from "../rows/sortableMotion.js";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
-import type { ProjectThreadNode } from "@bb/client-core";
+import type { ProjectThreadNode } from "../model/project-thread-groups.js";
 import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,

@@ -1,16 +1,13 @@
-import type { Host, ThreadListEntry } from "@bb/domain";
-import {
-  makeHost,
-  makeThreadListEntry,
-} from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
+import { makeSidebarThread, type SidebarThreadOverrides } from "./fixtures.js";
 import {
   buildMachineThreadGroups,
   NO_MACHINE_GROUP_KEY,
-} from "../src/sidebar/machineThreadGroups.js";
+} from "./machine-thread-groups.js";
+import type { SidebarThread } from "./sidebar-thread.js";
 
-function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
-  return makeThreadListEntry({
+function createThread(overrides: SidebarThreadOverrides): SidebarThread {
+  return makeSidebarThread({
     id: "thr_1",
     projectId: "proj_1",
     title: "Thread",
@@ -23,14 +20,8 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   });
 }
 
-function createHost(
-  overrides: Partial<Host> & Pick<Host, "id" | "name">,
-): Host {
-  return makeHost({
-    createdAt: 1,
-    updatedAt: 1,
-    ...overrides,
-  });
+function createHost(host: { id: string; name: string }) {
+  return host;
 }
 
 describe("buildMachineThreadGroups", () => {
@@ -40,11 +31,14 @@ describe("buildMachineThreadGroups", () => {
       createHost({ id: "host_b", name: "Desktop" }),
     ];
     const threads = [
-      createThread({ id: "thr_1", environmentHostId: "host_b" }),
-      createThread({ id: "thr_2", environmentHostId: null }),
-      createThread({ id: "thr_3", environmentHostId: "host_gone" }),
-      createThread({ id: "thr_4", environmentHostId: "host_a" }),
-      createThread({ id: "thr_5", environmentHostId: "host_b" }),
+      createThread({ id: "thr_1", host: { id: "host_b", name: "host_b" } }),
+      createThread({ id: "thr_2", host: null }),
+      createThread({
+        id: "thr_3",
+        host: { id: "host_gone", name: "host_gone" },
+      }),
+      createThread({ id: "thr_4", host: { id: "host_a", name: "host_a" } }),
+      createThread({ id: "thr_5", host: { id: "host_b", name: "host_b" } }),
     ];
 
     const groups = buildMachineThreadGroups(threads, hosts);
@@ -69,7 +63,7 @@ describe("buildMachineThreadGroups", () => {
       createHost({ id: "host_b", name: "Desktop" }),
     ];
     const threads = [
-      createThread({ id: "thr_1", environmentHostId: "host_b" }),
+      createThread({ id: "thr_1", host: { id: "host_b", name: "host_b" } }),
     ];
 
     const groups = buildMachineThreadGroups(threads, hosts);
@@ -79,8 +73,8 @@ describe("buildMachineThreadGroups", () => {
 
   it("falls back to id-ordered unknown groups when the host list is empty", () => {
     const threads = [
-      createThread({ id: "thr_1", environmentHostId: "host_b" }),
-      createThread({ id: "thr_2", environmentHostId: "host_a" }),
+      createThread({ id: "thr_1", host: { id: "host_b", name: "host_b" } }),
+      createThread({ id: "thr_2", host: { id: "host_a", name: "host_a" } }),
     ];
 
     const groups = buildMachineThreadGroups(threads, []);

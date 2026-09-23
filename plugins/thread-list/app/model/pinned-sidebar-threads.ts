@@ -1,11 +1,11 @@
-import type { ThreadListEntry } from "@bb/domain";
-import { compareCodepoint } from "../codepoint-compare.js";
+import { compareCodepoint } from "./compare-codepoint.js";
 import {
   buildProjectThreadGroups,
   compareStandardThreads,
   type ProjectThreadItem,
   type ProjectThreadNode,
-} from "./projectThreadGroups.js";
+} from "./project-thread-groups.js";
+import type { SidebarThread } from "./sidebar-thread.js";
 
 interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
@@ -14,12 +14,12 @@ interface PinnedSidebarState {
 
 interface BuildPinnedSidebarStateArgs {
   draftThreadIds?: ReadonlySet<string>;
-  threads: readonly ThreadListEntry[];
+  threads: readonly SidebarThread[];
 }
 
 function compareByPinnedFallback(
-  left: ThreadListEntry,
-  right: ThreadListEntry,
+  left: SidebarThread,
+  right: SidebarThread,
 ): number {
   const pinnedAtDelta = (right.pinnedAt ?? 0) - (left.pinnedAt ?? 0);
   if (pinnedAtDelta !== 0) {
@@ -34,10 +34,7 @@ function compareByPinnedFallback(
   return compareCodepoint(left.id, right.id);
 }
 
-function comparePinnedRoots(
-  left: ThreadListEntry,
-  right: ThreadListEntry,
-): number {
+function comparePinnedRoots(left: SidebarThread, right: SidebarThread): number {
   if (left.pinSortKey !== null && right.pinSortKey !== null) {
     const pinSortKeyDelta = compareCodepoint(left.pinSortKey, right.pinSortKey);
     if (pinSortKeyDelta !== 0) {
@@ -69,7 +66,7 @@ function addDescendantThreadIds({
 }
 
 interface AddDescendantThreadIdsArgs {
-  childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
+  childrenByParentId: ReadonlyMap<string, readonly SidebarThread[]>;
   effectivePinnedThreadIds: Set<string>;
   parentThreadId: string;
   visitedThreadIds: Set<string>;
@@ -84,6 +81,8 @@ function collectRootNodes(
         return [item.node];
       case "environment":
         return item.group.nodes;
+      case "section":
+        return collectRootNodes(item.group.items);
     }
   });
 }
@@ -95,7 +94,7 @@ export function buildPinnedSidebarState({
   const explicitlyPinnedThreads = threads.filter(
     (thread) => thread.pinnedAt !== null,
   );
-  const childrenByParentId = new Map<string, ThreadListEntry[]>();
+  const childrenByParentId = new Map<string, SidebarThread[]>();
 
   for (const thread of threads) {
     if (thread.parentThreadId === null) continue;

@@ -19,18 +19,20 @@ import {
   type DragStartEvent,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
-import type { ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import { useSdk } from "@get-bb/plugin-sdk/app";
-import type { NeighborReorderRequest } from "@bb/client-core";
+import type { NeighborReorderRequest } from "../model/neighbor-reorder.js";
 import {
-  buildSidebarEntitySectionId,
   getSidebarDndItemId,
   getProjectThreadItemDescendants,
-  reorderSidebarSectionOrder,
   type ProjectThreadItem,
   type ProjectThreadNode,
-  type SidebarSectionId,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
+import {
+  buildSidebarEntitySectionId,
+  reorderSidebarSectionOrder,
+} from "../model/sidebar-section-order.js";
 import { sidebarCollapsedThreadSectionsAtom } from "../preferences/atoms.js";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd.js";
 import {
@@ -82,7 +84,7 @@ export interface SectionThreadReorderTarget {
 
 export interface SectionThreadDndState {
   activeItemId: string | null;
-  activeThread: ThreadListEntry | null;
+  activeThread: SidebarThread | null;
   consumeClickSuppression: ConsumeDragClickSuppression;
   dndContextProps: ReorderDndContextProps;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
@@ -105,7 +107,7 @@ interface UseSectionThreadDndArgs {
   onExpandThread?: (threadId: string) => void;
   groups?: boolean;
   pinnedReorderPending: boolean;
-  pinnedThreads: readonly ThreadListEntry[];
+  pinnedThreads: readonly SidebarThread[];
   pinnedRootNodes?: readonly ProjectThreadNode[];
   onReorderPinnedThread: (
     request: NeighborReorderRequest,
@@ -114,14 +116,14 @@ interface UseSectionThreadDndArgs {
 }
 
 interface SectionThreadDndLookup {
-  groupThreadsByItemId: Map<string, ThreadListEntry[]>;
+  groupThreadsByItemId: Map<string, SidebarThread[]>;
   sectionParentKeyBySectionId: Map<string, string>;
   sectionSectionIdByParentKey: Map<string, SidebarSectionId>;
   sectionIdByParentKey: Map<string, string | null>;
   itemIdsByParentKey: Map<string, string[]>;
   itemKindById: Map<string, ProjectThreadItem["kind"]>;
   parentKeyByItemId: Map<string, string>;
-  threadByItemId: Map<string, ThreadListEntry>;
+  threadByItemId: Map<string, SidebarThread>;
   nodeByItemId: Map<string, ProjectThreadNode>;
   nestParentIdByItemId: Map<string, string>;
 }
@@ -225,7 +227,7 @@ function parseGroupSectionId(key: string): SidebarSectionId {
 export function collectSectionThreadDndLookup(
   items: readonly ProjectThreadItem[],
   containerId: string,
-  pinnedThreads: readonly ThreadListEntry[] = [],
+  pinnedThreads: readonly SidebarThread[] = [],
   pinnedRootNodes: readonly ProjectThreadNode[] = [],
   options: CollectSectionThreadDndLookupOptions = {},
 ): SectionThreadDndLookup {
@@ -1016,14 +1018,12 @@ export function useSectionThreadDnd({
   const { handleDragEnd: handlePinnedDragEnd, itemIds: pinnedItemIds } =
     useNeighborReorderSortable({
       disabled: pinnedReorderPending || pinnedThreads.length < 2,
-      getId: (thread: ThreadListEntry) => thread.id,
+      getId: (thread: SidebarThread) => thread.id,
       items: pinnedThreads,
       onReorder: onReorderPinnedThread,
     });
   const setCollapsedSections = useSetAtom(sidebarCollapsedThreadSectionsAtom);
-  const [activeThread, setActiveThread] = useState<ThreadListEntry | null>(
-    null,
-  );
+  const [activeThread, setActiveThread] = useState<SidebarThread | null>(null);
   const [dragOverParentKey, setDragOverParentKey] = useState<string | null>(
     null,
   );
@@ -1095,7 +1095,7 @@ export function useSectionThreadDnd({
         thread && groupThreads
           ? {
               ...thread,
-              title: `${thread.environmentName ?? thread.environmentBranchName ?? "Worktree group"} (${groupThreads.length} threads)`,
+              title: `${thread.environment?.name ?? thread.environment?.branchName ?? "Worktree group"} (${groupThreads.length} threads)`,
             }
           : thread,
       );

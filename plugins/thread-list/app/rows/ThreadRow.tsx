@@ -25,7 +25,7 @@ import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
   type ThreadListIndicatorState,
-} from "@bb/client-core";
+} from "../model/thread-activity.js";
 import {
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreadSplit,

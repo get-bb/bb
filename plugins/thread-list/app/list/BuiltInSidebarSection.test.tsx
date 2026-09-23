@@ -3,7 +3,7 @@
 import { cleanup, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import {
   installTestPluginRuntime,
   renderSlot,

@@ -8,18 +8,22 @@ import type {
   DragOverEvent,
   DragStartEvent,
 } from "@dnd-kit/core";
-import type { ThreadListEntry } from "@bb/domain";
+import {
+  makeSidebarEnvironment,
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
   type ProjectThreadItem,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
 import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { getSidebarThreadRowDroppableId } from "../rows/sidebarThreadRowDroppable.js";
 import type { SectionThreadDndState } from "./useSectionThreadDnd.js";
 
@@ -53,8 +57,8 @@ async function flushTasks(): Promise<void> {
   });
 }
 
-function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
-  return makeThreadListEntry({
+function createThread(overrides: SidebarThreadOverrides): SidebarThread {
+  return makeSidebarThread({
     id: "thread",
     projectId: "project",
     title: "Thread",
@@ -276,22 +280,19 @@ describe("worktree group drop collisions", () => {
         createThread({
           id: "first",
           sectionId: "a",
-          environmentId: "env",
-          environmentIsWorktree: true,
+          environment: makeSidebarEnvironment({ id: "env", isWorktree: true }),
           createdAt: 3,
         }),
         createThread({
           id: "second",
           sectionId: "a",
-          environmentId: "env",
-          environmentIsWorktree: true,
+          environment: makeSidebarEnvironment({ id: "env", isWorktree: true }),
           createdAt: 2,
         }),
         createThread({
           id: "child",
           sectionId: "a",
-          environmentId: "env",
-          environmentIsWorktree: true,
+          environment: makeSidebarEnvironment({ id: "env", isWorktree: true }),
           parentThreadId: "second",
         }),
       ],

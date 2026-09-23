@@ -4,7 +4,7 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import type {
   PluginSidebarSplitLayout,
   PluginSidebarThreadRowStatus,
@@ -13,8 +13,8 @@ import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import type { SectionThreadDndState } from "../dnd/useSectionThreadDnd.js";
+import { makeSidebarThread } from "../model/fixtures.js";
 
 installTestPluginRuntime();
 const { TopLevelSidebarSection } = await import("./TopLevelSidebarSection.js");
@@ -174,7 +174,13 @@ describe("TopLevelSidebarSection", () => {
   });
 
   it("highlights the whole section only while it is the resolved drop parent", () => {
-    const dragged = makeThreadListEntry({ id: "dragged" });
+    const dragged = makeSidebarThread({
+      id: "dragged",
+      lastReadAt: 100,
+      latestAttentionAt: 100,
+      createdAt: 0,
+      updatedAt: 100,
+    });
 
     expect(renderSectionWithDrag(dndState(null, dragged))).toBeNull();
     expect(
@@ -187,7 +193,13 @@ describe("TopLevelSidebarSection", () => {
   });
 
   it("marks the section a dragged thread already sits in as unchanged", () => {
-    const dragged = makeThreadListEntry({ id: "dragged" });
+    const dragged = makeSidebarThread({
+      id: "dragged",
+      lastReadAt: 100,
+      latestAttentionAt: 100,
+      createdAt: 0,
+      updatedAt: 100,
+    });
 
     expect(
       renderSectionWithDrag(dndState(null, dragged, "section:design")),

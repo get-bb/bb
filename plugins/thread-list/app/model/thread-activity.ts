@@ -1,60 +1,68 @@
-import { assertNever } from "@bb/core-ui";
 import type {
-  Thread,
-  ThreadListEntry,
-  ThreadQueuedWork,
-  ThreadWithRuntime,
-} from "@bb/domain";
-// Imported from the defining leaf module, not the timeline barrel: the sidebar
-// thread list reaches this helper before first paint, and the barrel would pull
-// the whole timeline (and @pierre/diffs, Shiki, KaTeX behind it) onto the boot
-// path for one predicate.
-import { isRunningThreadRuntimeDisplayStatus } from "../timeline/thread-runtime-status.js";
-import { isThreadRead } from "./thread-read-state.js";
+  PluginSidebarThread,
+  PluginSidebarThreadIndicator,
+} from "@get-bb/plugin-sdk/app";
 
 type ThreadStatusShape = Pick<
-  Thread,
-  "status" | "lastReadAt" | "latestAttentionAt" | "parentThreadId"
+  PluginSidebarThread,
+  "status" | "isUnread" | "parentThreadId"
 >;
+type ThreadRuntimeShape = Pick<PluginSidebarThread, "runtimeStatus">;
+type ThreadActivityStateShape = Pick<PluginSidebarThread, "activity">;
 
-type ThreadRuntimeShape = Pick<ThreadWithRuntime, "runtime">;
-type ThreadActivityStateShape = Pick<ThreadListEntry, "activity">;
+const RUNNING_RUNTIME_STATUSES: Record<
+  PluginSidebarThread["runtimeStatus"],
+  boolean
+> = {
+  active: true,
+  "host-reconnecting": true,
+  provisioning: true,
+  starting: true,
+  stopping: true,
+  error: false,
+  idle: false,
+  pending: false,
+  "waiting-for-host": false,
+};
+
+const DONE_THREAD_STATUSES: Record<PluginSidebarThread["status"], boolean> = {
+  error: true,
+  idle: true,
+  active: false,
+  starting: false,
+  stopping: false,
+  pending: false,
+};
 
 export function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
-  return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
+  return RUNNING_RUNTIME_STATUSES[thread.runtimeStatus] ?? false;
 }
 
-export function hasActiveWorkflowActivity(
+function hasActiveWorkflowActivity(thread: ThreadActivityStateShape): boolean {
+  return thread.activity.workflows > 0;
+}
+
+function hasActiveBackgroundAgentActivity(
   thread: ThreadActivityStateShape,
 ): boolean {
-  return thread.activity.activeWorkflowCount > 0;
+  return thread.activity.backgroundAgents > 0;
 }
 
-export function hasActiveBackgroundAgentActivity(
+function hasActiveBackgroundCommandActivity(
   thread: ThreadActivityStateShape,
 ): boolean {
-  return thread.activity.activeBackgroundAgentCount > 0;
+  return thread.activity.backgroundCommands > 0;
 }
 
-export function hasActiveBackgroundCommandActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
-  return thread.activity.activeBackgroundCommandCount > 0;
+function hasActivePlanModeActivity(thread: ThreadActivityStateShape): boolean {
+  return thread.activity.planMode > 0;
 }
 
-export function hasActivePlanModeActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
-  return thread.activity.activePlanModeCount > 0;
+function hasActiveGoalActivity(thread: ThreadActivityStateShape): boolean {
+  return thread.activity.goals > 0;
 }
 
-export function hasActiveGoalActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
-  return thread.activity.activeGoalCount > 0;
-}
-
-export function isBusyThread(
+function isBusyThread(
   thread: ThreadRuntimeShape & ThreadActivityStateShape,
 ): boolean {
   return (
@@ -78,30 +86,10 @@ export interface ThreadListIndicatorState {
   isPlanModeActive: boolean;
   isRuntimeActive: boolean;
   isWorkflowActive: boolean;
-  /**
-   * Whether the thread has work waiting on its queue. Read straight off the list
-   * entry rather than inferred from the thread's status: a `pending` thread is
-   * only the most obvious case, and an idle thread with a scheduled send or a
-   * plugin-queued follow-up is waiting just as much.
-   */
-  queuedWork: ThreadQueuedWork;
+  queuedWork: PluginSidebarThread["queuedWork"];
 }
 
-export type ThreadListIndicatorKind =
-  | "unread-error"
-  | "waiting-for-input"
-  | "working-draft"
-  | "workflow"
-  | "background-agent"
-  | "background-command"
-  | "plan-mode"
-  | "goal"
-  | "runtime"
-  | "queued-failed"
-  | "queued-waiting"
-  | "draft"
-  | "unread-success"
-  | "none";
+export type ThreadListIndicatorKind = PluginSidebarThreadIndicator;
 
 const THREAD_LIST_INDICATOR_LABELS: Record<
   Exclude<ThreadListIndicatorKind, "none">,
@@ -144,7 +132,10 @@ export function hasThreadListWorkingActivity(
 }
 
 export function threadListIndicatorStateForThread(
-  thread: ThreadListEntry,
+  thread: ThreadStatusShape &
+    ThreadRuntimeShape &
+    ThreadActivityStateShape &
+    Pick<PluginSidebarThread, "hasPendingInteraction" | "queuedWork">,
   hasUnsubmittedDraft: boolean,
 ): ThreadListIndicatorState {
   const unreadDone = isUnreadDoneThread(thread);
@@ -198,9 +189,23 @@ export interface CollapsedChildActivity {
   unreadError: boolean;
 }
 
+export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
+  pending: false,
+  working: false,
+  hasUnsubmittedDraft: false,
+  runtimeWorking: false,
+  workflow: false,
+  backgroundAgent: false,
+  backgroundCommand: false,
+  planMode: false,
+  goal: false,
+  unread: false,
+  unreadError: false,
+};
+
 type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
-  Pick<ThreadListEntry, "id" | "activity" | "hasPendingInteraction">;
+  Pick<PluginSidebarThread, "id" | "activity" | "hasPendingInteraction">;
 
 const EMPTY_DRAFT_THREAD_IDS: ReadonlySet<string> = new Set();
 
@@ -260,19 +265,5 @@ export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
   if (thread.parentThreadId != null) {
     return false;
   }
-
-  switch (thread.status) {
-    case "error":
-    case "idle":
-      return !isThreadRead(thread);
-    case "active":
-    case "starting":
-    case "stopping":
-    // A pending thread has never run, so it has no outcome to be unread
-    // about; it is waiting, not done.
-    case "pending":
-      return false;
-    default:
-      return assertNever(thread.status);
-  }
+  return (DONE_THREAD_STATUSES[thread.status] ?? false) && thread.isUnread;
 }

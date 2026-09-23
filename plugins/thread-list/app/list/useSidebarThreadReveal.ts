@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { NO_MACHINE_GROUP_KEY } from "../model/machine-thread-groups.js";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
 import {
-  buildPinnedSidebarState,
   CHRONOLOGICAL_CONTAINER_ID,
-  isThreadRead,
-  NO_MACHINE_GROUP_KEY,
   resolveSidebarProjectId,
-  sectionKeyForThreadSection,
-  type CollapsibleSidebarSectionId,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
+import { sectionKeyForThreadSection } from "../model/section-keys.js";
+import type { CollapsibleSidebarSectionId } from "../model/sidebar-section-id.js";
 import { useBbContext } from "@get-bb/plugin-sdk/app";
 import type { OrganizationMode as SidebarOrganizationMode } from "../../shared/preferences.js";
 import { useSidebarData } from "../model/use-sidebar-data.js";
@@ -27,8 +26,9 @@ import { usePreferencesReady } from "../preferences/PreferencesSync.js";
 interface ThreadSidebarExpansionArgs {
   organizationMode: SidebarOrganizationMode;
   isPinned: boolean;
-  thread: ThreadListEntry;
+  thread: SidebarThread;
   sidebarProjectId: string;
+  personalProjectId: string | null;
 }
 
 interface ThreadSidebarExpansion {
@@ -61,6 +61,7 @@ export function getThreadSidebarExpansion({
   isPinned,
   thread,
   sidebarProjectId,
+  personalProjectId,
 }: ThreadSidebarExpansionArgs): ThreadSidebarExpansion {
   if (isPinned) {
     return { sidebarSectionId: "pinned" };
@@ -68,7 +69,7 @@ export function getThreadSidebarExpansion({
 
   if (organizationMode === "machine") {
     return {
-      machineKey: thread.environmentHostId ?? NO_MACHINE_GROUP_KEY,
+      machineKey: thread.host?.id ?? NO_MACHINE_GROUP_KEY,
     };
   }
 
@@ -80,7 +81,7 @@ export function getThreadSidebarExpansion({
     return sectionKey ? { sectionKey } : { sidebarSectionId: "threads" };
   }
 
-  if (sidebarProjectId === PERSONAL_PROJECT_ID) {
+  if (sidebarProjectId === personalProjectId) {
     return { sidebarSectionId: "threads" };
   }
 
@@ -89,9 +90,9 @@ export function getThreadSidebarExpansion({
 
 export function useSidebarThreadReveal(): void {
   const { threadId: routedThreadId } = useBbContext();
-  const { status, projects } = useSidebarData();
+  const { status, projects, personalProject } = useSidebarData();
   const preferencesReady = usePreferencesReady();
-  const threads = useMemo<ThreadListEntry[]>(
+  const threads = useMemo<SidebarThread[]>(
     () => projects.flatMap((project) => project.threads),
     [projects],
   );
@@ -100,14 +101,16 @@ export function useSidebarThreadReveal(): void {
     threads,
     threadsReady: status === "ready",
     preferencesReady,
+    personalProjectId: personalProject?.id ?? null,
   });
 }
 
 export interface SidebarThreadRevealInputs {
   selectedThreadId: string | undefined;
-  threads: readonly ThreadListEntry[];
+  threads: readonly SidebarThread[];
   threadsReady: boolean;
   preferencesReady: boolean;
+  personalProjectId: string | null;
 }
 
 export function useSidebarThreadRevealCore({
@@ -115,6 +118,7 @@ export function useSidebarThreadRevealCore({
   threads,
   threadsReady,
   preferencesReady,
+  personalProjectId,
 }: SidebarThreadRevealInputs): void {
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const setCollapsedThreadIdList = useSetAtom(collapsedThreadIdsAtom);
@@ -157,7 +161,7 @@ export function useSidebarThreadRevealCore({
     }
     const unreadIds = new Set<string>();
     for (const thread of threads) {
-      if (thread.visibility === "hidden" || isThreadRead(thread)) {
+      if (thread.isHidden || !thread.isUnread) {
         continue;
       }
       unreadIds.add(thread.id);
@@ -172,16 +176,17 @@ export function useSidebarThreadRevealCore({
     previousUnreadIds.current = unreadIds;
     for (const threadId of revealIds) {
       const thread = threadById.get(threadId);
-      if (!thread || thread.visibility === "hidden") {
+      if (!thread || thread.isHidden) {
         continue;
       }
       const threadIdsToExpand = new Set<string>();
       const environmentIdsToExpand = new Set<string>();
-      let currentThread: ThreadListEntry | undefined = thread;
+      let currentThread: SidebarThread | undefined = thread;
       let remainingHops = threadById.size;
       while (currentThread && remainingHops > 0) {
-        if (currentThread.environmentId !== null) {
-          environmentIdsToExpand.add(currentThread.environmentId);
+        const environmentId = currentThread.environment?.id ?? null;
+        if (environmentId !== null) {
+          environmentIdsToExpand.add(environmentId);
         }
         const parentThreadId = currentThread.parentThreadId;
         if (parentThreadId === null) {
@@ -209,6 +214,7 @@ export function useSidebarThreadRevealCore({
         isPinned,
         thread,
         sidebarProjectId: resolveSidebarProjectId(thread, threadById),
+        personalProjectId,
       });
       if (expansion.machineKey) {
         const machineKey = expansion.machineKey;
@@ -239,6 +245,7 @@ export function useSidebarThreadRevealCore({
     selectedThreadId,
     threadsReady,
     preferencesReady,
+    personalProjectId,
     organizationMode,
     threads,
     threadById,

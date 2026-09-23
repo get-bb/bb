@@ -1,24 +1,24 @@
-import type { ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
 import {
-  buildPinnedSidebarState,
   buildSectionThreadList,
   getProjectThreadItemDescendants,
   type ProjectThreadItem,
   type ProjectThreadNode,
   type SidebarSectionDefinition,
   type ThreadComparator,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
 import { getSidebarItemKey } from "../rows/sidebarItemKeys.js";
 
 interface ResolveNestPreviewBeforeKeyArgs {
-  activeThread: ThreadListEntry;
+  activeThread: SidebarThread;
   compareThreads: ThreadComparator | undefined;
   draftThreadIds: ReadonlySet<string>;
   groupThreadsByEnvironment: boolean;
   parentThreadId: string;
   pinnedRootNodes: readonly ProjectThreadNode[];
   sections: readonly SidebarSectionDefinition[];
-  threads: readonly ThreadListEntry[];
+  threads: readonly SidebarThread[];
 }
 
 function findThreadNode(
@@ -63,9 +63,9 @@ function beforeKeyAfterThread(
 }
 
 function withPatchedThread(
-  threads: readonly ThreadListEntry[],
-  patched: ThreadListEntry,
-): ThreadListEntry[] {
+  threads: readonly SidebarThread[],
+  patched: SidebarThread,
+): SidebarThread[] {
   const others = threads.filter((thread) => thread.id !== patched.id);
   return [...others, patched];
 }

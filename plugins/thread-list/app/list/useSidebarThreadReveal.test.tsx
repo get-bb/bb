@@ -4,8 +4,12 @@ import type { ReactNode } from "react";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import {
+  makeSidebarEnvironment,
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
 import {
   collapsedEnvironmentIdsAtom,
   collapsedSidebarSectionIdsAtom,
@@ -20,8 +24,8 @@ import {
 
 afterEach(cleanup);
 
-function thread(id: string, overrides: Partial<ThreadListEntry> = {}) {
-  return makeThreadListEntry({
+function thread(id: string, overrides: SidebarThreadOverrides = {}) {
+  return makeSidebarThread({
     id,
     projectId: "proj_personal",
     sectionId: id,
@@ -32,7 +36,7 @@ function thread(id: string, overrides: Partial<ThreadListEntry> = {}) {
 }
 
 function setup(
-  threads: ThreadListEntry[],
+  threads: SidebarThread[],
   initial: Partial<SidebarThreadRevealInputs> = {},
 ) {
   const store = createStore();
@@ -54,6 +58,7 @@ function setup(
         threads,
         threadsReady: true,
         preferencesReady: true,
+        personalProjectId: "proj_personal",
         ...initial,
       },
     },
@@ -63,6 +68,7 @@ function setup(
     threads,
     threadsReady: true,
     preferencesReady: true,
+    personalProjectId: "proj_personal",
     ...initial,
   };
   const update = (next: Partial<SidebarThreadRevealInputs>) => {
@@ -163,7 +169,7 @@ describe("useSidebarThreadReveal", () => {
       threads: [
         thread("first"),
         thread("second", { latestAttentionAt: 2 }),
-        thread("third", { latestAttentionAt: 2, visibility: "hidden" }),
+        thread("third", { latestAttentionAt: 2, isHidden: true }),
       ],
     });
     expect(store.get(sidebarCollapsedThreadSectionsAtom)).toEqual([
@@ -201,11 +207,11 @@ describe("useSidebarThreadReveal", () => {
   it("reveals the pinned ancestors and environment of a newly unread child", () => {
     const parent = thread("parent", {
       pinnedAt: 1,
-      environmentId: "env_parent",
+      environment: makeSidebarEnvironment({ id: "env_parent" }),
     });
     const child = thread("child", {
       parentThreadId: "parent",
-      environmentId: "env_child",
+      environment: makeSidebarEnvironment({ id: "env_child" }),
     });
     const { store, update } = setup([thread("first"), parent, child]);
     act(() => {
@@ -214,7 +220,11 @@ describe("useSidebarThreadReveal", () => {
       store.set(collapsedEnvironmentIdsAtom, ["env_parent", "env_child"]);
     });
     update({
-      threads: [thread("first"), parent, { ...child, latestAttentionAt: 2 }],
+      threads: [
+        thread("first"),
+        parent,
+        { ...child, latestAttentionAt: 2, isUnread: true },
+      ],
     });
     expect(store.get(collapsedSidebarSectionIdsAtom)).toEqual([]);
     expect(store.get(collapsedThreadIdsAtom)).toEqual([]);

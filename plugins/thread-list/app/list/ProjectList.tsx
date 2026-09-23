@@ -16,7 +16,7 @@ import {
 } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import {
   experimental_useSidebarThreadActions,
   useSdk,
@@ -31,10 +31,10 @@ import { AppThreadSectionMoveProvider } from "../rows/ThreadSectionMoveProvider.
 import { useDialogState } from "../ui/useDialogState.js";
 import {
   buildProjectThreadGroups,
-  getCollapsedChildActivity,
   getProjectThreadItemDescendants,
   type ProjectThreadNode,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
+import { getCollapsedChildActivity } from "../model/thread-activity.js";
 import { useSectionThreadDnd } from "../dnd/useSectionThreadDnd.js";
 import { useNestDropPreview } from "../dnd/useNestDropPreview.js";
 import {
@@ -59,22 +59,26 @@ import {
   ProjectThreadTree,
 } from "./ProjectRow.js";
 import type { ProjectThreadListState } from "./ProjectRow.js";
+import { buildMachineThreadGroups } from "../model/machine-thread-groups.js";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
 import {
-  buildMachineThreadGroups,
-  buildPinnedSidebarState,
   CHRONOLOGICAL_CONTAINER_ID,
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
   isSidebarProjectThread,
-  buildSidebarEntitySectionId,
-  insertSidebarSectionAfter,
-  type CollapsibleSidebarSectionId,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
-  type SidebarSectionId,
   type ThreadComparator,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
+import type {
+  CollapsibleSidebarSectionId,
+  SidebarSectionId,
+} from "../model/sidebar-section-id.js";
+import {
+  buildSidebarEntitySectionId,
+  insertSidebarSectionAfter,
+} from "../model/sidebar-section-order.js";
 import {
   SortableProjectRow,
   type ProjectListRowModel,
@@ -120,7 +124,6 @@ import {
   useSidebarMachineHosts,
   type SidebarProject,
 } from "../model/use-sidebar-data.js";
-import { getSidebarThreadDisplayTitle } from "../model/sidebar-thread.js";
 
 export interface ProjectListProps {
   activeThreadId: string | null;
@@ -141,7 +144,7 @@ type ThreadListStatus = "loading" | "ready" | "unavailable";
 
 interface ProjectThreadListStateArgs {
   status: ThreadListStatus;
-  threads: ThreadListEntry[] | undefined;
+  threads: SidebarThread[] | undefined;
 }
 
 interface ToggleCollapsedIdListArgs {
@@ -165,7 +168,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
   status: "loading",
 };
 
-const EMPTY_THREAD_LIST: ThreadListEntry[] = [];
+const EMPTY_THREAD_LIST: SidebarThread[] = [];
 const EMPTY_SECTION_DEFINITIONS: readonly SidebarSectionDefinition[] = [];
 
 function getProjectThreadListState({
@@ -217,17 +220,17 @@ function normalizeCollapsedSidebarSectionIds(
 type ActiveRename = ReturnType<typeof useSidebarRenameState>;
 
 function getThreadSortTitle(
-  thread: ThreadListEntry,
+  thread: SidebarThread,
   rename: ActiveRename,
 ): string {
   return rename?.kind === "thread" && rename.id === thread.id
     ? rename.name
-    : getSidebarThreadDisplayTitle(thread);
+    : thread.displayTitle;
 }
 
 function compareByTitleAscending(
-  left: ThreadListEntry,
-  right: ThreadListEntry,
+  left: SidebarThread,
+  right: SidebarThread,
   rename: ActiveRename = null,
 ): number {
   const titleDelta = getThreadSortTitle(left, rename).localeCompare(
@@ -416,7 +419,7 @@ export function ActiveSidebarModeSections({
 interface GroupedModePinnedProps {
   pinnedReorderPending: boolean;
   pinnedRootNodes: readonly ProjectThreadNode[];
-  pinnedThreads: readonly ThreadListEntry[];
+  pinnedThreads: readonly SidebarThread[];
   onReorderPinnedThread: NonNullable<
     PinnedThreadTreeProps["onReorderPinnedRoot"]
   >;
@@ -426,7 +429,7 @@ function buildGroupSectionItem(
   id: string,
   key: SidebarSectionId,
   name: string,
-  threads: readonly ThreadListEntry[],
+  threads: readonly SidebarThread[],
   compareThreads: ThreadComparator,
   draftThreadIds: ReadonlySet<string>,
   groupThreadsByEnvironment: boolean,
@@ -469,7 +472,7 @@ function useGroupedModeThreadDnd({
   onOrderChange: (order: SidebarSectionId[]) => void;
   pinned: GroupedModePinnedProps;
   rootItems: readonly ProjectThreadItem[];
-  threads: readonly ThreadListEntry[];
+  threads: readonly SidebarThread[];
 }) {
   const expandThread = useCallback(
     (threadId: string) => {
@@ -513,11 +516,12 @@ interface ProjectModeSectionsProps
   onProjectSelect?: () => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
   onToggleThreadCollapsed: ToggleCollapsedId;
+  personalProjectId: string | null;
   pinnedSection: BuiltInSidebarSectionOptions;
   projects: readonly SidebarProject[];
   selectedThreadId?: string;
   status: ThreadListStatus;
-  threads: ThreadListEntry[];
+  threads: SidebarThread[];
   threadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
 }
 
@@ -538,6 +542,7 @@ function ProjectModeSections({
   pinnedSection,
   pinnedThreads,
   onReorderPinnedThread,
+  personalProjectId,
   projects,
   selectedThreadId,
   showPinnedSection,
@@ -564,7 +569,7 @@ function ProjectModeSections({
     [setCollapsedProjectIdList],
   );
   const threadsByProject = useMemo(() => {
-    const grouped = new Map<string, ThreadListEntry[]>();
+    const grouped = new Map<string, SidebarThread[]>();
     const resolveSidebarProjectId = createSidebarProjectIdResolver(
       new Map(threads.map((thread) => [thread.id, thread])),
     );
@@ -606,13 +611,13 @@ function ProjectModeSections({
     }
     return rows;
   }, [projectRows]);
-  const personalThreads = useMemo(
-    () =>
-      threadsByProject
-        .get(PERSONAL_PROJECT_ID)
-        ?.filter(isSidebarProjectThread) ?? EMPTY_THREAD_LIST,
-    [threadsByProject],
-  );
+  const personalThreads = useMemo(() => {
+    if (personalProjectId === null) return EMPTY_THREAD_LIST;
+    return (
+      threadsByProject.get(personalProjectId)?.filter(isSidebarProjectThread) ??
+      EMPTY_THREAD_LIST
+    );
+  }, [personalProjectId, threadsByProject]);
   const { onOrderChange, order, persistedOrder } = useSidebarModeSectionOrder({
     mode: "project",
     entitySectionIds: projectSectionIds,
@@ -691,7 +696,7 @@ function ProjectModeSections({
       collapsedThreads: personalThreads,
       content: (
         <ProjectThreadTree
-          projectId={PERSONAL_PROJECT_ID}
+          projectId={personalProjectId ?? undefined}
           dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
           rootItems={personalItems}
           threadListState={getProjectThreadListState({
@@ -716,10 +721,13 @@ function ProjectModeSections({
       id: "threads",
       title: "Threads",
       threads: personalThreads,
-      onNewThread: () => onCreateProjectThread(PERSONAL_PROJECT_ID),
+      onNewThread:
+        personalProjectId === null
+          ? undefined
+          : () => onCreateProjectThread(personalProjectId),
       renderContent: (close: () => void) => (
         <ProjectThreadTree
-          projectId={PERSONAL_PROJECT_ID}
+          projectId={personalProjectId ?? undefined}
           rootItems={personalItems}
           threadListState={getProjectThreadListState({
             status,
@@ -843,13 +851,13 @@ interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   pinnedSection: BuiltInSidebarSectionOptions;
   pinnedReorderPending: boolean;
   pinnedRootNodes: readonly ProjectThreadNode[];
-  pinnedThreads: readonly ThreadListEntry[];
+  pinnedThreads: readonly SidebarThread[];
   onReorderPinnedThread: NonNullable<
     PinnedThreadTreeProps["onReorderPinnedRoot"]
   >;
   selectedThreadId?: string;
   status: ThreadListStatus;
-  threads: ThreadListEntry[];
+  threads: SidebarThread[];
   threadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
   effectivePinnedThreadIds: ReadonlySet<string>;
 }
@@ -954,7 +962,7 @@ interface MachineModeSectionsProps
   isSectionDisplayOptionsOpen: (sectionId: SidebarSectionId) => boolean;
   selectedThreadId?: string;
   status: ThreadListStatus;
-  threads: ThreadListEntry[];
+  threads: SidebarThread[];
   threadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
 }
 
@@ -1316,8 +1324,10 @@ function ProjectListComponent({
 }: ProjectListProps) {
   const sdk = useSdk();
   const sidebarActions = experimental_useSidebarThreadActions();
-  const { status, sections, projects, archived } = useSidebarData();
-  const threads = useMemo<ThreadListEntry[]>(
+  const { status, sections, projects, personalProject, archived } =
+    useSidebarData();
+  const personalProjectId = personalProject?.id ?? null;
+  const threads = useMemo<SidebarThread[]>(
     () => projects.flatMap((project) => project.threads),
     [projects],
   );
@@ -1357,10 +1367,10 @@ function ProjectListComponent({
     [sdk],
   );
   const openRootComposeForProject = useCallback(
-    (projectId: string, sectionId?: string) => {
+    (projectId: string | null, sectionId?: string) => {
       onProjectSelect?.();
       sidebarActions.openNewThread({
-        projectId,
+        ...(projectId !== null ? { projectId } : {}),
         ...(sectionId ? { sectionId } : {}),
         focusPrompt: true,
       });
@@ -1374,13 +1384,13 @@ function ProjectListComponent({
     [openRootComposeForProject],
   );
   const handleCreateProjectlessThread = useCallback(() => {
-    openRootComposeForProject(PERSONAL_PROJECT_ID);
-  }, [openRootComposeForProject]);
+    openRootComposeForProject(personalProjectId);
+  }, [openRootComposeForProject, personalProjectId]);
   const handleCreateThreadInSection = useCallback(
     (sectionId: string) => {
-      openRootComposeForProject(PERSONAL_PROJECT_ID, sectionId);
+      openRootComposeForProject(personalProjectId, sectionId);
     },
-    [openRootComposeForProject],
+    [openRootComposeForProject, personalProjectId],
   );
   const [isSectionCreateDialogOpen, setIsSectionCreateDialogOpen] =
     useState(false);
@@ -1751,6 +1761,7 @@ function ProjectListComponent({
           )}
           renderProject={() => (
             <ProjectModeSections
+              personalProjectId={personalProjectId}
               projects={projects}
               threads={threads}
               draftThreadIds={draftThreadIds}

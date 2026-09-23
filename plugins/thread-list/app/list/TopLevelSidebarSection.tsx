@@ -36,7 +36,7 @@ import type { SidebarSortableDragBindings } from "../rows/sortableMotion.js";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
-} from "@bb/client-core";
+} from "../model/thread-activity.js";
 import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
 import {
   useThreadGroupSplitIndicator,

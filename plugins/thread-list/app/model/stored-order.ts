@@ -1,4 +1,4 @@
-import { arrayMove } from "@bb/client-core";
+import { arrayMove } from "./array-move.js";
 
 interface ArrangeByStoredOrderArgs<TItem> {
   items: readonly TItem[];

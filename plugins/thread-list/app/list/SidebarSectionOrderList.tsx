@@ -4,7 +4,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { SidebarSectionId } from "@bb/client-core";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import type { ReorderDndContextProps } from "../ui/useReorderDnd.js";
 
 interface SidebarSectionOrderListProps {

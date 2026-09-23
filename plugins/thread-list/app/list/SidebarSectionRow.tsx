@@ -25,7 +25,8 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "../ui/sidebar-hover-actions.js";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { CollapsedChildActivity, SidebarSectionId } from "@bb/client-core";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
+import type { CollapsedChildActivity } from "../model/thread-activity.js";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,

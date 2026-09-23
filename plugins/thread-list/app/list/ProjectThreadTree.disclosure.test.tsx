@@ -2,15 +2,14 @@
 
 import { cleanup, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
-import { toPluginSidebarThread } from "../model/fixtures.js";
+import { makeSidebarThread } from "../model/fixtures.js";
 
 installTestPluginRuntime();
 const { ProjectThreadTree } = await import("./ProjectRow.js");
@@ -19,9 +18,11 @@ function Slot({ children }: { children: ReactNode }) {
   return <TooltipProvider>{children}</TooltipProvider>;
 }
 
-function makePlainThreads(count: number): ThreadListEntry[] {
+function makePlainThreads(count: number): SidebarThread[] {
   return Array.from({ length: count }, (_, index) =>
-    makeThreadListEntry({
+    makeSidebarThread({
+      lastReadAt: 100,
+      latestAttentionAt: 100,
       id: `thr_item_${index}`,
       title: `Thread ${index}`,
       titleFallback: `Thread ${index}`,
@@ -32,7 +33,7 @@ function makePlainThreads(count: number): ThreadListEntry[] {
 }
 
 function renderThreadTree(
-  threads: ThreadListEntry[],
+  threads: SidebarThread[],
   { selectedThreadId }: { selectedThreadId?: string } = {},
 ) {
   return renderSlot(
@@ -51,7 +52,7 @@ function renderThreadTree(
         />
       ),
     },
-    { sidebarThreads: { threads: threads.map((thread) => toPluginSidebarThread(thread)) } },
+    { sidebarThreads: { threads } },
   );
 }
 

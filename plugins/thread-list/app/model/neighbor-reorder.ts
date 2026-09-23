@@ -1,3 +1,5 @@
+import { arrayMove } from "./array-move.js";
+
 interface NeighborReorderItem {
   id: string;
 }
@@ -8,9 +10,43 @@ export interface NeighborReorderRequest {
   previousItemId: string | null;
 }
 
+interface BuildNeighborReorderRequestArgs<Item extends NeighborReorderItem> {
+  activeId: string;
+  items: readonly Item[];
+  overId: string;
+}
+
 interface ApplyNeighborReorderArgs<Item extends NeighborReorderItem> {
   items: readonly Item[];
   request: NeighborReorderRequest;
+}
+
+export function buildNeighborReorderRequest<Item extends NeighborReorderItem>({
+  activeId,
+  items,
+  overId,
+}: BuildNeighborReorderRequestArgs<Item>): NeighborReorderRequest | null {
+  if (activeId === overId) {
+    return null;
+  }
+
+  const oldIndex = items.findIndex((item) => item.id === activeId);
+  const newIndex = items.findIndex((item) => item.id === overId);
+  if (oldIndex === -1 || newIndex === -1) {
+    return null;
+  }
+
+  const reorderedItems = arrayMove(items, oldIndex, newIndex);
+  const movedIndex = reorderedItems.findIndex((item) => item.id === activeId);
+  if (movedIndex === -1) {
+    return null;
+  }
+
+  return {
+    itemId: activeId,
+    previousItemId: reorderedItems[movedIndex - 1]?.id ?? null,
+    nextItemId: reorderedItems[movedIndex + 1]?.id ?? null,
+  };
 }
 
 export function applyNeighborReorder<Item extends NeighborReorderItem>({

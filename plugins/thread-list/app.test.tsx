@@ -8,7 +8,6 @@ import {
   renderSlot,
   type RenderSlotOptions,
 } from "@get-bb/plugin-sdk/testing/app";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { makePluginProject, makeSidebarThread } from "./app/model/fixtures.js";
 import {
   resetPreferencesSyncForTest,
@@ -22,6 +21,8 @@ import {
 const app = await loadPluginApp(() => import("./app"));
 const registration = app.threadLists[0];
 if (!registration) throw new Error("thread-list slot not registered");
+
+const PERSONAL_PROJECT_ID = "proj_personal";
 
 const PROJECTS = [
   makePluginProject({

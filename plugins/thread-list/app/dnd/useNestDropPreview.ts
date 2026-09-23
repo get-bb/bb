@@ -1,9 +1,9 @@
-import type { ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import type {
   ProjectThreadNode,
   SidebarSectionDefinition,
   ThreadComparator,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
 import { useAtomValue } from "jotai";
 import { sidebarGroupThreadsByEnvironmentAtom } from "../preferences/atoms.js";
 import { resolveSidebarNestPreviewBeforeKey } from "./sidebarNestPreviewPlacement.js";
@@ -15,7 +15,7 @@ interface UseNestDropPreviewArgs {
   pinnedRootNodes: readonly ProjectThreadNode[];
   sectionDnd: SectionThreadDndState | null;
   sections: readonly SidebarSectionDefinition[];
-  threads: readonly ThreadListEntry[];
+  threads: readonly SidebarThread[];
 }
 
 export function useNestDropPreview({
