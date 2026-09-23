@@ -243,6 +243,43 @@ describe("bb/forkable-plugin-imports", () => {
     );
   });
 
+  it("rejects workspace packages published under other names", () => {
+    const reports = lint(pluginFile, (visitors) => {
+      visitors.ImportDeclaration({
+        source: literal("bb-environment-provider-host/git"),
+      });
+      visitors.ImportDeclaration({ source: literal("bb-plugin-tasks") });
+      visitors.ImportDeclaration({
+        source: literal("@get-bb/plugin-sdk/host"),
+      });
+      visitors.ImportDeclaration({ source: literal("cross-spawn") });
+    });
+
+    expect(reports).toEqual([
+      expect.stringContaining(
+        "bb-environment-provider-host/git is a bb workspace package",
+      ),
+      expect.stringContaining("bb-plugin-tasks is a bb workspace package"),
+    ]);
+  });
+
+  it("rejects internal SDK modules and allows its public entry points", () => {
+    const reports = lint(pluginFile, (visitors) => {
+      visitors.ImportDeclaration({
+        source: literal("@get-bb/plugin-sdk/internal/plugin-app-collector"),
+      });
+      visitors.ImportDeclaration({
+        source: literal("@get-bb/plugin-sdk/testing/app"),
+      });
+    });
+
+    expect(reports).toEqual([
+      expect.stringContaining(
+        "@get-bb/plugin-sdk/internal/plugin-app-collector is an internal SDK module",
+      ),
+    ]);
+  });
+
   it("allows registry files through @/ and rejects other @/ paths", () => {
     const reports = lint(pluginFile, (visitors) => {
       visitors.ImportDeclaration({ source: literal("@/components/ui/button") });

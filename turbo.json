@@ -173,7 +173,12 @@
     },
     "prepare:bundled": {
       "dependsOn": ["topo", "^build"],
-      "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.bundled-runtime/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!dist/**",
+        "!.bundled-runtime/**",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ],
       "outputs": [".bundled-runtime/**"]
     },
     "@bb/bundled-plugins#build": {

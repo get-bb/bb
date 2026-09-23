@@ -2290,6 +2290,9 @@ importers:
 
   packages/plugin-sdk:
     dependencies:
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -20856,7 +20859,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

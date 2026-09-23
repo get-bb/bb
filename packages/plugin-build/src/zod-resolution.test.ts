@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -15,6 +15,28 @@ afterEach(async () => {
   );
 });
 
+async function installPackage(
+  name: string,
+  requiredFrom: string,
+  nodeModules: string,
+  installed: Set<string>,
+): Promise<void> {
+  if (installed.has(name)) return;
+  installed.add(name);
+  const manifestPath = createRequire(requiredFrom).resolve(
+    `${name}/package.json`,
+  );
+  await cp(dirname(manifestPath), join(nodeModules, name), {
+    recursive: true,
+  });
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+  for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+    await installPackage(dependency, manifestPath, nodeModules, installed);
+  }
+}
+
 async function installSdk(
   pluginDir: string,
   options?: { omitZod?: boolean },
@@ -25,13 +47,19 @@ async function installSdk(
   for (const entry of ["dist", "bundled-types", "package.json"]) {
     await cp(join(sdkSource, entry), join(target, entry), { recursive: true });
   }
-  if (options?.omitZod === true) return;
-  const sdkRequire = createRequire(join(sdkSource, "package.json"));
-  await cp(
-    dirname(sdkRequire.resolve("zod/package.json")),
-    join(target, "node_modules", "zod"),
-    { recursive: true },
-  );
+  const sdkManifestPath = join(sdkSource, "package.json");
+  const sdkManifest = JSON.parse(await readFile(sdkManifestPath, "utf8")) as {
+    dependencies: Record<string, string>;
+  };
+  const installed = new Set(options?.omitZod === true ? ["zod"] : []);
+  for (const dependency of Object.keys(sdkManifest.dependencies)) {
+    await installPackage(
+      dependency,
+      sdkManifestPath,
+      join(target, "node_modules"),
+      installed,
+    );
+  }
 }
 
 it("bundles SDK-owned Zod without requiring the plugin to declare it", async () => {

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isSemanticComment } from "./lib/semantic-comment.mjs";
@@ -20,6 +20,28 @@ const registryAliases = new Set(
     )
     .map((file) => `@/${file.target.replace(/\.(?:tsx?|jsx?)$/u, "")}`),
 );
+const workspacePackageNames = new Set(
+  ["apps", "packages", "plugins", "tests", "examples/plugins"]
+    .flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir)).map((name) =>
+        path.join(repoRoot, dir, name, "package.json"),
+      ),
+    )
+    .filter((manifestPath) => existsSync(manifestPath))
+    .map((manifestPath) => JSON.parse(readFileSync(manifestPath, "utf8")).name)
+    .filter((name) => name !== "@get-bb/plugin-sdk"),
+);
+
+function isWorkspacePackage(specifier) {
+  const segments = specifier.split("/");
+  return (
+    specifier.startsWith("@bb/") ||
+    workspacePackageNames.has(
+      specifier.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0],
+    )
+  );
+}
+
 const moduleLoaderCalls = new Set([
   "require",
   "vi.mock",
@@ -122,10 +144,17 @@ const forkablePluginImports = {
     function check(node) {
       if (node?.type !== "Literal" || typeof node.value !== "string") return;
       const specifier = node.value;
-      if (specifier.startsWith("@bb/")) {
+      if (isWorkspacePackage(specifier)) {
         context.report({
           node,
           message: `${specifier} is a bb workspace package, which a copy of this plugin cannot install. Forkable plugins import only @get-bb/plugin-sdk, npm packages, their own files, and registry components through @/ (for example @/components/ui/button) (scripts/forkable-plugins.json).`,
+        });
+        return;
+      }
+      if (specifier.startsWith("@get-bb/plugin-sdk/internal/")) {
+        context.report({
+          node,
+          message: `${specifier} is an internal SDK module that bb can change in any release. Forkable plugins import only the SDK's public entry points (scripts/forkable-plugins.json).`,
         });
         return;
       }

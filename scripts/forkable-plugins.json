@@ -1,6 +1,4 @@
 {
-  "$comment": "Built-in plugins that must stay forkable: a copy of the directory installs, typechecks, tests, and builds outside this monorepo with published packages only. They import @get-bb/plugin-sdk, npm packages, and their own files. UI components come from the component registry through the scaffold's @/ alias: in this repository the plugin's tsconfig maps @/* onto packages/shared-ui/src (and @/components/ui/icon onto the registry's host-backed icon), and a fork writes the registry items it imports into the copy instead. The bb/forkable-plugin-imports lint rule, run by each plugin's lint script, rejects @bb/* imports and @/ imports that no registry item provides. `pnpm check:plugin-forks` (scripts/check-plugin-forks.mjs) builds that copy in a temporary directory and runs its install, typecheck, tests, and bb plugin build.",
-  "plugins": [
-    "plugins/thread-list"
-  ]
+  "$comment": "Built-in plugins that must stay forkable: a copy of the directory installs, typechecks, tests, and builds outside this monorepo with published packages only. See docs/forkable-plugins.md. The bb/forkable-plugin-imports lint rule, run by each plugin's lint script, rejects imports of workspace packages and @/ imports that no registry item provides. `pnpm check:plugin-forks` (scripts/check-plugin-forks.mjs) builds that copy in a temporary directory and runs its install, typecheck, tests, and bb plugin build.",
+  "plugins": ["plugins/thread-list"]
 }
