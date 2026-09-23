@@ -11,10 +11,11 @@ import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { ResourceDetailPage } from "@bb/shared-ui/resource-list";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
-  AutomationResponse,
+  AutomationDetailResponse,
   AutomationRunResponse,
 } from "bb-plugin-automations/rpc-types";
 import type {
@@ -24,6 +25,7 @@ import type {
 import {
   AutomationDetailView as AutomationDetailViewBase,
   AgentAutomationDefinition,
+  ScriptAutomationDefinition,
 } from "bb-plugin-automations/detail-view";
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
@@ -159,13 +161,39 @@ function renderPlugin(
   );
 }
 
+describe("Resource detail header", () => {
+  it("keeps wrapped title metadata in the title column beside the leading icon", () => {
+    render(
+      <ResourceDetailPage
+        leading={<span>Leading icon</span>}
+        title="A long resource title"
+        titleMeta={<span>Category</span>}
+      >
+        <div>Content</div>
+      </ResourceDetailPage>,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: "A long resource title",
+    });
+    const titleRow = heading.parentElement;
+    const titleColumn = titleRow?.parentElement;
+    const titleAndIcon = titleColumn?.parentElement;
+    const leading = screen.getByText("Leading icon");
+
+    expect(titleRow?.contains(screen.getByText("Category"))).toBe(true);
+    expect(titleColumn?.contains(leading)).toBe(false);
+    expect(titleAndIcon?.contains(leading)).toBe(true);
+  });
+});
+
 describe("Plugin detail recipe", () => {
   it("omits Capabilities when the plugin has no capability rows", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["release", "Release"],
+      ["release", "Details"],
     ]);
   });
 
@@ -187,7 +215,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["release", "Release"],
+      ["release", "Details"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -201,7 +229,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["release", "Release"],
+      ["release", "Details"],
       ["activity", "Background services"],
     ]);
   });
@@ -434,10 +462,12 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(renderedRecipe(container)).toContainEqual([
+    expect(
+      screen.getByRole("button", { name: "GitHub settings" }),
+    ).toBeTruthy();
+    expect(renderedRecipe(container).map(([kind]) => kind)).not.toContain(
       "configuration",
-      "Configuration",
-    ]);
+    );
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
@@ -752,7 +782,7 @@ describe("Skill detail recipe", () => {
   });
 });
 
-const AUTOMATION: AutomationResponse = {
+const AUTOMATION: AutomationDetailResponse = {
   id: "auto_1",
   projectId: "proj_personal",
   name: "Nightly digest",
@@ -1179,6 +1209,8 @@ describe("Automation detail recipe", () => {
             ...AUTOMATION,
             execution: {
               mode: "script",
+              workingDirectory: { type: "project" },
+              resolvedWorkingDirectory: "/srv/projects/digest",
               script: storedScript,
               interpreter: "bash",
               timeoutMs: 60_000,
@@ -1211,6 +1243,8 @@ describe("Automation detail recipe", () => {
     expect(screen.getByRole("heading", { name: "Script" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Script file" })).toBeNull();
     expect(container.textContent).toContain("2 env vars");
+    expect(container.textContent).toContain("/srv/projects/digest");
+    expect(container.textContent).not.toContain("Project source");
     expect(container.textContent).not.toContain("/private/reports");
     expect(container.textContent).not.toContain("secret-token");
 
@@ -1249,6 +1283,47 @@ describe("Automation detail recipe", () => {
       "bg-surface-recessed/55",
     );
   });
+
+  it.each([
+    [
+      { type: "automation-storage" } as const,
+      "/var/lib/bb/plugins/automations/scripts/auto_1",
+      "/var/lib/bb/plugins/automations/scripts/auto_1",
+    ],
+    [{ type: "project" } as const, "/srv/projects/bb", "/srv/projects/bb"],
+    [
+      { type: "path", path: "/srv/automation-work" } as const,
+      "/srv/automation-work",
+      "/srv/automation-work",
+    ],
+    [{ type: "project" } as const, null, "Working directory unavailable"],
+  ])(
+    "shows the resolved script working directory",
+    (workingDirectory, resolvedWorkingDirectory, label) => {
+      const { container } = render(
+        <ScriptAutomationDefinition
+          execution={{
+            mode: "script",
+            script: "pwd\n",
+            workingDirectory,
+            resolvedWorkingDirectory,
+            timeoutMs: 60_000,
+          }}
+        />,
+      );
+
+      expect(container.textContent).toContain(label);
+      expect(
+        container.querySelector(
+          `[aria-label="${
+            label === "Working directory unavailable"
+              ? label
+              : `Working directory: ${label}`
+          }"]`,
+        ),
+      ).not.toBeNull();
+    },
+  );
 
   it("uses the shared shimmer treatment while runs are loading", async () => {
     const { container } = render(

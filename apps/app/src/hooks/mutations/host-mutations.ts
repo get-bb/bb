@@ -4,6 +4,7 @@ import { apiClient } from "@/lib/api-server";
 import { request } from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { invalidateHostListQueries } from "../cache-owners/mutation-cache-effects";
+import { applyHostRenameResult } from "../cache-owners/system-cache-effects";
 
 interface RenameHostRequest {
   hostId: string;
@@ -19,7 +20,8 @@ export function useRenameHost() {
     },
     mutationFn: ({ hostId, name }: RenameHostRequest) =>
       sdk.hosts.update({ hostId, name }),
-    onSuccess: () => {
+    onSuccess: (host) => {
+      applyHostRenameResult({ host, queryClient });
       invalidateHostListQueries({ queryClient });
     },
   });

@@ -39,11 +39,6 @@ interface MergeLatestTimelineRowsResult {
   rows: TimelineRow[];
 }
 
-interface TimelineRowIdentityEntry {
-  row: TimelineRow;
-  signature: string;
-}
-
 interface PreserveTimelineRowIdentityArgs {
   nextRows: readonly TimelineRow[];
   previousRows: readonly TimelineRow[];
@@ -75,6 +70,24 @@ interface RecoverLoadedTimelineAfterStaleCursorArgs {
   current: LoadedTimelineState;
   latestTimeline: ThreadTimelineResponse;
   surfaceKey: string;
+}
+
+export function resolveLoadedTimelineSurfaceKey(
+  baseSurfaceKey: string,
+  latestTimeline:
+    | Pick<
+        ThreadTimelineResponse,
+        "completedTurnDisplay" | "contextBoundarySeq"
+      >
+    | undefined,
+): string {
+  if (latestTimeline === undefined) {
+    return baseSurfaceKey;
+  }
+  const displaySurfaceKey = `${baseSurfaceKey}:completed-turns:${latestTimeline.completedTurnDisplay}`;
+  return latestTimeline.contextBoundarySeq === null
+    ? displaySurfaceKey
+    : `${displaySurfaceKey}:context-boundary:${latestTimeline.contextBoundarySeq}`;
 }
 
 export function buildLoadedTimelineState({
@@ -135,32 +148,21 @@ function timelineRowIdentitySignature(row: TimelineRow): string {
   ].join("\u001f");
 }
 
-function buildTimelineRowIdentityMap(
-  rows: readonly TimelineRow[],
-): ReadonlyMap<string, TimelineRowIdentityEntry> {
-  const rowsById = new Map<string, TimelineRowIdentityEntry>();
-  for (const row of rows) {
-    rowsById.set(row.id, {
-      row,
-      signature: timelineRowIdentitySignature(row),
-    });
-  }
-  return rowsById;
-}
-
 function preserveTimelineRowIdentity({
   nextRows,
   previousRows,
 }: PreserveTimelineRowIdentityArgs): TimelineRow[] {
-  const previousRowsById = buildTimelineRowIdentityMap(previousRows);
+  const previousRowsById = new Map(previousRows.map((row) => [row.id, row]));
   return nextRows.map((row) => {
     const previous = previousRowsById.get(row.id);
+    if (previous === row) return row;
     if (
       previous &&
-      previous.signature === timelineRowIdentitySignature(row) &&
-      JSON.stringify(previous.row) === JSON.stringify(row)
+      timelineRowIdentitySignature(previous) ===
+        timelineRowIdentitySignature(row) &&
+      JSON.stringify(previous) === JSON.stringify(row)
     ) {
-      return previous.row;
+      return previous;
     }
     return row;
   });
@@ -184,12 +186,18 @@ function joinOlderTimelineRowChildren(
     older.children !== null &&
     loaded.children !== null
   ) {
+    const children = prependOlderTimelineRows({
+      olderRows: older.children,
+      loadedRows: loaded.children,
+    });
+    if (
+      areTimelineRowReferencesEqual({ left: children, right: loaded.children })
+    ) {
+      return loaded;
+    }
     return {
       ...loaded,
-      children: prependOlderTimelineRows({
-        olderRows: older.children,
-        loadedRows: loaded.children,
-      }),
+      children,
     };
   }
   if (
@@ -198,12 +206,21 @@ function joinOlderTimelineRowChildren(
     loaded.kind === "work" &&
     loaded.workKind === "delegation"
   ) {
+    const childRows = prependOlderTimelineRows({
+      olderRows: older.childRows,
+      loadedRows: loaded.childRows,
+    });
+    if (
+      areTimelineRowReferencesEqual({
+        left: childRows,
+        right: loaded.childRows,
+      })
+    ) {
+      return loaded;
+    }
     return {
       ...loaded,
-      childRows: prependOlderTimelineRows({
-        olderRows: older.childRows,
-        loadedRows: loaded.childRows,
-      }),
+      childRows,
     };
   }
   return loaded;

@@ -9,6 +9,6 @@ Agents on providers without a native question tool can stop and ask you to choos
 
 ## How it works
 
-The plugin gives agents an `AskUserQuestion` tool. The tool opens the card and waits for your answer. If you dismiss the card or do not answer in time, the agent continues with its own judgement. Only one card can wait for you at a time. The agent therefore puts all of its questions in one call.
+The question card stays open after the agent finishes working. Answering lets the agent continue with your choice. Cards expire after 30 minutes. Dismissing a card or letting it expire does not restart an idle agent; an active agent can continue using its own judgment. Only one card can be open at a time.
 
 The tool is added only to providers that lack a native question tool. Providers with their own question tool, such as Claude Code, keep their native behavior.

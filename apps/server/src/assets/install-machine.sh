@@ -4,29 +4,34 @@ set -eu
 
 usage() {
   cat >&2 <<'EOF'
-Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>]
-       install.sh --bootstrap-env <NAME>
+Usage: install.sh --bootstrap-env <NAME> [--host-daemon-port <port>]
+       install.sh --adopt --data-dir <path> [--host-daemon-port <port>]
        install.sh --start|--stop|--uninstall --host-id <host-id> [--server-url <url>] [--data-dir <path>]
 
-The first three options are required. --machine-code is required through bb connect.
+Machines enroll from a private bootstrap bundle. Get the one-line command that
+carries it from Settings -> Machines -> Add a machine, or from
+`bb machine create --provider manual`. That command works through bb connect,
+Tailscale, and any other address machines can reach.
+--adopt installs the service for a data directory that is already enrolled,
+such as the one a server move leaves behind, reading its machine ID from
+auth.json and its server address and credentials from config.json.
 By default, the installer assigns this enrolled daemon its own local API port.
 EOF
   exit 2
 }
 
 bootstrap_env=
-join_code=
 host_id=
 server_url=
-machine_code=
 requested_host_daemon_port=
 lifecycle_action=
 requested_data_dir=
+adopt=no
+adopted_identity=
 
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
 PACKAGE_DOWNLOAD_RETRIES=3
-MACHINE_CODE_REDEEM_TIMEOUT_SECONDS=30
 DAEMON_WAIT_ATTEMPTS=60
 WAIT_PROGRESS_EVERY_ATTEMPTS=5
 
@@ -162,17 +167,59 @@ run_lifecycle() {
   if [ "$platform" = darwin ]; then
     service_name="app.getbb.host-daemon.$lifecycle_slug"
     service_file="$HOME/Library/LaunchAgents/$service_name.plist"
+    system_service_file=
   else
     service_name="bb-host-daemon-$lifecycle_slug.service"
     service_file="$HOME/.config/systemd/user/$service_name"
     system_service_file="$data_dir/systemd/$service_name"
-    if [ -f "$system_service_file" ]; then
-      [ "$(id -u)" -eq 0 ] || { fail_step "Machine system service requires root."; exit 1; }
-      [ ! -e "$service_file" ] || { fail_step "Machine has both user and system services."; exit 1; }
-      [ ! -L "${system_service_file%/*}" ] || { fail_step "Refusing a symlinked machine system service directory."; exit 1; }
-      service_file=$system_service_file
-      systemd_scope=--system
+  fi
+  if [ ! -e "$service_file" ] && { [ -z "$system_service_file" ] || [ ! -e "$system_service_file" ]; }; then
+    discovered_service_file=$(BB_LIFECYCLE_DATA_DIR="$data_dir" node -e '
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const [platform, home] = process.argv.slice(1);
+      const dataDir = process.env.BB_LIFECYCLE_DATA_DIR;
+      const escaped = dataDir.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'"'"'", "&apos;");
+      const systemd = dataDir.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("%", "%%");
+      const directories = platform === "darwin"
+        ? [[path.join(home, "Library", "LaunchAgents"), "app.getbb.host-daemon.", ".plist"]]
+        : [[path.join(home, ".config", "systemd", "user"), "bb-host-daemon-", ".service"], [path.join(dataDir, "systemd"), "bb-host-daemon-", ".service"]];
+      const matches = [];
+      for (const [directory, prefix, suffix] of directories) {
+        let names;
+        try { names = fs.readdirSync(directory); }
+        catch (error) { if (error.code === "ENOENT") continue; throw error; }
+        for (const name of names.sort()) {
+          if (!name.startsWith(prefix) || !name.endsWith(suffix)) continue;
+          const candidate = path.join(directory, name);
+          if (!fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()) continue;
+          const service = fs.readFileSync(candidate, "utf8");
+          if (service.includes(`<key>BB_DATA_DIR</key><string>${escaped}</string>`) || service.includes(`Environment="BB_DATA_DIR=${systemd}"`)) matches.push(candidate);
+        }
+      }
+      if (matches.length > 1) {
+        process.stderr.write(`Machine data directory ${dataDir} is referenced by several services: ${matches.join(", ")}\n`);
+        process.exit(1);
+      }
+      if (matches.length === 1) process.stdout.write(matches[0]);
+    ' "$platform" "$HOME") || { fail_step "Machine data directory is referenced by several services."; exit 1; }
+    if [ -n "$discovered_service_file" ]; then
+      service_name=${discovered_service_file##*/}
+      if [ "$platform" = darwin ]; then
+        service_name=${service_name%.plist}
+        service_file=$discovered_service_file
+      else
+        service_file="$HOME/.config/systemd/user/$service_name"
+        system_service_file="$data_dir/systemd/$service_name"
+      fi
     fi
+  fi
+  if [ -n "$system_service_file" ] && [ -f "$system_service_file" ]; then
+    [ "$(id -u)" -eq 0 ] || { fail_step "Machine system service requires root."; exit 1; }
+    [ ! -e "$service_file" ] || { fail_step "Machine has both user and system services."; exit 1; }
+    [ ! -L "${system_service_file%/*}" ] || { fail_step "Refusing a symlinked machine system service directory."; exit 1; }
+    service_file=$system_service_file
+    systemd_scope=--system
   fi
   if [ -e "$service_file" ]; then
     [ ! -L "$service_file" ] || { fail_step "Machine service belongs to another installation."; exit 1; }
@@ -262,16 +309,13 @@ run_lifecycle() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --bootstrap-env|--join-code|--host-id|--server|--server-url|--machine-code|--host-daemon-port|--data-dir)
+    --bootstrap-env|--host-id|--server-url|--host-daemon-port|--data-dir)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
       case "$1" in
         --bootstrap-env) bootstrap_env=$2 ;;
-        --join-code) join_code=$2 ;;
         --host-id) host_id=$2 ;;
-        --server) server_url=$2 ;;
         --server-url) server_url=$2 ;;
-        --machine-code) machine_code=$2 ;;
         --host-daemon-port) requested_host_daemon_port=$2 ;;
         --data-dir) requested_data_dir=$2 ;;
       esac
@@ -280,6 +324,11 @@ while [ "$#" -gt 0 ]; do
     --start|--stop|--uninstall)
       [ -z "$lifecycle_action" ] || usage
       lifecycle_action=${1#--}
+      shift
+      ;;
+    --adopt)
+      [ "$adopt" = no ] || usage
+      adopt=yes
       shift
       ;;
     -h|--help) usage ;;
@@ -291,9 +340,14 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -n "$lifecycle_action" ]; then
-  [ -z "$bootstrap_env$join_code$machine_code$requested_host_daemon_port" ] || usage
-elif [ -n "$bootstrap_env" ]; then
-  if [ -n "$join_code$host_id$server_url$machine_code" ]; then usage; fi
+  [ -z "$bootstrap_env$requested_host_daemon_port" ] || usage
+  [ "$adopt" = no ] || usage
+elif [ "$adopt" = yes ]; then
+  [ -z "$bootstrap_env$host_id$server_url" ] || usage
+  [ -n "$requested_data_dir" ] || usage
+else
+  [ -n "$bootstrap_env" ] || usage
+  if [ -n "$host_id$server_url" ]; then usage; fi
   host_id=$(node -e '
     const name = process.argv[1];
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) process.exit(2);
@@ -313,13 +367,15 @@ elif [ -n "$bootstrap_env" ]; then
   ' "$bootstrap_env") || usage
   bootstrap_payload=$(node -e 'process.stdout.write(process.env[process.argv[1]])' "$bootstrap_env")
   unset "$bootstrap_env"
-else
-  [ -n "$join_code" ] || usage
 fi
-[ -n "$host_id" ] || usage
-if [ -z "$lifecycle_action" ]; then [ -n "$server_url" ] || usage; fi
+if [ "$adopt" = no ]; then
+  [ -n "$host_id" ] || usage
+  if [ -z "$lifecycle_action" ]; then [ -n "$server_url" ] || usage; fi
+fi
 printf '\n  %s\n\n' "$(bold "bb machine setup")"
-active_step "Setting up this machine as $host_id for $server_url"
+if [ "$adopt" = no ]; then
+  active_step "Setting up this machine as $host_id for $server_url"
+fi
 
 case "$(uname -s)" in
   Darwin) platform=darwin ;;
@@ -359,6 +415,44 @@ if [ -n "$lifecycle_action" ]; then
   exit 0
 fi
 
+if [ "$adopt" = yes ]; then
+  if ! adopted_identity=$(node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const dataDir = path.resolve(process.argv[1]);
+    const fail = (message) => {
+      process.stdout.write(message);
+      process.exit(1);
+    };
+    const readJson = (name, missing) => {
+      const file = path.join(dataDir, name);
+      let text;
+      try { text = fs.readFileSync(file, "utf8"); }
+      catch { fail(missing); }
+      try { return JSON.parse(text); }
+      catch { fail(`${file} is not valid JSON.`); }
+    };
+    const auth = readJson("auth.json", `${dataDir} has no machine credentials to adopt (auth.json is missing).`);
+    const config = readJson("config.json", `${dataDir} has no server address to adopt (config.json is missing).`);
+    const configFile = path.join(dataDir, "config.json");
+    if (typeof auth?.hostId !== "string" || auth.hostId.length === 0) fail(`${path.join(dataDir, "auth.json")} has no machine ID.`);
+    let url;
+    try { url = new URL(config?.serverUrl); }
+    catch { fail(`${configFile} has no server address.`); }
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail(`${configFile} has an unusable server address.`);
+    const headers = config.serverHeaders ?? (typeof config.machineCredential === "string" ? { "x-bb-connect-machine": config.machineCredential } : {});
+    if (typeof headers !== "object" || headers === null || Array.isArray(headers) || !Object.values(headers).every((value) => typeof value === "string")) fail(`${configFile} has invalid server headers.`);
+    process.stdout.write(JSON.stringify({ dataDir, hostId: auth.hostId, serverUrl: url.href.replace(/\/$/u, ""), headers }));
+  ' "$requested_data_dir"); then
+    fail_step "$adopted_identity"
+    exit 1
+  fi
+  host_id=$(BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'process.stdout.write(JSON.parse(process.env.BB_ADOPTED_IDENTITY).hostId)')
+  server_url=$(BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'process.stdout.write(JSON.parse(process.env.BB_ADOPTED_IDENTITY).serverUrl)')
+  adopted_data_dir=$(BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'process.stdout.write(JSON.parse(process.env.BB_ADOPTED_IDENTITY).dataDir)')
+  active_step "Setting up this machine as $host_id for $server_url"
+fi
+
 require_npm() {
   if ! command -v npm >/dev/null 2>&1; then
     fail_step "bb-app installation requires npm."
@@ -379,7 +473,11 @@ legacy_service_slug=$(printf '%s' "$server_host" | tr '.' '-')
 
 # Each server gets its own data dir and daemon instance, so one machine can
 # serve several bb servers and a full local bb install keeps ~/.bb to itself.
-data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+if [ "$adopt" = yes ]; then
+  data_dir=$adopted_data_dir
+else
+  data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+fi
 mkdir -p "$HOME/.local/bin"
 if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
   shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
@@ -553,6 +651,8 @@ access_config="$package_dir/access.curl"
 chmod 600 "$access_config"
 if [ -n "$bootstrap_env" ]; then
   BB_ENROLLMENT="$bootstrap_payload" node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ENROLLMENT).headers ?? {})) console.log("header = " + JSON.stringify(name + ": " + value))' > "$access_config"
+elif [ "$adopt" = yes ]; then
+  BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ADOPTED_IDENTITY).headers)) console.log("header = " + JSON.stringify(name + ": " + value))' > "$access_config"
 fi
 package_headers="$package_dir/headers"
 host_artifact_digest_file="$data_dir/host-artifact.sha256"
@@ -689,73 +789,15 @@ if [ -n "$bb_app_npm_prefix" ]; then
   fi
 fi
 
-bb_cli="${bb_app%/*}/bb"
-if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
-if [ -n "$bootstrap_env" ]; then
+if [ "$adopt" = no ]; then
+  bb_cli="${bb_app%/*}/bb"
+  if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
   if [ -z "$bb_cli" ]; then
     fail_step "The installed build does not provide the machine enrollment CLI."
     exit 1
   fi
   BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
   bootstrap_payload=
-fi
-
-if [ -n "$machine_code" ]; then
-  connect_apex=$(node -e '
-    const url = new URL(process.argv[1]);
-    const labels = url.hostname.split(".");
-    if (labels.length < 3) process.exit(2);
-    url.hostname = labels.slice(1).join(".");
-    url.pathname = "/";
-    url.search = "";
-    url.hash = "";
-    process.stdout.write(url.origin);
-  ' "$server_url" 2>/dev/null) || {
-    fail_step "Could not derive the bb connect apex from $server_url."
-    exit 1
-  }
-  active_step "Authorizing this machine with bb connect"
-  redeem_response=$(curl -fsS \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
-    --max-time "$MACHINE_CODE_REDEEM_TIMEOUT_SECONDS" \
-    -X POST \
-    -H 'content-type: application/json' \
-    --data "{\"code\":\"$machine_code\"}" \
-    "$connect_apex/api/connect/redeem-machine") || {
-    fail_step "Could not redeem the bb connect machine code."
-    exit 1
-  }
-  printf '%s' "$redeem_response" | node -e '
-    let input = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { input += chunk; });
-    process.stdin.on("end", () => {
-      const body = JSON.parse(input);
-      if (typeof body.credential !== "string" || !body.credential.startsWith("bbcm_")) {
-        process.exit(2);
-      }
-      if (typeof body.machineId !== "string" || body.machineId.length === 0) {
-        process.exit(2);
-      }
-      const fs = require("node:fs");
-      const path = require("node:path");
-      const [dataDir, serverUrl] = process.argv.slice(1);
-      const configPath = path.join(dataDir, "config.json");
-      let config = {};
-      try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); }
-      catch (error) { if (error.code !== "ENOENT") throw error; }
-      config.serverUrl = serverUrl;
-      config.machineCredential = body.credential;
-      config.connectMachineId = body.machineId;
-      const temporary = `${configPath}.${process.pid}.tmp`;
-      fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-      fs.renameSync(temporary, configPath);
-    });
-  ' "$data_dir" "$server_url" || {
-    fail_step "The bb connect machine-code response was invalid."
-    exit 1
-  }
-  complete_step "Authorized this machine with bb connect"
 fi
 
 auth_matches_host() {
@@ -795,7 +837,6 @@ if [ "$already_joined" = no ]; then
   BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --auto-update \
     --host-daemon-port "$host_daemon_port" \
-    --join-code "$join_code" \
     --host-id "$host_id" \
     --server-url "$server_url" >"$join_log" 2>&1 &
   join_pid=$!
@@ -836,7 +877,7 @@ if [ "$platform" = linux ] && [ "$(id -u)" = 0 ] &&
    ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
   systemd_scope=--system
 fi
-if [ -n "$bootstrap_env" ] && [ "$platform" = linux ] &&
+if [ "$platform" = linux ] &&
    [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
   BB_INSTALL_SKIP_SERVICE=1
 fi

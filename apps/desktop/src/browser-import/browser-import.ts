@@ -12,6 +12,8 @@ import {
   type CookieReadResult,
 } from "./cookie-database.js";
 import { readFirefoxCookies } from "./firefox-cookies.js";
+import { discoverBrowserImportSources } from "./discovery.js";
+import type { listBrowserStorageNames } from "./browser-applications.js";
 import { readSafariCookies, safariAccessDenied } from "./safari-cookies.js";
 import {
   findBrowserImportSource,
@@ -41,6 +43,7 @@ export interface BrowserImportService {
 
 export interface CreateBrowserImportServiceArgs {
   context: BrowserImportPathContext;
+  listBrowserStorageNames?: typeof listBrowserStorageNames;
   runSecretCommand?: SecretCommandRunner;
   resolveIcon?: (appPath: string) => Promise<string | undefined>;
   log?: (message: string, details?: Record<string, unknown>) => void;
@@ -154,7 +157,14 @@ export function createBrowserImportService(
 
   async function listSources(): Promise<DesktopBrowserImportSource[]> {
     const sources: DesktopBrowserImportSource[] = [];
-    for (const definition of BROWSER_IMPORT_SOURCES) {
+    const definitions = [
+      ...BROWSER_IMPORT_SOURCES,
+      ...(await discoverBrowserImportSources(
+        context,
+        args.listBrowserStorageNames,
+      )),
+    ];
+    for (const definition of definitions) {
       const unavailable = await unavailableReason(definition, context);
       const icon =
         unavailable === "notInstalled" || unavailable === "unsupportedPlatform"
@@ -177,7 +187,14 @@ export function createBrowserImportService(
   async function readSelection(
     selection: DesktopBrowserImportSelection,
   ): Promise<CookieReadResult> {
-    const definition = findBrowserImportSource(selection.sourceId);
+    const definition =
+      findBrowserImportSource(selection.sourceId) ??
+      (
+        await discoverBrowserImportSources(
+          context,
+          args.listBrowserStorageNames,
+        )
+      ).find((source) => source.id === selection.sourceId);
     if (!definition) throw new BrowserImportError("unknownSource");
     const blocked = await unavailableReason(definition, context);
     if (blocked !== undefined) throw new BrowserImportError(blocked);

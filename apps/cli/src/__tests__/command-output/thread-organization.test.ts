@@ -13,6 +13,8 @@ function queuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "queued-1",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thread-1",
@@ -103,6 +105,36 @@ describe("bb thread organization commands", () => {
     expect(output).toContain("System");
   });
 
+  it.each([false, true])(
+    "shows failures and recovery commands in queue list (scoped: %s)",
+    async (scoped) => {
+      const failureReason =
+        "The provider bridge is unavailable while the plugin is still building";
+      const list = vi.fn(async () => [
+        queuedMessage({
+          waitingOn: { kind: "host-offline", hostName: "Michael-M4" },
+          failureReason,
+        }),
+      ]);
+      stubServerApi({
+        [scoped
+          ? "v1.threads.:id.queued-messages.$get"
+          : "v1.queued-messages.$get"]: list,
+      });
+      await runCommand(
+        ["thread", "queue", "list", ...(scoped ? ["thread-1"] : [])],
+        register,
+      );
+      const output = vi
+        .mocked(console.log)
+        .mock.calls.map((args) => args.join(" "))
+        .join("\n");
+      expect(output).toContain(`Failed queued-1: ${failureReason}`);
+      expect(output).toContain("bb thread queue send thread-1 queued-1");
+      expect(output).not.toContain("waiting for Michael-M4 to reconnect");
+    },
+  );
+
   it("updates a queued message in place", async () => {
     const list = vi.fn(async () => [
       { id: "queued-1", updatedAt: 42 },
@@ -123,9 +155,9 @@ describe("bb thread organization commands", () => {
         "queued-1",
         "revised task",
         "--file",
-        "/tmp/spec.md",
+        "uploaded-spec.md",
         "--file",
-        "/tmp/data.json",
+        "uploaded-data.json",
         "--image",
         "mock-uploaded.png",
         "--image",
@@ -141,8 +173,8 @@ describe("bb thread organization commands", () => {
         expectedUpdatedAt: 42,
         input: [
           { type: "text", text: "revised task", mentions: [] },
-          { type: "localFile", path: "/tmp/spec.md" },
-          { type: "localFile", path: "/tmp/data.json" },
+          { type: "localFile", path: "uploaded-spec.md" },
+          { type: "localFile", path: "uploaded-data.json" },
           { type: "localImage", path: "mock-uploaded.png" },
           { type: "localImage", path: "detail-uploaded.png" },
         ],

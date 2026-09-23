@@ -333,6 +333,7 @@ describe("thread timeline parented pagination", () => {
     insertCrossWindowSubagentEvents(db, thread);
 
     const timeline = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 1_000_000,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
@@ -350,6 +351,7 @@ describe("thread timeline parented pagination", () => {
     insertCrossWindowSubagentEvents(db, thread);
 
     const latest = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 1_000_000,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
@@ -358,6 +360,7 @@ describe("thread timeline parented pagination", () => {
       page: { kind: "latest", segmentLimit: 2 },
     }).response;
     const timeline = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 1_000_000,
       includeDiagnosticOperations: false,
       includeNestedRows: true,

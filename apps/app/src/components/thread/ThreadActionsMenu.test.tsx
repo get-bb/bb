@@ -1,20 +1,36 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  sidebarHiddenGroupsAtom,
+  sidebarManualSectionOrderAtom,
+  sidebarOrganizationModeAtom,
+} from "@/components/sidebar/sidebarCollapsedAtoms";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
 } from "./ThreadActionsMenu";
-import { ThreadSectionMoveProvider } from "./ThreadSectionMoveProvider";
+import {
+  AppThreadSectionMoveProvider,
+  ThreadSectionMoveProvider,
+} from "./ThreadSectionMoveProvider";
+import { useSidebarRename } from "../sidebar/SidebarInlineRename";
 
 const moveThreadToSection = vi.hoisted(() => vi.fn());
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
 const threadActions = vi.hoisted(() => ({
-  archiveThreadAndChildren: vi.fn(),
+  requestArchive: vi.fn(),
   requestDelete: vi.fn(),
   requestRename: vi.fn(),
   togglePin: vi.fn(),
@@ -31,10 +47,7 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
 }));
 
 vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    ...threadActions,
-    renameThread: vi.fn(),
-  }),
+  useThreadActions: () => threadActions,
 }));
 
 const destinations = [
@@ -74,6 +87,43 @@ function renderCompact(children: ReactNode) {
   );
 }
 
+function InlineRenameMenuHarness({ context = false }: { context?: boolean }) {
+  const rename = useSidebarRename({
+    kind: "thread",
+    id: thread.id,
+    name: thread.title ?? "Thread",
+    label: "Thread name",
+    onSave: async () => {},
+  });
+  const row = (
+    <div data-sidebar-rename-row="" data-testid="thread-row">
+      <button type="button" data-sidebar-rename-anchor="">
+        Open thread
+      </button>
+      {rename.editor ?? <span>{thread.title}</span>}
+      {!context && (
+        <ThreadActionsMenu
+          thread={thread}
+          onRename={rename.startEditingFromMenu}
+          onCloseAutoFocus={rename.onCloseAutoFocus}
+        />
+      )}
+    </div>
+  );
+  return context ? (
+    <ThreadActionsContextMenu
+      thread={thread}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
+      disabled={rename.isEditing}
+    >
+      {row}
+    </ThreadActionsContextMenu>
+  ) : (
+    row
+  );
+}
+
 async function openMoveSubmenu() {
   const trigger = await screen.findByRole("menuitem", {
     name: "Move to section",
@@ -92,6 +142,48 @@ afterEach(() => {
 });
 
 describe("ThreadActionsMenu", () => {
+  it("keeps the existing rename dialog for callers without an inline override", async () => {
+    renderWide(<ThreadActionsMenu thread={thread} />);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(threadActions.requestRename).toHaveBeenCalledWith(thread);
+    });
+  });
+
+  it.each([
+    { compact: false, context: false },
+    { compact: false, context: true },
+    { compact: true, context: false },
+    { compact: true, context: true },
+  ])(
+    "hands focus to inline rename ($compact, $context)",
+    async ({ compact, context }) => {
+      (compact ? renderCompact : renderWide)(
+        <InlineRenameMenuHarness context={context} />,
+      );
+      if (context) {
+        fireEvent.contextMenu(screen.getByTestId("thread-row"));
+      } else {
+        const trigger = screen.getByRole("button", { name: "Thread actions" });
+        if (compact) fireEvent.click(trigger);
+        else fireEvent.pointerDown(trigger, { button: 0 });
+      }
+      const item = await screen.findByRole("menuitem", { name: "Rename" });
+      if (compact) fireEvent.click(item);
+      else fireEvent.keyDown(item, { key: "Enter" });
+      const input = await screen.findByRole("textbox", { name: "Thread name" });
+      await waitFor(() => expect(document.activeElement).toBe(input));
+      expect(input).toHaveProperty("value", "Move me");
+      expect(threadActions.requestRename).not.toHaveBeenCalled();
+    },
+  );
+
   it("copies the canonical thread URL from every menu instance", () => {
     renderWide(<ThreadActionsMenu thread={thread} />);
 
@@ -112,6 +204,53 @@ describe("ThreadActionsMenu", () => {
 });
 
 describe("ThreadActionsMenu section moves", () => {
+  it("keeps hidden sections selectable without restoring them to the list", async () => {
+    const store = createStore();
+    const hidden = ["section:sec_planning", "section:sec_building"];
+    const order = [
+      "section:sec_building",
+      "pinned",
+      "threads",
+      "section:sec_planning",
+    ];
+    store.set(sidebarOrganizationModeAtom, "chronological");
+    store.set(sidebarHiddenGroupsAtom, hidden);
+    store.set(sidebarManualSectionOrderAtom, order);
+    const unfiledThread = makeThreadListEntry({
+      ...thread,
+      parentThreadId: null,
+      sectionId: null,
+    });
+    renderWide(
+      <Provider store={store}>
+        <AppThreadSectionMoveProvider
+          sections={[
+            { id: "sec_planning", name: "Planning" },
+            { id: "sec_building", name: "Building" },
+          ]}
+        >
+          <ThreadActionsMenu thread={unfiledThread} />
+        </AppThreadSectionMoveProvider>
+      </Provider>,
+      false,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+    const building = await openMoveSubmenu();
+    expect(screen.getByRole("menuitem", { name: "Planning" })).not.toBeNull();
+    fireEvent.click(building);
+
+    expect(moveThreadToSection).toHaveBeenCalledWith({
+      thread: unfiledThread,
+      sectionId: "sec_building",
+    });
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(hidden);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(order);
+  });
+
   it("moves from the overflow menu and indicates the current section", async () => {
     renderWide(<ThreadActionsMenu thread={thread} />);
 
@@ -185,7 +324,9 @@ describe("ThreadActionsMenu section moves", () => {
     const moveToSection = await screen.findByRole("menuitem", {
       name: "Move to section",
     });
-    expect(moveToSection.querySelector('[data-icon="MoveTo"]')).not.toBeNull();
+    expect(
+      moveToSection.querySelector('[data-icon="SectionMove"]'),
+    ).not.toBeNull();
     fireEvent.click(moveToSection);
 
     expect(await screen.findByText("Move to section")).not.toBeNull();

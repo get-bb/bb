@@ -15,10 +15,12 @@ import { CompactLongPressMenu } from "./compact-long-press-menu";
 const LONG_PRESS_MS = 700;
 
 function renderRow({
+  disabled = false,
   onRowClick = vi.fn(),
   onOpenChange = vi.fn(),
   onRename = vi.fn(),
 }: {
+  disabled?: boolean;
   onRowClick?: () => void;
   onOpenChange?: (open: boolean) => void;
   onRename?: () => void;
@@ -29,6 +31,7 @@ function renderRow({
   const utils = render(
     <CompactViewportOverrideProvider isCompactViewport>
       <CompactLongPressMenu
+        disabled={disabled}
         label="Thread actions"
         onOpenChange={onOpenChange}
         items={<DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>}
@@ -66,6 +69,24 @@ afterEach(() => {
 });
 
 describe("CompactLongPressMenu", () => {
+  it("preserves touch selection and the native context menu while disabled", () => {
+    vi.useFakeTimers();
+    const { row, onOpenChange } = renderRow({ disabled: true });
+
+    touchPointerDown(row);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(row, event);
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("mounts nothing for the menu until a long press, then opens the drawer without a modal takeover", () => {
     vi.useFakeTimers();
     const { row, onOpenChange } = renderRow();
@@ -108,6 +129,21 @@ describe("CompactLongPressMenu", () => {
 
     fireEvent.click(row);
     expect(onRowClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the opening release on a menu item but allows a new tap", () => {
+    vi.useFakeTimers();
+    const { row, onRename } = renderRow();
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    act(() => vi.advanceTimersByTime(500));
+    const item = screen.getByRole("menuitem", { name: "Rename" });
+    act(() => vi.advanceTimersByTime(2000));
+    fireEvent.click(item);
+    expect(onRename).not.toHaveBeenCalled();
+    touchPointerDown(item);
+    fireEvent.click(item);
+    expect(onRename).toHaveBeenCalledOnce();
   });
 
   it("cancels the press when the finger moves or lifts early, and ignores mouse pointers", () => {

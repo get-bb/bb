@@ -1,4 +1,6 @@
+import { reportEnvironmentHookProgress } from "../../src/services/environments/environment-hooks.js";
 import {
+  listEvents,
   getEnvironment,
   getHost,
   getLatestSessionForHost,
@@ -7,7 +9,12 @@ import {
   listQueuedThreadMessages,
   setProjectGitRemoteUrlIfMissing,
 } from "@bb/db";
-import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
+import {
+  systemThreadProvisioningEventDataSchema,
+  threadScope,
+  turnScope,
+  type ThreadEvent,
+} from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { validatePluginMachineProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -172,6 +179,30 @@ describe("composed machine thread lifecycle", () => {
           harness,
           ({ command }) => command.type === "project.clone",
         );
+        if (clone.command.type !== "project.clone")
+          throw new Error("Expected clone");
+        reportEnvironmentHookProgress(harness.deps, hostId, {
+          type: "environment.hook.progress",
+          operationId: clone.command.operationId,
+          entry: {
+            type: "output",
+            text: "Receiving objects: 42%",
+            status: null,
+          },
+        });
+        expect(
+          listEvents(harness.db, { threadId: thread.id }).some(
+            (event) =>
+              event.type === "system/thread-provisioning" &&
+              systemThreadProvisioningEventDataSchema
+                .parse(JSON.parse(event.data))
+                .entries.some(
+                  (entry) =>
+                    entry.type === "output" &&
+                    entry.text === "Receiving objects: 42%\n",
+                ),
+          ),
+        ).toBe(true);
         await reportQueuedCommandSuccess(harness, clone, {
           path,
           gitRemoteUrl: remoteUrl,

@@ -157,7 +157,6 @@ has been exercised or that every behavior has been understood.
 1 source files. Recipes: [hosts-updates](features/hosts-updates.md).
 
 - `cli-command: apps/cli/src/commands/machine.ts: install <id-or-name> <provider>`
-- `cli-command: apps/cli/src/commands/machine.ts: join-code`
 - `cli-command: apps/cli/src/commands/machine.ts: list`
 - `cli-command: apps/cli/src/commands/machine.ts: machine`
 - `cli-command: apps/cli/src/commands/machine.ts: provider-cli`

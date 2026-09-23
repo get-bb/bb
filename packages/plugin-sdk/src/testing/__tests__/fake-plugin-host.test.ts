@@ -4,11 +4,11 @@ import {
   PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
-  type PluginAgentToolPresentation,
+  type PluginRowPresentation,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import {
-  parsePluginAgentToolPresentation,
+  parsePluginRowPresentation,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
   RESERVED_BB_CLI_COMMANDS,
 } from "../../internal/host-policy.js";
@@ -79,15 +79,17 @@ describe("fixtures", () => {
   it("keeps queued messages on the dispatch context thread by default", () => {
     const inherited = makeMessageDispatchHookContext({
       thread: { id: "thread-target" },
-      queuedMessage: { id: "queued-target" },
+      queuedMessages: [{ id: "queued-target" }, { id: "queued-second" }],
     });
     const explicit = makeMessageDispatchHookContext({
       thread: { id: "thread-target" },
-      queuedMessage: { threadId: "thread-explicit" },
+      queuedMessages: [{ threadId: "thread-explicit" }],
     });
 
-    expect(inherited.queuedMessage?.threadId).toBe("thread-target");
-    expect(explicit.queuedMessage?.threadId).toBe("thread-explicit");
+    expect(inherited.queuedMessages.map((message) => message.threadId)).toEqual(
+      ["thread-target", "thread-target"],
+    );
+    expect(explicit.queuedMessages[0]?.threadId).toBe("thread-explicit");
   });
 });
 
@@ -1296,7 +1298,7 @@ describe("agent tools", () => {
 
   it("rejects a presentation with the production host's exact messages", () => {
     const { bb } = createFakePluginHost();
-    const register = (presentation: PluginAgentToolPresentation) =>
+    const register = (presentation: PluginRowPresentation) =>
       bb.agents.registerTool({
         name: "lookup_doc",
         description: "Look up a doc",
@@ -1348,7 +1350,7 @@ describe("agent tools", () => {
     });
     const recorded = harness.registrations.agentTools[0]?.presentation;
     expect(recorded).toEqual(
-      parsePluginAgentToolPresentation("lookup_doc", declared),
+      parsePluginRowPresentation('tool "lookup_doc"', declared),
     );
     expect(recorded).toEqual({
       label: { pending: "Looking up a doc", completed: "Looked up a doc" },
@@ -1662,6 +1664,29 @@ describe("dispose", () => {
     );
     expect(oldDatabase.open).toBe(false);
     await replacement.harness.dispose();
+  });
+
+  it("runs install handlers in order and isolates a throwing one", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const order: string[] = [];
+    bb.onInstall(() => {
+      order.push("first");
+      throw new Error("install exploded");
+    });
+    bb.onInstall(async () => {
+      order.push("second");
+    });
+
+    await harness.lifecycle.install();
+
+    expect(order).toEqual(["first", "second"]);
+    expect(harness.logEntries).toContainEqual(
+      expect.objectContaining({
+        level: "warn",
+        message: "install handler failed: install exploded",
+      }),
+    );
+    await harness.dispose();
   });
 
   it("aborts services, runs hooks LIFO, closes the database, and poisons the handle", async () => {

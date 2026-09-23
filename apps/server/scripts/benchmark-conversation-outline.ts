@@ -225,10 +225,16 @@ async function main(): Promise<void> {
     }
 
     const buildDurations: number[] = [];
-    let built = buildThreadConversationOutline(db, thread, { maxSeq });
+    let built = buildThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
+      maxSeq,
+    });
     for (let index = 0; index < rawIterations; index += 1) {
       const startedAt = performance.now();
-      built = buildThreadConversationOutline(db, thread, { maxSeq });
+      built = buildThreadConversationOutline(db, thread, {
+        completedTurnDisplay: "collapse",
+        maxSeq,
+      });
       buildDurations.push(performance.now() - startedAt);
     }
 

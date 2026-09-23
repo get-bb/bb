@@ -1,4 +1,5 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
+import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -35,9 +36,14 @@ import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
 import { HostSharedPortCoordinator } from "../../src/ws/host-shared-ports.js";
 import { WorkspaceReadCaches } from "../../src/services/environments/workspace-read-cache.js";
+import {
+  PluginToolCallRegistry,
+  setPluginToolCallRegistry,
+} from "../../src/services/plugins/plugin-tool-calls.js";
 
 const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
+const TEST_TERMINAL_RPC_TIMEOUT_MS = 10_000;
 
 export interface TestAppHarness {
   app: ReturnType<typeof createApp>["app"];
@@ -47,6 +53,7 @@ export interface TestAppHarness {
   hub: NotificationHub;
   pluginService: ReturnType<typeof createApp>["pluginService"];
   pluginCatalogService: ReturnType<typeof createApp>["pluginCatalogService"];
+  serverMove: ReturnType<typeof createApp>["serverMove"];
   cleanup(): Promise<void>;
 }
 
@@ -71,7 +78,9 @@ export async function installTestBuiltinPlugin(
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
+  terminalAttachTimeoutMs?: number;
   terminalCloseTimeoutMs?: number;
+  terminalOpenTimeoutMs?: number;
   nativeRootsClock?: () => number;
   seedFirstPartyProviders?: boolean;
   extraProviders?: readonly {
@@ -135,7 +144,9 @@ export async function createTestAppHarness(
 ): Promise<TestAppHarness> {
   const {
     appVersionService,
+    terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
+    terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     nativeRootsClock,
     seedFirstPartyProviders = true,
     ...configOverrides
@@ -218,7 +229,7 @@ export async function createTestAppHarness(
     ...configOverrides,
   };
   const terminalSessions = new TerminalSessionLifecycle({
-    attachTimeoutMs: 50,
+    attachTimeoutMs: terminalAttachTimeoutMs,
     ...(terminalCloseTimeoutMs === undefined
       ? {}
       : { closeTimeoutMs: terminalCloseTimeoutMs }),
@@ -226,7 +237,7 @@ export async function createTestAppHarness(
     db,
     hub,
     logger,
-    openTimeoutMs: 50,
+    openTimeoutMs: terminalOpenTimeoutMs,
   });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
@@ -251,6 +262,7 @@ export async function createTestAppHarness(
     terminalSessions,
   });
   pendingInteractions.start();
+  setPluginToolCallRegistry(new PluginToolCallRegistry({ logger }));
   const appVersion =
     appVersionService ??
     createAppVersionService({
@@ -278,7 +290,8 @@ export async function createTestAppHarness(
     sharedPorts,
     workspaceReadCaches,
   };
-  const { app, pluginCatalogService, pluginService } = createApp(deps);
+  const { app, pluginCatalogService, pluginService, serverMove } =
+    createApp(deps);
   installDefaultEnvironmentProviders();
 
   return {
@@ -289,11 +302,17 @@ export async function createTestAppHarness(
     hub,
     pluginService,
     pluginCatalogService,
+    serverMove,
     async cleanup(): Promise<void> {
       clearAllThreadProvisionSchedules();
       setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
-      await rm(dataDir, { recursive: true, force: true });
+      await rm(dataDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 50,
+      });
     },
   };
 }
@@ -325,14 +344,15 @@ export async function withTestHarness<T>(
   }
 }
 
+registerTestHarnessWarmup(() => withTestHarness(async () => undefined));
+
 export async function startTestServer(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
   let addressInfo: AddressInfo | null = null;
-  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
-    harness.deps,
-  );
+  const { app, closeWebSockets, injectWebSocket, pluginService, serverMove } =
+    createApp(harness.deps);
   const server = serve(
     {
       hostname: TEST_SERVER_HOST,
@@ -355,6 +375,7 @@ export async function startTestServer(
     ...harness,
     app,
     pluginService,
+    serverMove,
     baseUrl: `http://${TEST_SERVER_HOST}:${resolvedAddress.port}`,
     async close(): Promise<void> {
       const closeServer = new Promise<void>((resolve, reject) => {

@@ -2,10 +2,13 @@ import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
+  type NormalizedPluginInteractionRequest,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
+import { detachActivePluginToolCallForUserInput } from "./plugin-tool-calls.js";
+import { fillPluginPresentation } from "./plugin-presentation.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -18,13 +21,13 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
-import type { JsonValue } from "@bb/domain";
+import type { ThreadEventItemPresentation } from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginBbSdk,
   PluginAgentToolResult,
   PluginAgents,
@@ -193,7 +196,7 @@ export interface PluginRpcHandler {
 export interface PluginAgentToolRecord {
   name: string;
   description: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   instructions: string | null;
   inputSchema: unknown;
   parse(
@@ -230,6 +233,7 @@ interface PluginCliRegistrationRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  rendersHelp: boolean;
   run: (
     argv: string[],
     ctx: PluginCliContext,
@@ -244,6 +248,8 @@ type PluginSettingsListener = (
 export interface PluginApiHandle {
   api: BbPluginApi;
   disposeHooks: Array<() => void | Promise<void>>;
+  /** Handlers recorded by `bb.onInstall`; run once after a fresh install. */
+  installHandlers: Array<() => void | Promise<void>>;
   settings: {
     descriptors: PluginSettingDescriptors;
     listeners: PluginSettingsListener[];
@@ -473,14 +479,13 @@ export function createPluginApi(options: {
    * name. Empty when the manifest declares none.
    */
   declaredIconNames: ReadonlySet<string>;
-  requestInteraction: (args: {
-    threadId: string;
-    rendererId: string;
-    title: string;
-    payload: JsonValue;
-    timeoutMs: number;
-    signal?: AbortSignal;
-  }) => Promise<PluginInteractionResult>;
+  brandingIcon: string | undefined;
+  requestInteraction: (
+    args: Omit<NormalizedPluginInteractionRequest, "presentation"> & {
+      presentation: ThreadEventItemPresentation;
+      signal?: AbortSignal;
+    },
+  ) => Promise<PluginInteractionResult>;
   ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   validateSharedPortDeclaration: (
     hostId: string,
@@ -532,6 +537,7 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     requestQueueDrain,
     declaredIconNames,
+    brandingIcon,
     requestInteraction,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
@@ -552,6 +558,7 @@ export function createPluginApi(options: {
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
+  const installHandlers: Array<() => void | Promise<void>> = [];
   const settingsRecord: PluginApiHandle["settings"] = {
     descriptors: {},
     listeners: [],
@@ -621,10 +628,31 @@ export function createPluginApi(options: {
     requestOptions?: Parameters<PluginUi["requestInput"]>[1],
   ) {
     assertLive();
-    return requestInteraction({
-      ...normalizeInteractionRequest(request),
+    const normalized = normalizeInteractionRequest(request);
+    const glyph = normalized.presentation?.icon?.glyph;
+    const iconProblem =
+      glyph === undefined
+        ? null
+        : undeclaredIconProblem(pluginId, declaredIconNames, glyph);
+    if (iconProblem !== null) {
+      throw new Error(`ui.requestInput presentation.icon ${iconProblem}`);
+    }
+    const pending = requestInteraction({
+      ...normalized,
+      presentation: fillPluginPresentation({
+        declared: normalized.presentation,
+        brandingIcon,
+        label: {
+          pending: `Waiting for ${normalized.title}`,
+          completed: `Submitted ${normalized.title}`,
+        },
+      }),
       signal: requestOptions?.signal,
     });
+    if (!requestOptions?.signal?.aborted) {
+      detachActivePluginToolCallForUserInput();
+    }
+    return pending;
   }
 
   const kv: PluginKvStorage = {
@@ -885,7 +913,7 @@ export function createPluginApi(options: {
       name: string;
       description: string;
       instructions?: string;
-      presentation?: PluginAgentToolPresentation;
+      presentation?: PluginRowPresentation;
       parameters: unknown;
       execute(
         params: never,
@@ -1314,11 +1342,19 @@ export function createPluginApi(options: {
       assertLive();
       disposeHooks.push(hook);
     },
+    onInstall(handler) {
+      assertLive();
+      if (typeof handler !== "function") {
+        throw new Error("onInstall expects a function");
+      }
+      installHandlers.push(handler);
+    },
   };
 
   return {
     api,
     disposeHooks,
+    installHandlers,
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,

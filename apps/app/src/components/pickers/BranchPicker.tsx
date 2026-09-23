@@ -15,7 +15,6 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -80,7 +79,6 @@ export function getMergeBaseBranchCandidateGroups({
 
 const EMPTY_BRANCH_OPTIONS: readonly string[] = [];
 const BRANCH_LABEL_PREFIXES = ["Branch from:"] as const;
-const BRANCH_SEARCH_DEBOUNCE_MS = 120;
 
 interface BranchPlainLabelParts {
   kind: "plain";
@@ -102,21 +100,6 @@ interface BranchPickerTextProps {
   compactAffixesInPromptbox?: boolean;
   wrap?: boolean;
 }
-
-interface BranchPickerMenuCopy {
-  title: string | null;
-  optionsSectionLabel: string | null;
-}
-
-const GENERIC_BRANCH_MENU_COPY: BranchPickerMenuCopy = {
-  title: null,
-  optionsSectionLabel: "Branches",
-};
-
-const BASE_BRANCH_MENU_COPY: BranchPickerMenuCopy = {
-  title: "Branch from:",
-  optionsSectionLabel: null,
-};
 
 interface OrderBranchPickerOptionsArgs {
   options: readonly string[];
@@ -187,12 +170,6 @@ function BranchPickerText({
   );
 }
 
-function getBranchPickerMenuCopy(
-  menuKind: "base" | undefined,
-): BranchPickerMenuCopy {
-  return menuKind === "base" ? BASE_BRANCH_MENU_COPY : GENERIC_BRANCH_MENU_COPY;
-}
-
 export function buildBranchPickerOptionGroups({
   options,
   remoteOptions,
@@ -242,7 +219,7 @@ export interface BranchPickerProps {
   triggerLabel?: string;
   triggerTitle?: string;
   emphasizeTriggerValue?: boolean;
-  menuKind?: "base";
+  menuLabel?: string;
   onChange: (branch: string) => void;
   onSearchQueryChange?: (query: string) => void;
   onOpenChange?: (open: boolean) => void;
@@ -264,7 +241,7 @@ export function BranchPicker({
   triggerLabel: triggerLabelOverride,
   triggerTitle,
   emphasizeTriggerValue = true,
-  menuKind,
+  menuLabel,
   onChange,
   onSearchQueryChange,
   onOpenChange,
@@ -282,11 +259,6 @@ export function BranchPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
-  const debouncedNormalizedQuery = useDebouncedValue(
-    normalizedQuery,
-    BRANCH_SEARCH_DEBOUNCE_MS,
-  );
-  const menuCopy = getBranchPickerMenuCopy(menuKind);
   const branchOptionGroups = useMemo(
     () =>
       buildBranchPickerOptionGroups({
@@ -351,12 +323,8 @@ export function BranchPicker({
       return;
     }
 
-    if (debouncedNormalizedQuery !== normalizedQuery) {
-      return;
-    }
-
-    onSearchQueryChange?.(debouncedNormalizedQuery);
-  }, [debouncedNormalizedQuery, normalizedQuery, onSearchQueryChange, open]);
+    onSearchQueryChange?.(normalizedQuery);
+  }, [normalizedQuery, onSearchQueryChange, open]);
 
   return (
     <Popover modal={modal} open={open} onOpenChange={updateOpen}>
@@ -428,7 +396,7 @@ export function BranchPicker({
         align={popoverAlign}
         sideOffset={6}
         collisionPadding={16}
-        mobileTitle={menuCopy.title ?? "Branch"}
+        mobileTitle={menuLabel || "Branch"}
         autoFocusRef={inputRef}
         className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:min-w-40")}
       >
@@ -447,12 +415,7 @@ export function BranchPicker({
               event.stopPropagation();
             }}
           >
-            {menuCopy.title ? (
-              <BranchPickerSectionHeader label={menuCopy.title} />
-            ) : null}
-            {menuCopy.optionsSectionLabel ? (
-              <BranchPickerSectionHeader label={menuCopy.optionsSectionLabel} />
-            ) : null}
+            <BranchPickerSectionHeader label={menuLabel || "Branches"} />
             {filteredBranchOptions.map((branch) => (
               <BranchPickerRow
                 key={branch}

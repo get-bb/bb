@@ -1,17 +1,21 @@
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import {
+  CompetingTurnError,
+  type AgentRuntimeBridgeLaunch,
+} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSink } from "./event-sink.js";
-import type {
-  EnvironmentHookProgressMessage,
-  HostDaemonCommand,
-  ProviderHealthResult,
-  ProviderUsageResult,
-  HostDaemonBridgeLaunch,
-  HostDaemonInjectedSkillSource,
-  HostDaemonOnlineRpcCommand,
-  HostDaemonConnectTunnelIdentity,
-  WorkspaceContext,
+import {
+  COMPETING_TURN_ERROR_CODE,
+  type EnvironmentHookProgressMessage,
+  type HostDaemonCommand,
+  type ProviderHealthResult,
+  type ProviderUsageResult,
+  type HostDaemonBridgeLaunch,
+  type HostDaemonInjectedSkillSource,
+  type HostDaemonOnlineRpcCommand,
+  type HostDaemonConnectTunnelIdentity,
+  type WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import type {
   ProviderInstallationCommand,
@@ -24,6 +28,7 @@ import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import type { HostDaemonLogger } from "./logger.js";
+import type { ServerMoveService } from "./server-move/service.js";
 import {
   ensureCachedPluginHostArtifact,
   type FetchPluginHostArtifact,
@@ -88,11 +93,12 @@ export interface CommandDispatchOptions {
     plan: ProviderInstallationCommand;
     env?: NodeJS.ProcessEnv;
   }) => ReadableStream<Uint8Array>;
-  refreshShellEnv: () => Promise<void>;
+  refreshShellEnv: (args: { allowStale: boolean }) => Promise<void>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
   ensureConnectTunnelIdentity?: () => Promise<HostDaemonConnectTunnelIdentity>;
+  serverMove?: ServerMoveService;
   threadStorageRootPath: string;
 }
 
@@ -183,6 +189,9 @@ export async function resolveRuntimeBridgeLaunch(
 export function getErrorCode(error: unknown): string {
   if (error instanceof CommandDispatchError) {
     return error.code;
+  }
+  if (error instanceof CompetingTurnError) {
+    return COMPETING_TURN_ERROR_CODE;
   }
   if (isStructuredSpawnMissingExecutableError(error)) {
     return "missing_executable";

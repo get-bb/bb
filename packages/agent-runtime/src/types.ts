@@ -28,7 +28,9 @@ export type AgentRuntimeShellEnvironment = Record<string, string>;
 export interface AgentRuntimeContributedEnvEntry {
   name: string;
   value: string | { serverPath: string };
-  source: { plugin: string } | { core: "machine-git" | "machine-environment" };
+  source:
+    | { plugin: string }
+    | { core: "machine-git" | "machine-environment" | "project-environment" };
   reason: string;
 }
 
@@ -114,11 +116,13 @@ export interface AgentRuntimeBridgeLaunch {
 
 export interface EnsureProviderArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   providerId: string;
 }
 
 export interface StartThreadArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -143,6 +147,7 @@ export interface StartThreadResult {
 
 interface PrepareThreadRewindArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
   threadId: string;
   leaseId: string;
@@ -168,6 +173,7 @@ interface DiscardThreadRewindArgs {
 
 export interface ResumeThreadArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
   threadId: string;
   projectId?: string;

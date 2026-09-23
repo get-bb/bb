@@ -70,6 +70,24 @@ function unassignedBinding(
   };
 }
 
+function macArrowBindings(
+  command: AppCommandId,
+  key: string,
+  modifiers: ShortcutModifiers,
+  options: BindingOptions,
+): AppDefaultKeybindings {
+  return [
+    binding(command, key, modifiers, {
+      ...options,
+      all: [...(options.all ?? []), "macPlatform"],
+    }),
+    unassignedBinding(command, {
+      ...options,
+      none: [...(options.none ?? []), "macPlatform"],
+    }),
+  ];
+}
+
 function numberedChatBindings(
   commands: readonly AppCommandId[],
   options: BindingOptions,
@@ -181,6 +199,21 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     },
   ),
   ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
+  ...(
+    [
+      ["pane.focus.left", "ArrowLeft"],
+      ["pane.focus.right", "ArrowRight"],
+      ["pane.focus.up", "ArrowUp"],
+      ["pane.focus.down", "ArrowDown"],
+    ] as const
+  ).flatMap(([command, key]) =>
+    macArrowBindings(
+      command,
+      key,
+      { mod: true, shift: true },
+      splitWithoutModal,
+    ),
+  ),
   unassignedBinding("pane.focus.previous", splitWithoutModal),
   unassignedBinding("pane.focus.next", splitWithoutModal),
   ...numberedChatBindings(PANE_FOCUS_APP_COMMAND_IDS, splitWithoutModal),
@@ -191,6 +224,30 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     splitWithoutModal,
   ),
   binding("pane.close", "x", { mod: true, shift: true }, splitWithoutModal),
+  ...macArrowBindings(
+    "panel.previousTab",
+    "ArrowLeft",
+    { mod: true, control: true },
+    mainWithoutModal,
+  ),
+  ...macArrowBindings(
+    "panel.nextTab",
+    "ArrowRight",
+    { mod: true, control: true },
+    mainWithoutModal,
+  ),
+  ...macArrowBindings(
+    "panel.previousNewTabItem",
+    "ArrowUp",
+    { mod: true, control: true },
+    mainWithoutModal,
+  ),
+  ...macArrowBindings(
+    "panel.nextNewTabItem",
+    "ArrowDown",
+    { mod: true, control: true },
+    mainWithoutModal,
+  ),
   binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
   binding(
     "panel.reopenClosedTab",
@@ -317,6 +374,16 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       all: ["mainSurface", "browserFocus"],
       desktopOnly: true,
       none: ["modalOpen"],
+    },
+  ),
+  binding(
+    "window.find",
+    "f",
+    { mod: true },
+    {
+      all: ["mainSurface"],
+      desktopOnly: true,
+      none: ["modalOpen", "browserFocus"],
     },
   ),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),

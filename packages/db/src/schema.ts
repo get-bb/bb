@@ -11,6 +11,8 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
+import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
@@ -188,10 +190,38 @@ export const systemExperiments = sqliteTable("system_experiments", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const environmentVariables = sqliteTable(
+  "environment_variables",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    encryptionVersion: integer("encryption_version").notNull(),
+    note: text("note"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("environment_variables_global_name")
+      .on(table.name)
+      .where(sql`${table.projectId} IS NULL`),
+    uniqueIndex("environment_variables_project_name")
+      .on(table.projectId, table.name)
+      .where(sql`${table.projectId} IS NOT NULL`),
+  ],
+);
+
 export const appSettingsValues = sqliteTable("app_settings_values", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
+});
+
+export const uiPreferenceDefaults = sqliteTable("ui_preference_defaults", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
 });
 
 export const uiPreferences = sqliteTable("ui_preferences", {
@@ -572,6 +602,10 @@ export const threads = sqliteTable(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
+    lifecycleOwnerThreadId: text("lifecycle_owner_thread_id").references(
+      (): AnySQLiteColumn => threads.id,
+      { onDelete: "restrict" },
+    ),
     sourceThreadId: text("source_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
@@ -594,6 +628,7 @@ export const threads = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
+    index("threads_project_id_idx").on(table.projectId, table.id),
     index("threads_project_updated_idx").on(table.projectId, table.updatedAt),
     index("threads_project_archived_deleted_idx").on(
       table.projectId,
@@ -605,6 +640,7 @@ export const threads = sqliteTable(
       .on(table.archivedAt, table.deletedAt, table.pinSortKey, table.id)
       .where(sql`${table.pinnedAt} IS NOT NULL`),
     index("threads_environment_idx").on(table.environmentId),
+    index("threads_lifecycle_owner_idx").on(table.lifecycleOwnerThreadId),
     index("threads_parent_idx").on(table.parentThreadId),
     index("threads_source_origin_idx").on(
       table.sourceThreadId,
@@ -789,6 +825,9 @@ export const events = sqliteTable(
         sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
       ),
     index("events_environment_idx").on(table.environmentId),
+    index("events_provider_identity_idx")
+      .on(table.providerThreadId, table.createdAt)
+      .where(sql`${table.type} = 'thread/identity'`),
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
@@ -822,6 +861,41 @@ export const retainedEventOutputs = sqliteTable(
     index("retained_event_outputs_expiry_idx").on(
       table.expiresAt,
       table.eventId,
+    ),
+  ],
+);
+
+export const threadPruningCursors = sqliteTable(
+  "thread_pruning_cursors",
+  {
+    policy: text("policy").notNull(),
+    scope: text("scope").notNull().default(""),
+    threadId: text("thread_id").references(() => threads.id, {
+      onDelete: "cascade",
+    }),
+    version: integer("version").notNull(),
+    lastThreadId: text("last_thread_id").notNull().default(""),
+    currentThreadId: text("current_thread_id"),
+    step: integer("step").notNull().default(0),
+    sequence: integer("sequence").notNull().default(0),
+    upperSequence: integer("upper_sequence").notNull().default(0),
+    cycle: integer("cycle").notNull().default(0),
+    latestRootSequence: integer("latest_root_sequence").notNull().default(0),
+    latestContextSequence: integer("latest_context_sequence")
+      .notNull()
+      .default(0),
+    probeEventId: text("probe_event_id"),
+    probePhase: integer("probe_phase").notNull().default(0),
+    probeSequence: integer("probe_sequence").notNull().default(0),
+    probeWitnessId: text("probe_witness_id"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.policy, table.scope] }),
+    index("thread_pruning_cursors_thread_idx").on(table.threadId),
+    check(
+      "thread_pruning_cursors_scope_check",
+      sql`${table.scope} = coalesce(${table.threadId}, '')`,
     ),
   ],
 );
@@ -898,6 +972,22 @@ export const queuedThreadMessages = sqliteTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     senderThreadId: text("sender_thread_id"),
+    // How the dispatch this row was queued from was requested, and the plugin
+    // that requested it. On the row rather than read from the request, so a
+    // drained re-attempt decides on the same provenance its first attempt saw.
+    // Both NULL for a send, a retry, a system notice and every row written
+    // before these columns existed: only a thread's first dispatch has one.
+    origin: text("origin", { enum: threadCreateOriginValues }),
+    originPluginId: text("origin_plugin_id"),
+    // Set together: the thread that asked for the dispatch this row was queued
+    // from, and what it counts as. Distinct from `sender_thread_id`, which is
+    // the sender of a message to an existing thread and drives the agent
+    // message prefix — a thread-start has a requester and no message sender,
+    // so without these a drained first message reads as one the user typed.
+    requestedByInitiator: text("requested_by_initiator", {
+      enum: startedOnBehalfOfInitiatorValues,
+    }),
+    requestedByThreadId: text("requested_by_thread_id"),
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
@@ -931,6 +1021,17 @@ export const queuedThreadMessages = sqliteTable(
     // row stays waiting on whatever it was waiting on; this only says what went
     // wrong the last time the drain tried to send it.
     failureReason: text("failure_reason"),
+    // How many drain attempts in a row have failed, and when the next
+    // automatic one may run. Together they make a failure a bounded retry
+    // instead of a terminal state: the condition that failed a dispatch is
+    // usually the one a restart just created, so the row goes again on a
+    // widening delay and only stops when the budget is spent. `next_attempt_at`
+    // NULL beside a non-NULL `failure_reason` IS that spent budget — the row
+    // now waits for a person. A fresh, successful statement of the row's wait
+    // resets both, because the attempt that wrote it learned something newer
+    // than the failure did.
+    failureCount: integer("failure_count").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at"),
     payloadKind: text("payload_kind")
       .$type<QueuedMessagePayloadKind>()
       .notNull()
@@ -1143,6 +1244,78 @@ export const environmentHookOperations = sqliteTable(
     kind: text("kind").$type<"setup" | "teardown">().notNull(),
     startedAt: integer("started_at").notNull(),
     finishedAt: integer("finished_at"),
+    error: text("error"),
+  },
+);
+
+export const projectAttachments = sqliteTable(
+  "project_attachments",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    storedPath: text("stored_path").notNull(),
+    originalName: text("original_name").notNull(),
+    mimeType: text("mime_type"),
+    sizeBytes: integer("size_bytes").notNull(),
+    createdAt: integer("created_at").notNull(),
+    readyAt: integer("ready_at"),
+    deletionClaimedAt: integer("deletion_claimed_at"),
+  },
+  (table) => [
+    uniqueIndex("project_attachments_project_path_idx").on(
+      table.projectId,
+      table.storedPath,
+    ),
+    index("project_attachments_project_created_idx").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    index("project_attachments_deletion_idx")
+      .on(table.projectId, table.deletionClaimedAt, table.id)
+      .where(sql`${table.deletionClaimedAt} IS NOT NULL`),
+    check("project_attachments_size_check", sql`${table.sizeBytes} >= 0`),
+  ],
+);
+
+export const projectAttachmentThreads = sqliteTable(
+  "project_attachment_threads",
+  {
+    attachmentId: text("attachment_id")
+      .notNull()
+      .references(() => projectAttachments.id, { onDelete: "cascade" }),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.attachmentId, table.threadId] }),
+    index("project_attachment_threads_thread_idx").on(table.threadId),
+  ],
+);
+
+export const projectAttachmentBackfills = sqliteTable(
+  "project_attachment_backfills",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    phase: text("phase")
+      .$type<
+        | "files"
+        | "events"
+        | "queue"
+        | "history-thread"
+        | "history-project"
+        | "done"
+      >()
+      .notNull(),
+    threadCursor: text("thread_cursor").notNull(),
+    inputCursor: integer("input_cursor").notNull(),
+    inputId: text("input_id").notNull(),
+    inputSequence: integer("input_sequence").notNull(),
+    attemptedAt: integer("attempted_at").notNull(),
     error: text("error"),
   },
 );

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { applyTimelineDelta } from "@bb/server-contract";
 import type {
   ThreadTimelineResponse,
   TimelineCommandWorkRow,
@@ -112,6 +113,7 @@ function makeTimelineResponse(
   return {
     rows,
     contextBoundarySeq: null,
+    completedTurnDisplay: "collapse",
     activePromptMode: null,
     activeThinking: null,
     activeWorkflows: [],
@@ -890,5 +892,98 @@ describe("snapshot content pagination", () => {
         latestWindowStartSequence: 1,
       }).rows,
     ).toEqual([updated]);
+  });
+
+  it.each(["snapshot-1", "snapshot-2"])(
+    "reuses delta row references without reading nested payloads under %s",
+    (historySnapshot) => {
+      let outputReads = 0;
+      const child = commandRow({ id: "unchanged-command", sequence: 2 });
+      Object.defineProperty(child, "output", {
+        enumerable: true,
+        get() {
+          outputReads++;
+          return "large unchanged tool output";
+        },
+      });
+      const summary = turnSummaryRow({
+        id: "summary",
+        sequence: 2,
+        children: [child],
+      });
+      const tail = commandRow({ id: "live-command", sequence: 3 });
+      const updatedTail = { ...tail, output: "changed at the same sequence" };
+      const current = {
+        ...makeLoadedTimelineState([summary, tail], null),
+        historySnapshot: "snapshot-1",
+      };
+      const rows = applyTimelineDelta(current.rows, {
+        upsertRows: [updatedTail],
+      });
+      expect(rows).not.toBeNull();
+      const latestTimeline = makeTimelineResponse(rows!, null);
+      latestTimeline.timelinePage.historySnapshot = historySnapshot;
+      latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
+
+      const next = mergeLoadedTimelineWithLatest({
+        current,
+        latestTimeline,
+        surfaceKey: current.surfaceKey,
+      });
+
+      expect(next.rows[0]).toBe(summary);
+      expect(next.rows[1]).toBe(updatedTail);
+      expect(outputReads).toBe(0);
+    },
+  );
+
+  it("retains older children when a delta updates a partially loaded summary", () => {
+    const olderChild = commandRow({ id: "older-command", sequence: 2 });
+    const child = commandRow({ id: "live-command", sequence: 3 });
+    const partial = turnSummaryRow({
+      id: "summary",
+      sequence: 2,
+      endSequence: 3,
+      children: [child],
+    });
+    const current = {
+      ...makeLoadedTimelineState(
+        [{ ...partial, children: [olderChild, child] }],
+        null,
+      ),
+      historySnapshot: "snapshot-1",
+    };
+    const updatedChild = { ...child, output: "new output" };
+    const updated = { ...partial, children: [updatedChild] };
+    const rows = applyTimelineDelta([partial], { upsertRows: [updated] });
+    expect(rows).not.toBeNull();
+    const latestTimeline = makeTimelineResponse(rows!, null);
+    latestTimeline.timelinePage.historySnapshot = current.historySnapshot;
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    expect(next.rows).toEqual([
+      { ...updated, children: [olderChild, updatedChild] },
+    ]);
+  });
+
+  it("still deduplicates children when both pages contain the same summary object", () => {
+    const child = commandRow({ id: "repeated-command", sequence: 2 });
+    const summary = turnSummaryRow({
+      id: "summary",
+      sequence: 2,
+      children: [child, child],
+    });
+
+    expect(
+      prependOlderTimelineRows({
+        olderRows: [summary],
+        loadedRows: [summary],
+      }),
+    ).toEqual([{ ...summary, children: [child] }]);
   });
 });

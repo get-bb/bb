@@ -22,6 +22,12 @@ host, and the command resolves the thread's host automatically.
    thread (or with the same `--host`) so the share is cleaned up. Use
    `bb connect shares [--host <name-or-id>]` to inspect that host's shares.
 
+`bb connect --help` and `bb connect <command> --help` print the commands and
+their flags and exit 0. Unknown commands and flags fail with a suggestion —
+`bb connect list` points at `bb connect shares` — and with `--json` a failure
+prints `{"ok":false,"error":{"code":…,"message":…}}` on stdout while the same
+message stays on stderr.
+
 Server-host shares use `https://<server-label>--<port>.<base-domain>` through
 the server tunnel. Other enrolled hosts use
 `https://<machine-label>--<port>.<base-domain>` through their daemon. If a

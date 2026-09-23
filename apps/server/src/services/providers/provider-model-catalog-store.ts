@@ -18,6 +18,7 @@ import { z } from "zod";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
+import { isServerMoveFrozen } from "../server-move/freeze-state.js";
 import {
   callHostOnlineRpc,
   isHostUnavailableApiError,
@@ -318,6 +319,9 @@ export function createProviderModelCatalogStore(options: {
     key: ProviderModelCatalogRowKey,
     good: CatalogGood,
   ): void {
+    if (isServerMoveFrozen(deps.db)) {
+      return;
+    }
     try {
       const host = getHost(deps.db, key.hostId);
       if (

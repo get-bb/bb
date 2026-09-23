@@ -1,4 +1,7 @@
 import type {
+  MachineEnvironmentReplace,
+  MachineEnvironmentSet,
+  ProjectMachineEnvironmentList,
   CommandListResponse,
   CopyProjectAttachmentsRequest,
   CreateProjectRequest,
@@ -198,6 +201,19 @@ export interface ProjectAttachmentsArea {
 }
 
 export interface ProjectsArea {
+  machineEnvironment(args: {
+    projectId: string;
+  }): Promise<ProjectMachineEnvironmentList>;
+  replaceMachineEnvironment(
+    args: { projectId: string } & MachineEnvironmentReplace,
+  ): Promise<ProjectMachineEnvironmentList>;
+  setMachineEnvironmentVariable(
+    args: { projectId: string } & MachineEnvironmentSet,
+  ): Promise<ProjectMachineEnvironmentList>;
+  deleteMachineEnvironmentVariable(args: {
+    projectId: string;
+    name: string;
+  }): Promise<ProjectMachineEnvironmentList>;
   attachments: ProjectAttachmentsArea;
   branches(args: ProjectBranchesArgs): Promise<ProjectBranchesResult>;
   commands(args: ProjectCommandsArgs): Promise<ProjectCommandsResult>;
@@ -499,6 +515,37 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           },
           ...signalRequestArgs(signal),
         ),
+      );
+    },
+    async machineEnvironment(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["machine-environment"].$get({
+          param: { id: input.projectId },
+        }),
+      );
+    },
+    async replaceMachineEnvironment(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["machine-environment"].$put({
+          param: { id: input.projectId },
+          json: { variables: input.variables },
+        }),
+      );
+    },
+    async setMachineEnvironmentVariable(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["machine-environment"].$post({
+          param: { id: input.projectId },
+          json: { name: input.name, value: input.value, note: input.note },
+        }),
+      );
+    },
+    async deleteMachineEnvironmentVariable(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["machine-environment"].$delete({
+          param: { id: input.projectId },
+          json: { name: input.name },
+        }),
       );
     },
     async get(input) {

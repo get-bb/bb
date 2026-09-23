@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": ["BB_BUILD_TOOLCHAIN"],
+  "globalPassThroughEnv": ["npm_config_store_dir", "pnpm_config_store_dir"],
   "tasks": {
     "@bb/db#db:generate": { "cache": false },
     "@bb/desktop#smoke:browser-broker": {
@@ -92,6 +93,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
@@ -108,6 +110,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
@@ -149,6 +152,7 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/turbo.json"
       ]
     },
@@ -157,10 +161,15 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/packages/bb-app/package.json"
       ],
       "outputs": ["dist/**"]
+    },
+    "@bb/plugin-api-map#topo": {
+      "dependsOn": ["^topo"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/plugins/*/package.json"]
     },
     "prepare:bundled": {
       "dependsOn": ["topo", "^build"],
@@ -219,7 +228,8 @@
         "$TURBO_ROOT$/packages/config/src/**",
         "$TURBO_ROOT$/packages/config/tsconfig.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/scripts/build-utils.mjs"
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
       ],
       "outputs": ["host-package/**"]
     },
@@ -376,6 +386,8 @@
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/packages/plugin-registry/r/**",
+        "$TURBO_ROOT$/scripts/forkable-plugins.json",
         "$TURBO_ROOT$/scripts/oxlint-plugin.mjs"
       ]
     },
@@ -491,11 +503,8 @@
         "$TURBO_ROOT$/changelog-parser.ts"
       ]
     },
-    // The packaged CLI (host-daemon/dist/bb) inlines the SDK declaration
-    // bundles for `bb plugin types` on vendored-layout plugins; see
-    // scripts/bundle-manifest.mjs and packages/templates/src/plugin-sdk-dts.ts.
     "@bb/host-daemon#build": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
@@ -505,19 +514,14 @@
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
       "outputs": ["dist/**"]
     },
-    // `bb plugin types|build|dev` on a vendored-layout plugin reads
-    // packages/plugin-sdk/bundled-types at runtime (no workspace embed).
     "@bb/cli#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/bb-guide/skills/bb-cli/**",
@@ -592,13 +596,13 @@
         "UPDATE_TRANSCRIPT_EXPECTATIONS"
       ]
     },
-    // syncPluginTypes reads packages/plugin-sdk/bundled-types at runtime, and
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
     // dist), so the SDK build is a dependency.
     "@bb/templates#test": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
@@ -614,6 +618,7 @@
         "@bb/agent-runtime#generate:test-bridges",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -665,6 +670,7 @@
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       // The SVG validator suite reads every first-party branding SVG.
@@ -687,6 +693,7 @@
         "$TURBO_ROOT$/packages/plugin-sdk/src/**",
         "$TURBO_ROOT$/packages/provider-bridge-protocol/src/**",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**"
       ],
       "outputs": ["dist/test-bridges/**"]
@@ -711,7 +718,10 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
+      // variables, so without these they start unauthenticated.
+      "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
     "smoke:tarball": {
       "dependsOn": ["build"],
@@ -780,7 +790,10 @@
     },
     "test:integration": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
+      // variables, so without these they start unauthenticated.
+      "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
     "@bb/integration-tests#test:integration": {
       "dependsOn": [
@@ -798,22 +811,29 @@
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
         "$TURBO_ROOT$/vitest.shared.ts"
-      ]
+      ],
+      "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
-    // bundled-types/*.d.ts: the package's published `types` surface, the
-    // in-repo plugins' typecheck surface, and what `bb plugin types` writes
-    // into vendored-layout plugins. ~20s (rollup-plugin-dts), so only real
-    // consumers depend on it. Generated modules are excluded from the hash:
-    // they are derived from sources already hashed here.
+    // bundled-types/*.d.ts: the package's published `types` surface and the
+    // in-repo plugins' typecheck surface. ~20s (rollup-plugin-dts), so only
+    // real consumers depend on it. Generated modules are excluded from the
+    // hash: they are derived from sources already hashed here.
     "@get-bb/plugin-sdk#build:types": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
+      ],
       "outputs": ["bundled-types/**"]
     },
-    // `build` = runtime dist + types (prepack runs both outside turbo).
     "@get-bb/plugin-sdk#build": {
-      "dependsOn": ["topo", "@get-bb/plugin-sdk#build:types"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
+      ],
       "outputs": ["dist/**"]
     },
     "@get-bb/plugin-sdk#typecheck": {
@@ -829,7 +849,11 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
     },
     "@get-bb/plugin-sdk#build:runtime": {
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/packages/plugin-build/src/zod-locale-stub.mjs"
+      ],
       "outputs": ["dist/**"],
       "dependsOn": ["topo"]
     },
@@ -902,6 +926,9 @@
     "bb-plugin-inline-vis#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-agent-annotations#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
     "bb-plugin-push-notifications#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -952,6 +979,24 @@
     },
     "bb-plugin-theme-preview#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-thread-list#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-thread-list#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-tasks#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]

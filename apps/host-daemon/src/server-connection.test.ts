@@ -8,6 +8,7 @@ import { ServerConnection } from "./server-connection.js";
 import type {
   CreateReconnectingWebSocket,
   ReconnectingWebSocketLike,
+  ServerMovedNotice,
 } from "./server-connection-support.js";
 
 interface CreateServerClientFixtureArgs {
@@ -27,6 +28,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
   onMachineShutdown?: () => void | Promise<void>;
+  onServerMoved?: (notice: ServerMovedNotice) => Promise<void>;
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;
@@ -185,6 +187,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     protocolSelfUpdater: args.protocolSelfUpdater,
     onSelfUpdateInstalled: args.onSelfUpdateInstalled,
     onMachineShutdown: args.onMachineShutdown,
+    onServerMoved: args.onServerMoved,
     onMachineEnvironment: args.onMachineEnvironment,
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
@@ -265,6 +268,99 @@ describe("ServerConnection", () => {
       expect(onMachineShutdown).toHaveBeenCalledOnce();
     });
     await connection.shutdown();
+  });
+
+  it("hands a server.moved message to the move handler", async () => {
+    const onServerMoved = vi.fn(async () => undefined);
+    const { connection, webSocket } = createConnectionFixture({
+      onServerMoved,
+    });
+    await connection.start();
+    const socket = webSocket.sockets[0];
+    if (!socket) throw new Error("Expected test socket");
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "server.moved",
+        serverUrl: "https://new-server.example.test",
+        headers: { "x-bb-connect-machine": "bbcm_new" },
+      }),
+    });
+
+    await vi.waitFor(() => {
+      expect(onServerMoved).toHaveBeenCalledWith({
+        serverUrl: "https://new-server.example.test",
+        headers: { "x-bb-connect-machine": "bbcm_new" },
+        source: "message",
+      });
+    });
+    await connection.shutdown();
+  });
+
+  it("switches servers instead of failing startup when session open answers 410 server_moved", async () => {
+    const onServerMoved = vi.fn(async () => undefined);
+    const movedError = new ServerResponseError({
+      action: "open session",
+      bodyMessage: "This bb server moved to studio",
+      code: "server_moved",
+      retryable: false,
+      serverMoved: {
+        serverUrl: "http://studio.local:38886",
+        toHostName: "studio",
+        movedAt: 1_700_000_000_000,
+      },
+      status: 410,
+      statusText: "Gone",
+    });
+    const { connection, logger, webSocket } = createConnectionFixture({
+      onServerMoved,
+      openSessionError: movedError,
+    });
+
+    const started = connection.start();
+    started.catch(() => undefined);
+    await vi.waitFor(() => {
+      expect(onServerMoved).toHaveBeenCalledWith({
+        source: "session-open",
+        serverUrl: "http://studio.local:38886",
+        headers: null,
+        toHostName: "studio",
+        movedAt: 1_700_000_000_000,
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        { serverUrl: "http://127.0.0.1:3334" },
+        "Waiting for server...",
+      );
+    });
+
+    expect(webSocket.sockets[0]?.close).not.toHaveBeenCalled();
+    await connection.shutdown();
+  });
+
+  it("fails startup on 410 server_moved when switching servers fails", async () => {
+    const onServerMoved = vi.fn(async () => {
+      throw new Error("config.json is invalid");
+    });
+    const movedError = new ServerResponseError({
+      action: "open session",
+      bodyMessage: "This bb server moved to studio",
+      code: "server_moved",
+      retryable: false,
+      serverMoved: {
+        serverUrl: "http://studio.local:38886",
+        toHostName: "studio",
+        movedAt: 1_700_000_000_000,
+      },
+      status: 410,
+      statusText: "Gone",
+    });
+    const { connection } = createConnectionFixture({
+      onServerMoved,
+      openSessionError: movedError,
+    });
+
+    await expect(connection.start()).rejects.toBe(movedError);
+    expect(onServerMoved).toHaveBeenCalledOnce();
   });
 
   it("runs protocol self-update handling only for protocol mismatch rejection", async () => {

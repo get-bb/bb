@@ -100,14 +100,15 @@ import type {
 } from "./plugin-service-internal.js";
 import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
+import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 
-const pluginSdkRuntimePath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "plugin-sdk-runtime.js",
-);
+const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
+const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
+const zodRuntimePath = join(serverRuntimeDir, "zod-runtime.js");
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
 
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+const ZOD_SPECIFIER = "zod";
 
 async function hashFile(
   path: string,
@@ -128,10 +129,29 @@ export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
   };
 }
 
+export function zodAliasFor(args: {
+  runtimePath: string | undefined;
+  sourceKind: InstalledPluginRow["sourceKind"];
+  serverEntry: string;
+}): Record<string, string> | undefined {
+  if (
+    args.runtimePath === undefined ||
+    args.sourceKind !== "builtin" ||
+    !args.serverEntry.endsWith(`${sep}dist${sep}server.js`)
+  ) {
+    return undefined;
+  }
+  return { [ZOD_SPECIFIER]: args.runtimePath };
+}
+
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
   pluginSdkRuntimePath,
 )
   ? pluginSdkAliasFor(pluginSdkRuntimePath)
+  : undefined;
+
+const availableZodRuntimePath = existsSync(zodRuntimePath)
+  ? zodRuntimePath
   : undefined;
 
 interface MutableRoot {
@@ -290,6 +310,12 @@ interface PluginRuntimeContext {
   settingsChanged?: () => void;
 }
 
+export interface PluginLoadHold {
+  source: string;
+  detail: string;
+  isActive(): Promise<boolean>;
+}
+
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
@@ -347,6 +373,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
+  let loadHold: PluginLoadHold | null = null;
 
   function publishStatus(
     id: string,
@@ -1316,7 +1343,27 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     handle.invalidate();
   }
 
+  function setLoadHold(hold: PluginLoadHold | null): void {
+    loadHold = hold;
+  }
+
+  async function heldDetail(row: InstalledPluginRow): Promise<string | null> {
+    const hold = loadHold;
+    if (hold === null || !row.enabled || row.source !== hold.source) {
+      return null;
+    }
+    return (await hold.isActive()) ? hold.detail : null;
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
+    const held = await heldDetail(row);
+    if (held !== null) {
+      await disposeOne(row.id);
+      await populateIdentity(row);
+      setStatus(row.id, "disabled", held);
+      logger.warn(`plugin ${row.id} not loaded (held): ${held}`);
+      return null;
+    }
     if (row.enabled && !loaded.has(row.id)) setStatus(row.id, "starting");
     await populateIdentity(row);
     if (!row.enabled) {
@@ -1549,6 +1596,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         });
       },
       declaredIconNames: new Set(manifest.branding.icons.keys()),
+      brandingIcon: manifest.branding.icon,
       assertProviderRegistrable: (providerId) => {
         if (manifest.hostEntry !== undefined) {
           return;
@@ -1580,13 +1628,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       ownedRootUrls.add(mutableRootUrl(mutableRootDir(row.rootDir)));
     }
     try {
+      const serverEntry = await resolveServerEntry(row, manifest);
+      const alias = {
+        ...pluginSdkAlias,
+        ...zodAliasFor({
+          runtimePath: availableZodRuntimePath,
+          sourceKind: row.sourceKind,
+          serverEntry,
+        }),
+      };
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,
-        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
+        ...(Object.keys(alias).length === 0 ? {} : { alias }),
       });
-      const mod = (await jiti.import(
-        await resolveServerEntry(row, manifest),
-      )) as {
+      const mod = (await jiti.import(serverEntry)) as {
         default?: unknown;
       };
       const factory = mod.default;
@@ -1722,6 +1777,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           );
         }
       }
+      abortPluginToolCallsForPlugin(id, "plugin-disposed");
       try {
         deps.pendingInteractions?.interruptPluginInteractions(id);
       } catch (error) {
@@ -1844,6 +1900,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loadOne,
     brandingAssets,
     setDevBuildProblem,
+    setLoadHold,
     setStatus,
     sourceKind,
     stabilizingPluginIds,

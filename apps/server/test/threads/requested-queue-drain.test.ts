@@ -534,6 +534,8 @@ describe("the requested queue drain", () => {
           id: failed.id,
           threadId: thread.id,
           failureReason: "Terminal failure",
+          now: Date.now(),
+          retryDelaysMs: [],
         });
 
         if (drain === "scheduled") await runTimeWake(harness, Date.now());
@@ -781,6 +783,10 @@ describe("queue recovery", () => {
         hostId: "host-loaded-plugin",
         status: "idle",
       }).thread;
+      const pending = seedRunnableThread(harness, {
+        hostId: "host-pending-plugin",
+        status: "idle",
+      }).thread;
       seedQueuedMessage(harness.deps, {
         content: textInput("missing plugin work"),
         threadId: missing.id,
@@ -799,14 +805,26 @@ describe("queue recovery", () => {
           reason: "held",
         },
       });
+      seedQueuedMessage(harness.deps, {
+        content: textInput("pending plugin work"),
+        threadId: pending.id,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "pending",
+          reason: "held",
+        },
+      });
 
       await runQueuedMessageDispatch(harness.deps, {
         kind: "orphaned-plugin-recovery",
-        plugins: { isPluginLoaded: (pluginId) => pluginId === "loaded" },
+        plugins: {
+          isPluginExpectedToRun: (pluginId) => pluginId !== "missing",
+        },
       });
 
       expect(listQueuedThreadMessages(harness.db, missing.id)).toEqual([]);
       expect(listQueuedThreadMessages(harness.db, loaded.id)).toHaveLength(1);
+      expect(listQueuedThreadMessages(harness.db, pending.id)).toHaveLength(1);
     });
   });
 });

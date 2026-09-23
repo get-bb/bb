@@ -87,7 +87,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/environment-workspace-cache-owner.ts": [
     "environmentQueryKey",
+    "sidebarNavigationQueryKey",
     "threadSearchQueryKeyPrefix",
+    "threadsQueryKey",
   ],
   "hooks/cache-owners/host-directory-cache-owner.ts": ["hostDirectoryQueryKey"],
   "hooks/cache-owners/mutation-cache-effects.ts": [
@@ -140,6 +142,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
     "allHostQueryKeyPrefix",
+    "allMachineEnvironmentQueryKeyPrefix",
     "allPluginCatalogSearchQueryKeyPrefix",
     "allPluginContributionsQueryKeyPrefix",
     "allPluginListQueryKeyPrefix",
@@ -161,6 +164,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentPullRequestQueryKey",
     "environmentWorkStatusQueryKeyPrefix",
     "hostsQueryKey",
+    "serverMoveStatusQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
     "threadDefaultExecutionOptionsQueryKey",
@@ -185,6 +189,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allEnvironmentQueryKeyPrefix",
     "allEnvironmentWorkStatusQueryKeyPrefix",
     "allHostQueryKeyPrefix",
+    "allMachineEnvironmentQueryKeyPrefix",
     "allProjectPathsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
     "allSystemMachineProvidersQueryKeyPrefix",
@@ -207,12 +212,14 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "hostsQueryKey",
     "hostPathExistenceQueryKeyPrefix",
     "projectsQueryKey",
+    "serverMoveStatusQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
+  "hooks/cache-owners/server-move-cache-owner.ts": ["serverMoveStatusQueryKey"],
   "hooks/cache-owners/provider-cli-status-cache-owner.ts": [
     "hostProviderCliStatusQueryKey",
   ],

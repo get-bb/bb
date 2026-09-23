@@ -1,13 +1,19 @@
 import {
+  createQueuedThreadMessage,
   getThread,
   listEvents,
   listQueuedThreadMessages,
   listQueuedThreadMessagesForApi,
   listRunningThreads,
+  setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { createDeferredPromise } from "@bb/test-helpers";
-import type { PluginHookName } from "@get-bb/plugin-sdk";
+import type { StartedOnBehalfOf } from "@bb/domain";
+import type {
+  MessageDispatchHookContext,
+  PluginHookName,
+} from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -16,14 +22,17 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import {
+  createAutomaticQueuedMessageGroupEligibility,
   createQueuedMessageForThread,
   sendNextQueuedMessageIfPresent,
+  sendQueuedMessage,
 } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { createClientTurnRequestId } from "../../src/services/threads/thread-events.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -662,6 +671,557 @@ describe("dispatch hooks and the no-hook path", () => {
   });
 });
 
+describe("message.dispatch hook message author", () => {
+  function recordAuthors(queuedMessages: ThreadQueuedMessage[][] = []) {
+    const seen: { initiator: string; senderThreadId: string | null }[] = [];
+    const registry = emptyRegistry();
+    registry["message.dispatch"].push({
+      pluginId: "limiter",
+      handler: (context) => {
+        queuedMessages.push(context.queuedMessages);
+        seen.push({
+          initiator: context.initiator,
+          senderThreadId: context.senderThreadId,
+        });
+        return { action: "wait", reason: "held" } as const;
+      },
+    });
+    installHooks(registry);
+    return seen;
+  }
+
+  it("reads a message a user typed as user with no sender", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-author-user",
+        status: "idle",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("typed by hand"), mode: "auto" },
+        thread,
+      });
+
+      expect(seen).toEqual([{ initiator: "user", senderThreadId: null }]);
+    });
+  });
+
+  it("names the sending thread for a message another thread sent", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { environment, project, thread } = seedRunnableThread(harness, {
+        hostId: "host-author-agent",
+        status: "idle",
+      });
+      const sender = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("sent by an agent"),
+          mode: "auto",
+          senderThreadId: sender.id,
+        },
+        thread,
+      });
+
+      expect(seen).toEqual([{ initiator: "agent", senderThreadId: sender.id }]);
+    });
+  });
+
+  it("reads a retry of a failed turn as system", async () => {
+    await withTestHarness(async (harness) => {
+      const queuedMessages: ThreadQueuedMessage[][] = [];
+      const seen = recordAuthors(queuedMessages);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-author-retry",
+        status: "idle",
+      });
+      const originalRequestId = createClientTurnRequestId();
+
+      await attemptDispatch(harness.deps, {
+        thread,
+        payload: { input: textInput("retried work"), mode: "auto" },
+        source: { kind: "inline" },
+        queuePayload: {
+          kind: "retry",
+          retryOfTurnRequestId: originalRequestId,
+          attempt: 2,
+          reason: "Rate limited",
+        },
+        pluginSubmission: null,
+        retryOf: { requestId: originalRequestId, attempt: 2 },
+        origin: null,
+        originPluginId: null,
+        startedOnBehalfOf: null,
+        trigger: "user",
+      });
+
+      const queued = onlyQueuedRow(harness, thread.id);
+      expect(queued).toMatchObject({
+        initiator: "system",
+        senderThreadId: null,
+      });
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+      expect(seen).toEqual([
+        { initiator: "system", senderThreadId: null },
+        { initiator: "system", senderThreadId: null },
+      ]);
+      expect(queuedMessages).toEqual([
+        [],
+        [
+          expect.objectContaining({
+            id: queued.id,
+            initiator: "system",
+            senderThreadId: null,
+          }),
+        ],
+      ]);
+    });
+  });
+
+  it("reports the same author on a drained re-attempt as on the first", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { environment, project, thread } = seedRunnableThread(harness, {
+        hostId: "host-author-drain",
+        status: "idle",
+      });
+      const sender = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("sent by an agent"),
+          mode: "auto",
+          senderThreadId: sender.id,
+        },
+        thread,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      // The re-attempt is the same logical dispatch, so a policy keyed on the
+      // sender must not see it change identity between passes.
+      expect(seen).toEqual([
+        { initiator: "agent", senderThreadId: sender.id },
+        { initiator: "agent", senderThreadId: sender.id },
+      ]);
+    });
+  });
+
+  it.each(["agent", "system"] as const)(
+    "preserves a %s requester in the queued thread-start and hook",
+    async (initiator) => {
+      await withTestHarness(async (harness) => {
+        const queuedMessages: ThreadQueuedMessage[][] = [];
+        const seen = recordAuthors(queuedMessages);
+        const { environment, project } = seedDispatchFixture(
+          harness,
+          "host-author-spawn",
+        );
+        const source = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-author-spawn-source",
+          threadId: source.id,
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          threadId: source.id,
+          turnId: "turn-author-spawn-source",
+          providerThreadId: "provider-author-spawn-source",
+        });
+
+        const spawned = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: "host-author-spawn",
+            workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+          },
+          input: textInput("spawned work"),
+          origin: "sdk",
+          originKind: "fork",
+          projectId: project.id,
+          providerId: "codex",
+          sourceThreadId: source.id,
+          startedOnBehalfOf: { initiator, senderThreadId: source.id },
+        });
+        const queued = onlyQueuedRow(harness, spawned.id);
+        expect(queued).toMatchObject({ initiator, senderThreadId: source.id });
+
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "plugin-recheck",
+        });
+
+        expect(queuedMessages).toEqual([
+          [],
+          [
+            expect.objectContaining({
+              id: queued.id,
+              initiator,
+              senderThreadId: source.id,
+            }),
+          ],
+        ]);
+        expect(seen).toEqual([
+          { initiator, senderThreadId: source.id },
+          { initiator, senderThreadId: source.id },
+        ]);
+      });
+    },
+  );
+
+  it("reports the same origin on a drained re-attempt as on the first", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: { origin: string | null; originPluginId: string | null }[] =
+        [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: (context) => {
+          seen.push({
+            origin: context.origin,
+            originPluginId: context.originPluginId,
+          });
+          return { action: "wait", reason: "held" } as const;
+        },
+      });
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(
+        harness,
+        "host-origin-drain",
+      );
+
+      const thread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+        },
+        input: textInput("queued by a plugin"),
+        origin: "plugin",
+        originPluginId: "drafts",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seen).toEqual([
+        { origin: "plugin", originPluginId: "drafts" },
+        { origin: "plugin", originPluginId: "drafts" },
+      ]);
+    });
+  });
+
+  it("leaves a drained follow-up send with no origin", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: (string | null)[] = [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: (context) => {
+          seen.push(context.origin);
+          return { action: "wait", reason: "held" } as const;
+        },
+      });
+      installHooks(registry);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-origin-send",
+        status: "idle",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("a follow-up"), mode: "auto" },
+        thread,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seen).toEqual([null, null]);
+    });
+  });
+
+  it("still emits startedOnBehalfOf for a handler built against an older SDK", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: (StartedOnBehalfOf | null)[] = [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "legacy",
+        handler: (context) => {
+          const olderContext = context as MessageDispatchHookContext & {
+            startedOnBehalfOf: StartedOnBehalfOf | null;
+          };
+          seen.push(olderContext.startedOnBehalfOf);
+          return { action: "wait", reason: "held" } as const;
+        },
+      });
+      installHooks(registry);
+      const { environment, project, thread } = seedRunnableThread(harness, {
+        hostId: "host-legacy-behalf",
+        status: "idle",
+      });
+      const sender = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+
+      await attemptDispatch(harness.deps, {
+        thread,
+        payload: { input: textInput("spawned work"), mode: "auto" },
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        pluginSubmission: null,
+        origin: "sdk",
+        originPluginId: null,
+        startedOnBehalfOf: { initiator: "agent", senderThreadId: sender.id },
+        trigger: "user",
+      });
+
+      expect(seen).toEqual([{ initiator: "agent", senderThreadId: sender.id }]);
+    });
+  });
+});
+
+describe("message.dispatch grouped authors", () => {
+  it.each(
+    (
+      [
+        {
+          name: "human messages",
+          authors: ["user", "user"],
+          sharedSender: false,
+          initiator: "user",
+          sender: "none",
+        },
+        {
+          name: "one agent",
+          authors: ["agent", "agent"],
+          sharedSender: true,
+          initiator: "agent",
+          sender: "shared",
+        },
+        {
+          name: "different agents",
+          authors: ["agent", "agent"],
+          sharedSender: false,
+          initiator: "agent",
+          sender: "mixed",
+        },
+        {
+          name: "agent then human",
+          authors: ["agent", "user"],
+          sharedSender: false,
+          initiator: "mixed",
+          sender: "mixed",
+        },
+        {
+          name: "human then agent",
+          authors: ["user", "agent"],
+          sharedSender: false,
+          initiator: "mixed",
+          sender: "mixed",
+        },
+        {
+          name: "agent and system requesters",
+          authors: ["agent", "system"],
+          sharedSender: true,
+          initiator: "mixed",
+          sender: "shared",
+        },
+      ] as const
+    ).flatMap((authorCase) =>
+      (
+        [
+          {
+            origins: [null, null],
+            pluginIds: [null, null],
+            origin: null,
+            originPluginId: null,
+          },
+          {
+            origins: ["plugin", "plugin"],
+            pluginIds: ["drafts", "drafts"],
+            origin: "plugin",
+            originPluginId: "drafts",
+          },
+          {
+            origins: ["plugin", "plugin"],
+            pluginIds: ["drafts", "automations"],
+            origin: "plugin",
+            originPluginId: "mixed",
+          },
+          {
+            origins: ["plugin", null],
+            pluginIds: ["drafts", null],
+            origin: "mixed",
+            originPluginId: "mixed",
+          },
+          {
+            origins: ["app", "cli"],
+            pluginIds: [null, null],
+            origin: "mixed",
+            originPluginId: null,
+          },
+        ] as const
+      ).map((originCase) => ({ ...authorCase, ...originCase })),
+    ),
+  )(
+    "summarizes $name with origins $origins and plugins $pluginIds without splitting the group",
+    async ({
+      authors,
+      sharedSender,
+      initiator,
+      sender,
+      origins,
+      pluginIds,
+      origin,
+      originPluginId,
+    }) => {
+      await withTestHarness(async (harness) => {
+        const { environment, project, thread } = seedRunnableThread(harness, {
+          hostId: "host-grouped-authors",
+          status: "idle",
+        });
+        const senders = [0, 1].map(() =>
+          seedThread(harness.deps, {
+            environmentId: environment.id,
+            projectId: project.id,
+          }),
+        );
+        const senderThreadId =
+          sender === "shared"
+            ? senders[0]!.id
+            : sender === "mixed"
+              ? "mixed"
+              : null;
+        const seen: MessageDispatchHookContext[] = [];
+        let proceed = false;
+        const registry = emptyRegistry();
+        registry["message.dispatch"].push({
+          pluginId: "limiter",
+          handler: (context) => {
+            seen.push(context);
+            return proceed
+              ? ({ action: "proceed" } as const)
+              : ({ action: "wait", reason: "held" } as const);
+          },
+        });
+        installHooks(registry);
+        const rows = authors.map((author, index) =>
+          createQueuedThreadMessage(harness.db, harness.deps.hub, {
+            threadId: thread.id,
+            content: textInput(`message ${index + 1}`),
+            senderThreadId: null,
+            origin: origins[index]!,
+            originPluginId: pluginIds[index]!,
+            requestedBy:
+              author === "user"
+                ? null
+                : {
+                    initiator: author,
+                    senderThreadId: senders[sharedSender ? 0 : index]!.id,
+                  },
+            model: "requested-model",
+            reasoningLevel: "medium",
+            permissionMode: "auto",
+            serviceTier: "default",
+            payload: { kind: "inline" },
+            waitingOn: { kind: "thread-busy" },
+            sendAt: null,
+            systemNotice: null,
+          }),
+        );
+        const ids = rows.map((row) => row.id);
+        expect(
+          setQueuedThreadMessageGroupBoundary({
+            db: harness.db,
+            notifier: harness.deps.hub,
+            threadId: thread.id,
+            expectedGroupedPrefixQueuedMessageIds: ids,
+            groupBoundaryQueuedMessageId: rows[1]!.id,
+          }).kind,
+        ).toBe("updated");
+
+        const turnsBefore = turnRequests(harness, thread.id).length;
+        expect(
+          await sendNextQueuedMessageIfPresent(harness.deps, {
+            threadId: thread.id,
+          }),
+        ).toBe(true);
+        expect(seen).toHaveLength(1);
+        expect(seen[0]).toMatchObject({
+          initiator,
+          senderThreadId,
+          origin,
+          originPluginId,
+          queuedMessages: rows.map((row, index) => ({
+            id: row.id,
+            origin: origins[index],
+            originPluginId: pluginIds[index],
+            content: textInput(`message ${index + 1}`),
+            initiator: authors[index],
+            senderThreadId:
+              authors[index] === "user"
+                ? null
+                : senders[sharedSender ? 0 : index]!.id,
+          })),
+        });
+        expect(seen[0]?.input.text).toContain("message 1");
+        expect(seen[0]?.input.text).toContain("message 2");
+        expect(Reflect.get(seen[0]!, "queuedMessage")).toEqual(
+          seen[0]?.queuedMessages[0],
+        );
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual(ids);
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+
+        proceed = true;
+        await sendQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          queuedMessageId: rows[0]!.id,
+          mode: "auto",
+          claimPolicy: {
+            kind: "automatic",
+            isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+              harness.deps,
+              { now: Date.now(), retryingFailure: false, thread },
+            ),
+            retryingFailure: false,
+          },
+        });
+        expect(seen).toHaveLength(2);
+        expect(seen[1]).toMatchObject({
+          initiator,
+          senderThreadId,
+          origin,
+          originPluginId,
+          queuedMessages: ids.map((id) => ({ id })),
+        });
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+      });
+    },
+  );
+});
+
 describe("message.dispatch hooks on the queue drain", () => {
   it("uses the durable plugin wait after submission data expires", async () => {
     await withTestHarness(async (harness) => {
@@ -673,8 +1233,11 @@ describe("message.dispatch hooks on the queue drain", () => {
           seen.push(context.experimental_submission);
           const isDraft =
             context.experimental_submission?.pluginId === "drafts" ||
-            (context.queuedMessage?.waitingOn?.kind === "plugin" &&
-              context.queuedMessage.waitingOn.pluginId === "drafts");
+            context.queuedMessages.some(
+              (message) =>
+                message.waitingOn?.kind === "plugin" &&
+                message.waitingOn.pluginId === "drafts",
+            );
           return isDraft
             ? ({ action: "wait", reason: "Draft" } as const)
             : ({ action: "proceed" } as const);

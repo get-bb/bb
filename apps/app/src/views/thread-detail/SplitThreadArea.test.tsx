@@ -136,7 +136,14 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   },
   useAppCommandShortcut: () => commandPresentationState.shortcut,
   useIsAppCommandModifierHeld: () => commandPresentationState.isModifierHeld,
-  useIndexedAppCommandHandlers: () => undefined,
+  useIndexedAppCommandHandlers: (
+    commands: readonly string[],
+    handler: (index: number) => boolean,
+  ) => {
+    commands.forEach((command, index) =>
+      commandHandlers.set(command, () => handler(index)),
+    );
+  },
 }));
 
 vi.mock("react-resizable-panels", async () => {
@@ -891,6 +898,29 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBeNull());
   });
 
+  it("moves vertically between stacked chats and preserves focus at an edge", async () => {
+    const layout = twoPaneLayout("pane-1");
+    if (layout.root.type !== "split") throw new Error("Expected split fixture");
+    layout.root.dir = "col";
+    const store = renderSplitArea({ path: threadPath("thr-a"), layout });
+    await screen.findByTestId("pane-thr-a");
+    expect(commandHandlers.get("pane.focus.right")?.()).toBe(false);
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1");
+    act(() => {
+      expect(commandHandlers.get("pane.focus.down")?.()).toBe(true);
+    });
+    await waitFor(() =>
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2"),
+    );
+    expect(commandHandlers.get("pane.focus.down")?.()).toBe(false);
+    act(() => {
+      expect(commandHandlers.get("pane.focus.up")?.()).toBe(true);
+    });
+    await waitFor(() =>
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1"),
+    );
+  });
+
   it("routes arrangement actions through the existing split move operation", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
@@ -915,7 +945,7 @@ describe("SplitThreadArea", () => {
     });
     await screen.findByTestId("pane-thr-a");
 
-    expect(commandHandlers.get("pane.focus.next")?.()).toBe(true);
+    expect(commandHandlers.get("pane.focus.right")?.()).toBe(true);
     await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
 
     const opened = applyThreadOpenToLayout(
@@ -2235,20 +2265,43 @@ describe("SplitThreadArea", () => {
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
   });
 
-  it("prunes a stale (archived) pane from a restored split", async () => {
-    threadStore.set("thr-b", { archivedAt: 123, deletedAt: null });
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
+  it.each(["pane-1", "pane-2"] as const)(
+    "keeps archived threads in a restored split focused on %s",
+    async (focusedPaneId) => {
+      threadStore.set("thr-b", { archivedAt: 123, deletedAt: null });
+      const path = threadPath(focusedPaneId === "pane-1" ? "thr-a" : "thr-b");
+      const store = renderSplitArea({
+        path,
+        layout: twoPaneLayout(focusedPaneId),
+      });
+
+      expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+      expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+      expect(screen.getByTestId("location").textContent).toBe(path);
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe(focusedPaneId);
+      expect(threadStore.get("thr-b")?.archivedAt).toBe(123);
+    },
+  );
+
+  it("keeps an archived thread when navigating over an active thread in the same pane", async () => {
+    threadStore.set("thr-c", { archivedAt: 123, deletedAt: null });
+    const store = renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+      externalTo: threadPath("thr-c"),
     });
 
-    await waitFor(() => {
-      expect(screen.queryByTestId("pane-thr-b")).toBeNull();
-    });
+    expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("external-nav"));
+
+    expect(await screen.findByTestId("pane-thr-c")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.queryByTestId("pane-thr-b")).toBeNull();
     expect(screen.getByTestId("location").textContent).toBe(
-      threadPath("thr-a"),
+      threadPath("thr-c"),
     );
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2");
+    expect(threadStore.get("thr-c")?.archivedAt).toBe(123);
   });
 
   it("prunes a stale focused pane and moves focus + URL to the survivor", async () => {

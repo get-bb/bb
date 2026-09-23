@@ -34,6 +34,7 @@ import { parseOperationMessage } from "../src/parse-operation-message.js";
 import {
   createTimelineEventFactory,
   fromRows,
+  renderTimelineFixture,
 } from "./timeline-test-harness.js";
 
 interface ContextWindowUsageEventArgs {
@@ -727,12 +728,12 @@ function buildContextWindowUsage(
     contextWindowEvents,
     events: [],
     options: {
+      completedTurnDisplay: "collapse",
       includeNestedRows: false,
       includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "summary",
       workspaceRoot: null,
     },
   }).contextWindowUsage;
@@ -748,12 +749,12 @@ function buildTimelineRows(
     contextWindowEvents: [],
     events,
     options: {
+      completedTurnDisplay: "collapse",
       includeNestedRows: true,
       includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus,
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot,
     },
   }).rows;
@@ -771,12 +772,12 @@ function buildTimelineRowsWithAcceptedContext(
     contextWindowEvents: [],
     events,
     options: {
+      completedTurnDisplay: "collapse",
       includeNestedRows: true,
       includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot: null,
     },
   }).rows;
@@ -794,12 +795,12 @@ function buildTimelineRowsWithRejectedContext(
     contextWindowEvents: [],
     events,
     options: {
+      completedTurnDisplay: "collapse",
       includeNestedRows: true,
       includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot: null,
     },
   }).rows;
@@ -1088,6 +1089,45 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(row).not.toHaveProperty("statusLabels");
   });
 
+  it("hides a delivered tool result whose tool row is suppressed and shows one whose tool row is not", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const subject = (toolName: string, suppress: boolean) => ({
+      kind: "tool-call" as const,
+      toolName,
+      suppress,
+    });
+    const fixture = renderTimelineFixture({
+      events: [
+        event.clientTurnRequested({ text: "start" }),
+        event.turnStarted({ turnId: "turn-1" }),
+        event.turnCompleted({ turnId: "turn-1" }),
+        event.clientTurnRequested({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+          systemMessageSubject: subject("AskUserQuestion", true),
+          text: "Your earlier AskUserQuestion tool call has finished.",
+        }),
+        event.clientTurnRequested({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+          systemMessageSubject: subject("grill_round", false),
+          text: "Your earlier grill_round tool call has finished.",
+        }),
+      ],
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "full",
+      },
+    });
+
+    const userRows = fixture.rows.filter(
+      (row) => row.kind === "conversation" && row.role === "user",
+    );
+    expect(
+      userRows.map((row) => row.kind === "conversation" && row.text),
+    ).toEqual(["start", "Your earlier grill_round tool call has finished."]);
+  });
+
   it("extracts the exact active Plan turn id from the accepted input scope", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const requestId = "creq_23456789ab";
@@ -1172,6 +1212,7 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
+        completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
         isLatestPage: true,
@@ -1179,7 +1220,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1208,6 +1248,7 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
+        completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
         isLatestPage: true,
@@ -1215,7 +1256,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "codex",
         threadStatus: "active",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1243,6 +1283,7 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
+        completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
         isLatestPage: true,
@@ -1250,7 +1291,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1276,6 +1316,7 @@ describe("buildThreadTimelineFromEvents", () => {
         event.turnCompleted(),
       ]),
       options: {
+        completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
         isLatestPage: true,
@@ -1283,7 +1324,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1590,6 +1630,7 @@ describe("buildThreadTimelineFromEvents", () => {
       contextWindowEvents: [],
       events,
       options: {
+        completedTurnDisplay: "collapse",
         includeNestedRows: true,
         includeDiagnosticOperations: false,
         isLatestPage: true,
@@ -1597,7 +1638,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -2300,7 +2340,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectSystemRows(rows)[0]).not.toHaveProperty("parentChange");
   });
 
-  it("contributes no row for an interaction that shows elsewhere (a command approval, a plugin request)", () => {
+  it("contributes no row for a command approval, which shows on its item, and a title-only row for a plugin request", () => {
     const rows = buildTimelineRows([
       {
         event: {
@@ -2354,7 +2394,15 @@ describe("buildThreadTimelineFromEvents", () => {
         meta: { id: "event-2", seq: 2, createdAt: 2 },
       },
     ]);
-    expect(rows.filter((row) => row.kind === "work")).toEqual([]);
+    expect(rows.filter((row) => row.kind === "work")).toEqual([
+      expect.objectContaining({
+        workKind: "form",
+        interactionId: "pint-plugin",
+        pluginId: "secrets",
+        title: "Add secrets",
+        lifecycle: "submitted",
+      }),
+    ]);
     expect(collectSystemRows(rows)).toEqual([]);
   });
 
@@ -2638,6 +2686,90 @@ describe("buildThreadTimelineFromEvents", () => {
       ]);
     },
   );
+
+  it("projects a plugin form to a title-and-outcome row without its data", () => {
+    const formEvent = (
+      seq: number,
+      status: "pending" | "resolved" | "interrupted",
+      statusReason: string | null = null,
+    ): ThreadEventWithMeta => ({
+      event: {
+        type: "system/interaction/lifecycle",
+        threadId: "thread-1",
+        scope: threadScope(),
+        interaction: {
+          id: "pi-form",
+          status,
+          statusReason,
+          origin: {
+            kind: "plugin",
+            pluginId: "secrets",
+            rendererId: "secret-request",
+          },
+          payload: {
+            kind: "plugin",
+            title: "Add secrets to .env",
+            presentation: {
+              label: { pending: "Adding secrets", completed: "Added secrets" },
+              icon: { glyph: "Lock" },
+            },
+          },
+          resolution:
+            status === "resolved"
+              ? {
+                  kind: "plugin_submitted",
+                  description: {
+                    title: "Added API_KEY to .env",
+                    detail: "- API_KEY",
+                    payload: { names: ["API_KEY"] },
+                  },
+                }
+              : null,
+        },
+      },
+      meta: { id: `event-${seq}`, seq, createdAt: seq },
+    });
+    const collectFormRows = (rows: readonly TimelineRow[]) =>
+      rows.filter((row) => row.kind === "work" && row.workKind === "form");
+
+    expect(
+      collectFormRows(
+        buildTimelineRows([formEvent(1, "pending"), formEvent(2, "resolved")]),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        workKind: "form",
+        interactionId: "pi-form",
+        pluginId: "secrets",
+        rendererId: "secret-request",
+        title: "Add secrets to .env",
+        lifecycle: "submitted",
+        status: "completed",
+        presentation: {
+          label: { pending: "Adding secrets", completed: "Added secrets" },
+          icon: { glyph: "Lock" },
+          title: "Added API_KEY to .env",
+          detail: "- API_KEY",
+        },
+        payload: { names: ["API_KEY"] },
+      }),
+    ]);
+    expect(
+      collectFormRows(
+        buildTimelineRows([
+          formEvent(1, "pending"),
+          formEvent(2, "interrupted", "user"),
+        ]),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        lifecycle: "cancelled",
+        status: "interrupted",
+        statusReason: "user",
+        payload: null,
+      }),
+    ]);
+  });
 
   it.each([
     { lateStatus: "pending" },
@@ -3167,12 +3299,12 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
     contextWindowEvents: [],
     events: fromRows(events),
     options: {
+      completedTurnDisplay: "collapse",
       includeNestedRows: true,
       includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "active",
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot: null,
     },
   });

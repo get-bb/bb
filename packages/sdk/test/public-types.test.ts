@@ -222,6 +222,7 @@ interface NodeSurface {
 
 type ExpectedBbSdkKey =
   | "experimental_desktopBrowsers"
+  | "experimental_server"
   | "environments"
   | "files"
   | "guide"
@@ -278,6 +279,7 @@ type ExpectedHostsKey =
   | "experimental_getEnrollmentCommand"
   | "createJoinCode"
   | "delete"
+  | "experimental_deleteOldServerCopy"
   | "directory"
   | "get"
   | "installProviderCli"
@@ -290,6 +292,7 @@ type ExpectedHostsKey =
   | "experimental_retryCleanup"
   | "retryUpdate"
   | "experimental_suspend"
+  | "experimental_reconcile"
   | "update";
 
 type ExpectedPluginsKey =
@@ -316,6 +319,10 @@ type ExpectedPluginCatalogKey = "install" | "installPlan" | "search" | "status";
 type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 
 type ExpectedProjectsKey =
+  | "machineEnvironment"
+  | "replaceMachineEnvironment"
+  | "setMachineEnvironmentVariable"
+  | "deleteMachineEnvironmentVariable"
   | "attachments"
   | "branches"
   | "commands"
@@ -341,6 +348,8 @@ type ExpectedProvidersKey = "list" | "models";
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
+  | "setMachineEnvironmentVariable"
+  | "deleteMachineEnvironmentVariable"
   | "machineEnvironment"
   | "replaceMachineEnvironment"
   | "attention"

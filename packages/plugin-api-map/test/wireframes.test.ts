@@ -22,6 +22,8 @@ import {
   AppShellWireframe,
   CommandPaletteWireframe,
   RealComposerAnnotated,
+  SettingsWireframe,
+  ExtensionsPluginPageWireframe,
   SurfaceMapContext,
   type SurfaceMapState,
 } from "../src/wireframes";
@@ -43,6 +45,26 @@ function renderWireframe(
 }
 
 describe("guide fixture boundaries", () => {
+  it("keeps configuration and recovery fixtures tied to current app source", () => {
+    for (const [id, component] of [
+      ["declarative-settings", SettingsWireframe],
+      ["plugin-status", ExtensionsPluginPageWireframe],
+    ] as const) {
+      const contract = anatomy.surfaceFixtures[id];
+      const markup = renderWireframe(createElement(component));
+      for (const label of contract.labels.anchor)
+        expect(markup).toContain(label);
+      for (const source of contract.sources) {
+        const text = readFileSync(
+          join(import.meta.dirname, "../../..", source.path),
+          "utf8",
+        );
+        for (const anchor of source.anchors)
+          expect(text, source.path).toContain(anchor);
+      }
+    }
+  });
+
   it("scales every spatial fixture together and reflows only the capability grid", () => {
     const markup = renderToStaticMarkup(createElement(ProductMap));
 
@@ -81,10 +103,8 @@ describe("guide fixture boundaries", () => {
   it("scrolls only the one-line page list and clips off-stage fixture overflow", () => {
     const markup = renderToStaticMarkup(createElement(ProductMap));
 
-    expect(markup).toContain(
-      "overflow-x-clip transition-[height] duration-300 ease-out",
-    );
-    expect(markup).toContain("mx-auto flex w-fit max-w-full items-center");
+    expect(markup).toContain("w-full overflow-x-clip");
+    expect(markup).toContain("data-guide-navigation-toolbar");
     expect(markup).toContain("data-guide-page-list-scroll");
     expect(markup).toContain("min-w-0 overflow-x-auto");
     expect(markup).toContain("w-max flex-nowrap");
@@ -249,9 +269,10 @@ describe("guide fixture boundaries", () => {
         classAnchor,
       );
     }
-    expect(markup).toMatch(
-      /data-guide-region="app-overlay"[^>]*class="[^"]*absolute[^"]*z-\[6\][^"]*shadow-md/,
-    );
+    const overlayClasses = markup.match(
+      /data-guide-region="app-overlay"[^>]*class="([^"]*)"/,
+    )?.[1].split(" ");
+    expect(overlayClasses).toEqual(expect.arrayContaining(["absolute", "z-[6]", "shadow-md"]));
     expect(markup.match(/data-guide-badge="app-overlay"/g)).toHaveLength(1);
   });
 
@@ -275,6 +296,13 @@ describe("guide fixture boundaries", () => {
       'data-guide-fixture="sidebar-navigation-primary-actions"',
     );
     expect(markup).not.toContain("Custom navigation");
+    const pluginRowStart = markup.indexOf('data-guide-region="nav-panel"');
+    const pluginRowEnd = markup.indexOf("</a>", pluginRowStart);
+    const pluginRow = markup.slice(pluginRowStart, pluginRowEnd);
+    expect(pluginRow).toContain("Your panel");
+    expect(pluginRow).not.toContain("Plugins");
+    expect(pluginRow).not.toContain("Skills");
+    expect(markup).not.toContain('class="sr-only">Search threads');
   });
 
   it("grows the app window within capped viewport-fit bounds while retaining loose timeline spacing", () => {

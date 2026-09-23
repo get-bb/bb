@@ -26,12 +26,17 @@ import {
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { appToast } from "@/components/ui/app-toast";
 import { MachineLifecycleActions } from "@/components/machines/MachineLifecycleActions";
-import { MachineRemoveDialog } from "@/components/machines/MachineRemoveDialog";
+import {
+  MachineRemoveDialog,
+  serverMachineRemoveDisabledReason,
+} from "@/components/machines/MachineRemoveDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { MoveServerDialog } from "@/components/machines/MoveServerDialog";
 import {
   machineStatusLabel,
   machineStatusTone,
 } from "@/components/machines/machine-status";
+import { canMoveServerHere } from "@/components/machines/server-move";
 import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
 import { MachineLabel } from "@/components/machines/MachineLabel";
 import {
@@ -49,6 +54,7 @@ import {
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
+import { useServerMoveStatus } from "@/hooks/queries/server-move-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -67,11 +73,6 @@ const PERMISSION_MODE_PRESENTATION: Record<
   PERMISSION_MODE_OPTIONS.map((option) => [option.value, option]),
 ) as Record<PermissionMode, (typeof PERMISSION_MODE_OPTIONS)[number]>;
 
-const MACHINES_SECTION_DESCRIPTION =
-  "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
-
-const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
-
 const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
@@ -85,7 +86,7 @@ interface MachineRowProps {
   host: Host;
   isPrimary: boolean;
   isThisMachine: boolean;
-  showPrimaryBadge: boolean;
+  showServerBadge: boolean;
   platformLabel: string | null;
   projectCount: number;
   now: number;
@@ -95,6 +96,9 @@ interface MachineRowProps {
   onSuspend: () => void;
   onResume: () => void;
   onRetryCleanup: () => void;
+  canMoveServerHere: boolean;
+  onMoveServerHere: () => void;
+  serverMoveEnabled: boolean;
   lifecycleActionPending: boolean;
   retryUpdatePending: boolean;
   machineProvider: SystemMachineProvider | null;
@@ -104,7 +108,7 @@ export function MachineRowContent({
   host,
   isPrimary,
   isThisMachine,
-  showPrimaryBadge,
+  showServerBadge,
   platformLabel,
   projectCount,
   now,
@@ -114,6 +118,9 @@ export function MachineRowContent({
   onSuspend,
   onResume,
   onRetryCleanup,
+  canMoveServerHere,
+  onMoveServerHere,
+  serverMoveEnabled,
   lifecycleActionPending,
   retryUpdatePending,
   machineProvider,
@@ -152,7 +159,7 @@ export function MachineRowContent({
           data-machine-row
           className="group group/machine -mx-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
           onClick={(event) => {
-            if (targetsResourceAction(event.target)) return;
+            if (targetsResourceAction(event)) return;
             navigate(detailPath);
           }}
         >
@@ -171,9 +178,7 @@ export function MachineRowContent({
                 {isThisMachine ? (
                   <SettingsBadge>this machine</SettingsBadge>
                 ) : null}
-                {showPrimaryBadge ? (
-                  <SettingsBadge>primary</SettingsBadge>
-                ) : null}
+                {showServerBadge ? <SettingsBadge>server</SettingsBadge> : null}
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
                 <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -244,11 +249,20 @@ export function MachineRowContent({
                     onResume={onResume}
                     onRetryCleanup={onRetryCleanup}
                   />
+                  {canMoveServerHere ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      onSelect={onMoveServerHere}
+                    >
+                      <Icon name="MoveTo" aria-hidden />
+                      <span className="min-w-0 truncate">Move server here</span>
+                    </DropdownMenuItem>
+                  ) : null}
                   {isPrimary ? (
                     <Tooltip>
                       <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
                       <TooltipContent side="left">
-                        {PRIMARY_REMOVE_DISABLED_REASON}
+                        {serverMachineRemoveDisabledReason(serverMoveEnabled)}
                       </TooltipContent>
                     </Tooltip>
                   ) : (
@@ -276,13 +290,17 @@ export function MachinesSettingsSection() {
   const suspendHost = useSuspendHost();
   const resumeHost = useResumeHost();
   const retryHostCleanup = useRetryHostCleanup();
+  const serverMoveStatus = useServerMoveStatus();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [showAllMachines, setShowAllMachines] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Host | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
+  const [moveServerTarget, setMoveServerTarget] = useState<Host | null>(null);
 
   const hosts = hostsQuery.data;
   const serverPrimaryHostId = systemConfig.data?.primaryHostId ?? null;
+  const serverMoveEnabled = systemConfig.data?.experiments.serverMove ?? false;
+  const serverMove = serverMoveStatus.data?.move ?? null;
   const projects = sidebarNavigationQuery.data?.projects;
   const projectCountByHostId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -303,7 +321,7 @@ export function MachinesSettingsSection() {
     showAllMachines && sandboxHosts !== undefined
       ? [...(persistentHosts ?? []), ...sandboxHosts]
       : (persistentHosts ?? []);
-  const showMachineIdentityBadges = (persistentHosts?.length ?? 0) > 1;
+  const showThisMachineBadge = (persistentHosts?.length ?? 0) > 1;
   const hasMachineRows =
     persistentHosts !== undefined && persistentHosts.length > 0;
   const machineProviderById = useMemo(
@@ -320,12 +338,8 @@ export function MachinesSettingsSection() {
           key={host.id}
           host={host}
           isPrimary={host.id === serverPrimaryHostId}
-          isThisMachine={
-            showMachineIdentityBadges && host.id === localDaemonHostId
-          }
-          showPrimaryBadge={
-            showMachineIdentityBadges && host.id === serverPrimaryHostId
-          }
+          isThisMachine={showThisMachineBadge && host.id === localDaemonHostId}
+          showServerBadge={host.id === serverPrimaryHostId}
           platformLabel={
             host.id === localDaemonHostId && localDaemonPlatform !== null
               ? PLATFORM_LABELS[localDaemonPlatform]
@@ -368,6 +382,17 @@ export function MachinesSettingsSection() {
                 appToast.success(`Cleanup retried for ${host.name}`),
             })
           }
+          canMoveServerHere={
+            systemConfig.data !== undefined &&
+            canMoveServerHere({
+              host,
+              primaryHostId: serverPrimaryHostId,
+              move: serverMove,
+              serverMoveEnabled,
+            })
+          }
+          onMoveServerHere={() => setMoveServerTarget(host)}
+          serverMoveEnabled={serverMoveEnabled}
           lifecycleActionPending={
             (suspendHost.isPending && suspendHost.variables === host.id) ||
             (resumeHost.isPending && resumeHost.variables === host.id) ||
@@ -388,8 +413,7 @@ export function MachinesSettingsSection() {
     <>
       <SettingsSection
         title="Machines"
-        description={MACHINES_SECTION_DESCRIPTION}
-        bodyClassName={hasMachineRows ? "py-2" : undefined}
+        bodyClassName="space-y-3 border-0 bg-transparent p-0"
         action={
           <Button
             size="sm"
@@ -401,33 +425,69 @@ export function MachinesSettingsSection() {
           </Button>
         }
       >
-        {hosts === undefined ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : visibleHosts.length === 0 ? (
-          <p className="text-sm text-subtle-foreground">No machines yet.</p>
-        ) : (
-          renderMachineRows(visibleHosts)
-        )}
-        {sandboxHosts !== undefined && sandboxHosts.length > 0 ? (
-          <button
-            type="button"
-            aria-expanded={showAllMachines}
-            onClick={() => setShowAllMachines((previous) => !previous)}
-            className="-ml-1 inline-flex items-center gap-1.5 self-start rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            <Icon
-              name="ChevronDown"
-              className={cn(
-                "size-3.5 transition-transform",
-                showAllMachines && "rotate-180",
-              )}
-              aria-hidden
-            />
-            <span>
-              {showAllMachines ? "Show fewer machines" : "Show all machines"}
-            </span>
-          </button>
-        ) : null}
+        <div
+          role="note"
+          aria-label="About the bb server"
+          className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
+        >
+          <Icon
+            name="Info"
+            className="mt-0.5 size-4 shrink-0 text-subtle-foreground"
+            aria-hidden
+          />
+          <div className="min-w-0 space-y-1 text-xs leading-relaxed text-subtle-foreground">
+            <p className="font-medium text-foreground">How machines connect</p>
+            <p>
+              All your machines connect to one central bb server, where your
+              threads and settings are stored. Choose a machine that can stay
+              awake and online to run the server.
+            </p>
+            {serverMoveEnabled ? (
+              <p>
+                To change which machine runs the server, open the ⋯ menu on
+                another machine below and choose{" "}
+                <span className="font-medium text-foreground">
+                  Move server here
+                </span>
+                .
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div
+          className={cn(
+            "rounded-lg border border-border bg-card px-4 py-3.5",
+            hasMachineRows && "py-2",
+          )}
+        >
+          {hosts === undefined ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : visibleHosts.length === 0 ? (
+            <p className="text-sm text-subtle-foreground">No machines yet.</p>
+          ) : (
+            renderMachineRows(visibleHosts)
+          )}
+          {sandboxHosts !== undefined && sandboxHosts.length > 0 ? (
+            <button
+              type="button"
+              aria-expanded={showAllMachines}
+              onClick={() => setShowAllMachines((previous) => !previous)}
+              className="-ml-1 inline-flex items-center gap-1.5 self-start rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <Icon
+                name="ChevronDown"
+                className={cn(
+                  "size-3.5 transition-transform",
+                  showAllMachines && "rotate-180",
+                )}
+                aria-hidden
+              />
+              <span>
+                {showAllMachines ? "Show fewer machines" : "Show all machines"}
+              </span>
+            </button>
+          ) : null}
+        </div>
       </SettingsSection>
 
       <AddMachineDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
@@ -458,6 +518,13 @@ export function MachinesSettingsSection() {
         target={removeTarget}
         onOpenChange={(open) => {
           if (!open) setRemoveTarget(null);
+        }}
+      />
+
+      <MoveServerDialog
+        target={moveServerTarget}
+        onOpenChange={(open) => {
+          if (!open) setMoveServerTarget(null);
         }}
       />
     </>

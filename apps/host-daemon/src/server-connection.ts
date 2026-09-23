@@ -25,6 +25,7 @@ import {
   type ServerConnectionOptions,
 } from "./server-connection-support.js";
 import { isLikelySystemSuspensionDelay } from "@bb/process-utils";
+import { sliceUtf16Head } from "@bb/text-utils";
 import { normalizeCaughtError, runtimeErrorLogFields } from "./error-utils.js";
 import { ServerResponseError } from "./server-client.js";
 
@@ -119,7 +120,7 @@ function summarizeServerMessagePayload(
   const text = decodeWebSocketMessageData(data);
   return {
     payloadLength: text.length,
-    payloadPreview: text.slice(0, SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS),
+    payloadPreview: sliceUtf16Head(text, SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS),
     payloadTruncated: text.length > SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS,
   };
 }
@@ -350,6 +351,38 @@ export class ServerConnection {
       this.options.onMachineEnvironment?.(session.machineEnvironment);
       return session;
     } catch (error) {
+      if (
+        error instanceof ServerResponseError &&
+        error.serverMoved !== null &&
+        this.options.onServerMoved !== undefined
+      ) {
+        const moved = error.serverMoved;
+        this.options.logger.info(
+          { serverUrl: moved.serverUrl, toHostName: moved.toHostName },
+          "The bb server moved; switching this daemon to the new address",
+        );
+        const switched = await this.options
+          .onServerMoved({
+            source: "session-open",
+            serverUrl: moved.serverUrl,
+            headers: moved.headers ?? null,
+            toHostName: moved.toHostName,
+            movedAt: moved.movedAt,
+          })
+          .then(
+            () => true,
+            (handlerError: unknown) => {
+              this.options.logger.error(
+                { ...runtimeErrorLogFields(handlerError) },
+                "Failed to switch this daemon to the moved bb server",
+              );
+              return false;
+            },
+          );
+        if (switched) {
+          throw error;
+        }
+      }
       if (
         error instanceof ServerResponseError &&
         error.code === "protocol_version_mismatch"
@@ -593,6 +626,23 @@ export class ServerConnection {
           );
         },
       );
+      return;
+    }
+
+    if (message.data.type === "server.moved") {
+      const move = message.data;
+      void Promise.resolve(
+        this.options.onServerMoved?.({
+          serverUrl: move.serverUrl,
+          headers: move.headers,
+          source: "message",
+        }),
+      ).catch((error) => {
+        this.options.logger.error(
+          { ...runtimeErrorLogFields(error), serverUrl: move.serverUrl },
+          "Failed to switch this daemon to the moved bb server",
+        );
+      });
       return;
     }
 

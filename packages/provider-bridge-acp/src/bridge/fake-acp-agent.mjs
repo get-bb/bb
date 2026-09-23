@@ -63,6 +63,8 @@
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_GROK_CONTEXT=1  → advertise Grok model _meta.totalContextTokens
+ *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
  */
@@ -79,6 +81,7 @@ const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
+const grokContext = process.env.FAKE_ACP_GROK_CONTEXT === "1";
 const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
@@ -321,12 +324,13 @@ function configState() {
         name: model.name,
       })),
     };
-  } else if (modelsField) {
+  } else if (modelsField || grokContext) {
     state.models = {
       currentModelId: selectedModel,
       availableModels: fakeModels.map((model) => ({
         modelId: model.value,
         name: model.name,
+        ...(grokContext ? { _meta: { totalContextTokens: 500_000 } } : {}),
       })),
     };
   }
@@ -515,11 +519,14 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`permission:${outcome}`));
   } else if (text.includes("write-file")) {
     try {
-      await requestClient("fs/write_text_file", {
+      const result = await requestClient("fs/write_text_file", {
         sessionId: activeSessionId,
         path: process.env.FAKE_ACP_WRITE_PATH,
         content: "hello from agent\n",
       });
+      if (!result || typeof result !== "object" || Array.isArray(result)) {
+        throw new Error("Invalid fs/write_text_file response");
+      }
       notifyUpdate(messageChunk("write:ok"));
     } catch {
       notifyUpdate(messageChunk("write:denied"));
@@ -572,7 +579,12 @@ async function handlePrompt(message) {
     send({
       jsonrpc: "2.0",
       id: message.id,
-      result: { stopReason },
+      result: {
+        stopReason,
+        ...(grokContext
+          ? { _meta: { usage: { inputTokens: 17_504, totalTokens: 17_531 } } }
+          : {}),
+      },
     });
   }
 }

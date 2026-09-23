@@ -43,6 +43,7 @@ import {
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
+import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
 import {
@@ -51,6 +52,10 @@ import {
 } from "@bb/host-watcher";
 import { PluginHostManager } from "./plugin-host-manager.js";
 import { writeMachineSuspensionMarker } from "./suspension-marker.js";
+import {
+  defaultServerMoveServiceOptions,
+  ServerMoveService,
+} from "./server-move/service.js";
 
 interface SessionState {
   value: string | null;
@@ -60,13 +65,6 @@ const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
-
-type RuntimeShellEnv = NonNullable<AgentRuntimeOptions["shellEnv"]>;
-
-interface RuntimeShellEnvRefreshEntry {
-  expiresAtMs: number;
-  promise: Promise<RuntimeShellEnv>;
-}
 
 interface IdleProviderSessionReaperTimer {
   clear(): void;
@@ -616,53 +614,28 @@ export async function createHostDaemonApp(
     threadStorageRootPath,
   });
   const nowMs = options.nowMs ?? Date.now;
-  let runtimeShellEnvRefreshEntry: RuntimeShellEnvRefreshEntry | null =
-    options.runtimeShellEnvResolvedAtMs === undefined
-      ? null
-      : {
-          expiresAtMs:
-            options.runtimeShellEnvResolvedAtMs +
-            RUNTIME_SHELL_ENV_REFRESH_TTL_MS,
-          promise: Promise.resolve(runtimeManager.getShellEnv()),
-        };
-  const refreshRuntimeShellEnv = async () => {
-    if (!options.resolveRuntimeShellEnv) {
-      return runtimeManager.getShellEnv();
-    }
-    const now = nowMs();
-    if (
-      runtimeShellEnvRefreshEntry &&
-      runtimeShellEnvRefreshEntry.expiresAtMs > now
-    ) {
-      return runtimeShellEnvRefreshEntry.promise;
-    }
-
-    const promise = (async () => {
-      const shellEnv = await options.resolveRuntimeShellEnv?.();
-      if (shellEnv === undefined) {
-        return runtimeManager.getShellEnv();
-      }
-      await runtimeManager.replaceBaseShellEnv(shellEnv);
-      return runtimeManager.getShellEnv();
-    })();
-    const entry = {
-      expiresAtMs: now + RUNTIME_SHELL_ENV_REFRESH_TTL_MS,
-      promise,
-    };
-    runtimeShellEnvRefreshEntry = entry;
-    try {
-      return await promise;
-    } catch (error) {
-      if (runtimeShellEnvRefreshEntry === entry) {
-        runtimeShellEnvRefreshEntry = null;
-      }
-      throw error;
-    }
-  };
+  const runtimeShellEnvCache = createRuntimeShellEnvCache({
+    applyShellEnv: (shellEnv) => runtimeManager.replaceBaseShellEnv(shellEnv),
+    now: nowMs,
+    onRefreshError: (error) => {
+      options.logger.warn(
+        { err: error },
+        "Background login-shell environment refresh failed",
+      );
+    },
+    readShellEnv: () => runtimeManager.getShellEnv(),
+    ttlMs: RUNTIME_SHELL_ENV_REFRESH_TTL_MS,
+    ...(options.resolveRuntimeShellEnv
+      ? { resolveShellEnv: options.resolveRuntimeShellEnv }
+      : {}),
+    ...(options.runtimeShellEnvResolvedAtMs === undefined
+      ? {}
+      : { resolvedAtMs: options.runtimeShellEnvResolvedAtMs }),
+  });
   const withMaintenanceRuntime = async <TResult>(
     request: (runtime: AgentRuntime) => Promise<TResult>,
   ): Promise<TResult> => {
-    await refreshRuntimeShellEnv();
+    await runtimeShellEnvCache.refresh({ allowStale: false });
     return runtimeManager.withProviderMaintenanceRuntime(
       { dataDir: options.dataDir },
       request,
@@ -720,6 +693,30 @@ export async function createHostDaemonApp(
     onChanged: (event) => sendServerMessage(event),
   });
 
+  let requestServerMoveShutdown = async (
+    _reason: string,
+    _exitCode: 0 | 1,
+  ): Promise<void> => undefined;
+  const serverMove = new ServerMoveService({
+    ...defaultServerMoveServiceOptions(),
+    dataDir: options.dataDir,
+    hostId: options.hostId,
+    serverUrl: options.serverUrl,
+    hostKey: options.hostKey,
+    serverHeaders: options.serverHeaders ?? {},
+    hostDaemonPort: options.localApiConfig?.port ?? null,
+    autoUpdate: options.autoUpdate ?? false,
+    logger: options.logger,
+    ...(options.fetchFn === undefined ? {} : { fetchFn: options.fetchFn }),
+    isServerSessionOpen: () => sessionState.value !== null,
+    getShellEnv: () => runtimeManager.getShellEnv(),
+    emitProgress: (message) => {
+      sendServerMessage(message);
+    },
+    requestShutdown: (reason, exitCode) =>
+      requestServerMoveShutdown(reason, exitCode),
+  });
+
   const router = new CommandRouter({
     emitEnvironmentHookProgress: (message) => sendServerMessage(message),
     desktopBrowserBroker,
@@ -754,13 +751,14 @@ export async function createHostDaemonApp(
       withMaintenanceRuntime((runtime) =>
         runtime.providerInstallationRun(args),
       ),
-    refreshShellEnv: async () => {
-      await refreshRuntimeShellEnv();
+    refreshShellEnv: async (args) => {
+      await runtimeShellEnvCache.refresh(args);
     },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },
     ensureConnectTunnelIdentity: () => connectTunnel.ensureTunnelIdentity(),
+    serverMove,
     pluginHostManager,
     threadStorageRootPath,
     logger: options.logger,
@@ -789,6 +787,7 @@ export async function createHostDaemonApp(
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
     onMachineShutdown: () => requestMachineShutdown(),
+    onServerMoved: (notice) => serverMove.handleServerMoved(notice),
     onMachineEnvironment: (environment) =>
       machineEnvironment.replace(environment.entries),
     createWebSocket: options.createWebSocket,
@@ -904,6 +903,7 @@ export async function createHostDaemonApp(
       await watchManager.shutdown();
       disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
+      terminalManager.dispose();
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
@@ -928,6 +928,14 @@ export async function createHostDaemonApp(
     sendServerMessage({ type: "machine.shutdown-ack" });
     await daemon.shutdown("machine-shutdown", 0);
   };
+  requestServerMoveShutdown = (reason, exitCode) =>
+    daemon.shutdown(reason, exitCode);
+  void serverMove.resumeActivation().catch((error: unknown) => {
+    options.logger.error(
+      { ...runtimeErrorLogFields(error) },
+      "Failed to resume the server move activation",
+    );
+  });
   connection.setSessionCloseHandler((reason) =>
     daemon.shutdown(`session-close:${reason}`, 0),
   );

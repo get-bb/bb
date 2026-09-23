@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.43.1",
+  "version": "0.43.4",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -45,7 +45,6 @@
   "files": [
     "app/dist",
     "dist",
-    "!dist/*.map",
     "host-daemon/dist/bb",
     "host-daemon/dist/bb-chunks",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
@@ -53,8 +52,8 @@
     "host-daemon/dist/bb-provider-bridge-worker.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
     "server/dist",
-    "!server/dist/index.js.map",
-    "README.md"
+    "README.md",
+    "!**/*.map"
   ],
   "publishConfig": {
     "access": "public"
@@ -71,10 +70,12 @@
   "dependencies": {
     "@parcel/watcher": "2.5.6",
     "better-sqlite3": "13.0.3",
+    "fs-native-extensions": "1.5.0",
     "hono": "^4.7.0",
     "jiti": "^2.6.1",
     "node-pty": "1.2.0-beta.15",
     "npm": "11.16.0",
+    "picocolors": "^1.1.1",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "pino-roll": "^4.0.0",
@@ -82,7 +83,9 @@
   },
   "devDependencies": {
     "@bb/config": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
     "@bb/sdk": "workspace:*",
+    "@bb/server-archive": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "rimraf": "^6.1.0",

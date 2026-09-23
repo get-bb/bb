@@ -22,11 +22,27 @@ sendAt?, reason? })`.
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
 - `bb thread stop <id>` also releases an idle or stuck agent runtime. The
-  command is idempotent and preserves thread history.
+  command is idempotent and preserves thread history. An explicit stop also
+  interrupts a turn the machine retains while the server sees idle or failed,
+  including a turn that starts during the stop. If interruption fails, the
+  thread remains stopping; inspect its status before treating Stop as confirmed.
 - Use `bb thread compact <id>` to send the built-in `/compact` command to an idle or errored thread. Completion or failure appears in the timeline. Provider support varies; consult its skill and reported capabilities.
 - Use `bb thread clear <id>` on an idle or failed thread to reset its active
   timeline and model context in place while keeping the same BB thread,
   workspace, durable event history, and sticky execution settings.
+- A send that fails with `provider_session_unavailable` means the thread's
+  recorded provider session belongs to another thread (`details.reason:
+"foreign"`) or was announced by another thread in the same millisecond
+  (`"ambiguous"`), or its identity handle is missing or empty (`"invalid"`).
+  bb refuses to resume it or silently replace its context rather than write into another
+  conversation. `bb thread clear <id>` starts a new provider session on the
+  next send and keeps the thread's history.
+- Message edits refuse to erase an ownership claim also recorded by another
+  thread when doing so could transfer or resolve that shared claim. This check
+  runs before preparing the edit and again before rewriting history. Use
+  `bb thread clear <id>` to start fresh while retaining the ownership evidence.
+  Ownership still depends on retained records; purging all records of the
+  original owner removes that protection.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a thread's durable active Goal when supported by its provider. Both wait for provider confirmation.

@@ -211,28 +211,24 @@ describe("SideChatPanel", () => {
     expect(action.getAttribute("data-roles")).toBe("assistant");
   });
 
-  it("send-to-main queues the message text on the source thread", async () => {
-    const sendToMain = vi.fn(() => ({ ok: true }));
+  it("send-to-main queues the message text on the source thread through the public API", async () => {
+    const create = vi.fn(async () => ({ id: "qm_1" }) as never);
     const slot = renderSlot(
       app.threadPanelActions[0]!,
       { threadId: "thr_src", params },
-      { rpc: { sendToMain } },
+      { rpc: {}, sdk: { threads: { queuedMessages: { create } } } },
     );
 
     fireEvent.click(slot.getByTestId("bb-thread-chat-action-send-to-main"));
 
     await waitFor(() => {
-      expect(slot.rpcCalls).toEqual([
-        {
-          method: "sendToMain",
-          input: {
-            sourceThreadId: "thr_src",
-            senderThreadId: "thr_fork",
-            text: "test message text",
-          },
-        },
-      ]);
+      expect(create).toHaveBeenCalledWith({
+        threadId: "thr_src",
+        input: [{ type: "text", text: "test message text", mentions: [] }],
+        senderThreadId: "thr_fork",
+      });
     });
+    expect(slot.rpcCalls).toEqual([]);
   });
 
   it("reports a missing thread reference for malformed params", () => {

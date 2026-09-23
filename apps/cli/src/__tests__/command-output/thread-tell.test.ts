@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -34,6 +35,60 @@ describe("bb thread tell command output", () => {
       delivery: "sent",
       mode: "steer",
     });
+  });
+
+  it("bb thread tell --message-file sends shell-active text untouched", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-tell-file-"));
+    const path = join(dir, "message.md");
+    const message =
+      "Rebase with `git rebase --onto main` then run $(pnpm test)";
+    await writeFile(path, `${message}\n`);
+    const post = vi.fn(async (_request: { json: unknown }) => ({
+      ok: true,
+      delivery: "sent",
+    }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    try {
+      await runCommand(
+        ["thread", "tell", "thread-file", "--message-file", path],
+        register,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        json: expect.objectContaining({
+          input: [expect.objectContaining({ type: "text", text: message })],
+        }),
+      }),
+    );
+  });
+
+  it("bb thread message is an alias for tell", async () => {
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(["thread", "message", "thread-alias", "hello"], register);
+
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("bb thread tell without any message says both ways to pass one", async () => {
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await expect(
+      runCommand(["thread", "tell", "thread-empty"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error).mock.calls.map((call) => call[0])).toEqual([
+      "Error: Missing <message>.",
+      "Pass <message>, or --message-file <path> (use - to read stdin).",
+    ]);
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("bb thread tell names the typed reason a message queued for", async () => {
@@ -200,7 +255,7 @@ describe("bb thread tell command output", () => {
         "add a README",
         "--plan",
         "--file",
-        "/tmp/report.pdf",
+        "existing-report.pdf",
       ],
       register,
     );
@@ -228,83 +283,102 @@ describe("bb thread tell command output", () => {
               },
             ],
           },
-          { type: "localFile", path: "/tmp/report.pdf" },
+          { type: "localFile", path: "existing-report.pdf" },
         ],
         mode: "steer-if-active",
       },
     });
   });
 
-  it("bb thread tell uploads absolute client image paths to the target project", async () => {
-    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-image-"));
-    try {
-      const imagePath = join(clientDir, "screenshot.png");
-      const bytes = new Uint8Array([137, 80, 78, 71]);
-      await writeFile(imagePath, bytes);
-      const get = vi.fn(async () =>
-        fixtures.makeThread({
-          id: "thread-attachments",
-          projectId: "proj-target",
-          providerId: "codex",
-        }),
-      );
-      const post = vi.fn(async () => ({ ok: true }));
-      stubServerApi({
-        "v1.threads.:id.$get": get,
-        "v1.threads.:id.send.$post": post,
-      });
-      vi.mocked(globalThis.fetch).mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            type: "localImage",
-            path: "screenshot-uploaded.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: bytes.byteLength,
+  it.each([
+    ["image", "localImage", "screenshot.png", "image/png", false],
+    ["file", "localFile", "report.pdf", "application/pdf", false],
+    ["file", "localFile", "report with spaces.pdf", "application/pdf", true],
+  ] as const)(
+    "bb thread tell uploads client %s paths to the target project",
+    async (flag, type, filename, mimeType, fileUrl) => {
+      const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-image-"));
+      try {
+        const attachmentPath = join(clientDir, filename);
+        const uploadedPath = "uploaded-" + filename;
+        const bytes = new Uint8Array([137, 80, 78, 71]);
+        await writeFile(attachmentPath, bytes);
+        const get = vi.fn(async () =>
+          fixtures.makeThread({
+            id: "thread-attachments",
+            projectId: "proj-target",
+            providerId: "codex",
           }),
-          { headers: { "content-type": "application/json" } },
-        ),
-      );
+        );
+        const post = vi.fn(async () => ({ ok: true }));
+        stubServerApi({
+          "v1.threads.:id.$get": get,
+          "v1.threads.:id.send.$post": post,
+        });
+        vi.mocked(globalThis.fetch).mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              type,
+              path: uploadedPath,
+              name: filename,
+              mimeType,
+              sizeBytes: bytes.byteLength,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
 
-      await runCommand(
-        [
-          "thread",
-          "tell",
-          "thread-attachments",
-          "review these",
-          "--file",
-          "/tmp/report.pdf",
-          "--image",
-          imagePath,
-        ],
-        register,
-      );
-
-      expect(get).toHaveBeenCalledWith({
-        param: { id: "thread-attachments" },
-      });
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        "http://server/api/v1/projects/proj-target/attachments",
-        expect.objectContaining({
-          body: expect.any(FormData),
-          method: "POST",
-        }),
-      );
-      expect(post).toHaveBeenCalledWith({
-        param: { id: "thread-attachments" },
-        json: {
-          input: [
-            { type: "text", text: "review these", mentions: [] },
-            { type: "localFile", path: "/tmp/report.pdf" },
-            { type: "localImage", path: "screenshot-uploaded.png" },
+        await runCommand(
+          [
+            "thread",
+            "tell",
+            "thread-attachments",
+            "review these",
+            "--file",
+            "existing-report.pdf",
+            "--" + flag,
+            fileUrl ? pathToFileURL(attachmentPath).href : attachmentPath,
           ],
-          mode: "steer-if-active",
-        },
-      });
-    } finally {
-      await rm(clientDir, { force: true, recursive: true });
-    }
-  });
+          register,
+        );
+
+        expect(get).toHaveBeenCalledWith({
+          param: { id: "thread-attachments" },
+        });
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          "http://server/api/v1/projects/proj-target/attachments",
+          expect.objectContaining({
+            body: expect.any(FormData),
+            method: "POST",
+          }),
+        );
+        const uploadBody = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body;
+        expect(uploadBody).toBeInstanceOf(FormData);
+        if (!(uploadBody instanceof FormData))
+          throw new Error("Missing upload body");
+        const uploadedFile = uploadBody.get("file");
+        expect(uploadedFile).toBeInstanceOf(File);
+        if (!(uploadedFile instanceof File))
+          throw new Error("Missing uploaded file");
+        expect(uploadedFile.name).toBe(filename);
+        expect(uploadedFile.type).toBe(mimeType);
+        expect(new Uint8Array(await uploadedFile.arrayBuffer())).toEqual(bytes);
+        expect(post).toHaveBeenCalledWith({
+          param: { id: "thread-attachments" },
+          json: {
+            input: [
+              { type: "text", text: "review these", mentions: [] },
+              { type: "localFile", path: "existing-report.pdf" },
+              { type, path: uploadedPath },
+            ],
+            mode: "steer-if-active",
+          },
+        });
+      } finally {
+        await rm(clientDir, { force: true, recursive: true });
+      }
+    },
+  );
 
   it("bb thread tell includes sender thread metadata when run inside another thread", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-sender");

@@ -47,6 +47,19 @@ describe("threadQueuedMessages", () => {
     ).toBe("What should I do next?");
   });
 
+  it("truncates queued-message previews by display width", () => {
+    expect(
+      formatQueuedMessagePreview([
+        { type: "text", text: "调".repeat(100), mentions: [] },
+      ]),
+    ).toBe(`${"调".repeat(68)}...`);
+    expect(
+      formatQueuedMessagePreview([
+        { type: "text", text: "👨‍👩‍👧".repeat(100), mentions: [] },
+      ]),
+    ).toBe(`${"👨‍👩‍👧".repeat(68)}...`);
+  });
+
   it("restores editable drafts from queued messages", () => {
     const draft = queuedInputToDraft([
       { type: "text", text: "Follow up", mentions: [] },

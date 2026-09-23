@@ -259,4 +259,20 @@ describe("app keybindings", () => {
     expect(formatAppShortcut(ALT_P, "Win32")).toBe("Alt + P");
     expect(formatAppShortcutAria(ALT_P, "MacIntel")).toBe("Alt+P");
   });
+
+  it("formats arrow keys as arrow glyphs", () => {
+    const shortcut: AppShortcut = {
+      key: "ArrowLeft",
+      mod: true,
+      meta: false,
+      control: true,
+      alt: false,
+      shift: false,
+    };
+    expect(formatAppShortcut(shortcut, "MacIntel")).toBe("⌃ ⌘ ←");
+    expect(formatAppShortcut(shortcut, "Win32")).toBe("Ctrl + ←");
+    expect(formatAppShortcutAria(shortcut, "MacIntel")).toBe(
+      "Control+Meta+ArrowLeft",
+    );
+  });
 });

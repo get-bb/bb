@@ -15,8 +15,8 @@ import {
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
-  type PluginCommandPaletteActionContext,
-  type PluginCommandPaletteActionRegistration,
+  type PluginCommandContext,
+  type PluginCommandRegistration,
   type PluginMessageActionContext,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveProps,
@@ -32,6 +32,7 @@ import {
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
   type ExperimentalSidebarNavigationProps,
+  type ExperimentalSidebarHeaderProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -172,6 +173,7 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_serverAccess",
   "sdk",
   "onDispose",
+  "onInstall",
 ] as const satisfies readonly (keyof BbPluginApi)[];
 
 type MissingApiKey = Exclude<
@@ -263,6 +265,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
+  experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
@@ -271,7 +274,7 @@ type SlotPropsByName = {
   experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
-  commandPaletteAction: PluginCommandPaletteActionContext;
+  commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
   experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
@@ -340,20 +343,16 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   experimental_sidebarNavigation: [
-    "items",
-    "activeItemId",
     "isCompactViewport",
-    "experimental_activate",
     "experimental_Original",
   ],
+  experimental_sidebarHeader: ["width", "controlSize", "isCompactViewport"],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
-    "Original",
-    "experimental_Original",
   ],
   experimental_threadHeaderAction: [
     "threadId",
@@ -364,6 +363,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "tabId",
     "url",
+    "experimental_page",
     "isCompactViewport",
   ],
   fileOpener: [
@@ -482,10 +482,10 @@ const COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS = [
   "title",
   "isAvailable",
   "run",
-] as const satisfies readonly (keyof PluginCommandPaletteActionRegistration)[];
+] as const satisfies readonly (keyof PluginCommandRegistration)[];
 
 type MissingCommandPaletteActionRegistrationField = Exclude<
-  keyof PluginCommandPaletteActionRegistration,
+  keyof PluginCommandRegistration,
   (typeof COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS)[number]
 >;
 const _assertAllCommandPaletteActionRegistrationFieldsListed: MissingCommandPaletteActionRegistrationField extends never

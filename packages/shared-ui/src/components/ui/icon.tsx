@@ -6,61 +6,61 @@ import {
   type ReactNode,
 } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import {
-  Alert02Icon,
-  AlertCircleIcon,
-  Archive03Icon,
-  ArrowDown01Icon,
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  BotIcon,
-  BubbleChatAddIcon,
-  BubbleChatIcon,
-  Bug01Icon,
-  Cancel01Icon,
-  CancelCircleIcon,
-  CheckListIcon,
-  CheckmarkCircle02Icon,
-  CircleIcon,
-  ComputerTerminal01Icon,
-  Copy01Icon,
-  DashedLineCircleIcon,
-  Delete02Icon,
-  Download01Icon,
-  Edit02Icon,
-  FilterHorizontalIcon,
-  FolderAddIcon,
-  FolderExportIcon,
-  FolderGitTwoIcon,
-  Folder02Icon,
-  FolderIcon,
-  FolderSyncIcon,
-  FolderUnknownIcon,
-  HelpCircleIcon,
-  InformationCircleIcon,
-  Loading03Icon,
-  MessageQuestionIcon,
-  MoreHorizontalIcon,
-  Search01Icon,
-  Settings01Icon,
-  SidebarLeftIcon,
-  SlidersHorizontalIcon,
-  SourceCodeIcon,
-  Target02Icon,
-  Tick02Icon,
-  ToolboxIcon,
-  ToolCaseIcon,
-  UserAdd01Icon,
-  UnavailableIcon,
-  WorkflowCircle03Icon,
-  ZapIcon,
-} from "@hugeicons/core-free-icons";
+import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
+import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
+import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
+import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import CancelCircleIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
+import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+import CircleIcon from "@hugeicons/core-free-icons/CircleIcon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
+import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
+import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
+import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
+import Edit02Icon from "@hugeicons/core-free-icons/Edit02Icon";
+import FilterHorizontalIcon from "@hugeicons/core-free-icons/FilterHorizontalIcon";
+import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+import FolderExportIcon from "@hugeicons/core-free-icons/FolderExportIcon";
+import FolderGitTwoIcon from "@hugeicons/core-free-icons/FolderGit2Icon";
+import Folder02Icon from "@hugeicons/core-free-icons/Folder02Icon";
+import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+import FolderSyncIcon from "@hugeicons/core-free-icons/FolderSyncIcon";
+import FolderUnknownIcon from "@hugeicons/core-free-icons/FolderUnknownIcon";
+import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
+import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
+import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
+import Target02Icon from "@hugeicons/core-free-icons/Target02Icon";
+import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import ToolboxIcon from "@hugeicons/core-free-icons/ToolboxIcon";
+import ToolCaseIcon from "@hugeicons/core-free-icons/ToolCaseIcon";
+import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
+import UnavailableIcon from "@hugeicons/core-free-icons/UnavailableIcon";
+import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
+import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { useSyncExternalStore } from "react";
 import { cn } from "../../lib/utils";
 import {
   EXTENDED_ICON_NAMES,
   getAppIcon,
+  getPluginAssetIcon,
   subscribeAppIcons,
+  subscribePluginAssetIcons,
   type ExtendedIconName,
   getExtendedIcons,
   subscribeExtendedIcons,
@@ -109,6 +109,50 @@ const SectionAddStrokeRoundedIcon: IconSvgElement = [
   ],
 ];
 
+const SectionMoveStrokeRoundedIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M2 3.4C2 2.24173 2.24173 2 3.4 2H20.6C21.7583 2 22 2.24173 22 3.4V4.6C22 5.75827 21.7583 6 20.6 6H3.4C2.24173 6 2 5.75827 2 4.6V3.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "0",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M2 11.4C2 10.2417 2.24173 10 3.4 10H10.6C11.7583 10 12 10.2417 12 11.4V12.6C12 13.7583 11.7583 14 10.6 14H3.4C2.24173 14 2 13.7583 2 12.6V11.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "1",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M2 19.4C2 18.2417 2.24173 18 3.4 18H10.6C11.7583 18 12 18.2417 12 19.4V20.6C12 21.7583 11.7583 22 10.6 22H3.4C2.24173 22 2 21.7583 2 20.6V19.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "2",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M14 17H22M19 14L22 17L19 20",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      strokeWidth: "1.5",
+      key: "3",
+    },
+  ],
+];
+
 const CORE_ICON_MAP = {
   AlertCircle: AlertCircleIcon,
   AlertTriangle: Alert02Icon,
@@ -149,6 +193,7 @@ const CORE_ICON_MAP = {
   PanelLeft: SidebarLeftIcon,
   Search: Search01Icon,
   SectionAdd: SectionAddStrokeRoundedIcon,
+  SectionMove: SectionMoveStrokeRoundedIcon,
   Settings: Settings01Icon,
   SlidersHorizontal: SlidersHorizontalIcon,
   Spinner: DashedLineCircleIcon,
@@ -238,9 +283,21 @@ export function Icon({ name, fallback = "Zap", ...props }: IconProps) {
     () => getAppIcon(fallback),
     () => getAppIcon(fallback),
   );
-  const requestedExists = custom !== undefined || isBuiltinIconName(name);
+  const asset = useSyncExternalStore(
+    subscribePluginAssetIcons,
+    () => getPluginAssetIcon(name),
+    () => getPluginAssetIcon(name),
+  );
+  const fallbackAsset = useSyncExternalStore(
+    subscribePluginAssetIcons,
+    () => getPluginAssetIcon(fallback),
+    () => getPluginAssetIcon(fallback),
+  );
+  const requestedExists =
+    custom !== undefined || isBuiltinIconName(name) || asset !== undefined;
   const resolved = requestedExists ? name : fallback;
   const definition = requestedExists ? custom : fallbackCustom;
+  const resolvedAsset = requestedExists ? asset : fallbackAsset;
   const CustomIcon = definition?.component;
   if (ancestors.includes(resolved)) {
     return (
@@ -272,10 +329,52 @@ export function Icon({ name, fallback = "Zap", ...props }: IconProps) {
       </IconAncestors.Provider>
     );
   }
+  if (CustomIcon === undefined && resolvedAsset !== undefined) {
+    return (
+      <PluginAssetIcon url={resolvedAsset} resolved={resolved} {...props} />
+    );
+  }
   return (
     <BuiltinIcon
       name={isBuiltinIconName(resolved) ? resolved : "Zap"}
       {...props}
+    />
+  );
+}
+
+function PluginAssetIcon({
+  url,
+  resolved,
+  className,
+  style,
+  "aria-hidden": ariaHidden,
+  "aria-label": ariaLabel,
+}: Omit<IconProps, "name" | "fallback"> & {
+  url: string;
+  resolved: string;
+}) {
+  const image = `url("${url.replace(/["\\]/gu, "\\$&")}")`;
+  return (
+    <span
+      className={cn("inline-block size-6 shrink-0", className)}
+      style={{
+        ...style,
+        backgroundColor: "currentColor",
+        maskImage: image,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain",
+        WebkitMaskImage: image,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+      }}
+      aria-hidden={ariaHidden}
+      aria-label={ariaLabel}
+      role={ariaLabel ? "img" : undefined}
+      data-icon={resolved}
+      data-icon-root=""
+      data-plugin-icon-asset={url}
     />
   );
 }

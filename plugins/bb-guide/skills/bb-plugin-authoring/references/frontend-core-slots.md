@@ -106,7 +106,7 @@ Slot props contracts (versioned, additive-only):
   (when the desktop browser is available) and Terminal; it does not offer
   workspace file search because a generic plugin page has no implicit project,
   environment, or working directory. The Terminal row includes a compact
-  connected-machine selector, initially resolving the primary machine and then
+  connected-machine selector, initially resolving the server machine and then
   the first connected fallback. Changing the selector does not launch
   anything; activating Start terminal uses the selected machine. The selection
   is page-session UI state, not plugin storage.
@@ -232,11 +232,19 @@ target? })`. Inside the fixed-tab component,
   and disclosures share one surface.
 - `experimental_sidebarNavigation` → replaces the bounded navigation controls
   above the thread list. Registration:
-  `{ id, title, description?, component }`. The component receives semantic
-  host items, the active item id, the compact-viewport state,
-  `experimental_activate`, and `experimental_Original`. Search activation opens
-  the quick palette. No inline search field or query state exists. BB keeps the
-  drawer, thread list, footer, resize handle, and shortcut ownership.
+  `{ id, title, description?, component }`. The component receives the
+  compact-viewport state and `experimental_Original`; it reads items, the active item, and host actions
+  with `experimental_useSidebarNavigation()`.
+  Search activation opens the quick palette. No inline search field or query
+  state exists. BB keeps the drawer, thread list, footer, resize handle, and
+  shortcut ownership.
+- `experimental_sidebarHeader` → `{ width, controlSize, isCompactViewport }`
+  — renders controls in the sidebar header row between the sidebar toggle and
+  bb's back and forward buttons. Registration:
+  `{ id, title, description?, component }`. Exclusive; the user picks at most
+  one under Settings → Appearance → Header, and the default is bb's controls
+  only. Content is clipped to the row. Experimental: see
+  `docs/api_to_audit.md`.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order

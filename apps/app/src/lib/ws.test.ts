@@ -400,12 +400,7 @@ describe("WebSocketManager liveness", () => {
 
     vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS);
     expect(pingCount(socket)).toBe(1);
-    receive(socket, {
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      changes: ["events-appended"],
-    });
+    receive(socket, { type: "pong" });
     vi.advanceTimersByTime(REALTIME_PONG_TIMEOUT_MS);
     expect(fakeSocketState.instances).toHaveLength(1);
   });
@@ -422,6 +417,43 @@ describe("WebSocketManager liveness", () => {
     receive(socket, { type: "pong" });
     vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS);
     expect(pingCount(socket)).toBe(2);
+  });
+
+  it("probes on becoming visible even when buffered frames land on resume", () => {
+    const { browserEvents, socket } = createLiveManager();
+
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS * 4);
+    receive(socket, {
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+    });
+    browserEvents.setVisible(true);
+
+    expect(pingCount(socket)).toBe(1);
+    vi.advanceTimersByTime(REALTIME_PONG_TIMEOUT_MS);
+    expect(fakeSocketState.instances).toHaveLength(2);
+  });
+
+  it("replaces the socket when a stale frame arrives instead of a pong", () => {
+    const { browserEvents, socket } = createLiveManager();
+
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS * 4);
+    browserEvents.setVisible(true);
+    expect(pingCount(socket)).toBe(1);
+
+    receive(socket, {
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(REALTIME_PONG_TIMEOUT_MS);
+
+    expect(fakeSocketState.instances).toHaveLength(2);
   });
 
   it("reconnects immediately on visible or online when the socket is closed", () => {

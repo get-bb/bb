@@ -212,6 +212,33 @@ export function handleHostRemoved(
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
 }
 
+interface DisconnectImportedDaemonSessionsArgs {
+  sessions: ReadonlyArray<{ hostId: string; id: string }>;
+}
+
+export function disconnectImportedDaemonSessions(
+  deps: DaemonDisconnectGraceDeps,
+  args: DisconnectImportedDaemonSessionsArgs,
+): void {
+  if (args.sessions.length === 0) {
+    return;
+  }
+  const hostIds = new Set<string>();
+  for (const session of args.sessions) {
+    deps.terminalSessions.handleDaemonSessionClosed({ sessionId: session.id });
+    closeSession(deps.db, deps.hub, session.id, "daemon-disconnect");
+    hostIds.add(session.hostId);
+  }
+  for (const hostId of hostIds) {
+    completeDaemonDisconnectGrace(deps, { hostId });
+    completeDaemonActiveWorkDisconnectGrace(deps, { hostId });
+  }
+  deps.logger.info(
+    { hosts: hostIds.size, sessions: args.sessions.length },
+    "Closed the daemon sessions an imported server snapshot left active",
+  );
+}
+
 function completeDaemonDisconnectGrace(
   deps: DaemonDisconnectGraceDeps,
   args: CompleteDaemonDisconnectGraceArgs,

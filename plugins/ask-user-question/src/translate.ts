@@ -8,15 +8,9 @@ import {
   type ToolResult,
   type ToolResultAnnotation,
 } from "./contracts.js";
-import {
-  NOT_UNIQUE_MESSAGE,
-  TOO_FEW_OPTIONS_MESSAGE,
-} from "./tool-definition.js";
+import { NOT_UNIQUE_MESSAGE } from "./tool-definition.js";
 
 export function validateToolInput(input: ToolInput): string | null {
-  if (input.questions.some((question) => question.options.length < 2)) {
-    return TOO_FEW_OPTIONS_MESSAGE;
-  }
   const prompts = input.questions.map((question) => question.question);
   if (new Set(prompts).size !== prompts.length) return NOT_UNIQUE_MESSAGE;
   for (const question of input.questions) {
@@ -82,6 +76,25 @@ export function assertInteractionPayloadFits(
   if (byteLength > MAX_INTERACTION_PAYLOAD_BYTES) {
     throw new PreviewTooLargeError(byteLength);
   }
+}
+
+export function describeAnswers(
+  payload: InteractionPayload,
+  result: ToolResult,
+): { title: string; detail: string; payload: ToolResult } {
+  const entries = Object.entries(result.answers);
+  const [first] = payload.questions;
+  const title =
+    payload.questions.length === 1 && first && entries[0]
+      ? `Answered ${first.prompt} — ${entries[0][1]}`
+      : `Answered ${entries.length} of ${payload.questions.length} questions`;
+  const detail = payload.questions
+    .map((question) => {
+      const answer = result.answers[question.prompt];
+      return `- ${question.prompt} — ${answer ?? "no answer"}`;
+    })
+    .join("\n");
+  return { title, detail, payload: result };
 }
 
 export function buildInteractionTitle(payload: InteractionPayload): string {

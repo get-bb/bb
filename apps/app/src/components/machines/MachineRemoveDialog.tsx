@@ -10,6 +10,14 @@ import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { useRemoveHost } from "@/hooks/mutations/host-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
+export function serverMachineRemoveDisabledReason(
+  serverMoveEnabled: boolean,
+): string {
+  return serverMoveEnabled
+    ? "The server machine can't be removed. Move the server to another machine first."
+    : "The server machine can't be removed.";
+}
+
 export function machineRemovalConsequences(host: Host): string {
   if (host.type === "ephemeral") {
     return "The compute and its saved snapshots are deleted. Its environments remain as read-only history.";

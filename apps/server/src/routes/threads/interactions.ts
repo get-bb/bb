@@ -68,7 +68,7 @@ export function registerThreadInteractionRoutes(
     );
   });
 
-  post(routes.respondToInteraction, (context, payload) => {
+  post(routes.respondToInteraction, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     if (
       Buffer.byteLength(JSON.stringify(payload.value), "utf8") >
@@ -81,7 +81,7 @@ export function registerThreadInteractionRoutes(
       );
     }
     return context.json(
-      deps.pendingInteractions.respondToInteraction({
+      await deps.pendingInteractions.respondToInteraction({
         threadId: thread.id,
         interactionId: parsePendingInteractionId(
           context.req.param("interactionId"),

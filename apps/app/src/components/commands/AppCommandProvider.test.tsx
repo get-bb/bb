@@ -400,7 +400,7 @@ describe("AppCommandProvider", () => {
     );
 
     expect(screen.getByText("Ctrl + Shift + O")).toBeDefined();
-    expect(screen.getByText("Ctrl + Shift + ArrowUp")).toBeDefined();
+    expect(screen.getByText("Ctrl + Shift + ↑")).toBeDefined();
     expect(screen.getByText("Ctrl + Shift + 1")).toBeDefined();
   });
 

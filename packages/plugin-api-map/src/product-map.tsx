@@ -8,8 +8,10 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 
 import { cn } from "./cn";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
@@ -51,6 +53,77 @@ export const SURFACE_NUMBERS: ReadonlyMap<string, number> = new Map(
     group.surfaces.map((surface, index) => [surface.id, index + 1] as const),
   ),
 );
+
+type GuideSlide = Omit<SurfaceGroup, "id"> & {
+  id: string;
+  groupId: SurfaceGroup["id"];
+  appShellScene?: "navigation" | "conversation" | "panel";
+  homePanel?: boolean;
+};
+
+const DESKTOP_SLIDES: GuideSlide[] = SURFACE_GROUPS.map((group) => ({
+  ...group,
+  groupId: group.id,
+}));
+const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
+  if (group.id === "composer") {
+    return [{
+      ...group,
+      blurb: "Plugins can add banners, actions, providers, and rich text to the prompt box.",
+    }];
+  }
+  if (group.id === "app-shell") {
+    return [
+      {
+        ...group,
+        title: "Sidebar",
+        blurb: "Plugins can add navigation, thread status, and footer controls.",
+        appShellScene: "navigation" as const,
+        surfaces: group.surfaces.filter((surface) => [
+          "sidebar-navigation", "nav-panel", "thread-row-status", "thread-list", "sidebar-footer",
+        ].includes(surface.id)),
+      },
+      {
+        ...group,
+        id: "app-shell-thread",
+        title: "Thread",
+        blurb: "Plugins can extend the thread header, conversation, and composer.",
+        appShellScene: "conversation" as const,
+        surfaces: group.surfaces.filter((surface) => [
+          "thread-header", "timeline-renderers", "message-directives", "message-actions",
+          "pending-interaction", "app-overlay", "content-scripts",
+        ].includes(surface.id)),
+      },
+      {
+        ...group,
+        id: "app-shell-panel",
+        title: "Side panel",
+        blurb: "Explore plugin controls and content in the side panel’s tabs.",
+        appShellScene: "panel" as const,
+        surfaces: group.surfaces.filter((surface) => [
+          "code-renderers", "browser-toolbar", "thread-panel", "file-opener",
+        ].includes(surface.id)),
+      },
+    ];
+  }
+  if (group.id === "home") {
+    return [
+      {
+        ...group,
+        surfaces: group.surfaces.filter((surface) => surface.id === "homepage-section"),
+      },
+      {
+        ...group,
+        id: "home-actions",
+        title: "New thread actions",
+        blurb: "Plugins can add an action to the new-thread panel launcher.",
+        homePanel: true,
+        surfaces: group.surfaces.filter((surface) => surface.id === "new-thread-panel"),
+      },
+    ];
+  }
+  return [group];
+});
 
 export function annotationNeighbors(
   surfaces: readonly PluginSurface[],
@@ -118,7 +191,7 @@ function PlatformCard({ surface }: { surface: PluginSurface }) {
   );
 }
 
-function PlatformSlide({ group }: { group: SurfaceGroup }) {
+function PlatformSlide({ group }: { group: GuideSlide }) {
   return (
     <div className="space-y-3">
       {(group.sections ?? []).map((section) => {
@@ -181,9 +254,11 @@ const FIXTURE_WIDTH_BANDS: Record<
 
 function SpatialFixture({
   band,
+  maxScale = MAX_FIXTURE_SCALE,
   children,
 }: {
   band?: { min: number; max: number };
+  maxScale?: number;
   children: ReactNode;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -234,22 +309,26 @@ function SpatialFixture({
       const cardFootprint = flowCard
         ? Math.max(probeReserve, cardReserveRef.current)
         : 0;
-      const availableHeight = viewport
-        ? viewport.clientHeight -
-          (frame.getBoundingClientRect().top -
-            viewport.getBoundingClientRect().top +
-            viewport.scrollTop) -
-          cardFootprint -
-          8
-        : undefined;
-      const scale = spatialFixtureScale(
-        frame.clientWidth,
-        authoredWidth,
-        availableHeight,
-        authoredHeight,
+      const availableHeight =
+        viewport && frame.clientWidth >= 640
+          ? viewport.clientHeight -
+            (frame.getBoundingClientRect().top -
+              viewport.getBoundingClientRect().top +
+              viewport.scrollTop) -
+            cardFootprint -
+            8
+          : undefined;
+      const scale = Math.min(
+        maxScale,
+        spatialFixtureScale(
+          frame.clientWidth,
+          authoredWidth,
+          availableHeight,
+          authoredHeight,
+        ),
       );
       const scaled = Math.abs(scale - 1) >= 0.0001;
-      const height = scaled ? authoredHeight * scale : null;
+      const height = authoredHeight * scale;
       const width = scaled ? authoredWidth : null;
       const offsetX = scaled ? (frame.clientWidth - authoredWidth) / 2 : 0;
       setGeometry((current) =>
@@ -290,16 +369,16 @@ function SpatialFixture({
       observer.disconnect();
       cardObserver?.disconnect();
     };
-  }, []);
+  }, [maxScale]);
 
-  const scaled = geometry.height !== null;
+  const scaled = geometry.width !== null;
   return (
     <div
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
       className="w-full overflow-x-clip transition-[height] duration-300 ease-out"
-      style={scaled ? { height: geometry.height ?? undefined } : undefined}
+      style={{ height: geometry.height ?? undefined }}
     >
       <div
         ref={fixtureRef}
@@ -328,20 +407,26 @@ function SpatialFixture({
   );
 }
 
-function SlideContent({ group }: { group: SurfaceGroup }) {
-  switch (group.id) {
+function SlideContent({
+  group,
+  mobile = false,
+}: {
+  group: GuideSlide;
+  mobile?: boolean;
+}) {
+  switch (group.groupId) {
     case "app-shell":
-      return <AppShellWireframe />;
+      return <AppShellWireframe mobile={mobile} mobileScene={group.appShellScene} />;
     case "command-palette":
-      return <CommandPaletteWireframe />;
+      return <CommandPaletteWireframe mobile={mobile} />;
     case "composer":
-      return <RealComposerAnnotated />;
+      return <RealComposerAnnotated mobile={mobile} />;
     case "home":
-      return <ComposeScreenWireframe />;
+      return <ComposeScreenWireframe mobile={mobile} panel={group.homePanel} />;
     case "settings":
-      return <SettingsWireframe />;
+      return <SettingsWireframe mobile={mobile} />;
     case "extensions":
-      return <ExtensionsPluginPageWireframe />;
+      return <ExtensionsPluginPageWireframe mobile={mobile} />;
     case "headless":
       return <PlatformSlide group={group} />;
   }
@@ -350,7 +435,8 @@ function SlideContent({ group }: { group: SurfaceGroup }) {
 const PROBE_NOOP = () => {};
 const PROBE_COPY = async () => false;
 
-function CardReserveProbe({ group }: { group: SurfaceGroup }) {
+function CardReserveProbe({ group }: { group: GuideSlide }) {
+  const { numberOf } = useSurfaceMap();
   return (
     <div
       inert
@@ -366,7 +452,7 @@ function CardReserveProbe({ group }: { group: SurfaceGroup }) {
           <SurfaceCard
             probe
             surface={surface}
-            number={SURFACE_NUMBERS.get(surface.id) ?? null}
+            number={numberOf(surface.id)}
             onDismiss={PROBE_NOOP}
             onCopyForAgent={PROBE_COPY}
             navigation={{
@@ -380,7 +466,25 @@ function CardReserveProbe({ group }: { group: SurfaceGroup }) {
   );
 }
 
-function Slide({ group }: { group: SurfaceGroup }) {
+function Slide({
+  group,
+  mobile,
+  viewportMobile,
+}: {
+  group: GuideSlide;
+  mobile: boolean;
+  viewportMobile: boolean;
+}) {
+  if (mobile && viewportMobile && group.id !== "headless") {
+    return (
+      <div
+        data-guide-responsive-strategy="mobile"
+        className="mx-auto w-full max-w-[430px]"
+      >
+        <SlideContent group={group} mobile />
+      </div>
+    );
+  }
   if (fixtureResponsiveStrategy(group) === "reflow") {
     return (
       <div data-guide-responsive-strategy="reflow" className="w-full">
@@ -390,8 +494,11 @@ function Slide({ group }: { group: SurfaceGroup }) {
   }
   return (
     <>
-      <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.id]}>
-        <SlideContent group={group} />
+      <SpatialFixture
+        band={mobile ? { min: 430, max: 430 } : FIXTURE_WIDTH_BANDS[group.groupId]}
+        maxScale={mobile ? 1 : MAX_FIXTURE_SCALE}
+      >
+        <SlideContent group={group} mobile={mobile} />
       </SpatialFixture>
       <CardReserveProbe group={group} />
     </>
@@ -438,12 +545,12 @@ function PanButton({
       disabled={disabled}
       aria-label={`${direction === "previous" ? "Previous" : "Next"} surface`}
       className={cn(
-        "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
+        "inline-flex size-10 @2xl/guide:size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
         FOCUS_RING_CLASS,
       )}
     >
-      <HugeiconsIcon
-        icon={direction === "previous" ? ArrowLeft01Icon : ArrowRight01Icon}
+      <Icon
+        name={direction === "previous" ? "ChevronLeft" : "ChevronRight"}
         className="size-4"
       />
     </button>
@@ -480,34 +587,108 @@ function useStageHeight(
   return { height, animate };
 }
 
+function MobileCardFlow({ children }: { children: ReactNode }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useBrowserLayoutEffect(() => {
+    const frame = frameRef.current;
+    const content = contentRef.current;
+    if (!frame || !content) return;
+    const measure = () => {
+      frame.style.height = `${content.getBoundingClientRect().height}px`;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={frameRef}
+      className="overflow-y-clip transition-[height] duration-300 ease-out motion-reduce:transition-none"
+      style={{ height: 0 }}
+    >
+      <div ref={contentRef} className="flow-root">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function ProductMap({
   pluginPageHref,
+  renderPluginIcon,
   initialSlideId,
   onSlideChange,
   onCopyForAgent,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
+  renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
 }) {
-  const slides = SURFACE_GROUPS;
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pageListRef = useRef<HTMLDivElement>(null);
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickUntil = useRef(0);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const pageListEdges = useScrollEdges(pageListRef);
-  const [index, setIndex] = useState(() =>
-    Math.max(
-      0,
-      slides.findIndex((slide) => slide.id === initialSlideId),
-    ),
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewportMobile, setViewportMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(max-width: 767px)").matches === true,
   );
+  const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
+    null,
+  );
+  const mobile =
+    displayMode === null ? viewportMobile : displayMode === "mobile";
+  const slides = mobile ? MOBILE_SLIDES : DESKTOP_SLIDES;
+  const numbers = useMemo(() => new Map(
+    slides.filter((slide) => slide.groupId !== "headless").flatMap((slide) =>
+      slide.surfaces.map((surface, index) => [surface.id, index + 1] as const),
+    ),
+  ), [slides]);
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 767px)");
+    if (!query) return;
+    const update = () => setViewportMobile(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const selectSurface = (id: string) => {
+    setSelectedId(id);
+    card.open(id);
+  };
+  const pageListEdges = useScrollEdges(pageListRef);
+  const [slideId, setSlideId] = useState(initialSlideId ?? "app-shell");
+  const previousMobile = useRef(mobile);
+  useBrowserLayoutEffect(() => {
+    if (previousMobile.current === mobile) return;
+    previousMobile.current = mobile;
+    if (!mobile || !card.openId) return;
+    const destination = slides.find((slide) =>
+      slide.surfaces.some((surface) => surface.id === card.openId),
+    );
+    if (destination && destination.id !== slideId) {
+      setSlideId(destination.id);
+      onSlideChange?.(destination.id);
+    }
+  }, [mobile, card.openId, slides, slideId, onSlideChange]);
+  const selectedSlide = MOBILE_SLIDES.find((slide) => slide.id === slideId);
+  const index = Math.max(0, slides.findIndex((slide) =>
+    slide.id === slideId || (!mobile && slide.id === selectedSlide?.groupId),
+  ));
   const stage = useStageHeight(index, slideRefs);
 
   useEffect(() => {
+    if (viewportMobile) return;
     const list = pageListRef.current;
     const button = pageButtonRefs.current[index];
     if (!list || !button) return;
@@ -517,31 +698,38 @@ export function ProductMap({
     const rightDelta = buttonRect.right - listRect.right;
     if (leftDelta < 0) list.scrollLeft += leftDelta;
     else if (rightDelta > 0) list.scrollLeft += rightDelta;
-  }, [index]);
+  }, [index, viewportMobile]);
 
   const openSurface = card.openId ? SURFACES_BY_ID.get(card.openId) : undefined;
   const carets = panCarets(index, slides.length);
 
   const show = (next: number) => {
-    if (next < 0 || next >= slides.length) {
+    if (next === index || next < 0 || next >= slides.length) {
       return;
     }
     card.close();
+    setSelectedId(null);
     setHoverId(null);
-    setIndex(next);
+    setSlideId(slides[next].id);
     onSlideChange?.(slides[next].id);
   };
 
   const goToSurface = (id: string) => {
     const group = GROUP_BY_SURFACE_ID.get(id);
     if (!group) return;
-    const target = slides.findIndex((slide) => slide.id === group.id);
+    const target = slides.findIndex((slide) =>
+      slide.surfaces.some((surface) => surface.id === id),
+    );
     if (target === -1) return;
     if (target !== index) show(target);
-    card.open(id);
+    selectSurface(id);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target instanceof HTMLSelectElement) return;
+    if (event.target instanceof Element && event.target.closest('[role="dialog"]')) {
+      return;
+    }
     if (event.key === "ArrowRight") {
       event.preventDefault();
       show(index + 1);
@@ -555,28 +743,45 @@ export function ProductMap({
     () => ({
       activeId: hoverId,
       setActiveId: setHoverId,
-      expandedId: card.openId,
-      numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
-      onSelect: card.open,
+      expandedId: card.openId ?? selectedId,
+      numberOf: (id: string) => numbers.get(id) ?? null,
+      onSelect: selectSurface,
       pluginPageHref,
-      currentGroupId: slides[index].id,
+      renderPluginIcon,
+      currentGroupId: slides[index].groupId,
       onGoToSurface: goToSurface,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverId, card.openId, pluginPageHref, index],
+    [
+      hoverId,
+      card.openId,
+      pluginPageHref,
+      renderPluginIcon,
+      index,
+      selectedId,
+      mobile,
+      slides,
+      numbers,
+    ],
   );
 
   const cardNode = openSurface ? (
-    <SurfaceCard
-      surface={openSurface}
-      number={SURFACE_NUMBERS.get(openSurface.id) ?? null}
-      onDismiss={card.close}
-      onCopyForAgent={onCopyForAgent}
-      navigation={{
-        ...annotationNeighbors(slides[index].surfaces, openSurface.id),
-        onOpen: goToSurface,
-      }}
-    />
+    <div
+      data-guide-card-flow
+      className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full"
+    >
+      <SurfaceCard
+        surface={openSurface}
+        mobile={viewportMobile}
+        number={numbers.get(openSurface.id) ?? null}
+        onDismiss={card.close}
+        onCopyForAgent={onCopyForAgent}
+        navigation={{
+          ...annotationNeighbors(slides[index].surfaces, openSurface.id),
+          onOpen: selectSurface,
+        }}
+      />
+    </div>
   ) : null;
   useEffect(() => {
     if (card.openId === null) return;
@@ -588,7 +793,12 @@ export function ProductMap({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest('[role="dialog"]')) return;
-      if (target.closest('a[href^="#surface-"]')) return;
+      if (
+        target.closest(
+          'a[href^="#surface-"], [data-guide-display-mode]',
+        )
+      )
+        return;
       card.close();
     };
     scope.addEventListener("pointerdown", onPointerDown);
@@ -598,7 +808,7 @@ export function ProductMap({
 
   return (
     <SurfaceMapContext.Provider value={mapState}>
-      <div ref={containerRef} className="relative">
+      <div ref={containerRef} className="@container/guide relative">
         <div data-map-column className="mx-auto w-full max-w-[100rem]">
           <section
             aria-roledescription="carousel"
@@ -614,53 +824,141 @@ export function ProductMap({
                 {slides[index].blurb}
               </p>
             </div>
-            <div className="mx-auto flex w-fit max-w-full items-center gap-1">
-              <PanButton
-                direction="previous"
-                disabled={!carets.previous}
-                onClick={() => show(index - 1)}
-              />
-              <div
-                ref={pageListRef}
-                data-guide-page-list-scroll
-                className={cn(
-                  "min-w-0 overflow-x-auto",
-                  SCROLLBAR_HIDDEN_CLASS,
-                )}
-                style={scrollEdgeFadeStyle(
-                  pageListEdges.canScrollLeft,
-                  pageListEdges.canScrollRight,
-                )}
-              >
-                <ul className="flex w-max flex-nowrap items-center gap-1">
-                  {slides.map((entry, slideIndex) => (
-                    <li key={entry.id} className="shrink-0">
-                      <button
-                        ref={(element) => {
-                          pageButtonRefs.current[slideIndex] = element;
-                        }}
-                        type="button"
-                        onClick={() => show(slideIndex)}
-                        aria-current={slideIndex === index ? "true" : undefined}
-                        className={cn(
-                          "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs transition-colors",
-                          FOCUS_RING_CLASS,
-                          slideIndex === index
-                            ? "bg-surface-selected text-foreground"
-                            : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
-                        )}
+            <div
+              data-guide-navigation-toolbar
+              className="flex w-full items-center gap-2"
+            >
+              <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+                <PanButton
+                  direction="previous"
+                  disabled={!carets.previous}
+                  onClick={() => show(index - 1)}
+                />
+                <div
+                  ref={pageListRef}
+                  data-guide-page-list-scroll
+                  data-no-secondary-panel-swipe
+                  className={cn(
+                    viewportMobile
+                      ? "min-w-0 flex-1 touch-pan-y overflow-hidden"
+                      : "min-w-0 overflow-x-auto",
+                    SCROLLBAR_HIDDEN_CLASS,
+                  )}
+                  style={
+                    viewportMobile
+                      ? undefined
+                      : scrollEdgeFadeStyle(
+                          pageListEdges.canScrollLeft,
+                          pageListEdges.canScrollRight,
+                        )
+                  }
+                  onTouchStartCapture={(event) => {
+                    suppressClickUntil.current = 0;
+                    const touch = event.touches[0];
+                    touchStart.current =
+                      viewportMobile && event.touches.length === 1 && touch
+                        ? { x: touch.clientX, y: touch.clientY }
+                        : null;
+                  }}
+                  onTouchCancelCapture={() => {
+                    touchStart.current = null;
+                  }}
+                  onTouchEndCapture={(event) => {
+                    const start = touchStart.current;
+                    touchStart.current = null;
+                    const touch = event.changedTouches[0];
+                    if (!start || !touch) return;
+                    const dx = touch.clientX - start.x;
+                    const dy = touch.clientY - start.y;
+                    if (Math.abs(dx) < 30 || Math.abs(dx) <= Math.abs(dy))
+                      return;
+                    suppressClickUntil.current = Date.now() + 500;
+                    show(index + (dx < 0 ? 1 : -1));
+                  }}
+                  onClickCapture={(event) => {
+                    if (Date.now() >= suppressClickUntil.current) return;
+                    suppressClickUntil.current = 0;
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  <ul
+                    className={
+                      viewportMobile
+                        ? "flex w-full flex-nowrap items-center"
+                        : "flex w-max flex-nowrap items-center gap-1"
+                    }
+                  >
+                    {slides.map((entry, slideIndex) => (
+                      <li
+                        key={entry.id}
+                        hidden={viewportMobile && slideIndex !== index}
+                        className={cn("shrink-0", viewportMobile && "w-full")}
                       >
-                        {entry.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        <button
+                          ref={(element) => {
+                            pageButtonRefs.current[slideIndex] = element;
+                          }}
+                          type="button"
+                          onClick={() => show(slideIndex)}
+                          aria-current={
+                            slideIndex === index ? "true" : undefined
+                          }
+                          className={cn(
+                            "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
+                            viewportMobile && "block w-full truncate",
+                            FOCUS_RING_CLASS,
+                            slideIndex === index
+                              ? "bg-surface-selected text-foreground"
+                              : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+                          )}
+                        >
+                          {entry.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <PanButton
+                  direction="next"
+                  disabled={!carets.next}
+                  onClick={() => show(index + 1)}
+                />
               </div>
-              <PanButton
-                direction="next"
-                disabled={!carets.next}
-                onClick={() => show(index + 1)}
-              />
+              <div
+                data-guide-display-mode
+                role="group"
+                aria-label="Preview layout"
+                className="flex shrink-0 items-center gap-0.5 border-l border-border-hairline pl-2"
+              >
+                {(["mobile", "desktop"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-label={
+                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                    }
+                    title={
+                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                    }
+                    aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                    onClick={() => setDisplayMode(mode)}
+                    className={cn(
+                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md",
+                      FOCUS_RING_CLASS,
+                      (mobile ? "mobile" : "desktop") === mode
+                        ? "bg-surface-selected text-foreground"
+                        : "text-muted-foreground hover:bg-state-hover",
+                    )}
+                  >
+                    <HugeiconsIcon
+                      icon={mode === "mobile" ? SmartPhone01Icon : ComputerIcon}
+                      className="size-4"
+                      aria-hidden
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
             <div
               className={cn(
@@ -693,20 +991,13 @@ export function ProductMap({
                     }
                     className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
-                    <Slide group={entry} />
+                    <Slide group={entry} mobile={mobile} viewportMobile={viewportMobile} />
                   </div>
                 ))}
               </div>
             </div>
 
-            {cardNode ? (
-              <div
-                data-guide-card-flow
-                className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full"
-              >
-                {cardNode}
-              </div>
-            ) : null}
+            {viewportMobile ? <MobileCardFlow>{cardNode}</MobileCardFlow> : cardNode}
           </section>
         </div>
       </div>

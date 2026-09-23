@@ -22,6 +22,7 @@ import {
   cookieScope,
 } from "../src/browser-import/cookie-database.js";
 import { readFirefoxCookies } from "../src/browser-import/firefox-cookies.js";
+import { discoverBrowserImportSources } from "../src/browser-import/discovery.js";
 import {
   iconFileFromInfoPlist,
   readMacAppIcon,
@@ -36,6 +37,9 @@ import {
   parseChromiumLocalStateProfiles,
   parseFirefoxProfiles,
 } from "../src/browser-import/sources.js";
+
+const fixtureBrowserStorageNames = async () =>
+  new Set(["unlisted", "direct", "broken", "lookalike"]);
 
 const AES_CBC_IV = Buffer.alloc(16, 0x20);
 const WEBKIT_EPOCH_OFFSET_SECONDS = 11_644_473_600;
@@ -231,6 +235,15 @@ describe("cookieScope", () => {
 
 describe("Chromium decryption", () => {
   const key = deriveChromiumKey("peanuts", 1);
+  it("does not treat unknown versioned encryption as plaintext", () => {
+    expect(
+      decryptChromiumValue(
+        Buffer.from("v20opaque ciphertext"),
+        { cbcV10: key },
+        ".example.com",
+      ),
+    ).toBeNull();
+  });
   it("decrypts v10 and strips the domain hash from schema 24 records", () => {
     const encrypted = encryptChromium("v10", key, "session", ".example.com");
     expect(
@@ -319,6 +332,371 @@ describe("browser cookie readers", () => {
   });
   afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it("discovers a registered browser while excluding Electron and mail cookie stores", async () => {
+    const applications = join(directory, ".local", "share", "applications");
+    await mkdir(applications, { recursive: true });
+    await writeFile(
+      join(applications, "Unlisted.desktop"),
+      "[Desktop Entry]\nType=Application\nName=Unlisted\nCategories=Network;WebBrowser;\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\nExec=unlisted %u\n",
+    );
+    for (const name of ["Unlisted", "ElectronNotes"]) {
+      const root = join(directory, ".config", name);
+      await mkdir(join(root, "Default"), { recursive: true });
+      await writeFile(
+        join(root, "Local State"),
+        JSON.stringify({
+          profile: { info_cache: { Default: { name: "Default" } } },
+        }),
+      );
+      createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, []);
+    }
+    const mail = join(directory, ".mail", "main");
+    await mkdir(mail, { recursive: true });
+    await writeFile(
+      join(directory, ".mail", "profiles.ini"),
+      "[Profile0]\nName=Mail\nIsRelative=1\nPath=main\n",
+    );
+    createFirefoxCookieDatabase(join(mail, "cookies.sqlite"), 16, []);
+    const service = createBrowserImportService({
+      context: { platform: "linux", home: directory },
+    });
+    const found = (await service.listSources()).filter((source) =>
+      source.id.startsWith("storage-"),
+    );
+    expect(found.map((source) => source.name)).toEqual(["Unlisted (Chromium)"]);
+    await rm(join(applications, "Unlisted.desktop"));
+    const source = found[0];
+    if (!source) throw new Error("missing discovered browser");
+    expect(
+      await service.importCookies(
+        { sourceId: source.id, sourceProfileDirectory: "Default" },
+        { cookies: { set: vi.fn(), flushStore: vi.fn() } },
+      ),
+    ).toEqual({ ok: false, reason: "unknownSource" });
+  });
+
+  it("keeps the known-browser fallback when application registration cannot be read", async () => {
+    const root = join(directory, ".config", "google-chrome", "Default");
+    await mkdir(root, { recursive: true });
+    createChromiumCookieDatabase(join(root, "Cookies"), 24, []);
+    const service = createBrowserImportService({
+      context: { platform: "linux", home: directory },
+      listBrowserStorageNames: async () => {
+        throw new Error("unavailable");
+      },
+    });
+    const sources = await service.listSources();
+    expect(sources.find((source) => source.id === "chrome")).toMatchObject({
+      profiles: [{ directory: "Default", cookieCount: 0 }],
+    });
+  });
+
+  it.each(["darwin", "linux"] as const)(
+    "discovers an unlisted Chromium store on %s and imports only the selected profile",
+    async (platform) => {
+      const root =
+        platform === "darwin"
+          ? join(
+              directory,
+              "Library",
+              "Application Support",
+              "Unlisted",
+              "User Data",
+            )
+          : join(directory, ".config", "Unlisted");
+      await mkdir(join(root, "Default", "Network"), { recursive: true });
+      await mkdir(join(root, "Profile 1"), { recursive: true });
+      const key = deriveChromiumKey(
+        "test-key",
+        platform === "darwin" ? 1003 : 1,
+      );
+      createChromiumCookieDatabase(
+        join(root, "Default", "Network", "Cookies"),
+        24,
+        [{ host: ".personal.test", name: "session", value: "personal" }],
+      );
+      createChromiumCookieDatabase(join(root, "Profile 1", "Cookies"), 24, [
+        {
+          host: ".work.test",
+          name: "session",
+          encrypted: encryptChromium(
+            platform === "darwin" ? "v10" : "v11",
+            key,
+            "work",
+            ".work.test",
+          ),
+        },
+      ]);
+      await writeFile(
+        join(root, "Local State"),
+        JSON.stringify({
+          profile: {
+            info_cache: {
+              Default: { name: "Personal" },
+              "Profile 1": { name: "Work" },
+              "../escape": { name: "Escape" },
+            },
+          },
+        }),
+      );
+      const run = fakeSecretRunner({
+        "/usr/bin/security": { stdout: "test-key\n" },
+        "secret-tool": { stdout: "test-key\n" },
+      });
+      const context = { platform, home: directory };
+      const service = createBrowserImportService({
+        listBrowserStorageNames: fixtureBrowserStorageNames,
+        context,
+        runSecretCommand: run,
+      });
+      const source = (await service.listSources()).find((s) =>
+        s.id.startsWith("storage-"),
+      );
+      expect(source).toMatchObject({
+        name: "Unlisted (Chromium)",
+        profiles: [
+          { directory: "Default", name: "Personal", cookieCount: 1 },
+          { directory: "Profile 1", name: "Work", cookieCount: 1 },
+        ],
+      });
+      if (!source) throw new Error("store not discovered");
+      expect(run).not.toHaveBeenCalled();
+      const set = vi.fn(async () => undefined);
+      const session = {
+        cookies: { set, flushStore: vi.fn(async () => undefined) },
+      };
+      expect(
+        await service.importCookies(
+          { sourceId: source.id, sourceProfileDirectory: "../escape" },
+          session,
+        ),
+      ).toEqual({ ok: false, reason: "unknownSourceProfile" });
+      expect(
+        await service.importCookies(
+          { sourceId: source.id, sourceProfileDirectory: "Profile 1" },
+          session,
+        ),
+      ).toEqual({ ok: true, imported: 1, skipped: 0, skippedDomains: [] });
+      expect(set).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ domain: ".work.test", value: "work" }),
+      );
+      expect(run).toHaveBeenCalledWith(
+        ...(platform === "darwin"
+          ? [
+              "/usr/bin/security",
+              [
+                "find-generic-password",
+                "-w",
+                "-s",
+                "Unlisted Safe Storage",
+                "-a",
+                "Unlisted",
+              ],
+            ]
+          : ["secret-tool", ["lookup", "application", "Unlisted"]]),
+      );
+      const refreshed = await createBrowserImportService({
+        listBrowserStorageNames: fixtureBrowserStorageNames,
+        context,
+      }).listSources();
+      expect(refreshed.some((s) => s.id === source.id)).toBe(true);
+      await rm(root, { recursive: true });
+      expect(
+        await service.importCookies(
+          { sourceId: source.id, sourceProfileDirectory: "Profile 1" },
+          session,
+        ),
+      ).toEqual({ ok: false, reason: "unknownSource" });
+    },
+  );
+
+  it.each([
+    [".unlisted"],
+    [".var", "app", "org.example.Browser", ".unlisted"],
+    ["snap", "unlisted", "common", ".unlisted"],
+  ])(
+    "discovers Firefox-format profiles in %j without a browser entry",
+    async (...segments) => {
+      const root = join(directory, ...segments);
+      await mkdir(join(root, "main"), { recursive: true });
+      await writeFile(
+        join(root, "profiles.ini"),
+        "[Profile0]\nName=Main\nIsRelative=1\nPath=main\n",
+      );
+      createFirefoxCookieDatabase(join(root, "main", "cookies.sqlite"), 16, [
+        { host: ".unlisted.test", name: "session", value: "found", expiry: 0 },
+        {
+          host: ".container.test",
+          name: "session",
+          value: "excluded",
+          expiry: 0,
+          originAttributes: "^userContextId=1",
+        },
+      ]);
+      const run = fakeSecretRunner({});
+      const service = createBrowserImportService({
+        listBrowserStorageNames: fixtureBrowserStorageNames,
+        context: { platform: "linux", home: directory },
+        runSecretCommand: run,
+      });
+      const discovered = (await service.listSources()).filter((s) =>
+        s.id.startsWith("storage-"),
+      );
+      expect(discovered).toHaveLength(1);
+      const source = discovered[0];
+      if (!source) throw new Error("store not discovered");
+      expect(source).toMatchObject({
+        name: "unlisted (Firefox)",
+        profiles: [{ directory: "main", name: "Main", cookieCount: 1 }],
+      });
+      const set = vi.fn(async () => undefined);
+      expect(
+        await service.importCookies(
+          { sourceId: source.id, sourceProfileDirectory: "main" },
+          { cookies: { set, flushStore: vi.fn(async () => undefined) } },
+        ),
+      ).toMatchObject({ ok: true, imported: 1 });
+      expect(set).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ value: "found" }),
+      );
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps known encryption metadata, deduplicates stores, and excludes the BB profile", async () => {
+    const support = join(directory, "Library", "Application Support");
+    const helium = join(support, "net.imput.helium");
+    const extra = join(support, "Custom", "Unlisted");
+    const bb = join(support, "bb");
+    for (const root of [helium, extra, bb]) {
+      await mkdir(join(root, "Default"), { recursive: true });
+      createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, []);
+    }
+    await symlink(extra, join(support, "Alias"));
+    const context = {
+      platform: "darwin" as const,
+      home: directory,
+      excludedDirectories: [bb],
+    };
+    const discovered = await discoverBrowserImportSources(
+      context,
+      fixtureBrowserStorageNames,
+    );
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0]?.name).toBe("Unlisted (Chromium)");
+    const sources = await createBrowserImportService({
+      listBrowserStorageNames: fixtureBrowserStorageNames,
+      context,
+    }).listSources();
+    expect(sources.filter((s) => s.name === "Helium")).toHaveLength(1);
+    expect(sources.find((s) => s.id === "helium")?.unavailable).toBeUndefined();
+  });
+
+  it("uses known Linux encryption metadata for a Flatpak store", async () => {
+    const root = join(
+      directory,
+      ".var",
+      "app",
+      "com.brave.Browser",
+      "config",
+      "BraveSoftware",
+      "Brave-Browser",
+    );
+    await mkdir(join(root, "Default"), { recursive: true });
+    createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, []);
+    const sources = await discoverBrowserImportSources(
+      {
+        platform: "linux",
+        home: directory,
+      },
+      fixtureBrowserStorageNames,
+    );
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({
+      name: "Brave (Chromium)",
+      linuxSecretApplication: "brave",
+    });
+  });
+
+  it("ignores corrupt databases and lookalike tables while finding direct and XDG stores", async () => {
+    const configHome = join(directory, "custom-config");
+    for (const name of ["Broken", "Lookalike", "Direct"])
+      await mkdir(join(configHome, name), { recursive: true });
+    await writeFile(join(configHome, "Broken", "Cookies"), "not sqlite");
+    const path = join(configHome, "Lookalike", "Cookies");
+    const db = new DatabaseSync(path);
+    db.exec(
+      "create table cookies (name text); create table meta (key text, value text); insert into meta values ('version', '24')",
+    );
+    db.close();
+    createChromiumCookieDatabase(join(configHome, "Direct", "Cookies"), 24, [
+      { host: ".direct.test", name: "session", value: "plain" },
+    ]);
+    const run = fakeSecretRunner({});
+    const service = createBrowserImportService({
+      listBrowserStorageNames: fixtureBrowserStorageNames,
+      context: { platform: "linux", home: directory, configHome },
+      runSecretCommand: run,
+    });
+    const sources = (await service.listSources()).filter((s) =>
+      s.id.startsWith("storage-"),
+    );
+    expect(sources).toHaveLength(1);
+    const source = sources[0];
+    if (!source) throw new Error("missing direct store");
+    expect(source).toMatchObject({
+      name: "Direct (Chromium)",
+      profiles: [{ directory: ".", name: "Default" }],
+    });
+    expect(
+      await service.importCookies(
+        { sourceId: source.id, sourceProfileDirectory: "." },
+        {
+          cookies: {
+            set: vi.fn(async () => undefined),
+            flushStore: vi.fn(async () => undefined),
+          },
+        },
+      ),
+    ).toMatchObject({ ok: true, imported: 1 });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("treats a live lock conservatively when the discovered process name is unknown", async () => {
+    const root = join(directory, ".config", "Unlisted");
+    await mkdir(join(root, "Default"), { recursive: true });
+    createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, []);
+    await symlink(`${hostname()}-42`, join(root, "SingletonLock"));
+    const context = { platform: "linux" as const, home: directory };
+    const source = (
+      await discoverBrowserImportSources(context, fixtureBrowserStorageNames)
+    )[0];
+    if (!source) throw new Error("missing source");
+    expect(
+      await isSourceRunning(source, context, async () => "/opt/custom-binary"),
+    ).toBe(true);
+    expect(await isSourceRunning(source, context, async () => null)).toBe(
+      false,
+    );
+  });
+
+  it("retains a known browser with cookies stored directly in its data directory", async () => {
+    const root = join(directory, ".config", "opera");
+    await mkdir(root, { recursive: true });
+    createChromiumCookieDatabase(join(root, "Cookies"), 24, []);
+    const service = createBrowserImportService({
+      listBrowserStorageNames: fixtureBrowserStorageNames,
+      context: { platform: "linux", home: directory },
+    });
+    const sources = await service.listSources();
+    expect(sources.find((source) => source.id === "opera")).toMatchObject({
+      profiles: [{ directory: ".", cookieCount: 0 }],
+    });
+    expect(
+      sources.filter((source) => source.id.startsWith("storage-")),
+    ).toHaveLength(0);
   });
 
   it("reads a Chromium database, skipping partitioned and keyring-only rows", async () => {
@@ -568,6 +946,137 @@ describe("browser cookie readers", () => {
     ).toBe(true);
   });
 
+  const macChromiumCases = [
+    {
+      id: "helium",
+      name: "Helium",
+      path: ["net.imput.helium"],
+      keychainService: "Helium Storage Key",
+    },
+    {
+      id: "dia",
+      name: "Dia",
+      path: ["Dia", "User Data"],
+      keychainService: "Dia Safe Storage",
+    },
+  ] as const;
+
+  it.each(macChromiumCases)(
+    "imports only the selected $name profile using its macOS Keychain identity",
+    async ({ id, name, path, keychainService }) => {
+      const root = join(directory, "Library", "Application Support", ...path);
+      await mkdir(join(root, "Default"), { recursive: true });
+      await mkdir(join(root, "Profile 1"), { recursive: true });
+      const key = deriveChromiumKey("test-secret", 1003);
+      createChromiumCookieDatabase(join(root, "Profile 1", "Cookies"), 24, [
+        {
+          host: ".work.test",
+          name: "session",
+          encrypted: encryptChromium("v10", key, "work-session", ".work.test"),
+        },
+      ]);
+      createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, [
+        { host: "personal.test", name: "session", value: "personal-session" },
+      ]);
+      await writeFile(
+        join(root, "Local State"),
+        JSON.stringify({
+          profile: {
+            info_cache: {
+              Default: { name: "Personal" },
+              "Profile 1": { name: "Work" },
+            },
+          },
+        }),
+      );
+      const run = fakeSecretRunner({
+        "/usr/bin/security": { stdout: "test-secret\n", exitCode: 0 },
+      });
+      const service = createBrowserImportService({
+        listBrowserStorageNames: fixtureBrowserStorageNames,
+        context: { platform: "darwin", home: directory },
+        runSecretCommand: run,
+      });
+      expect(
+        (await service.listSources()).find((source) => source.id === id),
+      ).toMatchObject({
+        profiles: [
+          { directory: "Default", name: "Personal", cookieCount: 1 },
+          { directory: "Profile 1", name: "Work", cookieCount: 1 },
+        ],
+      });
+      const set = vi.fn(async () => undefined);
+      const flushStore = vi.fn(async () => undefined);
+      expect(
+        await service.importCookies(
+          { sourceId: id, sourceProfileDirectory: "Profile 1" },
+          { cookies: { set, flushStore } },
+        ),
+      ).toEqual({ ok: true, imported: 1, skipped: 0, skippedDomains: [] });
+      expect(run).toHaveBeenCalledWith("/usr/bin/security", [
+        "find-generic-password",
+        "-w",
+        "-s",
+        keychainService,
+        "-a",
+        name,
+      ]);
+      expect(set).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          domain: ".work.test",
+          name: "session",
+          value: "work-session",
+        }),
+      );
+    },
+  );
+
+  it.each(["darwin", "linux"] as const)(
+    "lists native Zen profiles on %s without Firefox Snap profiles",
+    async (platform) => {
+      const root =
+        platform === "darwin"
+          ? join(directory, "Library", "Application Support", "zen")
+          : join(directory, ".zen");
+      const profile = platform === "darwin" ? "Profiles/work" : "work";
+      const profilePath = join(root, profile);
+      await mkdir(profilePath, { recursive: true });
+      await writeFile(
+        join(root, "profiles.ini"),
+        `[Profile0]\nName=Work\nIsRelative=1\nPath=${profile}\n`,
+      );
+      createFirefoxCookieDatabase(join(profilePath, "cookies.sqlite"), 14, []);
+      const snapRoot = join(
+        directory,
+        "snap",
+        "firefox",
+        "common",
+        ".mozilla",
+        "firefox",
+      );
+      await mkdir(join(snapRoot, "other"), { recursive: true });
+      await writeFile(
+        join(snapRoot, "profiles.ini"),
+        "[Profile0]\nName=Firefox\nIsRelative=1\nPath=other\n",
+      );
+      createFirefoxCookieDatabase(
+        join(snapRoot, "other", "cookies.sqlite"),
+        14,
+        [],
+      );
+      const context = { platform, home: directory };
+      const service = createBrowserImportService({
+        listBrowserStorageNames: fixtureBrowserStorageNames,
+        context,
+      });
+      expect(
+        (await service.listSources()).find((source) => source.id === "zen"),
+      ).toMatchObject({
+        profiles: [{ directory: profile, name: "Work", cookieCount: 0 }],
+      });
+    },
+  );
+
   it("judges Chromium lock targets by host, pid liveness, and owner", async () => {
     const names = ["Google Chrome", "chrome"];
     const dead = async () => null;
@@ -658,7 +1167,10 @@ describe("browser cookie readers", () => {
       { host: ".ok.test", name: "a", value: "1", expiry: 0, sameSite: null },
       { host: "reject.test", name: "b", value: "2", expiry: 0, sameSite: null },
     ]);
-    const service = createBrowserImportService({ context });
+    const service = createBrowserImportService({
+      listBrowserStorageNames: fixtureBrowserStorageNames,
+      context,
+    });
     const sources = await service.listSources();
     expect(sources.find((source) => source.id === "firefox")).toEqual({
       id: "firefox",

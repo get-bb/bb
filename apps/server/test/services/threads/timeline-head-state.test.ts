@@ -52,6 +52,8 @@ function seedThreadWithEarlyHeadState(
   thread: Thread,
   turns: number,
   itemsPerTurn: number,
+  runningWorkflow: boolean,
+  pendingCommand = false,
 ): void {
   const events: Parameters<typeof insertEvents>[2] = [];
   let sequence = 0;
@@ -142,30 +144,54 @@ function seedThreadWithEarlyHeadState(
           },
         }),
       });
-      events.push({
-        threadId: thread.id,
-        sequence: (sequence += 1),
-        type: "item/started",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId: "wf-1",
-        itemKind: "backgroundTask",
-        parentToolCallId: null,
-        data: JSON.stringify({
+      if (pendingCommand) {
+        events.push({
+          threadId: thread.id,
+          sequence: (sequence += 1),
+          type: "item/started",
+          scope: turnScope(turnId),
           providerThreadId,
-          item: {
-            id: "wf-1",
-            type: "backgroundTask",
-            taskType: "local_workflow",
-            description: "long running workflow",
-            status: "pending",
-            taskStatus: "running",
-            skipTranscript: false,
-            workflowName: "fixture-mini",
-            usage: { totalTokens: 100, toolUses: 2, durationMs: 1500 },
-          },
-        }),
-      });
+          itemId: "old-command",
+          itemKind: "commandExecution",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "commandExecution",
+              id: "old-command",
+              command: "echo done",
+              cwd: "/tmp",
+              status: "pending",
+              aggregatedOutput: "",
+              approvalStatus: null,
+            },
+          }),
+        });
+      }
+      if (runningWorkflow)
+        events.push({
+          threadId: thread.id,
+          sequence: (sequence += 1),
+          type: "item/started",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId: "wf-1",
+          itemKind: "backgroundTask",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            providerThreadId,
+            item: {
+              id: "wf-1",
+              type: "backgroundTask",
+              taskType: "local_workflow",
+              description: "long running workflow",
+              status: "pending",
+              taskStatus: "running",
+              skipTranscript: false,
+              workflowName: "fixture-mini",
+              usage: { totalTokens: 100, toolUses: 2, durationMs: 1500 },
+            },
+          }),
+        });
     }
 
     for (let item = 0; item < itemsPerTurn; item += 1) {
@@ -202,13 +228,15 @@ const baseOptions = {
 describe("timeline head state under a budgeted window", () => {
   it("keeps goal, todos, and a running workflow when the budget excludes the turn that set them", () => {
     const { db, thread } = setup();
-    seedThreadWithEarlyHeadState(db, thread, 12, 60);
+    seedThreadWithEarlyHeadState(db, thread, 12, 60, true);
 
     const unbudgeted = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       ...baseOptions,
       eventBudget: 1_000_000,
     }).response;
     const budgeted = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       ...baseOptions,
       eventBudget: 100,
     }).response;
@@ -229,6 +257,70 @@ describe("timeline head state under a budgeted window", () => {
 
     expect(unbudgeted.activeWorkflows).toHaveLength(1);
     expect(budgeted.activeWorkflows).toHaveLength(1);
+  });
+
+  it("keeps historical plan state without loading intervening conversation markers", () => {
+    const { db, thread } = setup();
+    seedThreadWithEarlyHeadState(db, thread, 100, 1, false);
+    const latest = buildThreadTimelineWithProfile(db, thread, {
+      ...baseOptions,
+      completedTurnDisplay: "collapse",
+      eventBudget: 8,
+      page: { kind: "latest", segmentLimit: 2 },
+    });
+    expect(
+      latest.response.pendingTodos?.items.map((item) => item.text),
+    ).toEqual(["Shipping the thing", "Write the docs"]);
+    expect(latest.response.goal?.objective).toBe("Land the timeline fix");
+    expect(latest.response.rows.some((row) => row.sourceSeqStart < 390)).toBe(
+      false,
+    );
+    expect(latest.profile.eventRowCount).toBeLessThan(20);
+    db.$client.close();
+  });
+
+  it("still marks an omitted older message changed by a late completion", () => {
+    const { db, thread } = setup();
+    seedThreadWithEarlyHeadState(db, thread, 100, 1, false, true);
+    const options = {
+      ...baseOptions,
+      completedTurnDisplay: "collapse" as const,
+      eventBudget: 8,
+      page: { kind: "latest" as const, segmentLimit: 2 },
+    };
+    const before = buildThreadTimelineWithProfile(db, thread, options).response;
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: before.maxSeq + 1,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "old-command",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: "old-command",
+            command: "echo done",
+            cwd: "/tmp",
+            status: "completed",
+            aggregatedOutput: "done",
+            approvalStatus: null,
+            exitCode: 0,
+            durationMs: 1000,
+          },
+        }),
+      },
+    ]);
+    const after = buildThreadTimelineWithProfile(db, thread, options).response;
+    expect(after.timelinePage.olderRowsSourceSeqEnd).toBeGreaterThan(
+      before.maxSeq,
+    );
+    expect(after.pendingTodos).toEqual(before.pendingTodos);
+    expect(after.goal).toEqual(before.goal);
+    db.$client.close();
   });
 
   it("still reports no head state when the thread never set any", () => {
@@ -257,6 +349,7 @@ describe("timeline head state under a budgeted window", () => {
     insertEvents(db, noopNotifier, events);
 
     const budgeted = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       ...baseOptions,
       eventBudget: 100,
     }).response;

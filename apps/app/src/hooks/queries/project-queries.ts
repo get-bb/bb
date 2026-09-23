@@ -25,6 +25,7 @@ import {
   projectSourceBranchesQueryKey,
 } from "./query-keys";
 import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
+import { useDebouncedBranchSearchQuery } from "./branch-search-debounce";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
@@ -92,7 +93,7 @@ export function useProjectSourceBranches(
   const enabled =
     (options?.enabled ?? true) && Boolean(projectId) && Boolean(hostId);
   useProjectDetailRealtimeSubscription(projectId, { enabled });
-  const query = options?.query?.trim() ?? "";
+  const query = useDebouncedBranchSearchQuery(options?.query?.trim() ?? "");
   const limit = options?.limit ?? PROJECT_SOURCE_BRANCHES_LIMIT;
   const selectedBranch = options?.selectedBranch?.trim() ?? "";
   const remoteRefreshRef = useRef<{

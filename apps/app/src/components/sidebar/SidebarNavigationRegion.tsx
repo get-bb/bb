@@ -1,268 +1,288 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
-  type PointerEvent as ReactPointerEvent,
+  useState,
 } from "react";
-import type {
-  ExperimentalSidebarNavigationAction,
-  ExperimentalSidebarNavigationActivationOptions,
-  ExperimentalSidebarNavigationItem,
-} from "@get-bb/plugin-sdk";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useAtomValue } from "jotai";
+import type { ExperimentalSidebarNavigationProps } from "@get-bb/plugin-sdk";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
-  useAppCommandRunner,
-  useAppCommandShortcut,
-} from "@/components/commands/AppCommandProvider";
-import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
+  PluginSlotMount,
+  resetCrashedPluginSlots,
+} from "@/components/plugin/PluginSlotMount";
 import { appToast } from "@/components/ui/app-toast";
 import { useSidebar } from "@/components/ui/sidebar";
-import { usePluginSlots } from "@/lib/plugin-slots";
-import { getPluginPanelRoutePath } from "@/lib/route-paths";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
-  BuiltInSidebarNavigation,
-  type BuiltInSidebarNavigationProps,
-} from "./BuiltInSidebarNavigation";
+  usePluginSlots,
+  type ExperimentalSidebarNavigationSlot,
+} from "@/lib/plugin-slots";
+import { replacementProviderKey } from "@/lib/plugin-replacement-preference";
+import { SidebarNavigationCustomize } from "./SidebarNavigationCustomize";
 import {
-  activateSidebarNavigationItem,
-  createSidebarNavigationItems,
-  getResourceNavigationItemRoutePath,
-  resolveActiveSidebarNavigationItemId,
-} from "./sidebarNavigationItems";
-import { useSidebarNavigationReplacement } from "./sidebarNavigationProvider";
-import { usePaneContentSplitActions } from "./usePaneContentSplitDrag";
+  readRememberedNavigationHeight,
+  rememberNavigationHeight,
+  SidebarNavigationPlaceholder,
+} from "./SidebarNavigationPlaceholder";
+import {
+  BUNDLED_NAVIGATION_PLUGIN_ID,
+  sidebarNavigationProviderAtom,
+  useSidebarNavigationReplacement,
+} from "./sidebarNavigationProvider";
 
 const SIDEBAR_NAVIGATION_SLOT_KIND = "sidebarNavigation";
-const NEW_THREAD_CONTENT = { kind: "new-thread" } as const;
 
-function contentForAction(
-  action: ExperimentalSidebarNavigationAction,
-  navPanels: ReturnType<typeof usePluginSlots>["navPanels"],
-) {
-  if (action.kind === "new-thread") return NEW_THREAD_CONTENT;
-  if (action.kind !== "open-plugin-panel") return null;
-  const panel = navPanels.find(
-    (candidate) =>
-      candidate.pluginId === action.pluginId && candidate.id === action.panelId,
-  );
-  return panel
-    ? ({
-        kind: "plugin-panel",
-        pluginId: panel.pluginId,
-        panelPath: panel.path,
-        subPath: "",
-      } as const)
-    : null;
+const OPEN_MENU_SELECTOR = '[role="menu"]';
+const OPEN_MENU_WAIT_MS = 1000;
+
+function afterOpenMenusClose(run: () => void): () => void {
+  const start = performance.now();
+  let frame = 0;
+  let timer = 0;
+  const check = () => {
+    if (
+      document.querySelector(OPEN_MENU_SELECTOR) !== null &&
+      performance.now() - start < OPEN_MENU_WAIT_MS
+    ) {
+      frame = requestAnimationFrame(check);
+      return;
+    }
+    timer = window.setTimeout(run, 0);
+  };
+  check();
+  return () => {
+    cancelAnimationFrame(frame);
+    window.clearTimeout(timer);
+  };
 }
 
-export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
-  const { navPanels } = usePluginSlots();
-  const replacement = useSidebarNavigationReplacement();
-  const { isCompactViewport } = useSidebar();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const commandRunner = useAppCommandRunner();
-  const splitActions = usePaneContentSplitActions();
-  const newThreadShortcut = useAppCommandShortcut("thread.new");
-  const threadSearchShortcut = useAppCommandShortcut("thread.search");
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
-  const splitPropsFor = useCallback(
-    (
-      action: ExperimentalSidebarNavigationAction,
-      label: string,
-    ): ExperimentalSidebarNavigationItem["experimental_splitProps"] => {
-      const content = contentForAction(action, navPanels);
-      if (content === null || splitActions.isCompact) return {};
-      return {
-        onPointerDown: (event: ReactPointerEvent<HTMLElement>) =>
-          splitActions.beginDrag(event, {
-            content,
-            enabled: props.splitEnabled ?? false,
-            label,
-            onNavigate: props.onNavigate,
-          }),
-      };
-    },
-    [navPanels, props.onNavigate, props.splitEnabled, splitActions],
+type ProviderProps = Omit<
+  ExperimentalSidebarNavigationProps,
+  "experimental_Original"
+>;
+
+export function resolveCustomizeFocusReturnTarget(
+  container: HTMLElement | null,
+): HTMLElement | null {
+  if (container === null) return null;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && container.contains(active)) {
+    return active;
+  }
+  const openTrigger = container.querySelector<HTMLElement>(
+    '[aria-expanded="true"], [data-state="open"]',
   );
-  const items = useMemo(
-    () =>
-      createSidebarNavigationItems({
-        navPanels,
-        newThreadDisabled: props.onNewChat === undefined,
-        newThreadShortcut: newThreadShortcut
-          ? {
-              label: newThreadShortcut.label,
-              ariaKeyShortcuts: newThreadShortcut.ariaKeyshortcuts,
-            }
-          : null,
-        searchThreadsDisabled: !commandRunner.isCommandAvailable(
-          "thread.search",
-          null,
-        ),
-        searchThreadsShortcut: threadSearchShortcut
-          ? {
-              label: threadSearchShortcut.label,
-              ariaKeyShortcuts: threadSearchShortcut.ariaKeyshortcuts,
-            }
-          : null,
-        splitPropsFor,
-      }),
-    [
-      commandRunner,
-      navPanels,
-      newThreadShortcut,
-      props.onNewChat,
-      splitPropsFor,
-      threadSearchShortcut,
-    ],
-  );
-  const activeItemId = resolveActiveSidebarNavigationItemId({
-    items,
-    pathname: location.pathname,
-    navPanels,
-  });
-  const replacementIdentity =
-    replacement.kind === "plugin"
-      ? `${replacement.registration.pluginId}/${replacement.registration.id}/${replacement.registration.generation}`
-      : "owner";
-  const activationRef = useRef({
-    replacementIdentity,
-    items,
-    navPanels,
-    props,
-    navigate,
-    commandRunner,
-    splitActions,
-  });
+  if (openTrigger === null) return null;
+  return openTrigger.matches(FOCUSABLE_SELECTOR)
+    ? openTrigger
+    : openTrigger.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+}
+
+function NoOriginal() {
+  return null;
+}
+
+function useBundledNavigationOriginal(
+  provider: ExperimentalSidebarNavigationSlot,
+  props: ProviderProps,
+) {
+  const { experimentalSidebarNavigations } = usePluginSlots();
+  const bundled =
+    provider.pluginId === BUNDLED_NAVIGATION_PLUGIN_ID
+      ? undefined
+      : experimentalSidebarNavigations.find(
+          (slot) => slot.pluginId === BUNDLED_NAVIGATION_PLUGIN_ID,
+        );
+  const latest = useRef({ bundled, props });
   useLayoutEffect(() => {
-    activationRef.current = {
-      replacementIdentity,
-      items,
-      navPanels,
-      props,
-      navigate,
-      commandRunner,
-      splitActions,
-    };
-  }, [
-    commandRunner,
-    items,
-    navPanels,
-    navigate,
-    props,
-    replacementIdentity,
-    splitActions,
-  ]);
-
-  const handleActivate = useCallback(
-    (
-      identity: string,
-      itemId: string,
-      options: ExperimentalSidebarNavigationActivationOptions,
-    ) => {
-      const current = activationRef.current;
-      if (identity !== current.replacementIdentity) return;
-      activateSidebarNavigationItem(
-        current.items,
-        itemId,
-        options.openInSplit,
-        {
-          newThread: (openInSplit) => {
-            if (!openInSplit) {
-              current.props.onNewChat?.();
-              return;
-            }
-            current.splitActions.openInSplit({
-              content: NEW_THREAD_CONTENT,
-              enabled: current.props.splitEnabled ?? false,
-              label: "New thread",
-              onNavigate: current.props.onNavigate,
-            });
-          },
-          searchThreads: () => {
-            current.props.onSearchThreads?.();
-            current.commandRunner.dispatch("thread.search", null);
-          },
-          openResourceWorkspace: (itemId) => {
-            const routePath = getResourceNavigationItemRoutePath(itemId);
-            if (routePath === null) return;
-            current.props.onNavigate?.();
-            void current.navigate(routePath);
-          },
-          openPluginPanel: (action, openInSplit) => {
-            const panel = current.navPanels.find(
-              (candidate) =>
-                candidate.pluginId === action.pluginId &&
-                candidate.id === action.panelId,
-            );
-            if (!panel) return;
-            if (openInSplit) {
-              current.splitActions.openInSplit({
-                content: {
-                  kind: "plugin-panel",
-                  pluginId: panel.pluginId,
-                  panelPath: panel.path,
-                  subPath: "",
-                },
-                enabled: current.props.splitEnabled ?? false,
-                label: panel.title,
-                onNavigate: current.props.onNavigate,
-              });
-              return;
-            }
-            current.props.onNavigate?.();
-            void current.navigate(
-              getPluginPanelRoutePath({
-                pluginId: panel.pluginId,
-                path: panel.path,
-              }),
-            );
-          },
-        },
-      );
-    },
-    [],
+    latest.current = { bundled, props };
+  });
+  const [Original] = useState(
+    () =>
+      function BundledNavigationOriginal() {
+        const current = latest.current;
+        if (current.bundled === undefined) return null;
+        const Component = current.bundled.component;
+        return (
+          <PluginSlotMount
+            key={`${current.bundled.pluginId}/${current.bundled.id}/${current.bundled.generation}`}
+            pluginId={current.bundled.pluginId}
+            slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
+            slotId={current.bundled.id}
+            crashFallback={<></>}
+          >
+            <Component {...current.props} experimental_Original={NoOriginal} />
+          </PluginSlotMount>
+        );
+      },
   );
+  return Original;
+}
 
-  const original = <BuiltInSidebarNavigation {...props} />;
-  const title =
-    replacement.kind === "plugin" ? replacement.registration.title : "Plugin";
+function NavigationProvider({
+  slot,
+  props,
+  attempt,
+  onReload,
+}: {
+  slot: ExperimentalSidebarNavigationSlot;
+  props: ProviderProps;
+  attempt: number;
+  onReload: () => void;
+}) {
+  const Original = useBundledNavigationOriginal(slot, props);
+  const Component = slot.component;
+  return (
+    <PluginSlotMount
+      key={`${slot.pluginId}/${slot.id}/${slot.generation}/${attempt}`}
+      pluginId={slot.pluginId}
+      slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
+      slotId={slot.id}
+      crashFallback={
+        <SidebarNavigationPlaceholder
+          state={{
+            kind: "crashed",
+            pluginTitle: slot.title,
+            onReload,
+          }}
+        />
+      }
+      onCrash={(pluginId) => {
+        appToast.error("Sidebar navigation plugin crashed", {
+          description: `${slot.title} (${pluginId}) stopped working.`,
+        });
+      }}
+    >
+      <Component {...props} experimental_Original={Original} />
+    </PluginSlotMount>
+  );
+}
+
+export interface SidebarNavigationRegionProps {
+  isCustomizing: boolean;
+  onCustomizingChange: (isCustomizing: boolean) => void;
+  focusReturnTargetRef: { current: HTMLElement | null };
+  onNavigate?: () => void;
+}
+
+export function SidebarNavigationRegion({
+  isCustomizing,
+  onCustomizingChange,
+  focusReturnTargetRef,
+  onNavigate,
+}: SidebarNavigationRegionProps) {
+  const replacement = useSidebarNavigationReplacement();
+  const preference = useAtomValue(sidebarNavigationProviderAtom);
+  const bootSettled = usePluginFrontendsSettled();
+  const { isCompactViewport } = useSidebar();
+  const [attempt, setAttempt] = useState(0);
+  const [isEditorShown, setEditorShown] = useState(false);
+  const restoreFocusRef = useRef(false);
+  const navRef = useRef<HTMLElement>(null);
+  const slot = replacement.kind === "plugin" ? replacement.registration : null;
+  const providerKey = slot ? replacementProviderKey(slot) : null;
+
+  useEffect(() => {
+    if (!isCustomizing) {
+      setEditorShown(false);
+      return;
+    }
+    return afterOpenMenusClose(() => setEditorShown(true));
+  }, [isCustomizing]);
+
+  useLayoutEffect(() => {
+    if (isCustomizing || !restoreFocusRef.current) return;
+    restoreFocusRef.current = false;
+    const target = focusReturnTargetRef.current;
+    focusReturnTargetRef.current = null;
+    if (target?.isConnected) {
+      target.focus();
+      return;
+    }
+    const nav = navRef.current;
+    const scope =
+      nav?.closest<HTMLElement>(
+        '[data-sidebar="sidebar"], [data-testid="app-sidebar-body"]',
+      ) ?? null;
+    const fallback =
+      nav?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ??
+      scope?.querySelector<HTMLElement>(
+        `[data-sidebar-header-slot] :is(${FOCUSABLE_SELECTOR})`,
+      ) ??
+      null;
+    fallback?.focus();
+  }, [focusReturnTargetRef, isCustomizing]);
+
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (nav === null || providerKey === null || isCustomizing) return;
+    const record = () => {
+      if (nav.querySelector("[data-sidebar-navigation-placeholder]")) return;
+      rememberNavigationHeight(
+        providerKey,
+        Math.round(nav.getBoundingClientRect().height),
+      );
+    };
+    record();
+    const observer = new ResizeObserver(record);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [isCustomizing, providerKey]);
+
+  const handleReload = useCallback(() => {
+    if (slot !== null) resetCrashedPluginSlots(slot.pluginId);
+    setAttempt((current) => current + 1);
+  }, [slot]);
+
   return (
     <nav
+      ref={navRef}
       aria-label="Sidebar navigation"
       data-testid="sidebar-navigation-region"
       className={cn(
-        props.compactCustomizeMode && "flex min-h-0 flex-1 flex-col",
+        isCustomizing && isCompactViewport && "flex min-h-0 flex-1 flex-col",
       )}
     >
-      <PluginReplacementSlot
-        replacement={replacement}
-        original={original}
-        slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
-        onCrash={(pluginId) => {
-          appToast.error("Sidebar navigation plugin crashed", {
-            description: `${title} (${pluginId}) stopped working, so bb's own navigation is back.`,
-          });
-        }}
+      {isCustomizing && isEditorShown ? (
+        <SidebarNavigationCustomize
+          onClose={(restoreFocus) => {
+            restoreFocusRef.current = restoreFocus;
+            onCustomizingChange(false);
+          }}
+        />
+      ) : null}
+      <div
+        hidden={isCustomizing || undefined}
+        className={isCustomizing ? undefined : "contents"}
       >
-        {(slot, Original) => {
-          const identity = `${slot.pluginId}/${slot.id}/${slot.generation}`;
-          return (
-            <slot.component
-              items={items}
-              activeItemId={activeItemId}
-              isCompactViewport={isCompactViewport}
-              experimental_activate={(itemId, options) =>
-                handleActivate(identity, itemId, options)
-              }
-              experimental_Original={Original}
-            />
-          );
-        }}
-      </PluginReplacementSlot>
+        {slot === null ? (
+          <SidebarNavigationPlaceholder
+            state={
+              bootSettled
+                ? { kind: "missing" }
+                : {
+                    kind: "loading",
+                    height: readRememberedNavigationHeight(preference),
+                  }
+            }
+            {...(onNavigate ? { onNavigate } : {})}
+          />
+        ) : (
+          <NavigationProvider
+            slot={slot}
+            attempt={attempt}
+            onReload={handleReload}
+            props={{
+              isCompactViewport,
+            }}
+          />
+        )}
+      </div>
     </nav>
   );
 }

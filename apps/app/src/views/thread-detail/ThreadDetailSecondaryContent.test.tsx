@@ -233,6 +233,7 @@ function makeThread(): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
     pinnedAt: null,
     projectId: "proj-test",
     providerId: "codex",
+    lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,

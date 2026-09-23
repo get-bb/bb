@@ -34,7 +34,57 @@ const {
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  useSdk,
+  experimental_useSidebarNavigation,
+  experimental_useSidebarNavigationSplit,
+  experimental_SidebarNavigationIcon: SidebarNavigationIcon,
 } = await import("../../app.js");
+
+function SdkProbe() {
+  const sdk = useSdk();
+  const [sectionId, setSectionId] = useState<string | null>(null);
+  const [queuedId, setQueuedId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  return (
+    <div>
+      <button
+        onClick={() => {
+          void sdk.threadSections
+            .create({ name: "Later" })
+            .then((section) => setSectionId(section.id));
+        }}
+      >
+        Create section
+      </button>
+      <button
+        onClick={() => {
+          try {
+            void sdk.threads.pin({ threadId: "thr_1" });
+          } catch (error) {
+            setFailure(error instanceof Error ? error.message : String(error));
+          }
+        }}
+      >
+        Pin without a fake
+      </button>
+      <button
+        onClick={() => {
+          void sdk.threads.queuedMessages
+            .create({
+              threadId: "thr_1",
+              input: [{ type: "text", text: "hi", mentions: [] }],
+            })
+            .then((queued) => setQueuedId(queued.id));
+        }}
+      >
+        Queue nested
+      </button>
+      {sectionId ? <output>created {sectionId}</output> : null}
+      {queuedId ? <output>queued {queuedId}</output> : null}
+      {failure ? <output>{failure}</output> : null}
+    </div>
+  );
+}
 
 type TestTaskTarget = {
   kind: "task";
@@ -326,6 +376,9 @@ let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
   "setTextEffect" | "setInputLock"
 > | null = null;
+let capturedComposerSetSelection:
+  | PluginComposerApi["experimental_setSelection"]
+  | null = null;
 
 function InlineVis({
   attributes,
@@ -348,6 +401,7 @@ function ComposerProbe() {
     setTextEffect: composer.setTextEffect,
     setInputLock: composer.setInputLock,
   };
+  capturedComposerSetSelection = composer.experimental_setSelection;
   return (
     <div>
       <span data-testid="composer-scope">{composer.scope.kind}</span>
@@ -461,6 +515,79 @@ const app = await loadPluginApp(
   }),
 );
 
+function NavigationProbe({ id }: { id: string }) {
+  const { activeItemId, actions, items } = experimental_useSidebarNavigation();
+  const split = experimental_useSidebarNavigationSplit(id);
+  const item = items.find((candidate) => candidate.id === id);
+  if (!item) return null;
+  return (
+    <button
+      type="button"
+      aria-current={item.id === activeItemId ? "page" : undefined}
+      {...split.splitProps}
+      onClick={() => {
+        actions.activate(item.id, { openInSplit: true });
+        actions.setVisible(item.id, false);
+        actions.setOrder([item.id]);
+        actions.openCustomize();
+      }}
+    >
+      <SidebarNavigationIcon icon={item.icon} />
+      {item.label}
+    </button>
+  );
+}
+
+describe("sidebar navigation test runtime", () => {
+  it("reports configured items and records every action", () => {
+    const slot = renderSlot(
+      { component: NavigationProbe },
+      { id: "garden/docs" },
+      {
+        sidebarNavigation: {
+          activeItemId: "garden/docs",
+          items: [
+            {
+              id: "garden/docs",
+              label: "Docs",
+              icon: { kind: "plugin", pluginId: "garden", icon: "BookOpen" },
+              action: {
+                kind: "open-plugin-panel",
+                pluginId: "garden",
+                panelId: "docs",
+              },
+              isDisabled: false,
+              isVisible: true,
+              isLoading: false,
+              pluginId: "garden",
+              shortcut: null,
+              experimental_Accessory: null,
+            },
+          ],
+        },
+      },
+    );
+
+    const button = slot.getByRole("button", { name: "Docs" });
+    expect(button.getAttribute("aria-current")).toBe("page");
+    expect(
+      button
+        .querySelector("[data-sidebar-navigation-icon]")
+        ?.getAttribute("data-sidebar-navigation-icon"),
+    ).toBe("garden/BookOpen");
+    fireEvent.pointerDown(button);
+    fireEvent.click(button);
+
+    expect(slot.inspection.sidebarNavigationCalls).toEqual([
+      { method: "beginSplitDrag", itemId: "garden/docs" },
+      { method: "activate", itemId: "garden/docs", openInSplit: true },
+      { method: "setVisible", itemId: "garden/docs", isVisible: false },
+      { method: "setOrder", itemIds: ["garden/docs"] },
+      { method: "openCustomize" },
+    ]);
+  });
+});
+
 describe("loadPluginApp", () => {
   it("captures and validates app overlay registrations", async () => {
     function Overlay() {
@@ -514,6 +641,34 @@ describe("loadPluginApp", () => {
         component: expect.any(Function),
       },
     ]);
+    const withHeader = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_sidebarHeader({
+          id: "icons",
+          title: "Header icons",
+          component: () => null,
+        });
+      }),
+    );
+    expect(withHeader.experimentalSidebarHeaders).toEqual([
+      { id: "icons", title: "Header icons", component: expect.any(Function) },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarHeader({
+            id: "icons",
+            title: "One",
+            component: () => null,
+          });
+          builder.slots.experimental_sidebarHeader({
+            id: "icons",
+            title: "Two",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_sidebarHeader: duplicate id "icons"');
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
@@ -1401,6 +1556,51 @@ describe("typed rpc test runtime", () => {
 });
 
 describe("renderSlot", () => {
+  it("serves useSdk() from per-area fakes, records calls, and throws for a missing method", async () => {
+    const slot = renderSlot(
+      { component: SdkProbe },
+      {},
+      {
+        sdk: {
+          threadSections: {
+            create: async ({ name }) => ({
+              id: "sec_1",
+              name,
+              createdAt: 1,
+              updatedAt: 1,
+            }),
+          },
+          threads: {
+            queuedMessages: {
+              create: async () => ({ id: "qm_9" }) as never,
+            },
+          },
+        },
+      },
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Create section" }));
+    await slot.findByText("created sec_1");
+    fireEvent.click(slot.getByRole("button", { name: "Pin without a fake" }));
+    await slot.findByText(
+      'no sdk fake for "threads.pin" — add it to renderSlot options.sdk',
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Queue nested" }));
+    await slot.findByText("queued qm_9");
+    expect(slot.inspection.sdkCalls).toEqual([
+      { method: "threadSections.create", args: [{ name: "Later" }] },
+      { method: "threads.pin", args: [{ threadId: "thr_1" }] },
+      {
+        method: "threads.queuedMessages.create",
+        args: [
+          {
+            threadId: "thr_1",
+            input: [{ type: "text", text: "hi", mentions: [] }],
+          },
+        ],
+      },
+    ]);
+  });
+
   it("records URL intents from links and imperative navigation through one host boundary", () => {
     const slot = renderSlot(
       { component: UrlNavigationProbe },
@@ -1744,6 +1944,68 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
+  });
+
+  it("records accepted selections and echoes back what the scope has pickers for", async () => {
+    const threadSlot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const setSelection = capturedComposerSetSelection;
+    if (setSelection === null) throw new Error("setSelection not captured");
+
+    await expect(
+      setSelection({
+        projectId: "proj_2",
+        environment: { type: "project-default" },
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+      }),
+    ).resolves.toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "high",
+    });
+    expect(threadSlot.composer.selections).toEqual([
+      { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
+    ]);
+    threadSlot.unmount();
+
+    const newThreadSlot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { context: { projectId: "proj_1" } },
+    );
+    await expect(
+      capturedComposerSetSelection!({ projectId: "proj_2", model: "gpt-5" }),
+    ).resolves.toEqual({ projectId: "proj_2", model: "gpt-5" });
+    expect(newThreadSlot.composer.selections).toEqual([
+      { projectId: "proj_2", model: "gpt-5" },
+    ]);
+    newThreadSlot.unmount();
+
+    const sideChatSlot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      {
+        composer: {
+          scope: {
+            kind: "side-chat",
+            projectId: "proj_1",
+            parentThreadId: "thr_1",
+            tabId: "tab_1",
+            childThreadId: null,
+          },
+        },
+      },
+    );
+    await expect(
+      capturedComposerSetSelection!({ model: "gpt-5" }),
+    ).rejects.toThrow(/no pickers/);
+    expect(sideChatSlot.composer.selections).toEqual([]);
+    sideChatSlot.unmount();
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {

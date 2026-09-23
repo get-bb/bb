@@ -86,7 +86,10 @@ import {
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { useSystemProviders } from "@/hooks/queries/system-queries";
+import {
+  useSystemConfig,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
 import { rawStringLocalStorage } from "@/lib/browser-storage";
 
@@ -1008,11 +1011,13 @@ export function ProviderCliCheckRow({
 
 function providerRowState({
   issue,
+  status,
 }: {
   issue: ProviderCliIssue | null;
+  status: ProviderCliStatusEntry["status"];
 }): UpdateState | null {
   if (issue === null) {
-    return "up-to-date";
+    return status.latestVersion === null ? "latest-unknown" : "up-to-date";
   }
   if (issue.action === null) {
     return "update-manually";
@@ -1044,7 +1049,7 @@ export function MachineUpdatesRows({
 
   const rows = providerEntries.map(({ provider, status }) => {
     const issue = issuesByProvider.get(provider) ?? null;
-    const state = providerRowState({ issue });
+    const state = providerRowState({ issue, status });
     const jobKey = providerCliJobKey(host.id, provider);
     const running = runningJobKey === jobKey;
     const queued = queuedJobKeys.has(jobKey);
@@ -1152,10 +1157,12 @@ export function MachineUpdatesRows({
 export function MachineUpdatesSection({
   machine,
   isThisMachine,
+  showServerBadge,
   children,
 }: {
   machine: UpdateInventoryMachine;
   isThisMachine: boolean;
+  showServerBadge: boolean;
   children: ReactNode;
 }) {
   return (
@@ -1173,6 +1180,7 @@ export function MachineUpdatesSection({
               {isThisMachine ? (
                 <SettingsBadge>This machine</SettingsBadge>
               ) : null}
+              {showServerBadge ? <SettingsBadge>Server</SettingsBadge> : null}
             </span>
           }
         >
@@ -1222,6 +1230,7 @@ export function UpdatesSettingsSection({
   const navigate = useNavigate();
   const inventory = useUpdateInventory();
   const { localDaemonHostId } = useHostDaemon();
+  const serverPrimaryHostId = useSystemConfig().data?.primaryHostId ?? null;
   const { desktopApi, desktopInfo, isDesktop } = useDesktopUpdateInfo();
   const retryHostUpdate = useRetryHostUpdate();
   const isChecking = useSyncExternalStore(
@@ -1397,6 +1406,7 @@ export function UpdatesSettingsSection({
                   inventory.machines.length > 1 &&
                   machine.host.id === localDaemonHostId
                 }
+                showServerBadge={machine.host.id === serverPrimaryHostId}
               >
                 {ownsApp ? (
                   <BbAppUpdateRows

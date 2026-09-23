@@ -6,7 +6,10 @@ import { useCallback, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PendingInteraction } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { resolvePendingInteraction } from "@/lib/plugin-slot-resolvers";
+import { usePluginDisplayName } from "@/lib/plugin-logos";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { sdk } from "@/lib/sdk";
@@ -24,17 +27,19 @@ interface PluginPendingInteractionComposerProps {
     "id" | "threadId" | "createdAt" | "expiresAt"
   >;
   request: PluginPendingInteractionRequest;
-  dismissal: "cancel" | "stop-turn";
+  origin: "plugin" | "provider";
   sourceThread?: PendingInteractionSourceThread;
 }
 
 export function PluginPendingInteractionComposer({
   interaction,
   request,
-  dismissal,
+  origin,
   sourceThread,
 }: PluginPendingInteractionComposerProps) {
   const { pendingInteractions } = usePluginSlots();
+  const pluginName = usePluginDisplayName(request.pluginId);
+  const pluginsSettled = usePluginFrontendsSettled();
   const stopThread = useStopThread();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -71,7 +76,7 @@ export function PluginPendingInteractionComposer({
     setSubmitting(true);
     setError(null);
     try {
-      if (dismissal === "stop-turn") {
+      if (origin === "provider") {
         await stopThread.mutateAsync(interaction.threadId);
       } else {
         await sdk.threads.interactions.cancel({
@@ -85,8 +90,8 @@ export function PluginPendingInteractionComposer({
     } finally {
       setSubmitting(false);
     }
-  }, [dismissal, interaction.id, interaction.threadId, stopThread]);
-  const dismissLabel = dismissal === "cancel" ? "Cancel" : "Stop turn";
+  }, [origin, interaction.id, interaction.threadId, stopThread]);
+  const dismissLabel = origin === "plugin" ? "Cancel" : "Stop turn";
 
   return (
     <PendingInteractionShell
@@ -100,10 +105,9 @@ export function PluginPendingInteractionComposer({
       {() => (
         <>
           <p className="mb-4 text-xs text-muted-foreground">
-            {dismissal === "cancel"
-              ? "Requested by "
-              : "The agent asks through "}
-            <span className="capitalize">{request.pluginId}</span>
+            {origin === "plugin"
+              ? `Requested by ${pluginName}`
+              : `Asked by the agent through ${pluginName}`}
           </p>
           {slot ? (
             <PluginSlotMount
@@ -141,7 +145,7 @@ export function PluginPendingInteractionComposer({
                 />
               </fieldset>
             </PluginSlotMount>
-          ) : (
+          ) : pluginsSettled ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 The plugin form is unavailable. {dismissLabel} to continue.
@@ -154,6 +158,16 @@ export function PluginPendingInteractionComposer({
               >
                 {dismissLabel}
               </Button>
+            </div>
+          ) : (
+            <div
+              className="space-y-3"
+              aria-busy="true"
+              aria-label={`Loading the ${pluginName} form`}
+              data-testid="plugin-interaction-loading"
+            >
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-9 w-full" />
             </div>
           )}
         </>

@@ -13,7 +13,7 @@ import {
   registerFakeAiService,
   type FakeAiServiceCall,
 } from "../helpers/ai-services.js";
-import { seedHostSession } from "../helpers/seed.js";
+import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -49,7 +49,8 @@ async function createServiceTranscriptionHarness(
     inferenceFallbackModel: "codex/gpt-5.4-mini",
     transcriptionModel: "codex/gpt-transcribe",
   });
-  seedHostSession(harness.deps);
+  const { host } = seedHostSession(harness.deps);
+  seedPrimaryHost(harness.deps, host.id);
   const fake = registerFakeAiService(harness.deps.aiServices, {
     transcribeVoice: transcribe,
   });
@@ -114,12 +115,33 @@ describe("voice transcription", () => {
     }
   });
 
+  it("accepts plugin-served audio at the 20MB limit", async () => {
+    const harness = await createServiceTranscriptionHarness((input) => ({
+      ok: true,
+      model: input.model,
+      text: "long recording",
+    }));
+    try {
+      const bytes = Buffer.alloc(20 * 1024 * 1024, 7);
+      const file = new File([bytes], "long.webm", { type: "audio/webm" });
+      await expect(transcribeVoiceInput(harness.deps, { file })).resolves.toBe(
+        "long recording",
+      );
+      expect(harness.calls).toHaveLength(1);
+      expect(harness.calls[0]?.input.audioBase64).toBe(
+        bytes.toString("base64"),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("rejects audio above the plugin-served cap before calling the service", async () => {
     const harness = await createServiceTranscriptionHarness(() => {
       throw new Error("Oversized audio must not reach the service");
     });
     try {
-      const file = new File([Buffer.alloc(5 * 1024 * 1024 + 1)], "long.webm", {
+      const file = new File([Buffer.alloc(20 * 1024 * 1024 + 1)], "long.webm", {
         type: "audio/webm",
       });
       const error = await transcribeVoiceInput(harness.deps, { file }).catch(
@@ -131,7 +153,7 @@ describe("voice transcription", () => {
         body: {
           code: "invalid_request",
           message:
-            "Audio file exceeds the 5MB limit for plugin-served transcription",
+            "Audio file exceeds the 20MB limit for plugin-served transcription",
         },
       });
       expect(harness.calls).toHaveLength(0);

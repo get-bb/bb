@@ -13,6 +13,10 @@ import {
 } from "@bb/domain/plugin-interaction-limits";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
 import {
+  COMPLETED_TURN_DISPLAY_VALUES,
+  DEFAULT_COMPLETED_TURN_DISPLAY,
+} from "@bb/domain/completed-turn-display";
+import {
   jsonValueSchema,
   normalizeProviderNativeRoots,
   providerNativeRootsInputSchema,
@@ -22,7 +26,7 @@ import {
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginAgentToolResult,
   PluginAiServiceDeclaration,
   PluginAiServiceKind,
@@ -41,6 +45,7 @@ import type {
   ServerAccessProviderDeclaration,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
+  PluginProviderCompletedTurnDisplay,
   PluginProviderDeclaration,
   ExperimentalPluginProviderEnvEntry,
   PluginProviderExtensionKindDeclaration,
@@ -958,6 +963,27 @@ function validateProviderModelCatalogScope(
   return value as PluginProviderModelCatalogScope;
 }
 
+const PROVIDER_COMPLETED_TURN_DISPLAYS =
+  COMPLETED_TURN_DISPLAY_VALUES satisfies readonly PluginProviderCompletedTurnDisplay[];
+
+function validateProviderCompletedTurnDisplay(
+  providerId: string,
+  value: unknown,
+): PluginProviderCompletedTurnDisplay {
+  if (value === undefined) {
+    return DEFAULT_COMPLETED_TURN_DISPLAY;
+  }
+  if (
+    typeof value !== "string" ||
+    !(PROVIDER_COMPLETED_TURN_DISPLAYS as readonly string[]).includes(value)
+  ) {
+    throw new Error(
+      `provider "${providerId}" completedTurnDisplay must be one of ${PROVIDER_COMPLETED_TURN_DISPLAYS.join(", ")}`,
+    );
+  }
+  return value as PluginProviderCompletedTurnDisplay;
+}
+
 /**
  * Returns undefined when the declaration carries `models` for a
  * reason other than a fallback list — `scope` alone is a valid declaration.
@@ -1283,6 +1309,7 @@ export type NormalizedPluginProviderDeclaration = Omit<
   readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
   readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
   readonly experimental_resolvesNativeRoots: boolean;
+  readonly completedTurnDisplay: PluginProviderCompletedTurnDisplay;
   readonly maintenance: {
     readonly health: boolean;
     readonly usage: boolean;
@@ -1523,6 +1550,10 @@ export function validatePluginProviderDeclaration(
     allowed: PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES,
     requireNonEmpty: false,
   });
+  const completedTurnDisplay = validateProviderCompletedTurnDisplay(
+    id,
+    declaration.completedTurnDisplay,
+  );
   const bridgeOptions =
     declaration.experimental_bridgeOptions === undefined
       ? undefined
@@ -1627,6 +1658,7 @@ export function validatePluginProviderDeclaration(
     maintenance: normalizedMaintenance,
     capabilities: normalizedCapabilities,
     composerActions,
+    completedTurnDisplay,
     ...(strings === undefined ? {} : { strings: strings }),
     ...(serviceTiers === undefined ? {} : { serviceTiers: serviceTiers }),
     ...(reasoningLevels === undefined
@@ -2053,18 +2085,18 @@ function rejectStaleAgentToolFields(toolName: string, tool: object): void {
  * in a plugin unit test registers in bb, and one bb rejects is rejected
  * with the same message.
  */
-export function parsePluginAgentToolPresentation(
-  toolName: string,
+export function parsePluginRowPresentation(
+  subject: string,
   value: unknown,
-): PluginAgentToolPresentation | null {
+): PluginRowPresentation | null {
   if (value === undefined) {
     return null;
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`tool "${toolName}" presentation must be an object`);
+    throw new Error(`${subject} presentation must be an object`);
   }
   const declared = value as Record<string, unknown>;
-  const presentation: PluginAgentToolPresentation = {};
+  const presentation: PluginRowPresentation = {};
   if (declared.label !== undefined) {
     const label = declared.label;
     if (
@@ -2074,7 +2106,7 @@ export function parsePluginAgentToolPresentation(
       typeof (label as { completed?: unknown }).completed !== "string"
     ) {
       throw new Error(
-        `tool "${toolName}" presentation.label must provide pending and completed strings`,
+        `${subject} presentation.label must provide pending and completed strings`,
       );
     }
     const { pending, completed } = label as {
@@ -2088,7 +2120,7 @@ export function parsePluginAgentToolPresentation(
       completed.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
     ) {
       throw new Error(
-        `tool "${toolName}" presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
+        `${subject} presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
       );
     }
     presentation.label = { pending, completed };
@@ -2101,17 +2133,13 @@ export function parsePluginAgentToolPresentation(
       typeof (icon as { glyph?: unknown }).glyph !== "string" ||
       (icon as { glyph: string }).glyph.trim().length === 0
     ) {
-      throw new Error(
-        `tool "${toolName}" presentation.icon must be { glyph: string }`,
-      );
+      throw new Error(`${subject} presentation.icon must be { glyph: string }`);
     }
     presentation.icon = { glyph: (icon as { glyph: string }).glyph };
   }
   if (declared.suppress !== undefined) {
     if (typeof declared.suppress !== "boolean") {
-      throw new Error(
-        `tool "${toolName}" presentation.suppress must be a boolean`,
-      );
+      throw new Error(`${subject} presentation.suppress must be a boolean`);
     }
     presentation.suppress = declared.suppress;
   }
@@ -2124,7 +2152,7 @@ export function parsePluginAgentToolPresentation(
       typeof (tint as { dark?: unknown }).dark !== "string"
     ) {
       throw new Error(
-        `tool "${toolName}" presentation.tint must provide light and dark strings`,
+        `${subject} presentation.tint must provide light and dark strings`,
       );
     }
     presentation.tint = {
@@ -2431,6 +2459,9 @@ export interface NormalizedPluginEnvironmentProvider {
   validate: NonNullable<
     PluginEnvironmentProviderDeclaration["validate"]
   > | null;
+  experimental_existingPath: NonNullable<
+    PluginEnvironmentProviderDeclaration["experimental_existingPath"]
+  > | null;
   create: PluginEnvironmentProviderDeclaration["create"];
   remove: PluginEnvironmentProviderDeclaration["remove"];
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
@@ -2576,6 +2607,12 @@ export function validatePluginEnvironmentProviderDeclaration(
     declaration.availability,
     "availability",
   );
+  assertOptionalFunction(
+    "environment provider",
+    id,
+    declaration.experimental_existingPath,
+    "experimental_existingPath",
+  );
   return {
     id,
     displayName,
@@ -2586,6 +2623,7 @@ export function validatePluginEnvironmentProviderDeclaration(
     inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
     availability: declaration.availability ?? null,
     validate: declaration.validate ?? null,
+    experimental_existingPath: declaration.experimental_existingPath ?? null,
     create: declaration.create,
     remove: declaration.remove,
     policy: environmentProviderPolicySchema.parse(declaration.policy ?? {}),
@@ -3023,6 +3061,7 @@ export function normalizeCliRegistration(
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  rendersHelp: boolean;
   run: PluginCliRegistration["run"];
 } {
   if (alreadyRegistered) {
@@ -3070,6 +3109,7 @@ export function normalizeCliRegistration(
     name,
     summary: registration.summary,
     commands: validatedCommands,
+    rendersHelp: registration.rendersHelp === true,
     run: registration.run.bind(registration),
   };
 }
@@ -3090,7 +3130,7 @@ export function normalizeAgentToolRegistration(args: {
     name: string;
     description: string;
     instructions?: string;
-    presentation?: PluginAgentToolPresentation;
+    presentation?: PluginRowPresentation;
     parameters: unknown;
     execute(
       params: never,
@@ -3100,7 +3140,7 @@ export function normalizeAgentToolRegistration(args: {
 }): {
   name: string;
   description: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   instructions: string | null;
   inputSchema: unknown;
   parse: AgentToolParse;
@@ -3139,8 +3179,8 @@ export function normalizeAgentToolRegistration(args: {
       `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
     );
   }
-  const presentation = parsePluginAgentToolPresentation(
-    name,
+  const presentation = parsePluginRowPresentation(
+    `tool "${name}"`,
     tool.presentation,
   );
   if (presentation?.icon !== undefined) {
@@ -3256,15 +3296,21 @@ export function normalizeMentionProviderRegistration(
   };
 }
 
-export function normalizeInteractionRequest(
-  request: PluginInteractionRequest,
-): {
+export interface NormalizedPluginInteractionRequest {
   threadId: string;
   rendererId: string;
   title: string;
   payload: JsonValue;
   timeoutMs: number;
-} {
+  presentation: PluginRowPresentation | null;
+  describeSubmission: NonNullable<
+    PluginInteractionRequest["describeSubmission"]
+  > | null;
+}
+
+export function normalizeInteractionRequest(
+  request: PluginInteractionRequest,
+): NormalizedPluginInteractionRequest {
   if (!request || typeof request !== "object") {
     throw new Error("ui.requestInput requires an options object");
   }
@@ -3312,12 +3358,23 @@ export function normalizeInteractionRequest(
   ) {
     throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
   }
+  if (
+    request.describeSubmission !== undefined &&
+    typeof request.describeSubmission !== "function"
+  ) {
+    throw new Error("ui.requestInput describeSubmission must be a function");
+  }
   return {
     threadId: request.threadId,
     rendererId: request.rendererId,
     title: request.title.trim(),
     payload,
     timeoutMs,
+    presentation: parsePluginRowPresentation(
+      `ui.requestInput form "${request.rendererId}"`,
+      request.presentation,
+    ),
+    describeSubmission: request.describeSubmission ?? null,
   };
 }
 

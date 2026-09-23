@@ -52,9 +52,15 @@ vi.mock("@/components/ui/app-toast", () => ({
 
 vi.mock("@/lib/sdk", async () => {
   const { makeProviderInfo } = await import("@bb/test-helpers/domain-fixtures");
+  const { makeSystemConfig } = await import("@/test/fixtures/system-config");
   return {
     sdk: {
-      system: { version: vi.fn() },
+      system: {
+        version: vi.fn(),
+        config: vi.fn(async () =>
+          makeSystemConfig({ primaryHostId: "host_primary" }),
+        ),
+      },
       providers: {
         list: vi.fn(async () => [
           makeProviderInfo({ id: "codex", displayName: "Codex" }),
@@ -466,7 +472,7 @@ The canonical release summary.
     });
     expect(screen.queryByText("2 up to date")).toBeNull();
     expect(screen.getByRole("heading", { name: /workstation/ })).toBeDefined();
-    expect(screen.queryByText("Primary")).toBeNull();
+    expect(screen.queryByText("Server")).toBeNull();
     expect(screen.queryByText("This machine")).toBeNull();
     expect(screen.getByRole("heading", { name: /studio-mac/ })).toBeDefined();
     expect(screen.getAllByText("Codex")).toHaveLength(2);
@@ -645,6 +651,29 @@ The canonical release summary.
         )
         ?.getAttribute("class"),
     ).not.toContain("opacity-");
+  });
+
+  it("does not claim up to date when the latest version is unknown", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const machine = makeMachine({
+      host: makeHost({ id: "host_1", name: "workstation" }),
+      isPrimary: true,
+    });
+    const codex = machine.providerStatus!.codex;
+    machine.providerStatus!.codex = { ...codex, latestVersion: null };
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({ lastCheckedAt: Date.now(), machines: [machine] }),
+    );
+
+    renderSection({});
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Latest unknown").length).toBeGreaterThan(0);
+    });
   });
 
   it("does not call an offline fleet all in sync", async () => {
@@ -995,7 +1024,7 @@ The canonical release summary.
     expect(screen.queryByText("1 up to date")).toBeNull();
   });
 
-  it("badges the client-local daemon independently from the primary update owner", () => {
+  it("badges the client-local daemon independently from the server machine", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -1026,10 +1055,43 @@ The canonical release summary.
       name: /workstation/u,
     });
     const localHeading = screen.getByRole("heading", { name: /studio-mac/u });
-    expect(primaryHeading.textContent).not.toContain("Primary");
+    await waitFor(() => {
+      expect(primaryHeading.textContent).toContain("Server");
+    });
     expect(primaryHeading.textContent).not.toContain("This machine");
     expect(localHeading.textContent).toContain("This machine");
-    expect(localHeading.textContent).not.toContain("Primary");
+    expect(localHeading.textContent).not.toContain("Server");
+  });
+
+  it("badges a lone server machine without marking it as this machine", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const primary = makeHost({ id: "host_primary", name: "workstation" });
+    hostDaemon.localDaemonHostId = primary.id;
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: primary,
+            issues: [makeUpdateIssue({ provider: "codex" })],
+            isPrimary: true,
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const primaryHeading = screen.getByRole("heading", {
+      name: /workstation/u,
+    });
+    await waitFor(() => {
+      expect(primaryHeading.textContent).toContain("Server");
+    });
+    expect(primaryHeading.textContent).not.toContain("This machine");
   });
 
   it("lists Cursor updates with the other provider CLIs", async () => {

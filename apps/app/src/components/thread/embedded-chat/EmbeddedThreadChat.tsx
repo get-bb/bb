@@ -15,7 +15,6 @@ import type {
 } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Button } from "@bb/shared-ui/button";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
@@ -92,44 +91,6 @@ let pluginComposerHostOwnershipSequence = 0;
 function createPluginComposerHostIdentity(scopeIdentity: string): string {
   pluginComposerHostOwnershipSequence += 1;
   return `${scopeIdentity}:ownership:${pluginComposerHostOwnershipSequence}`;
-}
-
-type PendingInteractionsQueryBannerProps =
-  | { state: "loading" }
-  | { state: "error"; isRetrying: boolean; onRetry: () => void };
-
-function PendingInteractionsQueryBanner(
-  props: PendingInteractionsQueryBannerProps,
-) {
-  const isError = props.state === "error";
-  return (
-    <div
-      className={cn(
-        "mb-2 flex min-w-0 max-w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground",
-        isError &&
-          "border-surface-destructive-border bg-surface-destructive text-destructive-text",
-      )}
-      role={isError ? "alert" : "status"}
-    >
-      <span>
-        {isError
-          ? "Couldn't check pending interactions."
-          : "Checking pending interactions…"}
-      </span>
-      {props.state === "error" ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={props.isRetrying}
-          onClick={props.onRetry}
-          className="h-7 cursor-pointer px-2"
-        >
-          {props.isRetrying ? "Retrying…" : "Retry"}
-        </Button>
-      ) : null}
-    </div>
-  );
 }
 
 interface EmbeddedThreadChatComposerProps {
@@ -251,12 +212,6 @@ function EmbeddedThreadChatWithComposer({
     pendingInteractionsQuery.data,
     pendingInteractionsQuery.isFetching,
   );
-  const pendingInteractionsUnavailable =
-    activePendingInteraction === null && pendingInteractionsQuery.isError;
-  const pendingInteractionOccupiesComposer =
-    hasComposerBlockingPendingInteraction ||
-    pendingInteractionsInitialLoading ||
-    pendingInteractionsUnavailable;
   useThreadReadTracking({
     markThreadRead,
     thread: threadQuery.data,
@@ -387,10 +342,12 @@ function EmbeddedThreadChatWithComposer({
     setBottomAttachmentError,
     handleAttachBottomFiles,
     isAttachingBottomFiles,
+    bottomPendingUploads,
     inlineAttachmentError,
     setInlineAttachmentError,
     handleAttachInlineFiles,
     isAttachingInlineFiles,
+    inlinePendingUploads,
   } = useComposerAttachmentUploads({
     projectId,
     addDraftAttachment: promptDraft.addAttachment,
@@ -444,8 +401,7 @@ function EmbeddedThreadChatWithComposer({
         childThreadId: threadId,
         hasPendingInteraction: hasComposerBlockingPendingInteraction,
         isDefaultExecutionOptionsLoading,
-        isPendingInteractionsInitialLoading:
-          pendingInteractionsInitialLoading || pendingInteractionsUnavailable,
+        isPendingInteractionsInitialLoading: pendingInteractionsInitialLoading,
         isStopRequested,
         onStop: handleStopThread,
         runtimeDisplayStatus: displayStatus,
@@ -457,7 +413,6 @@ function EmbeddedThreadChatWithComposer({
       isDefaultExecutionOptionsLoading,
       isStopRequested,
       pendingInteractionsInitialLoading,
-      pendingInteractionsUnavailable,
       threadId,
     ],
   );
@@ -868,6 +823,7 @@ function EmbeddedThreadChatWithComposer({
       items: currentPromptDraft.attachments,
       projectId,
       isAttaching: isAttachingBottomFiles,
+      pendingUploads: bottomPendingUploads,
       error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
       onRemove: promptDraft.removeAttachment,
@@ -877,6 +833,7 @@ function EmbeddedThreadChatWithComposer({
       currentPromptDraft.attachments,
       handleAttachBottomFiles,
       isAttachingBottomFiles,
+      bottomPendingUploads,
       projectId,
       promptDraft.removeAttachment,
     ],
@@ -886,6 +843,7 @@ function EmbeddedThreadChatWithComposer({
       items: activeComposerDraft.attachments,
       projectId,
       isAttaching: isAttachingInlineFiles,
+      pendingUploads: inlinePendingUploads,
       error: inlineAttachmentError,
       onAttachFiles: handleAttachInlineFiles,
       onRemove: removeActiveComposerAttachment,
@@ -895,6 +853,7 @@ function EmbeddedThreadChatWithComposer({
       inlineAttachmentError,
       handleAttachInlineFiles,
       isAttachingInlineFiles,
+      inlinePendingUploads,
       projectId,
       removeActiveComposerAttachment,
     ],
@@ -1052,6 +1011,7 @@ function EmbeddedThreadChatWithComposer({
           typeahead={typeaheadConfig}
           promptActions={promptActions}
           collapseResetKey={`${surfaceKey}:queued-message:${inlineEditingQueuedMessage.queuedMessageId}`}
+          preferExpanded
           focusEndKey={`${inlineEditingQueuedMessage.editSessionId}:${inlineComposerFocusNonce}`}
           isPrimaryComposer={false}
           showScrollToBottomButton={false}
@@ -1075,14 +1035,16 @@ function EmbeddedThreadChatWithComposer({
 
   const queuedMessagesStack = useMemo(
     () =>
-      queuedMessages.length > 0 && !pendingInteractionOccupiesComposer ? (
+      queuedMessages.length > 0 && !hasComposerBlockingPendingInteraction ? (
         <QueuedMessagesList
           attachedToComposer
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
           sendAction={isProvisioning ? "steer-when-ready" : "send-now"}
-          sendDisabled={queuedMessageActionPending}
+          sendDisabled={
+            submitMode.kind === "blocked" || queuedMessageActionPending
+          }
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
@@ -1103,25 +1065,17 @@ function EmbeddedThreadChatWithComposer({
       isProvisioning,
       processingQueuedMessage?.action,
       processingQueuedMessage?.id,
-      pendingInteractionOccupiesComposer,
+      hasComposerBlockingPendingInteraction,
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
+      submitMode.kind,
     ],
   );
 
   const surfaceClassName =
     surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
-  const pendingInteractionBanner = pendingInteractionsUnavailable ? (
-    <PendingInteractionsQueryBanner
-      state="error"
-      isRetrying={pendingInteractionsQuery.isFetching}
-      onRetry={() => void pendingInteractionsQuery.refetch()}
-    />
-  ) : pendingInteractionsInitialLoading ? (
-    <PendingInteractionsQueryBanner state="loading" />
-  ) : activePendingInteraction !== null &&
-    activePendingInteraction.payload.kind !== "plugin" ? (
+  const pendingInteractionBanner = hasComposerBlockingPendingInteraction ? (
     <ThreadPendingInteractionBanner
       interaction={activePendingInteraction}
       threadId={threadId}

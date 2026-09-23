@@ -153,8 +153,8 @@ function PendingInteractionBanner({
               title: request.title,
               data: request.data,
             }}
-            dismissal={
-              isPluginPendingInteraction(interaction) ? "cancel" : "stop-turn"
+            origin={
+              isPluginPendingInteraction(interaction) ? "plugin" : "provider"
             }
           />
         </div>

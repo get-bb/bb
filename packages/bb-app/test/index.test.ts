@@ -53,6 +53,7 @@ import type {
   ManagedProcessRun,
   NamedProcessExitResult,
   ProcessExitResult,
+  ReadServerMovedFileFn,
 } from "../src/launcher.js";
 
 interface DelayArgs {
@@ -245,6 +246,12 @@ function delay(args: DelayArgs): Promise<DelayResult> {
 const immediateDelay: DelayMillisecondsFn = () => {
   return Promise.resolve();
 };
+
+const noServerMovedFile: ReadServerMovedFileFn = async () => null;
+
+async function unexpectedServerMove(): Promise<FullStackSupervisionResult> {
+  throw new Error("Unexpected server move");
+}
 
 function createTestStartContext(): BbAppStartContext {
   return {
@@ -843,6 +850,26 @@ describe("bb-app launcher", () => {
     await expect(
       runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
     ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+  });
+
+  it("tells the bundled CLI where the server's machine installer is", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-installer-"));
+    const outputPath = join(dataDir, "installer-path.txt");
+
+    const exitCode = await runBundledCliCommand({
+      args: [
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], process.env.BB_MACHINE_INSTALLER ?? 'missing')",
+        outputPath,
+      ],
+      context: { ...createTestStartContext(), dataDir },
+      env: { BB_CLI: process.execPath },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe(
+      "/tmp/bb-app-test/server/dist/assets/install-machine.sh",
+    );
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -1970,7 +1997,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2003,7 +2032,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2036,7 +2067,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2064,7 +2097,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: immediateDelay,
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });
@@ -2100,7 +2135,9 @@ describe("bb-app launcher", () => {
       delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
       isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
+      onServerMoved: unexpectedServerMove,
       processes: supervisor.processes,
+      readServerMovedFile: noServerMovedFile,
       startDaemon: supervisor.daemonStart,
       startServer: supervisor.serverStart,
     });

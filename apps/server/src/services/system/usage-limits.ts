@@ -20,12 +20,11 @@ export async function getProviderUsageLimits(
 ): Promise<ProviderUsageResponse> {
   const hostId = query.hostId ?? requirePrimaryHostId(deps);
   assertUsableHostId(deps, { hostId });
-  const providers = (
-    await listSystemProviderInfos(deps, { hostId, capability: "usage" })
-  ).filter(
-    (provider) =>
-      query.providerId === undefined || provider.id === query.providerId,
-  );
+  const providers = await listSystemProviderInfos(deps, {
+    hostId,
+    capability: "usage",
+    onlyProviderId: query.providerId,
+  });
   const entries = await mapProviderMaintenanceRequests(
     providers,
     async (provider): Promise<[string, ProviderUsage] | null> => {

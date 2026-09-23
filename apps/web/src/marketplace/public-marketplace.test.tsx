@@ -22,7 +22,7 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
-    expect(html).toContain("Make bb yours.");
+    expect(html).toContain('aria-label="Make bb yours"');
     expect(html).toContain(
       "Themes, providers, workflows, and tools, installed with one command.",
     );
@@ -34,22 +34,37 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("marketplace-new-chip");
     expect(html).toContain("https://github.com/get-bb.png?size=32");
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
-    expect(html).toContain('<select aria-label="Category">');
+    expect(html).toContain('aria-label="Category: All categories"');
+    expect(html).toContain('role="group" aria-label="Category"');
     expect(html).toContain(
-      '<option value="" selected="">All categories</option>',
+      '<span>Thread Content</span><span class="marketplace-count">1</span>',
     );
     expect(html).toContain(
-      '<option value="thread-content">Thread Content (1)</option>',
+      '<span>Code &amp; Reviews</span><span class="marketplace-count">2</span>',
     );
     expect(html).toContain(
-      '<option value="code-and-reviews">Code &amp; Reviews (2)</option>',
-    );
-    expect(html).toContain(
-      '<option value="uncategorized">More plugins (1)</option>',
+      '<span>More plugins</span><span class="marketplace-count">1</span>',
     );
     expect(html).not.toContain("marketplace-category-pill");
     expect(html).not.toContain("marketplace-category-filters");
-    expect(html).not.toContain("mask-image");
+    expect(html).toContain("mask-image");
+    expect(html).toContain("marketplace-svg-icon");
+  });
+
+  it("keeps raster artwork as an image", () => {
+    const entry = {
+      ...MARKETPLACE_V2_FIXTURE.plugins[0]!,
+      icon: { url: "https://example.com/icon.png" },
+    };
+    const html = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={{ ...MARKETPLACE_V2_FIXTURE, plugins: [entry] }}
+        entry={entry}
+        stats={null}
+      />,
+    );
+    expect(html).toContain('<img src="https://example.com/icon.png"');
+    expect(html).not.toContain("marketplace-svg-icon");
   });
 
   it("filters the marketplace route to one selected category", () => {
@@ -61,9 +76,7 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
-    expect(html).toContain(
-      '<option value="code-and-reviews" selected="">Code &amp; Reviews (2)</option>',
-    );
+    expect(html).toContain('aria-label="Category: Code &amp; Reviews"');
     expect(html).toContain("Filtered plugins");
     expect(html).toContain("2 plugins");
     expect(html).toContain(
@@ -95,7 +108,7 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("marketplace-install-command");
     expect(html).not.toContain("Don&#x27;t have bb?");
     expect(html).not.toContain("Runs in bb");
-    expect(html).toContain("Listed");
+    expect(html).not.toContain("Listed");
     expect(html).toContain(
       'href="https://www.npmjs.com/package/@get-bb/plugin-prompt-library"',
     );
@@ -107,8 +120,12 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
-    expect(html).toContain("marketplace-overview-lead");
-    expect(html).not.toContain("marketplace-overview-rule");
+    expect(html).toContain(
+      `<p class="marketplace-overview-lead">${entry.description}</p>`,
+    );
+    expect(html.indexOf(entry.description)).toBeGreaterThan(
+      html.indexOf('class="marketplace-detail-install"'),
+    );
     expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
@@ -177,7 +194,6 @@ describe("public marketplace route rendering", () => {
       html.indexOf("More in Code &amp; Reviews"),
     );
     expect(html).not.toContain("marketplace-screenshots");
-    expect(html).not.toContain("marketplace-overview-rule");
   });
 
   it("renders the category shelf alone when the author has no other plugins", () => {

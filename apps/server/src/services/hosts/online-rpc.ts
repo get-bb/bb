@@ -1,3 +1,4 @@
+import { hostCommandMayWake } from "./wake-policy.js";
 import { isHostCleanupAllowed } from "./cleanup-context.js";
 import { assertMachineLifecycleAdmission } from "../machines/lifecycle.js";
 import { getHost, getThread } from "@bb/db";
@@ -146,12 +147,29 @@ async function prepareHostForWork(
   retryOnTransportFailure: boolean,
 ): Promise<void> {
   if (isCleanupRpc(deps, args)) return;
+  if (!hostCommandMayWake(args.command)) {
+    assertHostActiveForRead(deps, args);
+    return;
+  }
+  const host = getHost(deps.db, args.hostId);
+  if (host?.phase === "suspended" || host?.phase === "resuming") {
+    deps.logger.info(
+      {
+        hostId: args.hostId,
+        commandType: args.command.type,
+        ...("threadId" in args.command
+          ? { threadId: args.command.threadId }
+          : {}),
+      },
+      "Host command requested machine wake",
+    );
+  }
   await ensureHostSessionReadyForWork(deps, { hostId: args.hostId }).catch(
     async (error) => {
       if (!retryOnTransportFailure || !isHostUnavailableApiError(error)) {
         throw error;
       }
-      await waitForRetryableHostRpcTransport(deps, args.hostId);
+      await waitForRetryableHostRpcTransport(deps, args);
     },
   );
   assertMachineLifecycleAdmission(deps, args.hostId);
@@ -215,7 +233,7 @@ async function callHostOnlineRpcWithRetry(
     }
     if (error instanceof HostOnlineRpcUnavailableError) {
       if (!options.waitForTransportFailure) throwOnlineRpcError(error);
-      await waitForRetryableHostRpcTransport(deps, args.hostId);
+      await waitForRetryableHostRpcTransport(deps, args);
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);
       });
@@ -253,14 +271,15 @@ async function callHostOnlineRpcWithRetry(
 
 async function waitForRetryableHostRpcTransport(
   deps: WorkSessionDeps,
-  hostId: string,
+  args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<void> {
-  if (deps.hub.hasDaemonForHost(hostId)) {
-    await ensureHostSessionReadyForWork(deps, { hostId });
-    return;
+  if (!deps.hub.hasDaemonForHost(args.hostId)) {
+    await deps.hub.waitForDaemonForHost(
+      args.hostId,
+      HOST_DAEMON_REGISTRATION_WAIT_MS,
+    );
   }
-  await deps.hub.waitForDaemonForHost(hostId, HOST_DAEMON_REGISTRATION_WAIT_MS);
-  await ensureHostSessionReadyForWork(deps, { hostId });
+  await prepareHostForWork(deps, args, false);
 }
 
 export function isHostUnavailableApiError(error: unknown): boolean {

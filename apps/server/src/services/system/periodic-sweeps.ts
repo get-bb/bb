@@ -1,3 +1,13 @@
+import {
+  runThreadPruningSweep,
+  THREAD_PRUNING_SWEEP_LIMITS,
+  type ThreadPruningSweepLimits,
+} from "./thread-pruning-sweep.js";
+import {
+  PROJECT_ATTACHMENT_BACKFILL_LIMITS,
+  runProjectAttachmentBackfill,
+  runProjectAttachmentPrune,
+} from "../projects/attachment-maintenance.js";
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
@@ -20,6 +30,7 @@ import {
   getDatabaseMaintenanceActivity,
   getEnvironment,
   isDatabaseMaintenanceIdle,
+  listArchivedThreadsPendingTeardown,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
@@ -46,8 +57,13 @@ import {
 import {
   finalizeStoppedThread,
   hasLiveThreadStartInFlight,
+  requestThreadStopForCurrentState,
   requestThreadStorageDeletion,
 } from "../threads/thread-lifecycle.js";
+import {
+  archiveUndoGraceKeepsTerminals,
+  archiveUndoGraceKeepsTurnRunning,
+} from "../threads/archive-undo-grace.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   runQueuedMessageDispatch,
@@ -291,6 +307,7 @@ export async function runEnvironmentProvisioningSweep(
 
 async function runThreadProvisioningOrphanCleanupSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
 ): Promise<void> {
   const provisioningThreads = deps.db
     .select({
@@ -319,6 +336,23 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
+  for (const thread of listArchivedThreadsPendingTeardown(deps.db)) {
+    if (!archiveUndoGraceKeepsTerminals(thread, now)) {
+      deps.terminalSessions.closeArchivedThreadTerminals({
+        threadId: thread.id,
+      });
+    }
+    if (archiveUndoGraceKeepsTurnRunning(thread, now)) {
+      continue;
+    }
+    requestThreadStopForCurrentState(
+      deps,
+      thread,
+      thread.environmentId
+        ? getEnvironment(deps.db, thread.environmentId)
+        : null,
+    );
+  }
   const deletedThreads = deps.db
     .select({
       environmentId: threads.environmentId,
@@ -329,6 +363,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
     .where(isNotNull(threads.deletedAt))
     .all();
   for (const thread of deletedThreads) {
+    deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.storageDeletedAt !== null) {
       finalizeStoppedThread(deps, { threadId: thread.id });
       continue;
@@ -343,7 +378,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
 export async function runThreadLifecycleSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  await runThreadProvisioningOrphanCleanupSweep(deps);
+  await runThreadProvisioningOrphanCleanupSweep(deps, Date.now());
   await sweepProviderLifecycles(deps);
   await sweepMachineLifecycles(deps);
 }
@@ -475,6 +510,17 @@ async function runDestroyedEnvironmentPruneSweep(
   }
 }
 
+export function createThreadEventPruningJob(
+  limits: ThreadPruningSweepLimits,
+): PeriodicSweepJob {
+  return {
+    cadenceMs: 0,
+    category: "retention",
+    name: "thread-event-pruning",
+    run: (deps) => runThreadPruningSweep(deps, limits),
+  };
+}
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -550,6 +596,13 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
+    name: "failed-queue-message-retry",
+    run: (deps, now) =>
+      runQueuedMessageDispatch(deps, { kind: "failed-retry", now }),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
     name: "orphaned-queue-wait-clear",
     run: (deps) =>
       runQueuedMessageDispatch(deps, {
@@ -569,11 +622,29 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     name: "plugin-schedule",
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
   },
+  createThreadEventPruningJob(THREAD_PRUNING_SWEEP_LIMITS),
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
     run: runDatabaseMaintenanceSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "maintenance",
+    name: "project-attachment-backfill",
+    run: (deps, now) =>
+      runProjectAttachmentBackfill(
+        deps,
+        PROJECT_ATTACHMENT_BACKFILL_LIMITS,
+        now,
+      ),
+  },
+  {
+    cadenceMs: 60_000,
+    category: "retention",
+    name: "project-attachment-orphan-prune",
+    run: runProjectAttachmentPrune,
   },
 ];
 

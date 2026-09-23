@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { Environment } from "@bb/domain";
+import type { Environment, Host } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
   allEnvironmentDiffFilesQueryKeyPrefix,
@@ -9,6 +9,7 @@ import {
   allEnvironmentQueryKeyPrefix,
   allEnvironmentWorkStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
+  allMachineEnvironmentQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allSystemMachineProvidersQueryKeyPrefix,
@@ -31,6 +32,7 @@ import {
   hostPathExistenceQueryKeyPrefix,
   hostsQueryKey,
   projectsQueryKey,
+  serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   threadPromptHistoryQueryKeyPrefix,
@@ -106,6 +108,15 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   invalidateQueryKeys({
     queryClient,
     queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
+  });
+}
+
+export function invalidateMachineEnvironment({
+  queryClient,
+}: QueryClientArg): void {
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: [allMachineEnvironmentQueryKeyPrefix()],
   });
 }
 
@@ -202,5 +213,15 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     hostPathExistenceQueryKeyPrefix(),
     allSystemProvidersQueryKeyPrefix(),
     allSystemExecutionOptionsQueryKeyPrefix(),
+    serverMoveStatusQueryKey(),
   ];
+}
+
+export function applyHostRenameResult({
+  host,
+  queryClient,
+}: QueryClientArg & { host: Host }): void {
+  queryClient.setQueryData<Host[]>(hostsQueryKey(), (hosts) =>
+    hosts?.map((current) => (current.id === host.id ? host : current)),
+  );
 }

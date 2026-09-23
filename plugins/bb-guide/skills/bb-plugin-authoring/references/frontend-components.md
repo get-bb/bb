@@ -63,7 +63,7 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   `align` optionally sets the popover to `"start"`, `"center"`, or `"end"`;
   it defaults to `"start"`.
 
-  Omit `routing` for primary-machine discovery. Route by host for a selected
+  Omit `routing` for server-machine discovery. Route by host for a selected
   machine or by environment when the catalog depends on an existing workspace.
   This is intended for settings and other compact forms that need an execution
   preference without a composer; do not fetch and reconcile provider catalogs
@@ -272,12 +272,13 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   submit it calls `onSubmit(request)` with a JSON-serializable
   `NewThreadRequest`
   `{ projectId, providerId, model, reasoningLevel, permissionMode,
-serviceTier?, executionInputSources, environment, input }`. Forward it
-  verbatim to your backend rpc and hand it to `bb.sdk.threads.spawn`,
-  adding `sectionId` / `parentThreadId` / `title` / `visibility` yourself —
-  `spawn` fills in `origin: "plugin"` and `originPluginId`, so threads
-  created this way stay attributed to your plugin. The draft clears when
-  `onSubmit` resolves and is KEPT if it throws, so a failed create never
+serviceTier?, executionInputSources, environment, input }`. Hand it to
+  `useSdk().threads.spawn` from the frontend (or forward it verbatim to your
+  backend rpc and `bb.sdk.threads.spawn` when the create needs server-side
+  work), adding `sectionId` / `parentThreadId` / `title` / `visibility`
+  yourself — both clients fill in `origin: "plugin"` and `originPluginId`, so
+  threads created this way stay attributed to your plugin. The draft clears
+  when `onSubmit` resolves and is KEPT if it throws, so a failed create never
   loses what the user typed.
 
   Alias it on import — JSX reads a lowercase-initial name as an intrinsic
@@ -285,25 +286,21 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
 
   ```tsx
   // app.tsx
-  import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
+  import {
+    experimental_NewThreadComposer as NewThreadComposer,
+    useSdk,
+  } from "@get-bb/plugin-sdk/app";
 
+  const sdk = useSdk();
   <NewThreadComposer
     defaultProjectId={projectId}
     onSubmit={async (request) => {
-      await rpc.call("createThread", { request, sectionId });
+      await sdk.threads.spawn({
+        ...request,
+        ...(sectionId ? { sectionId } : {}),
+      });
     }}
   />;
-  ```
-
-  ```ts create-thread-handler
-  // server.ts
-  async createThread({ request, sectionId }) {
-    const thread = await bb.sdk.threads.spawn({
-      ...request,
-      ...(sectionId ? { sectionId } : {}),
-    });
-    return { threadId: thread.id };
-  }
   ```
 
   Experimental: the `experimental_` prefix will drop once the entry in
@@ -320,6 +317,13 @@ render the name with `experimental_Icon`. Duplicate names within a plugin reject
 setup. Across plugins, the first plugin id in lexical order wins and bb warns.
 Registration returns `void`; reload replaces registrations and unload restores
 the next owner or built-in. A rejected setup preserves the previous generation.
+
+A registered name is a BB icon name everywhere one is accepted, not only in
+`experimental_Icon`: every host icon field resolves a registration first, then
+a built-in, then a manifest-declared `"<pluginId>/<name>"` glyph. Register for
+a component, colour, or to override a built-in; declare in the manifest for
+icons a server declaration must validate or that must work with no frontend
+bundle.
 
 `experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
 `className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives

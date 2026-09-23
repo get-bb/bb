@@ -1,12 +1,9 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
+import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
-import {
-  PluginCompactIconMask,
-  PluginIcon,
-  pluginIconName,
-} from "@/components/plugin/PluginIcon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -64,14 +61,6 @@ function neutral(percent: number): string {
   return `color-mix(in oklch, var(--ink) ${percent}%, var(--canvas))`;
 }
 
-function accentTint(token: string, percent: number): string {
-  return `color-mix(in oklch, var(${token}) ${percent}%, var(--canvas))`;
-}
-
-function accentInk(token: string, percent: number): string {
-  return `color-mix(in oklch, var(${token}) ${percent}%, var(--ink))`;
-}
-
 function pluginCatalogCategoryAccentToken(
   categoryId: string | undefined,
 ): string | undefined {
@@ -80,31 +69,51 @@ function pluginCatalogCategoryAccentToken(
     : PLUGIN_CATEGORY_ACCENT_TOKENS[categoryId];
 }
 
-export function pluginCatalogCategoryPillStyle(
+const PLUGIN_CATEGORY_ICONS: Record<string, string> = {
+  "themes-and-appearance": "Palette",
+  "thread-management": "ListView",
+  "thread-content": "MessageSquare",
+  "memory-and-context": "Brain",
+  security: "Lock",
+  "agents-and-providers": "Bot",
+  environments: "Laptop",
+  "token-usage-and-limits": "ChartColumn",
+  notifications: "BellDot",
+  "code-and-reviews": "GitPullRequest",
+  "file-viewers-and-editors": "FileText",
+  "cloud-and-remote": "Cloud",
+  "command-line": "Terminal",
+  utilities: "Toolbox",
+  "plugin-development": "Puzzle",
+  "tasks-and-workflows": "Workflow",
+};
+
+export function pluginCatalogCategoryIconName(
   categoryId: string | undefined,
-): CSSProperties {
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return accentToken === undefined
-    ? {
-        background: neutral(8),
-        borderColor: neutral(16),
-        color: neutral(55),
-      }
-    : {
-        background: accentTint(accentToken, 16),
-        borderColor: accentTint(accentToken, 24),
-        color: accentInk(accentToken, 52),
-      };
+): string | undefined {
+  return categoryId === undefined ? undefined : PLUGIN_CATEGORY_ICONS[categoryId];
 }
 
-export function pluginCatalogCategoryMutedAccentStyle(
-  categoryId: string | undefined,
-): CSSProperties {
+export function PluginCategoryIcon({
+  categoryId,
+  className,
+}: {
+  categoryId: string | undefined;
+  className?: string;
+}) {
+  const iconName = pluginCatalogCategoryIconName(categoryId);
   const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return {
-    background:
-      accentToken === undefined ? neutral(36) : accentTint(accentToken, 55),
-  };
+  if (iconName === undefined || accentToken === undefined) return null;
+  return (
+    <Icon
+      name={iconName}
+      className={cn("shrink-0", className)}
+      style={{
+        color: `color-mix(in oklab, var(${accentToken}) 75%, var(--ink))`,
+      }}
+      aria-hidden
+    />
+  );
 }
 
 export function PluginLogo({
@@ -162,42 +171,18 @@ export function CatalogEntryIcon({
   };
   className: string;
 }) {
-  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
   return (
     <span
       aria-hidden="true"
       data-catalog-entry-icon-glyph=""
       className={cn("grid shrink-0 place-items-center", className)}
     >
-      {entry.iconUrl !== null && entry.iconTinted ? (
-        <PluginCompactIconMask url={entry.iconUrl} className="size-full" />
-      ) : entry.iconUrl === null || entry.iconUrl === failedIconUrl ? (
-        <Icon name={pluginIconName(entry.icon)} className="size-full" />
-      ) : (
-        <img
-          src={entry.iconUrl}
-          alt=""
-          className="size-full rounded-sm object-contain"
-          onError={() => setFailedIconUrl(entry.iconUrl)}
-        />
-      )}
-    </span>
-  );
-}
-
-export function PluginCategoryLabel({
-  categoryId,
-  label,
-}: {
-  categoryId: string | undefined;
-  label: string;
-}) {
-  return (
-    <span
-      className="shrink-0 truncate rounded border px-2 py-1 text-2xs leading-none"
-      style={pluginCatalogCategoryPillStyle(categoryId)}
-    >
-      {label}
+      <PluginBrandIcon
+        icon={entry.icon}
+        iconUrl={entry.iconUrl}
+        iconTinted={entry.iconTinted}
+        className="size-full"
+      />
     </span>
   );
 }
@@ -205,6 +190,7 @@ export function PluginCategoryLabel({
 export function CatalogEntryIconChip({
   entry,
   className,
+  compact = false,
 }: {
   entry: {
     displayName: string;
@@ -213,17 +199,26 @@ export function CatalogEntryIconChip({
     iconTinted: boolean;
   };
   className?: string;
+  compact?: boolean;
 }) {
   return (
     <ResourceIconFrame
-      className={cn("size-10 rounded-md border", className)}
+      className={cn(
+        compact ? "size-6 rounded border" : "size-10 rounded-md border",
+        className,
+      )}
       style={{
         background: neutral(5),
         borderColor: neutral(14),
         color: neutral(55),
       }}
     >
-      {() => <CatalogEntryIcon entry={entry} className="size-6" />}
+      {() => (
+        <CatalogEntryIcon
+          entry={entry}
+          className={compact ? "size-4" : "size-6"}
+        />
+      )}
     </ResourceIconFrame>
   );
 }

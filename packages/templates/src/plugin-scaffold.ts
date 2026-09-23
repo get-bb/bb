@@ -11,8 +11,9 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import semverCompare from "semver/functions/compare.js";
+import minVersion from "semver/ranges/min-version.js";
 import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { loadPluginSdkDeclarations } from "./plugin-sdk-dts.js";
 import {
   PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
   PLUGIN_STARTER_DEPENDENCIES,
@@ -23,57 +24,6 @@ interface ScaffoldPluginArgs {
   targetDir: string;
   packageName: string;
   bbVersion: string;
-}
-
-interface SyncPluginTypesArgs {
-  rootDir: string;
-  app: boolean;
-  check?: boolean;
-}
-
-interface SyncedPluginTypeFile {
-  path: string;
-  outcome: "written" | "unchanged" | "stale";
-}
-
-export async function syncPluginTypes(
-  args: SyncPluginTypesArgs,
-): Promise<SyncedPluginTypeFile[]> {
-  const { rootDir, app, check = false } = args;
-  const typesDir = join(rootDir, "types");
-  const declarations = await loadPluginSdkDeclarations();
-  const candidates: { name: string; content: string; optional: boolean }[] = [
-    { name: "bb-plugin-sdk.d.ts", content: declarations.root, optional: false },
-    {
-      name: "bb-plugin-sdk-app.d.ts",
-      content: declarations.app,
-      optional: !app,
-    },
-  ];
-  await assertWritableTypesDir(rootDir, typesDir);
-  const results: SyncedPluginTypeFile[] = [];
-  for (const candidate of candidates) {
-    const filePath = join(typesDir, candidate.name);
-    const relativePath = `types/${candidate.name}`;
-    const existing = await statNoFollow(filePath, relativePath);
-    if (existing !== null && !existing.isFile()) {
-      throw new Error(`${relativePath} is not a regular file`);
-    }
-    const current = existing === null ? null : await readFile(filePath, "utf8");
-    if (current === null && candidate.optional) continue;
-    if (current === candidate.content) {
-      results.push({ path: relativePath, outcome: "unchanged" });
-      continue;
-    }
-    if (check) {
-      results.push({ path: relativePath, outcome: "stale" });
-      continue;
-    }
-    await mkdir(typesDir, { recursive: true });
-    await writeFileAtomically(filePath, relativePath, candidate.content);
-    results.push({ path: relativePath, outcome: "written" });
-  }
-  return results;
 }
 
 interface PluginSdkLayout {
@@ -523,19 +473,12 @@ function insertDependency(
 
 function isFloorBelow(range: string | null, version: string): boolean {
   if (range === null || range.trim().length === 0) return true;
-  const floor = parseVersionTuple(range);
-  const target = parseVersionTuple(version);
-  if (floor === null || target === null) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (floor[index]! !== target[index]!) return floor[index]! < target[index]!;
+  try {
+    const floor = minVersion(range);
+    return floor !== null && semverCompare(floor, version) < 0;
+  } catch {
+    return false;
   }
-  return false;
-}
-
-function parseVersionTuple(value: string): [number, number, number] | null {
-  const match = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(value);
-  if (match === null) return null;
-  return [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
 }
 
 interface TsconfigPlan {

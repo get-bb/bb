@@ -1253,6 +1253,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-registry-provenance",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/registry-provenance-project",
@@ -1305,6 +1306,7 @@ describe("public project skills route", () => {
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-plugin-skill",
         });
+        seedPrimaryHost(harness.deps, host.id);
         const { project } = seedProjectWithSource(harness.deps, {
           hostId: host.id,
           path: "/tmp/plugin-skill-project",
@@ -1544,6 +1546,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-duplicate-skills",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/duplicate-skills-project",
@@ -1590,6 +1593,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-claude-skill-edit",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/claude-skill-edit-project",
@@ -1644,6 +1648,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-stale-skill-edit",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/stale-skill-edit-project",

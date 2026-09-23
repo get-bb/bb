@@ -24,6 +24,13 @@ export const QUESTION_SELECT_APP_COMMAND_IDS = [
   "question.select.9",
 ] as const;
 
+export const PANE_DIRECTION_APP_COMMAND_IDS = [
+  "pane.focus.left",
+  "pane.focus.right",
+  "pane.focus.up",
+  "pane.focus.down",
+] as const;
+
 export const PANE_FOCUS_APP_COMMAND_IDS = [
   "pane.focus.1",
   "pane.focus.2",
@@ -44,16 +51,22 @@ export const APP_COMMAND_IDS = [
   "thread.previous",
   "thread.next",
   ...THREAD_JUMP_APP_COMMAND_IDS,
+  ...PANE_DIRECTION_APP_COMMAND_IDS,
   "pane.focus.previous",
   "pane.focus.next",
   ...PANE_FOCUS_APP_COMMAND_IDS,
   "pane.maximize.toggle",
   "pane.close",
   "window.new",
+  "window.find",
   "app.back",
   "settings.open",
   "settings.openServers",
   "sidebar.toggle",
+  "panel.previousTab",
+  "panel.nextTab",
+  "panel.previousNewTabItem",
+  "panel.nextNewTabItem",
   "panel.newTab",
   "panel.reopenClosedTab",
   "panel.close",

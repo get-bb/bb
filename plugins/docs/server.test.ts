@@ -216,9 +216,31 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
           )
             throw new Error("Directory is not empty");
           directories.delete(args.path);
+          for (const entry of files.keys())
+            if (entry.startsWith(prefix)) files.delete(entry);
+          for (const entry of directories)
+            if (entry.startsWith(prefix)) directories.delete(entry);
           return { ok: true as const };
         },
-        async move() {
+        async move(args) {
+          const from = args.sourcePath;
+          const to = args.destinationPath;
+          if (!files.has(from) && !directories.has(from))
+            throw new Error("ENOENT");
+          if (files.has(to) || directories.has(to)) throw new Error("EEXIST");
+          for (const [entry, file] of [...files]) {
+            if (entry === from || entry.startsWith(`${from}/`)) {
+              files.delete(entry);
+              files.set(to + entry.slice(from.length), file);
+            }
+          }
+          for (const entry of [...directories]) {
+            if (entry === from || entry.startsWith(`${from}/`)) {
+              directories.delete(entry);
+              directories.add(to + entry.slice(from.length));
+            }
+          }
+          addParents(to);
           return { ok: true as const };
         },
         async createPreview() {
@@ -353,6 +375,139 @@ async function waitForSignal(
 }
 
 describe("Docs mention provider", () => {
+  it("shares note reads across overlapping searches and subsequent keystrokes", async () => {
+    const { harness } = await loadNotebook({
+      "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
+      "meeting.md": "# Standup\n\nLaunch checklist",
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    const search = (query: string) =>
+      provider.search({ trigger: "@", query, projectId: null, threadId: null });
+
+    const [roadmap, meeting] = await Promise.all([
+      search("roadmap"),
+      search("launch"),
+    ]);
+    expect(roadmap.map((item) => item.title)).toEqual(["Product Roadmap"]);
+    expect(meeting.map((item) => item.title)).toEqual(["Standup"]);
+    expect(await search("quarterly")).toEqual(roadmap);
+    expect(harness.sdk.callsTo("files.listPaths")).toHaveLength(1);
+    expect(harness.sdk.callsTo("files.read")).toHaveLength(2);
+  });
+
+  it("refreshes cached mentions after saves, moves, deletions, and external edits", async () => {
+    const { harness, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "# Original",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    const search = () =>
+      provider.search({
+        trigger: "@",
+        query: "",
+        projectId: null,
+        threadId: null,
+      });
+    expect(await search()).toMatchObject([{ title: "Original" }]);
+    await harness.callRpc("saveNote", { path: "plan.md", content: "# Saved" });
+    expect(await search()).toMatchObject([{ title: "Saved" }]);
+    await harness.callRpc("saveOpenedFile", {
+      source: {
+        kind: "host",
+        threadId: null,
+        projectId: null,
+        environmentId: null,
+      },
+      path: "/vault/plan.md",
+      content: "# Edited in file opener",
+    });
+    expect(await search()).toMatchObject([{ title: "Edited in file opener" }]);
+    await harness.callRpc("movePath", { from: "plan.md", to: "renamed.md" });
+    expect(await search()).toMatchObject([{ id: "personal:renamed.md" }]);
+
+    setUtf8("/vault/renamed.md", "# External edit");
+    expect(await provider.resolve("personal:renamed.md")).toMatchObject({
+      context: expect.stringContaining("# External edit"),
+    });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 10_001);
+    try {
+      expect(await search()).toMatchObject([{ title: "External edit" }]);
+    } finally {
+      clock.mockRestore();
+    }
+    await harness.callRpc("deletePath", { path: "renamed.md" });
+    expect(await search()).toEqual([]);
+  });
+
+  it("retries a failed vault scan instead of caching the failure", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const listPaths = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Host offline"))
+      .mockResolvedValue({
+        paths: [
+          {
+            kind: "file",
+            path: "plan.md",
+            name: "plan.md",
+            score: 0,
+            positions: [],
+          },
+        ],
+        truncated: false,
+      });
+    harness.sdk.stub("files.listPaths", listPaths);
+    const provider = harness.registrations.mentionProviders[0]!;
+    const context = {
+      trigger: "@" as const,
+      query: "plan",
+      projectId: null,
+      threadId: null,
+    };
+    await expect(provider.search(context)).rejects.toThrow("Host offline");
+    expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+    expect(listPaths).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds parallel summary reads while preserving tied result order", async () => {
+    const { harness } = await loadNotebook(
+      Object.fromEntries(
+        Array.from({ length: 20 }, (_, i) => [`plan-${i}.md`, "# Plan"]),
+      ),
+    );
+    let active = 0;
+    let peak = 0;
+    harness.sdk.stub("files.read", async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return {
+        path: "/plan.md",
+        content: "# Plan",
+        contentEncoding: "utf8",
+        sizeBytes: 6,
+        modifiedAtMs: 1,
+        sha256: "test-sha",
+      };
+    });
+    const rows = await harness.registrations.mentionProviders[0]!.search({
+      trigger: "@",
+      query: "plan",
+      projectId: null,
+      threadId: null,
+    });
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(rows.map((row) => row.id)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `personal:plan-${i}.md`),
+    );
+  });
+
   it("searches note titles, previews, and filenames", async () => {
     const { harness } = await loadNotebook({
       "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
@@ -503,7 +658,7 @@ describe("Docs mention provider", () => {
 
     await expect(provider.resolve("personal:ideas.md")).resolves.toEqual({
       context:
-        "Docs document (personal/ideas.md):\n\n# Fresh Ideas\n\nBuild the mention flow.",
+        "Docs document (personal/ideas.md):\nSHA-256: test-sha\n\n# Fresh Ideas\n\nBuild the mention flow.\n\nProposal version: none. Use bb docs propose to suggest changes for approval.",
     });
     expect(harness.sdk.callsTo("files.read")).toEqual([
       [
@@ -742,9 +897,11 @@ describe("Docs vault operations", () => {
         modifiedAtMs: 1,
       },
     });
-    await harness.runCli(["pull", "plan.md", "--into", "sync", "--json"], {
-      cwd: "/work",
-    });
+    const pulled = await harness.runCli(
+      ["pull", "plan.md", "--dir", "sync", "--json"],
+      { cwd: "/work" },
+    );
+    expect(pulled.exitCode).toBe(0);
     setUtf8("/work/sync/plan.md", "local edit");
     setUtf8("/vault/plan.md", "remote edit");
 
@@ -886,10 +1043,13 @@ describe("Docs vault operations", () => {
     });
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout ?? "{}")).toMatchObject({
-      outcome: "error",
-      error: { code: "operation_failed" },
+      ok: false,
+      error: {
+        code: "operation_failed",
+        message: expect.stringContaining(".bb-docs-state.json is malformed"),
+      },
     });
-    expect(result.stderr).toBe("");
+    expect(result.stderr).toContain(".bb-docs-state.json is malformed");
   });
 
   it("supports whole-vault and single-file scopes and deprecates direct writes", async () => {
@@ -944,12 +1104,15 @@ describe("Docs vault operations", () => {
 
     const help = await harness.runCli(["--help"]);
     expect(help).toMatchObject({ exitCode: 0 });
-    expect(help.stdout).toContain("pull|status|push");
+    expect(help.stdout).toContain("bb docs pull");
+    expect(help.stdout).toContain("bb docs status");
+    expect(help.stdout).toContain("bb docs push");
 
     const statusHelp = await harness.runCli(["status", "--help"]);
     expect(statusHelp).toMatchObject({ exitCode: 0 });
     expect(statusHelp.stdout).toContain("Exit 4: changes present");
     expect(statusHelp.stdout).toContain("run bb docs push separately");
+    expect(statusHelp.stdout).toContain("[<workspace-dir>]");
 
     const unsafePull = await harness.runCli(
       ["pull", "plan.md", "--into", "sync", "--dry-run", "--json"],
@@ -957,8 +1120,13 @@ describe("Docs vault operations", () => {
     );
     expect(unsafePull.exitCode).toBe(2);
     expect(JSON.parse(unsafePull.stdout ?? "{}")).toMatchObject({
-      error: { code: "usage_error" },
+      ok: false,
+      error: {
+        code: "unknown_option",
+        message: "unknown option '--dry-run'",
+      },
     });
+    expect(unsafePull.stderr).toContain("unknown option '--dry-run'");
     expect(files.has("/work/sync/plan.md")).toBe(false);
 
     const unsafeRemove = await harness.runCli([
@@ -969,6 +1137,47 @@ describe("Docs vault operations", () => {
     ]);
     expect(unsafeRemove.exitCode).toBe(2);
     expect(files.has("/vault/plan.md")).toBe(true);
+
+    const noCommand = await harness.runCli([]);
+    expect(noCommand.exitCode).toBe(2);
+    expect(noCommand.stdout).toContain("bb docs <command> [options]");
+
+    const unknownCommand = await harness.runCli(["pul", "plan.md"]);
+    expect(unknownCommand.exitCode).toBe(2);
+    expect(unknownCommand.stderr).toContain(
+      "unknown command 'pul' (Did you mean pull?)",
+    );
+
+    const strayArgument = await harness.runCli(["vaults", "personal"]);
+    expect(strayArgument.exitCode).toBe(2);
+    expect(strayArgument.stderr).toContain("unexpected argument 'personal'");
+
+    const missingOptions = await harness.runCli(["write", "plan.md"]);
+    expect(missingOptions.exitCode).toBe(2);
+    expect(missingOptions.stderr).toContain(
+      "missing required options: --content",
+    );
+
+    const missingArguments = await harness.runCli(["move"]);
+    expect(missingArguments.exitCode).toBe(2);
+    expect(missingArguments.stderr).toContain(
+      "missing required arguments: <from>, <to>",
+    );
+
+    const combined = await harness.runCli(
+      ["pull", "--all", "--folder", "--into", "sync"],
+      { cwd: "/work" },
+    );
+    expect(combined.exitCode).toBe(2);
+    expect(combined.stderr).toContain("--all and --folder cannot be combined");
+    expect(files.has("/work/sync/plan.md")).toBe(false);
+
+    for (const argv of [["push", "--help"], ["remove", "-h"], ["help"]]) {
+      const commandHelp = await harness.runCli(argv);
+      expect(commandHelp.exitCode).toBe(0);
+      expect(commandHelp.stderr).toBe("");
+      expect(commandHelp.stdout).toContain("Usage:");
+    }
   });
 
   it("keeps CLI removal non-recursive unless --recursive is passed", async () => {
@@ -1449,7 +1658,22 @@ describe("Docs vault operations", () => {
       if (!notifyChange) {
         throw new Error("Expected vault watcher callback");
       }
+      const provider = harness.registrations.mentionProviders[0]!;
+      const context = {
+        trigger: "@" as const,
+        query: "",
+        projectId: null,
+        threadId: null,
+      };
+      expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+      await writeFile(
+        path.join(temporaryDirectories[0]!, "plan.md"),
+        "# Updated",
+      );
       notifyChange();
+      expect(await provider.search(context)).toMatchObject([
+        { title: "Updated" },
+      ]);
       await waitForSignal(
         () =>
           harness.realtimeSignals.some(
@@ -1465,5 +1689,258 @@ describe("Docs vault operations", () => {
       await service.done;
     }
     expect(closeWatcher).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Docs proposals", () => {
+  async function setupProposal() {
+    const host = await loadVirtualSyncVault({
+      "/vault/letter.md": {
+        content: "A simple place.",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const file = host.files.get("/vault/letter.md")!;
+    const proposal = await host.harness.behavior.callRpc("proposeNote", {
+      path: "letter.md",
+      content: "A calmer space.",
+      expectedSha256: virtualSha(file),
+      expectedVersion: null,
+    });
+    return { ...host, proposal };
+  }
+
+  it("moves proposals with files and folders and clears removed paths", async () => {
+    const { harness, setUtf8 } = await setupProposal();
+    await harness.behavior.callRpc("movePath", {
+      from: "letter.md",
+      to: "drafts/letter.md",
+    });
+    expect(
+      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+    ).toBeNull();
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        path: "drafts/letter.md",
+      }),
+    ).toMatchObject({ path: "drafts/letter.md", content: "A calmer space." });
+    await harness.behavior.callRpc("movePath", {
+      from: "drafts",
+      to: "renamed",
+    });
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        path: "renamed/letter.md",
+      }),
+    ).toMatchObject({ path: "renamed/letter.md" });
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "renamed/letter.md",
+      action: "accept",
+      expectedVersion: 1,
+    });
+    await harness.behavior.callRpc("deletePath", {
+      path: "renamed",
+      recursive: true,
+    });
+    setUtf8("/vault/renamed/letter.md", "Unrelated document");
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        path: "renamed/letter.md",
+      }),
+    ).toBeNull();
+    await harness.lifecycle.dispose();
+  });
+
+  it("cleans file proposals after queued edits and preserves them on failed moves", async () => {
+    const { harness, setUtf8 } = await setupProposal();
+    setUtf8("/vault/existing.md", "Another document");
+    await expect(
+      harness.behavior.callRpc("movePath", {
+        from: "letter.md",
+        to: "existing.md",
+      }),
+    ).rejects.toThrow("EEXIST");
+    await Promise.all([
+      harness.behavior.callRpc("updateProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        content: "Updated",
+      }),
+      harness.behavior.callRpc("deletePath", { path: "letter.md" }),
+    ]);
+    setUtf8("/vault/letter.md", "Replacement");
+    expect(
+      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+    ).toBeNull();
+    await harness.lifecycle.dispose();
+  });
+
+  it("does not expose proposals when a removed vault ID is reused", async () => {
+    const { harness } = await setupProposal();
+    await harness.behavior.callRpc("createVault", {
+      name: "Other",
+      rootPath: "/other",
+    });
+    await harness.behavior.callRpc("removeVault", { vaultId: "personal" });
+    await harness.behavior.callRpc("createVault", {
+      name: "Personal",
+      rootPath: "/replacement",
+    });
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        vaultId: "personal",
+        path: "letter.md",
+      }),
+    ).toBeNull();
+    await harness.lifecycle.dispose();
+  });
+
+  it("keeps candidates separate and restores diff after accept, undo, redo", async () => {
+    const { harness, files } = await setupProposal();
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 1,
+      action: "accept",
+    });
+    expect(files.get("/vault/letter.md")?.content).toBe("A calmer space.");
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 2,
+      action: "undo",
+    });
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    expect(
+      await harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 3,
+        action: "redo",
+      }),
+    ).toMatchObject({ status: "pending", version: 4 });
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    const reloaded = await harness.lifecycle.reload(simpleNotes);
+    expect(
+      await reloaded.harness.behavior.callRpc("readProposal", {
+        path: "letter.md",
+      }),
+    ).toMatchObject({ status: "pending", version: 4 });
+    await reloaded.harness.lifecycle.dispose();
+  });
+
+  it("rejects late replacements and restores rejected proposals with undo", async () => {
+    const { harness, files } = await setupProposal();
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 1,
+      action: "reject",
+    });
+    await expect(
+      harness.behavior.callRpc("proposeNote", {
+        path: "letter.md",
+        expectedVersion: 1,
+        expectedSha256: virtualSha(files.get("/vault/letter.md")!),
+        content: "Late response",
+      }),
+    ).rejects.toThrow("proposal changed");
+    expect(
+      await harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 2,
+        action: "undo",
+      }),
+    ).toMatchObject({ status: "pending", version: 3 });
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    await harness.lifecycle.dispose();
+  });
+
+  it("preserves external edits on acceptance and undo conflicts", async () => {
+    const { harness, setUtf8, files } = await setupProposal();
+    setUtf8("/vault/letter.md", "User's edit");
+    await expect(
+      harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        action: "accept",
+      }),
+    ).rejects.toThrow("document changed");
+    setUtf8("/vault/letter.md", "A simple place.");
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 1,
+      action: "accept",
+    });
+    setUtf8("/vault/letter.md", "Newer edit");
+    await expect(
+      harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 2,
+        action: "undo",
+      }),
+    ).rejects.toThrow("overwrite newer edits");
+    expect(files.get("/vault/letter.md")?.content).toBe("Newer edit");
+    await harness.lifecycle.dispose();
+  });
+
+  it("reads CLI candidates from workspace files without writing the document", async () => {
+    const { harness, files } = await loadVirtualSyncVault({
+      "/vault/letter.md": {
+        content: "Original",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+      "/work/candidate.md": {
+        content: "Proposed",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const result = await harness.behavior.runCli([
+      "propose",
+      "letter.md",
+      "--file",
+      "/work/candidate.md",
+      "--expected-sha256",
+      virtualSha(files.get("/vault/letter.md")!),
+      "--version",
+      "none",
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout ?? "")).toMatchObject({
+      content: "Proposed",
+      status: "pending",
+      version: 1,
+    });
+    expect(files.get("/vault/letter.md")?.content).toBe("Original");
+    await harness.lifecycle.dispose();
+  });
+
+  it("serializes concurrent resolutions and candidate edits", async () => {
+    const { harness } = await setupProposal();
+    const results = await Promise.allSettled([
+      harness.behavior.callRpc("updateProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        content: "Edited candidate",
+      }),
+      harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        action: "accept",
+      }),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(
+      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+    ).toMatchObject({
+      content: "Edited candidate",
+      status: "pending",
+      version: 2,
+    });
+    await harness.lifecycle.dispose();
   });
 });

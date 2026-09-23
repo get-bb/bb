@@ -12,7 +12,14 @@ export interface SplitDragFallbackTarget {
   container: HTMLElement | null;
 }
 
+export interface AuxiliaryDropTarget {
+  element: HTMLElement;
+  label: string;
+  drop: () => void;
+}
+
 export interface SplitDragConfig {
+  resolveAuxiliaryTarget?: (x: number, y: number) => AuxiliaryDropTarget | null;
   ghostLabel: string;
   sourceEl?: HTMLElement | null;
   decide: (paneId: string, zone: SplitZone) => ZoneDecision | null;
@@ -33,10 +40,12 @@ interface ResolvedTarget {
 }
 
 export function beginSplitDrag(config: SplitDragConfig): void {
+  let auxiliaryTarget: AuxiliaryDropTarget | null = null;
   let engaged = false;
   let target: SplitDropTarget | null = null;
   let ghostEl: HTMLElement | null = null;
   let overlayEl: HTMLElement | null = null;
+  let cancelingSidebarReorder = false;
 
   const preventNativeDrag = (event: DragEvent): void => {
     event.preventDefault();
@@ -46,15 +55,21 @@ export function beginSplitDrag(config: SplitDragConfig): void {
   const engage = (): void => {
     engaged = true;
     if (config.cancelSidebarReorderOnEngage) {
-      document.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          code: "Escape",
-          bubbles: true,
-        }),
-      );
+      cancelingSidebarReorder = true;
+      try {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Escape",
+            code: "Escape",
+            bubbles: true,
+          }),
+        );
+      } finally {
+        cancelingSidebarReorder = false;
+      }
     }
-    ghostEl = config.renderGhost === false ? null : createGhost(config.ghostLabel);
+    ghostEl =
+      config.renderGhost === false ? null : createGhost(config.ghostLabel);
     overlayEl = createOverlay();
     if (ghostEl) {
       document.body.append(ghostEl);
@@ -114,6 +129,16 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     }
 
     target = null;
+    auxiliaryTarget =
+      config.resolveAuxiliaryTarget?.(event.clientX, event.clientY) ?? null;
+    if (auxiliaryTarget && overlayEl) {
+      positionOverlay(
+        overlayEl,
+        auxiliaryTarget.element.getBoundingClientRect(),
+        auxiliaryTarget.label,
+      );
+      return;
+    }
     const resolved = resolveTarget(event.clientX, event.clientY);
     if (resolved && overlayEl) {
       const zone = pickZone(resolved.rect, event.clientX, event.clientY);
@@ -137,6 +162,7 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     window.removeEventListener("pointermove", handleMove);
     window.removeEventListener("pointerup", handleUp);
     window.removeEventListener("pointercancel", handleCancel);
+    window.removeEventListener("keydown", handleKeyDown, true);
     window.removeEventListener("dragstart", preventNativeDrag);
     ghostEl?.remove();
     overlayEl?.remove();
@@ -149,15 +175,19 @@ export function beginSplitDrag(config: SplitDragConfig): void {
   function handleUp(): void {
     const wasEngaged = engaged;
     const dropTarget = engaged ? target : null;
+    const auxiliaryDrop = engaged ? auxiliaryTarget : null;
     teardown();
     if (wasEngaged) {
       swallowNextClick();
     }
+    if (auxiliaryDrop) auxiliaryDrop.drop();
     if (dropTarget) {
       config.onDrop(dropTarget);
     }
     if (wasEngaged) {
-      config.onEnd?.({ dropped: dropTarget !== null });
+      config.onEnd?.({
+        dropped: dropTarget !== null || auxiliaryDrop !== null,
+      });
     }
   }
 
@@ -170,9 +200,16 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     }
   }
 
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (event.code !== "Escape" || cancelingSidebarReorder) return;
+    event.preventDefault();
+    handleCancel();
+  }
+
   window.addEventListener("pointermove", handleMove);
   window.addEventListener("pointerup", handleUp);
   window.addEventListener("pointercancel", handleCancel);
+  window.addEventListener("keydown", handleKeyDown, true);
 }
 
 function swallowNextClick(): void {

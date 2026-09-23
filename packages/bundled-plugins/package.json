@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "bb-plugin-account-pool": "workspace:*",
+    "bb-plugin-agent-annotations": "workspace:*",
     "bb-plugin-ask-user-question": "workspace:*",
     "bb-plugin-automations": "workspace:*",
     "bb-plugin-bb-guide": "workspace:*",
@@ -15,14 +16,15 @@
     "bb-plugin-concurrency-limit": "workspace:*",
     "bb-plugin-connect": "workspace:*",
     "bb-plugin-custom-instructions": "workspace:*",
+    "bb-plugin-drafts": "workspace:*",
     "bb-plugin-environment-git-worktree": "workspace:*",
     "bb-plugin-environment-modal-sandbox": "workspace:*",
     "bb-plugin-environment-personal-workspace": "workspace:*",
     "bb-plugin-environment-project-checkout": "workspace:*",
-    "bb-plugin-drafts": "workspace:*",
     "bb-plugin-github": "workspace:*",
     "bb-plugin-inline-vis": "workspace:*",
     "bb-plugin-keep-awake": "workspace:*",
+    "bb-plugin-navigation": "workspace:*",
     "bb-plugin-memory": "workspace:*",
     "bb-plugin-monaco-editor": "workspace:*",
     "bb-plugin-pdf-preview": "workspace:*",
@@ -41,6 +43,7 @@
     "bb-plugin-simple-notes": "workspace:*",
     "bb-plugin-tasks": "workspace:*",
     "bb-plugin-theme-preview": "workspace:*",
+    "bb-plugin-thread-list": "workspace:*",
     "bb-plugin-workflows": "workspace:*"
   }
 }

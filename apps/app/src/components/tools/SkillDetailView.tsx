@@ -200,6 +200,7 @@ function ScrollingSkillContent({
           />
         ))}
         <ResourceInfiniteScrollSentinel
+          itemCount={shownChunks.length}
           hasMore={visibleChunkCount < chunks.length}
           onLoadMore={() =>
             setVisibleChunkCount((current) =>

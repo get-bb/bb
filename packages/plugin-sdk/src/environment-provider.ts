@@ -129,6 +129,8 @@ export interface PluginEnvironmentProviderDefinition<
   ):
     | PluginEnvironmentValidateDecision
     | Promise<PluginEnvironmentValidateDecision>;
+  /** Pure path selection from parsed inputs. Core reuses a recorded environment on the selected host before calling create; null requests normal creation. */
+  experimental_existingPath?(inputs: InputsValue<S>): string | null;
   create(
     context: PluginEnvironmentProviderCreateContext<R, S>,
   ): Promise<PluginEnvironmentProviderCreateResult>;

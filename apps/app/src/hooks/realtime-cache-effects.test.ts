@@ -1,3 +1,4 @@
+import { machineEnvironmentQueryKey } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
 import {
@@ -25,6 +26,7 @@ import {
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
   projectsQueryKey,
+  serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -268,6 +270,24 @@ describe("createRealtimeCacheEffects", () => {
     }
   });
 
+  it("refreshes only the server move status when a move changes", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const statusKey = serverMoveStatusQueryKey();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(statusKey, { move: null, lastMove: null });
+    queryClient.setQueryData(configKey, {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["server-move-changed"],
+    });
+
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+    effects.dispose();
+  });
+
   it("invalidates the affected thread tabs when another client changes them", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const tabsKey = threadTabsQueryKey("thr_1");
@@ -507,6 +527,11 @@ describe("createRealtimeCacheEffects", () => {
     queryClient.setQueryData(timelineKey, {});
     queryClient.setQueryData(summaryKey, {});
 
+    const environmentKeys = [null, "project-a", "project-b"].map((projectId) =>
+      machineEnvironmentQueryKey(projectId),
+    );
+    for (const key of environmentKeys) queryClient.setQueryData(key, {});
+
     effects.handleChanged({
       type: "changed",
       entity: "system",
@@ -516,6 +541,8 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(summaryKey)?.isInvalidated).toBe(true);
+    for (const key of environmentKeys)
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
     effects.dispose();
   });
 
@@ -2279,6 +2306,7 @@ describe("createRealtimeCacheEffects", () => {
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     const idleRow = {
       activity: NO_THREAD_ACTIVITY,
+      archivedAt: null,
       id: "thr_1",
       latestAttentionAt: 100,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
@@ -2344,11 +2372,11 @@ describe("createRealtimeCacheEffects", () => {
     const sidebarThreads = queryClient.getQueryData<{
       projects: { threads: (typeof idleRow)[] }[];
     }>(sidebarNavigationKey)?.projects[0]?.threads;
-    expect(sidebarThreads?.[0]).toEqual({ id: "thr_1", ...statusChange });
+    expect(sidebarThreads?.[0]).toEqual({ ...idleRow, ...statusChange });
     expect(sidebarThreads?.[1]).toBe(otherRow);
     expect(
       queryClient.getQueryData<(typeof idleRow)[]>(threadListKey)?.[0],
-    ).toEqual({ id: "thr_1", ...statusChange });
+    ).toEqual({ ...idleRow, ...statusChange });
 
     for (const unsubscribe of unsubscribers) {
       unsubscribe();
@@ -2977,6 +3005,66 @@ describe("createRealtimeCacheEffects", () => {
           projects: { threads: (typeof idleRow)[] }[];
         }>(sidebarNavigationKey)?.projects[0]?.threads[0],
       ).toBe(idleRow);
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(true);
+      effects.dispose();
+    });
+
+    it("still resyncs the sidebar when a hidden flush precedes the reconnect", () => {
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      queryClient.setQueryData(sidebarNavigationKey, {
+        projects: [
+          {
+            threads: [
+              {
+                activity: NO_THREAD_ACTIVITY,
+                id: "thr_1",
+                latestAttentionAt: 100,
+                runtime: {
+                  displayStatus: "idle",
+                  hostReconnectGraceExpiresAt: null,
+                },
+                status: "idle",
+                updatedAt: 100,
+              },
+            ],
+          },
+        ],
+        personalProject: { threads: [] },
+      });
+      vi.advanceTimersByTime(1000);
+      const disconnectedAt = Date.now();
+
+      visibility.setVisible(false);
+      vi.advanceTimersByTime(1000);
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            activity: NO_THREAD_ACTIVITY,
+            latestAttentionAt: 200,
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+            status: "active",
+            updatedAt: 200,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      vi.advanceTimersByTime(60_000);
+      visibility.setVisible(true);
+      effects.handleConnected({ reconnected: true, disconnectedAt });
+
       expect(
         queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
       ).toBe(true);

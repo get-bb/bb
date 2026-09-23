@@ -1,13 +1,15 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import { appCommandIdSchema } from "@bb/domain";
+import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
 import {
   desktopBrowserImportOutcomeSchema,
   desktopBrowserImportSourceSchema,
 } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import {
+  bbDesktopBrowserEvaluateResultSchema,
   bbDesktopBrowserFindResultSchema,
   bbDesktopBrowserOpenTabRequestSchema,
+  bbDesktopBrowserPageMessageSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserTabRefSchema,
   bbDesktopBrowserSnapshotSchema,
@@ -23,6 +25,8 @@ import {
   type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
   type BbDesktopBrowserFindResultHandler,
+  type BbDesktopWindowFindRequest,
+  type BbDesktopBrowserPageMessageHandler,
   type BbDesktopBrowserOpenTabHandler,
   type BbDesktopBrowserScopedOpenTabHandler,
   type BbDesktopBrowserFocusHandler,
@@ -75,9 +79,13 @@ import {
   BB_DESKTOP_BROWSER_LIST_IMPORT_SOURCES_CHANNEL,
   BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
+  BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
+  BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
+  BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -189,6 +197,8 @@ const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
 const browserScopedOpenTabListeners =
   new Set<BbDesktopBrowserScopedOpenTabHandler>();
 const browserFocusListeners = new Set<BbDesktopBrowserFocusHandler>();
+const browserPageMessageListeners =
+  new Set<BbDesktopBrowserPageMessageHandler>();
 const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
 const browserFindResultListeners = new Set<BbDesktopBrowserFindResultHandler>();
 const closeWindowRequestListeners =
@@ -259,6 +269,14 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   onReveal(listener) {
     return addListener(browserRevealListeners, listener);
+  },
+  async evaluate(request) {
+    return bbDesktopBrowserEvaluateResultSchema.parse(
+      await ipcRenderer.invoke(BB_DESKTOP_BROWSER_EVALUATE_CHANNEL, request),
+    );
+  },
+  onPageMessage(listener) {
+    return addListener(browserPageMessageListeners, listener);
   },
   attach(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_ATTACH_CHANNEL, {
@@ -397,11 +415,26 @@ const bbDesktopApi: BbDesktopApi = {
   onCloseWindowRequest(listener): BbDesktopInfoUnsubscribe {
     return addListener(closeWindowRequestListeners, listener);
   },
+  openWindowFind(request): void {
+    ipcRenderer.send(BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL, {
+      topOffset: Math.round(request.topOffset * webFrame.getZoomFactor()),
+    } satisfies BbDesktopWindowFindRequest);
+  },
   openExternalUrl(url: string): void {
     ipcRenderer.send(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, url);
   },
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
+  },
+  setSplitNavigationEnabled(
+    enabled: boolean,
+    directionalCommands?: readonly AppCommandId[],
+  ): void {
+    ipcRenderer.send(
+      BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
+      enabled,
+      directionalCommands,
+    );
   },
   setTheme(theme: BbDesktopTheme): void {
     ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);
@@ -486,6 +519,12 @@ forwardParsed(
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   bbDesktopBrowserSnapshotSchema,
   browserSnapshotListeners,
+);
+
+forwardParsed(
+  BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL,
+  bbDesktopBrowserPageMessageSchema,
+  browserPageMessageListeners,
 );
 
 forwardParsed(

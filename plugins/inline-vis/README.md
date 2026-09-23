@@ -28,9 +28,10 @@ bb replaces that leaf with this plugin's React component, which:
 1. Validates the untrusted `source` and `file` attributes.
 2. Calls the plugin RPC `preparePreview` with the message `threadId`, source,
    and file path to validate the target and surface clean inline errors.
-3. Shows loading / error states. Workspace previews include a header action
-   that opens the source file in bb's sidebar workspace viewer; thread-storage
-   previews do not.
+3. Shows loading / error states. Every preview includes a header action that
+   opens the source file in bb's sidebar viewer, from the workspace or the
+   thread's storage directory. The header also collapses or expands the
+   preview and remembers that preference on the current client.
 4. Points HTML files at bb's existing path-shaped worktree or thread storage
    route inside a sandboxed iframe. Relative sibling assets work, scripts are
    enabled, and normal web loading is allowed. The iframe keeps an opaque

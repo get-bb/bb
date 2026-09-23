@@ -127,6 +127,10 @@ interface ExistingTableRow {
   name: string;
 }
 
+interface AppliedMigrationCountRow {
+  count: number;
+}
+
 interface PendingInteractionProviderRequestDuplicateRow {
   duplicateCount: number;
   providerId: string;
@@ -497,6 +501,23 @@ function readAppliedMigrationCreatedAts(db: DbConnection): Set<number> {
     .all();
 
   return new Set(rows.map((row) => row.createdAt));
+}
+
+export function countAppliedMigrations(db: DbConnection): number {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return 0;
+  }
+
+  const row = db.$client
+    .prepare<[], AppliedMigrationCountRow>(
+      `
+        SELECT COUNT(*) AS count
+        FROM __drizzle_migrations
+      `,
+    )
+    .get();
+
+  return row?.count ?? 0;
 }
 
 function readLatestAppliedMigrationCreatedAt(db: DbConnection): number | null {

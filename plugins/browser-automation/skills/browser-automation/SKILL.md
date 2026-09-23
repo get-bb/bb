@@ -6,6 +6,9 @@ description: Use the Browser Automation BB plugin to inspect and automate persis
 Use `bb browser-automation`. Open one session, retain its session ID, then inspect,
 act, and verify in short scripts.
 
+`--machine` accepts an exact host ID or an unambiguous machine name. Exact IDs
+take precedence over names; unknown or ambiguous names fail before opening a session.
+
 Choose `--backend local --headless --machine <host-id>` for headless Chrome on
 an enrolled host. Choose `--backend desktop --machine <host-id> --desktop
 <instance-id>` for a new dedicated desktop automation tab. Starting desktop
@@ -65,6 +68,17 @@ image bytes into the conversation. Read or copy captures before closing the
 session: cleanup removes its temporary directory. Remove local copies when
 finished.
 
+A local headless `open` returns a `previewDirective`, for example
+`::browser-preview{session="<session-id>"}`. Copy it into your next message
+exactly once as a standalone line, before you continue working. Do not wrap it
+in backticks or a code fence, and do not invent or edit the session ID. BB
+renders it as a live view of that browser in the chat, which the user can
+expand, so they can watch while you work. Desktop
+sessions return no directive; that browser is already visible in the side
+panel. `bb browser-automation preview <session-id> --json` reports the live
+frame's `url`, `title`, size, and `sequence` without image bytes; it is not a
+substitute for `screenshot` when you need to see the page.
+
 `pages` lists persistent pages. Runs serialize within a session. Scripts are
 trusted JavaScript with Puppeteer-style DevBrowser APIs, not a sandbox.
 `--script-file` requires `--script-host <host-id>` naming the source host explicitly. Browser file
@@ -74,7 +88,18 @@ Stop cancels running and queued work and releases desktop control. Cancellation
 and timeout stop the session too; open a new session to resume. Close disposes
 owned Chrome and plugin-created desktop tabs while preserving handed-off tabs.
 Close sessions after use. Five-minute idle and thirty-minute absolute expiry
-apply. Timeouts default to 30 seconds, maximum 120 seconds.
+apply. Timeouts default to 30 seconds, maximum 120 seconds: pass either
+`--timeout-ms <1000-120000>` or `--timeout <duration>`, where a duration carries
+a unit (`90s`, `2m`, `1500ms`) and a bare number is read as seconds (1-120) or
+milliseconds (1000-120000).
+
+A run may return at most 4 screenshots, JPEG only, 500 KB combined; a larger or
+differently encoded capture fails the run. `bb browser-automation --help` and
+`bb browser-automation <command> --help` print every flag with these limits.
+Unknown commands and flags fail with a suggestion, and with `--json` a failure
+prints `{"ok":false,"error":{"code":…,"message":…,"hint":…}}` on stdout (code
+`session_unavailable` when the session stopped or expired, `screenshot_limit`
+for capture limits) while the same message stays on stderr.
 
 An unavailable backend or a failed runtime install is an actionable setup
 error, not permission to attach to a random browser. The first open on a host

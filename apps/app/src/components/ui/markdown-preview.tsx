@@ -262,9 +262,10 @@ interface MarkdownCodeRendererProps extends MarkdownCodeProps {
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
-type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps & {
-  "data-markdown-image-offset"?: number;
-};
+type MarkdownImageProps = ComponentPropsWithoutRef<"img"> &
+  ExtraProps & {
+    "data-markdown-image-offset"?: number;
+  };
 type MarkdownImageRenderAttributes = Omit<
   MarkdownImageProps,
   "alt" | "children" | "className" | "node" | "src"

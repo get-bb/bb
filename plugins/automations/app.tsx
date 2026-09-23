@@ -11,8 +11,9 @@ import {
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
+  AutomationDetailReadResult,
+  AutomationDetailResponse,
   AutomationResponse,
-  AutomationReadResult,
   AgentExecutionUpdate,
   AutomationRunListResponse,
   AutomationRunResponse,
@@ -49,6 +50,11 @@ function errorText(error: unknown): string {
 interface DetailRoute {
   projectId: string;
   automationId: string;
+}
+
+interface DeleteTarget {
+  route: DetailRoute;
+  name: string;
 }
 
 interface ParsedDetailRoute {
@@ -164,14 +170,14 @@ function useOverview(): {
 }
 
 function useAutomation(route: DetailRoute): {
-  automation: AutomationReadResult | null;
+  automation: AutomationDetailReadResult | null;
   error: string | null;
   refetch: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<{
-    automation: AutomationReadResult | null;
+    automation: AutomationDetailReadResult | null;
     error: string | null;
   }>({ automation: null, error: null });
   const requestRef = useRef(0);
@@ -393,6 +399,8 @@ function OverviewView({
   const navigate = useBbNavigate();
   const { entries, error, refetch } = useOverview();
   const mutations = useMutations();
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const changeEnabled = useCallback(
     async (enabled: boolean, route: DetailRoute) => {
@@ -406,6 +414,43 @@ function OverviewView({
     [mutations],
   );
 
+  const runNow = useCallback(
+    async (route: DetailRoute) => {
+      try {
+        await mutations.run(route);
+        toast.success("Run started");
+      } catch (rpcError: unknown) {
+        toast.error(`Failed to run automation: ${errorText(rpcError)}`);
+      }
+    },
+    [mutations],
+  );
+
+  const requestDelete = useCallback((route: DetailRoute, name: string) => {
+    setDeleteTarget({ route, name });
+  }, []);
+
+  const closeDelete = useCallback(() => {
+    if (!deleting) setDeleteTarget(null);
+  }, [deleting]);
+
+  const confirmDelete = useCallback(() => {
+    if (deleteTarget === null) return;
+    setDeleting(true);
+    mutations
+      .delete(deleteTarget.route)
+      .then(
+        () => {
+          toast.success("Automation deleted");
+          setDeleteTarget(null);
+          refetch();
+        },
+        (rpcError: unknown) =>
+          toast.error(`Failed to delete automation: ${errorText(rpcError)}`),
+      )
+      .finally(() => setDeleting(false));
+  }, [deleteTarget, mutations, refetch]);
+
   const createViaChat = useCallback(
     (prompt?: string) => {
       navigate.toCompose({
@@ -417,16 +462,30 @@ function OverviewView({
   );
 
   return (
-    <AutomationOverviewView
-      entries={entries}
-      error={error}
-      onRetry={refetch}
-      onOpenDetail={onOpenDetail}
-      onEnabledChange={changeEnabled}
-      onCreateViaChat={createViaChat}
-      activeMode={activeMode}
-      onModeChange={onModeChange}
-    />
+    <>
+      <AutomationOverviewView
+        entries={entries}
+        error={error}
+        onRetry={refetch}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={changeEnabled}
+        onRunNow={runNow}
+        onDelete={requestDelete}
+        onCreateViaChat={createViaChat}
+        activeMode={activeMode}
+        onModeChange={onModeChange}
+      />
+      <DeleteAutomationDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDelete();
+        }}
+        name={deleteTarget?.name ?? ""}
+        pending={deleting}
+        onConfirm={confirmDelete}
+        onCancel={closeDelete}
+      />
+    </>
   );
 }
 
@@ -592,7 +651,7 @@ function DetailView({
 
   const requiresPrompt =
     automation.execution.mode === "agent" && automation.execution.prompt === "";
-  const readableAutomation: AutomationResponse = automation;
+  const readableAutomation: AutomationDetailResponse = automation;
 
   const overviewEntry = overviewState.entries?.find(
     (entry) =>

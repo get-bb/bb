@@ -1,7 +1,6 @@
-import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
+import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
 import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -20,15 +19,11 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceDetailConfigurationSection,
-  ResourceDetailOverviewSection,
   ResourceDetailPanel,
   ResourceDetailStack,
 } from "@bb/shared-ui/resource-list";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import {
-  applyPluginSettingsView,
-  invalidatePluginList,
-} from "@/hooks/cache-owners/plugin-cache-owner";
+import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   updatePluginSettings,
   usePluginList,
@@ -403,7 +398,13 @@ function AutosavingPluginSetting({
           ? "secret"
           : undefined
       }
-      controlPlacement={isMultilineSetting(descriptor) ? "below" : "inline"}
+      controlPlacement={
+        descriptor.type === "boolean"
+          ? "trailing"
+          : isMultilineSetting(descriptor)
+            ? "below"
+            : "inline"
+      }
       {...(descriptor.description !== undefined
         ? { description: descriptor.description }
         : {})}
@@ -502,20 +503,19 @@ function PluginSettingsPageSkeleton() {
               </div>
             </ResourceDetailPanel>
           </ResourceDetailConfigurationSection>
-          <ResourceDetailOverviewSection
-            label={<Skeleton className="h-3.5 w-28" />}
-          >
-            <div className="flex h-5 items-center">
-              <Skeleton className="h-3 w-96 max-w-full" />
-            </div>
-          </ResourceDetailOverviewSection>
         </ResourceDetailStack>
       </div>
     </div>
   );
 }
 
-export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
+export function PluginSettingsPage({
+  pluginId,
+  onBackToDetails,
+}: {
+  pluginId: string;
+  onBackToDetails?: () => void;
+}) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(
@@ -538,35 +538,69 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
       </p>
     );
   }
-  return <PluginSettingsContent key={plugin.id} plugin={plugin} />;
+  return (
+    <PluginSettingsContent
+      key={plugin.id}
+      plugin={plugin}
+      onBackToDetails={onBackToDetails}
+    />
+  );
 }
 
-function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
+function PluginSettingsDetailsLink({
+  pluginId,
+  onBackToDetails,
+}: {
+  pluginId: string;
+  onBackToDetails?: () => void;
+}) {
+  const content = (
+    <>
+      <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
+      Plugin details
+    </>
+  );
+  const className =
+    "-ml-2 mb-3 h-7 gap-1 px-2 text-xs font-normal text-muted-foreground hover:text-foreground";
+  return onBackToDetails ? (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={className}
+      onClick={onBackToDetails}
+    >
+      {content}
+    </Button>
+  ) : (
+    <Button variant="ghost" size="sm" className={className} asChild>
+      <Link to={getPluginDetailRoutePath({ pluginId, view: "installed" })}>
+        {content}
+      </Link>
+    </Button>
+  );
+}
+
+function PluginSettingsContent({
+  plugin,
+  onBackToDetails,
+}: {
+  plugin: PluginListItem;
+  onBackToDetails?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
-  const setEnabled = useSetPluginEnabled();
-  const toggle = useMutation({
-    meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
-    onError: (error, enabled) => {
-      appToast.error(
-        `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
-        {
-          description: error instanceof Error ? error.message : String(error),
-        },
-      );
-    },
-    onSettled: async () => {
-      await invalidatePluginList({ queryClient });
-      await invalidateMachineProviders({ queryClient });
-    },
-  });
-  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
+  const { toggle, enabled } = usePluginEnabledMutation(plugin, () =>
+    invalidateMachineProviders({ queryClient }),
+  );
   const hasAvailableSettings =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   return (
     <div className="mx-auto w-full max-w-5xl">
+      <PluginSettingsDetailsLink
+        pluginId={plugin.id}
+        onBackToDetails={onBackToDetails}
+      />
       <header className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-9 shrink-0">
@@ -588,6 +622,7 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
           </div>
         </div>
         <Switch
+          className="mr-[13px]"
           checked={enabled}
           disabled={toggle.isPending}
           onCheckedChange={(next) => toggle.mutate(next)}
@@ -603,25 +638,6 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
             <PluginSettingsDetail plugin={plugin} />
           </ResourceDetailConfigurationSection>
         ) : null}
-        <ResourceDetailOverviewSection label="Plugin details">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            Release, capabilities, and health live on{" "}
-            <Link
-              to={getPluginDetailRoutePath({
-                pluginId: plugin.id,
-                view: "installed",
-              })}
-              className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              its plugin page
-              <Icon
-                name="ChevronRight"
-                className="size-3.5 no-underline"
-                aria-hidden
-              />
-            </Link>
-          </p>
-        </ResourceDetailOverviewSection>
       </ResourceDetailStack>
     </div>
   );

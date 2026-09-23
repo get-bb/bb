@@ -471,6 +471,41 @@ export function registerPluginRoutes(
     "app.css": { kind: "css", contentType: "text/css; charset=utf-8" },
   } as const;
 
+  app.get("/plugin-app-assets/:hash/:file", async (context) => {
+    const file = context.req.param("file");
+    const spec =
+      file === "app.js" || file === "app.css"
+        ? APP_ASSET_CONTENT_TYPES[file]
+        : undefined;
+    if (!spec) {
+      return context.json({ ok: false, error: "unknown plugin asset" }, 404);
+    }
+    const hash = context.req.param("hash");
+    if (!/^[a-f0-9]{16}$/u.test(hash)) {
+      return context.json({ ok: false, error: "unknown plugin asset" }, 404);
+    }
+    const asset = plugins.getAppAssetByHash(hash, spec.kind);
+    if (!asset) {
+      return context.json(
+        { ok: false, error: "plugin has no loadable frontend bundle" },
+        404,
+      );
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(asset.path);
+    } catch {
+      return context.json({ ok: false, error: "bundle file missing" }, 404);
+    }
+    return appAssetResponse(context, bytes, {
+      assetKey: `${hash}:${spec.kind}`,
+      cache: appAssetCompressionCache,
+      contentType: spec.contentType,
+      cacheControl: "public, max-age=31536000, immutable",
+      contentHash: asset.hash,
+    });
+  });
+
   app.get("/plugins/:id/assets/icons/:file", (context) => {
     const file = context.req.param("file");
     const name = file.endsWith(".svg") ? file.slice(0, -".svg".length) : null;

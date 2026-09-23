@@ -1,0 +1,136 @@
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  formatBbAppConfigPath,
+  parseBbAppManagedConfig,
+} from "@bb/config/bb-app-managed-config";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
+import type { ServerMoveMode } from "@bb/domain";
+import { SERVER_MOVED_FILE_NAME } from "@bb/server-archive";
+import { parseManagedConfigObject, readOptionalText } from "./managed-files.js";
+
+const OLD_SERVER_KEPT_ENTRIES: ReadonlySet<string> = new Set([
+  "config.json",
+  "env.json",
+]);
+
+export interface OldServerDaemonConfigBackup {
+  originalText: string | null;
+  path: string;
+}
+
+export interface WriteOldServerDaemonConfigArgs {
+  dataDir: string;
+  headers: Record<string, string>;
+  serverUrl: string;
+}
+
+export interface ServerMovedTargetHost {
+  id: string;
+  type: "persistent" | "ephemeral";
+}
+
+export interface ListServerMovedTargetsArgs {
+  connectedHosts: readonly ServerMovedTargetHost[];
+  mode: ServerMoveMode;
+  sourceServerHostId: string;
+  targetHostId: string;
+}
+
+export interface OldCopyInventoryEntry {
+  path: string;
+}
+
+function nextOldServerDaemonConfig(
+  {
+    machineCredential: _machineCredential,
+    serverHeaders: _serverHeaders,
+    ...current
+  }: Record<string, unknown>,
+  args: WriteOldServerDaemonConfigArgs,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = {
+    ...current,
+    serverUrl: args.serverUrl,
+    ...(Object.keys(args.headers).length > 0
+      ? { serverHeaders: args.headers }
+      : {}),
+  };
+  parseBbAppManagedConfig(next);
+  return next;
+}
+
+export async function validateOldServerDaemonConfig(
+  args: WriteOldServerDaemonConfigArgs,
+): Promise<void> {
+  const path = formatBbAppConfigPath(args.dataDir);
+  nextOldServerDaemonConfig(
+    parseManagedConfigObject(path, await readOptionalText(path)),
+    args,
+  );
+}
+
+export async function writeOldServerDaemonConfig(
+  args: WriteOldServerDaemonConfigArgs,
+): Promise<OldServerDaemonConfigBackup> {
+  const path = formatBbAppConfigPath(args.dataDir);
+  const backup: OldServerDaemonConfigBackup = { originalText: null, path };
+  await mutateManagedJsonFile({
+    path,
+    read: async () => {
+      backup.originalText = await readOptionalText(path);
+      return parseManagedConfigObject(path, backup.originalText);
+    },
+    mutate: (current) => nextOldServerDaemonConfig(current, args),
+  });
+  return backup;
+}
+
+export async function restoreOldServerDaemonConfig(
+  backup: OldServerDaemonConfigBackup,
+): Promise<void> {
+  const originalText = backup.originalText;
+  if (originalText === null) {
+    await rm(backup.path, { force: true });
+    return;
+  }
+  await mutateManagedJsonFile({
+    path: backup.path,
+    read: async () => ({}),
+    mutate: () => parseManagedConfigObject(backup.path, originalText),
+  });
+}
+
+export function listOldCopyEntries(
+  entries: readonly OldCopyInventoryEntry[],
+): string[] {
+  return [
+    ...new Set(
+      entries
+        .map((entry) => entry.path)
+        .filter((path) => !OLD_SERVER_KEPT_ENTRIES.has(path)),
+    ),
+  ].sort();
+}
+
+export async function unlockOldServerDataDir(dataDir: string): Promise<void> {
+  await rm(join(dataDir, SERVER_MOVED_FILE_NAME), { force: true });
+}
+
+export function listServerMovedTargets(
+  args: ListServerMovedTargetsArgs,
+): string[] {
+  if (args.mode === "connect") {
+    return args.connectedHosts.some(
+      (host) => host.id === args.sourceServerHostId,
+    )
+      ? [args.sourceServerHostId]
+      : [];
+  }
+  return args.connectedHosts
+    .filter(
+      (host) => host.type === "persistent" && host.id !== args.targetHostId,
+    )
+    .map((host) => host.id)
+    .sort();
+}

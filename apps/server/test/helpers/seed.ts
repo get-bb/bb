@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import {
   createEnvironment,
   createQueuedThreadMessage,
@@ -10,6 +11,7 @@ import {
   createProject,
   createThread,
   openSession,
+  threads,
   upsertHost,
 } from "@bb/db";
 import {
@@ -38,6 +40,7 @@ import type {
   ThreadVisibility,
 } from "@bb/domain";
 import type { AppDeps } from "../../src/types.js";
+import { ARCHIVE_UNDO_GRACE_MS } from "../../src/constants.js";
 import { registerTestHostRpcCapture } from "./commands.js";
 
 interface SeedEventArgs<TType extends ThreadEventType> {
@@ -196,6 +199,7 @@ export function seedThread(
     title?: string | null;
     parentThreadId?: string | null;
     sourceThreadId?: string | null;
+    lifecycleOwnerThreadId?: string | null;
     originKind?: ThreadOriginKind | null;
     originPluginId?: string | null;
     titleFallback?: string | null;
@@ -211,6 +215,7 @@ export function seedThread(
     titleFallback: args.titleFallback ?? "Test Thread",
     parentThreadId: args.parentThreadId ?? null,
     sourceThreadId: args.sourceThreadId ?? null,
+    lifecycleOwnerThreadId: args.lifecycleOwnerThreadId ?? null,
     originKind: args.originKind ?? null,
     originPluginId: args.originPluginId ?? null,
     visibility: args.visibility ?? "visible",
@@ -321,6 +326,30 @@ export function seedTurnStarted(
   });
 }
 
+export function seedThreadIdentity(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: {
+    createdAt?: number;
+    environmentId?: string | null;
+    providerThreadId: string;
+    sequence?: number;
+    threadId: string;
+  },
+): void {
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId ?? null,
+    providerThreadId: args.providerThreadId,
+    createdAt: args.createdAt,
+    sequence:
+      args.sequence ??
+      getLatestThreadSequence(deps.db, { threadId: args.threadId }) + 1,
+    type: "thread/identity",
+    scope: threadScope(),
+    data: {},
+  });
+}
+
 export function seedThreadRuntimeState(
   deps: Pick<AppDeps, "db" | "hub">,
   args: {
@@ -399,4 +428,15 @@ export function seedStoredEvent(
       data: JSON.stringify(args.data),
     },
   ]);
+}
+
+export function expireArchiveUndoGrace(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+): void {
+  deps.db
+    .update(threads)
+    .set({ archivedAt: Date.now() - ARCHIVE_UNDO_GRACE_MS - 1 })
+    .where(eq(threads.id, threadId))
+    .run();
 }

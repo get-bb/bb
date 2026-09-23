@@ -18,15 +18,13 @@ import {
   type QueuedMessagePayload,
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
+  startedOnBehalfOfSchema,
+  type StartedOnBehalfOf,
   type Thread,
+  type ThreadCreateOrigin,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import type {
-  SendMessageRequest,
-  StartedOnBehalfOf,
-  ThreadCreateOrigin,
-} from "@bb/server-contract";
-import { startedOnBehalfOfSchema } from "@bb/server-contract";
+import type { SendMessageRequest } from "@bb/server-contract";
 import type {
   MessageDispatchHookContext,
   PluginDispatchEnvironmentIntent,
@@ -85,6 +83,7 @@ import {
   sendThreadMessage,
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
 
@@ -303,6 +302,7 @@ async function runDispatchAttempt(
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.
     await validatePromptAttachmentReferences({
+      db: deps.db,
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
@@ -331,6 +331,11 @@ async function runDispatchAttempt(
           startedOnBehalfOf: args.startedOnBehalfOf,
           titleProvided: interruptedStartupRequest.titleProvided,
         };
+  const author = resolveDispatchAuthor({
+    retrying: args.retryOf !== undefined,
+    senderThreadId,
+    startedOnBehalfOf: args.startedOnBehalfOf,
+  });
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
   const respectManualStopPause =
@@ -347,6 +352,9 @@ async function runDispatchAttempt(
     input: payload.input,
     execution,
     senderThreadId,
+    origin: args.origin,
+    originPluginId: args.originPluginId,
+    requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
     systemNotice: null,
   };
@@ -396,6 +404,27 @@ async function runDispatchAttempt(
       return;
     }
 
+    const currentThread = getThread(deps.db, thread.id);
+    if (currentThread === null) {
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    if (
+      currentThread.status !== thread.status ||
+      currentThread.archivedAt !== thread.archivedAt ||
+      currentThread.deletedAt !== thread.deletedAt
+    ) {
+      continued.reattemptThread = currentThread;
+      return;
+    }
+
+    if (thread.status === "active" && payload.mode === "start") {
+      throwThreadNotWritable(
+        thread,
+        "already_active",
+        "Thread is already active",
+      );
+    }
+
     const { environment: dispatchEnvironment, host: dispatchHost } =
       dispatchEnvironmentAndHost(deps, thread.environmentId);
     if (
@@ -412,13 +441,6 @@ async function runDispatchAttempt(
     }
 
     if (thread.status === "active" && attempt === "start-turn") {
-      if (payload.mode === "start") {
-        throwThreadNotWritable(
-          thread,
-          "already_active",
-          "Thread is already active",
-        );
-      }
       continued.outcome = waitOn({ kind: "thread-busy" }, null);
       return;
     }
@@ -437,18 +459,6 @@ async function runDispatchAttempt(
 
     if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
       continued.outcome = waitOn({ kind: "thread-busy" }, null);
-      return;
-    }
-    const currentThread = getThread(deps.db, thread.id);
-    if (currentThread === null) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    if (
-      currentThread.status !== thread.status ||
-      currentThread.archivedAt !== thread.archivedAt ||
-      currentThread.deletedAt !== thread.deletedAt
-    ) {
-      continued.reattemptThread = currentThread;
       return;
     }
     if (
@@ -476,7 +486,7 @@ async function runDispatchAttempt(
     }
     if (
       payload.mode !== "start" &&
-      deps.pendingInteractions.hasPendingThreadInteraction(thread.id)
+      deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(thread.id)
     ) {
       continued.outcome = waitOn({ kind: "interaction" }, null);
       return;
@@ -520,12 +530,13 @@ async function runDispatchAttempt(
         payload.executionInputSources ?? {},
       ),
       attempt,
+      initiator: author.initiator,
+      senderThreadId: author.senderThreadId,
       origin: args.origin,
       originPluginId: args.originPluginId,
       startedOnBehalfOf: args.startedOnBehalfOf,
       parentThreadId: thread.parentThreadId,
-      queuedMessage:
-        claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
+      queuedMessages: claimed?.map(toThreadQueuedMessage) ?? [],
       pluginSubmission: args.pluginSubmission,
       continueAfterHooks: continueThroughCoreWaits,
     });

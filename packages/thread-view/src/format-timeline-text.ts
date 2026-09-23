@@ -3,6 +3,7 @@ import type {
   TimelineRow,
   TimelineRowStatus,
 } from "@bb/server-contract";
+import { displayWidth } from "@bb/text-utils";
 import { assertNever } from "./assert-never.js";
 import {
   buildTimelineWorkSummaryLabel,
@@ -83,7 +84,7 @@ function cyan(text: string, color: boolean): string {
 }
 
 function separator(label: string, color: boolean): string {
-  const pad = Math.max(0, 60 - label.length - 4);
+  const pad = Math.max(0, 60 - displayWidth(label) - 4);
   const suffix = "─".repeat(pad);
   return dim(
     suffix.length > 0 ? `── ${label} ${suffix}` : `── ${label}`,
@@ -253,6 +254,7 @@ function formatWorkBody(
       return lines;
     case "approval":
     case "question":
+    case "form":
     case "workflow":
       return lines;
     case "delegation":

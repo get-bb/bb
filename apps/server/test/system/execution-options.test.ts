@@ -25,6 +25,8 @@ import {
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
+import { advanceUntilSettled } from "../helpers/fake-timers.js";
+import { requireRegistration } from "../helpers/provider-model-catalogs.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import {
   createTestProviderRegistry,
@@ -451,25 +453,9 @@ describe("resolveSystemExecutionOptions", () => {
               command: "grok",
               args: ["agent", "stdio"],
               env: {},
-              modelCli: {
-                listArgs: ["models"],
-                selectFlag: "--model",
-                primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
-              },
               permissionCli: {
                 full: ["--always-approve"],
                 insertAfterArgs: 1,
-              },
-              reasoningCli: {
-                flag: "--reasoning-effort",
-                supportedLevels: ["low", "medium", "high"],
-                levelValues: {
-                  none: "low",
-                  xhigh: "high",
-                  ultracode: "high",
-                  max: "high",
-                },
-                defaultLevel: "high",
               },
             },
           },
@@ -648,8 +634,7 @@ describe("resolveSystemExecutionOptions", () => {
           await vi.advanceTimersByTimeAsync(29_999);
           expect(settled).toBe(false);
 
-          await vi.advanceTimersByTimeAsync(1);
-          const providers = await pendingProviders;
+          const providers = await advanceUntilSettled(pendingProviders, 1);
           expect(settled).toBe(true);
           expect(listQueuedCommands(harness, "provider.health")).toHaveLength(
             6,
@@ -971,11 +956,6 @@ describe("resolveSystemExecutionOptions", () => {
           code: "failed",
         });
         expect(response.models.map((model) => model.model)).toEqual([
-          "claude-fable-5-1",
-          "claude-opus-5[1m]",
-          "claude-opus-4-8[1m]",
-          "claude-opus-4-7[1m]",
-          "claude-sonnet-5",
           "claude-example-preview",
         ]);
         expect(response.selectedOnlyModels).toEqual([]);
@@ -1077,16 +1057,25 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
-  it("serves the curated Claude catalog when the model probe fails transiently", async () => {
+  it("serves a provider's declared fallback models when the model probe fails transiently", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-execution-options-claude-provisional",
+        id: "host-execution-options-provisional",
+      });
+      const base = requireRegistration(harness, "claude-code");
+      harness.deps.providerRegistry.register({
+        ...base,
+        info: { ...base.info, id: "fallback-probe" },
+        fallbackModels: [
+          availableModelFixture({ model: "fallback-a", isDefault: true }),
+          availableModelFixture({ model: "fallback-b" }),
+        ],
       });
       registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         modelErrorsByProviderId: {
-          "claude-code": {
+          "fallback-probe": {
             errorCode: "command_timeout",
             errorMessage: "Model probe timed out",
           },
@@ -1095,25 +1084,17 @@ describe("resolveSystemExecutionOptions", () => {
 
       const response = await resolveSystemExecutionOptions(harness.deps, {
         hostId: host.id,
-        providerId: "claude-code",
+        providerId: "fallback-probe",
       });
 
       expect(response.modelLoadError).toEqual({
-        providerId: "claude-code",
+        providerId: "fallback-probe",
         code: "timeout",
       });
       expect(response.models.map((model) => model.model)).toEqual([
-        "claude-fable-5-1",
-        "claude-opus-5[1m]",
-        "claude-opus-4-8[1m]",
-        "claude-opus-4-7[1m]",
-        "claude-sonnet-5",
+        "fallback-a",
+        "fallback-b",
       ]);
-      expect(
-        response.models
-          .filter((model) => model.isDefault)
-          .map((model) => model.model),
-      ).toEqual(["claude-opus-5[1m]"]);
     });
   });
 
@@ -1240,7 +1221,10 @@ describe("resolveSystemExecutionOptions", () => {
               id: "acp-example-agent",
               displayName: "Example Agent",
               available: true,
-              composerActions: [{ kind: "skills", trigger: "/" }],
+              composerActions: [
+                { kind: "skills", trigger: "/" },
+                { kind: "skills", trigger: "$" },
+              ],
               capabilities: expect.objectContaining({
                 supportsFork: false,
                 supportsServiceTier: true,
@@ -1349,6 +1333,31 @@ describe("resolveSystemExecutionOptions", () => {
         registry.markRegistrationsSettled();
       },
     );
+  });
+
+  it("returns no models for an unknown provider instead of the first provider's catalog", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-unknown-provider",
+      });
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "totally-not-a-provider",
+      });
+
+      expect(response.models).toEqual([]);
+      expect(response.selectedOnlyModels).toEqual([]);
+      expect(
+        responder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        ),
+      ).toEqual([]);
+    });
   });
 
   it("surfaces provider auth-required model load failures", async () => {

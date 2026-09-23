@@ -219,6 +219,19 @@ export function registerMachineCommands(
     );
 
   machine
+    .command("join-code", { hidden: true })
+    .description("Compatibility notice for removed machine join codes")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async () => {
+        throw new CliExitError("bb machine join-code has been removed.", 1, {
+          code: "removed_command",
+          hint: "Use `bb machine create --provider manual` and run the printed enrollment command.",
+        });
+      }),
+    );
+
+  machine
     .command("create")
     .description("Create a machine using an installed provider")
     .option("--no-wait", "Return the creating host ID immediately")
@@ -340,8 +353,9 @@ export function registerMachineCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: MachineEnumerationOptions) => {
+        const sdk = createCliBbSdk(getUrl());
         const hosts = selectMachines(
-          await createCliBbSdk(getUrl()).hosts.list({ includeCreating: true }),
+          await sdk.hosts.list({ includeCreating: true }),
           opts.all ? "all" : "persistent",
         );
         if (outputJson(opts, hosts)) return;
@@ -349,7 +363,8 @@ export function registerMachineCommands(
           console.log("No machines found");
           return;
         }
-        printMachineTable(hosts);
+        const { primaryHostId } = await sdk.system.config();
+        printMachineTable(hosts, primaryHostId);
       }),
     );
 
@@ -367,18 +382,6 @@ export function registerMachineCommands(
         const host = await sdk.hosts.get({ hostId });
         if (outputJson(opts, host)) return;
         console.log(JSON.stringify(host, null, 2));
-      }),
-    );
-
-  machine
-    .command("join-code")
-    .description("Create a short-lived machine pairing code")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: MachineListCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).hosts.createJoinCode();
-        if (outputJson(opts, result)) return;
-        console.log(result.joinCode);
       }),
     );
 
@@ -442,6 +445,31 @@ export function registerMachineCommands(
         const result = await sdk.hosts.retryUpdate({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} update retry requested`);
+      }),
+    );
+
+  machine
+    .command("reconcile <id-or-name>")
+    .description("Reconcile provider compute with the machine's recorded state")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
+          target,
+        });
+        const requested = await sdk.hosts.experimental_reconcile({ hostId });
+        const result =
+          requested.lifecycle.phase === "suspending"
+            ? await waitForMachineLifecycle({
+                host: requested,
+                targetPhase: "suspended",
+                getHost: () => sdk.hosts.get({ hostId }),
+              })
+            : requested;
+        if (!outputJson(opts, result))
+          console.log(`Machine ${hostId}: ${result.lifecycle.phase}`);
       }),
     );
 
@@ -557,10 +585,11 @@ export function registerMachineCommands(
     );
 }
 
-function printMachineTable(hosts: Host[]): void {
+function printMachineTable(hosts: Host[], serverHostId: string | null): void {
   const now = Date.now();
   const rows = hosts.map((host) => [
     host.name,
+    host.id === serverHostId ? "server" : "",
     host.id,
     host.type,
     host.status,
@@ -569,8 +598,8 @@ function printMachineTable(hosts: Host[]): void {
   ]);
   printBorderlessTable(
     {
-      head: ["Name", "ID", "Type", "Status", "Provider", "Last seen"],
-      colWidths: columnWidths(rows, [4, 2, 4, 6, 8, 9]),
+      head: ["Name", "Role", "ID", "Type", "Status", "Provider", "Last seen"],
+      colWidths: columnWidths(rows, [4, 4, 2, 4, 6, 8, 9]),
       trimTrailingWhitespace: true,
     },
     rows,

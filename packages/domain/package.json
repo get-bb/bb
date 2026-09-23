@@ -14,6 +14,16 @@
       "types": "./src/thread-status.ts",
       "default": "./src/thread-status.ts"
     },
+    "./started-on-behalf-of": {
+      "source": "./src/started-on-behalf-of.ts",
+      "types": "./src/started-on-behalf-of.ts",
+      "default": "./src/started-on-behalf-of.ts"
+    },
+    "./thread-create-origin": {
+      "source": "./src/thread-create-origin.ts",
+      "types": "./src/thread-create-origin.ts",
+      "default": "./src/thread-create-origin.ts"
+    },
     "./thread-origin-kind": {
       "source": "./src/thread-origin-kind.ts",
       "types": "./src/thread-origin-kind.ts",
@@ -23,11 +33,6 @@
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",
       "default": "./src/thread-visibility.ts"
-    },
-    "./utf16": {
-      "source": "./src/utf16.ts",
-      "types": "./src/utf16.ts",
-      "default": "./src/utf16.ts"
     },
     "./update-state": {
       "source": "./src/update-state.ts",
@@ -49,10 +54,20 @@
       "types": "./src/provider-fork.ts",
       "default": "./src/provider-fork.ts"
     },
+    "./completed-turn-display": {
+      "source": "./src/completed-turn-display.ts",
+      "types": "./src/completed-turn-display.ts",
+      "default": "./src/completed-turn-display.ts"
+    },
     "./plugin-interaction-limits": {
       "source": "./src/plugin-interaction-limits.ts",
       "types": "./src/plugin-interaction-limits.ts",
       "default": "./src/plugin-interaction-limits.ts"
+    },
+    "./prompt-attachment-limits": {
+      "source": "./src/prompt-attachment-limits.ts",
+      "types": "./src/prompt-attachment-limits.ts",
+      "default": "./src/prompt-attachment-limits.ts"
     }
   },
   "types": "./src/index.ts",

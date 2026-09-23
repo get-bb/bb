@@ -293,7 +293,7 @@ describe.sequential("watchPathChanges", () => {
     expect(unsubscribe).not.toHaveBeenCalled();
   });
 
-  it("waits for late startup unsubscribe when disposed during startup", async () => {
+  it("settles disposal and cleans up a late startup subscription", async () => {
     const threadStorageRoot = path.join("/tmp", "bb-watch-path-late");
     const subscriptionDeferred =
       createDeferredPromise<ParcelWatcherSubscribeResult>();
@@ -320,8 +320,8 @@ describe.sequential("watchPathChanges", () => {
     const stopPromise = stopWatching().then(() => {
       stopResolved = true;
     });
-    await Promise.resolve();
-    expect(stopResolved).toBe(false);
+    await stopPromise;
+    expect(stopResolved).toBe(true);
 
     subscriptionDeferred.resolve({ unsubscribe });
 
@@ -329,13 +329,10 @@ describe.sequential("watchPathChanges", () => {
       () => unsubscribe.mock.calls.length,
       (callCount) => callCount === 1,
     );
-    expect(stopResolved).toBe(false);
 
     unsubscribeDeferred.resolve(undefined);
-    await stopPromise;
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
-    expect(stopResolved).toBe(true);
   });
 
   it("coalesces repeated batches before flushing", async () => {

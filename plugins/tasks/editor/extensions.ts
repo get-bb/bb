@@ -24,7 +24,7 @@ import {
 } from "@tiptap/pm/model";
 import { Suggestion, type SuggestionProps } from "@tiptap/suggestion";
 import type { IconSvgElement } from "@hugeicons/react";
-import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
 
 export type MentionItem =
   | { type: "task"; id: string; key: string; title: string }

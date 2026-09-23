@@ -89,9 +89,6 @@ describe("app chrome opts out of text selection", () => {
 
     expect(inset?.classList.contains("group/page-inset")).toBe(true);
     expect(headerActions?.classList).toContain(
-      "group-data-[panel-shelf=open]/page-inset:invisible",
-    );
-    expect(headerActions?.classList).toContain(
       "group-data-[panel-shelf=shelf]/page-inset:invisible",
     );
     expect(sidebarTrigger.closest("[data-app-page-header-actions]")).toBeNull();

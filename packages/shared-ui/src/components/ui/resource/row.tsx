@@ -19,10 +19,15 @@ import {
 import { cn } from "../../../lib/utils";
 import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "../coarse-pointer-visibility";
 
-export function targetsResourceAction(target: EventTarget): boolean {
+export function targetsResourceAction(event: {
+  currentTarget: Element;
+  target: EventTarget;
+}): boolean {
+  const { currentTarget, target } = event;
   return (
     target instanceof Element &&
-    target.closest("a, button, [data-row-action]") !== null
+    (!currentTarget.contains(target) ||
+      target.closest("a, button, [data-row-action]") !== null)
   );
 }
 
@@ -229,7 +234,7 @@ export function ResourceRow({
         className,
       )}
       onClick={(event) => {
-        if (targetsResourceAction(event.target)) return;
+        if (targetsResourceAction(event)) return;
         onOpen();
       }}
     >
@@ -268,24 +273,24 @@ export function ResourceRow({
           {trailingMeta ? (
             <span className="flex shrink-0 items-center">{trailingMeta}</span>
           ) : null}
-          {actions ? (
-            <span
-              data-row-action
-              className={cn(
-                "flex shrink-0 cursor-default items-center gap-0.5 transition-opacity",
-                actionsVisibility === "hover" &&
-                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-              )}
-            >
-              {actions}
-            </span>
-          ) : null}
           {persistentActions ? (
             <span
               data-row-action
               className="flex shrink-0 cursor-default items-center gap-0.5"
             >
               {persistentActions}
+            </span>
+          ) : null}
+          {actions ? (
+            <span
+              data-row-action
+              className={cn(
+                "flex shrink-0 cursor-default items-center gap-0.5 transition-opacity",
+                actionsVisibility === "hover" &&
+                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              {actions}
             </span>
           ) : null}
           {trailingVisual ? (

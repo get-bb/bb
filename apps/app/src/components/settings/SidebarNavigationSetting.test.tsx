@@ -8,10 +8,6 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { sidebarNavigationProviderAtom } from "@/components/sidebar/sidebarNavigationProvider";
-import {
-  AUTOMATIC_REPLACEMENT_PROVIDER,
-  BUILT_IN_REPLACEMENT_PROVIDER,
-} from "@/lib/plugin-replacement-preference";
 import { SidebarNavigationSetting } from "./SidebarNavigationSetting";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
@@ -21,20 +17,19 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
 });
 
+function registerNavigation(pluginId: string, id: string, title: string) {
+  setPluginSlotRegistrations(
+    pluginId,
+    makePluginRegistrationSet({
+      experimentalSidebarNavigations: [{ id, title, component: () => null }],
+    }),
+  );
+}
+
 describe("SidebarNavigationSetting", () => {
-  it("defaults to automatic and lets the user pin the built-in navigation", async () => {
-    setPluginSlotRegistrations(
-      "navbar",
-      makePluginRegistrationSet({
-        experimentalSidebarNavigations: [
-          {
-            id: "grid",
-            title: "Navigation grid",
-            component: () => null,
-          },
-        ],
-      }),
-    );
+  it("defaults to the bundled Navigation plugin and offers no Automatic or built-in choice", async () => {
+    registerNavigation("navigation", "navigation", "Navigation");
+    registerNavigation("navbar", "grid", "Navigation grid");
     const store = createStore();
     render(
       <Provider store={store}>
@@ -43,15 +38,21 @@ describe("SidebarNavigationSetting", () => {
     );
 
     expect(store.get(sidebarNavigationProviderAtom)).toBe(
-      AUTOMATIC_REPLACEMENT_PROVIDER,
+      "navigation/navigation",
     );
-    const trigger = screen.getByRole("button", {
-      name: "Sidebar navigation",
-    });
-    fireEvent.pointerDown(trigger, { button: 0 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: /built-in/u }));
-    expect(store.get(sidebarNavigationProviderAtom)).toBe(
-      BUILT_IN_REPLACEMENT_PROVIDER,
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Sidebar navigation" }),
+      { button: 0 },
     );
+    const options = (await screen.findAllByRole("menuitem")).map(
+      (item) => item.textContent ?? "",
+    );
+    expect(options.some((option) => option.startsWith("Automatic"))).toBe(
+      false,
+    );
+    expect(options.some((option) => option.includes("built-in"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Navigation grid/u }));
+    expect(store.get(sidebarNavigationProviderAtom)).toBe("navbar/grid");
   });
 });

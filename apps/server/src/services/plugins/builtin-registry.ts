@@ -153,9 +153,24 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "thread-list",
+    pluginId: "thread-list",
+    defaultEnabled: true,
+  },
+  {
+    name: "navigation",
+    pluginId: "navigation",
+    defaultEnabled: true,
+  },
+  {
     name: "scheduled-send",
     pluginId: "scheduled-send",
     defaultEnabled: true,
+  },
+  {
+    name: "agent-annotations",
+    pluginId: "agent-annotations",
+    defaultEnabled: false,
   },
   {
     name: "concurrency-limit",

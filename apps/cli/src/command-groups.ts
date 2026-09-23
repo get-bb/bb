@@ -62,6 +62,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerMachineCommands(program, deps.getUrl),
   ),
   group(
+    "server",
+    () => import("./commands/server.js"),
+    (m) => (program, deps) => m.registerServerCommands(program, deps.getUrl),
+  ),
+  group(
     "updates",
     () => import("./commands/updates.js"),
     (m) => (program, deps) => m.registerUpdatesCommands(program, deps.getUrl),
@@ -113,6 +118,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     "guide",
     () => import("./commands/guide.js"),
     (m) => (program) => m.registerGuideCommand(program),
+  ),
+  group(
+    "diagnostics",
+    () => import("./commands/diagnostics.js"),
+    (m) => (program) => m.registerDiagnosticsCommands(program),
   ),
   group(
     "voice",

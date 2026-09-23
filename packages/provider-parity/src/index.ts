@@ -79,13 +79,13 @@ export const projectParityRows: ParityRowProjector = ({
     contextWindowEvents,
     events: compactThreadTimelineSummaryEvents(withMeta),
     options: {
+      completedTurnDisplay: "collapse",
       includeDiagnosticOperations: true,
       includeNestedRows: true,
       isLatestPage: true,
       providerId,
       threadStatus: "idle",
       threadName: "parity",
-      turnMessageDetail: "full",
       workspaceRoot: "/home/user/workspace",
     },
   });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
+import type { BbDesktopWindowFindRequest } from "./find.js";
 import { bbDesktopVersionFeedPlatformSchema } from "./version-feed.js";
 import type { AppCommandId } from "@bb/domain";
 
@@ -59,7 +60,12 @@ export interface BbDesktopApi extends BbDesktopInfo {
   onCloseWindowRequest?(
     listener: BbDesktopCloseWindowRequestHandler,
   ): BbDesktopInfoUnsubscribe;
+  openWindowFind?(request: BbDesktopWindowFindRequest): void;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
+  setSplitNavigationEnabled?(
+    enabled: boolean,
+    directionalCommands?: readonly AppCommandId[],
+  ): void;
   setTheme(theme: BbDesktopTheme): void;
 }

@@ -30,6 +30,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtimeConnectionState`
 - `useSettings`
 - `useBbContext`
+- `experimental_usePluginId` — this plugin's id, for keying browser-side
+  state such as localStorage entries
 - `useBbNavigate`
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`
@@ -39,6 +41,31 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useSidebarThreadActions`
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
+- `experimental_useSidebarNavigation` — the sidebar navigation items in the
+  user's saved order, the active item, and host actions to activate, hide,
+  reorder, and customize them
+- `experimental_useSidebarNavigationSplit` — drag-to-split support for one
+  navigation item
+- `experimental_SidebarNavigationIcon` — bb's artwork for a navigation item's
+  icon, including plugin branding
+- `useSidebarThreadDraft` — whether the composer holds an unsent draft for
+  one thread, for the pencil glyph bb's row paints
+- `useSidebarThreadDraftIds` — every thread id with an unsent draft, for
+  collapsed-group rollups
+- `useSidebarThreadRowStatus` — the row status another plugin's app-wide
+  script set on a thread, or null
+- `useSidebarThreadRowStatuses` — every row status by thread id, for
+  collapsed-group rollups
+- `useSidebarSplitLayout` — the whole split layout with the thread each pane
+  shows, or null when nothing is split
+- `useSidebarThreadShortcut` — the jump shortcut assigned to a row while the
+  app command modifier is held, or null
+- `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
+  and `@thread:` mentions rendered as bb's chips
+- `useEnvironmentProviders` — bb's environment provider catalog, for naming
+  and drawing the environment a thread runs in
+- `useSdk` — bb's public API client bound to this plugin, the same areas the
+  `bb` CLI and the backend `bb.sdk` expose
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
 
@@ -77,10 +104,19 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarNavigationIcon`
 - `ExperimentalSidebarNavigationItem`
 - `ExperimentalSidebarNavigationActivationOptions`
+- `ExperimentalSidebarNavigationActions`
+- `ExperimentalSidebarNavigationState`
+- `ExperimentalSidebarNavigationSplit`
+- `ExperimentalSidebarNavigationSplitOptions`
+- `ExperimentalSidebarNavigationIconProps`
 - `ExperimentalSidebarNavigationProps`
+- `ExperimentalSidebarHeaderProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
+- `ExperimentalPluginBrowserPage`
+- `ExperimentalPluginBrowserPageEvaluateOptions`
+- `ExperimentalPluginBrowserPageWorld`
 - `PluginFileOpenerSource`
 - `PluginFileOpenerProps`
 - `CodeOverflowMode`
@@ -119,21 +155,32 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarFooterDisclosureController`
 - `ExperimentalSidebarFooter`
 - `ExperimentalSidebarNavigationRegistration`
+- `ExperimentalSidebarHeaderRegistration`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarThreadActivity`
 - `PluginSidebarThread`
 - `PluginSidebarPullRequest`
 - `PluginSidebarThreadPullRequestState`
 - `PluginSidebarProject`
+- `PluginSidebarSection`
 - `PluginSidebarThreadsState`
 - `PluginProvidersState`
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginSidebarThreadActions`
+- `PluginSidebarThreadDraftState`
+- `PluginSidebarThreadRowStatus`
+- `PluginSidebarThreadShortcut`
+- `PluginThreadTitleProps`
+- `PluginEnvironmentProvider`
+- `PluginEnvironmentProvidersState`
+- `PluginBoundThreadsArea`
+- `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
+- `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
 - `PluginFileOpenerRegistration`
@@ -146,10 +193,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginMessageActionRegistration`
 - `PluginAppCommands`
 - `PluginCommandContext`
-- `PluginCommandPaletteActionContext` (deprecated alias)
 - `PluginCommandShortcut`
 - `PluginCommandRegistration`
-- `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginProviderIconRegistration`
 - `PluginTimelineRowPresentation`
 - `PluginTimelineRowStatus`
@@ -173,6 +218,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ComposerPlusMenuItem`
 - `ComposerView`
 - `ExperimentalComposerSubmitOptions`
+- `ExperimentalComposerSelection`
 - `ComposerRichTextSpec`
 - `ComposerStructuredDraft`
 - `PluginComposerTextEffect`

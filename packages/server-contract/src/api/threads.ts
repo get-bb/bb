@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
+  completedTurnDisplaySchema,
   environmentSchema,
   hostSchema,
   jsonValueSchema,
@@ -18,6 +19,8 @@ import {
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
+  startedOnBehalfOfSchema,
+  threadCreateOriginSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -56,9 +59,6 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli", "sdk", "plugin"]);
-export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
-
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
 export type ExecutionInputFieldSource = CallerExecutionInputSource;
 
@@ -87,14 +87,6 @@ export type ExistingThreadExecutionInputSources = z.infer<
   typeof existingThreadExecutionInputSourcesSchema
 >;
 
-export const startedOnBehalfOfInitiatorSchema = z.enum(["agent", "system"]);
-
-export const startedOnBehalfOfSchema = z.object({
-  initiator: startedOnBehalfOfInitiatorSchema,
-  senderThreadId: z.string().min(1),
-});
-export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
-
 export const createThreadRequestSchema = z
   .object({
     projectId: z.string().min(1),
@@ -102,6 +94,7 @@ export const createThreadRequestSchema = z
     origin: threadCreateOriginSchema,
     originPluginId: z.string().min(1).optional(),
     pluginMetadata: pluginMetadataSchema.optional(),
+    lifecycleOwnerThreadId: z.string().min(1).optional(),
     visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     input: z.array(promptInputSchema),
@@ -197,6 +190,7 @@ export const forkThreadRequestSchema = z
     origin: threadCreateOriginSchema.default("sdk"),
     originPluginId: z.string().min(1).optional(),
     pluginMetadata: pluginMetadataSchema.optional(),
+    lifecycleOwnerThreadId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -866,7 +860,7 @@ export type ThreadSearchQuery = z.infer<typeof threadSearchQuerySchema>;
 
 export const timelinePaginationCursorSchema = z
   .object({
-    anchorSeq: z.number().int().positive(),
+    anchorSeq: z.number().int().nonnegative(),
     anchorId: z.string().min(1),
   })
   .strict();
@@ -885,7 +879,7 @@ export const timelinePageMetadataSchema = z
     olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
     contentPage: z
       .object({
-        anchorSeq: z.number().int().positive(),
+        anchorSeq: z.number().int().nonnegative(),
         start: z.number().int().nonnegative(),
         end: z.number().int().nonnegative(),
         total: z.number().int().nonnegative(),
@@ -898,7 +892,7 @@ export const threadTimelineQuerySchema = z
   .object({
     includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
-    beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
+    beforeAnchorSeq: z.string().regex(/^(0|[1-9]\d*)$/),
     beforeAnchorId: z.string().min(1),
     summaryOnly: z.enum(["true", "false"]),
     afterSequence: z.string().regex(/^\d+$/),
@@ -1021,6 +1015,7 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   contextBoundarySeq: z.number().int().nonnegative().nullable(),
+  completedTurnDisplay: completedTurnDisplaySchema,
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
   activeWorkflows: z.array(timelineWorkflowWorkRowSchema),

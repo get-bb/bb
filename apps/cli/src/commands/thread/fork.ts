@@ -8,12 +8,13 @@ import type { EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
+import { resolveTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import { collectOption, outputJson, prependErrorContext } from "../helpers.js";
 import {
   buildPromptInputs,
   parsePermissionMode,
   PERMISSION_MODE_HELP,
-  uploadClientImageInputs,
+  uploadClientAttachmentInputs,
 } from "./helpers.js";
 import {
   buildSpawnEnvironment,
@@ -31,8 +32,10 @@ interface ThreadForkCommandOptions {
   newEnvironment?: string;
   permissionMode?: string;
   prompt?: string;
+  promptFile?: string;
   sourceSeqEnd?: string;
   title?: string;
+  lifecycleOwnerThread?: string;
   visibility?: string;
 }
 
@@ -45,16 +48,22 @@ function parseSourceSeqEnd(value: string | undefined): number | undefined {
   return parsed;
 }
 
-function buildForkInput(
+async function buildForkInput(
   opts: ThreadForkCommandOptions,
-): PromptInput[] | undefined {
+): Promise<PromptInput[] | undefined> {
   const files = opts.file ?? [];
   const images = opts.image ?? [];
-  if (opts.prompt === undefined && files.length === 0 && images.length === 0) {
+  const prompt = await resolveTextInput({
+    file: opts.promptFile,
+    fileLabel: "--prompt-file",
+    inline: opts.prompt,
+    inlineLabel: "--prompt <prompt>",
+  });
+  if (prompt === undefined && files.length === 0 && images.length === 0) {
     return undefined;
   }
-  if (opts.prompt !== undefined) {
-    return buildPromptInputs({ message: opts.prompt, files, images });
+  if (prompt !== undefined) {
+    return buildPromptInputs({ message: prompt, files, images });
   }
   return [
     ...files.map((path): PromptInput => ({ type: "localFile", path })),
@@ -95,7 +104,15 @@ export function registerForkCommand(
   parent
     .command("fork <source-thread-id>")
     .description("Fork a thread at its tip or a source event sequence")
+    .option(
+      "--lifecycle-owner-thread <id>",
+      "Archive/delete this thread with its lifecycle owner",
+    )
     .option("--prompt <prompt>", "Optional first prompt; omit for an idle fork")
+    .option(
+      "--prompt-file <path>",
+      `Read the first prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option("--title <title>", "Thread title")
     .option(
       "--source-seq-end <seq>",
@@ -121,13 +138,13 @@ export function registerForkCommand(
     )
     .option(
       "--file <path>",
-      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -142,7 +159,7 @@ export function registerForkCommand(
           if (!sourceThreadId) {
             throw new Error("Source thread ID is required.");
           }
-          const requestedInput = buildForkInput(opts);
+          const requestedInput = await buildForkInput(opts);
           const sourceSeqEnd = parseSourceSeqEnd(opts.sourceSeqEnd);
           const permissionMode = parsePermissionMode(opts.permissionMode);
           const visibility =
@@ -160,7 +177,7 @@ export function registerForkCommand(
             const input =
               requestedInput === undefined
                 ? undefined
-                : await uploadClientImageInputs({
+                : await uploadClientAttachmentInputs({
                     input: requestedInput,
                     resolveProjectId: async () =>
                       (
@@ -203,6 +220,9 @@ export function registerForkCommand(
             }
             thread = await sdk.threads.fork({
               sourceThreadId,
+              ...(opts.lifecycleOwnerThread !== undefined
+                ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
+                : {}),
               origin: "cli",
               ...(environment === undefined ? {} : { environment }),
               ...(input === undefined ? {} : { input }),

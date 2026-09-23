@@ -3,6 +3,10 @@
     "category": "agents-and-providers",
     "screenshots": []
   },
+  "agent-annotations": {
+    "category": "code-and-reviews",
+    "screenshots": []
+  },
   "ask-user-question": {
     "category": "thread-content",
     "screenshots": []
@@ -86,6 +90,14 @@
     "category": "tasks-and-workflows",
     "screenshots": []
   },
+  "thread-list": {
+    "category": "thread-management",
+    "screenshots": []
+  },
+  "navigation": {
+    "category": "thread-management",
+    "screenshots": []
+  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []
@@ -104,7 +116,14 @@
   },
   "docs": {
     "category": "file-viewers-and-editors",
-    "screenshots": []
+    "screenshots": [
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-review-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-f4957b72f-inline-editing-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-f4957b72f-ask-mobile.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-63b536e70-workspace-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png"
+    ]
   },
   "memory": {
     "category": "memory-and-context",

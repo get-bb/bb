@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactSecondaryPanelShelf } from "./CompactSecondaryPanelShelf";
+import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { getCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
 
@@ -161,6 +162,52 @@ describe("CompactSecondaryPanelShelf", () => {
     fireTouch(window, "touchend", createTouch(240, 164));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("navigates tab swipes without dismissing while preserving body dismissal", () => {
+    const onClose = vi.fn();
+    const tabs = ["README.md", "package.json", "AGENTS.md"].map((label) => ({
+      id: label,
+      label,
+      ariaLabel: label,
+      leadingVisual: null,
+      onSelect: vi.fn(),
+      onClose: null,
+    }));
+    render(
+      <CompactSecondaryPanelShelf
+        open
+        onClose={onClose}
+        presentation="full"
+        srLabel="Right panel"
+      >
+        <MobilePanelTabPager
+          activeTabId="package.json"
+          fixedTabs={[]}
+          tabs={tabs}
+          newTabControl={null}
+        />
+        <div data-testid="panel-body" />
+      </CompactSecondaryPanelShelf>,
+    );
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    Object.defineProperty(shelf, "clientWidth", { value: 390 });
+    const tab = screen.getByRole("button", { name: "package.json" });
+
+    for (const endX of [280, 40]) {
+      fireTouch(tab, "touchstart", createTouch(160, 20));
+      fireTouch(tab, "touchmove", createTouch(endX, 20));
+      fireTouch(tab, "touchend", createTouch(endX, 20));
+      expect(onClose).not.toHaveBeenCalled();
+    }
+    expect(tabs[0].onSelect).toHaveBeenCalledOnce();
+    expect(tabs[2].onSelect).toHaveBeenCalledOnce();
+
+    const body = screen.getByTestId("panel-body");
+    fireTouch(body, "touchstart", createTouch(60, 160));
+    fireTouch(body, "touchmove", createTouch(240, 164));
+    fireTouch(body, "touchend", createTouch(240, 164));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it.each(["before touch", "after long press"])(

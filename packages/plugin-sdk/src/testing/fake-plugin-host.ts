@@ -58,7 +58,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -217,11 +217,11 @@ export interface FakeAgentToolRecord {
   instructions: string | null;
   /**
    * The plugin's declared row presentation, null when it declared none.
-   * Parsed by the shared `parsePluginAgentToolPresentation`, so the record
+   * Parsed by the shared `parsePluginRowPresentation`, so the record
    * holds exactly what the production host stores and a presentation bb
    * rejects is rejected here with the same message.
    */
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   /** JSON-schema object the host would send providers. */
   inputSchema: unknown;
   parse(
@@ -471,6 +471,12 @@ export interface FakePluginLifecycleControls {
    * PluginContextStaleError). Idempotent.
    */
   dispose(): Promise<void>;
+  /**
+   * Run every handler registered with `bb.onInstall`, in
+   * registration order, as bb does right after a fresh install. A handler
+   * that throws is logged at warn level and the rest still run.
+   */
+  install(): Promise<void>;
 }
 
 /**
@@ -1030,7 +1036,7 @@ function createFakePluginHostInternal(
       name: string;
       description: string;
       instructions?: string;
-      presentation?: PluginAgentToolPresentation;
+      presentation?: PluginRowPresentation;
       parameters: unknown;
       execute(
         params: never,
@@ -1142,6 +1148,7 @@ function createFakePluginHostInternal(
     import("../backend-contract.js").ServerAccessProviderDeclaration
   >();
   const disposeHooks: Array<() => void | Promise<void>> = [];
+  const installHandlers: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
   const pendingInteractions = new Map<
@@ -1159,8 +1166,17 @@ function createFakePluginHostInternal(
     assertLive();
     const normalized = normalizeInteractionRequest(request);
     const normalizedRequest: PluginInteractionRequest = {
-      ...request,
-      ...normalized,
+      threadId: normalized.threadId,
+      rendererId: normalized.rendererId,
+      title: normalized.title,
+      payload: normalized.payload,
+      timeoutMs: normalized.timeoutMs,
+      ...(normalized.presentation === null
+        ? {}
+        : { presentation: normalized.presentation }),
+      ...(normalized.describeSubmission === null
+        ? {}
+        : { describeSubmission: normalized.describeSubmission }),
     };
     const id = `fake-interaction-${nextInteractionId++}`;
     return new Promise<PluginInteractionResult>((resolve) => {
@@ -1510,6 +1526,13 @@ function createFakePluginHostInternal(
     onDispose(hook) {
       assertLive();
       disposeHooks.push(hook);
+    },
+    onInstall(handler) {
+      assertLive();
+      if (typeof handler !== "function") {
+        throw new Error("onInstall expects a function");
+      }
+      installHandlers.push(handler);
     },
   };
 
@@ -2100,6 +2123,17 @@ function createFakePluginHostInternal(
 
     async dispose() {
       await disposeHost(true);
+    },
+
+    async install() {
+      assertLive();
+      for (const handler of [...installHandlers]) {
+        try {
+          await handler();
+        } catch (error) {
+          emitLog("warn", `install handler failed: ${errorMessage(error)}`);
+        }
+      }
     },
   };
 

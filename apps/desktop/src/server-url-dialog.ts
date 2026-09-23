@@ -1,5 +1,5 @@
 import { ipcMain, type BrowserWindow } from "electron";
-import { escapeHtmlText } from "@bb/domain";
+import { escapeHtmlText } from "@bb/text-utils";
 import {
   createDesktopDialogWindow,
   DESKTOP_DIALOG_BASE_CSS,
@@ -30,7 +30,7 @@ function renderServerUrlDialogHtml(initialUrl: string | null): string {
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-  <title>Set Server URL</title>
+  <title>${initialUrl === null ? "Add Server" : "Set Server URL"}</title>
   <style>
 ${DESKTOP_DIALOG_BASE_CSS}
 
@@ -68,8 +68,8 @@ ${DESKTOP_DIALOG_BASE_CSS}
   </style>
 </head>
 <body>
-  <h1>Set Server URL</h1>
-  <p>Point this app at a bb server. Leave empty to use only This Mac.</p>
+  <h1>${initialUrl === null ? "Add Server" : "Set Server URL"}</h1>
+  <p>${initialUrl === null ? "Save another bb server to the Server menu." : "Edit this saved server. Leave empty to remove it."}</p>
   <form>
     <input name="url" type="text" placeholder="https://example.com:38886" value="${escapeHtmlText(initialUrl ?? "")}" autocomplete="off" spellcheck="false">
     <div data-error></div>
@@ -98,7 +98,7 @@ export function openServerUrlDialog(
   const dialogWindow = createDesktopDialogWindow({
     parentWindow: args.parentWindow,
     preloadPath: args.preloadPath,
-    title: "Set Server URL",
+    title: args.initialUrl === null ? "Add Server" : "Set Server URL",
     width: 440,
   });
 
@@ -138,7 +138,7 @@ export function openServerUrlDialog(
         if (!parsed.success) {
           return { ok: false, message: "Enter a valid http(s) URL." };
         }
-        if (parsed.data.url.trim().length === 0) {
+        if (parsed.data.url.trim().length === 0 && args.initialUrl !== null) {
           finish({ kind: "clear" });
           return { ok: true };
         }

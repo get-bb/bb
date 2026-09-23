@@ -6,9 +6,18 @@ import {
   setPluginSlotRegistrations,
   removePluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import { PendingInteractionShell } from "./PendingInteractionShell";
 import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
+import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 installTestPluginRuntime();
 const { default: secretsApp } =
@@ -25,7 +34,11 @@ export function Overview() {
           collectPluginAppRegistrations(secretsApp).pendingInteractions,
       }),
     );
-    return () => removePluginSlotRegistrations("secrets");
+    markPluginFrontendsSettled();
+    return () => {
+      removePluginSlotRegistrations("secrets");
+      resetPluginFrontendBootStateForTest();
+    };
   }, []);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
@@ -62,7 +75,7 @@ export function Overview() {
           threadId: "thread-demo",
           createdAt: 1,
         }}
-        dismissal="cancel"
+        origin="plugin"
         request={{
           pluginId: "secrets",
           rendererId: "secret-request",
@@ -80,7 +93,7 @@ export function Overview() {
           threadId: "thread-demo",
           createdAt: 1,
         }}
-        dismissal="stop-turn"
+        origin="provider"
         request={{
           pluginId: "unavailable-plugin",
           rendererId: "unavailable",
@@ -102,5 +115,162 @@ export function Overview() {
         )}
       </PendingInteractionShell>
     </div>
+  );
+}
+
+const STORY_ROW_CLASS =
+  "grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]";
+
+function PromptStage({ children }: { children: React.ReactNode }) {
+  return <div className="w-full max-w-[760px]">{children}</div>;
+}
+
+function brandingFor(displayName: string) {
+  return {
+    displayName,
+    icon: null,
+    compactIconUrl: null,
+    logoUrl: null,
+    logoDarkUrl: null,
+    icons: new Map<string, string>(),
+  };
+}
+
+function usePluginBranding(): void {
+  useEffect(() => {
+    setPluginLogoUrls(
+      new Map([
+        ["secrets", brandingFor("Secrets")],
+        ["ask-user-question", brandingFor("Ask User Question")],
+      ]),
+    );
+    return () => resetPluginLogoStoreForTest();
+  }, []);
+}
+
+function useSecretsFormRegistered(): void {
+  useEffect(() => {
+    setPluginSlotRegistrations(
+      "secrets",
+      makePluginRegistrationSet({
+        pendingInteractions:
+          collectPluginAppRegistrations(secretsApp).pendingInteractions,
+      }),
+    );
+    return () => removePluginSlotRegistrations("secrets");
+  }, []);
+}
+
+function useSettledPluginFrontends(settled: boolean): void {
+  useEffect(() => {
+    if (settled) markPluginFrontendsSettled();
+    return () => resetPluginFrontendBootStateForTest();
+  }, [settled]);
+}
+
+const missingRendererRequest = {
+  pluginId: "ask-user-question",
+  rendererId: "ask-user-question",
+  title: "Which eviction policy should the cache use?",
+  data: {},
+};
+
+const secretsRequest = {
+  pluginId: "secrets",
+  rendererId: "secret-request",
+  title: "Add credentials for the demo service",
+  data: {
+    purpose: "Connect the demo service",
+    destination: { kind: "dotenv", path: "/workspace/.env" },
+    fields: [{ name: "DEMO_API_KEY", description: "Service API key" }],
+  },
+};
+
+function pluginInteraction(id: string) {
+  return { id, threadId: "thread-demo", createdAt: 1 };
+}
+
+export function PluginFormBooting() {
+  usePluginBranding();
+  useSecretsFormRegistered();
+  useSettledPluginFrontends(false);
+  return (
+    <StoryCard className="m-0 p-4">
+      <StoryRow
+        className={STORY_ROW_CLASS}
+        label="renderer registered"
+        hint="the owning plugin's frontend is already in the slot store, so the form mounts immediately"
+      >
+        <PromptStage>
+          <PluginPendingInteractionComposer
+            interaction={pluginInteraction("secrets-booting-demo")}
+            origin="plugin"
+            request={secretsRequest}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        className={STORY_ROW_CLASS}
+        label="renderer not in yet"
+        hint="plugin frontends are still booting; the card waits instead of claiming the form is unavailable"
+      >
+        <PromptStage>
+          <PluginPendingInteractionComposer
+            interaction={pluginInteraction("missing-booting-demo")}
+            origin="plugin"
+            request={missingRendererRequest}
+          />
+        </PromptStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function PluginFormSettled() {
+  usePluginBranding();
+  useSecretsFormRegistered();
+  useSettledPluginFrontends(true);
+  return (
+    <StoryCard className="m-0 p-4">
+      <StoryRow
+        className={STORY_ROW_CLASS}
+        label="renderer registered"
+        hint="the form the plugin registered, ready to submit"
+      >
+        <PromptStage>
+          <PluginPendingInteractionComposer
+            interaction={pluginInteraction("secrets-settled-demo")}
+            origin="plugin"
+            request={secretsRequest}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        className={STORY_ROW_CLASS}
+        label="renderer never arrived"
+        hint="frontends settled without this renderer, so the host owns the dismissal"
+      >
+        <PromptStage>
+          <PluginPendingInteractionComposer
+            interaction={pluginInteraction("missing-settled-demo")}
+            origin="plugin"
+            request={missingRendererRequest}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        className={STORY_ROW_CLASS}
+        label="provider-origin request"
+        hint="a provider bridge raised the request, so the agent is the asker and backing out stops the turn"
+      >
+        <PromptStage>
+          <PluginPendingInteractionComposer
+            interaction={pluginInteraction("bridge-settled-demo")}
+            origin="provider"
+            request={secretsRequest}
+          />
+        </PromptStage>
+      </StoryRow>
+    </StoryCard>
   );
 }

@@ -1,8 +1,14 @@
 import { z } from "zod";
 import { afterEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import { maintainMachine } from "../../../src/services/machines/lifecycle.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  setServerMoveFrozen,
+} from "../../../src/services/server-move/freeze-state.js";
 import {
   createEnvironment,
+  createTerminalSession,
   environments,
   getEnvironment,
   getAppSettings,
@@ -16,6 +22,7 @@ import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk
 import {
   requestMachineRemoval,
   requestMachineSuspension,
+  reconcileMachine,
   resumeMachine,
   sweepProviderMachine,
 } from "../../../src/services/machines/provider-orchestration.js";
@@ -34,6 +41,7 @@ import {
   seedQueuedMessage,
   seedSession,
 } from "../../helpers/seed.js";
+import { advanceUntilSettled } from "../../helpers/fake-timers.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 afterEach(() => {
@@ -354,4 +362,166 @@ it("removes a suspended machine when its last thread is archived with an offline
     await sweepProviderMachine(harness.deps, target.host.id);
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(remove).toHaveBeenCalledOnce();
+  }));
+
+it("reconciles on request using core's current state and serializes a concurrent resume", async () =>
+  withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "plugin-reconcile",
+    });
+    harness.hub.unregisterDaemon(session.id);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const suspend = vi.fn(async () => {
+      await pending;
+      return { resource: { id: "saved" } };
+    });
+    const resume = vi.fn(async () => ({ resource: { id: "running" } }));
+    installMachineProvider({ suspend, resume });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "active",
+      resource: { id: "running" },
+    });
+    await reconcileMachine(harness.deps, host.id);
+    expect(suspend).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    updateHost(harness.db, harness.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: 1,
+    });
+    await sweepProviderMachine(harness.deps, host.id);
+    expect(suspend).not.toHaveBeenCalled();
+    const reconciling = reconcileMachine(harness.deps, host.id);
+    await expect.poll(() => suspend.mock.calls.length).toBe(1);
+    const waking = resumeMachine(harness.deps, host.id);
+    expect(resume).not.toHaveBeenCalled();
+    finish();
+    await reconciling;
+    await waking;
+    expect(resume).toHaveBeenCalledOnce();
+    expect(getHost(harness.db, host.id)?.phase).toBe("active");
+    await reconcileMachine(harness.deps, host.id);
+    expect(suspend).toHaveBeenCalledOnce();
+  }));
+
+it("exposes reconciliation through the host API without changing active intent", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "reconcile-api" });
+    const suspend = vi.fn(async () => ({ resource: { id: "saved" } }));
+    installMachineProvider({
+      suspend,
+      resume: async ({ resource }) => ({ resource }),
+    });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "active",
+      resource: { id: "running" },
+    });
+    const response = await harness.app.request(
+      `/api/v1/hosts/${host.id}/reconcile`,
+      { method: "POST" },
+    );
+    expect(response.status).toBe(202);
+    expect(suspend).not.toHaveBeenCalled();
+    expect(getHost(harness.db, host.id)?.phase).toBe("active");
+  }));
+
+it("accepts reconciliation before the provider finishes and coalesces repeated requests", async () =>
+  withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "reconcile-slow",
+    });
+    harness.hub.unregisterDaemon(session.id);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const suspend = vi.fn(async () => {
+      await pending;
+      return { resource: { id: "saved" } };
+    });
+    installMachineProvider({
+      suspend,
+      resume: async ({ resource }) => ({ resource }),
+    });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "suspended",
+      suspendedAt: 1,
+      resource: { id: "running" },
+    });
+    try {
+      const response = await harness.app.request(
+        `/api/v1/hosts/${host.id}/reconcile`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(202);
+      await expect.poll(() => suspend.mock.calls.length).toBe(1);
+      expect(getHost(harness.db, host.id)?.phase).toBe("suspending");
+      const repeated = await harness.app.request(
+        `/api/v1/hosts/${host.id}/reconcile`,
+        { method: "POST" },
+      );
+      expect(repeated.status).toBe(202);
+      expect(suspend).toHaveBeenCalledOnce();
+    } finally {
+      finish();
+      await expect
+        .poll(() => getHost(harness.db, host.id)?.phase)
+        .toBe("suspended");
+    }
+  }));
+
+it("holds the machine drain deadline while the server is moving", async () =>
+  withTestHarness({ terminalCloseTimeoutMs: 60 * 60_000 }, async (harness) => {
+    const target = seedHostSession(harness.deps, {
+      id: "review-frozen-drain",
+    });
+    createTerminalSession(harness.db, {
+      cols: 80,
+      daemonSessionId: target.session.id,
+      environmentId: null,
+      hostId: target.host.id,
+      initialCwd: "~",
+      rows: 24,
+      status: "running",
+      threadId: null,
+      title: "zsh",
+    });
+    const save = vi.fn(async () => {});
+    vi.useFakeTimers();
+    const outcome = maintainMachine(
+      harness.deps,
+      target.host.id,
+      "operation-frozen-drain",
+      save,
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    setServerMoveFrozen(harness.db, true);
+    try {
+      await vi.advanceTimersByTimeAsync(
+        5 * 60_000 + SERVER_MOVE_FROZEN_RETRY_MS,
+      );
+      expect(getHost(harness.db, target.host.id)).toMatchObject({
+        phase: "suspending",
+        suspendRetryAt: null,
+      });
+    } finally {
+      setServerMoveFrozen(harness.db, false);
+    }
+
+    expect(
+      await advanceUntilSettled(outcome, SERVER_MOVE_FROZEN_RETRY_MS),
+    ).toMatchObject({
+      message: "Machine drain exceeded its deadline; old compute is retained",
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(getHost(harness.db, target.host.id)?.phase).toBe("active");
+    expect(getHost(harness.db, target.host.id)?.suspendRetryAt).not.toBeNull();
   }));

@@ -66,12 +66,14 @@ describe("thread conversation outline performance", () => {
       threadId: thread.id,
     });
     const first = loadThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
       maxSeq: 1,
       outlineSequence,
     });
     queries.length = 0;
 
     const second = loadThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
       maxSeq: 2,
       outlineSequence,
     });
@@ -103,6 +105,7 @@ describe("thread conversation outline performance", () => {
       },
     ]);
     loadThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -117,6 +120,7 @@ describe("thread conversation outline performance", () => {
     queries.length = 0;
 
     loadThreadConversationOutline(db, renamedThread, {
+      completedTurnDisplay: "collapse",
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -134,6 +138,7 @@ describe("thread conversation outline performance", () => {
     queries.length = 0;
 
     const rewound = loadThreadConversationOutline(db, renamedThread, {
+      completedTurnDisplay: "collapse",
       maxSeq: 0,
       outlineSequence: 0,
     });
@@ -161,6 +166,7 @@ describe("thread conversation outline performance", () => {
     ]);
 
     loadThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -207,7 +213,10 @@ describe("thread conversation outline performance", () => {
     ]);
     queries.length = 0;
 
-    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 2 });
+    const outline = buildThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
+      maxSeq: 2,
+    });
 
     expect(outline.items).toEqual([
       expect.objectContaining({ preview: "Visible response" }),
@@ -276,7 +285,10 @@ describe("thread conversation outline performance", () => {
       },
     ]);
 
-    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 4 });
+    const outline = buildThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
+      maxSeq: 4,
+    });
 
     expect(outline.items).toEqual([]);
     db.$client.close();

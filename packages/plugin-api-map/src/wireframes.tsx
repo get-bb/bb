@@ -9,36 +9,8 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import type { IconSvgElement } from "@hugeicons/react";
-import {
-  ArrowLeft01Icon,
-  ArrowMoveDownLeftIcon,
-  ArrowUp01Icon,
-  ArrowRight01Icon,
-  Bug01Icon,
-  Copy01Icon,
-  File01Icon,
-  Folder01Icon,
-  GitBranchIcon,
-  InformationCircleIcon,
-  MessageAdd01Icon,
-  Mic01Icon,
-  Plug02Icon,
-  ZapIcon,
-  MoreHorizontalIcon,
-  PencilEdit01Icon,
-  PlusSignIcon,
-  ElectricPlugsIcon,
-  Search01Icon,
-  Settings02Icon,
-  SparklesIcon,
-  PlusMinusSquare01Icon,
-  SidebarLeftIcon,
-  SidebarRightIcon,
-  ToolboxIcon,
-  TerminalIcon,
-} from "@hugeicons/core-free-icons";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Switch } from "@bb/shared-ui/switch";
 
 import { cn } from "./cn";
 import {
@@ -56,6 +28,7 @@ export interface SurfaceMapState {
   expandedId?: string | null;
   numberOf: (id: string) => number | null;
   pluginPageHref?: (displayName: string) => string | null;
+  renderPluginIcon?: (displayName: string) => ReactNode;
   onSelect?: (id: string) => void;
   currentGroupId?: string;
   onGoToSurface?: (id: string) => void;
@@ -78,12 +51,12 @@ export const APP_SHELL_MARKS = [
   "thread-list",
   "sidebar-footer",
   "thread-header",
-  "browser-toolbar",
   "timeline-renderers",
   "message-directives",
   "message-actions",
   "pending-interaction",
   "code-renderers",
+  "browser-toolbar",
   "thread-panel",
   "file-opener",
   "app-overlay",
@@ -94,9 +67,9 @@ export const COMMAND_PALETTE_MARKS = ["command-palette-actions"] as const;
 
 export const COMPOSER_MARKS = [
   "composer-banners",
+  "composer-state",
   "mention-provider",
   "composer-rich-text",
-  "composer-state",
   "composer-plus-menu",
   "provider-picker",
   "composer-actions",
@@ -178,6 +151,7 @@ function Mark({
   className,
   chip = "corner",
   showChip = true,
+  target = false,
   onActivate,
   children,
 }: {
@@ -186,6 +160,7 @@ function Mark({
   className?: string;
   chip?: AnnotationChipPlacement;
   showChip?: boolean;
+  target?: boolean;
   onActivate?: () => void;
   children?: ReactNode;
 }) {
@@ -195,6 +170,7 @@ function Mark({
   return (
     <a
       data-guide-region={id}
+      data-guide-target={target ? id : undefined}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
       onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
@@ -218,6 +194,7 @@ const RELEASE_DEMO_MS = 2400;
 
 function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
   const id = "command-palette-actions";
+  const { onSelect } = useSurfaceMap();
   const { outlined } = useEngagement(id);
   const hover = useAnnotationHover(id);
 
@@ -227,7 +204,10 @@ function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
       type="button"
       role="option"
       aria-selected="true"
-      onClick={onRun}
+      onClick={() => {
+        onRun();
+        onSelect?.(id);
+      }}
       {...hover}
       data-guide-fixture="command-palette-action"
       className={cn(
@@ -269,6 +249,7 @@ function RegionMark({
           onSelect
             ? (event) => {
                 event.preventDefault();
+                event.stopPropagation();
                 onSelect(id);
               }
             : undefined
@@ -303,6 +284,7 @@ function MeasuredBadge({
   align = "center",
   flush = false,
   onActivate,
+  clipTo,
 }: {
   id: string;
   label: string;
@@ -311,6 +293,7 @@ function MeasuredBadge({
   align?: "start" | "center" | "end";
   flush?: boolean;
   onActivate?: () => void;
+  clipTo?: string;
 }) {
   const { numberOf, onSelect } = useSurfaceMap();
   const { active } = useEngagement(id);
@@ -340,6 +323,12 @@ function MeasuredBadge({
         node =
           node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
       }
+      node = element.parentElement;
+      while (node) {
+        x -= node.scrollLeft;
+        y -= node.scrollTop;
+        node = node.parentElement;
+      }
       return { x, y };
     };
     const measure = () => {
@@ -364,6 +353,15 @@ function MeasuredBadge({
         width: target.offsetWidth,
         height: target.offsetHeight,
       };
+      const clip = clipTo ? scope.querySelector<HTMLElement>(clipTo) : null;
+      if (clip) {
+        const clipOrigin = layoutOrigin(clip);
+        const left = targetOrigin.x - clipOrigin.x;
+        if (left < 0 || left + target.offsetWidth > clip.clientWidth) {
+          setPosition(null);
+          return;
+        }
+      }
       const centerY = local.top + local.height / 2 - chipBox / 2;
       const anchoredY =
         align === "start"
@@ -428,8 +426,12 @@ function MeasuredBadge({
       "[data-guide-responsive-strategy]",
     );
     if (scaleWrapper) observer.observe(scaleWrapper);
-    return () => observer.disconnect();
-  }, [anchor, at, align, flush]);
+    scope.addEventListener("scroll", measure, true);
+    return () => {
+      observer.disconnect();
+      scope.removeEventListener("scroll", measure, true);
+    };
+  }, [anchor, at, align, flush, clipTo]);
 
   return (
     <a
@@ -442,7 +444,7 @@ function MeasuredBadge({
       onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
       {...hover}
       className={cn("pointer-events-auto absolute z-50", FOCUS_RING_CLASS)}
-      style={position ?? undefined}
+      style={position ?? { visibility: "hidden" }}
     >
       <span
         aria-hidden
@@ -454,16 +456,10 @@ function MeasuredBadge({
   );
 }
 
-function MiniIcon({
-  icon,
-  className,
-}: {
-  icon: IconSvgElement;
-  className?: string;
-}) {
+function MiniIcon({ icon, className }: { icon: IconName; className?: string }) {
   return (
-    <HugeiconsIcon
-      icon={icon}
+    <Icon
+      name={icon}
       className={cn("size-4 shrink-0 text-muted-foreground", className)}
     />
   );
@@ -471,10 +467,19 @@ function MiniIcon({
 
 function PluginGlyph({ className }: { className?: string }) {
   return (
-    <HugeiconsIcon
-      icon={ElectricPlugsIcon}
+    <Icon
+      name="Plug02"
       className={cn("size-4 shrink-0 text-foreground", className)}
     />
+  );
+}
+
+function ProviderGlyph() {
+  const { renderPluginIcon } = useSurfaceMap();
+  return (
+    renderPluginIcon?.("Claude Code provider") ?? (
+      <Icon name="Code" className="size-3.5" />
+    )
   );
 }
 
@@ -515,7 +520,7 @@ const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
 ];
 
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
-  settings: () => <MiniIcon icon={Settings02Icon} className="size-4" />,
+  settings: () => <MiniIcon icon="Settings" className="size-4" />,
   "plugin-footer-items": () => (
     <span className="flex items-center gap-1.5">
       <span className="flex size-5.5 items-center justify-center rounded-md">
@@ -526,7 +531,7 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
       </span>
     </span>
   ),
-  "bug-report": () => <MiniIcon icon={Bug01Icon} className="size-4" />,
+  "bug-report": () => <MiniIcon icon="Bug" className="size-4" />,
 };
 
 const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
@@ -535,8 +540,8 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       data-guide-fixture="sidebar-top-reserve"
       className="flex h-12 items-center justify-end px-2"
     >
-      <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
-      <MiniIcon icon={ArrowRight01Icon} className="ml-1.5 size-3.5" />
+      <MiniIcon icon="ChevronLeft" className="size-3.5" />
+      <MiniIcon icon="ChevronRight" className="ml-1.5 size-3.5" />
     </div>
   ),
   "sidebar-navigation": () => (
@@ -547,14 +552,24 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
     >
       <div
         data-guide-fixture="sidebar-navigation-primary-actions"
-        className="flex items-center gap-2 px-2 py-2"
+        className="space-y-0.5 px-2 py-2"
       >
-        <span className="flex h-6.5 flex-1 items-center gap-2 rounded-md px-2 text-foreground">
-          <MiniIcon icon={PlusSignIcon} className="text-foreground" />
+        <span className="flex h-6.5 items-center gap-2 rounded-md px-2 text-foreground">
+          <MiniIcon icon="MessageSquarePlus" className="text-foreground" />
           New thread
         </span>
-        <MiniIcon icon={Search01Icon} />
-        <span className="sr-only">Search threads</span>
+        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+          <MiniIcon icon="Search" />
+          Search threads
+        </span>
+        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+          <MiniIcon icon="Plug02" />
+          Plugins
+        </span>
+        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+          <MiniIcon icon="Zap" />
+          Skills
+        </span>
       </div>
       <Mark
         id="nav-panel"
@@ -562,14 +577,6 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
         className="mx-1.5 z-[2] block space-y-0.5 px-2 pb-2"
         showChip={false}
       >
-        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon={Plug02Icon} />
-          Plugins
-        </span>
-        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon={ZapIcon} />
-          Skills
-        </span>
         <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
           <PluginGlyph />
           Your panel
@@ -618,7 +625,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
           className="flex h-6.5 items-center gap-1.5 rounded-md px-2"
         >
           <span className="min-w-0 truncate">{project}</span>
-          <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
+          <MiniIcon icon="ChevronRight" className="size-3.5" />
         </span>
       ))}
     </RegionMark>
@@ -659,13 +666,15 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
 };
 
 const MESSAGE_ACTION_RENDERERS: Record<string, () => ReactNode> = {
-  copy: () => <MiniIcon icon={Copy01Icon} className="size-3.5" />,
-  edit: () => <MiniIcon icon={PencilEdit01Icon} className="size-3.5" />,
-  "add-to-chat": () => <MiniIcon icon={PlusSignIcon} className="size-3.5" />,
-  "send-to-main-thread": () => (
-    <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
+  copy: () => <MiniIcon icon="Copy" className="size-3.5" />,
+  edit: () => <MiniIcon icon="Edit" className="size-3.5" />,
+  "add-to-chat": () => (
+    <MiniIcon icon="MessageSquarePlus" className="size-3.5" />
   ),
-  fork: () => <MiniIcon icon={GitBranchIcon} className="size-3.5" />,
+  "send-to-main-thread": () => (
+    <MiniIcon icon="ArrowTurnBackward" className="size-3.5" />
+  ),
+  fork: () => <MiniIcon icon="Fork" className="size-3.5" />,
   "plugin-actions": () => <PluginGlyph className="size-3.5" />,
 };
 
@@ -681,46 +690,47 @@ export type AppShellRightPanelTab =
   | "file-opener"
   | "code-renderers";
 
-function RightPanelTabLaneBadges({
-  onTabSelect,
-}: {
-  onTabSelect: (tab: AppShellRightPanelTab) => void;
-}) {
+function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
+  const clipTo = mobile ? '[data-guide-fixture="right-panel-tab-strip"]' : undefined;
   return (
     <>
-      <MeasuredBadge
-        id="browser-toolbar"
-        label="Plugin controls beside the Browser address bar"
-        anchor='[data-guide-region="browser-toolbar"]'
-        at="lane"
-        onActivate={() => onTabSelect("browser-toolbar")}
-      />
       <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
         anchor='[data-guide-region="code-renderers"]'
+        clipTo={clipTo}
         at="lane"
-        onActivate={() => onTabSelect("code-renderers")}
+      />
+      <MeasuredBadge
+        id="browser-toolbar"
+        label="Plugin controls beside the Browser address bar"
+        anchor='[data-guide-tab="browser-toolbar"]'
+        clipTo={clipTo}
+        at="lane"
       />
       <MeasuredBadge
         id="thread-panel"
         label="A plugin tab in the thread side panel"
         anchor='[data-guide-region="thread-panel"]'
+        clipTo={clipTo}
         at="lane"
-        onActivate={() => onTabSelect("thread-panel")}
       />
       <MeasuredBadge
         id="file-opener"
         label="A plugin file viewer or editor tab"
         anchor='[data-guide-region="file-opener"]'
+        clipTo={clipTo}
         at="lane"
-        onActivate={() => onTabSelect("file-opener")}
       />
     </>
   );
 }
 
-export function CommandPaletteWireframe() {
+export function CommandPaletteWireframe({
+  mobile = false,
+}: {
+  mobile?: boolean;
+}) {
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [releasePanelOpen, setReleasePanelOpen] = useState(false);
   const restoreTimer = useRef<number | undefined>(undefined);
@@ -741,7 +751,7 @@ export function CommandPaletteWireframe() {
     <div
       data-guide-fixture="command-palette-flow"
       data-guide-state={paletteOpen ? "palette-open" : "release-checklist-open"}
-      className="relative px-7 pb-2 pt-4"
+      className={cn("relative pb-2 pt-4", mobile ? "px-3" : "px-7")}
     >
       <WindowFrame>
         <div className="relative min-h-[500px]">
@@ -749,40 +759,47 @@ export function CommandPaletteWireframe() {
             data-guide-fixture="command-palette-thread"
             className="flex min-h-[500px] bg-background"
           >
-            <aside className="flex w-48 shrink-0 flex-col border-r border-border-seam bg-sidebar px-2.5 py-3">
-              <div className="flex items-center gap-1.5 px-1 text-foreground">
-                <TrafficLights />
-                <span className="ml-auto" />
-                <MiniIcon icon={SidebarLeftIcon} className="size-3.5" />
-              </div>
-              <div className="mt-5 flex items-center gap-2 rounded-md px-2 py-1.5 text-foreground">
-                <MiniIcon icon={PlusSignIcon} className="size-3.5" />
-                New thread
-              </div>
-              <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
-                <MiniIcon icon={Search01Icon} className="size-3.5" />
-                Search
-              </div>
-              <div className="mt-3 px-2 text-2xs font-medium uppercase tracking-wide text-subtle-foreground">
-                Threads
-              </div>
-              <div className="mt-1 rounded-md bg-state-hover px-2 py-2 text-foreground">
-                Ship release candidate
-              </div>
-              <div className="px-2 py-2">Fix flaky checkout tests</div>
-              <div className="px-2 py-2">Update onboarding copy</div>
-              <div className="mt-auto flex items-center gap-2 border-t border-border-hairline px-2 pt-3">
-                <MiniIcon icon={Settings02Icon} className="size-3.5" />
-                Settings
-              </div>
-            </aside>
+            {mobile ? null : (
+              <aside className="flex w-48 shrink-0 flex-col border-r border-border-seam bg-sidebar px-2.5 py-3">
+                <div className="flex items-center gap-1.5 px-1 text-foreground">
+                  <TrafficLights />
+                  <span className="ml-auto" />
+                  <MiniIcon icon="PanelLeft" className="size-3.5" />
+                </div>
+                <div className="mt-5 flex items-center gap-2 rounded-md px-2 py-1.5 text-foreground">
+                  <MiniIcon icon="MessageSquarePlus" className="size-3.5" />
+                  New thread
+                </div>
+                <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
+                  <MiniIcon icon="Search" className="size-3.5" />
+                  Search threads
+                </div>
+                <div className="mt-3 px-2 text-2xs font-medium uppercase tracking-wide text-subtle-foreground">
+                  Threads
+                </div>
+                <div className="mt-1 rounded-md bg-state-hover px-2 py-2 text-foreground">
+                  Ship release candidate
+                </div>
+                <div className="px-2 py-2">Fix flaky checkout tests</div>
+                <div className="px-2 py-2">Update onboarding copy</div>
+                <div className="mt-auto flex items-center gap-2 border-t border-border-hairline px-2 pt-3">
+                  <MiniIcon icon="Settings" className="size-3.5" />
+                  Settings
+                </div>
+              </aside>
+            )}
 
-            <main className="flex min-w-0 flex-1 flex-col">
+            <main
+              className={cn(
+                "min-w-0 flex-1 flex-col",
+                mobile && releasePanelOpen && !paletteOpen ? "hidden" : "flex",
+              )}
+            >
               <header className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
                 <span className="truncate text-foreground">
                   Ship release candidate
                 </span>
-                <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+                <MiniIcon icon="MoreHorizontal" className="size-3.5" />
                 <span className="flex-1" />
                 <button
                   type="button"
@@ -791,11 +808,13 @@ export function CommandPaletteWireframe() {
                   data-guide-fixture="command-palette-shortcut"
                   className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border-hairline px-2 text-subtle-foreground hover:bg-state-hover hover:text-foreground"
                 >
-                  <MiniIcon icon={Search01Icon} className="size-3.5" />
+                  <MiniIcon icon="Search" className="size-3.5" />
                   <span>Quick palette</span>
-                  <kbd className="rounded bg-surface-recessed px-1.5 py-0.5 font-mono text-2xs text-foreground">
-                    ⇧⌘P
-                  </kbd>
+                  {mobile ? null : (
+                    <kbd className="rounded bg-surface-recessed px-1.5 py-0.5 font-mono text-2xs text-foreground">
+                      ⇧⌘P
+                    </kbd>
+                  )}
                 </button>
               </header>
 
@@ -812,7 +831,7 @@ export function CommandPaletteWireframe() {
                   </p>
                   <div className="space-y-2 rounded-lg border border-border-hairline bg-surface-raised-solid p-3">
                     <div className="flex items-center gap-2 text-foreground">
-                      <MiniIcon icon={GitBranchIcon} className="size-3.5" />
+                      <MiniIcon icon="GitBranch" className="size-3.5" />
                       release/2026-08-25
                     </div>
                     <div className="h-1.5 w-4/5 rounded-sm bg-muted/60" />
@@ -829,14 +848,14 @@ export function CommandPaletteWireframe() {
             {releasePanelOpen ? (
               <aside
                 data-guide-fixture="release-checklist-panel"
-                className="flex w-60 shrink-0 flex-col border-l border-border-seam bg-sidebar"
+                className={cn(
+                  "flex shrink-0 flex-col border-l border-border-seam bg-sidebar",
+                  mobile ? "w-full" : "w-60",
+                )}
               >
                 <div className="flex h-12 items-center gap-1.5 border-b border-border-hairline px-3">
                   <span className="flex size-7 items-center justify-center rounded-md">
-                    <MiniIcon
-                      icon={InformationCircleIcon}
-                      className="size-3.5"
-                    />
+                    <MiniIcon icon="Info" className="size-3.5" />
                   </span>
                   <span
                     role="tab"
@@ -887,11 +906,16 @@ export function CommandPaletteWireframe() {
             >
               <div
                 data-guide-fixture="command-palette-dialog"
-                className="absolute left-1/2 top-[12%] grid w-full max-w-xl -translate-x-1/2 grid-cols-[minmax(0,1fr)] gap-0 overflow-visible rounded-lg border border-border bg-background shadow-sm"
+                className={cn(
+                  "absolute grid grid-cols-[minmax(0,1fr)] gap-0 overflow-visible rounded-lg border border-border bg-background shadow-sm",
+                  mobile
+                    ? "bottom-0 left-7 right-0 pb-4"
+                    : "left-1/2 top-[12%] w-full max-w-xl -translate-x-1/2",
+                )}
               >
                 <div className="flex items-center gap-2 border-b px-3 text-sm">
                   <MiniIcon
-                    icon={Search01Icon}
+                    icon="Search"
                     className="size-4 shrink-0 text-muted-foreground"
                   />
                   <input
@@ -936,58 +960,88 @@ export function CommandPaletteWireframe() {
   );
 }
 
-export function AppShellWireframe() {
-  const { expandedId } = useSurfaceMap();
+export function AppShellWireframe({
+  mobile = false,
+  mobileScene = "navigation",
+}: {
+  mobile?: boolean;
+  mobileScene?: "navigation" | "conversation" | "panel";
+}) {
   const [rightPanelTab, setRightPanelTab] =
     useState<AppShellRightPanelTab>("browser-toolbar");
+  const { expandedId } = useSurfaceMap();
 
   useEffect(() => {
     if (
       expandedId === "browser-toolbar" ||
+      expandedId === "code-renderers" ||
       expandedId === "thread-panel" ||
-      expandedId === "file-opener" ||
-      expandedId === "code-renderers"
+      expandedId === "file-opener"
     ) {
       setRightPanelTab(expandedId);
     }
   }, [expandedId]);
 
+  const scene = mobile ? mobileScene : "desktop";
+
   return (
-    <div className="relative w-full px-10 pb-0 pt-[26px]">
-      <MeasuredBadge
-        id="nav-panel"
-        label="Plugin nav panels, above the thread list"
-        anchor='[data-guide-region="nav-panel"]'
-        at="start"
-      />
-      <MeasuredBadge
-        id="sidebar-navigation"
-        label="The sidebar navigation controls, replaceable by one plugin"
-        anchor='[data-guide-region="sidebar-navigation"]'
-        at="start"
-        align="start"
-      />
-      <MeasuredBadge
-        id="thread-list"
-        label="The thread list, replaceable by one plugin"
-        anchor='[data-guide-region="thread-list"]'
-        at="start"
-      />
-      <MeasuredBadge
-        id="thread-header"
-        label="Plugin thread-header control, left end of the action row"
-        anchor='[data-guide-region="thread-header"]'
-        at="above"
-      />
-      <MeasuredBadge
-        id="content-scripts"
-        label="App-wide plugin scripts, running in the whole window"
-        anchor="[data-guide-frame]"
-        at="end"
-        align="end"
-      />
-      <RightPanelTabLaneBadges onTabSelect={setRightPanelTab} />
+    <div
+      key={scene}
+      data-guide-mobile-scene={mobile ? scene : undefined}
+      className={
+        mobile
+          ? "relative w-full px-6 pb-0 pt-[26px]"
+          : "relative w-full px-10 pb-0 pt-[26px]"
+      }
+    >
+      {scene === "desktop" || scene === "navigation" ? (
+        <>
+          <MeasuredBadge
+            id="nav-panel"
+            label="Plugin nav panels, above the thread list"
+            anchor='[data-guide-region="nav-panel"]'
+            at="start"
+          />
+          <MeasuredBadge
+            id="sidebar-navigation"
+            label="The sidebar navigation controls, replaceable by one plugin"
+            anchor='[data-guide-region="sidebar-navigation"]'
+            at="start"
+            align="start"
+          />
+          <MeasuredBadge
+            id="thread-list"
+            label="The thread list, replaceable by one plugin"
+            anchor='[data-guide-region="thread-list"]'
+            at="start"
+          />
+        </>
+      ) : null}
+      {scene === "desktop" || scene === "conversation" ? (
+        <>
+          <MeasuredBadge
+            id="thread-header"
+            label="Plugin thread-header control, left end of the action row"
+            anchor='[data-guide-region="thread-header"]'
+            at="above"
+          />
+          <MeasuredBadge
+            id="content-scripts"
+            label="App-wide plugin scripts, running in the whole window"
+            anchor="[data-guide-frame]"
+            at="end"
+            align="end"
+          />
+        </>
+      ) : null}
+      {scene === "desktop" || scene === "panel" ? (
+        <RightPanelTabLaneBadges
+          key={rightPanelTab}
+          mobile={mobile}
+        />
+      ) : null}
       <AppShellWireframeBody
+        scene={scene}
         rightPanelTab={rightPanelTab}
         onRightPanelTabSelect={setRightPanelTab}
       />
@@ -996,9 +1050,11 @@ export function AppShellWireframe() {
 }
 
 function AppShellWireframeBody({
+  scene,
   rightPanelTab,
   onRightPanelTabSelect,
 }: {
+  scene: "desktop" | "conversation" | "navigation" | "panel";
   rightPanelTab: AppShellRightPanelTab;
   onRightPanelTabSelect: (tab: AppShellRightPanelTab) => void;
 }) {
@@ -1007,8 +1063,39 @@ function AppShellWireframeBody({
   const contentScripts = useEngagement("content-scripts");
   const messageActionsSelected = expandedId === "message-actions";
   const messageActionRowVisible =
-    assistantMessageHovered || messageActionsSelected;
+    scene === "conversation" || assistantMessageHovered || messageActionsSelected;
 
+  if (scene === "navigation") {
+    return (
+      <WindowFrame className="flex min-h-[500px] bg-background">
+        <div className="flex w-[76%] flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
+          <div className="flex h-12 items-center gap-3 px-3 text-sm">
+            <MiniIcon icon="PanelLeft" />
+            Navigation
+          </div>
+          {anatomy.appSidebar
+            .filter((key) => key !== "top-reserve")
+            .map((key) => (
+              <Fragment key={key}>
+                {SIDEBAR_SECTION_RENDERERS[key]?.()}
+              </Fragment>
+            ))}
+        </div>
+      </WindowFrame>
+    );
+  }
+  if (scene === "panel") {
+    return (
+      <WindowFrame>
+        <AppShellRightPanel
+          compact
+          activeTab={rightPanelTab}
+          onTabSelect={onRightPanelTabSelect}
+        />
+      </WindowFrame>
+    );
+  }
+  const mobile = scene === "conversation";
   return (
     <WindowFrame className="relative overflow-visible">
       <span
@@ -1019,26 +1106,41 @@ function AppShellWireframeBody({
           engagedRingClass(contentScripts.outlined),
         )}
       />
-      <span
-        aria-hidden
-        data-guide-fixture="sidebar-trigger-overlay"
-        className="absolute left-2 top-2.5 z-[4] flex size-7 items-center justify-center rounded-md"
+      {mobile ? null : (
+        <span
+          aria-hidden
+          data-guide-fixture="sidebar-trigger-overlay"
+          className="absolute left-2 top-2.5 z-[4] flex size-7 items-center justify-center rounded-md"
+        >
+          <MiniIcon icon="PanelLeft" className="size-4" />
+        </span>
+      )}
+      <div
+        className={
+          mobile
+            ? "flex min-h-[500px] items-stretch"
+            : "flex min-h-[650px] items-stretch"
+        }
       >
-        <MiniIcon icon={SidebarLeftIcon} className="size-4" />
-      </span>
-      <div className="flex min-h-[650px] items-stretch">
-        <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
-          {anatomy.appSidebar.map((key) => (
-            <Fragment key={key}>{SIDEBAR_SECTION_RENDERERS[key]?.()}</Fragment>
-          ))}
-        </div>
+        {mobile ? null : (
+          <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
+            {anatomy.appSidebar.map((key) => (
+              <Fragment key={key}>
+                {SIDEBAR_SECTION_RENDERERS[key]?.()}
+              </Fragment>
+            ))}
+          </div>
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
+            {mobile ? (
+              <MiniIcon icon="PanelLeft" className="size-5" />
+            ) : null}
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
-            <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+            <MiniIcon icon="MoreHorizontal" className="size-3.5" />
             <span className="flex-1" />
             <Mark
               id="thread-header"
@@ -1048,11 +1150,18 @@ function AppShellWireframeBody({
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
+            {mobile ? (
+              <MiniIcon icon="PanelRight" className="size-5" />
+            ) : null}
           </div>
 
           <div
             data-guide-fixture="app-window-timeline"
-            className="min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
+            className={
+              mobile
+                ? "flex-1 space-y-7 overflow-hidden px-4 py-6 text-sm leading-relaxed"
+                : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
+            }
           >
             <div className="flex justify-end">
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
@@ -1115,7 +1224,7 @@ function AppShellWireframeBody({
                     className="inline-flex items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 text-2xs text-foreground shadow-md"
                   >
                     <span className="flex items-center gap-1 rounded px-1.5 py-0.5">
-                      <MiniIcon icon={MessageAdd01Icon} className="size-3.5" />
+                      <MiniIcon icon="MessageSquarePlus" className="size-3.5" />
                       Add to chat
                     </span>
                     <span className="mx-0.5 h-4 w-px bg-border" />
@@ -1187,16 +1296,21 @@ function AppShellWireframeBody({
           </div>
         </div>
 
-        <AppShellRightPanel
-          activeTab={rightPanelTab}
-          onTabSelect={onRightPanelTabSelect}
-        />
+        {mobile ? null : (
+          <AppShellRightPanel
+            activeTab={rightPanelTab}
+            onTabSelect={onRightPanelTabSelect}
+          />
+        )}
       </div>
 
       <Mark
         id="app-overlay"
         label="App-wide floating plugin interface"
-        className="absolute bottom-24 right-12 z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md"
+        className={cn(
+          "z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md",
+          mobile ? "relative ml-auto mr-4 mb-4" : "absolute bottom-24 right-12",
+        )}
       >
         <PluginGlyph className="size-4 shrink-0" />
         <span className="min-w-0">
@@ -1211,12 +1325,32 @@ function AppShellWireframeBody({
 }
 
 export function AppShellRightPanel({
+  compact = false,
   activeTab,
   onTabSelect,
 }: {
+  compact?: boolean;
   activeTab: AppShellRightPanelTab;
   onTabSelect: (tab: AppShellRightPanelTab) => void;
 }) {
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  useBrowserLayoutEffect(() => {
+    if (!compact) return;
+    const strip = tabStripRef.current;
+    const label = strip?.querySelector<HTMLElement>(
+      `[data-guide-tab="${activeTab}"]`,
+    );
+    const tab = label?.closest<HTMLElement>("a, button");
+    if (!strip || !tab) return;
+    const stripBounds = strip.getBoundingClientRect();
+    const tabBounds = tab.getBoundingClientRect();
+    if (tabBounds.left < stripBounds.left) {
+      strip.scrollLeft += tabBounds.left - stripBounds.left - 12;
+    } else if (tabBounds.right > stripBounds.right) {
+      strip.scrollLeft += tabBounds.right - stripBounds.right + 12;
+    }
+  }, [activeTab, compact]);
+
   const tabClass = (tab: AppShellRightPanelTab) =>
     cn(
       "flex h-7 shrink-0 items-center rounded-md",
@@ -1224,10 +1358,21 @@ export function AppShellRightPanel({
     );
 
   return (
-    <div className="flex w-[380px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
+    <div
+      className={cn(
+        "flex shrink-0 flex-col bg-sidebar",
+        compact
+          ? "min-h-[360px] w-full"
+          : "w-[380px] border-l border-border-seam",
+      )}
+    >
       <div
+        ref={tabStripRef}
         data-guide-fixture="right-panel-tab-strip"
-        className="flex h-12 items-center gap-1.5 border-b border-border-hairline px-3"
+        className={cn(
+          "flex h-12 items-center gap-1.5 border-b border-border-hairline px-3",
+          compact && "overflow-x-auto",
+        )}
       >
         <span
           data-guide-fixture="right-panel-fixed-tabs"
@@ -1237,7 +1382,7 @@ export function AppShellRightPanel({
             data-guide-tab="info"
             className="flex h-6 items-center rounded-md px-1.5"
           >
-            <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
+            <MiniIcon icon="Info" className="size-3.5" />
           </span>
           <Mark
             id="code-renderers"
@@ -1250,26 +1395,30 @@ export function AppShellRightPanel({
             onActivate={() => onTabSelect("code-renderers")}
           >
             <span data-guide-tab="code-renderers" className="contents">
-              <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+              <MiniIcon icon="FileDiff" className="size-3.5" />
               <span className="text-foreground">Diff</span>
             </span>
           </Mark>
         </span>
         <span
           data-guide-fixture="right-panel-content-tabs"
-          className="flex min-w-0 items-center gap-1.5"
+          className={cn(
+            "flex items-center gap-1.5",
+            compact ? "shrink-0" : "min-w-0",
+          )}
         >
-          <button
-            type="button"
-            data-guide-tab="browser-toolbar"
+          <Mark
+            id="browser-toolbar"
+            label="Plugin controls beside the Browser address bar"
             className={cn(
               tabClass("browser-toolbar"),
               "gap-1.5 whitespace-nowrap px-2 text-foreground",
             )}
-            onClick={() => onTabSelect("browser-toolbar")}
+            showChip={false}
+            onActivate={() => onTabSelect("browser-toolbar")}
           >
-            Browser
-          </button>
+            <span data-guide-tab="browser-toolbar">Browser</span>
+          </Mark>
           <Mark
             id="thread-panel"
             label="A plugin tab in the thread side panel"
@@ -1296,20 +1445,26 @@ export function AppShellRightPanel({
             onActivate={() => onTabSelect("file-opener")}
           >
             <span data-guide-tab="file-opener" className="contents">
-              <MiniIcon icon={File01Icon} className="size-3.5" />
+              <MiniIcon icon="FileText" className="size-3.5" />
               <span className="text-foreground">retry-notes.md</span>
             </span>
           </Mark>
         </span>
         <span className="flex-1" />
-        <MiniIcon icon={PlusSignIcon} className="size-3.5" />
-        <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
+        <MiniIcon icon="Plus" className="size-3.5" />
+        <MiniIcon icon="PanelRight" className="size-3.5" />
       </div>
-      <div data-guide-tab-body={activeTab} className="min-h-0 flex-1 p-4">
+      <div
+        data-guide-tab-body={activeTab}
+        className={cn(
+          "min-h-0 flex-1 p-4",
+          compact && "text-sm leading-relaxed",
+        )}
+      >
         {activeTab === "browser-toolbar" ? (
           <div data-guide-fixture="browser-toolbar" className="space-y-4">
             <div className="flex items-center gap-2 border-b border-border-hairline pb-3">
-              <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
+              <MiniIcon icon="ChevronLeft" className="size-3.5" />
               <div className="min-w-0 flex-1 truncate rounded-md bg-surface-recessed px-2 py-1.5 text-subtle-foreground">
                 https://example.com
               </div>
@@ -1344,7 +1499,7 @@ export function AppShellRightPanel({
         ) : activeTab === "file-opener" ? (
           <div data-guide-fixture="file-viewer" className="space-y-3">
             <div className="flex items-center gap-1.5 text-xs text-subtle-foreground">
-              <MiniIcon icon={File01Icon} className="size-3.5" />
+              <MiniIcon icon="FileText" className="size-3.5" />
               <span>docs</span>
               <span>/</span>
               <span className="text-foreground">retry-notes.md</span>
@@ -1371,7 +1526,7 @@ export function AppShellRightPanel({
         ) : (
           <div data-guide-fixture="diff-renderer" className="space-y-3">
             <div className="flex items-center gap-1.5 text-foreground">
-              <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+              <MiniIcon icon="FileDiff" className="size-3.5" />
               <span className="font-medium">tests/checkout.test.ts</span>
               <span className="ml-auto flex items-center gap-1 rounded bg-surface-recessed px-1.5 py-1 text-2xs text-subtle-foreground">
                 <PluginGlyph className="size-3" />
@@ -1415,11 +1570,15 @@ export function AppShellRightPanel({
   );
 }
 
-export function RealComposerAnnotated() {
+export function RealComposerAnnotated({
+  mobile = false,
+}: {
+  mobile?: boolean;
+}) {
   const banners = useEngagement("composer-banners");
   const mention = useEngagement("mention-provider");
   return (
-    <div className="relative px-7 pb-2 pt-4">
+    <div className={cn("relative pb-2 pt-4", mobile ? "px-3" : "px-7")}>
       <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
         <div
           data-guide-annotation-layer="composer-controls"
@@ -1435,13 +1594,13 @@ export function RealComposerAnnotated() {
             id="composer-state"
             label="The draft prompt a plugin can read and lock"
             anchor='[data-guide-target="composer-state"]'
-            at="start"
+            at="above"
           />
           <MeasuredBadge
             id="composer-plus-menu"
             label="Plugin rows in the composer's + menu"
             anchor='[data-guide-target="composer-plus-menu"]'
-            at="start"
+            at="above"
           />
           <MeasuredBadge
             id="provider-picker"
@@ -1465,7 +1624,7 @@ export function RealComposerAnnotated() {
               <span className="truncate text-foreground">
                 Ship the release notes
               </span>
-              <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+              <MiniIcon icon="MoreHorizontal" className="size-3.5" />
               <span className="flex-1" />
             </div>
             <div
@@ -1484,8 +1643,11 @@ export function RealComposerAnnotated() {
             </div>
 
             <div className="px-4 pb-4">
-              <div
-                data-guide-target="composer-banners"
+              <Mark
+                id="composer-banners"
+                label="Plugin composer banners, above the prompt box"
+                showChip={false}
+                target
                 className={cn(
                   "relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
                   engagedRingClass(banners.outlined),
@@ -1512,9 +1674,9 @@ export function RealComposerAnnotated() {
                 ) : null}
                 <PluginGlyph className="size-3.5" />
                 <span className="text-foreground">Your banner</span>
-              </div>
+              </Mark>
 
-              <StaticEmbeddedComposer />
+              <StaticEmbeddedComposer mobile={mobile} />
             </div>
           </div>
         </WindowFrame>
@@ -1523,14 +1685,14 @@ export function RealComposerAnnotated() {
   );
 }
 
-function StaticEmbeddedComposer() {
+function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const draft = useEngagement("composer-state");
   const plus = useEngagement("composer-plus-menu");
   const picker = useEngagement("provider-picker");
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className="relative flex h-[126px] flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-3 shadow-lift">
+      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-36")}>
         {plus.outlined ? (
           <div
             aria-hidden
@@ -1538,11 +1700,11 @@ function StaticEmbeddedComposer() {
             className="pointer-events-none absolute bottom-full left-2 z-20 mb-1 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
           >
             <span className="flex h-6 items-center gap-1.5 px-1.5">
-              <MiniIcon icon={File01Icon} className="size-3.5" />
+              <MiniIcon icon="Paperclip" className="size-3.5" />
               Attach files
             </span>
             <span className="flex h-6 items-center gap-1.5 px-1.5">
-              <MiniIcon icon={ToolboxIcon} className="size-3.5" />
+              <MiniIcon icon="Zap" className="size-3.5" />
               Skills
             </span>
             <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
@@ -1553,15 +1715,21 @@ function StaticEmbeddedComposer() {
         ) : null}
 
         <div
-          data-guide-target="composer-state"
           className={cn(
-            "mx-2 flex h-7 items-center rounded-md text-sm leading-none text-foreground",
+            "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
+            mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
             engagedRingClass(draft.outlined),
           )}
         >
-          <span aria-hidden className="whitespace-pre">
+          <Mark
+            id="composer-state"
+            label="The draft prompt a plugin can read and lock"
+            showChip={false}
+            target
+            className="whitespace-pre"
+          >
             Summarize{" "}
-          </span>
+          </Mark>
           <RegionMark
             id="mention-provider"
             label="Plugin mention results in the @ typeahead"
@@ -1591,45 +1759,58 @@ function StaticEmbeddedComposer() {
         </div>
 
         <div className="mt-auto flex h-10 items-center gap-1">
-          <span
-            data-guide-target="composer-plus-menu"
+          <Mark
+            id="composer-plus-menu"
+            label="Plugin rows in the composer's + menu"
+            showChip={false}
+            target
             className={cn(
               "flex size-10 items-center justify-center rounded-md",
               engagedRingClass(plus.outlined),
             )}
           >
-            <MiniIcon icon={PlusSignIcon} className="size-4" />
-          </span>
-          <span
-            data-guide-target="provider-picker"
+            <MiniIcon icon="Plus" className="size-4" />
+          </Mark>
+          <Mark
+            id="provider-picker"
+            label="Your agent provider and its mark, in the model picker"
+            showChip={false}
+            target
             className={cn(
               "flex h-10 items-center gap-1.5 rounded-md px-2 text-foreground",
               engagedRingClass(picker.outlined),
             )}
           >
-            <MiniIcon icon={SparklesIcon} className="size-3.5" />
-            Fable 5<span className="text-subtle-foreground">High</span>
-          </span>
+            <ProviderGlyph />
+            Fable 5
+            {mobile ? null : (
+              <span className="text-subtle-foreground">High</span>
+            )}
+          </Mark>
           <span className="flex-1" />
-          <span
-            data-guide-target="composer-actions"
-            data-guide-fixture="plugin-composer-action"
+          <Mark
+            id="composer-actions"
+            label="Plugin composer actions, before voice and send"
+            showChip={false}
+            target
             className={cn(
               "flex size-9 items-center justify-center rounded-md bg-state-hover",
               engagedRingClass(actions.outlined),
             )}
           >
-            <PluginGlyph className="size-3.5" />
-          </span>
+            <span data-guide-fixture="plugin-composer-action">
+              <PluginGlyph className="size-3.5" />
+            </span>
+          </Mark>
           <span className="flex size-9 items-center justify-center">
-            <MiniIcon icon={Mic01Icon} className="size-4" />
+            <MiniIcon icon="Mic" className="size-4" />
           </span>
           <span
             data-guide-icon="CornerDownLeft"
             className="flex size-9 items-center justify-center rounded-md bg-foreground"
           >
             <MiniIcon
-              icon={ArrowMoveDownLeftIcon}
+              icon="CornerDownLeft"
               className="size-3.5 text-background"
             />
           </span>
@@ -1637,7 +1818,7 @@ function StaticEmbeddedComposer() {
       </div>
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">
-          <MiniIcon icon={Folder01Icon} className="size-3.5" />
+          <MiniIcon icon="Folder" className="size-3.5" />
           acme-app · worktree
         </span>
         <span>Full Access</span>
@@ -1646,7 +1827,71 @@ function StaticEmbeddedComposer() {
   );
 }
 
-export function ComposeScreenWireframe() {
+export function ComposeScreenWireframe({
+  mobile = false,
+  panel = false,
+}: {
+  mobile?: boolean;
+  panel?: boolean;
+}) {
+  if (mobile) {
+    return (
+      <div className="px-3 pt-4">
+        <WindowFrame>
+          <div className="flex h-12 items-center gap-3 border-b border-border-seam px-3 text-sm">
+            <MiniIcon icon="PanelLeft" className="size-5" />
+            <span className="min-w-0 flex-1">New thread</span>
+            <MiniIcon icon="PanelRight" className="size-5" />
+          </div>
+          {panel ? (
+            <div
+              data-guide-mobile-scene="panel"
+              className="min-h-[450px] space-y-3 p-4 text-sm"
+            >
+              <div className="text-subtle-foreground">Actions</div>
+              <div className="flex items-center gap-2 py-2">
+                <MiniIcon icon="Globe" />
+                Open browser
+              </div>
+              <div className="flex items-center gap-2 py-2">
+                <MiniIcon icon="Terminal" />
+                Start terminal
+              </div>
+              <Mark
+                id="new-thread-panel"
+                label="A plugin action in the new-thread panel launcher"
+                className="flex items-center gap-2 px-3 py-3"
+              >
+                <PluginGlyph />
+                Your action
+              </Mark>
+            </div>
+          ) : (
+            <div className="flex min-h-[450px] flex-col justify-end gap-4 p-4 text-sm leading-relaxed">
+              <div className="text-xs text-subtle-foreground">
+                Recent threads
+              </div>
+              <div>Fix flaky checkout tests</div>
+              <Mark
+                id="homepage-section"
+                label="A plugin homepage section, in the home content above the mobile composer"
+                className="block border border-border-seam p-3"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <PluginGlyph />
+                  Your section
+                </span>
+                <span className="mt-3 block">
+                  Release 1.4 · Bug triage · Design QA
+                </span>
+              </Mark>
+              <MockHomeComposer />
+            </div>
+          )}
+        </WindowFrame>
+      </div>
+    );
+  }
   return (
     <div className="relative px-7 pb-2 pt-4">
       <MeasuredBadge
@@ -1695,11 +1940,11 @@ export function ComposeScreenWireframe() {
                 Actions
               </span>
               <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-                <MiniIcon icon={Search01Icon} className="size-3.5" />
+                <MiniIcon icon="Globe" className="size-3.5" />
                 Open browser
               </span>
               <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-                <MiniIcon icon={TerminalIcon} className="size-3.5" />
+                <MiniIcon icon="Terminal" className="size-3.5" />
                 Start terminal
               </span>
               <Mark
@@ -1719,20 +1964,28 @@ export function ComposeScreenWireframe() {
   );
 }
 
-export function SettingsWireframe() {
+export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
   return (
     <WindowFrame>
       <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2.5">
-        <TrafficLights />
+        {mobile ? (
+          <MiniIcon icon="PanelLeft" className="size-5" />
+        ) : (
+          <TrafficLights />
+        )}
         <span className="pl-1 font-medium text-foreground">Settings</span>
       </div>
 
       <div className="mx-auto min-h-[470px] w-full max-w-[520px] space-y-4 px-4 pb-5 pt-4">
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <MiniIcon icon="ChevronLeft" className="size-3.5" />
+          Plugin details
+        </span>
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center">
             <PluginGlyph className="size-5" />
           </span>
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-foreground">
               Hello
             </span>
@@ -1740,6 +1993,12 @@ export function SettingsWireframe() {
               A friendly example plugin.
             </span>
           </span>
+          <Switch
+            checked
+            aria-hidden
+            tabIndex={-1}
+            className="pointer-events-none"
+          />
         </div>
 
         <div className="space-y-2">
@@ -1749,7 +2008,12 @@ export function SettingsWireframe() {
             label="The form bb generates from the fields you declare"
             className="block bg-surface-recessed-solid p-3"
           >
-            <span className="flex items-start justify-between gap-3 py-1.5">
+            <span
+              className={cn(
+                "flex items-start justify-between gap-3 py-1.5",
+                mobile && "flex-wrap",
+              )}
+            >
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5 text-foreground">
                   API key
@@ -1765,10 +2029,15 @@ export function SettingsWireframe() {
                 aria-hidden
                 className="flex h-6 w-32 shrink-0 items-center rounded-md border border-border bg-card px-2 text-xs text-subtle-foreground"
               >
-                ••••••••
+                [set]
               </span>
             </span>
-            <span className="flex items-start justify-between gap-3 py-1.5">
+            <span
+              className={cn(
+                "flex items-start justify-between gap-3 py-1.5",
+                mobile && "flex-wrap",
+              )}
+            >
               <span className="min-w-0">
                 <span className="block text-foreground">
                   Case-sensitive search
@@ -1777,14 +2046,19 @@ export function SettingsWireframe() {
                   Match capitalisation when looking things up.
                 </span>
               </span>
-              <span
+              <Switch
+                checked
                 aria-hidden
-                className="mt-0.5 flex h-4.5 w-8 shrink-0 items-center rounded-full bg-foreground/60 p-0.5"
-              >
-                <span className="ml-auto size-3.5 rounded-full bg-background" />
-              </span>
+                tabIndex={-1}
+                className="pointer-events-none mt-0.5"
+              />
             </span>
-            <span className="flex items-start justify-between gap-3 py-1.5">
+            <span
+              className={cn(
+                "flex items-start justify-between gap-3 py-1.5",
+                mobile && "flex-wrap",
+              )}
+            >
               <span className="min-w-0">
                 <span className="block text-foreground">Retry attempts</span>
                 <span className="block pt-1 leading-relaxed">
@@ -1825,7 +2099,7 @@ export function SettingsWireframe() {
               aria-hidden
               className="block space-y-2 rounded-md border border-border bg-card p-2.5"
             >
-              <span className="flex items-center justify-between">
+              <span className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-foreground">Connected as @acme-bot</span>
                 <span className="flex h-5.5 items-center rounded-md border border-border px-2 text-foreground">
                   Test connection
@@ -1835,50 +2109,40 @@ export function SettingsWireframe() {
             </span>
           </Mark>
         </div>
-
-        <div className="space-y-2 border-t border-border-hairline pt-4">
-          <span className="block text-subtle-foreground">Plugin details</span>
-          <span className="flex items-center gap-1 leading-relaxed">
-            Release, capabilities, and health live on
-            <span className="text-foreground underline underline-offset-2">
-              its plugin page
-            </span>
-            <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
-          </span>
-        </div>
       </div>
     </WindowFrame>
   );
 }
 
-export function ExtensionsPluginPageWireframe() {
+export function ExtensionsPluginPageWireframe({
+  mobile = false,
+}: {
+  mobile?: boolean;
+}) {
   return (
     <WindowFrame>
       <div className="flex h-10 items-center gap-2 border-b border-border-hairline px-3 text-sm">
-        <TrafficLights />
+        {mobile ? (
+          <MiniIcon icon="PanelLeft" className="size-5" />
+        ) : (
+          <TrafficLights />
+        )}
         <span className="text-foreground">Plugins</span>
       </div>
       <div className="flex min-h-[470px] flex-col">
         <Mark
           id="plugin-status"
           label="The needs-configuration banner bb shows for a plugin that reports it"
-          className="flex items-start gap-2 border-b border-border bg-surface-recessed/55 px-5 py-2.5 text-sm"
+          className="flex items-center gap-2 border-b border-border bg-surface-recessed/55 px-5 py-1.5 text-xs"
           chip="corner-inset"
         >
-          <MiniIcon
-            icon={Settings02Icon}
-            className="mt-0.5 size-4 text-warning"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium text-foreground">
-              Needs configuration
-            </span>
-            <span className="block pt-0.5 text-xs leading-relaxed text-muted-foreground">
-              Set an API key in Settings. Reloads when you save.
-            </span>
+          <MiniIcon icon="Settings" className="size-3.5 text-warning" />
+          <span className="min-w-0 flex-1 font-medium text-foreground">
+            Needs configuration
           </span>
-          <span className="flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-xs text-foreground">
-            Reload
+          <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-md px-2.5 text-xs font-normal text-muted-foreground">
+            Open settings
+            <MiniIcon icon="ChevronRight" className="size-3" />
           </span>
         </Mark>
 
@@ -1890,33 +2154,40 @@ export function ExtensionsPluginPageWireframe() {
               BB Official
             </span>
             <span className="flex-1" />
-            <span
+            <MiniIcon icon="Settings" className="size-3.5" />
+            <Switch
+              checked
               aria-hidden
-              className="flex h-4.5 w-8 items-center rounded-full bg-foreground/60 p-0.5"
-            >
-              <span className="ml-auto size-3.5 rounded-full bg-background" />
-            </span>
-            <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+              tabIndex={-1}
+              className="pointer-events-none"
+            />
+            <MiniIcon icon="MoreHorizontal" className="size-3.5" />
           </div>
           <span className="block font-mono text-xs text-subtle-foreground">
             ~/.bb/plugins/hello
           </span>
 
           <div className="space-y-1.5 border-t border-border-hairline pt-3">
-            <span className="block text-subtle-foreground">About</span>
             <span className="block text-foreground">
               A friendly example plugin.
             </span>
           </div>
 
           <div className="space-y-1.5 border-t border-border-hairline pt-3">
-            <span className="block text-subtle-foreground">Configuration</span>
-            <span className="flex items-center gap-1 leading-relaxed">
-              Configure it on
-              <span className="text-foreground underline underline-offset-2">
-                its Settings page
-              </span>
-              <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
+            <span className="block text-subtle-foreground">Details</span>
+            <span className="block divide-y divide-border-hairline rounded-md border border-border-hairline">
+              {[
+                ["Delivery", "Updates with bb"],
+                ["Version", "0.1.0"],
+              ].map(([label, value]) => (
+                <span
+                  key={label}
+                  className="flex items-center gap-3 px-2.5 py-1.5"
+                >
+                  <span className="w-24 shrink-0 text-foreground">{label}</span>
+                  <span>{value}</span>
+                </span>
+              ))}
             </span>
           </div>
 
@@ -1956,22 +2227,25 @@ function MockHomeComposer() {
         <div aria-hidden className="h-10" />
         <div className="flex items-center gap-2 px-0.5" aria-hidden>
           <span className="flex size-6 items-center justify-center rounded-md border border-border">
-            <MiniIcon icon={PlusSignIcon} className="size-3.5" />
+            <MiniIcon icon="Plus" className="size-3.5" />
           </span>
           <span className="flex h-6 items-center gap-1.5 rounded-md px-1.5 text-foreground">
-            <MiniIcon icon={SparklesIcon} className="size-3.5" />
+            <ProviderGlyph />
             Fable 5 · High
           </span>
           <span className="flex-1" />
-          <MiniIcon icon={Mic01Icon} className="size-3.5" />
+          <MiniIcon icon="Mic" className="size-3.5" />
           <span className="flex size-6 items-center justify-center rounded-md bg-foreground">
-            <MiniIcon icon={ArrowUp01Icon} className="size-3 text-background" />
+            <MiniIcon
+              icon="CornerDownLeft"
+              className="size-3.5 text-background"
+            />
           </span>
         </div>
       </div>
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">
-          <MiniIcon icon={Folder01Icon} className="size-3.5" />
+          <MiniIcon icon="Folder" className="size-3.5" />
           acme-app
           <span className="text-subtle-foreground">· worktree</span>
         </span>

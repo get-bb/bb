@@ -277,6 +277,12 @@ function finalizePendingMessageForInterruptedTurn(
         message.lifecycle = "interrupted";
       }
       return;
+    case "plugin-form-lifecycle":
+      if (message.status === "pending") {
+        message.status = "interrupted";
+        message.lifecycle = "cancelled";
+      }
+      return;
     case "assistant-text":
     case "delegation":
     case "error":

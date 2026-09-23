@@ -11,6 +11,7 @@ import { createDeferredPromise } from "@bb/test-helpers";
 import { makeThreadQueuedMessage as makeThreadQueuedMessageFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { subscribeComposerSubmitted } from "@/lib/composer-submissions";
 import { wsManager } from "@/lib/ws";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -315,6 +316,36 @@ describe("thread runtime mutations", () => {
       });
     },
   );
+
+  it("notifies composer submission only after the server accepts a message", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useSendThreadMessage(), { wrapper });
+    const submitted = vi.fn();
+    const dispose = subscribeComposerSubmitted(
+      { kind: "thread", threadId: "thread-1" },
+      submitted,
+    );
+    const request = {
+      id: "thread-1",
+      mode: "auto" as const,
+      input: [{ type: "text" as const, text: "Run this", mentions: [] }],
+    };
+    try {
+      vi.mocked(sdk.threads.send).mockRejectedValueOnce(new Error("offline"));
+      await act(async () => {
+        await expect(result.current.mutateAsync(request)).rejects.toThrow(
+          "offline",
+        );
+      });
+      expect(submitted).not.toHaveBeenCalled();
+      await act(async () => {
+        await result.current.mutateAsync(request);
+      });
+      expect(submitted).toHaveBeenCalledOnce();
+    } finally {
+      dispose();
+    }
+  });
 
   it("forwards execution input sources when sending a thread message", async () => {
     const { wrapper } = createQueryClientTestHarness();

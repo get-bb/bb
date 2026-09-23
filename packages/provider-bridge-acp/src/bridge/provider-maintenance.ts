@@ -20,6 +20,7 @@ import {
   resolveExecutablePath,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
+import { readOpenCodeGoUsage } from "./opencode-usage.js";
 
 const execFileAsync = promisify(execFile);
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
@@ -375,15 +376,21 @@ function fetchDashboard(
 export async function getAcpProviderUsage(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  dialectId: string;
+  env: NodeJS.ProcessEnv;
 }): Promise<ProviderUsageResult> {
-  if (args.maintenance === undefined) return { supported: false };
+  const readUsage =
+    args.dialectId === "opencode"
+      ? () => readOpenCodeGoUsage(args.env)
+      : args.maintenance?.readUsage;
+  if (readUsage === undefined) return { supported: false };
   if (
     args.command === null ||
     (await resolveExecutablePath(args.command)) === null
   ) {
     return { supported: true, usage: { status: "not_installed" } };
   }
-  return args.maintenance.readUsage();
+  return readUsage();
 }
 
 export const CURSOR_ACP_MAINTENANCE: AcpMaintenanceDialect = {
