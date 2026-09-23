@@ -24,6 +24,7 @@ import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import { sdk } from "@/lib/sdk";
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -253,7 +254,7 @@ describe("PluginPendingInteractionComposer", () => {
     ).toBe("true");
   });
 
-  it("selects a pi option with its displayed number key", () => {
+  it("submits a numbered pi selection through the shared question form", async () => {
     setPluginSlotRegistrations(
       "provider-pi",
       registrations(piApp.pendingInteractions),
@@ -263,6 +264,9 @@ describe("PluginPendingInteractionComposer", () => {
       method: "select" as const,
       options: ["Allow once", "Deny"],
     };
+    const respond = vi
+      .spyOn(sdk.threads.interactions, "respond")
+      .mockRejectedValue(new Error("test response"));
     renderComposer(
       <PluginPendingInteractionComposer
         interaction={{
@@ -285,9 +289,16 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.getByText("2", { selector: "kbd" })).toBeDefined();
     fireEvent.keyDown(window, { key: "2" });
     expect(
-      (screen.getByRole("radio", { name: "Deny" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+      screen.getByRole("button", { name: "Deny" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+    await vi.waitFor(() =>
+      expect(respond).toHaveBeenCalledWith({
+        interactionId: "pint_provider",
+        threadId: "thr_test",
+        value: "Deny",
+      }),
+    );
   });
 
   it("mounts only the renderer registered by the interaction's plugin", () => {
