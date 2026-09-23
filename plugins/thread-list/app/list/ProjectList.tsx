@@ -716,6 +716,7 @@ function ProjectModeSections({
       id: "threads",
       title: "Threads",
       threads: personalThreads,
+      loaded: status === "ready",
       onNewThread: () => onCreateProjectThread(PERSONAL_PROJECT_ID),
       renderContent: (close: () => void) => (
         <ProjectThreadTree
@@ -746,6 +747,7 @@ function ProjectModeSections({
         id,
         title: row.project.name,
         threads: getProjectThreadItemDescendants(items),
+        loaded: row.threadListState.status === "ready",
         onNewThread: () => onCreateProjectThread(row.project.id),
         renderContent: (close: () => void) => (
           <ProjectThreadTree
@@ -1182,6 +1184,7 @@ export function MachineModeSections({
       id: "threads",
       title: "Threads",
       threads: nonPinnedThreads,
+      loaded: allThreadsListState.status === "ready",
       onNewThread: onCreateThread,
       renderContent: (close: () => void) => (
         <ProjectThreadTree
@@ -1209,6 +1212,7 @@ export function MachineModeSections({
         id,
         title: section.label,
         threads: getProjectThreadItemDescendants(items),
+        loaded: true,
         renderContent: (close: () => void) => (
           <ProjectThreadTree
             rootItems={items}

@@ -2121,6 +2121,7 @@ export const ChronologicalSectionThreadSections = memo(
         id: "threads",
         title: "Threads",
         threads: looseThreads,
+        loaded: threadListState.status === "ready",
         onNewThread: onCreateThread,
         renderContent: (close: () => void) => (
           <ProjectThreadTree
@@ -2148,29 +2149,31 @@ export const ChronologicalSectionThreadSections = memo(
         id: buildSidebarEntitySectionId("section", item.group.id),
         title: item.group.name,
         threads: getProjectThreadItemDescendants(item.group.items),
+        loaded: threadListState.status === "ready",
         onNewThread: onCreateThreadInSection
           ? () => onCreateThreadInSection(item.group.id)
           : undefined,
-        renderContent: (close: () => void) => (
-          <ProjectThreadTree
-            rootItems={item.group.items}
-            threadListState={{
-              status: "ready",
-              threads: getProjectThreadItemDescendants(item.group.items),
-            }}
-            compareThreads={compareThreads}
-            variant="section"
-            selectedThreadId={selectedThreadId}
-            collapsedThreadIds={collapsedThreadIds}
-            collapsedEnvironmentIds={collapsedEnvironmentIds}
-            onProjectSelect={() => {
-              close();
-              onProjectSelect?.();
-            }}
-            onToggleThreadCollapsed={onToggleThreadCollapsed}
-            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-          />
-        ),
+        renderContent: (close: () => void) =>
+          threadListState.status !== "ready" ? null : (
+            <ProjectThreadTree
+              rootItems={item.group.items}
+              threadListState={{
+                status: "ready",
+                threads: getProjectThreadItemDescendants(item.group.items),
+              }}
+              compareThreads={compareThreads}
+              variant="section"
+              selectedThreadId={selectedThreadId}
+              collapsedThreadIds={collapsedThreadIds}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              onProjectSelect={() => {
+                close();
+                onProjectSelect?.();
+              }}
+              onToggleThreadCollapsed={onToggleThreadCollapsed}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            />
+          ),
       })),
     ];
     const orderedSections = (

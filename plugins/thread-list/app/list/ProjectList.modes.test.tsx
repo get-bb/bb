@@ -145,9 +145,11 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
 function MachineModeProbe({
   threads = [],
   selectedThreadId,
+  status = "ready",
 }: {
   threads?: ThreadListEntry[];
   selectedThreadId?: string;
+  status?: "loading" | "ready" | "unavailable";
 }) {
   const [collapsedSectionIds, setCollapsedSectionIds] = useAtom(
     collapsedSidebarSectionIdsAtom,
@@ -170,7 +172,7 @@ function MachineModeProbe({
         threads={threads}
         draftThreadIds={new Set()}
         effectivePinnedThreadIds={new Set()}
-        status="ready"
+        status={status}
         showPinnedSection={false}
         pinnedSection={{ label: "Pinned", content: null }}
         pinnedReorderPending={false}
@@ -209,10 +211,12 @@ function renderMachineMode(
     hosts = {},
     sdk,
     selectedThreadId,
+    status,
   }: {
     hosts?: Record<string, string>;
     sdk?: PluginSdkTestFakes;
     selectedThreadId?: string;
+    status?: "loading" | "ready" | "unavailable";
   } = {},
 ) {
   return renderSlot(
@@ -223,6 +227,7 @@ function renderMachineMode(
         <MachineModeProbe
           threads={threads}
           selectedThreadId={selectedThreadId}
+          status={status}
         />
       ),
     },
@@ -383,6 +388,26 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows a hidden section's loading state instead of New thread", async () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["threads", "pinned"]);
+    store.set(sidebarHiddenGroupsAtom, ["threads"]);
+
+    renderMachineMode(store, [], { status: "loading" });
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More machines" }), {
+      key: "Enter",
+    });
+    fireEvent.keyDown(
+      await screen.findByRole("menuitem", { name: /Threads/ }),
+      { key: "ArrowRight" },
+    );
+    expect(
+      await screen.findByRole("button", { name: "Add to list" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New thread" })).toBeNull();
   });
 
   it("marks More and the hidden section as the breadcrumb to the selected thread", async () => {
