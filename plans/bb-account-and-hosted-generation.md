@@ -548,6 +548,10 @@ New server route: `POST /system/ai-services/test`.
 A small builtin plugin, enabled by default.
 
 - It registers `{id: "bb", displayName: "bb cloud", complete, status}`.
+- bb cloud is opt-in: off until the user turns it on in Settings → bb cloud AI
+  or with `bb ai on`. While off, `status()` says how to turn it on, so
+  Automatic skips it, and `complete` sends nothing. A Connect pairing adopted
+  on upgrade does not turn it on.
 - `complete` calls `bb-account.v1.fetch POST /api/ai/v1/complete` and returns
   `text`. A gateway error becomes a rejected promise.
 - `status()` reports "Sign in to your bb account" when signed out and "Daily
@@ -555,7 +559,7 @@ A small builtin plugin, enabled by default.
   skips it in both cases.
 - Its Settings section shows today's usage ("$0.03 of $0.50 today, resets
   00:00 UTC"), read from `/api/ai/v1/usage`, and says what is sent where.
-- CLI: `bb ai status | usage`.
+- CLI: `bb ai status | usage | on | off`.
 
 It is separate from bb-account so users can turn hosted generation off without
 signing out or losing Connect. In phase 2 it adds `transcribe`.

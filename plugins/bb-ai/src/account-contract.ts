@@ -9,20 +9,28 @@ export const accountSchema = z.object({
   userId: z.string(),
   githubLogin: z.string().nullable(),
   name: z.string(),
-  avatarUrl: z.string().nullable(),
-  handle: z.string().nullable(),
-  serverId: z.string(),
-  serverLabel: z.string(),
-  serverUrl: z.string(),
   baseUrl: z.string(),
 });
+export type Account = z.infer<typeof accountSchema>;
 
-export const accountStatusSchema = z.object({
-  state: z.enum(["signed-out", "signed-in"]),
-  revision: z.number(),
-  account: accountSchema.nullable(),
-});
-export type AccountStatus = z.infer<typeof accountStatusSchema>;
+export type AccountStatus =
+  | { signedIn: true; account: Account }
+  | { signedIn: false };
+
+export const accountStatusSchema = z
+  .object({ state: z.string(), account: z.unknown() })
+  .transform((status, ctx): AccountStatus => {
+    if (status.state !== "signed-in") return { signedIn: false };
+    const account = accountSchema.safeParse(status.account);
+    if (!account.success) {
+      ctx.addIssue({
+        code: "custom",
+        message: "bb account reported signed-in without an account",
+      });
+      return z.NEVER;
+    }
+    return { signedIn: true, account: account.data };
+  });
 
 export const accountFetchOutputSchema = z.object({
   status: z.number().int(),
@@ -30,10 +38,10 @@ export const accountFetchOutputSchema = z.object({
 });
 export type AccountFetchOutput = z.infer<typeof accountFetchOutputSchema>;
 
-export interface AccountFetchInput {
-  [key: string]: JsonValue;
+export type AccountFetchInput = {
   target: "api" | "gate";
   method: "GET" | "POST";
   path: string;
   body: JsonValue;
-}
+  timeoutMs?: number;
+};
