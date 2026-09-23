@@ -302,11 +302,11 @@ the command again. The machine then re-enrolls: it replaces `auth.json` with a
 new host key, replaces the server-access headers, and restarts the owned daemon
 service. Environments, workspaces, and thread associations are kept.
 
-The command reuses the machine's existing data directory. If it was installed
-with a custom `BB_DATA_DIR`, set the same `BB_DATA_DIR` for `sh` when you run
-it (`curl ... | BB_DATA_DIR=<dir> sh`). A computer that a server moved away
-from runs as a machine from `~/.bb`, so use `BB_DATA_DIR=~/.bb`; enrollment
-uses `~/.bb` only when its `host-id` already names this machine.
+The command reuses the data directory the machine's daemon last reported, so it
+works unchanged for a custom `BB_DATA_DIR` and for `~/.bb` on a computer that a
+server moved away from; an explicit `BB_DATA_DIR` still takes precedence. Before
+downloading anything, the installer refuses a directory that does not hold this
+machine, which is what happens when the command runs on another computer.
 The server's own machine cannot be reconnected this way.
 
 `install-machine.sh --start|--stop|--uninstall --host-id <id>` starts, stops or removes an

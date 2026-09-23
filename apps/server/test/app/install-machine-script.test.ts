@@ -777,10 +777,12 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     writeCurlArtifactMock(fixture, 404);
     writeEnrollingBbApp(fixture, invocationPath);
     const reconnectEnv = {
+      BB_DATA_DIR: "",
       BB_INSTALL_SKIP_SERVICE: "1",
       BB_ENROLLMENT: JSON.stringify({
         ...JSON.parse(bootstrapBundle()),
         reconnect: true,
+        dataDir: fixture.dataDir,
       }),
     };
     const running = new Set<number>();
@@ -1062,10 +1064,31 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "Refusing to overwrite a different machine identity",
+      "belongs to machine host-other, not host-test",
     );
-    expect(result.stdout).not.toContain("Host daemon connected");
+    expect(result.stdout).not.toContain("Downloading");
     expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
+  });
+
+  it("refuses a reconnect before downloading on a computer without that machine", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const missingDir = join(fixture.homeDir, "elsewhere");
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      BB_DATA_DIR: "",
+      BB_ENROLLMENT: JSON.stringify({
+        ...JSON.parse(bootstrapBundle()),
+        reconnect: true,
+        dataDir: missingDir,
+      }),
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `Machine host-test is not installed in ${missingDir} on this computer.`,
+    );
+    expect(result.stdout).not.toContain("Downloading");
+    expect(existsSync(missingDir)).toBe(false);
   });
 
   it("adopts an enrolled data directory as a launch agent without enrolling it again", () => {

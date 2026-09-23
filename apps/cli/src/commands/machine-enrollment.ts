@@ -36,6 +36,7 @@ const bootstrapSchema = z.strictObject({
   credential: z.string().min(1),
   expiresAt: z.number().finite().positive(),
   reconnect: z.literal(true).optional(),
+  dataDir: z.string().min(1).optional(),
 });
 const configSchema = z.looseObject({
   serverUrl: serverUrlSchema.optional(),
@@ -132,6 +133,7 @@ export async function enrollMachine(
   const serverUrl = normalizeUrl(bootstrap.serverUrl);
   const dataDir = resolve(
     env.BB_DATA_DIR ??
+      bootstrap.dataDir ??
       join(
         home,
         ".bb-machines",
@@ -172,7 +174,7 @@ export async function enrollMachine(
     (await readOptional(join(dataDir, "host-id")))?.trim() !== bootstrap.hostId
   ) {
     throw new Error(
-      `No existing installation of machine ${bootstrap.hostId} in ${dataDir}; set BB_DATA_DIR to its data directory and rerun the command`,
+      `Machine ${bootstrap.hostId} is not installed in ${dataDir} on this computer; run the command on the computer where it runs`,
     );
   }
   await mkdir(dataDir, { recursive: true, mode: 0o700 });

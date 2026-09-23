@@ -1519,7 +1519,8 @@ Direct grants omit headers. Legacy `machineCredential` configuration is translat
 into the corresponding request header when loading an existing machine.
 
 For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
-`~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
+`~/.bb-machines/<server-host>`; a reconnect command defaults to the data
+directory the machine's daemon last reported. `bb machine enroll` refuses the default `~/.bb`
 directory unless its `host-id` already names this machine, and it refuses a
 conflicting host or server identity. Local `bb machine
 start|stop|uninstall --host-id <id>` treats `BB_DATA_DIR` (or `--data-dir`) as an

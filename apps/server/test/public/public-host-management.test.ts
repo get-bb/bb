@@ -142,6 +142,7 @@ describe("public host management", () => {
       const script = await installer.text();
       expect(script).toContain("--bootstrap-env BB_ENROLLMENT");
       expect(script).toContain('"reconnect":true');
+      expect(script).toContain(`"dataDir":"/tmp/bb-host-data/${host.id}"`);
       expect(script).toContain("new-access");
       expect(script).not.toContain("old-access");
       expect(release).toHaveBeenCalledOnce();

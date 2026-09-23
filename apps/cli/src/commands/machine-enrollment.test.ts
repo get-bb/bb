@@ -208,11 +208,32 @@ describe("machine enroll", () => {
     ).toEqual({ hostId: "host_test", hostKey: "private-durable" });
   });
 
+  it("reconnects in the data directory the server recorded when BB_DATA_DIR is unset", async () => {
+    const h = await harness();
+    await h.run();
+    delete h.env.BB_DATA_DIR;
+    h.env.BB_ENROLLMENT = JSON.stringify({
+      ...bundle(),
+      reconnect: true,
+      dataDir: h.dir,
+    });
+    h.fetchFn.mockImplementationOnce(async () =>
+      Response.json(
+        { hostId: "host_test", hostKey: "replacement-durable" },
+        { status: 201 },
+      ),
+    );
+    await expect(h.run()).resolves.toEqual({ hostId: "host_test" });
+    expect(
+      JSON.parse(await readFile(join(h.dir, "auth.json"), "utf8")),
+    ).toEqual({ hostId: "host_test", hostKey: "replacement-durable" });
+  });
+
   it("refuses a reconnect bundle where this machine was never installed", async () => {
     const h = await harness();
     h.env.BB_ENROLLMENT = JSON.stringify({ ...bundle(), reconnect: true });
     await expect(h.run()).rejects.toThrow(
-      "No existing installation of machine host_test",
+      "Machine host_test is not installed in",
     );
     expect(h.fetchFn).not.toHaveBeenCalled();
     await expect(readFile(join(h.dir, "config.json"))).rejects.toMatchObject({

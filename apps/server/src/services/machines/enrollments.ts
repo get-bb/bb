@@ -24,6 +24,7 @@ export interface EnrollmentBootstrap {
   credential: string;
   expiresAt: number;
   reconnect?: true;
+  dataDir?: string;
 }
 
 export type MachineEnrollment =

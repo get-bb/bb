@@ -1,4 +1,4 @@
-import { getHost } from "@bb/db";
+import { getHost, getLatestSessionForHost } from "@bb/db";
 import type { HostReconnectResponse } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -61,6 +61,7 @@ export async function reconnectBootstrapForCredential(
     hostId: host.id,
     signal: AbortSignal.timeout(SERVER_ACCESS_TIMEOUT_MS),
   });
+  const session = getLatestSessionForHost(deps.db, { hostId: host.id });
   return {
     hostId: host.id,
     serverUrl: grant.serverUrl,
@@ -68,5 +69,6 @@ export async function reconnectBootstrapForCredential(
     credential,
     expiresAt: enrollment.expiresAt,
     reconnect: true,
+    ...(session === null ? {} : { dataDir: session.dataDir }),
   };
 }
