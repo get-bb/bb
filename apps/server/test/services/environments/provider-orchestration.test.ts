@@ -2034,6 +2034,46 @@ describe("existing-path provider selection", () => {
       }),
   );
 
+  it("does not cancel an adopted checkout with a previous selection", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        async () => ({ status: "removed" }),
+      );
+      const fixture = setup(harness, {
+        create: async () => ({
+          status: "created",
+          path: "/tmp/adoption-regression",
+          ownsPath: false,
+        }),
+        remove,
+        policy: { retireGraceMs: null },
+      });
+      const existing = seedEnvironment(harness.deps, {
+        projectId: fixture.context.project.id,
+        hostId: fixture.host.id,
+        path: "/tmp/adoption-regression",
+        status: "ready",
+        providerOwnsPath: false,
+        environmentProviderId: fixture.record.provider.id,
+        environmentProviderPluginId: "test",
+        environmentProviderInstanceKey: "original-key",
+      });
+      harness.db.update(environments).set({
+        environmentProviderSelection: {
+          machine: fixture.context.machine,
+          inputs: { branch: { kind: "new", baseBranch: "main" } },
+        },
+      }).where(eq(environments.id, existing.id)).run();
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().id).toBe(existing.id);
+      const next = fixture.ask();
+      await sweepProviderEnvironment(harness.deps, existing.id);
+      expect(getEnvironment(harness.db, existing.id)?.status).toBe("ready");
+      expect(next.action).toBe("ready");
+      expect(remove).not.toHaveBeenCalled();
+    }));
+
   it("keeps the existing cleanup metadata when creation races with another attachment", async () =>
     withTestHarness(async (harness) => {
       const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(

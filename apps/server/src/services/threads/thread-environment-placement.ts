@@ -1149,8 +1149,10 @@ export function prepareProviderEnvironment(
   const changed =
     row !== null &&
     (row.environmentProviderId !== record.provider.id ||
-      JSON.stringify(row.environmentProviderSelection) !==
-        JSON.stringify(selected));
+      row.hostId !== context.host.id ||
+      (row.status !== "ready" &&
+        JSON.stringify(row.environmentProviderSelection) !==
+          JSON.stringify(selected)));
   if (
     row !== null &&
     !changed &&
