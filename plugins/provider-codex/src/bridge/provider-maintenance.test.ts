@@ -148,6 +148,8 @@ describe("Codex credential health and usage", () => {
       { mode: 0o755 },
     );
     vi.stubEnv("HOME", homeDir);
+    // bb-fork(windows): os.homedir() reads USERPROFILE on Windows.
+    if (process.platform === "win32") vi.stubEnv("USERPROFILE", homeDir);
     vi.stubEnv("CODEX_HOME", "");
     vi.stubEnv("PATH", `${binDir}${path.delimiter}${process.env.PATH ?? ""}`);
   });
@@ -163,48 +165,58 @@ describe("Codex credential health and usage", () => {
     );
   });
 
-  it("reports unauthenticated when auth.json is missing", async () => {
-    await expect(getCodexProviderHealth()).resolves.toEqual({
-      supported: true,
-      health: {
-        status: "unauthenticated",
-        statusMessage: null,
-        accountEmail: null,
-        planLabel: null,
-        installedVersion: "0.150.0",
-        minimumSupportedVersion: "0.136.0",
-        canInstall: true,
-        canUpdate: true,
-        loginCommand: "codex login",
-      },
-    });
-    await expect(getCodexProviderUsage()).resolves.toEqual({
-      supported: true,
-      usage: { status: "unauthenticated" },
-    });
-  });
+  // bb-fork(windows): the fake `codex` CLI is a `#!/bin/sh` script.
+  it(
+    "reports unauthenticated when auth.json is missing",
+    { skip: process.platform === "win32" },
+    async () => {
+      await expect(getCodexProviderHealth()).resolves.toEqual({
+        supported: true,
+        health: {
+          status: "unauthenticated",
+          statusMessage: null,
+          accountEmail: null,
+          planLabel: null,
+          installedVersion: "0.150.0",
+          minimumSupportedVersion: "0.136.0",
+          canInstall: true,
+          canUpdate: true,
+          loginCommand: "codex login",
+        },
+      });
+      await expect(getCodexProviderUsage()).resolves.toEqual({
+        supported: true,
+        usage: { status: "unauthenticated" },
+      });
+    },
+  );
 
-  it("reports expired when the ChatGPT access token has passed its exp", async () => {
-    await writeChatGptAuth(
-      createAccessToken({
-        accountId: "account-123",
-        email: "codex@example.com",
-        expSeconds: Math.floor(Date.now() / 1000) - 60,
-      }),
-    );
+  // bb-fork(windows): the fake `codex` CLI is a `#!/bin/sh` script.
+  it(
+    "reports expired when the ChatGPT access token has passed its exp",
+    { skip: process.platform === "win32" },
+    async () => {
+      await writeChatGptAuth(
+        createAccessToken({
+          accountId: "account-123",
+          email: "codex@example.com",
+          expSeconds: Math.floor(Date.now() / 1000) - 60,
+        }),
+      );
 
-    await expect(getCodexProviderHealth()).resolves.toMatchObject({
-      health: {
-        status: "expired",
-        accountEmail: "codex@example.com",
-        installedVersion: "0.150.0",
-      },
-    });
-    await expect(getCodexProviderUsage()).resolves.toEqual({
-      supported: true,
-      usage: { status: "expired" },
-    });
-  });
+      await expect(getCodexProviderHealth()).resolves.toMatchObject({
+        health: {
+          status: "expired",
+          accountEmail: "codex@example.com",
+          installedVersion: "0.150.0",
+        },
+      });
+      await expect(getCodexProviderUsage()).resolves.toEqual({
+        supported: true,
+        usage: { status: "expired" },
+      });
+    },
+  );
 
   it("treats API-key auth as ready with no subscription usage to report", async () => {
     await writeAuthJson(
