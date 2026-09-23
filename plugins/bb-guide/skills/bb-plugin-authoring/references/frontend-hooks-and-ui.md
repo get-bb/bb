@@ -131,9 +131,12 @@ component kit is removed. The app module still exports focused BB capability
 components such as `ThreadChat`, `Markdown`, file links, pickers, source and
 diff viewers, and the new-thread composer.
 
-- Builtin plugins in this repo import shared UI from `@bb/shared-ui` (the
-  single source of truth the app also consumes and the registry generates
-  from); external and example plugins still vendor source through the registry.
+- Most builtin plugins in this repo import shared UI from `@bb/shared-ui`
+  (the single source of truth the app also consumes and the registry
+  generates from). Forkable builtins (`scripts/forkable-plugins.json`) import
+  the same components through the `@/` alias, which their tsconfig maps onto
+  that source; a fork vendors them from the registry. External and example
+  plugins vendor source through the registry.
 - `bb plugin new` pre-vendors button, card, input, checkbox, dialog (plus
   their support files: `lib/utils`, `lib/portal-scope`, icon,
   responsive-overlay, drawer, hooks) into `components/ui/` etc., and writes a `components.json`

@@ -161,6 +161,25 @@ jobs:
   # breaks the model probe passes CI silently. This runs it against a real,
   # unpinned CLI.
   # TODO: cover the npm build, macOS, and the full `test:integration` suite.
+  plugin-forks:
+    name: Plugin Fork Check (ubuntu-latest, Node 22.x)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: plugin-forks
+
+      - name: Build, typecheck, and test forkable plugins outside the workspace
+        run: node scripts/check-plugin-forks.mjs
+
   provider-model-listing:
     name: Provider Model Listing
     runs-on: blacksmith-4vcpu-ubuntu-2404

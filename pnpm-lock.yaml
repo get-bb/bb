@@ -4708,6 +4708,9 @@ importers:
       jsdom:
         specifier: ^29.0.1
         version: 29.0.1(@noble/hashes@2.4.0)
+      oxlint:
+        specifier: ^1.79.0
+        version: 1.79.0
       react:
         specifier: ^19.0.0
         version: 19.2.4
@@ -20844,9 +20847,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 
