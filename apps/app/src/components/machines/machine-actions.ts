@@ -46,7 +46,7 @@ export function machineActions(args: MachineActionsArgs): MachineAction[] {
   if (canReconnectMachine(args.host))
     actions.push({
       id: "reconnect",
-      label: "Reconnect machine",
+      label: "Reconnect",
       icon: "RotateCcw",
       onSelect: args.onReconnect,
     });

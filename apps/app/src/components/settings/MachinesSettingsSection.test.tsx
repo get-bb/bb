@@ -763,7 +763,7 @@ describe("MachinesSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("offers Reconnect machine only on offline, active machines", async () => {
+  it("offers Reconnect only on offline, active machines", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([
       primaryHost,
@@ -790,7 +790,7 @@ describe("MachinesSettingsSection", () => {
 
     await openHostMenu("dev-vm");
     expect(
-      await screen.findByRole("menuitem", { name: "Reconnect machine" }),
+      await screen.findByRole("menuitem", { name: "Reconnect" }),
     ).toBeDefined();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => {
@@ -801,7 +801,7 @@ describe("MachinesSettingsSection", () => {
       await openHostMenu(name);
       await screen.findByRole("menuitem", { name: "Rename" });
       expect(
-        screen.queryByRole("menuitem", { name: "Reconnect machine" }),
+        screen.queryByRole("menuitem", { name: "Reconnect" }),
       ).toBeNull();
       fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       await waitFor(() => {
@@ -826,7 +826,7 @@ describe("MachinesSettingsSection", () => {
     await screen.findByText("dev-vm");
     await openHostMenu("dev-vm");
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Reconnect machine" }),
+      await screen.findByRole("menuitem", { name: "Reconnect" }),
     );
 
     await waitFor(() => {
