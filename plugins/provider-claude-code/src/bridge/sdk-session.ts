@@ -20,6 +20,7 @@ import {
   missingClaudeCliGuidance,
   translateMissingClaudeCliError,
 } from "./missing-cli-error.js";
+import { resolveClaudeSpawn } from "./claude-spawn.fork.js";
 
 export interface SdkSessionOptions {
   cwd: string;
@@ -121,7 +122,12 @@ function spawnRecordedClaudeProcess(args: {
   spawnOptions: SpawnOptions;
   threadId: string | null;
 }): SpawnedProcess {
-  const child = spawn(args.spawnOptions.command, args.spawnOptions.args, {
+  // bb-fork(windows): a Node CLI entry must run through Node on Windows.
+  const launch = resolveClaudeSpawn(
+    args.spawnOptions.command,
+    args.spawnOptions.args,
+  );
+  const child = spawn(launch.command, launch.args, {
     cwd: args.spawnOptions.cwd,
     env: args.spawnOptions.env,
     signal: args.spawnOptions.signal,

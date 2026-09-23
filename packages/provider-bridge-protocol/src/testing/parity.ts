@@ -395,10 +395,15 @@ export async function replayRecording(
   });
 
   const recordedCwd = recordedWorkspaceDir(recording);
-  const restoreRecordedWorkspace = (line: string): string =>
-    recordedCwd === null || recordedCwd === workspaceDir
-      ? line
-      : line.split(workspaceDir).join(recordedCwd);
+  // bb-fork(windows): a JSON line escapes `\`, so replace the escaped form too.
+  const jsonWorkspaceDir = JSON.stringify(workspaceDir).slice(1, -1);
+  const restoreRecordedWorkspace = (line: string): string => {
+    if (recordedCwd === null || recordedCwd === workspaceDir) return line;
+    const restored = line.split(workspaceDir).join(recordedCwd);
+    return jsonWorkspaceDir === workspaceDir
+      ? restored
+      : restored.split(jsonWorkspaceDir).join(recordedCwd);
+  };
 
   const initializeId = PARITY_INITIALIZE_ID;
   const startedAt = Date.now();
