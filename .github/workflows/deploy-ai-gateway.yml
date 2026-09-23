@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/deploy-ai-gateway.yml"
       - "apps/ai-gateway/**"
       - "packages/connect-db/**"
   workflow_dispatch:
@@ -17,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: connect-db-deploy-${{ github.ref }}
+  group: ai-gateway-deploy-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -44,11 +45,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
-
-      - name: Apply connect-db migrations
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
 
       - name: Deploy AI gateway
         env:
