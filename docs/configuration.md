@@ -1164,12 +1164,6 @@ While it is off those routes return 403 `server_move_experiment_disabled`;
 move status and cancel stay available. Toggle it with
 `bb settings experiment serverMove <true|false>`.
 
-The `multiMachinePicker` experiment is off by default. When enabled, projects
-with at least three machines use a searchable, target-first environment picker,
-and machine-only pickers become searchable when they have more than five
-machines. Toggle it with `bb settings experiment multiMachinePicker
-<true|false>`.
-
 ## Thread Timeline Window
 
 Timeline pages select conversation groups using user-message anchors. The

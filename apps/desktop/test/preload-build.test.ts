@@ -129,7 +129,6 @@ async function startDesktopSmokeServer(
           experiments: {
             changelogPreview: false,
             mobileApp: false,
-            multiMachinePicker: false,
             serverMove: false,
             sidebarProgressiveDisclosure: false,
             timelineWindowing: false,
