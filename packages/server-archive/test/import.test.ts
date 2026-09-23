@@ -278,7 +278,6 @@ describe("installImportedServerFiles and removeImportedServerFiles", () => {
     expect(await readJson(dataDir, "config.json")).toEqual({
       config: {
         BB_APP_URL: "https://target.example",
-        BB_INFERENCE: "codex/gpt-5.4-mini",
         BB_LOG_LEVEL: "info",
       },
       customModels: SOURCE_CONFIG.customModels,
