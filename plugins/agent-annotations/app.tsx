@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chrome-style-tokens";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import {
   definePluginApp,
   useComposer,
@@ -163,6 +163,7 @@ export function AnnotateAction({
           })
           .catch((cause: unknown) => setError(errorMessage(cause)));
       }),
+    // oxlint-disable-next-line react/exhaustive-deps
     [composer.experimental_onSubmitted, page, applyState],
   );
 
