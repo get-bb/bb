@@ -4,6 +4,7 @@ import {
   getThread,
   listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessages,
+  updateHost,
 } from "@bb/db";
 import { applyEnvironmentLifecycleEvent } from "@bb/db/internal-environment-lifecycle";
 import {
@@ -57,6 +58,48 @@ async function postQueuedMessage(
 }
 
 describe("queued message into a thread whose environment is gone (#1789)", () => {
+  it.each([
+    { phase: "removing", destroyedAt: null, code: "machine_removing" },
+    { phase: "destroyed", destroyedAt: 1, code: "host_not_found" },
+  ] as const)(
+    "rejects queue-create when the machine is $phase but the environment is still ready",
+    async ({ phase, destroyedAt, code }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          status: "ready",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          status: "idle",
+        });
+        updateHost(harness.db, harness.hub, host.id, { phase, destroyedAt });
+
+        const response = await postQueuedMessage(
+          harness,
+          thread.id,
+          "new work",
+          {
+            model: "gpt-5",
+          },
+        );
+        const body = await readJson(response);
+
+        expect(response.status, JSON.stringify(body)).toBe(
+          phase === "removing" ? 409 : 404,
+        );
+        expect(body).toMatchObject({ code });
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      });
+    },
+  );
+
   for (const status of [
     "destroyed",
   ] as const satisfies readonly EnvironmentStatus[]) {

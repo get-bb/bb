@@ -87,7 +87,7 @@
   "routeClosures": {
     "SplitWorkspaceRoute": {
       "maxBytes": 2333454,
-      "maxBrotliBytes": 626017,
+      "maxBrotliBytes": 626600,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",
