@@ -910,6 +910,13 @@
     "bb-plugin-environment-personal-workspace#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-environment-personal-workspace#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
     "bb-plugin-environment-modal-sandbox#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -921,6 +928,13 @@
     },
     "bb-plugin-custom-instructions#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-custom-instructions#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
     },
     "bb-plugin-simple-notes#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
@@ -937,6 +951,13 @@
     "bb-plugin-push-notifications#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-push-notifications#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
     "bb-plugin-keep-awake#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -949,8 +970,22 @@
     "bb-plugin-pdf-preview#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-pdf-preview#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
     "bb-plugin-plugin-api-tester#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-plugin-api-tester#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
     },
     "bb-plugin-provider-acp#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
@@ -970,6 +1005,13 @@
     "bb-plugin-provider-retry#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-provider-retry#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
     "bb-plugin-secrets#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -978,6 +1020,13 @@
     },
     "bb-plugin-drafts#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-drafts#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
     },
     "bb-plugin-side-chat#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]

@@ -1,4 +1,13 @@
 {
   "$comment": "Built-in plugins that must stay forkable: a copy of the directory installs, typechecks, tests, and builds outside this monorepo with published packages only. See docs/forkable-plugins.md. The bb/forkable-plugin-imports lint rule, run by each plugin's lint script, rejects imports of workspace packages and @/ imports that no registry item provides. `pnpm check:plugin-forks` (scripts/check-plugin-forks.mjs) builds that copy in a temporary directory and runs its install, typecheck, tests, and bb plugin build.",
-  "plugins": ["plugins/thread-list"]
+  "plugins": [
+    "plugins/custom-instructions",
+    "plugins/drafts",
+    "plugins/environment-personal-workspace",
+    "plugins/pdf-preview",
+    "plugins/plugin-api-tester",
+    "plugins/provider-retry",
+    "plugins/push-notifications",
+    "plugins/thread-list"
+  ]
 }
