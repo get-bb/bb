@@ -120,6 +120,12 @@ default. Enable them with
 the Chrome extension and a claude.ai login. A change restarts the thread's
 Claude process before its next turn and keeps the conversation.
 
+Claude Code runs Bash commands in its sandbox under bb in Accept Edits and
+Approve for me modes. Disable it with
+`bb plugin config provider-claude-code set sandboxEnabled false` to use Claude
+Code's own command approvals and sandbox settings. A change applies when a
+thread's Claude session starts or resumes.
+
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or

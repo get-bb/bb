@@ -45,4 +45,16 @@ describe("the Claude Code provider settings", () => {
       expect(providerOptions(declaration, { [key]: true })[key]).toBe(true);
     },
   );
+
+  it("keeps the Claude Code sandbox on by default and derives an explicit opt-out", () => {
+    const { declaration, host } = loadClaudeCodePlugin();
+
+    expect(
+      host.harness.registrations.settingsDescriptors.sandboxEnabled,
+    ).toMatchObject({ type: "boolean", default: true });
+    expect(providerOptions(declaration, {}).sandboxEnabled).toBe(true);
+    expect(
+      providerOptions(declaration, { sandboxEnabled: false }).sandboxEnabled,
+    ).toBe(false);
+  });
 });
