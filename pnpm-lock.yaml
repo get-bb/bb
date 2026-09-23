@@ -3657,15 +3657,27 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.13
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.13)
       better-sqlite3:
-        specifier: ^12.6.2
+        specifier: 12.10.0
         version: 12.10.0
+      cron-parser:
+        specifier: ^5.5.0
+        version: 5.5.0
+      hono:
+        specifier: 4.11.9
+        version: 4.11.9
       react:
         specifier: ^19.0.0
         version: 19.2.4
@@ -21156,9 +21168,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 
