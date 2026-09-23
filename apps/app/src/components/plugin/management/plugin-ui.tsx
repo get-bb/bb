@@ -94,25 +94,39 @@ export function pluginCatalogCategoryIconName(
   return categoryId === undefined ? undefined : PLUGIN_CATEGORY_ICONS[categoryId];
 }
 
+const PLUGIN_CATEGORY_ICON_SIZES = {
+  sm: { tile: "size-4", glyph: "size-2.5" },
+  md: { tile: "size-5", glyph: "size-3.5" },
+  lg: { tile: "size-6", glyph: "size-4" },
+} as const;
+
 export function PluginCategoryIcon({
   categoryId,
-  className,
+  size,
 }: {
   categoryId: string | undefined;
-  className?: string;
+  size: keyof typeof PLUGIN_CATEGORY_ICON_SIZES;
 }) {
   const iconName = pluginCatalogCategoryIconName(categoryId);
   const accentToken = pluginCatalogCategoryAccentToken(categoryId);
   if (iconName === undefined || accentToken === undefined) return null;
+  const sizes = PLUGIN_CATEGORY_ICON_SIZES[size];
   return (
-    <Icon
-      name={iconName}
-      className={cn("shrink-0", className)}
+    <span
+      className={cn("grid shrink-0 place-items-center rounded", sizes.tile)}
       style={{
-        color: `color-mix(in oklab, var(${accentToken}) 75%, var(--ink))`,
+        background: `color-mix(in oklab, var(${accentToken}) 16%, var(--canvas))`,
       }}
       aria-hidden
-    />
+    >
+      <Icon
+        name={iconName}
+        className={sizes.glyph}
+        style={{
+          color: `color-mix(in oklab, var(${accentToken}) 70%, var(--ink))`,
+        }}
+      />
+    </span>
   );
 }
 

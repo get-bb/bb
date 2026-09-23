@@ -217,7 +217,7 @@ export function BrowsePluginsTab({
                   {selectedShelf.key.startsWith("category:") ? (
                     <PluginCategoryIcon
                       categoryId={selectedShelf.categoryId}
-                      className="size-5"
+                      size="lg"
                     />
                   ) : null}
                   {selectedShelf.label}
@@ -359,7 +359,7 @@ function BrowseShelf({
         ) : shelf.key === "collection:new-and-notable" ? (
           <Icon name="News01" className="size-4 text-foreground" aria-hidden />
         ) : (
-          <PluginCategoryIcon categoryId={shelf.categoryId} className="size-4" />
+          <PluginCategoryIcon categoryId={shelf.categoryId} size="md" />
         )
       }
       browseAction={
