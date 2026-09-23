@@ -97,12 +97,15 @@ function buildAcpSkillsInstructions(
   }
 
   const skillLines = skillRoots.flatMap((skillRoot) => {
+    // bb-fork(windows): the skill root may be a POSIX remote path; keep its
+    // own separators instead of the local host's.
+    const rootPath = skillRoot.skillDirectoryRootPath;
+    const pathApi =
+      /^[A-Za-z]:[\\/]/u.test(rootPath) || rootPath.startsWith("\\\\")
+        ? path.win32
+        : path.posix;
     return skillRoot.skills.map((skill) => {
-      const skillFilePath = path.join(
-        skillRoot.skillDirectoryRootPath,
-        skill.name,
-        "SKILL.md",
-      );
+      const skillFilePath = pathApi.join(rootPath, skill.name, "SKILL.md");
       return `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description)} (SKILL.md: ${skillFilePath})`;
     });
   });

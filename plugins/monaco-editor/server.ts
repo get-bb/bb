@@ -139,6 +139,18 @@ export default async function plugin(bb: BbPluginApi) {
     return assetLease;
   }
 
+  // bb-fork(windows): pick the path API from the root's own convention; a POSIX
+  // remote root must not be joined with `\` just because the host is Windows.
+  function pathApiFor(value: string): typeof path.posix {
+    return /^[A-Za-z]:[\\/]/u.test(value) || value.startsWith("\\\\")
+      ? path.win32
+      : path.posix;
+  }
+
+  function hostJoin(root: string, ...segments: string[]): string {
+    return pathApiFor(root).join(root, ...segments);
+  }
+
   async function resolveTarget(
     source: z.infer<typeof sourceSchema>,
     filePath: string,
@@ -151,7 +163,7 @@ export default async function plugin(bb: BbPluginApi) {
         threadId: source.threadId,
       });
       return {
-        path: path.join(storageRootPath, filePath),
+        path: hostJoin(storageRootPath, filePath),
         rootPath: storageRootPath,
         hostId,
       };
@@ -174,7 +186,7 @@ export default async function plugin(bb: BbPluginApi) {
         throw new Error("This project has no matching source checkout");
       }
       return {
-        path: path.join(checkout.path, filePath),
+        path: hostJoin(checkout.path, filePath),
         rootPath: checkout.path,
         hostId: checkout.hostId,
       };
@@ -187,7 +199,7 @@ export default async function plugin(bb: BbPluginApi) {
     });
 
     if (source.kind === "host") {
-      const api = path.win32.isAbsolute(filePath) ? path.win32 : path.posix;
+      const api = pathApiFor(filePath);
       return {
         path: filePath,
         rootPath: api.dirname(filePath),
@@ -199,14 +211,14 @@ export default async function plugin(bb: BbPluginApi) {
       throw new Error("This environment has no workspace path");
     }
     return {
-      path: path.join(environment.path, filePath),
+      path: hostJoin(environment.path, filePath),
       rootPath: environment.path,
       ...(environment.hostId ? { hostId: environment.hostId } : {}),
     };
   }
 
   function relativeTo(root: string, target: string): string {
-    const api = path.win32.isAbsolute(root) ? path.win32 : path.posix;
+    const api = pathApiFor(root);
     return api.relative(root, target) || api.basename(target);
   }
 

@@ -116,6 +116,7 @@ import {
   type AcpAgentConnection,
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
+import { resolveAcpAgentLaunch } from "./agent-launch.fork.js";
 import {
   approveCursorSessionMcpServer,
   revokeCursorSessionMcpServer,
@@ -729,12 +730,14 @@ async function authenticateAcpAgent(args: {
 async function loadAgentModelCatalog(
   listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
+  const launch = resolveAcpAgentLaunch(listCommand.command, listCommand.args);
   const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
     execFile(
-      listCommand.command,
-      listCommand.args,
+      launch.command,
+      launch.args,
       {
         ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
+        shell: launch.shell,
         env: {
           ...withoutBridgeRuntimeEnv(process.env),
           ...(listCommand.envVars ?? {}),

@@ -44,7 +44,13 @@ export function resolveAcpToolCallPath(
   if (cwd === undefined || path.isAbsolute(value) || value.startsWith("~")) {
     return value;
   }
-  return path.resolve(cwd, value);
+  // bb-fork(windows): follow the session cwd's own convention; a POSIX remote
+  // cwd must not be turned into a local drive path.
+  const api =
+    /^[A-Za-z]:[\\/]/u.test(cwd) || cwd.startsWith("\\\\")
+      ? path.win32
+      : path.posix;
+  return api.resolve(cwd, value);
 }
 
 export function extractAcpCommand(
@@ -118,9 +124,20 @@ export function classifyAcpToolCall(
 export function resolveAcpFileChangeWriteScope(
   paths: readonly string[],
 ): string | null {
+  const firstEntry = paths.find(isNonBlank);
+  if (firstEntry === undefined) {
+    return null;
+  }
+  // bb-fork(windows): normalize and compare in the paths' own convention; a
+  // POSIX write scope must not come back as `\tmp\...`.
+  const pathApi =
+    /^[A-Za-z]:[\\/]/u.test(firstEntry) || firstEntry.startsWith("\\\\")
+      ? path.win32
+      : path.posix;
+  const separator = pathApi === path.win32 ? "\\" : "/";
   const normalized = paths.filter(isNonBlank).map((entry) => {
-    const value = path.normalize(entry);
-    return value.length > 1 && value.endsWith(path.sep)
+    const value = pathApi.normalize(entry);
+    return value.length > 1 && value.endsWith(separator)
       ? value.slice(0, -1)
       : value;
   });
@@ -134,9 +151,9 @@ export function resolveAcpFileChangeWriteScope(
       candidate = entry;
     }
   }
-  const prefix = candidate.endsWith(path.sep)
+  const prefix = candidate.endsWith(separator)
     ? candidate
-    : candidate + path.sep;
+    : candidate + separator;
   for (const entry of normalized) {
     if (entry !== candidate && !entry.startsWith(prefix)) {
       return null;

@@ -241,12 +241,31 @@ async function runMcpInitialize(config: AdvertisedMcpServer): Promise<{
   return { exitCode, stderr, stdoutLines };
 }
 
-afterEach(() => {
+// bb-fork(windows): a just-killed child can still hold its temp dir, so removal
+// needs a short retry instead of failing the test with EBUSY.
+async function removeTempDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const retryable =
+        code === "EBUSY" || code === "EPERM" || code === "ENOTEMPTY";
+      if (!retryable || attempt >= 20) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+afterEach(async () => {
   for (const child of children.splice(0)) {
     child.kill("SIGKILL");
   }
   for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
+    await removeTempDir(dir);
   }
   bridgeLines.length = 0;
   bridgeStderr = "";

@@ -3,9 +3,15 @@ import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { z } from "zod";
 import { ACP_PROTOCOL_VERSION, acpInitializeResultSchema } from "../wire.js";
+import { resolveAcpAgentLaunch } from "./agent-launch.fork.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
-const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+// bb-fork(windows): a closed pipe reports `EOF` on Windows instead of `EPIPE`.
+const CLOSED_STDIN_ERROR_CODES = new Set([
+  "EPIPE",
+  "ERR_STREAM_DESTROYED",
+  "EOF",
+]);
 
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
@@ -139,9 +145,11 @@ function parseAgentLine(line: string): ParsedAgentMessage | null {
 export function createAcpAgentConnection(
   options: CreateAcpAgentConnectionOptions,
 ): AcpAgentConnection {
-  const child: ChildProcess = spawn(options.command, options.args, {
+  const launch = resolveAcpAgentLaunch(options.command, options.args);
+  const child: ChildProcess = spawn(launch.command, launch.args, {
     cwd: options.cwd,
     env: options.env,
+    shell: launch.shell,
     stdio: ["pipe", "pipe", "pipe"],
   });
   experimental_recordProviderChildIo(child, {
