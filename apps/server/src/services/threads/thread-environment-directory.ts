@@ -86,19 +86,28 @@ function toolCallSuccess(text: string): ToolCallResponse {
   return toolCallTextResponse(true, text);
 }
 
+// bb-fork(windows): accept drive-letter and UNC paths alongside POSIX ones.
+function isAbsoluteHostPath(value: string): boolean {
+  return (
+    value.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/u.test(value) ||
+    value.startsWith("\\\\")
+  );
+}
+
 function normalizeDirectoryPath(path: string): string {
   const trimmed = path.trim();
-  if (trimmed === "/") {
+  if (trimmed === "/" || /^[A-Za-z]:[\\/]?$/u.test(trimmed)) {
     return trimmed;
   }
-  return trimmed.replace(/\/+$/u, "");
+  return trimmed.replace(/[\\/]+$/u, "");
 }
 
 function validateDirectoryPath(path: string): string | null {
-  if (!path.startsWith("/")) {
+  if (!isAbsoluteHostPath(path)) {
     return "Path must be an absolute path on the current host.";
   }
-  if (path === "/") {
+  if (path === "/" || /^[A-Za-z]:[\\/]?$/u.test(path)) {
     return "Path must name a project directory, not the filesystem root.";
   }
   if (path.includes("\0")) {

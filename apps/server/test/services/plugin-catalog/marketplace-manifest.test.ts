@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -400,7 +401,7 @@ describe("marketplace manifest schema", () => {
         ),
       ).toEqual({
         kind: "local",
-        path: "/checkout/icons/widgets.svg",
+        path: join("/checkout", "icons", "widgets.svg"),
         relativePath: "icons/widgets.svg",
       });
       expect(

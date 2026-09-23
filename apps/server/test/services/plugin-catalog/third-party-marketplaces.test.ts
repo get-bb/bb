@@ -145,9 +145,11 @@ describe("third-party marketplaces", () => {
 
   async function useGitUrlRewrite(url: string, repo: string): Promise<void> {
     const configFile = join(dataDir, "gitconfig");
+    // bb-fork(windows): gitconfig treats `\` as an escape, so double it.
+    const configPath = repo.replaceAll("\\", "\\\\");
     await writeFile(
       configFile,
-      `[url "${repo}"]\n\tinsteadOf = ${url}\n`,
+      `[url "${configPath}"]\n\tinsteadOf = ${url}\n`,
       "utf8",
     );
     const previous = process.env.GIT_CONFIG_GLOBAL;

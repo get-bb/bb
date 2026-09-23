@@ -1,4 +1,5 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import {
@@ -82,7 +83,8 @@ describe("Personal project file access", () => {
                 };
               case "host.read_file":
                 expect(request.command.path).toBe(
-                  "/personal/workspace/hello.txt",
+                  // bb-fork(windows): the route joins the host path natively.
+                  join(environment.path, "hello.txt"),
                 );
                 expect(request.command.rootPath).toBe(environment.path);
                 return {

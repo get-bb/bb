@@ -28,7 +28,8 @@ describe("internal skill tree routes", () => {
         entries: [
           {
             path: "SKILL.md",
-            mode: 0o644,
+            // bb-fork(windows): chmod is a no-op, so the file keeps its default mode.
+            mode: process.platform === "win32" ? 0o666 : 0o644,
             contentBase64: Buffer.from("tree route bytes\n").toString("base64"),
           },
         ],

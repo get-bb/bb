@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   CUSTOM_CODE_THEME_JSON_MAX_LENGTH,
   codeThemeNameSchema,
@@ -31,7 +31,11 @@ function resolveWithinRoot(
     throw new Error(`${label} must be relative, got "${entry}"`);
   }
   const resolved = resolve(rootDir, entry);
-  if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
+  // bb-fork(windows): compare with path.relative so `\` separators are handled.
+  const rel = relative(rootDir, resolved);
+  const within =
+    resolved === rootDir || (!rel.startsWith("..") && !isAbsolute(rel));
+  if (!within) {
     throw new Error(`${label} escapes the theme directory: "${entry}"`);
   }
   return resolved;

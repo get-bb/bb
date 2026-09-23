@@ -540,9 +540,10 @@ describe("bb-plugin-authoring skill", () => {
       /```ts\n([\s\S]*?)```/u,
     )?.[1];
     expect(source).toBeDefined();
+    // bb-fork(windows): TypeScript keys files by forward-slash paths.
     const filename = fileURLToPath(
       new URL("./machine-guide-example.ts", import.meta.url),
-    );
+    ).replaceAll("\\", "/");
     const options: ts.CompilerOptions = {
       strict: true,
       noEmit: true,
