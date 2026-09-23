@@ -928,7 +928,7 @@ function EnvironmentThreadGroupHeader({
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
           onToggle={() => onToggleCollapsed(environmentId)}
-          revealOnHover
+          revealOnHover={!isCollapsed}
         />
       </span>
       <span
