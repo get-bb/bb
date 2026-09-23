@@ -5,12 +5,16 @@ set -eu
 usage() {
   cat >&2 <<'EOF'
 Usage: install.sh --bootstrap-env <NAME> [--host-daemon-port <port>]
+       install.sh --adopt --data-dir <path> [--host-daemon-port <port>]
        install.sh --start|--stop|--uninstall --host-id <host-id> [--server-url <url>] [--data-dir <path>]
 
 Machines enroll from a private bootstrap bundle. Get the one-line command that
 carries it from Settings -> Machines -> Add a machine, or from
 `bb machine create --provider manual`. That command works through bb connect,
 Tailscale, and any other address machines can reach.
+--adopt installs the service for a data directory that is already enrolled,
+such as the one a server move leaves behind, reading its machine ID from
+auth.json and its server address and credentials from config.json.
 By default, the installer assigns this enrolled daemon its own local API port.
 EOF
   exit 2
@@ -22,6 +26,8 @@ server_url=
 requested_host_daemon_port=
 lifecycle_action=
 requested_data_dir=
+adopt=no
+adopted_identity=
 
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
@@ -320,6 +326,11 @@ while [ "$#" -gt 0 ]; do
       lifecycle_action=${1#--}
       shift
       ;;
+    --adopt)
+      [ "$adopt" = no ] || usage
+      adopt=yes
+      shift
+      ;;
     -h|--help) usage ;;
     *)
       fail_step "Unknown option: $1"
@@ -330,6 +341,10 @@ done
 
 if [ -n "$lifecycle_action" ]; then
   [ -z "$bootstrap_env$requested_host_daemon_port" ] || usage
+  [ "$adopt" = no ] || usage
+elif [ "$adopt" = yes ]; then
+  [ -z "$bootstrap_env$host_id$server_url" ] || usage
+  [ -n "$requested_data_dir" ] || usage
 else
   [ -n "$bootstrap_env" ] || usage
   if [ -n "$host_id$server_url" ]; then usage; fi
@@ -353,10 +368,14 @@ else
   bootstrap_payload=$(node -e 'process.stdout.write(process.env[process.argv[1]])' "$bootstrap_env")
   unset "$bootstrap_env"
 fi
-[ -n "$host_id" ] || usage
-if [ -z "$lifecycle_action" ]; then [ -n "$server_url" ] || usage; fi
+if [ "$adopt" = no ]; then
+  [ -n "$host_id" ] || usage
+  if [ -z "$lifecycle_action" ]; then [ -n "$server_url" ] || usage; fi
+fi
 printf '\n  %s\n\n' "$(bold "bb machine setup")"
-active_step "Setting up this machine as $host_id for $server_url"
+if [ "$adopt" = no ]; then
+  active_step "Setting up this machine as $host_id for $server_url"
+fi
 
 case "$(uname -s)" in
   Darwin) platform=darwin ;;
@@ -396,6 +415,44 @@ if [ -n "$lifecycle_action" ]; then
   exit 0
 fi
 
+if [ "$adopt" = yes ]; then
+  if ! adopted_identity=$(node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const dataDir = path.resolve(process.argv[1]);
+    const fail = (message) => {
+      process.stdout.write(message);
+      process.exit(1);
+    };
+    const readJson = (name, missing) => {
+      const file = path.join(dataDir, name);
+      let text;
+      try { text = fs.readFileSync(file, "utf8"); }
+      catch { fail(missing); }
+      try { return JSON.parse(text); }
+      catch { fail(`${file} is not valid JSON.`); }
+    };
+    const auth = readJson("auth.json", `${dataDir} has no machine credentials to adopt (auth.json is missing).`);
+    const config = readJson("config.json", `${dataDir} has no server address to adopt (config.json is missing).`);
+    const configFile = path.join(dataDir, "config.json");
+    if (typeof auth?.hostId !== "string" || auth.hostId.length === 0) fail(`${path.join(dataDir, "auth.json")} has no machine ID.`);
+    let url;
+    try { url = new URL(config?.serverUrl); }
+    catch { fail(`${configFile} has no server address.`); }
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail(`${configFile} has an unusable server address.`);
+    const headers = config.serverHeaders ?? (typeof config.machineCredential === "string" ? { "x-bb-connect-machine": config.machineCredential } : {});
+    if (typeof headers !== "object" || headers === null || Array.isArray(headers) || !Object.values(headers).every((value) => typeof value === "string")) fail(`${configFile} has invalid server headers.`);
+    process.stdout.write(JSON.stringify({ dataDir, hostId: auth.hostId, serverUrl: url.href.replace(/\/$/u, ""), headers }));
+  ' "$requested_data_dir"); then
+    fail_step "$adopted_identity"
+    exit 1
+  fi
+  host_id=$(BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'process.stdout.write(JSON.parse(process.env.BB_ADOPTED_IDENTITY).hostId)')
+  server_url=$(BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'process.stdout.write(JSON.parse(process.env.BB_ADOPTED_IDENTITY).serverUrl)')
+  adopted_data_dir=$(BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'process.stdout.write(JSON.parse(process.env.BB_ADOPTED_IDENTITY).dataDir)')
+  active_step "Setting up this machine as $host_id for $server_url"
+fi
+
 require_npm() {
   if ! command -v npm >/dev/null 2>&1; then
     fail_step "bb-app installation requires npm."
@@ -416,7 +473,11 @@ legacy_service_slug=$(printf '%s' "$server_host" | tr '.' '-')
 
 # Each server gets its own data dir and daemon instance, so one machine can
 # serve several bb servers and a full local bb install keeps ~/.bb to itself.
-data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+if [ "$adopt" = yes ]; then
+  data_dir=$adopted_data_dir
+else
+  data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
+fi
 mkdir -p "$HOME/.local/bin"
 if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
   shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
@@ -590,6 +651,8 @@ access_config="$package_dir/access.curl"
 chmod 600 "$access_config"
 if [ -n "$bootstrap_env" ]; then
   BB_ENROLLMENT="$bootstrap_payload" node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ENROLLMENT).headers ?? {})) console.log("header = " + JSON.stringify(name + ": " + value))' > "$access_config"
+elif [ "$adopt" = yes ]; then
+  BB_ADOPTED_IDENTITY="$adopted_identity" node -e 'for (const [name,value] of Object.entries(JSON.parse(process.env.BB_ADOPTED_IDENTITY).headers)) console.log("header = " + JSON.stringify(name + ": " + value))' > "$access_config"
 fi
 package_headers="$package_dir/headers"
 host_artifact_digest_file="$data_dir/host-artifact.sha256"
@@ -726,14 +789,16 @@ if [ -n "$bb_app_npm_prefix" ]; then
   fi
 fi
 
-bb_cli="${bb_app%/*}/bb"
-if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
-if [ -z "$bb_cli" ]; then
-  fail_step "The installed build does not provide the machine enrollment CLI."
-  exit 1
+if [ "$adopt" = no ]; then
+  bb_cli="${bb_app%/*}/bb"
+  if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
+  if [ -z "$bb_cli" ]; then
+    fail_step "The installed build does not provide the machine enrollment CLI."
+    exit 1
+  fi
+  BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
+  bootstrap_payload=
 fi
-BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
-bootstrap_payload=
 
 auth_matches_host() {
   node -e '
