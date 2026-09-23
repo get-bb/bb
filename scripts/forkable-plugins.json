@@ -23,6 +23,7 @@
     "plugins/plugin-api-docs",
     "plugins/plugin-api-tester",
     "plugins/provider-acp",
+    "plugins/provider-claude-code",
     "plugins/provider-pi",
     "plugins/provider-retry",
     "plugins/provider-usage",

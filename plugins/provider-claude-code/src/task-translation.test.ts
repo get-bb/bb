@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
 import type {
   ThreadEvent,
   ThreadEventBackgroundTaskItem,
   ThreadEventItem,
-} from "@bb/domain";
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   TURN_1,
   TURN_2,
@@ -13,6 +12,8 @@ import {
   loadSessionFixture,
   spawningToolUseFor,
   spawningToolUseMessage,
+  threadScope,
+  turnScope,
 } from "./delta-test-harness.js";
 
 const PROGRESS_THROTTLE_MS = 500;
