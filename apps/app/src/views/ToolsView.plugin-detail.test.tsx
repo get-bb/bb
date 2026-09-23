@@ -225,6 +225,32 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(container.textContent).not.toContain("Last updated");
   });
 
+  it("links the category from the byline and drops the duplicate official marketplace", () => {
+    render(
+      <MemoryRouter>
+        <CatalogPluginDetail
+          entry={{
+            ...GITHUB_CATALOG_ENTRY,
+            categoryId: "code-and-reviews",
+            category: "Code & Reviews",
+          }}
+          onInstall={() => undefined}
+          catalogEntries={[]}
+          onOpenPlugin={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", {
+      name: "Browse Code & Reviews plugins",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "/plugins?shelf=category%3Acode-and-reviews",
+    );
+    expect(screen.queryByText("Marketplace")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Details" })).toBeNull();
+  });
+
   it("explains why an incompatible official plugin cannot be installed", () => {
     const incompatibleEntry = {
       ...GITHUB_CATALOG_ENTRY,

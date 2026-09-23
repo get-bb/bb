@@ -6,7 +6,7 @@ import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import {
   CatalogEntryIcon,
   CatalogEntryIconChip,
-  pluginCatalogCategoryPillStyle,
+  pluginCatalogCategoryMutedAccentStyle,
   pluginInstallCountPresentation,
 } from "./plugin-ui";
 
@@ -94,14 +94,14 @@ it("uses one glyph box for host and marketplace catalog icons", () => {
 
 it("uses theme accents for all built-in categories and neutral unknowns", () => {
   for (const category of PLUGIN_CATALOG_CATEGORIES) {
-    const style = pluginCatalogCategoryPillStyle(category.id);
+    const style = pluginCatalogCategoryMutedAccentStyle(category.id);
     expect(String(style.background)).toContain("color-mix(in oklab");
     expect(String(style.background)).toContain("var(--");
-    expect(String(style.background)).not.toContain("var(--ink) 8%");
+    expect(String(style.background)).not.toContain("var(--ink)");
   }
-  const unknown = pluginCatalogCategoryPillStyle("future-category");
+  const unknown = pluginCatalogCategoryMutedAccentStyle("future-category");
   expect(unknown.background).toBe(
-    "color-mix(in oklch, var(--ink) 8%, var(--canvas))",
+    "color-mix(in oklch, var(--ink) 36%, var(--canvas))",
   );
 });
 

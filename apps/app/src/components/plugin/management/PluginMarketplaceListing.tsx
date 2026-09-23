@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
   Carousel,
   CarouselContent,
@@ -17,23 +18,57 @@ import {
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
+import { getPluginsRoutePath } from "@/lib/route-paths";
+import { PluginCardAuthorName } from "./PluginCard";
 import {
   CatalogEntryIconChip,
   formatUrlLabel,
-  PluginCategoryLabel,
+  pluginCatalogCategoryMutedAccentStyle,
 } from "./plugin-ui";
 import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
 
-export function PluginMarketplaceCategoryPill({
+export function PluginMarketplaceByline({
   entry,
 }: {
-  entry: PluginCatalogSearchEntry;
+  entry: Pick<
+    PluginCatalogSearchEntry,
+    "author" | "marketplace" | "publisherLabel" | "category" | "categoryId"
+  >;
 }) {
-  return entry.category === undefined ? null : (
-    <PluginCategoryLabel categoryId={entry.categoryId} label={entry.category} />
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="min-w-0 truncate">
+        <PluginCardAuthorName entry={entry} />
+      </span>
+      {entry.category === undefined ? null : (
+        <span className="flex min-w-0 shrink-[100] items-center gap-1.5">
+          <span
+            aria-hidden
+            className="size-1.5 shrink-0 rounded-full"
+            style={pluginCatalogCategoryMutedAccentStyle(entry.categoryId)}
+          />
+          {entry.categoryId === undefined ? (
+            <span className="min-w-0 truncate">{entry.category}</span>
+          ) : (
+            <Link
+              to={{
+                pathname: getPluginsRoutePath(),
+                search: new URLSearchParams({
+                  shelf: `category:${entry.categoryId}`,
+                }).toString(),
+              }}
+              aria-label={`Browse ${entry.category} plugins`}
+              className="min-w-0 truncate rounded-sm underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {entry.category}
+            </Link>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -63,9 +98,11 @@ export function PluginMarketplaceDetailMetadata({
 }) {
   return (
     <>
-      <PluginDetailMetadataItem label="Marketplace">
-        {entry.marketplaceDisplayName}
-      </PluginDetailMetadataItem>
+      {entry.marketplace === "bb-official" ? null : (
+        <PluginDetailMetadataItem label="Marketplace">
+          {entry.marketplaceDisplayName}
+        </PluginDetailMetadataItem>
+      )}
       {entry.publishedAt === undefined ? null : (
         <PluginDetailMetadataItem label="Listed">
           <time dateTime={entry.publishedAt}>
@@ -193,7 +230,7 @@ function PluginScreenshotGallery({
 export function PluginOverviewLead({ description }: { description: string }) {
   return (
     <p
-      className="text-base leading-relaxed text-foreground"
+      className="text-sm leading-relaxed text-foreground"
       data-plugin-summary=""
     >
       {description}
@@ -209,7 +246,7 @@ export function PluginMarketplaceOverview({
   return (
     <section className="space-y-6" data-resource-detail-section="overview">
       <PluginScreenshotGallery entry={entry} />
-      <div className="space-y-3">
+      <div className="max-w-prose space-y-4">
         <PluginOverviewLead description={entry.description} />
         {entry.overview === undefined ? null : (
           <>
@@ -232,11 +269,14 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      <ResourceDefinitionSection label="Details">
-        <PluginDetailMetadata>
-          <PluginMarketplaceDetailMetadata entry={entry} />
-        </PluginDetailMetadata>
-      </ResourceDefinitionSection>
+      {entry.marketplace === "bb-official" &&
+      entry.publishedAt === undefined ? null : (
+        <ResourceDefinitionSection label="Details">
+          <PluginDetailMetadata>
+            <PluginMarketplaceDetailMetadata entry={entry} />
+          </PluginDetailMetadata>
+        </ResourceDefinitionSection>
+      )}
     </>
   );
 }

@@ -65,33 +65,12 @@ function accentTint(token: string, percent: number): string {
   return `color-mix(in oklab, var(${token}) ${percent}%, var(--canvas))`;
 }
 
-function accentInk(token: string, percent: number): string {
-  return `color-mix(in oklab, var(${token}) ${percent}%, var(--ink))`;
-}
-
 function pluginCatalogCategoryAccentToken(
   categoryId: string | undefined,
 ): string | undefined {
   return categoryId === undefined
     ? undefined
     : PLUGIN_CATEGORY_ACCENT_TOKENS[categoryId];
-}
-
-export function pluginCatalogCategoryPillStyle(
-  categoryId: string | undefined,
-): CSSProperties {
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return accentToken === undefined
-    ? {
-        background: neutral(8),
-        borderColor: neutral(16),
-        color: neutral(55),
-      }
-    : {
-        background: accentTint(accentToken, 10),
-        borderColor: accentTint(accentToken, 18),
-        color: accentInk(accentToken, 50),
-      };
 }
 
 export function pluginCatalogCategoryMutedAccentStyle(
@@ -171,23 +150,6 @@ export function CatalogEntryIcon({
         iconTinted={entry.iconTinted}
         className="size-full"
       />
-    </span>
-  );
-}
-
-export function PluginCategoryLabel({
-  categoryId,
-  label,
-}: {
-  categoryId: string | undefined;
-  label: string;
-}) {
-  return (
-    <span
-      className="inline-block max-w-full rounded border px-1.5 py-1 align-middle text-right text-2xs leading-snug"
-      style={pluginCatalogCategoryPillStyle(categoryId)}
-    >
-      {label}
     </span>
   );
 }
