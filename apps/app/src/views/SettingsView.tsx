@@ -1056,11 +1056,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged.",
   },
-  timelineWindowing: {
-    label: "Timeline windowing",
-    description:
-      "Mount only nearby rows in long timelines and expanded timeline details.",
-  },
 };
 export function ExperimentsSettingsSection({
   disabled,

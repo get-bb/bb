@@ -40,7 +40,6 @@ describe("experiments", () => {
         "mobileApp",
         "serverMove",
         "sidebarProgressiveDisclosure",
-        "timelineWindowing",
       ]);
     } finally {
       db.$client.close();

@@ -43,7 +43,6 @@ class ResizeObserverStub implements ResizeObserver {
 function renderWindowedItems(options?: {
   alwaysMountedKeys?: ReadonlySet<string>;
   clientHeight?: number;
-  enabled?: boolean;
   measurements?: Map<string, number>;
 }) {
   const measurements = options?.measurements ?? new Map<string, number>();
@@ -58,7 +57,6 @@ function renderWindowedItems(options?: {
   return {
     ...render(
       <TimelineWindowedItems
-        enabled={options?.enabled ?? true}
         alwaysMountedKeys={options?.alwaysMountedKeys}
         estimateItemHeight={() => 32}
         gap={0}
@@ -140,7 +138,6 @@ describe("TimelineWindowedItems", () => {
 
     render(
       <TimelineWindowedItemsLoader
-        enabled
         estimateItemHeight={() => 100}
         gap={0}
         getScrollElement={() => scrollElement}
@@ -159,15 +156,6 @@ describe("TimelineWindowedItems", () => {
 
     expect(measurements.get("row-0")).toBe(32);
     expect(measurements.get("row-99")).toBe(32);
-  });
-
-  it("keeps the control path fully mounted when the experiment is off", () => {
-    renderWindowedItems({ enabled: false });
-
-    expect(screen.getAllByTestId(/^content-/)).toHaveLength(100);
-    expect(
-      scrollElement.querySelector("[data-timeline-virtual-spacer]"),
-    ).toBeNull();
   });
 
   it("mounts only the visible TanStack range and removes offscreen wrappers", async () => {

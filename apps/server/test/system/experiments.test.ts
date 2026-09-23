@@ -16,7 +16,6 @@ describe("experiments settings", () => {
         mobileApp: false,
         serverMove: false,
         sidebarProgressiveDisclosure: false,
-        timelineWindowing: false,
       });
     });
   });
@@ -31,7 +30,6 @@ describe("experiments settings", () => {
           mobileApp: true,
           serverMove: true,
           sidebarProgressiveDisclosure: true,
-          timelineWindowing: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -40,14 +38,12 @@ describe("experiments settings", () => {
         mobileApp: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
-        timelineWindowing: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         mobileApp: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
-        timelineWindowing: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -58,7 +54,6 @@ describe("experiments settings", () => {
         mobileApp: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
-        timelineWindowing: true,
       });
     });
   });
@@ -76,7 +71,6 @@ describe("experiments settings", () => {
           mobileApp: false,
           serverMove: false,
           sidebarProgressiveDisclosure: false,
-          timelineWindowing: false,
         }),
       });
       expect(put.status).toBe(200);

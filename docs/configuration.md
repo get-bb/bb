@@ -1151,10 +1151,9 @@ click. Revealed groups stay visible through activity and sort-order changes.
 **Manually** is unchanged. Toggle it with `bb settings experiment
 sidebarProgressiveDisclosure <true|false>`.
 
-The `timelineWindowing` experiment is off by default. When enabled, long
-timelines and large expanded timeline details retain stable height-preserving
-wrappers while mounting only rows near their active scrollport. Toggle it with
-`bb settings experiment timelineWindowing <true|false>`.
+Long timelines and large expanded timeline details retain stable
+height-preserving wrappers while mounting only rows near their active
+scrollport.
 
 The `serverMove` experiment is off by default. When enabled, Settings → Machines
 offers Move server here, and the server accepts `bb server move`,

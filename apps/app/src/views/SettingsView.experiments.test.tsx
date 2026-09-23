@@ -17,7 +17,6 @@ function renderSection(
         mobileApp: false,
         serverMove: false,
         sidebarProgressiveDisclosure: false,
-        timelineWindowing: false,
       }}
       onExperimentChange={onExperimentChange}
     />,
@@ -44,12 +43,5 @@ describe("ExperimentsSettingsSection", () => {
     renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Sidebar progressive disclosure"));
     expect(onChange).toHaveBeenCalledWith("sidebarProgressiveDisclosure", true);
-  });
-
-  it("reports timeline windowing changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Timeline windowing"));
-    expect(onChange).toHaveBeenCalledWith("timelineWindowing", true);
   });
 });

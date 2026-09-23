@@ -146,7 +146,6 @@ import {
 } from "./TimelineWindowedItemsLoader.js";
 
 export interface ThreadTimelineRowsProps {
-  timelineWindowingEnabled?: boolean;
   initialExpanded?: ReadonlySet<string>;
   canSpawnChild?: boolean;
   threadOriginKind?: ThreadOriginKind | null;
@@ -359,7 +358,6 @@ const StreamingAssistantMessageIdContext = createContext<string | null>(null);
 const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
 const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
-const TimelineWindowingEnabledContext = createContext(false);
 const TIMELINE_TERMINAL_EXPANSION_RETENTION = 24;
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
@@ -1763,7 +1761,6 @@ function TimelineRowsList({
   const bottomAnchor = useBottomAnchoredScroll();
   const scrollRestoreRowId = useContext(TimelineScrollRestoreRowIdContext);
   const detailScrollRoot = useContext(TimelineWindowingScrollRootContext);
-  const timelineWindowingEnabled = useContext(TimelineWindowingEnabledContext);
   const inheritedMeasurements = useContext(
     TimelineWindowingMeasurementsContext,
   );
@@ -1808,11 +1805,7 @@ function TimelineRowsList({
     if (spacing === "top-level" && scrollRestoreRowId !== null) {
       keys.add(scrollRestoreRowId);
     }
-    if (
-      spacing === "top-level" &&
-      timelineWindowingEnabled &&
-      navigationTargetRowId != null
-    ) {
+    if (spacing === "top-level" && navigationTargetRowId != null) {
       keys.add(navigationTargetRowId);
     }
     return keys;
@@ -1823,7 +1816,6 @@ function TimelineRowsList({
     spacing,
     stableSearchExpandedRowIds,
     navigationTargetRowId,
-    timelineWindowingEnabled,
   ]);
   const getWindowingScrollElement =
     detailScrollRoot?.getScrollElement ??
@@ -1851,7 +1843,6 @@ function TimelineRowsList({
           data-timeline-row-list={spacing}
         >
           <TimelineWindowedItemsLoader
-            enabled={timelineWindowingEnabled}
             alwaysMountedKeys={alwaysMountedKeys}
             estimateItemHeight={(index) => {
               const item = items[index];
@@ -2173,36 +2164,32 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                   <TimelineWindowingMeasurementsContext.Provider
                     value={windowingMeasurements}
                   >
-                    <TimelineWindowingEnabledContext.Provider
-                      value={props.timelineWindowingEnabled ?? false}
+                    <AutoHeightContainer
+                      snapRevision={heightSnapRevision}
+                      animateGrowth={!scopeActive}
                     >
-                      <AutoHeightContainer
-                        snapRevision={heightSnapRevision}
-                        animateGrowth={!scopeActive}
-                      >
-                        <TimelineRowsList
-                          hasOlderTimelineRows={props.hasOlderTimelineRows}
-                          isLoadingOlderTimelineRows={
-                            props.isLoadingOlderTimelineRows
-                          }
-                          navigationTargetRowId={
-                            props.timelineNavigationTargetRowId
-                          }
-                          onLoadOlderRows={props.onLoadOlderRows}
-                          rows={rows}
-                          scopeActive={scopeActive}
-                          showAssistantMessageActions={true}
-                          compactActivityIntents={false}
-                          spacing="top-level"
-                          unreadDividerAutoScroll={
-                            props.unreadDividerAutoScroll ?? true
-                          }
-                          unreadDividerPlacement={
-                            props.unreadDividerPlacement ?? null
-                          }
-                        />
-                      </AutoHeightContainer>
-                    </TimelineWindowingEnabledContext.Provider>
+                      <TimelineRowsList
+                        hasOlderTimelineRows={props.hasOlderTimelineRows}
+                        isLoadingOlderTimelineRows={
+                          props.isLoadingOlderTimelineRows
+                        }
+                        navigationTargetRowId={
+                          props.timelineNavigationTargetRowId
+                        }
+                        onLoadOlderRows={props.onLoadOlderRows}
+                        rows={rows}
+                        scopeActive={scopeActive}
+                        showAssistantMessageActions={true}
+                        compactActivityIntents={false}
+                        spacing="top-level"
+                        unreadDividerAutoScroll={
+                          props.unreadDividerAutoScroll ?? true
+                        }
+                        unreadDividerPlacement={
+                          props.unreadDividerPlacement ?? null
+                        }
+                      />
+                    </AutoHeightContainer>
                   </TimelineWindowingMeasurementsContext.Provider>
                   {hasSelectionActions ? (
                     <TimelineSelectionMenu
