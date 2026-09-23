@@ -141,12 +141,15 @@ diff viewers, and the new-thread composer.
   BB. Import via the `@/*` alias: `import { Button } from
 "@/components/ui/button"` (tsconfig maps it; `bb plugin build` reads it).
 - Add more with stock shadcn tooling: `npx shadcn add @bb/select
-@bb/table` — the BB registry carries the full stock set (~44 items:
+@bb/table` — the BB registry carries the full stock set (~46 items:
   accordion, alert-dialog, calendar, chart, command, form, sheet, table,
   …), generated from the BB app's own component source, so vendored code is
   version-matched to your BB by construction. Edit the copies freely; they
   never change out from under you. Re-running `shadcn add` is the manual
   update path.
+- The registry's `icon` is a thin wrapper over `experimental_Icon`: vendored
+  components draw bb's glyphs, including icons other plugins register, from
+  the host at runtime instead of bundling an icon set.
 - `toast`: `import { toast } from "sonner"` — runtime-shimmed to the host's
   Toaster (`toast.success("Saved")` just works; never mount your own
   `<Toaster>`).
@@ -181,9 +184,9 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs do.
-- The old bb extras (`EmptyState`, `PageBody`, `Spinner`) are
-  gone — write your own (each is a few lines; see
-  `plugins/github/components/` for reference implementations).
+- `EmptyState` ships as `npx shadcn add @bb/empty-state`. The other old bb
+  extras (`PageBody`, `Spinner`) are gone — write your own (each is a few
+  lines; see `plugins/github/components/` for reference implementations).
 
 Compatibility aliases remain for one release and warn once. Use `UrlLink`
 instead of `experimental_UrlLink`. Use `BbNavigate.openUrl` instead of

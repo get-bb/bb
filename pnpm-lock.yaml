@@ -2155,12 +2155,9 @@ importers:
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
-      '@hugeicons/core-free-icons':
-        specifier: ^4.3.4
-        version: 4.3.4
-      '@hugeicons/react':
-        specifier: ^1.1.6
-        version: 1.1.6(react@19.2.4)
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
       '@radix-ui/react-accordion':
         specifier: ^1.2.16
         version: 1.2.16(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
