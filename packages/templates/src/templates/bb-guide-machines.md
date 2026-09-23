@@ -213,6 +213,7 @@ checkouts stay on the machines that own them.
     --force                               Skip the new-server health check
   bb server allow-connect                 Turn bb connect on for an imported copy
   bb server delete-old-copy               Delete the old copy a move left here
+  bb server install-machine-service       Keep this computer connected after a move
 
 When the target never confirms that it took over, the move waits in
 `recovery_required`: the old server stays up and read-only, and bb finishes the
@@ -253,7 +254,15 @@ once the original server is stopped (`--json` prints `dataDir` and
 After a move, the old computer's data directory keeps `server-moved.json`, so
 bb there refuses to start the old server and runs as a regular machine.
 `bb server delete-old-copy` deletes the server files left behind and keeps that
-lock. `bb server unlock` removes the lock as a last resort: everything since
+lock. The desktop app or `bb-app` keeps that machine connected only while it
+runs, and its daemon can't update itself.
+`bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` gives
+it the persistent, self-updating service a CLI-installed machine gets: it needs
+Node.js 22.19 or newer on the PATH, stops bb running from that directory, and
+runs `install-machine.sh --adopt --data-dir <dir>`, which keeps the machine ID,
+downloads the new server's bb-app package, and installs the launchd or systemd
+service (`--json` prints `dataDir`, `serverUrl`, `toHostName`, and
+`serviceFile`). `bb server unlock` refuses while that service exists. `bb server unlock` removes the lock as a last resort: everything since
 the move is lost on that copy, and the new server must be stopped first. It
 refuses while the new server still answers (`<serverUrl>/health`, or
 `/api/v1/system/version` with this computer's machine grant for bb connect)
@@ -267,6 +276,10 @@ calls a server. The SDK equivalents are `sdk.experimental_server.checkMove`,
 
 ## Local daemon lifecycle
 
+`install-machine.sh --adopt --data-dir <path>` installs the service for a data
+directory that is already enrolled, reading its machine ID from `auth.json` and
+its server address and headers from `config.json`; `bb server
+install-machine-service` runs it for the directory a server move left behind.
 `install-machine.sh --start|--stop|--uninstall --host-id <id>` starts, stops or removes an
 owned local installation. Optional `--server-url <url>` and `--data-dir <path>`
 assert the expected installation. BB_DATA_DIR is treated as an assertion too.

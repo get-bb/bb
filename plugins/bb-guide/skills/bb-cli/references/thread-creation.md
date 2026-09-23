@@ -263,7 +263,13 @@ time that server starts.
 
 The old computer's data directory keeps a `server-moved.json` lock, so bb runs
 there as a regular machine. `bb server delete-old-copy` deletes the server files
-the move left behind and keeps the lock. `bb server unlock` removes the lock so
+the move left behind and keeps the lock. That machine stays connected only while
+the desktop app or `bb-app` runs, and its daemon can't update itself;
+`bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` stops
+bb there and runs `install-machine.sh --adopt --data-dir <dir>` to install the
+persistent, self-updating service with the same machine ID. It needs Node.js
+22.19 or newer on the PATH, and `bb server unlock` refuses while the service
+exists. `bb server unlock` removes the lock so
 the old copy can start again; everything since the move is lost there, and the
 new server must be stopped first. It probes `<serverUrl>/health` (connect
 mode: `/api/v1/system/version` with the machine grant in `config.json`) and

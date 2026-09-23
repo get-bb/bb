@@ -179,10 +179,15 @@ bb server import <file> [--data-dir <dir>] [--yes] [--json]
 bb server unlock [--data-dir <dir>] [--force] [--yes] [--json]
 bb server allow-connect [--data-dir <dir>] [--yes] [--json]
 bb server delete-old-copy [--data-dir <dir>] [--yes] [--json]
+bb server install-machine-service [--data-dir <dir>] [--yes] [--json]
 ```
 
 `import`, `unlock`, `allow-connect`, and `delete-old-copy` run locally and do
-not call a server.
+not call a server. `install-machine-service` runs locally on the computer a
+server moved away from: it stops bb there and runs
+`install-machine.sh --adopt --data-dir <dir>`, which downloads the new server's
+bb-app package and installs the persistent, self-updating machine service with
+the same machine ID.
 
 Routes and SDK (`docs/api_to_audit.md` covers stabilization):
 

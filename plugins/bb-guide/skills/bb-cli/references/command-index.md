@@ -107,11 +107,13 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb server unlock`
 - `bb server allow-connect`
 - `bb server delete-old-copy`
+- `bb server install-machine-service`
 
 `move`, `move status`, `move cancel`, and `export` call the running server.
 `import`, `unlock`, `allow-connect`, and `delete-old-copy` act on a local data
 directory (`--data-dir`, else `BB_DATA_DIR`, else `~/.bb`) and never call a
-server.
+server. `install-machine-service` acts on the same local data directory after a
+move and downloads the new server's bb-app package for its service.
 
 ## updates
 

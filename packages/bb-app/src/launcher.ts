@@ -24,6 +24,7 @@ import {
   readBbAppRuntimeFile,
 } from "@bb/config/app-runtime-file";
 import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
+import { MACHINE_INSTALLER_ENV_NAME } from "@bb/config/machine-service";
 import {
   hasProcessExited,
   waitForProcessExit,
@@ -2455,6 +2456,11 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
+    [MACHINE_INSTALLER_ENV_NAME]: join(
+      dirname(args.context.serverEntry),
+      "assets",
+      "install-machine.sh",
+    ),
     NODE_ENV: "production",
   };
 

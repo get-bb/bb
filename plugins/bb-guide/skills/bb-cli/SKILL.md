@@ -102,7 +102,9 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   up a running server. `bb server import`, `unlock`, `allow-connect`, and
   `delete-old-copy` act on this computer's data directory without calling a
   server. An imported server keeps its connect tunnel off until
-  `bb server allow-connect`.
+  `bb server allow-connect`. On the computer a server moved away from,
+  `bb server install-machine-service` installs the persistent, self-updating
+  machine service (needs Node.js 22.19+ on the PATH).
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a

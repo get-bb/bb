@@ -128,6 +128,11 @@
       "types": "./src/verified-process-stop.ts",
       "default": "./src/verified-process-stop.ts"
     },
+    "./machine-service": {
+      "source": "./src/machine-service.ts",
+      "types": "./src/machine-service.ts",
+      "default": "./src/machine-service.ts"
+    },
     "./child-process-exit": {
       "source": "./src/child-process-exit.ts",
       "types": "./src/child-process-exit.ts",
