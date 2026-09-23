@@ -189,7 +189,7 @@ describe("useSectionThreadDnd pin mutations", () => {
     });
   });
 
-  it("unparents and pins every root when a worktree group is dropped in Pinned", async () => {
+  function nestedWorktreeGroup() {
     const environment = makeSidebarEnvironment({
       id: "worktree",
       isWorktree: true,
@@ -227,7 +227,29 @@ describe("useSectionThreadDnd pin mutations", () => {
       rootItems,
       CHRONOLOGICAL_CONTAINER_ID,
     );
-    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+    return { activeId: [...lookup.groupThreadsByItemId.keys()][0], rootItems };
+  }
+
+  it("does not pin a worktree group whose roots failed to unparent", async () => {
+    const { activeId, rootItems } = nestedWorktreeGroup();
+    updateThreadFake.mockResolvedValueOnce(undefined as never);
+    updateThreadFake.mockRejectedValueOnce(new Error("update failed"));
+    const { inspection, result } = renderSectionThreadDnd(rootItems);
+    const props = () => result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart(activeId)));
+    act(() => props().onDragEnd?.(dragEnd(activeId, "pinned")));
+    await flushTasks();
+
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.update"),
+    ).toHaveLength(2);
+    expect(inspection.sidebarActionCalls).toEqual([]);
+    expect(result.current!.activeItemId).toBeNull();
+  });
+
+  it("unparents and pins every root when a worktree group is dropped in Pinned", async () => {
+    const { activeId, rootItems } = nestedWorktreeGroup();
     updateThreadFake.mockResolvedValueOnce(undefined as never);
     updateThreadFake.mockResolvedValueOnce(undefined as never);
     const { inspection, result } = renderSectionThreadDnd(rootItems);

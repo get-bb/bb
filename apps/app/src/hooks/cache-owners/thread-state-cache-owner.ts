@@ -76,7 +76,7 @@ interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
   title?: string | null;
 }
 
-export interface ThreadMetadataUpdate {
+interface ThreadMetadataUpdate {
   threadId: string;
   parentThreadId?: string | null;
   sectionId?: string | null;
@@ -156,7 +156,7 @@ export interface ThreadListMutationTransaction {
   previousThreadLists: CachedThreadListSnapshot;
 }
 
-export interface ThreadMetadataBatchTransaction {
+interface ThreadMetadataBatchTransaction {
   previousSidebarNavigation: CachedSidebarNavigationSnapshot;
   previousThreads: ReadonlyMap<string, ThreadWithRuntime | undefined>;
   previousThreadLists: CachedThreadListSnapshot;
