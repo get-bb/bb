@@ -304,8 +304,6 @@ const acpConfigOptionSelectGroupSchema = z
   })
   .passthrough();
 
-// ACP allows a select option's `options` to be a flat value list or a list of
-// groups; bb keeps only the values.
 function flattenAcpConfigOptionGroups(option: unknown): unknown {
   if (typeof option !== "object" || option === null) {
     return option;
