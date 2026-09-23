@@ -15,7 +15,11 @@ function loadConfig(env: Env): GatewayConfig | null {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const config = loadConfig(env);
     if (config === null) {
       return unavailableResponse("hosted generation is not configured");
@@ -27,6 +31,7 @@ export default {
       fetch: (input, init) => fetch(input, init),
       now: () => Date.now(),
       upstreamTimeoutMs: UPSTREAM_TIMEOUT_MS,
+      waitUntil: (promise) => ctx.waitUntil(promise),
     });
   },
 

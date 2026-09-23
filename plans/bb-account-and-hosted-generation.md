@@ -67,6 +67,7 @@ Still to do: deploying the migration and the gateway; phase 2 voice.
   `server.subdomain` is `NOT NULL UNIQUE`, so a linked server always has a
   Connect label. Nothing else in bb uses the getbb.app account. No hosted
   endpoint has rate limits or metering.
+
 - **Generation.** Titles and commit messages share one path:
   `inferenceCompleteWithFallback` in `apps/server/src/services/ai/inference.ts`.
   - It is driven by `BB_INFERENCE` (default `codex/gpt-5.6-luna`) and
@@ -146,6 +147,7 @@ refreshes from `GET /api/account/me` at start and every 6 hours.
 
    This works for headless and remote servers because the approving browser
    can be on any device.
+
 2. **Pasted code (existing).** `bb account login --code XXXX-XXXX` goes
    through today's `/api/connect/redeem`. `bb connect --code` stays as an
    alias, so the current dashboard instructions keep working.
@@ -163,12 +165,12 @@ the same way connect's `credentialRejected` behaves today.
 Discoverable methods publish their JSON Schema so third-party plugins can use
 them.
 
-| Method | Discoverable | What it does |
-|---|---|---|
-| `bb-account.v1.status` | yes | Returns `{state: "signed-out" \| "signed-in" \| "revoked" \| "held", revision, account?}`. |
-| `bb-account.v1.waitForStatusChange` | yes | Long-poll. Resolves when `revision` passes `afterRevision`, or after 25 s. Connect uses it to start the tunnel the moment the user signs in, with no event bus. |
-| `bb-account.v1.fetch` | yes | `{target: "api" \| "gate", method, path, body?}` → `{status, body}`. The origin is fixed to the getbb.app apex or this account's gate host. The path must start with `/api/`. JSON only, 1 MB cap. Attaches the credential. |
-| `bb-account.v1.adoptConnectCredential` | no | One-time migration from connect's KV. Validates against `/api/account/me` and stores the credential only when signed out. Removed after two releases. |
+| Method                                 | Discoverable | What it does                                                                                                                                                                                                                |
+| -------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bb-account.v1.status`                 | yes          | Returns `{state: "signed-out" \| "signed-in" \| "revoked" \| "held", revision, account?}`.                                                                                                                                  |
+| `bb-account.v1.waitForStatusChange`    | yes          | Long-poll. Resolves when `revision` passes `afterRevision`, or after 25 s. Connect uses it to start the tunnel the moment the user signs in, with no event bus.                                                             |
+| `bb-account.v1.fetch`                  | yes          | `{target: "api" \| "gate", method, path, body?}` → `{status, body}`. The origin is fixed to the getbb.app apex or this account's gate host. The path must start with `/api/`. JSON only, 1 MB cap. Attaches the credential. |
+| `bb-account.v1.adoptConnectCredential` | no           | One-time migration from connect's KV. Validates against `/api/account/me` and stores the credential only when signed out. Removed after two releases.                                                                       |
 
 The plugin also has private methods for its own UI: `login.start`,
 `login.poll`, `login.cancel`, `redeemCode` and `signOut`.
@@ -248,8 +250,8 @@ hold is on.
 
 - Tunnel dials accept a ticket as well as the raw credential. For a ticket the
   gate checks the HMAC, the expiry, that the server isn't revoked, and that
-  the ticket's credential-hash prefix matches the server's current credential. The raw
-  credential keeps working until old plugins age out.
+  the ticket's credential-hash prefix matches the server's current
+  credential. The raw credential keeps working until old plugins age out.
 - Move credential resolution (`resolveAccountUserId`) into
   `packages/connect-db` so bb-ai-gateway can share it.
 
@@ -267,15 +269,18 @@ hold is on.
   credential.
   - Body: `{prompt}`, matching the plugin API's string in.
   - The worker picks the model; clients cannot.
-  - Caps: 48 KB of prompt, 128 output tokens and 8 s. With these caps the
-    endpoint is useless as a free general-purpose LLM proxy.
+  - Caps: 48 KB of non-blank prompt (the body is read with a 512 KiB byte
+    counter, chunked or not), 128 output tokens and a 4 s upstream timeout,
+    under bb-ai's 5 s fetch timeout. With these caps the endpoint is useless
+    as a free general-purpose LLM proxy.
 - **Response.**
   - Success: `{text, usage: {costMicros, spentTodayMicros, limitMicros}}`.
   - Failure: an HTTP error with
     `{error: {code: "budget_exhausted" | "rate_limited" | "unavailable", message, resetsAt?}}`.
 - **`GET /api/ai/v1/usage`** returns `{day, spentMicros, limitMicros, resetsAt}`.
 - **Logging.** Metadata only: user, server, model, tokens, cost, latency and
-  outcome. Prompts and diffs are never logged. A cron trigger deletes rows
+  outcome, including refused requests (`rate_limited`, `budget_exhausted`,
+  `invalid_request`). Prompts and diffs are never logged. A cron trigger deletes rows
   older than 30 days.
 
 **Metering**
@@ -291,8 +296,13 @@ hold is on.
   2. After the call, add the actual `usage.cost` from OpenRouter's response to
      `spent` and release the reserve.
 
-  Concurrent requests cannot overshoot the budget. A failed call releases its
-  reserve and is charged only what OpenRouter billed.
+  Concurrent requests cannot overshoot the budget. A call is charged the
+  cost OpenRouter reports. Without a reported cost, a call OpenRouter may
+  still bill (a success, a timeout, a dropped connection or an unreadable
+  reply) is charged the reserve, and an error response is charged nothing.
+  Settlement runs in a `finally` kept alive with `ctx.waitUntil`, so a client
+  disconnect cannot strand the reserve.
+
 - **Burst limit.** 60 requests per minute per account, via the Rate Limiting
   binding.
 - **Backstop.** Total spend is bounded by a credit limit with a daily reset on
@@ -304,11 +314,11 @@ The picks come from OpenRouter's live catalog, fetched 2026-09-22. Titles and
 commit subjects need low latency, short output, and a model that answers with
 only the requested text. Reasoning is off.
 
-| Role | Model | $/M in | $/M out | Why |
-|---|---|---|---|---|
-| Primary | `nvidia/nemotron-3.5-lightning` | 0.07 | 0.20 | 30B MoE with 3B active, built for high-throughput short tasks. Three zero-data-retention (ZDR) endpoints: Phala, DeepInfra, CoreWeave. |
-| Fallback 1 | `inception/mercury-2.5` | 0.04 | 0.15 | Diffusion model with very low latency. ZDR at Inception. |
-| Fallback 2 | `openai/gpt-oss-20b` | 0.018 | 0.09 | Cheapest option, with many ZDR endpoints. |
+| Role       | Model                           | $/M in | $/M out | Why                                                                                                                                    |
+| ---------- | ------------------------------- | ------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary    | `nvidia/nemotron-3.5-lightning` | 0.07   | 0.20    | 30B MoE with 3B active, built for high-throughput short tasks. Three zero-data-retention (ZDR) endpoints: Phala, DeepInfra, CoreWeave. |
+| Fallback 1 | `inception/mercury-2.5`         | 0.04   | 0.15    | Diffusion model with very low latency. ZDR at Inception.                                                                               |
+| Fallback 2 | `openai/gpt-oss-20b`            | 0.018  | 0.09    | Cheapest option, with many ZDR endpoints.                                                                                              |
 
 No OpenRouter model is called "Nemotron Ultra Fast". Nemotron 3 Ultra is the
 550B frontier model at $0.60/$2.40. Nemotron 3.5 Lightning is the fast, cheap
@@ -327,9 +337,9 @@ With these settings, user code only goes to endpoints that don't retain it.
 
 **Cost.**
 
-| Request | Input | Cost |
-|---|---|---|
-| Title | about 1K tokens | about $0.0001 |
+| Request                                  | Input            | Cost          |
+| ---------------------------------------- | ---------------- | ------------- |
+| Title                                    | about 1K tokens  | about $0.0001 |
 | Commit message at core's 32 KB patch cap | about 10K tokens | about $0.0008 |
 
 - 50¢ a day covers about 600 max-size commits or 5,000 titles.
@@ -361,8 +371,14 @@ bb.experimental_aiServices.register({
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       signal,
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+      }),
     });
     const json = await res.json();
     return json.choices[0].message.content;
@@ -458,11 +474,11 @@ A new Settings section, **AI services**, works like the sidebar pickers
 (`ReplacementProviderSetting`). It is now the only place this choice is made.
 It has one row per task:
 
-| Row | Lists services with | Notes |
-|---|---|---|
-| Thread titles | `complete` | Branch names follow the title. |
-| Commit messages | `complete` | |
-| Voice input | `transcribe` | Codex already serves voice. bb cloud joins in phase 2. |
+| Row             | Lists services with | Notes                                                  |
+| --------------- | ------------------- | ------------------------------------------------------ |
+| Thread titles   | `complete`          | Branch names follow the title.                         |
+| Commit messages | `complete`          |                                                        |
+| Voice input     | `transcribe`        | Codex already serves voice. bb cloud joins in phase 2. |
 
 **What each row's dropdown offers.**
 
@@ -511,14 +527,14 @@ It then appears in the Thread titles and Commit messages rows. Adding
 
 **CLI and SDK.**
 
-| Surface | Change |
-|---|---|
-| `bb settings ai-services` | Prints each task's selection and each service's status. The env lines go away. |
-| `bb settings ai-services set <thread-title\|commit-message\|voice> <automatic\|off\|<service>>` | New. |
-| `bb settings ai-services test <task>` | New. |
-| `sdk.system.config().aiServices` | Becomes `{ selections, services: [{ id, displayName, pluginId, tasks, status }] }`. |
-| Updating a selection | Goes through the same app-settings update as the other Settings rows. |
-| `sdk.system.testAiService({ task })` | New. |
+| Surface                                                                                         | Change                                                                              |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `bb settings ai-services`                                                                       | Prints each task's selection and each service's status. The env lines go away.      |
+| `bb settings ai-services set <thread-title\|commit-message\|voice> <automatic\|off\|<service>>` | New.                                                                                |
+| `bb settings ai-services test <task>`                                                           | New.                                                                                |
+| `sdk.system.config().aiServices`                                                                | Becomes `{ selections, services: [{ id, displayName, pluginId, tasks, status }] }`. |
+| Updating a selection                                                                            | Goes through the same app-settings update as the other Settings rows.               |
+| `sdk.system.testAiService({ task })`                                                            | New.                                                                                |
 
 New server route: `POST /system/ai-services/test`.
 
@@ -559,14 +575,15 @@ chain. Phase 2 adds:
 - **Model.** Evaluate these two on real bb dictation, which is full of code
   identifiers, file paths and product names:
 
-  | Model | $/min | ZDR endpoints |
-  |---|---|---|
-  | `openai/whisper-large-v3-turbo` | 0.0002 | Groq, DeepInfra |
-  | `mistralai/voxtral-mini-transcribe` | 0.003 | Mistral |
+  | Model                               | $/min  | ZDR endpoints   |
+  | ----------------------------------- | ------ | --------------- |
+  | `openai/whisper-large-v3-turbo`     | 0.0002 | Groq, DeepInfra |
+  | `mistralai/voxtral-mini-transcribe` | 0.003  | Mistral         |
 
   For reference, `openai/gpt-transcribe`, the model Codex uses, costs
   $0.0045/min on OpenRouter and has no ZDR endpoint. Even at $0.003/min, 30
   minutes of dictation a day costs 9¢.
+
 - **Verification.** Sign in with no Codex login and the mic appears. A
   recording transcribes. `bb ai usage` counts it. With the budget exhausted,
   Automatic skips bb cloud, so the mic hides unless Codex is available.
@@ -583,6 +600,7 @@ chain. Phase 2 adds:
    These ship together because once the env settings are gone, the picker is
    the only place to configure this. None of it depends on the hosted work,
    so your OpenRouter plugin can be picked as soon as this lands.
+
 3. **Hosted.** Ship connect-db migration 0006, `/api/account/*`, the link
    page, tunnel tickets in bb-web and the gate, and the bb-ai-gateway worker.
    Deploy to staging (vibecodethis.site), then production. Everything is
@@ -680,6 +698,7 @@ chain. Phase 2 adds:
 
    Running bb cloud first would give everyone the same fast model, but it
    would send Codex users' diffs through getbb.app.
+
 2. **Budget.** 50¢ per account per UTC day, shared by text and voice. Total
    spend is bounded by the OpenRouter key's credit limit, not a worker cap.
 3. **Tunnel tickets now or later?** Recommended: now. Without them, bb-account

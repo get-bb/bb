@@ -1,7 +1,7 @@
 import type { GatewayConfig } from "./config.js";
 
 export const MAX_OUTPUT_TOKENS = 128;
-export const UPSTREAM_TIMEOUT_MS = 8_000;
+export const UPSTREAM_TIMEOUT_MS = 4_000;
 const TEMPERATURE = 0.2;
 
 export type UpstreamFetch = (
@@ -21,6 +21,7 @@ export type UpstreamResult =
       kind: "error";
       reason: "timeout" | "upstream_error";
       model: string | null;
+      mayBill: boolean;
     } & UpstreamUsage);
 
 const NO_USAGE: UpstreamUsage = {
@@ -83,7 +84,13 @@ export function parseUpstreamResponse(body: unknown): UpstreamResult {
   const first = Array.isArray(choices) ? choices[0] : undefined;
   const content = field(field(first, "message"), "content");
   if (typeof content !== "string" || model === null) {
-    return { kind: "error", reason: "upstream_error", model, ...usage };
+    return {
+      kind: "error",
+      reason: "upstream_error",
+      model,
+      mayBill: true,
+      ...usage,
+    };
   }
   return { kind: "ok", text: content, model, ...usage };
 }
@@ -121,13 +128,20 @@ export async function callUpstream(args: {
     );
     const body: unknown = await response.json().catch(() => null);
     if (timedOut) {
-      return { kind: "error", reason: "timeout", model: null, ...NO_USAGE };
+      return {
+        kind: "error",
+        reason: "timeout",
+        model: null,
+        mayBill: true,
+        ...NO_USAGE,
+      };
     }
     if (!response.ok) {
       return {
         kind: "error",
         reason: "upstream_error",
         model: null,
+        mayBill: false,
         ...readUsage(body),
       };
     }
@@ -137,6 +151,7 @@ export async function callUpstream(args: {
       kind: "error",
       reason: timedOut ? "timeout" : "upstream_error",
       model: null,
+      mayBill: true,
       ...NO_USAGE,
     };
   } finally {

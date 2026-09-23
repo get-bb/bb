@@ -62,6 +62,7 @@ function harness(
   } = {},
 ) {
   const calls: UpstreamCall[] = [];
+  const extended: Promise<unknown>[] = [];
   const upstream = over.upstream ?? (() => okCompletion(0.00085));
   const deps: GatewayDeps = {
     db,
@@ -87,9 +88,12 @@ function harness(
       return upstream(call);
     },
     now: () => clock,
-    upstreamTimeoutMs: over.upstreamTimeoutMs ?? 8_000,
+    upstreamTimeoutMs: over.upstreamTimeoutMs ?? 4_000,
+    waitUntil: (promise) => {
+      extended.push(promise);
+    },
   };
-  return { deps, calls };
+  return { deps, calls, extended };
 }
 
 function complete(
@@ -292,6 +296,7 @@ describe("POST /api/ai/v1/complete", () => {
       { prompt: "a".repeat(MAX_PROMPT_BYTES + 1) },
       { prompt: "é".repeat(MAX_PROMPT_BYTES / 2 + 1) },
       { prompt: "" },
+      { prompt: " \n\t " },
       { prompt: 42 },
       {},
       "not json",
@@ -427,7 +432,7 @@ describe("POST /api/ai/v1/complete", () => {
     expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
   });
 
-  it("releases the reserve on upstream failure and charges only billed cost", async () => {
+  it("charges billed cost, the reserve when billing is unknown, and nothing for upstream errors", async () => {
     const responses = [
       () =>
         Response.json(
@@ -443,6 +448,7 @@ describe("POST /api/ai/v1/complete", () => {
       () => {
         throw new TypeError("network");
       },
+      () => new Response("not json", { status: 200 }),
     ];
     let index = 0;
     const { deps } = harness({
@@ -460,20 +466,27 @@ describe("POST /api/ai/v1/complete", () => {
       });
     }
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
-      spentMicros: 100,
+      spentMicros: 100 + 2 * RESERVE_MICROS,
       reservedMicros: 0,
-      requests: 3,
+      requests: 4,
     });
     expect(
       db
-        .select({ outcome: aiRequestLog.outcome })
+        .select({
+          outcome: aiRequestLog.outcome,
+          costMicros: aiRequestLog.costMicros,
+        })
         .from(aiRequestLog)
-        .all()
-        .map((row) => row.outcome),
-    ).toEqual(["upstream_error", "upstream_error", "upstream_error"]);
+        .all(),
+    ).toEqual([
+      { outcome: "upstream_error", costMicros: 0 },
+      { outcome: "upstream_error", costMicros: 100 },
+      { outcome: "upstream_error", costMicros: RESERVE_MICROS },
+      { outcome: "upstream_error", costMicros: RESERVE_MICROS },
+    ]);
   });
 
-  it("times out slow upstream calls with 504 and releases the reserve", async () => {
+  it("times out slow upstream calls with 504 and charges the reserve", async () => {
     const { deps } = harness({
       upstreamTimeoutMs: 20,
       upstream: ({ signal }) =>
@@ -489,13 +502,82 @@ describe("POST /api/ai/v1/complete", () => {
       error: { code: "timeout" },
     });
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
-      spentMicros: 0,
+      spentMicros: RESERVE_MICROS,
       reservedMicros: 0,
     });
-    expect(db.select().from(aiRequestLog).get()?.outcome).toBe("timeout");
+    expect(db.select().from(aiRequestLog).get()).toMatchObject({
+      outcome: "timeout",
+      costMicros: RESERVE_MICROS,
+    });
   });
 
-  it("answers 429 when the per-account rate limiter refuses", async () => {
+  it("keeps settling through waitUntil after the client goes away", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { deps, calls, extended } = harness({
+      upstream: async () => {
+        await gate;
+        return okCompletion(0.002);
+      },
+    });
+    const abandoned = complete(deps, { prompt: "a" });
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    const day = utcDay(NOON);
+    expect(usageRow("u1", day)?.reservedMicros).toBe(RESERVE_MICROS);
+    expect(extended).toHaveLength(1);
+
+    release();
+    await extended[0];
+    expect(usageRow("u1", day)).toMatchObject({
+      spentMicros: 2_000,
+      reservedMicros: 0,
+    });
+    expect((await abandoned).status).toBe(200);
+  });
+
+  it("settles the reservation even when the request log write fails", async () => {
+    const { deps } = harness();
+    sqlite.exec("DROP TABLE ai_request_log");
+    const response = await complete(deps, { prompt: "a" });
+    expect(response.status).toBe(200);
+    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+      spentMicros: 850,
+      reservedMicros: 0,
+    });
+  });
+
+  it("stops reading a chunked body once it passes the size limit", async () => {
+    const { deps, calls } = harness();
+    let pulls = 0;
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: {
+        authorization: "Bearer bbcred_u1",
+        "content-type": "application/json",
+      },
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(new Uint8Array(64 * 1024).fill(0x20));
+        },
+      }),
+      duplex: "half",
+    };
+    const response = await routeGatewayRequest(
+      new Request(`https://getbb.app${COMPLETE_PATH}`, init),
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: "invalid_request", message: "request body is too large" },
+    });
+    expect(pulls).toBeLessThan(16);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("answers and logs 429 when the per-account rate limiter refuses", async () => {
     const { deps, calls } = harness({ allow: () => false });
     const response = await complete(deps, { prompt: "a" });
     expect(response.status).toBe(429);
@@ -504,6 +586,14 @@ describe("POST /api/ai/v1/complete", () => {
     });
     expect(calls).toHaveLength(0);
     expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
+    expect(db.select().from(aiRequestLog).all()).toEqual([
+      expect.objectContaining({
+        userId: "u1",
+        serverId: "s1",
+        outcome: "rate_limited",
+        costMicros: 0,
+      }),
+    ]);
   });
 });
 

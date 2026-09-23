@@ -152,7 +152,16 @@ describe("bb-ai-gateway worker on D1", () => {
     expect(await limited.json()).toMatchObject({
       error: { code: "rate_limited" },
     });
-  });
+    const db = (await mf.getD1Database("DB")) as unknown as D1Database;
+    const logged = await db
+      .prepare(
+        "SELECT COUNT(*) AS refused FROM ai_request_log WHERE outcome = 'rate_limited' AND cost_micros = 0",
+      )
+      .first<{ refused: number }>();
+    expect(logged?.refused).toBe(
+      statuses.filter((status) => status === 429).length + 1,
+    );
+  }, 30_000);
 
   it("holds concurrent D1 reservations to the daily limit", async () => {
     let release: () => void = () => {};

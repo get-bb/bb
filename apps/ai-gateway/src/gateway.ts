@@ -8,6 +8,7 @@ import {
 } from "@bb/connect-db";
 import type { GatewayConfig } from "./config.js";
 import {
+  type BudgetKey,
   RESERVE_MICROS,
   nextUtcMidnight,
   reserveBudget,
@@ -15,7 +16,11 @@ import {
   spentMicros,
   utcDay,
 } from "./metering.js";
-import { type UpstreamFetch, callUpstream } from "./upstream.js";
+import {
+  type UpstreamFetch,
+  type UpstreamResult,
+  callUpstream,
+} from "./upstream.js";
 
 export const MAX_PROMPT_BYTES = 48 * 1024;
 const MAX_BODY_BYTES = 512 * 1024;
@@ -49,6 +54,7 @@ export interface GatewayDeps {
   fetch: UpstreamFetch;
   now: () => number;
   upstreamTimeoutMs: number;
+  waitUntil: (promise: Promise<unknown>) => void;
 }
 
 function errorResponse(
@@ -67,20 +73,48 @@ async function authenticate(request: Request, db: ConnectDb) {
   );
 }
 
+const BODY_TOO_LARGE = "request body is too large";
+
+async function readBody(
+  request: Request,
+): Promise<{ text: string } | { error: string }> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return { error: BODY_TOO_LARGE };
+  }
+  if (request.body === null) return { text: "" };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => {});
+        return { error: BODY_TOO_LARGE };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { error: "request body could not be read" };
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(bytes) };
+}
+
 async function readPrompt(
   request: Request,
 ): Promise<{ prompt: string } | { error: string }> {
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-    return { error: "request body is too large" };
-  }
-  const raw = await request.text().catch(() => null);
-  if (
-    raw === null ||
-    new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES
-  ) {
-    return { error: "request body is too large" };
-  }
+  const read = await readBody(request);
+  if ("error" in read) return read;
+  const raw = read.text;
   let body: unknown;
   try {
     body = JSON.parse(raw);
@@ -91,7 +125,7 @@ async function readPrompt(
     typeof body === "object" && body !== null
       ? Reflect.get(body, "prompt")
       : undefined;
-  if (typeof prompt !== "string" || prompt.length === 0) {
+  if (typeof prompt !== "string" || prompt.trim().length === 0) {
     return { error: "prompt must be a non-empty string" };
   }
   if (new TextEncoder().encode(prompt).byteLength > MAX_PROMPT_BYTES) {
@@ -135,72 +169,47 @@ async function logRequest(
   }
 }
 
-export async function handleComplete(
-  request: Request,
+function chargedMicros(result: UpstreamResult): number {
+  if (result.costMicros !== null) return result.costMicros;
+  return result.kind === "ok" || result.mayBill ? RESERVE_MICROS : 0;
+}
+
+type LogBase = { userId: string; serverId: string; startedAt: number };
+
+const NO_USAGE = {
+  model: null,
+  promptTokens: null,
+  completionTokens: null,
+  costMicros: 0,
+};
+
+async function completeReserved(
   deps: GatewayDeps,
+  args: {
+    base: LogBase;
+    key: BudgetKey;
+    apiKey: string;
+    prompt: string;
+  },
 ): Promise<Response> {
-  const startedAt = deps.now();
-  const account = await authenticate(request, deps.db);
-  if (!account) {
-    return errorResponse("unauthorized", "sign in to your bb account");
-  }
-  const limited = await deps.rateLimiter.limit({ key: account.userId });
-  if (!limited.success) {
-    return errorResponse("rate_limited", "too many requests; slow down");
-  }
-
-  const base = {
-    userId: account.userId,
-    serverId: account.server.id,
-    startedAt,
-  };
-  const noUsage = {
-    model: null,
-    promptTokens: null,
-    completionTokens: null,
-    costMicros: 0,
-  };
-  const parsed = await readPrompt(request);
-  if ("error" in parsed) {
-    await logRequest(deps, { ...base, ...noUsage, outcome: "invalid_request" });
-    return errorResponse("invalid_request", parsed.error);
-  }
-  const apiKey = deps.config.apiKey;
-  if (apiKey === null) {
-    await logRequest(deps, { ...base, ...noUsage, outcome: "unavailable" });
-    return errorResponse("unavailable", "hosted generation is not configured");
-  }
-
-  const key = { userId: account.userId, day: utcDay(startedAt) };
-  const reserved = await reserveBudget(
-    deps.db,
-    key,
-    deps.config.dailyBudgetMicros,
-  );
-  if (!reserved) {
-    await logRequest(deps, {
-      ...base,
-      ...noUsage,
-      outcome: "budget_exhausted",
+  let result: UpstreamResult | null = null;
+  let spentTodayMicros = 0;
+  try {
+    result = await callUpstream({
+      fetch: deps.fetch,
+      config: deps.config,
+      apiKey: args.apiKey,
+      prompt: args.prompt,
+      userHash: await sha256Hex(args.base.userId),
+      timeoutMs: deps.upstreamTimeoutMs,
     });
-    return errorResponse("budget_exhausted", "daily limit reached", {
-      resetsAt: nextUtcMidnight(startedAt),
-    });
+  } finally {
+    const costMicros = result === null ? RESERVE_MICROS : chargedMicros(result);
+    ({ spentTodayMicros } = await settleBudget(deps.db, args.key, costMicros));
   }
-
-  const result = await callUpstream({
-    fetch: deps.fetch,
-    config: deps.config,
-    apiKey,
-    prompt: parsed.prompt,
-    userHash: await sha256Hex(account.userId),
-    timeoutMs: deps.upstreamTimeoutMs,
-  });
-  const costMicros =
-    result.costMicros ?? (result.kind === "ok" ? RESERVE_MICROS : 0);
-  const { spentTodayMicros } = await settleBudget(deps.db, key, costMicros);
+  const costMicros = chargedMicros(result);
   await logRequest(deps, {
-    ...base,
+    ...args.base,
     model: result.model,
     promptTokens: result.promptTokens,
     completionTokens: result.completionTokens,
@@ -222,6 +231,68 @@ export async function handleComplete(
       limitMicros: deps.config.dailyBudgetMicros,
     },
   });
+}
+
+export async function handleComplete(
+  request: Request,
+  deps: GatewayDeps,
+): Promise<Response> {
+  const startedAt = deps.now();
+  const account = await authenticate(request, deps.db);
+  if (!account) {
+    return errorResponse("unauthorized", "sign in to your bb account");
+  }
+  const base: LogBase = {
+    userId: account.userId,
+    serverId: account.server.id,
+    startedAt,
+  };
+  const limited = await deps.rateLimiter.limit({ key: account.userId });
+  if (!limited.success) {
+    await logRequest(deps, { ...base, ...NO_USAGE, outcome: "rate_limited" });
+    return errorResponse("rate_limited", "too many requests; slow down");
+  }
+
+  const parsed = await readPrompt(request);
+  if ("error" in parsed) {
+    await logRequest(deps, {
+      ...base,
+      ...NO_USAGE,
+      outcome: "invalid_request",
+    });
+    return errorResponse("invalid_request", parsed.error);
+  }
+  const apiKey = deps.config.apiKey;
+  if (apiKey === null) {
+    await logRequest(deps, { ...base, ...NO_USAGE, outcome: "unavailable" });
+    return errorResponse("unavailable", "hosted generation is not configured");
+  }
+
+  const key = { userId: account.userId, day: utcDay(startedAt) };
+  const reserved = await reserveBudget(
+    deps.db,
+    key,
+    deps.config.dailyBudgetMicros,
+  );
+  if (!reserved) {
+    await logRequest(deps, {
+      ...base,
+      ...NO_USAGE,
+      outcome: "budget_exhausted",
+    });
+    return errorResponse("budget_exhausted", "daily limit reached", {
+      resetsAt: nextUtcMidnight(startedAt),
+    });
+  }
+
+  const completion = completeReserved(deps, {
+    base,
+    key,
+    apiKey,
+    prompt: parsed.prompt,
+  });
+  deps.waitUntil(completion.catch(() => {}));
+  return completion;
 }
 
 export async function handleUsage(
