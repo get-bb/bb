@@ -290,7 +290,7 @@ export class AccountPoolHub {
     candidateIds: ReadonlySet<string>,
     attempted: ReadonlySet<string>,
     family: ModelFamily,
-  ): Promise<boolean> {
+  ): Promise<void> {
     const now = this.options.now();
     const threshold = this.options.getSettings().switchThreshold;
     const accounts = (await this.options.accounts.list()).filter((account) => {
@@ -306,25 +306,24 @@ export class AccountPoolHub {
         quota.error === null && isQuotaExhausted(quota, family, threshold, now)
       );
     });
-    const refreshed = await Promise.all(
+    await Promise.all(
       accounts.map((account) =>
         this.refreshAccountUsage(account, EXHAUSTED_USAGE_REFRESH_INTERVAL_MS),
       ),
     );
-    return refreshed.includes(true);
   }
 
   private async refreshAccountUsage(
     account: Account,
     minIntervalMs: number,
-  ): Promise<boolean> {
+  ): Promise<void> {
     const adapter = this.adapter(account.provider);
-    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return false;
+    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return;
+    const running = this.usageRefreshes.get(account.id);
+    if (running !== undefined) return running;
     const now = this.options.now();
     const last = this.lastUsageRefreshAt.get(account.id);
-    if (last !== undefined && now - last < minIntervalMs) return false;
-    const running = this.usageRefreshes.get(account.id);
-    if (running !== undefined) return running.then(() => true);
+    if (last !== undefined && now - last < minIntervalMs) return;
     this.lastUsageRefreshAt.set(account.id, now);
     const refresh = adapter
       .refreshUsage({
@@ -339,7 +338,7 @@ export class AccountPoolHub {
       .catch(() => undefined)
       .finally(() => this.usageRefreshes.delete(account.id));
     this.usageRefreshes.set(account.id, refresh);
-    return refresh.then(() => true);
+    return refresh;
   }
 
   async stop(): Promise<void> {
@@ -438,13 +437,10 @@ export class AccountPoolHub {
         if (selected === null) {
           if (usageRefreshed) break;
           usageRefreshed = true;
-          if (
-            !(await abortable(
-              this.refreshExhaustedUsage(candidateIds, attempted, family),
-              signal,
-            ))
-          )
-            break;
+          await abortable(
+            this.refreshExhaustedUsage(candidateIds, attempted, family),
+            signal,
+          );
           continue;
         }
         let pacing: PacingFlight | null = null;

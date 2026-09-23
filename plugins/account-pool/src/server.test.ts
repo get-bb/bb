@@ -5889,6 +5889,61 @@ describe("sequential pool recovery", () => {
     expect(calls).toEqual(["/usage", "/usage", "/usage", "/v1/messages"]);
   });
 
+  it("lets concurrent requests share an exhausted-usage recheck", async () => {
+    let now = Date.now();
+    let usagePercent = 100;
+    let releaseUsage = () => {};
+    const usageGate = new Promise<void>((resolve) => {
+      releaseUsage = resolve;
+    });
+    const calls: string[] = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "import",
+      options: {
+        now: () => now,
+        usageUrl: "https://upstream.example/usage",
+        importCredentials: async () => importedCredentials(),
+        fetch: async (input) => {
+          const url = new URL(String(input));
+          calls.push(url.pathname);
+          if (url.pathname === "/usage") {
+            if (usagePercent < 100) await usageGate;
+            return Response.json({
+              seven_day: {
+                utilization: usagePercent,
+                resets_at: String(Math.floor(now / 1_000) + 3 * 86_400),
+              },
+            });
+          }
+          return Response.json({});
+        },
+      },
+    });
+    const send = async () => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+      return response.status;
+    };
+    usagePercent = 30;
+    now += 30_000;
+    const statuses = Promise.all([send(), send()]);
+    await vi.waitFor(() => expect(calls).toEqual(["/usage", "/usage"]));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    releaseUsage();
+    expect(await statuses).toEqual([200, 200]);
+    expect(calls).toEqual([
+      "/usage",
+      "/usage",
+      "/v1/messages",
+      "/v1/messages",
+    ]);
+  });
+
   it("applies reordered failover atomically without moving current conversations", async () => {
     const attempts: Array<string | null> = [];
     let rejectFirst = false;
