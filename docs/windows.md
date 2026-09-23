@@ -141,6 +141,13 @@ their dev supervisors, so iterating needs no production build.
 - Terminals, providers, plugin host workers, and the bundled `bb` CLI behave as
   they do on a supervisor-managed host; the fork only changes how the dev server
   and the dev host daemon start and restart.
+- The dev server hot-reloads builtin plugin sources. While a plugin is showing an
+  open user form (an `AskUserQuestion` card, a secret request), its rebuild and
+  reload are held back and retried every few seconds so the form survives; the
+  request is answered normally instead of being interrupted mid-answer. If the
+  page still reloads (HMR, a manual reload, a server restart), a question form
+  restores the answers already chosen from a per-tab draft keyed by interaction
+  id, so a long multi-question form resumes where it was left off.
 
 The dev flow stays a maintainer surface rather than a shipped product path:
 native Windows ships through the supervisor ([README.windows.md](../README.windows.md))

@@ -1,5 +1,8 @@
 const DEBOUNCE_MS = 300;
 const IGNORED_SEGMENTS = new Set(["dist", "node_modules", ".git"]);
+// bb-fork(windows): how long to wait before retrying a hot reload that was
+// bb-fork(windows): held back by an open plugin form.
+export const PLUGIN_DEV_DEFER_RETRY_MS = 3000;
 
 export function isIgnoredPluginDevPath(relativePath: string): boolean {
   return relativePath
@@ -19,6 +22,9 @@ interface PluginDevLoopDeps {
   buildHost: () => Promise<void>;
   reloadPlugin: () => Promise<void>;
   log: (line: string) => void;
+  // bb-fork(windows): return a reason to hold the rebuild + reload while a user
+  // bb-fork(windows): is still answering this plugin's form; null to proceed.
+  deferReload?: () => string | null;
 }
 
 interface PluginDevLoop {
@@ -35,9 +41,26 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
   const pending = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
+  let deferralNotified = false;
   let queueTail: Promise<void> = Promise.resolve();
   async function runCycle(files: readonly string[]): Promise<void> {
     if (disposed) return;
+    // bb-fork(windows): a rebuild or reload would destroy an open plugin form
+    // bb-fork(windows): (for example an AskUserQuestion card), so hold the whole
+    // bb-fork(windows): cycle until the request is answered or expires.
+    const deferReason = deps.deferReload?.() ?? null;
+    if (deferReason !== null) {
+      if (!deferralNotified) {
+        deferralNotified = true;
+        deps.log(
+          `${files.length} file${files.length === 1 ? "" : "s"} changed · reload deferred: ${deferReason}`,
+        );
+      }
+      for (const file of files) pending.add(file);
+      if (timer === null) timer = setTimeout(flush, PLUGIN_DEV_DEFER_RETRY_MS);
+      return;
+    }
+    deferralNotified = false;
     const parts = [
       `${files.length} file${files.length === 1 ? "" : "s"} changed`,
     ];

@@ -30,6 +30,11 @@ import {
   type QuestionAnswerState,
   type QuestionFormState,
 } from "@bb/shared-ui/question-form-state";
+import {
+  clearQuestionFormDraft,
+  readQuestionFormDraft,
+  writeQuestionFormDraft,
+} from "./question-form-draft.fork.js";
 
 const OTHER_OPTION_LABEL = "Other…";
 const FREE_TEXT_MIN_HEIGHT = 84;
@@ -299,6 +304,8 @@ export interface QuestionFormProps {
   questions: readonly Question[];
   disabled: boolean;
   cancelDisabled: boolean;
+  // bb-fork(windows): restore a partially filled form after a page reload.
+  draftKey?: string;
   onSubmit: (answers: Record<string, QuestionAnswer>) => void;
   onCancel: () => void;
 }
@@ -307,14 +314,26 @@ export function QuestionForm({
   questions,
   disabled,
   cancelDisabled,
+  draftKey,
   onSubmit,
   onCancel,
 }: QuestionFormProps) {
-  const [formState, setFormState] = useState<QuestionFormState>(() =>
-    createInitialFormState(questions),
+  // bb-fork(windows): read the draft once; the caller remounts per interaction.
+  const [restoredDraft] = useState(() =>
+    readQuestionFormDraft(draftKey, questions),
   );
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [formState, setFormState] = useState<QuestionFormState>(
+    () => restoredDraft?.formState ?? createInitialFormState(questions),
+  );
+  const [currentIndex, setCurrentIndex] = useState(
+    restoredDraft?.currentIndex ?? 0,
+  );
   const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
+
+  // bb-fork(windows): keep the draft current so a reload can restore it.
+  useEffect(() => {
+    writeQuestionFormDraft(draftKey, { currentIndex, formState });
+  }, [currentIndex, draftKey, formState]);
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIndex] ?? null;
@@ -375,6 +394,12 @@ export function QuestionForm({
   const submitAnswer = (): void => {
     if (disabled || !allAnswered) return;
     onSubmit(buildQuestionAnswers(questions, formState));
+  };
+
+  // bb-fork(windows): a cancelled form should not leave its draft behind.
+  const handleCancel = (): void => {
+    clearQuestionFormDraft(draftKey);
+    onCancel();
   };
 
   const handleAdvance = (): void => {
@@ -439,7 +464,7 @@ export function QuestionForm({
           size="sm"
           variant="ghost"
           disabled={cancelDisabled}
-          onClick={onCancel}
+          onClick={handleCancel}
         >
           Cancel
         </Button>

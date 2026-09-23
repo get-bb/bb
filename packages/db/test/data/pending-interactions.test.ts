@@ -7,6 +7,7 @@ import {
   createPendingInteraction,
   getActivePendingInteractionForThread,
   getPendingInteractionByProviderRequest,
+  hasActivePendingInteractionForPlugin,
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
@@ -280,4 +281,30 @@ describe("pending interactions", () => {
     },
   );
 
+  it("reports an active plugin interaction only for the plugin that owns it", () => {
+    const { db, thread } = setup();
+    const created = createPendingInteraction(db, {
+      threadId: thread.id,
+      originKind: "plugin",
+      pluginId: "ask-user-question",
+      rendererId: "ask-user-question",
+      turnId: null,
+      payload: JSON.stringify({ kind: "plugin", title: "Question", data: {} }),
+      expiresAt: null,
+    });
+
+    expect(hasActivePendingInteractionForPlugin(db, "ask-user-question")).toBe(
+      true,
+    );
+    expect(hasActivePendingInteractionForPlugin(db, "secrets")).toBe(false);
+
+    setPendingInteractionResolved(db, {
+      id: created.id,
+      resolution: JSON.stringify({ kind: "plugin_submitted" }),
+    });
+
+    expect(hasActivePendingInteractionForPlugin(db, "ask-user-question")).toBe(
+      false,
+    );
+  });
 });

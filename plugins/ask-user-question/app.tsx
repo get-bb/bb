@@ -38,6 +38,7 @@ function AskUserQuestionInteraction({
   return (
     <QuestionForm
       key={interaction.id}
+      draftKey={interaction.id}
       questions={parsed.data.questions}
       disabled={busy}
       cancelDisabled={busy}

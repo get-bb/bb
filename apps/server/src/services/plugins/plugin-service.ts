@@ -105,6 +105,7 @@ import {
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
+import { pluginDevReloadDeferralReason } from "./plugin-dev-reload-deferral.fork.js";
 import {
   type BbPluginApi,
   type PluginAgentConfigurationContext,
@@ -1326,6 +1327,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           if (row === undefined) continue;
           const loop = createPluginDevLoop({
             pluginId: row.id,
+            // bb-fork(windows): never hot-reload a plugin whose form is open.
+            deferReload: () => pluginDevReloadDeferralReason(deps.db, row.id),
             targets: async () => {
               const manifest = await readPluginManifest(bundled.rootDir);
               const hasApp = manifest.appEntry !== undefined;

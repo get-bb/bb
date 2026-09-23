@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPluginDevLoop, isIgnoredPluginDevPath } from "@bb/plugin-build";
+import {
+  createPluginDevLoop,
+  isIgnoredPluginDevPath,
+  PLUGIN_DEV_DEFER_RETRY_MS,
+} from "@bb/plugin-build";
 describe("createPluginDevLoop", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -156,6 +160,35 @@ describe("createPluginDevLoop", () => {
     await vi.advanceTimersByTimeAsync(1000);
     await loop.settled();
     expect(deps.reloadPlugin).not.toHaveBeenCalled();
+  });
+
+  it("holds the whole cycle while a user form is open, then runs it once the form closes", async () => {
+    const { calls, lines, deps } = makeDeps();
+    let reason: string | null = "a user request is still open";
+    const loop = createPluginDevLoop({ ...deps, deferReload: () => reason });
+
+    loop.handleChange("app.tsx");
+    await vi.advanceTimersByTimeAsync(300);
+    await loop.settled();
+
+    expect(calls).toEqual([]);
+    expect(deps.buildApp).not.toHaveBeenCalled();
+    expect(lines).toEqual([
+      "1 file changed · reload deferred: a user request is still open",
+    ]);
+
+    await vi.advanceTimersByTimeAsync(PLUGIN_DEV_DEFER_RETRY_MS * 2);
+    await loop.settled();
+    expect(calls).toEqual([]);
+    expect(lines).toHaveLength(1);
+
+    reason = null;
+    await vi.advanceTimersByTimeAsync(PLUGIN_DEV_DEFER_RETRY_MS);
+    await loop.settled();
+
+    expect(calls).toEqual(["build", "reload"]);
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("reloaded hello");
   });
 });
 

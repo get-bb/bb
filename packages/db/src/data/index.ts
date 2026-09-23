@@ -388,6 +388,7 @@ export {
   getActivePendingInteractionForThread,
   getPendingInteraction,
   getPendingInteractionByProviderRequest,
+  hasActivePendingInteractionForPlugin,
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,

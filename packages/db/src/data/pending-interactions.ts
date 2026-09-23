@@ -189,6 +189,28 @@ export function getPendingInteractionByProviderRequest(
   );
 }
 
+// bb-fork(windows): targeted probe used to hold a dev plugin hot reload while
+// bb-fork(windows): a user is still answering that plugin's form.
+export function hasActivePendingInteractionForPlugin(
+  db: PendingInteractionReadConnection,
+  pluginId: string,
+): boolean {
+  return (
+    db
+      .select({ id: pendingInteractions.id })
+      .from(pendingInteractions)
+      .where(
+        and(
+          eq(pendingInteractions.originKind, "plugin"),
+          eq(pendingInteractions.pluginId, pluginId),
+          inArray(pendingInteractions.status, ["pending", "resolving"]),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export function listActivePluginPendingInteractions(
   db: PendingInteractionReadConnection,
 ): PendingInteractionRow[] {

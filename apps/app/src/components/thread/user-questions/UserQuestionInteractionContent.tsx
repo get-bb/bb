@@ -50,6 +50,7 @@ export function UserQuestionAnswerForm({
     >
       <QuestionForm
         key={interactionId}
+        draftKey={interactionId}
         questions={normalizedQuestions}
         disabled={disabled}
         cancelDisabled={disabled || stopThread.isPending}

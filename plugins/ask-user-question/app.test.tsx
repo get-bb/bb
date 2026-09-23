@@ -7,6 +7,7 @@ import type { InteractionPayload, InteractionResponse } from "./src/contracts";
 const app = await loadPluginApp(() => import("./app"));
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn((query: string) => ({
@@ -101,6 +102,16 @@ describe("question interaction adapter", () => {
 
     fireEvent.click(getButtonByText(slot, "Cancel"));
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+  it("restores a partial answer after the page reloads", () => {
+    const first = render(singleSelect);
+    fireEvent.click(getButtonByText(first, "SQLite"));
+    first.unmount();
+
+    const second = render(singleSelect);
+    expect(getButtonByText(second, "SQLite").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
   it("offers a cancel escape rather than blocking the composer", () => {
     const cancel = vi.fn(async () => undefined);
