@@ -1,8 +1,13 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
-import type { HostChangeKind, JsonValue, PermissionMode } from "@bb/domain";
+import {
+  resolveEnvironmentHostLifecycle,
+  type HostChangeKind,
+  type JsonValue,
+  type PermissionMode,
+} from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { hosts } from "../schema.js";
+import { environments, hosts } from "../schema.js";
 import { createHostId } from "../ids.js";
 
 type HostWriteConnection = DbConnection | DbTransaction;
@@ -45,12 +50,26 @@ export interface UpdateHostInput {
 }
 
 function notifyHostMutation(
+  db: HostWriteConnection,
   notifier: DbNotifier,
   previous: ReturnType<typeof getHost>,
   next: ReturnType<typeof getHost>,
 ): void {
   if (!previous || !next) {
     return;
+  }
+
+  if (
+    resolveEnvironmentHostLifecycle(previous) !==
+    resolveEnvironmentHostLifecycle(next)
+  ) {
+    for (const environment of db
+      .select({ id: environments.id })
+      .from(environments)
+      .where(eq(environments.hostId, next.id))
+      .all()) {
+      notifier.notifyEnvironment(environment.id, ["status-changed"]);
+    }
   }
 
   const hostChange = getHostConnectionChange(previous, next);
@@ -105,7 +124,7 @@ export function upsertHost(
       .where(eq(hosts.id, id))
       .returning()
       .get()!;
-    notifyHostMutation(notifier, existing, updated);
+    notifyHostMutation(db, notifier, existing, updated);
     return updated;
   } else {
     const row = db
@@ -195,6 +214,15 @@ export function listPublicHosts(
     .all();
 }
 
+export function listHostsByIds(db: DbConnection, hostIds: readonly string[]) {
+  if (hostIds.length === 0) return [];
+  return db
+    .select()
+    .from(hosts)
+    .where(inArray(hosts.id, [...hostIds]))
+    .all();
+}
+
 export function listNonDestroyedHostsByIds(
   db: DbConnection,
   hostIds: readonly string[],
@@ -273,6 +301,6 @@ export function updateHost(
     .run();
 
   const updated = getHost(db, hostId);
-  notifyHostMutation(notifier, existing, updated);
+  notifyHostMutation(db, notifier, existing, updated);
   return updated;
 }

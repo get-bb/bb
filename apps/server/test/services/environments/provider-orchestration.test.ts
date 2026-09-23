@@ -1273,7 +1273,10 @@ describe("core environment orchestration", () => {
       const environmentId = fixture.attach();
       expect(
         JSON.stringify(
-          toEnvironmentResponse(getEnvironment(harness.db, environmentId)!),
+          toEnvironmentResponse(
+            harness.db,
+            getEnvironment(harness.db, environmentId)!,
+          ),
         ),
       ).not.toContain("private");
       await sweepProviderEnvironment(harness.deps, environmentId);

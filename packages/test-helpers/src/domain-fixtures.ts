@@ -52,6 +52,7 @@ export function makeEnvironment(
     },
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: true,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,

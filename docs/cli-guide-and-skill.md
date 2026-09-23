@@ -23,9 +23,8 @@ disposable provider sandboxes, matching the app's Show all machines reveal.
 and still accept a sandbox through an explicit `--machine`.
 `bb machine remove` stops dependent work and retains threads as read-only
 history for both persistent and disposable machines. Threads need not be archived.
-Single-thread reads expose `runtime.machineRemoval` during and after removal,
-including the retained host ID/name and `removing`, `cleanup-failed`, or `removed`
-status. Thread lists omit it. The field is absent when the machine is not being
+Environment reads and lists expose `hostLifecycle`: `active`, or `removing`,
+`cleanup-failed`, or `removed` while and after the environment's machine is
 removed.
 `bb machine retry-cleanup` retries failed environment cleanup before removing
 the machine.

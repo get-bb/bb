@@ -1,4 +1,4 @@
-import type { Environment, ThreadRuntimeState } from "@bb/domain";
+import type { Environment } from "@bb/domain";
 
 type EnvironmentDisplayHostLocality = "local" | "remote";
 
@@ -9,7 +9,6 @@ interface EnvironmentDisplayHostIdentity {
 
 export interface EnvironmentDisplayHostContext {
   locality: EnvironmentDisplayHostLocality;
-  machineRemoval?: NonNullable<ThreadRuntimeState["machineRemoval"]>["status"];
   identity: EnvironmentDisplayHostIdentity | null;
 }
 
@@ -94,8 +93,10 @@ export function formatEnvironmentDisplay({
   host,
   providerLookup,
 }: FormatEnvironmentDisplayArgs): EnvironmentDisplayInfo {
+  const hostLifecycle =
+    environment.hostLifecycle === "active" ? null : environment.hostLifecycle;
   const lifecycle: EnvironmentDisplayInfo["lifecycle"] =
-    host.machineRemoval ??
+    hostLifecycle ??
     (environment.status === "destroyed"
       ? "destroyed"
       : environment.status === "provisioning"
@@ -125,12 +126,12 @@ export function formatEnvironmentDisplay({
 
   return {
     modeLabel:
-      (host.machineRemoval ? lifecycleLabel : null) ??
+      (hostLifecycle ? lifecycleLabel : null) ??
       environment.name ??
       lifecycleLabel ??
       namedLabel,
     compactModeLabel:
-      (host.machineRemoval ? lifecycleLabel : null) ??
+      (hostLifecycle ? lifecycleLabel : null) ??
       environment.name ??
       lifecycleLabel ??
       namedCompactLabel,

@@ -38,7 +38,6 @@ import {
 import {
   handleHostRemoved,
   settleRemovedHostWork,
-  notifyHostThreadRuntimeStatusChanged,
 } from "../internal/session-owner-side-effects.js";
 import {
   submitMachine,
@@ -302,7 +301,6 @@ export function registerHostRoutes(
     }
     settleRemovedHostWork(deps, { hostId });
     updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
-    notifyHostThreadRuntimeStatusChanged(deps, hostId);
     deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
     if (host.connectMachineId !== null) {
       await revokeConnectMachineCredential(

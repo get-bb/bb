@@ -878,10 +878,8 @@ export function ThreadDetailPromptArea({
   const activePendingInteraction =
     getLatestPendingInteraction(pendingInteractions);
   const hasPendingInteraction = activePendingInteraction !== null;
-  const effectiveEnvironmentGoneStatus =
-    thread.runtime.machineRemoval?.status ?? environmentGoneStatus;
   const shouldHideComposer =
-    effectiveEnvironmentGoneStatus !== null || thread.archivedAt !== null;
+    environmentGoneStatus !== null || thread.archivedAt !== null;
   const {
     processingQueuedMessage: displayedProcessingQueuedMessage,
     queuedMessageActionPending,
@@ -2015,9 +2013,9 @@ export function ThreadDetailPromptArea({
               : null
           }
           environmentGoneSection={
-            effectiveEnvironmentGoneStatus === null
+            environmentGoneStatus === null
               ? null
-              : { status: effectiveEnvironmentGoneStatus }
+              : { status: environmentGoneStatus }
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
@@ -2086,7 +2084,6 @@ export function ThreadDetailPromptArea({
       handleToggleBannerSection,
       handleUnarchiveCurrentThread,
       environmentGoneStatus,
-      effectiveEnvironmentGoneStatus,
       isFollowUpSubmitting,
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,

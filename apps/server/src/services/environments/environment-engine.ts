@@ -365,7 +365,7 @@ async function runCreate(
               previous === null
                 ? null
                 : {
-                    environment: toEnvironmentResponse(previous),
+                    environment: toEnvironmentResponse(deps.db, previous),
                     resource:
                       previous.teardownStatus === "removed"
                         ? null
@@ -667,7 +667,9 @@ async function runRemove(
         () =>
           record.provider.remove({
             environment:
-              row.ownerThreadId !== null ? null : toEnvironmentResponse(row),
+              row.ownerThreadId !== null
+                ? null
+                : toEnvironmentResponse(deps.db, row),
             hostId: row.hostId,
             path: row.path,
             pathKey: row.environmentProviderInstanceKey ?? row.id,

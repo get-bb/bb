@@ -275,7 +275,7 @@ export function EnvironmentRow({
     machineProviderId: null,
   };
   const showCreateThreadButton =
-    environmentDisplayHost.machineRemoval === undefined &&
+    environment.hostLifecycle === "active" &&
     isReusableEnvironment(environment);
   return (
     <DetailRow
@@ -305,7 +305,7 @@ export function EnvironmentRow({
           <span
             className="inline-flex min-w-0 shrink-0 items-center gap-1.5 text-muted-foreground"
             title={`On ${environmentDisplayHost.identity.name} (${
-              environmentDisplayHost.machineRemoval
+              environment.hostLifecycle !== "active"
                 ? "unavailable"
                 : environmentDisplayHost.identity.connected
                   ? "connected"
@@ -318,7 +318,7 @@ export function EnvironmentRow({
               machineProvider={machineProvider}
             />
             {environmentDisplayHost.identity.connected ||
-            environmentDisplayHost.machineRemoval ? null : (
+            environment.hostLifecycle !== "active" ? null : (
               <span>(offline)</span>
             )}
           </span>
@@ -1062,7 +1062,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         failed={environmentProvisioningFailure}
       />
       <WorkspacePathRow environment={environment} />
-      {environmentDisplayHost.machineRemoval ? null : (
+      {environment !== null && environment.hostLifecycle !== "active" ? null : (
         <>
           <BranchRow workspaceStatus={workspaceStatus} />
           <MergeBaseRow
@@ -1090,7 +1090,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       )}
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
-      {environmentDisplayHost.machineRemoval ? null : (
+      {environment !== null && environment.hostLifecycle !== "active" ? null : (
         <>
           <ThreadCommitsRow
             workspaceStatus={workspaceStatus}

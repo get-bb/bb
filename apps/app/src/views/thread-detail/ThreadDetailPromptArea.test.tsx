@@ -30,7 +30,7 @@ import {
   makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
   makeThreadWithRuntime as makeThreadWithRuntimeFixture,
 } from "@bb/test-helpers/domain-fixtures";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@bb/client-core";
@@ -845,6 +845,9 @@ interface RenderPromptAreaOptions {
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
   childPendingInteractions?: readonly ChildThreadPendingAttention[];
+  environmentGoneStatus?: ComponentProps<
+    typeof ThreadDetailPromptArea
+  >["environmentGoneStatus"];
   pendingInteractionsInitialLoading?: boolean;
   queuedMessageCount?: number;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
@@ -860,6 +863,7 @@ function buildPromptAreaElement({
   modelFallback = null,
   pendingInteractions = [],
   childPendingInteractions = [],
+  environmentGoneStatus = null,
   pendingInteractionsInitialLoading = false,
   queuedMessageCount = 0,
   sentMessageEdit,
@@ -877,7 +881,7 @@ function buildPromptAreaElement({
         childThreadsSection={null}
         composerFocusRequestNonce={0}
         contextBannerMergeBase={null}
-        environmentGoneStatus={null}
+        environmentGoneStatus={environmentGoneStatus}
         goal={goal}
         modelFallback={modelFallback}
         isEnvironmentActionPending={false}
@@ -958,18 +962,8 @@ it.each(["removed", "removing", "cleanup-failed"] as const)(
   "hides execution for a %s machine even when the environment still exists",
   (status) => {
     renderPromptArea({
-      thread: makeThread({
-        environmentId: "env_retained",
-        runtime: {
-          displayStatus: "idle",
-          hostReconnectGraceExpiresAt: null,
-          machineRemoval: {
-            hostId: "host_old",
-            hostName: "Old laptop",
-            status,
-          },
-        },
-      }),
+      environmentGoneStatus: status,
+      thread: makeThread({ environmentId: "env_retained" }),
     });
     expect(screen.getByTestId("composer-hidden").textContent).toBe("true");
   },

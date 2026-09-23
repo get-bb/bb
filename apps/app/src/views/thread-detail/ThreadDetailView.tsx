@@ -547,9 +547,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     staleTime: 5_000,
   });
   const environment = environmentQuery.data;
-  const machineRemoval = thread?.runtime.machineRemoval;
+  const hostLifecycle =
+    environment === undefined || environment.hostLifecycle === "active"
+      ? null
+      : environment.hostLifecycle;
   const executionUnavailable =
-    machineRemoval !== undefined || environment?.status === "destroyed";
+    hostLifecycle !== null || environment?.status === "destroyed";
   const gitDiffTabStatus = resolveGitDiffTabStatus({
     environmentId: thread?.environmentId ?? null,
     environmentIsGitRepo: environment?.isGitRepo,
@@ -1880,17 +1883,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const environmentDisplayHostContext = useMemo<EnvironmentDisplayHostContext>(
     () => ({
       locality: threadEnvironmentIsLocal ? "local" : "remote",
-      machineRemoval: machineRemoval?.status,
-      identity: machineRemoval
-        ? { name: machineRemoval.hostName, connected: false }
-        : threadEnvironmentHost
-          ? {
-              name: threadEnvironmentHost.name,
-              connected: threadEnvironmentHost.status === "connected",
-            }
-          : null,
+      identity: threadEnvironmentHost
+        ? {
+            name: threadEnvironmentHost.name,
+            connected: threadEnvironmentHost.status === "connected",
+          }
+        : null,
     }),
-    [threadEnvironmentIsLocal, threadEnvironmentHost, machineRemoval],
+    [threadEnvironmentIsLocal, threadEnvironmentHost],
   );
   const workspacePreviewRootPath = environment?.path ?? null;
   const threadOpenContext = executionUnavailable
@@ -2421,7 +2421,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     : undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const threadEnvironmentGoneStatus =
-    machineRemoval?.status ??
+    hostLifecycle ??
     (environment?.status === "destroyed" ? environment.status : null);
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch: effectiveMergeBaseBranch,

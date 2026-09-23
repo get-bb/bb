@@ -17,7 +17,6 @@ import {
   openSession,
   setQueuedThreadMessageFailureReason,
   upsertHost,
-  updateHost,
   type DbConnection,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
@@ -238,58 +237,6 @@ function createThreadListEntry(
     startupContext: null,
   };
 }
-
-it.each([
-  { phase: "active", destroyedAt: 1, teardownStatus: null, status: "removed" },
-  {
-    phase: "destroyed",
-    destroyedAt: 1,
-    teardownStatus: "removed",
-    status: "removed",
-  },
-  {
-    phase: "removing",
-    destroyedAt: null,
-    teardownStatus: "running",
-    status: "removing",
-  },
-  {
-    phase: "removing",
-    destroyedAt: null,
-    teardownStatus: "failed",
-    status: "cleanup-failed",
-  },
-] as const)(
-  "shows machine $status for retained threads on a $phase host",
-  ({ phase, destroyedAt, teardownStatus, status }) => {
-    const { db, hostId, hub } = setup();
-    try {
-      createThreadWithEnvironment({
-        db,
-        hostId,
-        status: "error",
-      });
-      updateHost(db, noopNotifier, hostId, {
-        phase,
-        destroyedAt,
-        teardownStatus,
-      });
-      const expected = {
-        displayStatus: "idle",
-        hostReconnectGraceExpiresAt: null,
-        machineRemoval: { hostId, hostName: "Runtime Display Host", status },
-      };
-      expect(
-        resolveThreadRuntimeState(
-          { db, hub },
-          { environmentHostId: hostId, status: "error" },
-        ),
-      ).toEqual(expected);
-    } finally {
-      db.$client.close();
-    }
-  },
-);
 
 describe("thread runtime display", () => {
   it("keeps active threads active while the host daemon websocket is registered", () => {

@@ -8,10 +8,7 @@ import {
   hosts,
   environments as environmentRows,
 } from "@bb/db";
-import {
-  handleHostRemoved,
-  notifyHostThreadRuntimeStatusChanged,
-} from "../../internal/session-owner-side-effects.js";
+import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { maintainMachine } from "./lifecycle.js";
 import { serverAccess } from "./server-access.js";
@@ -1174,7 +1171,6 @@ export async function retryMachineCleanup(
     statusMessage: null,
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
-  notifyHostThreadRuntimeStatusChanged(deps, hostId);
   await sweepProviderMachine(deps, hostId);
 }
 
@@ -1271,7 +1267,6 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           teardownStatus: "removed",
           statusMessage: creationFailureMessage,
         });
-        notifyHostThreadRuntimeStatusChanged(deps, hostId);
         deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
       } catch (error) {
@@ -1286,7 +1281,6 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           removeRetryAt: Date.now() + 60_000,
         });
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
-        notifyHostThreadRuntimeStatusChanged(deps, hostId);
       }
     },
   });
@@ -1416,7 +1410,6 @@ export async function sweepProviderMachine(
           removeRetryAt: failed.retireAt ?? Date.now() + 60_000,
         });
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
-        notifyHostThreadRuntimeStatusChanged(deps, hostId);
       }
       return;
     }

@@ -56,6 +56,7 @@ function makeEnvironment(overrides?: Partial<Environment>): Environment {
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: false,
     workspaceProvisionType: null,
     createdAt: 0,
@@ -200,17 +201,18 @@ describe("formatEnvironmentDisplay", () => {
       ["cleanup-failed", "Machine cleanup failed"],
     ] as const)(
       "prioritizes a %s machine over a retained workspace name",
-      (machineRemoval, label) => {
+      (hostLifecycle, label) => {
         const result = formatEnvironmentDisplay({
           environment: makeEnvironment({
             name: "Review workspace",
             status: "ready",
+            hostLifecycle,
           }),
-          host: { ...remoteHostContext, machineRemoval },
+          host: remoteHostContext,
           providerLookup: noProviderLookup,
         });
         expect(result.modeLabel).toBe(label);
-        expect(result.lifecycle).toBe(machineRemoval);
+        expect(result.lifecycle).toBe(hostLifecycle);
       },
     );
 

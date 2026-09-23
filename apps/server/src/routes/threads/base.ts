@@ -96,7 +96,9 @@ function resolveIncludedThreadEnvironment(
     return null;
   }
   const environment = getEnvironment(deps.db, thread.environmentId);
-  return environment === null ? null : toEnvironmentResponse(environment);
+  return environment === null
+    ? null
+    : toEnvironmentResponse(deps.db, environment);
 }
 
 function buildThreadResponse(

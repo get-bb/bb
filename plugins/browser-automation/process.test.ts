@@ -147,10 +147,14 @@ try {
         { timeout: 5000 },
       );
       await a.close();
-      expect(() => process.kill(pidA, 0)).toThrow();
+      await vi.waitFor(() => {
+        expect(() => process.kill(pidA, 0)).toThrow();
+      });
       expect(() => process.kill(pidB, 0)).not.toThrow();
       await b.close();
-      expect(() => process.kill(pidB, 0)).toThrow();
+      await vi.waitFor(() => {
+        expect(() => process.kill(pidB, 0)).toThrow();
+      });
     } finally {
       await Promise.all([a.close(), b.close()]);
       await rm(root, { recursive: true, force: true });

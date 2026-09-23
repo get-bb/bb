@@ -587,6 +587,12 @@ describe("public host management", () => {
         hostId: host.id,
       });
       expect(getThread(harness.db, activeThread.id)?.status).toBe("idle");
+      const environmentRead = await harness.app.request(
+        `${API}/environments/${environment.id}`,
+      );
+      expect(await readJson(environmentRead)).toMatchObject({
+        hostLifecycle: "removed",
+      });
 
       const staleEnrollResponse = await harness.app.request(
         "/internal/hosts/enroll",
@@ -668,6 +674,12 @@ describe("public host management", () => {
         expect(getEnvironment(harness.db, environment.id)?.status).toBe(
           "destroyed",
         );
+        const environmentRead = await harness.app.request(
+          `${API}/environments/${environment.id}`,
+        );
+        expect(await readJson(environmentRead)).toMatchObject({
+          hostLifecycle: "removed",
+        });
         expect(getThread(harness.db, thread.id)).toMatchObject({
           archivedAt: null,
           status: "idle",

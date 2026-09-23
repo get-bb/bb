@@ -1,6 +1,5 @@
 import {
   getEnvironment,
-  getHost,
   getLatestSessionForHost,
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -61,7 +60,6 @@ interface ResolveThreadRuntimeStateArgs {
 }
 
 interface ResolveThreadRuntimeStateFromLatestSessionArgs {
-  machineRemoval: ThreadRuntimeState["machineRemoval"];
   environmentHostId: string | null;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
@@ -186,39 +184,12 @@ function toPublicThread(thread: Thread): Thread {
   };
 }
 
-function machineRemovalState(
-  host: ReturnType<typeof getHost>,
-): ThreadRuntimeState["machineRemoval"] {
-  if (host === null) return undefined;
-  const status =
-    host.destroyedAt !== null || host.phase === "destroyed"
-      ? "removed"
-      : host.phase === "removing"
-        ? host.teardownStatus === "failed"
-          ? "cleanup-failed"
-          : "removing"
-        : null;
-  return status === null
-    ? undefined
-    : { hostId: host.id, hostName: host.name, status };
-}
-
 export function resolveThreadRuntimeState(
   deps: ThreadRuntimeDisplayDeps,
   args: ResolveThreadRuntimeStateArgs,
 ): ThreadRuntimeState {
-  const machineRemoval = machineRemovalState(
-    args.environmentHostId === null
-      ? null
-      : getHost(deps.db, args.environmentHostId),
-  );
-  if (
-    args.status !== "active" ||
-    args.environmentHostId === null ||
-    machineRemoval !== undefined
-  ) {
+  if (args.status !== "active" || args.environmentHostId === null) {
     return resolveThreadRuntimeStateFromLatestSession({
-      machineRemoval,
       environmentHostId: args.environmentHostId,
       hostConnected: false,
       latestSession: null,
@@ -237,7 +208,6 @@ export function resolveThreadRuntimeState(
         hostId: args.environmentHostId,
       });
   return resolveThreadRuntimeStateFromLatestSession({
-    machineRemoval,
     environmentHostId: args.environmentHostId,
     hostConnected,
     latestSession,
@@ -249,13 +219,6 @@ export function resolveThreadRuntimeState(
 function resolveThreadRuntimeStateFromLatestSession(
   args: ResolveThreadRuntimeStateFromLatestSessionArgs,
 ): ThreadRuntimeState {
-  if (args.machineRemoval !== undefined) {
-    return {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-      machineRemoval: args.machineRemoval,
-    };
-  }
   // A `pending` thread needs no special case: it is never `active`, so it
   // falls straight through to `threadStatusRuntimeState`, which reports it as
   // itself. This used to short-circuit to a separate `held` display status
@@ -331,16 +294,12 @@ export function buildThreadStatusChangeMetadataByThreadId(
   const latestSession = hostConnected
     ? null
     : getLatestSessionForHost(deps.db, { hostId: args.environmentHostId });
-  const machineRemoval = machineRemovalState(
-    getHost(deps.db, args.environmentHostId),
-  );
   return new Map(
     args.threads.map((thread) => [
       thread.id,
       toThreadStatusChangeMetadata({
         activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
         runtime: resolveThreadRuntimeStateFromLatestSession({
-          machineRemoval,
           environmentHostId: args.environmentHostId,
           hostConnected,
           latestSession,
@@ -646,7 +605,6 @@ function toThreadListEntryResponseFromLatestSession(
     }),
     hasPendingInteraction: args.thread.hasPendingInteraction,
     runtime: resolveThreadRuntimeStateFromLatestSession({
-      machineRemoval: undefined,
       environmentHostId: args.thread.environmentHostId,
       hostConnected: args.hostConnected,
       latestSession: args.latestSession,

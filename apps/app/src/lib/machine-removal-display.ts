@@ -1,8 +1,6 @@
-import type { ThreadRuntimeState } from "@bb/domain";
+import type { EnvironmentHostLifecycle } from "@bb/domain";
 
-export type MachineRemovalStatus = NonNullable<
-  ThreadRuntimeState["machineRemoval"]
->["status"];
+export type MachineRemovalStatus = Exclude<EnvironmentHostLifecycle, "active">;
 
 export const machineRemovalLabels: Record<MachineRemovalStatus, string> = {
   removed: "Machine removed",

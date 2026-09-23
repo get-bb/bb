@@ -287,7 +287,7 @@ function completeDaemonActiveWorkDisconnectGrace(
   });
 }
 
-export function notifyHostThreadRuntimeStatusChanged(
+function notifyHostThreadRuntimeStatusChanged(
   deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
   hostId: string,
 ): void {

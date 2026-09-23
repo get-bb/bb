@@ -14,7 +14,7 @@ import {
 } from "../../src/data/environments.js";
 import { environments } from "../../src/schema.js";
 import { createProject } from "../../src/data/projects.js";
-import { upsertHost } from "../../src/data/hosts.js";
+import { updateHost, upsertHost } from "../../src/data/hosts.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
@@ -40,6 +40,32 @@ function createNotifierSpy(): DbNotifier {
 }
 
 describe("environments", () => {
+  it("notifies a host's environments only when its removal state changes", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/removal-notify",
+      providerOwnsPath: false,
+      status: "ready",
+    });
+    const notifier = createNotifierSpy();
+
+    updateHost(db, notifier, host.id, { name: "Renamed" });
+    expect(notifier.notifyEnvironment).not.toHaveBeenCalled();
+
+    updateHost(db, notifier, host.id, { phase: "removing" });
+    updateHost(db, notifier, host.id, { teardownStatus: "running" });
+    updateHost(db, notifier, host.id, { teardownStatus: "failed" });
+    updateHost(db, notifier, host.id, { destroyedAt: 1 });
+
+    expect(vi.mocked(notifier.notifyEnvironment).mock.calls).toEqual([
+      [environment.id, ["status-changed"]],
+      [environment.id, ["status-changed"]],
+      [environment.id, ["status-changed"]],
+    ]);
+  });
+
   it("marks every environment on a removed host as destroyed history", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(25_000);

@@ -876,7 +876,9 @@ function threadProvisionContextEnvironment(
     return null;
   }
   const environment = getEnvironment(deps.db, environmentId);
-  return environment === null ? null : toEnvironmentResponse(environment);
+  return environment === null
+    ? null
+    : toEnvironmentResponse(deps.db, environment);
 }
 export async function refreshAttachedEnvironmentBranch(
   deps: ThreadProvisioningDeps,
