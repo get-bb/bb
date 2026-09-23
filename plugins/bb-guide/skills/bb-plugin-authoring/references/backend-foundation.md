@@ -299,7 +299,7 @@ entry imports. A host entry that uses only the root helpers
 host builder stubs those helpers and bundles them into the self-contained
 artifact, including for managed Git installs, which run
 `npm install --omit=dev`. A host entry that imports
-`@get-bb/plugin-sdk/provider-bridge`, `@get-bb/plugin-sdk/ai-services`, or a
+`@get-bb/plugin-sdk/provider-bridge` or a
 published `@get-bb/plugin-sdk/host` contract such as
 `experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
 install, so that plugin lists the SDK under `dependencies` (see

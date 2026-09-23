@@ -59,6 +59,7 @@ const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 const SYSTEM_MACHINE_PROVIDERS_QUERY_KEY = "systemMachineProviders";
 const MACHINE_ENVIRONMENT_QUERY_KEY = "machine-environment";
 const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
+const SYSTEM_AI_SERVICES_QUERY_KEY = "systemAiServices";
 const UI_PREFERENCES_QUERY_KEY = "uiPreferences";
 const SYSTEM_THEME_QUERY_KEY = "systemTheme";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
@@ -466,6 +467,7 @@ type AllMachineEnvironmentQueryKeyPrefix = readonly [
   typeof MACHINE_ENVIRONMENT_QUERY_KEY,
 ];
 type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
+type SystemAiServicesQueryKey = readonly [typeof SYSTEM_AI_SERVICES_QUERY_KEY];
 type UiPreferencesQueryKey = readonly [typeof UI_PREFERENCES_QUERY_KEY];
 type SystemThemeQueryKey = readonly [typeof SYSTEM_THEME_QUERY_KEY, string];
 type AllSystemThemesQueryKeyPrefix = readonly [typeof SYSTEM_THEME_QUERY_KEY];
@@ -1120,6 +1122,10 @@ export function systemCliSkillsQueryKey(): SystemCliSkillsQueryKey {
 
 export function systemConfigQueryKey(): SystemConfigQueryKey {
   return [SYSTEM_CONFIG_QUERY_KEY];
+}
+
+export function systemAiServicesQueryKey(): SystemAiServicesQueryKey {
+  return [SYSTEM_AI_SERVICES_QUERY_KEY];
 }
 
 export function uiPreferencesQueryKey(): UiPreferencesQueryKey {

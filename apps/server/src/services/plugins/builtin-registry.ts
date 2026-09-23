@@ -233,6 +233,11 @@ export const OFFICIAL_PLUGINS = [
   autoInstall: false,
 }));
 
+export const AUTOMATIC_AI_SERVICE_PLUGIN_IDS: readonly string[] = [
+  "provider-codex",
+  "bb-ai",
+];
+
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,
   ...OFFICIAL_PLUGINS,

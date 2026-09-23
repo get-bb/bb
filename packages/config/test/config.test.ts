@@ -11,7 +11,6 @@ import {
   loadHostDaemonConnectionConfig,
   loadHostDaemonStartConfig,
 } from "../src/host-daemon.js";
-import { parseProviderModelConfig } from "../src/inference-model.js";
 import { loadLoggerConfig } from "../src/logger.js";
 import {
   resolveConfiguredDataDir,
@@ -49,7 +48,6 @@ function createServerRuntimeEnv(
     BB_HOST_DAEMON_PORT: "5555",
     BB_SERVER_PORT: "4444",
     NODE_ENV: "development",
-    OPENAI_API_KEY: "test-openai-key",
     ...overrides,
   };
 }
@@ -291,9 +289,6 @@ describe("consumer-specific config", () => {
         BB_APP_VERSION: undefined,
         BB_EXTERNAL_URL: undefined,
         BB_FF_PLACEHOLDER: undefined,
-        BB_INFERENCE: undefined,
-        BB_INFERENCE_FALLBACK: undefined,
-        BB_TRANSCRIPTION: undefined,
       }),
     });
 
@@ -304,10 +299,6 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_APP_SURFACE).toBe("web");
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
     expect(serverConfig.BB_EXTERNAL_URL).toBe("");
-    expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
-    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
-    expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
-    expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       timelineWindowEventBudget: 1_500,
@@ -487,48 +478,6 @@ describe("consumer-specific config", () => {
     });
 
     expect(databaseConfig.databasePath).toBe("/tmp/bb-data/bb.db");
-  });
-
-  it("requires provider/model format for BB_INFERENCE", () => {
-    expect(() =>
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_INFERENCE: "gpt-4o-mini",
-        }),
-      }),
-    ).toThrow(/BB_INFERENCE/u);
-  });
-
-  it("requires provider/model format for BB_INFERENCE_FALLBACK", () => {
-    expect(() =>
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_INFERENCE_FALLBACK: "gpt-5.4-mini",
-        }),
-      }),
-    ).toThrow(/BB_INFERENCE_FALLBACK/u);
-  });
-
-  it("loads an explicit inference fallback model", () => {
-    const serverConfig = loadServerConfig({
-      env: createServerRuntimeEnv({
-        BB_INFERENCE_FALLBACK: "anthropic/claude-haiku-4-5",
-      }),
-    });
-
-    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe(
-      "anthropic/claude-haiku-4-5",
-    );
-  });
-
-  it("requires provider/model format for BB_TRANSCRIPTION", () => {
-    expect(() =>
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_TRANSCRIPTION: "gpt-4o-mini-transcribe",
-        }),
-      }),
-    ).toThrow(/BB_TRANSCRIPTION/u);
   });
 
   it("requires a valid server URL for the daemon and CLI", () => {
@@ -793,30 +742,5 @@ describe("consumer-specific config", () => {
     });
 
     expect(hostDaemonEntrypointConfig).toEqual({});
-  });
-});
-
-describe("provider model config", () => {
-  it("parses provider/model values", () => {
-    expect(
-      parseProviderModelConfig({
-        name: "BB_INFERENCE",
-        value: "codex/gpt-5.4-mini",
-      }),
-    ).toEqual({
-      provider: "codex",
-      modelId: "gpt-5.4-mini",
-    });
-  });
-
-  it("rejects empty or nested provider/model values", () => {
-    for (const value of ["gpt-4o-mini", "/gpt-4o-mini", "openai/", "a/b/c"]) {
-      expect(() =>
-        parseProviderModelConfig({
-          name: "BB_INFERENCE",
-          value,
-        }),
-      ).toThrow(/BB_INFERENCE/u);
-    }
   });
 });

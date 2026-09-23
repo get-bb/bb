@@ -1181,16 +1181,20 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "ai-services",
-        tagline: "Serve bb's helper model from your own machine",
+        tagline: "Write bb's titles, commit messages, and transcripts",
         title: "AI services",
         summary:
-          "Lets a plugin answer bb's own helper-model calls — the short model calls behind thread titles and commit messages, and the microphone button's transcription. With this, a plugin can:",
+          "Lets a plugin answer bb's helper tasks with plain functions — a prompt in and text out for thread titles and commit messages, and audio in and text out for the microphone button. With this, a plugin can:",
         bullets: [
-          "Serve those calls from an enrolled machine, so bb's helper model can be one the plugin holds the credentials for",
-          "Serve voice transcription the same way, for the microphone button in the prompt box",
-          "Appear as a choice in the AI-service settings, alongside the models bb reaches itself",
+          "Write thread titles and commit messages with any model or API the plugin chooses",
+          "Transcribe voice input for the microphone button in the prompt box",
+          "Appear as a choice per task in Settings → AI services, with a status line that says how to make it ready",
         ],
-        apiSymbols: ["PluginAiServices", "PluginAiServiceDeclaration"],
+        apiSymbols: [
+          "PluginAiServices",
+          "PluginAiServiceDeclaration",
+          "PluginAiServiceStatus",
+        ],
         firstParty: ["Codex provider"],
         experimental: true,
       },

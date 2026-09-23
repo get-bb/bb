@@ -137,6 +137,8 @@ branches bb creates after the change.
 
   bb settings show
   bb settings ai-services
+  bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id>
+  bb settings ai-services test <thread-title|commit-message>
   bb settings general <key> <value>
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
@@ -144,10 +146,13 @@ branches bb creates after the change.
   bb settings version [--force]
   bb settings reload
 
-`bb settings ai-services` shows the helper-inference and voice-transcription
-settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
-`bb-app config`) and the plugin-registered AI services they may name as
-`<service>/<model>`.
+`bb settings ai-services` shows which AI service writes thread titles (and so
+branch names), commit messages, and voice transcripts, plus every service a
+plugin registers and whether it is ready. `set` picks `automatic` (the services
+bb ships, in order: Codex, then bb cloud), `off`, or one service id; a picked
+service is never swapped for another. `test` runs a sample title or commit
+message through the current choice. Settings → AI services has the same
+controls. Each plugin chooses its own model.
 
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,

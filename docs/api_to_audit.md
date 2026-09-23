@@ -2434,48 +2434,48 @@ place of a whole sidebar would strand the user) plus one toast.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
-## AI services (`bb.experimental_aiServices.register`, `@get-bb/plugin-sdk/ai-services`)
+## AI services (`bb.experimental_aiServices.register`)
 
-**Kept experimental (2026-08-22).** one consumer (the codex plugin); the 5 MB plugin-served transcription cap (the old direct path allowed 25 MB) and the host-pull alternative are still open; the reserved-id model is now one static SDK list (`SERVER_DIRECT_AI_SERVICE_IDS`), pinned to pi-ai's provider registry by plugin-ai-services.test.ts.
+**Reshaped (2026-09-22).** The host contract (`@get-bb/plugin-sdk/ai-services`),
+its error codes, `kinds`, the reserved server-direct ids, and the
+`BB_INFERENCE` / `BB_INFERENCE_FALLBACK` / `BB_TRANSCRIPTION` settings are gone.
+Consumers: the codex plugin and the bb-ai plugin.
 
-**What it does.** Lets a plugin serve bb's own AI services — server-side
-helper inference (thread titles, commit messages: prompt + JSON Schema in,
-structured value out) and voice transcription — from its `bb.host` entry.
-`bb.experimental_aiServices.register({ id, displayName, kinds })` stages the
-service during the factory and lands it when the load commits; the host entry
-implements `experimental_aiServicesHostContract` (`ai.inference.complete`,
-`ai.voice.transcribe`), both carrying `serviceId`. Core routes the user's
-`BB_INFERENCE` / `BB_TRANSCRIPTION` (`<serviceId>/<model>`) to the plugin
-through the generic host RPC call on the primary host; failures ride the result
-(`{ ok: false, code }`) so core's retry/fallback policy stays generic. Ids the
-server serves itself (`openai` transcription, the builtin inference providers)
-are reserved: they route server-direct before the registry is consulted and a
-plugin cannot register them, so a plugin can never capture that traffic. A
-cross-plugin id collision fails the later plugin's load at the `register`
-call. The
-codex plugin is the first registrant (its ChatGPT client moved out of the
-daemon); `GET /system/config` and `bb settings ai-services` list the registered
-options.
+**What it does.** A plugin registers plain server-side functions:
+`bb.experimental_aiServices.register({ id, displayName, complete?, transcribe?, status? })`.
+`complete(prompt, { signal }) → Promise<string>` serves thread titles and
+commit messages; `transcribe(audio: File, { signal, hint }) → Promise<string>`
+serves voice input; `status() → Promise<{ ready: true } | { ready: false, message }>`
+feeds the picker, Automatic, and the microphone (cached ~10 s). At least one of
+`complete` / `transcribe` is required; which tasks a service appears for
+follows from the functions it declares. bb owns the prompts and the reply
+cleanup; the plugin owns the model, the API, and any retries. Failure is a
+rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
+
+The user picks per task in Settings → AI services, `bb settings ai-services
+set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |
+`{ pluginId, serviceId }`, stored server-side under the `aiServiceSelections`
+app-settings key). Automatic walks `AUTOMATIC_AI_SERVICE_PLUGIN_IDS` in the
+builtin registry (`provider-codex`, then `bb-ai`) and only matches builtin
+installs, so a third-party plugin receives text only after the user picks it.
+An explicit pick is strict: failure uses the plain fallback text and never
+moves to another service. A selection stores the plugin id too, so a different
+plugin that later registers the same service id does not inherit it.
 
 **Audit before stabilizing.**
 
-1. **Chooser.** Confirm `BB_INFERENCE` / `BB_TRANSCRIPTION` strings stay the
-   setting, or move to a structured core setting whose options are the
-   registered services (a picker needs per-service model lists, which the
-   contract does not carry yet).
-2. **Payload cap.** A plugin-served transcription travels as base64 inside one
-   host RPC call (32 MiB JSON input cap → 20 MB audio), below the 25 MB
-   the server-direct path accepts for long recordings. The daemon retains
-   its existing 32 MiB aggregate active-input budget. The alternative is a host
-   pull: the server stores the audio under a short-lived token and the call carries the token, so the host
-   worker fetches the bytes over the internal route instead of receiving
-   them inline; decide whether that or a streamed path replaces the cap.
-3. **Failure vocabulary.** Confirm the six codes are enough for core's policy
-   and whether a service should be able to declare per-call retry hints.
-4. **Multiple services per plugin / per kind.** Confirm the `serviceId`-on-
-   every-call shape and the first-registered-wins collision rule.
-5. **Host choice.** Calls go to the primary host; decide whether a service may
-   declare which host(s) can serve it.
+1. **Structured input.** Confirm a bare prompt string stays enough, or whether
+   services need the task (title vs commit) or a length hint without breaking
+   the "plugin owns the model" split.
+2. **Status freshness.** A cached status can be up to 10 s stale; a plugin
+   whose readiness flips (sign-in, quota) might want to push a change instead
+   of waiting for the next poll.
+3. **Voice payloads.** `transcribe` receives the whole `File` in process
+   (25 MB cap). Decide whether streaming matters for long recordings.
+4. **Automatic order as policy.** The order lives in core's builtin registry.
+   Decide whether it should become a user-editable setting.
+5. **Several services per plugin.** Confirm the id-per-registration shape and
+   the first-registered-wins collision rule.
 
 ## `PluginFileOpenerSource.experimental_hostId` (`@get-bb/plugin-sdk/app`)
 

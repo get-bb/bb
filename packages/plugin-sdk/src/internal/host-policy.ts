@@ -29,7 +29,6 @@ import type {
   PluginRowPresentation,
   PluginAgentToolResult,
   PluginAiServiceDeclaration,
-  PluginAiServiceKind,
   PluginCliCommandInfo,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
@@ -1124,57 +1123,32 @@ function validateProviderFallbackModels(
   return Object.freeze(normalized);
 }
 
-const AI_SERVICE_KINDS = new Set<PluginAiServiceKind>(["inference", "voice"]);
-
 /**
- * AI-service ids the server serves itself: `openai` transcription and the
- * builtin inference providers (pi-ai 0.84). A plugin cannot register one —
- * it would capture the user's prompts and audio. This list is the one source
- * for both the fake host and production (`isServerDirectAiServiceId`);
- * apps/server/test/services/plugins/plugin-ai-services.test.ts pins it to
- * pi-ai's provider registry, so a pi-ai bump must move it in the same change.
+ * A validated `bb.experimental_aiServices.register` declaration. Absent
+ * functions are `null` so hosts never have to distinguish missing from
+ * undefined.
  */
-export const SERVER_DIRECT_AI_SERVICE_IDS: readonly string[] = Object.freeze([
-  "openai",
-  "amazon-bedrock",
-  "ant-ling",
-  "anthropic",
-  "azure-openai-responses",
-  "baseten",
-  "cerebras",
-  "cloudflare-ai-gateway",
-  "cloudflare-workers-ai",
-  "deepseek",
-  "fireworks",
-  "github-copilot",
-  "google",
-  "google-vertex",
-  "groq",
-  "huggingface",
-  "kimi-coding",
-  "minimax",
-  "minimax-cn",
-  "mistral",
-  "moonshotai",
-  "moonshotai-cn",
-  "nvidia",
-  "openai-codex",
-  "opencode",
-  "opencode-go",
-  "openrouter",
-  "qwen-token-plan",
-  "qwen-token-plan-cn",
-  "radius",
-  "together",
-  "vercel-ai-gateway",
-  "xai",
-  "xiaomi",
-  "xiaomi-token-plan-ams",
-  "xiaomi-token-plan-cn",
-  "xiaomi-token-plan-sgp",
-  "zai",
-  "zai-coding-cn",
-]);
+export interface NormalizedPluginAiService {
+  readonly id: string;
+  readonly displayName: string;
+  readonly complete: NonNullable<PluginAiServiceDeclaration["complete"]> | null;
+  readonly transcribe: NonNullable<
+    PluginAiServiceDeclaration["transcribe"]
+  > | null;
+  readonly status: NonNullable<PluginAiServiceDeclaration["status"]> | null;
+}
+
+function optionalAiServiceFunction<T>(
+  id: string,
+  name: string,
+  value: T | undefined,
+): T | null {
+  if (value === undefined) return null;
+  if (typeof value !== "function") {
+    throw new Error(`AI service "${id}" ${name} must be a function`);
+  }
+  return value;
+}
 
 /**
  * Validate one `bb.experimental_aiServices.register` declaration the same
@@ -1183,7 +1157,7 @@ export const SERVER_DIRECT_AI_SERVICE_IDS: readonly string[] = Object.freeze([
  */
 export function validatePluginAiServiceDeclaration(
   declaration: PluginAiServiceDeclaration,
-): PluginAiServiceDeclaration {
+): NormalizedPluginAiService {
   if (typeof declaration !== "object" || declaration === null) {
     throw new Error("AI service declaration must be an object");
   }
@@ -1200,79 +1174,23 @@ export function validatePluginAiServiceDeclaration(
   if (displayName.length === 0 || displayName.length > 64) {
     throw new Error(`AI service "${id}" displayName must be 1-64 characters`);
   }
-  const kinds = declaration.kinds;
-  if (!Array.isArray(kinds) || kinds.length === 0) {
-    throw new Error(`AI service "${id}" must declare at least one kind`);
-  }
-  const seen = new Set<PluginAiServiceKind>();
-  for (const kind of kinds) {
-    if (
-      typeof kind !== "string" ||
-      !AI_SERVICE_KINDS.has(kind as PluginAiServiceKind)
-    ) {
-      throw new Error(
-        `AI service "${id}" kind ${JSON.stringify(kind)} is not one of: ${[...AI_SERVICE_KINDS].join(", ")}`,
-      );
-    }
-    if (seen.has(kind as PluginAiServiceKind)) {
-      throw new Error(`AI service "${id}" declares kind "${kind}" twice`);
-    }
-    seen.add(kind as PluginAiServiceKind);
-  }
-  return Object.freeze({
+  const complete = optionalAiServiceFunction(
     id,
-    displayName,
-    kinds: Object.freeze([...seen]),
-  });
-}
-
-/**
- * What an AI service binds to, decided at the
- * `bb.experimental_aiServices.register` call: the plugin's built `bb.host`
- * artifact, or — when the plugin declares an entry that failed to build —
- * nothing yet, with the build problem. An unbound service is staged so the
- * factory completes; the load then fails on that problem before the staged
- * registrations flush, so the service never goes live, while a provider the
- * same factory declared can still be retained as unavailable.
- */
-export type AiServiceHostBinding<THostArtifact> =
-  | { readonly artifact: THostArtifact; readonly problem: null }
-  | { readonly artifact: null; readonly problem: string };
-
-/**
- * The refusals a host makes at `bb.experimental_aiServices.register` before
- * it stages the declaration: a reserved server-direct id, and a plugin with
- * no `bb.host` entry for the service to run on. A plugin whose declared
- * entry failed to build is not refused here: the service is staged unbound,
- * carrying the build problem, so the load fails on that problem — the
- * actionable one — after the factory instead of at this call, and a
- * provider the same factory declares is listed as unavailable rather than
- * lost. Returns what the service binds to. The production host and the fake
- * host both call this, so they refuse identically;
- * apps/server/test/services/plugins/plugin-ai-services.test.ts pins the
- * messages.
- */
-export function assertAiServiceRegistrable<THostArtifact>(args: {
-  id: string;
-  /** The plugin's built `bb.host` artifact, or null when it has none. */
-  hostArtifact: THostArtifact | null;
-  /** Why the artifact is missing when the plugin declared an entry that failed to build. */
-  hostArtifactProblem: string | null;
-}): AiServiceHostBinding<THostArtifact> {
-  if (SERVER_DIRECT_AI_SERVICE_IDS.includes(args.id)) {
+    "complete",
+    declaration.complete,
+  );
+  const transcribe = optionalAiServiceFunction(
+    id,
+    "transcribe",
+    declaration.transcribe,
+  );
+  const status = optionalAiServiceFunction(id, "status", declaration.status);
+  if (complete === null && transcribe === null) {
     throw new Error(
-      `AI service id "${args.id}" is reserved: the server serves it directly, so a plugin cannot register it`,
+      `AI service "${id}" must declare complete, transcribe, or both`,
     );
   }
-  if (args.hostArtifact !== null) {
-    return { artifact: args.hostArtifact, problem: null };
-  }
-  if (args.hostArtifactProblem !== null) {
-    return { artifact: null, problem: args.hostArtifactProblem };
-  }
-  throw new Error(
-    `AI service "${args.id}" needs a bb.host entry to run on: this plugin declares none`,
-  );
+  return Object.freeze({ id, displayName, complete, transcribe, status });
 }
 
 /** The collision a second registration of a live AI-service id raises. */

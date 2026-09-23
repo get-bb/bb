@@ -52,7 +52,6 @@ import type {
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginMachines,
-  PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
   ExperimentalPluginProviderEnvContext,
@@ -108,7 +107,7 @@ import {
   validatePluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
-  AiServiceHostBinding,
+  NormalizedPluginAiService,
   NormalizedPluginEnvironmentProvider,
   NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
@@ -125,7 +124,6 @@ import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
-import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 import {
   readPluginSettingsValues,
   writePluginSettingsUpdate,
@@ -509,17 +507,11 @@ export function createPluginApi(options: {
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
     dispose(): void;
   };
-  registerAiService: (
-    declaration: PluginAiServiceDeclaration,
-    binding: AiServiceHostBinding<PluginHostArtifactSnapshot>,
-  ) => {
+  registerAiService: (declaration: NormalizedPluginAiService) => {
     dispose(): void;
   };
   isProviderIdTaken: (providerId: string) => boolean;
   isAiServiceIdTaken: (serviceId: string) => boolean;
-  assertAiServiceRegistrable: (
-    serviceId: string,
-  ) => AiServiceHostBinding<PluginHostArtifactSnapshot>;
   assertProviderRegistrable: (providerId: string) => void;
 }): PluginApiHandle {
   const {
@@ -549,7 +541,6 @@ export function createPluginApi(options: {
     isProviderIdTaken,
     assertProviderRegistrable,
     isAiServiceIdTaken,
-    assertAiServiceRegistrable,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -1292,9 +1283,9 @@ export function createPluginApi(options: {
 
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
-    bind: assertAiServiceRegistrable,
+    bind: () => null,
     isTaken: isAiServiceIdTaken,
-    registerLive: registerAiService,
+    registerLive: (declaration) => registerAiService(declaration),
     alreadyRegisteredMessage: aiServiceAlreadyRegisteredMessage,
     assertLive,
     isActivated: () => activated,

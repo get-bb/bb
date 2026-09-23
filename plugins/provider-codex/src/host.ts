@@ -1,11 +1,6 @@
 import os from "node:os";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import {
-  experimental_aiServicesHostContract,
-  type ExperimentalAiInferenceCompleteOutput,
-  type ExperimentalAiVoiceTranscribeOutput,
-} from "@get-bb/plugin-sdk/ai-services";
-import {
   experimental_defineHostEntry,
   experimental_nativeRootsHostContract,
   type ExperimentalNativeRootsResolveAnswer,
@@ -14,53 +9,50 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./ai/chatgpt-client.js";
-import { toAiServiceFailure } from "./ai/failure.js";
+import { readCodexAuthCredentials } from "./ai/codex-auth.js";
+import { AiServiceFailure, toAiServiceFailure } from "./ai/failure.js";
+import {
+  codexAiHostContract,
+  type CodexAiStatus,
+  type CodexAiTextResult,
+} from "./ai/host-contract.js";
 import { resolveCodexNativeRoots } from "./native-roots.js";
 
 export { experimental_providerBridge } from "./bridge/bridge.js";
 
-export const CODEX_AI_SERVICE_ID = "codex";
-
 const codexHostContract = defineRpcContract({
-  ...experimental_aiServicesHostContract,
+  ...codexAiHostContract,
   ...experimental_nativeRootsHostContract,
 });
+
+async function textResult(work: Promise<string>): Promise<CodexAiTextResult> {
+  try {
+    return { ok: true, text: await work };
+  } catch (error) {
+    return toAiServiceFailure(error);
+  }
+}
 
 export default experimental_defineHostEntry({
   contract: codexHostContract,
   handlers: {
     resolveNativeRoots: (): Promise<ExperimentalNativeRootsResolveAnswer> =>
       resolveCodexNativeRoots({ homeDir: os.homedir(), env: process.env }),
-    "ai.inference.complete": async (
-      input,
-    ): Promise<ExperimentalAiInferenceCompleteOutput> => {
-      if (input.serviceId !== CODEX_AI_SERVICE_ID) {
-        return {
-          ok: false,
-          code: "request_failed",
-          message: `This plugin serves no AI service "${input.serviceId}".`,
-        };
-      }
+    "codex.ai.complete": (input) => textResult(completeCodexInference(input)),
+    "codex.ai.transcribe": (input) => textResult(transcribeCodexVoice(input)),
+    "codex.ai.status": async (): Promise<CodexAiStatus> => {
       try {
-        return await completeCodexInference(input);
+        await readCodexAuthCredentials();
+        return { ready: true };
       } catch (error) {
-        return toAiServiceFailure(error);
-      }
-    },
-    "ai.voice.transcribe": async (
-      input,
-    ): Promise<ExperimentalAiVoiceTranscribeOutput> => {
-      if (input.serviceId !== CODEX_AI_SERVICE_ID) {
         return {
-          ok: false,
-          code: "request_failed",
-          message: `This plugin serves no AI service "${input.serviceId}".`,
+          ready: false,
+          message:
+            error instanceof AiServiceFailure &&
+            error.detailCode !== "codex_auth_missing"
+              ? error.message
+              : "Run `codex login` on the primary machine to sign in",
         };
-      }
-      try {
-        return await transcribeCodexVoice(input);
-      } catch (error) {
-        return toAiServiceFailure(error);
       }
     },
   },

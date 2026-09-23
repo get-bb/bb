@@ -1,6 +1,11 @@
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import {
+  aiServiceSelectionSchema,
+  aiServiceSelectionsSchema,
+  aiServiceStatusSchema,
+  aiTaskSchema,
+  aiTextTaskSchema,
   appSettingsSchema,
   appDefaultKeybindingsSchema,
   appKeybindingOverridesSchema,
@@ -139,16 +144,51 @@ export type SystemProviderStatesResponse = z.infer<
 export const systemAiServiceSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
-  kinds: z.array(z.enum(["inference", "voice"])),
   pluginId: z.string().min(1),
+  tasks: z.array(aiTaskSchema),
+  automaticRank: z.number().int().nonnegative().nullable(),
+  status: aiServiceStatusSchema,
 });
+export type SystemAiService = z.infer<typeof systemAiServiceSchema>;
 
-export const systemAiServicesSchema = z.object({
-  inference: z.string().min(1),
-  inferenceFallback: z.string().min(1),
-  transcription: z.string().min(1),
+export const systemAiServicesResponseSchema = z.object({
+  selections: aiServiceSelectionsSchema,
   services: z.array(systemAiServiceSchema),
 });
+export type SystemAiServicesResponse = z.infer<
+  typeof systemAiServicesResponseSchema
+>;
+
+export const setAiServiceSelectionRequestSchema = z
+  .object({
+    task: aiTaskSchema,
+    selection: aiServiceSelectionSchema,
+  })
+  .strict();
+export type SetAiServiceSelectionRequest = z.infer<
+  typeof setAiServiceSelectionRequestSchema
+>;
+
+export const testAiServiceRequestSchema = z
+  .object({ task: aiTextTaskSchema })
+  .strict();
+export type TestAiServiceRequest = z.infer<typeof testAiServiceRequestSchema>;
+
+export const testAiServiceResponseSchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    serviceId: z.string().min(1),
+    displayName: z.string().min(1),
+    text: z.string(),
+    durationMs: z.number().int().nonnegative(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    message: z.string().min(1),
+    durationMs: z.number().int().nonnegative(),
+  }),
+]);
+export type TestAiServiceResponse = z.infer<typeof testAiServiceResponseSchema>;
 
 export const serverAccessStatusSchema = z.object({
   providers: z.array(
@@ -197,7 +237,6 @@ export const systemConfigResponseSchema = z.object({
   primaryHostId: z.string().nullable(),
   primaryHostPlatform: hostPlatformSchema.nullable(),
   voiceTranscriptionEnabled: z.boolean(),
-  aiServices: systemAiServicesSchema,
   dataDir: z.string(),
 });
 export type SystemConfigResponse = z.infer<typeof systemConfigResponseSchema>;

@@ -1,5 +1,9 @@
 import { Command } from "commander";
 import {
+  AI_TASKS,
+  AI_TEXT_TASKS,
+  aiTaskSchema,
+  aiTextTaskSchema,
   keyboardCommandIdSchema,
   appShortcutSchema,
   appSettingsSchema,
@@ -10,6 +14,8 @@ import {
   isUiPreferenceKey,
   parseUiPreferenceValue,
   UI_PREFERENCE_KEYS,
+  type AiServiceSelection,
+  type AiTask,
   type AppSettings,
   type AppShortcut,
   type CompletedTurnDisplay,
@@ -18,7 +24,10 @@ import {
   type UiPreferenceValue,
 } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk";
-import type { SystemProviderInfo } from "@bb/server-contract";
+import type {
+  SystemAiServicesResponse,
+  SystemProviderInfo,
+} from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
@@ -27,6 +36,102 @@ import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface JsonOptions {
   json?: boolean;
+}
+
+function requireAiTask(input: string): AiTask {
+  const task = aiTaskSchema.safeParse(input);
+  if (!task.success) {
+    throw new Error(`Unknown task '${input}'. Tasks: ${AI_TASKS.join(", ")}`);
+  }
+  return task.data;
+}
+
+function resolveAiServiceChoice(
+  view: SystemAiServicesResponse,
+  task: AiTask,
+  choice: string,
+): AiServiceSelection {
+  if (choice === "automatic" || choice === "off") return { mode: choice };
+  const service = view.services.find((candidate) => candidate.id === choice);
+  const eligible = view.services
+    .filter((candidate) => candidate.tasks.includes(task))
+    .map((candidate) => candidate.id);
+  if (service === undefined || !service.tasks.includes(task)) {
+    throw new Error(
+      `No AI service '${choice}' handles ${task}. Choose automatic, off${eligible.length > 0 ? `, or one of: ${eligible.join(", ")}` : ""}.`,
+    );
+  }
+  return { mode: "service", pluginId: service.pluginId, serviceId: service.id };
+}
+
+function automaticAiServiceFor(
+  view: SystemAiServicesResponse,
+  task: AiTask,
+): SystemAiServicesResponse["services"][number] | null {
+  return (
+    view.services
+      .filter(
+        (service) =>
+          service.automaticRank !== null &&
+          service.tasks.includes(task) &&
+          service.status.ready,
+      )
+      .sort((a, b) => (a.automaticRank ?? 0) - (b.automaticRank ?? 0))[0] ??
+    null
+  );
+}
+
+function describeAiSelection(
+  view: SystemAiServicesResponse,
+  selection: AiServiceSelection,
+): string {
+  if (selection.mode === "off") return "Off";
+  if (selection.mode === "service") {
+    const service = view.services.find(
+      (candidate) =>
+        candidate.id === selection.serviceId &&
+        candidate.pluginId === selection.pluginId,
+    );
+    return service === undefined
+      ? `${selection.serviceId} (unavailable plugin ${selection.pluginId})`
+      : service.displayName;
+  }
+  return "Automatic";
+}
+
+function printAiServices(view: SystemAiServicesResponse): void {
+  for (const task of AI_TASKS) {
+    const selection = view.selections[task];
+    const automatic =
+      selection.mode === "automatic" ? automaticAiServiceFor(view, task) : null;
+    const using =
+      selection.mode !== "automatic"
+        ? ""
+        : automatic === null
+          ? " (nothing ready)"
+          : ` (using ${automatic.displayName})`;
+    console.log(
+      `${task.padEnd(16)}${describeAiSelection(view, selection)}${using}`,
+    );
+  }
+  console.log("");
+  if (view.services.length === 0) {
+    console.log("No plugin registers an AI service.");
+    return;
+  }
+  console.log("Services:");
+  for (const service of view.services) {
+    const status = service.status.ready
+      ? "ready"
+      : `not ready: ${service.status.message}`;
+    const automatic =
+      service.automaticRank === null
+        ? ""
+        : `  Automatic #${service.automaticRank + 1}`;
+    console.log(
+      `  ${service.id}  ${service.displayName}  plugin ${service.pluginId}  [${service.tasks.join(", ")}]${automatic}  ${status}`,
+    );
+  }
 }
 
 interface ProviderCompletedTurnDisplayEntry {
@@ -256,32 +361,69 @@ export function registerSettingsCommands(
       }),
     );
 
-  settings
+  const aiServices = settings
     .command("ai-services")
     .description(
-      "Show the AI-service settings (BB_INFERENCE, BB_INFERENCE_FALLBACK, BB_TRANSCRIPTION) and the plugin services they may name",
-    )
+      "Choose which plugin AI service writes thread titles, commit messages, and voice transcripts",
+    );
+  aiServices
+    .command("show", { isDefault: true })
+    .description("Show each task's selection and every registered AI service")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: JsonOptions) => {
-        const { aiServices } = await createCliBbSdk(getUrl()).system.config();
-        if (outputJson(opts, aiServices)) return;
-        console.log(`BB_INFERENCE          ${aiServices.inference}`);
-        console.log(`BB_INFERENCE_FALLBACK ${aiServices.inferenceFallback}`);
-        console.log(`BB_TRANSCRIPTION      ${aiServices.transcription}`);
-        console.log("");
-        if (aiServices.services.length === 0) {
-          console.log("No plugin registers an AI service.");
-          return;
-        }
+        const result = await createCliBbSdk(getUrl()).system.aiServices();
+        if (outputJson(opts, result)) return;
+        printAiServices(result);
+      }),
+    );
+  aiServices
+    .command("set <task> <choice>")
+    .description(
+      `Set the service for a task (${AI_TASKS.join(", ")}): automatic, off, or a service id`,
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (taskInput: string, choice: string, opts: JsonOptions) => {
+        const task = requireAiTask(taskInput);
+        const sdk = createCliBbSdk(getUrl());
+        const current = await sdk.system.aiServices();
+        const result = await sdk.system.setAiServiceSelection({
+          task,
+          selection: resolveAiServiceChoice(current, task, choice),
+        });
+        if (outputJson(opts, result)) return;
         console.log(
-          "Registered services (<id>/<model> in the settings above):",
+          `${task}: ${describeAiSelection(result, result.selections[task])}`,
         );
-        for (const service of aiServices.services) {
-          console.log(
-            `  ${service.id}  ${service.displayName}  [${service.kinds.join(", ")}]  plugin ${service.pluginId}`,
+      }),
+    );
+  aiServices
+    .command("test <task>")
+    .description(
+      `Run a sample through the current choice for ${AI_TEXT_TASKS.join(" or ")}`,
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (taskInput: string, opts: JsonOptions) => {
+        const task = aiTextTaskSchema.safeParse(taskInput);
+        if (!task.success) {
+          throw new Error(
+            `Unknown task '${taskInput}'. Testable tasks: ${AI_TEXT_TASKS.join(", ")}`,
           );
         }
+        const result = await createCliBbSdk(getUrl()).system.testAiService({
+          task: task.data,
+        });
+        if (outputJson(opts, result)) return;
+        if (result.ok) {
+          console.log(
+            `${result.displayName} (${result.durationMs}ms): ${result.text}`,
+          );
+          return;
+        }
+        console.log(`Failed after ${result.durationMs}ms: ${result.message}`);
+        process.exitCode = 1;
       }),
     );
 
