@@ -1549,9 +1549,7 @@ export function useSectionThreadDnd({
                 toast.error("Failed to move threads.");
               }
             })
-            .catch(() => {
-              toast.error("Failed to unpin worktree group.");
-            })
+            .catch(() => undefined)
             .finally(clearProjectedDrag);
           break;
         case "pin-group": {
@@ -1591,10 +1589,13 @@ export function useSectionThreadDnd({
                         sectionId: decision.sectionId,
                       }),
                     ),
-                  ),
+                  ).catch((error) => {
+                    toast.error("Failed to unpin and move worktree group.");
+                    throw error;
+                  }),
                 )
               : unpinRequest,
-            "Failed to unpin worktree group.",
+            null,
           );
           break;
         }
