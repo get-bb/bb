@@ -85,7 +85,10 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
           cwd: harness.repoDir,
         });
 
-        expect(worktreeList).toContain(`worktree ${resolvedWorktreePath}`);
+        // bb-fork(windows): git prints worktree paths with `/`.
+        expect(worktreeList).toContain(
+          `worktree ${resolvedWorktreePath.replaceAll("\\", "/")}`,
+        );
       },
     ));
 

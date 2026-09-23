@@ -25,7 +25,8 @@ describe.sequential("personal workspace plugin integration", () => {
         if (workspacePath === null) {
           throw new Error("Personal workspace path was not assigned");
         }
-        expect(workspacePath).toContain(
+        // bb-fork(windows): the expected relative path uses `/`.
+        expect(workspacePath.replaceAll("\\", "/")).toContain(
           `plugins/environment-personal-workspace/host-data/workspaces/${first.thread.id}`,
         );
         await fs.access(workspacePath);

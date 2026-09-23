@@ -23,99 +23,103 @@ const THREADS_PER_PROVIDER = 5;
 const FRESH_FANOUT_TIMEOUT_MS = scaleTimeoutMs(45_000);
 
 describe.sequential("fake provider fresh-environment fanout integration", () => {
-  it("runs same-source managed worktree setup scripts concurrently", () =>
-    withHarness(
-      { builtinPlugins: ["environment-git-worktree"] },
-      async (harness) => {
-        const coordinationDir = path.join(
-          path.dirname(harness.repoDir),
-          "setup-coordination",
-        );
-        const markerDir = path.join(coordinationDir, "markers");
-        const releaseFile = path.join(coordinationDir, "release");
-        const sourceRepo = await createTestGitRepo({
-          repoDir: path.join(path.dirname(harness.repoDir), "setup-project"),
-          files: [
-            {
-              relativePath: "README.md",
-              content: "setup project\n",
-            },
-            {
-              relativePath: ".bb-env-setup.sh",
-              content:
-                [
-                  "set -euo pipefail",
-                  `marker_dir=${shellSingleQuote(markerDir)}`,
-                  `release_file=${shellSingleQuote(releaseFile)}`,
-                  'marker_name="$(basename "$(dirname "$PWD")")-$(basename "$PWD")"',
-                  'mkdir -p "$marker_dir"',
-                  'touch "$marker_dir/started-$marker_name"',
-                  'while [ ! -f "$release_file" ]; do sleep 0.05; done',
-                  "echo setup released",
-                ].join("\n") + "\n",
-            },
-          ],
-        });
-        const project = await createProjectFixture(harness, {
-          name: "Concurrent Setup Fanout",
-          path: sourceRepo,
-        });
-
-        const [firstThread, secondThread] = await Promise.all([
-          createHostThread(harness.api, {
-            hostId: harness.hostId,
-            input: [
-              { type: "text", text: "first concurrent setup", mentions: [] },
+  // bb-fork(windows): the setup hook is `.bb-env-setup.sh`.
+  it.skipIf(process.platform === "win32")(
+    "runs same-source managed worktree setup scripts concurrently",
+    () =>
+      withHarness(
+        { builtinPlugins: ["environment-git-worktree"] },
+        async (harness) => {
+          const coordinationDir = path.join(
+            path.dirname(harness.repoDir),
+            "setup-coordination",
+          );
+          const markerDir = path.join(coordinationDir, "markers");
+          const releaseFile = path.join(coordinationDir, "release");
+          const sourceRepo = await createTestGitRepo({
+            repoDir: path.join(path.dirname(harness.repoDir), "setup-project"),
+            files: [
+              {
+                relativePath: "README.md",
+                content: "setup project\n",
+              },
+              {
+                relativePath: ".bb-env-setup.sh",
+                content:
+                  [
+                    "set -euo pipefail",
+                    `marker_dir=${shellSingleQuote(markerDir)}`,
+                    `release_file=${shellSingleQuote(releaseFile)}`,
+                    'marker_name="$(basename "$(dirname "$PWD")")-$(basename "$PWD")"',
+                    'mkdir -p "$marker_dir"',
+                    'touch "$marker_dir/started-$marker_name"',
+                    'while [ ! -f "$release_file" ]; do sleep 0.05; done',
+                    "echo setup released",
+                  ].join("\n") + "\n",
+              },
             ],
-            projectId: project.id,
-            providerId: "fake",
-            workspace: { type: "managed-worktree" },
-          }),
-          createHostThread(harness.api, {
-            hostId: harness.hostId,
-            input: [
-              { type: "text", text: "second concurrent setup", mentions: [] },
-            ],
-            projectId: project.id,
-            providerId: "fake-alpha",
-            workspace: { type: "managed-worktree" },
-          }),
-        ]);
+          });
+          const project = await createProjectFixture(harness, {
+            name: "Concurrent Setup Fanout",
+            path: sourceRepo,
+          });
 
-        try {
-          await expect(
-            waitForSetupMarkerCount({
-              markerDir,
-              expectedCount: 2,
-              timeoutMs: DEFAULT_TIMEOUT_MS,
+          const [firstThread, secondThread] = await Promise.all([
+            createHostThread(harness.api, {
+              hostId: harness.hostId,
+              input: [
+                { type: "text", text: "first concurrent setup", mentions: [] },
+              ],
+              projectId: project.id,
+              providerId: "fake",
+              workspace: { type: "managed-worktree" },
             }),
-          ).resolves.toHaveLength(2);
-        } finally {
-          await fs.writeFile(releaseFile, "release\n", "utf8");
-        }
+            createHostThread(harness.api, {
+              hostId: harness.hostId,
+              input: [
+                { type: "text", text: "second concurrent setup", mentions: [] },
+              ],
+              projectId: project.id,
+              providerId: "fake-alpha",
+              workspace: { type: "managed-worktree" },
+            }),
+          ]);
 
-        await Promise.all([
-          waitForThreadStatus(
-            harness.api,
-            firstThread.id,
-            "idle",
-            DEFAULT_TIMEOUT_MS,
-          ),
-          waitForThreadStatus(
-            harness.api,
-            secondThread.id,
-            "idle",
-            DEFAULT_TIMEOUT_MS,
-          ),
-        ]);
-        expect(await getThreadOutput(harness.api, firstThread.id)).toContain(
-          "first concurrent setup",
-        );
-        expect(await getThreadOutput(harness.api, secondThread.id)).toContain(
-          "second concurrent setup",
-        );
-      },
-    ));
+          try {
+            await expect(
+              waitForSetupMarkerCount({
+                markerDir,
+                expectedCount: 2,
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+              }),
+            ).resolves.toHaveLength(2);
+          } finally {
+            await fs.writeFile(releaseFile, "release\n", "utf8");
+          }
+
+          await Promise.all([
+            waitForThreadStatus(
+              harness.api,
+              firstThread.id,
+              "idle",
+              DEFAULT_TIMEOUT_MS,
+            ),
+            waitForThreadStatus(
+              harness.api,
+              secondThread.id,
+              "idle",
+              DEFAULT_TIMEOUT_MS,
+            ),
+          ]);
+          expect(await getThreadOutput(harness.api, firstThread.id)).toContain(
+            "first concurrent setup",
+          );
+          expect(await getThreadOutput(harness.api, secondThread.id)).toContain(
+            "second concurrent setup",
+          );
+        },
+      ),
+  );
 
   it("starts five fresh managed-worktree threads per provider concurrently", () =>
     withHarness(
