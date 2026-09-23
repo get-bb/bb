@@ -215,6 +215,8 @@ interface AutoHeightContainerProps {
   children: ReactNode;
   snapRevision?: string;
   animateGrowth?: boolean;
+  /** Read on each growth; returning true snaps that growth instead of easing. */
+  shouldSnapGrowth?: () => boolean;
 }
 
 const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
@@ -230,6 +232,7 @@ export function AutoHeightContainer({
   children,
   snapRevision,
   animateGrowth = true,
+  shouldSnapGrowth,
 }: AutoHeightContainerProps) {
   const snapGrowth = useSnapHeightGrowth();
   const durationMs =
@@ -238,7 +241,11 @@ export function AutoHeightContainer({
   const innerRef = useRef<HTMLDivElement>(null);
   const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
   const previousSnapRevisionRef = useRef(snapRevision);
+  const shouldSnapGrowthRef = useRef(shouldSnapGrowth);
   const store = useStore();
+  useLayoutEffect(() => {
+    shouldSnapGrowthRef.current = shouldSnapGrowth;
+  }, [shouldSnapGrowth]);
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
@@ -281,7 +288,8 @@ export function AutoHeightContainer({
           widthChanged ||
           pendingVisibilitySnap ||
           !initialSettleComplete ||
-          layoutAnimationActive;
+          layoutAnimationActive ||
+          shouldSnapGrowthRef.current?.() === true;
         pendingVisibilitySnap = false;
         if (width !== undefined) {
           lastWidth = width;

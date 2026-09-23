@@ -100,6 +100,7 @@ import {
 } from "./PluginTimelineRendererBody.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
+  settleScrollElementIntoView,
   TimelineScrollRestoreRowIdContext,
   useBottomAnchoredScroll,
 } from "@/components/ui/bottom-anchored-scroll-body.js";
@@ -115,6 +116,7 @@ import {
 } from "@bb/client-core";
 import {
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+  supportsTimelineRowContainment,
   timelineRowContainmentStyle,
   useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment.js";
@@ -1032,6 +1034,7 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       return;
     }
 
+    let cancelled = false;
     const timeoutId = window.setTimeout(() => {
       const divider = dividerRef.current;
       if (!divider) {
@@ -1042,9 +1045,17 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       bottomAnchor.scrollElementIntoViewClampedToMaxScroll({
         element: divider,
       });
+      void settleScrollElementIntoView({
+        element: divider,
+        getScrollElement: bottomAnchor.getScrollElement,
+        isCancelled: () => cancelled,
+      });
     }, 0);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [autoScroll, bottomAnchor]);
 
   return (
@@ -1929,6 +1940,35 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
   );
 }
 
+interface TimelineAutoHeightContainerProps {
+  children: ReactNode;
+  snapRevision: string;
+  animateGrowth: boolean;
+  rowContainmentArmed: boolean;
+}
+
+// Reads the bottom anchor here rather than in the timeline view so an
+// at-bottom change re-renders only this wrapper, not the whole timeline.
+function TimelineAutoHeightContainer({
+  children,
+  snapRevision,
+  animateGrowth,
+  rowContainmentArmed,
+}: TimelineAutoHeightContainerProps) {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <AutoHeightContainer
+      snapRevision={snapRevision}
+      animateGrowth={animateGrowth}
+      shouldSnapGrowth={
+        rowContainmentArmed ? bottomAnchor?.hasRecentViewportChange : undefined
+      }
+    >
+      {children}
+    </AutoHeightContainer>
+  );
+}
+
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const getViewRows = useTimelineViewRowsCache();
   const [windowingMeasurements] = useState(() => new Map<string, number>());
@@ -1937,6 +1977,12 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [getViewRows, props.timelineRows],
   );
   const heightSnapRevision = timelineHeightSnapRevision(props.timelineRows);
+  const rowContainmentArmed = useMemo(
+    () =>
+      supportsTimelineRowContainment() &&
+      !(props.timelineWindowingEnabled ?? false),
+    [props.timelineWindowingEnabled],
+  );
   const latestActionableAssistantMessageId = useMemo(
     () => findLastActionableAssistantMessageId(rows),
     [rows],
@@ -2176,9 +2222,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                     <TimelineWindowingEnabledContext.Provider
                       value={props.timelineWindowingEnabled ?? false}
                     >
-                      <AutoHeightContainer
+                      <TimelineAutoHeightContainer
                         snapRevision={heightSnapRevision}
                         animateGrowth={!scopeActive}
+                        rowContainmentArmed={rowContainmentArmed}
                       >
                         <TimelineRowsList
                           hasOlderTimelineRows={props.hasOlderTimelineRows}
@@ -2201,7 +2248,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                             props.unreadDividerPlacement ?? null
                           }
                         />
-                      </AutoHeightContainer>
+                      </TimelineAutoHeightContainer>
                     </TimelineWindowingEnabledContext.Provider>
                   </TimelineWindowingMeasurementsContext.Provider>
                   {hasSelectionActions ? (

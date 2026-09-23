@@ -6,7 +6,10 @@ import type {
   TimelineRow,
 } from "@bb/server-contract";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import {
+  settleScrollElementIntoView,
+  useBottomAnchoredScroll,
+} from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
@@ -630,11 +633,18 @@ export function ThreadTableOfContents({
           options: { block: "start", inline: "nearest" },
         });
       };
+      const settleScrollToRow = (element: HTMLElement) =>
+        settleScrollElementIntoView({
+          element,
+          getScrollElement,
+          isCancelled: () => !mountedRef.current,
+        });
       onNavigateToRow?.(id);
 
       let row = findTimelineRowElement(getScrollElement(), id);
       if (row) {
         scrollToRow(row);
+        await settleScrollToRow(row);
         return;
       }
       if (jumpInProgressRef.current) return;
@@ -657,7 +667,10 @@ export function ThreadTableOfContents({
           }
         }
         if (!row) row = findTimelineRowElement(getScrollElement(), id);
-        if (row) scrollToRow(row);
+        if (row) {
+          scrollToRow(row);
+          await settleScrollToRow(row);
+        }
       } finally {
         jumpInProgressRef.current = false;
         setPendingJumpId(null);

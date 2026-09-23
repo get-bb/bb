@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,17 +13,23 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import {
   estimateTimelineRowIntrinsicBlockSizePx,
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+  useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment";
 
-function stubScrollAnchoring(supported: boolean): void {
+function stubCssSupports(supportedProperties: readonly string[]): void {
   vi.stubGlobal("CSS", {
-    supports: (property: string, value: string) =>
-      supported && property === "overflow-anchor" && value === "none",
+    supports: (property: string) => supportedProperties.includes(property),
   });
 }
 
+const FULL_CONTAINMENT_SUPPORT = [
+  "overflow-anchor",
+  "content-visibility",
+  "contain-intrinsic-block-size",
+] as const;
+
 beforeEach(() => {
-  stubScrollAnchoring(true);
+  stubCssSupports(FULL_CONTAINMENT_SUPPORT);
 });
 
 afterEach(() => {
@@ -98,6 +104,9 @@ describe("ThreadTimelineRows row containment", () => {
     expect(TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME).not.toContain(
       "content-visibility",
     );
+    expect(TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME).not.toContain(
+      "max-md:",
+    );
 
     await act(nextAnimationFrame);
     expect(rowWrapper(view.container, "assistant_1").className).toBe(
@@ -105,7 +114,7 @@ describe("ThreadTimelineRows row containment", () => {
     );
     await act(nextAnimationFrame);
     const armedClassNames = [
-      "max-md:[content-visibility:auto]",
+      "[content-visibility:auto]",
       TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
     ];
     for (const rowId of ["user_1", "turn_1", "assistant_1"]) {
@@ -135,7 +144,7 @@ describe("ThreadTimelineRows row containment", () => {
     ).toBe(true);
     expect(
       rowWrapper(view.container, "assistant_1").classList.contains(
-        "max-md:[content-visibility:auto]",
+        "[content-visibility:auto]",
       ),
     ).toBe(true);
 
@@ -152,8 +161,10 @@ describe("ThreadTimelineRows row containment", () => {
     );
   });
 
-  it("never arms content-visibility where CSS scroll anchoring is missing (WebKit)", async () => {
-    stubScrollAnchoring(false);
+  async function expectContainmentNotArmed(
+    supportedProperties: readonly string[],
+  ): Promise<void> {
+    stubCssSupports(supportedProperties);
     const rows = [
       conversationRow({
         id: "user_1",
@@ -189,7 +200,40 @@ describe("ThreadTimelineRows row containment", () => {
       expect(classes).toContain(
         TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
       );
-      expect(classes).not.toContain("max-md:[content-visibility:auto]");
+      expect(classes).not.toContain("[content-visibility:auto]");
     }
+  }
+
+  it("never arms content-visibility where CSS scroll anchoring is missing (WebKit)", async () => {
+    await expectContainmentNotArmed([
+      "content-visibility",
+      "contain-intrinsic-block-size",
+    ]);
+  });
+
+  it("never arms content-visibility where the browser lacks the property", async () => {
+    await expectContainmentNotArmed([
+      "overflow-anchor",
+      "contain-intrinsic-block-size",
+    ]);
+  });
+});
+
+describe("useArmTopLevelTimelineRowContainment", () => {
+  // Windowing can switch on after rows mounted (its experiment flag loads
+  // later); an armed row must then lose content-visibility again.
+  it("removes content-visibility when containment is switched off", async () => {
+    const wrapper = document.createElement("div");
+    const ref = { current: wrapper };
+    const { rerender } = renderHook(
+      ({ enabled }) => useArmTopLevelTimelineRowContainment(ref, enabled),
+      { initialProps: { enabled: true } },
+    );
+    await act(nextAnimationFrame);
+    await act(nextAnimationFrame);
+    await act(nextAnimationFrame);
+    expect(wrapper.classList).toContain("[content-visibility:auto]");
+    rerender({ enabled: false });
+    expect(wrapper.classList).not.toContain("[content-visibility:auto]");
   });
 });

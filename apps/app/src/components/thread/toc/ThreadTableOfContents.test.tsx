@@ -20,9 +20,15 @@ import type {
 } from "@bb/server-contract";
 import { commandRow } from "@/test/fixtures/thread-timeline-rows";
 
-vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
-  useBottomAnchoredScroll: vi.fn(),
-}));
+vi.mock(
+  "@/components/ui/bottom-anchored-scroll-body.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/components/ui/bottom-anchored-scroll-body.js")
+    >()),
+    useBottomAnchoredScroll: vi.fn(),
+  }),
+);
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreadConversationOutline: vi.fn(),
@@ -288,6 +294,12 @@ function manyUserItems(count: number): TocItem[] {
 
 let scrollElement: HTMLElement;
 let scrollElementIntoView: ReturnType<typeof vi.fn>;
+let panelScrollTo: ReturnType<typeof vi.fn>;
+
+const originalScrollToDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollTo",
+);
 
 function openTocPanel(): void {
   const toc = document.querySelector<HTMLElement>("[data-thread-toc]");
@@ -306,6 +318,13 @@ beforeEach(() => {
   );
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
+  panelScrollTo = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    writable: true,
+    value: panelScrollTo,
+  });
+
   scrollElement = document.createElement("div");
   scrollElementIntoView = vi.fn();
   vi.mocked(useBottomAnchoredScroll).mockReturnValue({
@@ -322,6 +341,15 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  if (originalScrollToDescriptor === undefined) {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+  } else {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      "scrollTo",
+      originalScrollToDescriptor,
+    );
+  }
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -863,6 +891,158 @@ describe("ThreadTableOfContents", () => {
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
     expect(onNavigateToRow).toHaveBeenCalledWith("u2");
     expect(loadOlder).not.toHaveBeenCalled();
+  });
+
+  it("settles a jump that lands short because offscreen rows were skipped", async () => {
+    const row = timelineRowElement("u2");
+    let rowTop = 240;
+    row.getBoundingClientRect = () => rect({ bottom: rowTop + 40, top: rowTop });
+    let scrollTop = 0;
+    const maxScrollOffset = 800;
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          const next = Math.min(Math.max(0, value), maxScrollOffset);
+          rowTop -= next - scrollTop;
+          scrollTop = next;
+        },
+      },
+    });
+    scrollElement.getBoundingClientRect = () => rect({ bottom: 200, top: 0 });
+    scrollElement.appendChild(row);
+    setOutline([
+      {
+        id: "u2",
+        role: "user",
+        preview: "Loaded question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[]}
+        hasOlderTimelineRows={false}
+        loadOlderTimelineRows={() => {}}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(await screen.findByText("Loaded question"));
+
+    await waitFor(() => expect(scrollTop).toBe(240));
+    expect(scrollElementIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the active item in view inside the panel without throwing", () => {
+    vi.useFakeTimers();
+    const rows = [1, 2, 3].map((index) => userConversationRow(index));
+    const rowElements = rows.map((row) => {
+      const element = timelineRowElement(row.id);
+      scrollElement.append(element);
+      return element;
+    });
+    const positions = [
+      { top: 0, bottom: 20 },
+      { top: 100, bottom: 120 },
+      { top: 200, bottom: 220 },
+    ];
+    rowElements.forEach((element, index) => {
+      element.getBoundingClientRect = vi.fn(() => rect(positions[index]!));
+    });
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, value: 400 },
+    });
+    scrollElement.getBoundingClientRect = () => rect({ bottom: 100, top: 0 });
+
+    render(<TocHost timelineRows={rows} />);
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    openTocPanel();
+
+    expect(panelScrollTo).toHaveBeenCalled();
+  });
+
+  it("stops settling a jump once the panel unmounts", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const row = timelineRowElement("u2");
+    let scrollTop = 0;
+    row.getBoundingClientRect = () =>
+      rect({ bottom: 280 - scrollTop, top: 240 - scrollTop });
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+    });
+    scrollElement.getBoundingClientRect = () => rect({ bottom: 200, top: 0 });
+    scrollElement.appendChild(row);
+    setOutline([
+      {
+        id: "u2",
+        role: "user",
+        preview: "Loaded question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    const view = render(
+      <TocHost
+        timelineRows={[]}
+        hasOlderTimelineRows={false}
+        loadOlderTimelineRows={() => {}}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(await screen.findByText("Loaded question"));
+    view.unmount();
+    await act(async () => {
+      for (const callback of frames.splice(0)) {
+        callback(0);
+      }
+      await Promise.resolve();
+    });
+
+    expect(scrollTop).toBe(0);
   });
 
   it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {

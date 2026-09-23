@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { TimelineRow } from "@bb/server-contract";
+import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   commandRow,
   conversationRow,
@@ -17,6 +18,20 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 const DIVIDER = "__divider__";
 
 afterEach(cleanup);
+
+function rect({ bottom, top }: { bottom: number; top: number }): DOMRect {
+  return {
+    bottom,
+    height: bottom - top,
+    left: 0,
+    right: 100,
+    toJSON: () => ({}),
+    top,
+    width: 100,
+    x: 0,
+    y: top,
+  };
+}
 
 function renderTopLevelSequence(
   timelineRows: TimelineRow[],
@@ -183,5 +198,69 @@ describe("unread divider placement", () => {
     );
 
     expect(sequence[0]).toBe(DIVIDER);
+  });
+
+  it("settles the unread divider jump when skipped rows leave it short", async () => {
+    const scrollElement = document.createElement("div");
+    let scrollTop = 0;
+    const maxScrollOffset = 800;
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = Math.min(Math.max(0, value), maxScrollOffset);
+        },
+      },
+    });
+    scrollElement.getBoundingClientRect = () => rect({ bottom: 200, top: 0 });
+    const scrollElementIntoViewClampedToMaxScroll = vi.fn();
+
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <BottomAnchorContext.Provider
+            value={{
+              captureScrollAnchor: vi.fn(),
+              getScrollElement: () => scrollElement,
+              isAtBottom: false,
+              scrollElementIntoView: vi.fn(),
+              scrollElementIntoViewClampedToMaxScroll,
+              scrollToBottom: vi.fn(),
+            }}
+          >
+            <ThreadProviderContext.Provider
+              value={{ providerId: "echo-agent", pluginId: "echo-provider" }}
+            >
+              <ThreadTimelineRows
+                threadId="thr_main"
+                threadRuntimeDisplayStatus="idle"
+                workspaceRootPath={undefined}
+                timelineRows={[
+                  userMessage(100),
+                  command(200),
+                  assistantMessage(300),
+                ]}
+                unreadDividerPlacement={{ kind: "before-first" }}
+              />
+            </ThreadProviderContext.Provider>
+          </BottomAnchorContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const divider = container.querySelector<HTMLElement>(
+      '[data-testid="thread-unread-divider"]',
+    );
+    if (!divider) {
+      throw new Error("Unread divider did not render");
+    }
+    divider.getBoundingClientRect = () =>
+      rect({ bottom: 260 - scrollTop, top: 240 - scrollTop });
+
+    await waitFor(() => expect(scrollTop).toBe(240));
+    expect(scrollElementIntoViewClampedToMaxScroll).toHaveBeenCalled();
   });
 });
