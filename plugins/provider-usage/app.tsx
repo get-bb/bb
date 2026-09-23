@@ -408,7 +408,10 @@ export function ProviderUsageStatusContent({
             ? usageFeedbackMessages.refreshFailed
             : usageFeedbackMessages.loadFailed
           : activeProvider === null
-            ? emptyUsageMessage(activeMachine)
+            ? emptyUsageMessage(
+                activeMachine,
+                snapshot.data?.hasUsageSources ?? false,
+              )
             : null;
   const panelId = useId();
   const activeMachineId = activeMachine?.id ?? null;

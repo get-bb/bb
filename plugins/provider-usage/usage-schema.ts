@@ -57,6 +57,7 @@ export const usageMachineSchema = z.strictObject({
 
 export const usageSnapshotSchema = z.strictObject({
   machines: z.array(usageMachineSchema),
+  hasUsageSources: z.boolean(),
 });
 
 export const usageRpcSuccessSchema = z.strictObject({

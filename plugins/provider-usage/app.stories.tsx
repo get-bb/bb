@@ -105,7 +105,10 @@ const healthyMachine = machine("host-m4", "Michael-M4", [
   provider("local-codex", "codex", measured("local@example.com", 17, "Pro")),
 ]);
 
-const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
+const scenarios: Record<
+  Exclude<ScenarioName, "loading">,
+  Omit<UsageSnapshot, "hasUsageSources">
+> = {
   healthy: { machines: [healthyMachine, healthyPool] },
   emptyPool: {
     machines: [
@@ -149,7 +152,7 @@ function storySnapshot(name: ScenarioName): UsageStoreSnapshot {
     return { data: null, error: null, isRefreshing: true };
   }
   return {
-    data: scenarios[name],
+    data: { ...scenarios[name], hasUsageSources: true },
     error: name === "failedRefresh" ? "Couldn’t refresh usage." : null,
     isRefreshing: false,
   };
@@ -165,6 +168,7 @@ function SettingsPreview({ scenario }: { scenario: ScenarioName }) {
         selectedId={selectedId}
         loading={scenario === "loading"}
         error={scenario === "failedRefresh"}
+        hasUsageSources={scenario !== "loading"}
         onSelect={setSelectedId}
         onRefresh={() => {}}
       />

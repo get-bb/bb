@@ -369,7 +369,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
           (providerOrder.get(a.providerId) ?? Number.MAX_SAFE_INTEGER) -
           (providerOrder.get(b.providerId) ?? Number.MAX_SAFE_INTEGER),
       );
-    return { machines };
+    return { machines, hasUsageSources: sources.length > 0 };
   };
   bb.rpc.register(providerUsageRpcContract, { getUsage: readUsage });
   const markDirty = () => {

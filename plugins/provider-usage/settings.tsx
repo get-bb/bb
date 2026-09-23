@@ -371,6 +371,7 @@ export function UsageSettingsContent({
   selectedId,
   loading,
   error,
+  hasUsageSources,
   onSelect,
   onRefresh,
 }: {
@@ -378,6 +379,7 @@ export function UsageSettingsContent({
   selectedId: string | null;
   loading: boolean;
   error: boolean;
+  hasUsageSources: boolean;
   onSelect: (machineId: string) => void;
   onRefresh: () => void;
 }) {
@@ -401,7 +403,7 @@ export function UsageSettingsContent({
             ? usageFeedbackMessages.loading
             : usageFeedbackMessages.noSources
           : groups.size === 0
-            ? emptyUsageMessage(selected)
+            ? emptyUsageMessage(selected, hasUsageSources)
             : null;
   return (
     <section className="space-y-3">
@@ -484,6 +486,7 @@ export function UsageSettingsContent({
 export function UsageSettings() {
   const rpc = useRpc<typeof providerUsageRpcContract>();
   const [machines, setMachines] = useState<UsageMachine[]>([]);
+  const [hasUsageSources, setHasUsageSources] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -508,6 +511,7 @@ export function UsageSettings() {
         });
         if (disposed) return;
         setMachines(inventory.machines);
+        setHasUsageSources(inventory.hasUsageSources);
         const selected = selectUsageMachine(
           inventory.machines,
           selectedId,
@@ -525,6 +529,7 @@ export function UsageSettings() {
             });
             if (disposed) return;
             setMachines(result.machines);
+            setHasUsageSources(result.hasUsageSources);
           }
         }
       } catch {
@@ -549,6 +554,7 @@ export function UsageSettings() {
       selectedId={selectedId}
       loading={loading}
       error={error}
+      hasUsageSources={hasUsageSources}
       onSelect={setSelectedId}
       onRefresh={() => setRefresh((value) => value + 1)}
     />

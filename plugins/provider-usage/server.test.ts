@@ -259,6 +259,7 @@ it("keeps an unconfigured shared group without hosts or measurement requests", a
           error: null,
         },
       ],
+      hasUsageSources: true,
     });
     expect(rpc).toHaveBeenCalledTimes(1);
   } finally {

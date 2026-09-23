@@ -240,3 +240,26 @@ it("keeps authentication and plans without limits distinct from loading and erro
   ).toBeTruthy();
   expect(slot.queryByText("0% used")).toBeNull();
 });
+
+it.each([
+  [true, "No provider on this machine reports usage limits."],
+  [false, "No usage source is enabled."],
+] as const)(
+  "explains an empty host with hasUsageSources=%s",
+  async (hasUsageSources, expected) => {
+    const app = await loadPluginApp(() => import("./app"));
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          getUsage: () => ({
+            hasUsageSources,
+            machines: [machine("host", [])],
+          }),
+        },
+      },
+    );
+    await slot.findByText(expected, { exact: false });
+  },
+);
