@@ -17,9 +17,12 @@ interface ResolvedSharedSkills {
 }
 
 export function hostPathDirname(filePath: string): string {
-  return /^[a-zA-Z]:[\\/]/u.test(filePath)
-    ? path.win32.dirname(filePath)
-    : path.posix.dirname(filePath);
+  // bb-fork(windows): a rooted `\remote\...` path is Windows even without a drive.
+  const windows =
+    /^[a-zA-Z]:[\\/]/u.test(filePath) ||
+    filePath.startsWith("\\\\") ||
+    (!filePath.startsWith("/") && filePath.includes("\\"));
+  return windows ? path.win32.dirname(filePath) : path.posix.dirname(filePath);
 }
 
 function toSharedSkill(

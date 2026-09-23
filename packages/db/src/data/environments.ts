@@ -121,6 +121,8 @@ export function findProviderEnvironmentContainingPath(
           or(
             eq(environments.path, path),
             sql`${path} LIKE ${environments.path} || '/%'`,
+            // bb-fork(windows): a Windows environment path uses `\` separators.
+            sql`${path} LIKE ${environments.path} || '\\%'`,
           ),
           eq(environments.providerOwnsPath, true),
           ne(environments.status, "destroyed"),

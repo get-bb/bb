@@ -4,7 +4,9 @@ import { PLUGIN_PROCESS_DATA_KINDS } from "@bb/process-utils";
 const LEGACY_WORKSPACE_ROOT_NAMES = ["worktrees", "personal-workspaces"];
 
 function isInside(root: string, candidate: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}/`);
+  // bb-fork(windows): compare with native separators via path.relative.
+  const relative = path.relative(root, candidate);
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 export function isBbManagedWorkspacePath(args: {
@@ -13,16 +15,16 @@ export function isBbManagedWorkspacePath(args: {
 }): boolean {
   if (
     LEGACY_WORKSPACE_ROOT_NAMES.some((name) =>
-      isInside(path.posix.join(args.dataDir, name), args.path),
+      isInside(path.join(args.dataDir, name), args.path),
     )
   ) {
     return true;
   }
-  const pluginsRoot = path.posix.join(args.dataDir, "plugins");
-  if (!args.path.startsWith(`${pluginsRoot}/`)) return false;
-  const [pluginSegment, kind] = args.path
-    .slice(pluginsRoot.length + 1)
-    .split("/");
+  const pluginsRoot = path.join(args.dataDir, "plugins");
+  const relative = path.relative(pluginsRoot, args.path);
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative))
+    return false;
+  const [pluginSegment, kind] = relative.split(path.sep);
   return (
     pluginSegment !== undefined &&
     pluginSegment.length > 0 &&

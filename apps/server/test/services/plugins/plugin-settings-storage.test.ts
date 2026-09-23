@@ -184,7 +184,10 @@ describe("plugin settings + storage", () => {
         "apiKey",
       );
       expect(await readFile(secretPath, "utf8")).toBe("sk-secret-123");
-      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+      // bb-fork(windows): Windows does not enforce POSIX file modes.
+      if (process.platform !== "win32") {
+        expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+      }
 
       expect(view?.values.apiKey).toEqual({ set: true });
       expect(JSON.stringify(view)).not.toContain("sk-secret-123");

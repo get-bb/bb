@@ -41,9 +41,12 @@ it("stores encrypted values that survive a database reopen", async () => {
   const rows = readMachineEnvironment(db);
   const persisted = db.select().from(environmentVariables).all();
   expect(JSON.stringify(persisted)).not.toContain("private-");
-  expect(
-    (await stat(join(dataDir, "machine-environment-key"))).mode & 0o777,
-  ).toBe(0o600);
+  // bb-fork(windows): Windows does not enforce POSIX file modes.
+  if (process.platform !== "win32") {
+    expect(
+      (await stat(join(dataDir, "machine-environment-key"))).mode & 0o777,
+    ).toBe(0o600);
+  }
   db.$client.close();
   db = createConnection(":memory:");
   migrate(db);

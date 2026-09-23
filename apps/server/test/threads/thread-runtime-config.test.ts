@@ -1165,7 +1165,7 @@ describe("thread runtime config", () => {
 
       expect(runtimeConfig.workspacePath).toBe("/tmp/runtime-project-root");
       expect(runtimeConfig.threadStoragePath).toBe(
-        `/tmp/bb-host-data/${hostId}/thread-storage/${thread.id}`,
+        path.join("/tmp", "bb-host-data", hostId, "thread-storage", thread.id),
       );
       expect(runtimeConfig.dynamicTools).toEqual([
         expect.objectContaining({

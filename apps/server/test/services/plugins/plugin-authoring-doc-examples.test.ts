@@ -32,7 +32,8 @@ const pluginSdkEntry = join(
   "src",
   "index.ts",
 );
-const tsc = join(repoRoot, "node_modules", ".bin", "tsc");
+// bb-fork(windows): `.bin/tsc` is a POSIX shell shim; the `.cmd` entry runs it.
+const tscShim = join(repoRoot, "node_modules", ".bin", "tsc");
 
 interface SdkReference {
   path: string;
@@ -165,7 +166,14 @@ describe("bb-plugin-authoring skill examples", () => {
       "utf8",
     );
 
-    const result = spawnSync(tsc, ["--project", workDir], { encoding: "utf8" });
+    // bb-fork(windows): spawn the Windows `.cmd` shim through the shell.
+    const result =
+      process.platform === "win32"
+        ? spawnSync(`${tscShim}.cmd`, ["--project", workDir], {
+            encoding: "utf8",
+            shell: true,
+          })
+        : spawnSync(tscShim, ["--project", workDir], { encoding: "utf8" });
     if (result.error !== undefined) throw result.error;
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
   }, 60_000);
