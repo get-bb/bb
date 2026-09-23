@@ -47,7 +47,7 @@ export function PluginMarketplaceByline({
       {entry.category === undefined ||
       pluginCatalogCategoryIconName(entry.categoryId) === undefined ? null : (
         <span className="flex min-w-0 shrink-[100] items-center gap-1">
-          <PluginCategoryIcon categoryId={entry.categoryId} size="sm" />
+          <PluginCategoryIcon categoryId={entry.categoryId} className="size-3" />
           <Link
             to={{
               pathname: getPluginsRoutePath(),
