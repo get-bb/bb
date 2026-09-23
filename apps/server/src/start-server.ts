@@ -262,6 +262,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     },
     {
       serverMove: {
+        appSurface: serverConfig.BB_APP_SURFACE,
         bindHost: serverConfig.BB_SERVER_BIND_HOST,
         manualImportPending: serverImport.manualImportPending,
         pending: pendingServerMove,

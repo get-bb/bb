@@ -214,6 +214,7 @@ export function createTestServerMoveEnvironment(
     retireProcess() {
       events.push("retire");
     },
+    serverAppSurface: "web",
     serverTimeZone: "UTC",
     stopRunningWork: async () => {
       events.push("stop-work");
