@@ -2,10 +2,21 @@ export const TUNNEL_TICKET_PREFIX = "bbtkt_";
 export const TUNNEL_TICKET_TTL_MS = 5 * 60 * 1000;
 export const TUNNEL_TICKET_CLOCK_SKEW_MS = 60 * 1000;
 const TUNNEL_TICKET_KEY_LABEL = "bb-connect-tunnel-ticket:v1";
+const CREDENTIAL_BINDING_LENGTH = 16;
 
 export interface TunnelTicketPayload {
   sid: string;
+  cred: string;
   exp: number;
+}
+
+export interface TunnelTicketOwner {
+  id: string;
+  credentialHash: string;
+}
+
+function credentialBinding(credentialHash: string): string {
+  return credentialHash.slice(0, CREDENTIAL_BINDING_LENGTH);
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -72,12 +83,16 @@ function constantTimeEqualBytes(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 export async function createTunnelTicket(
-  serverId: string,
+  owner: TunnelTicketOwner,
   secret: string,
   now: number = Date.now(),
 ): Promise<{ ticket: string; expiresAt: number }> {
   const expiresAt = now + TUNNEL_TICKET_TTL_MS;
-  const body: TunnelTicketPayload = { sid: serverId, exp: expiresAt };
+  const body: TunnelTicketPayload = {
+    sid: owner.id,
+    cred: credentialBinding(owner.credentialHash),
+    exp: expiresAt,
+  };
   const payload = bytesToBase64Url(
     new TextEncoder().encode(JSON.stringify(body)),
   );
@@ -105,18 +120,22 @@ function parsePayload(bytes: Uint8Array): TunnelTicketPayload | null {
     !("sid" in value) ||
     typeof value.sid !== "string" ||
     value.sid === "" ||
+    !("cred" in value) ||
+    typeof value.cred !== "string" ||
+    value.cred.length !== CREDENTIAL_BINDING_LENGTH ||
     !("exp" in value) ||
     typeof value.exp !== "number" ||
     !Number.isSafeInteger(value.exp)
   ) {
     return null;
   }
-  return { sid: value.sid, exp: value.exp };
+  return { sid: value.sid, cred: value.cred, exp: value.exp };
 }
 
 export async function verifyTunnelTicket(
   ticket: string,
   secret: string,
+  owner: TunnelTicketOwner,
   now: number = Date.now(),
 ): Promise<TunnelTicketPayload | null> {
   if (!isTunnelTicket(ticket)) return null;
@@ -137,5 +156,7 @@ export async function verifyTunnelTicket(
   if (parsed.exp > now + TUNNEL_TICKET_TTL_MS + TUNNEL_TICKET_CLOCK_SKEW_MS) {
     return null;
   }
+  if (parsed.sid !== owner.id) return null;
+  if (parsed.cred !== credentialBinding(owner.credentialHash)) return null;
   return parsed;
 }

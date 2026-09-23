@@ -82,6 +82,16 @@ async function start(now = T0) {
   return started.body;
 }
 
+function currentOwner(serverId: string) {
+  const row = db
+    .select({ credentialHash: server.credentialHash })
+    .from(server)
+    .where(eq(server.id, serverId))
+    .get();
+  if (!row?.credentialHash) throw new Error(`${serverId} is not paired`);
+  return { id: serverId, credentialHash: row.credentialHash };
+}
+
 function primaryServerId(userId: string): string {
   const row = db
     .select({ id: server.id })
@@ -576,13 +586,57 @@ describe("issueTunnelTicket", () => {
     expect(issued.body.tunnelUrl).toBe("wss://sawyer.getbb.app/__tunnel");
     expect(issued.body.expiresAt).toBe(T0 + 5 * 60 * 1000);
     expect(issued.body.ticket).toMatch(/^bbtkt_[\w-]+\.[\w-]+$/u);
-    expect(await verifyTunnelTicket(issued.body.ticket, "secret", T0)).toEqual({
-      sid: primary,
-      exp: issued.body.expiresAt,
-    });
+    expect(
+      await verifyTunnelTicket(
+        issued.body.ticket,
+        "secret",
+        currentOwner(primary),
+        T0,
+      ),
+    ).toMatchObject({ sid: primary, exp: issued.body.expiresAt });
     expect(await issueTunnelTicket(deps, "bbcred_nope", "secret", T0)).toEqual({
       status: 401,
       body: { error: "unauthorized" },
     });
+  });
+
+  it("stops honoring tickets from a credential replaced through /link", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = primaryServerId("u1");
+    db.update(server)
+      .set({ credentialHash: await sha256Hex("bbcred_old") })
+      .where(eq(server.id, primary))
+      .run();
+    const stale = await issueTunnelTicket(deps, "bbcred_old", "secret", T0);
+    if (stale.status !== 200) throw new Error("expected a ticket");
+
+    const started = await start();
+    await approveServerLink(
+      deps,
+      "u1",
+      started.userCode,
+      { kind: "existing", serverId: primary },
+      T0,
+    );
+    const approved = await pollServerLink(deps, started.deviceCode, T0);
+    if (approved.status !== 200 || approved.body.status !== "approved") {
+      throw new Error("expected approval");
+    }
+
+    const owner = currentOwner(primary);
+    expect(
+      await verifyTunnelTicket(stale.body.ticket, "secret", owner, T0),
+    ).toBeNull();
+    const fresh = await issueTunnelTicket(
+      deps,
+      approved.body.credential,
+      "secret",
+      T0,
+    );
+    if (fresh.status !== 200) throw new Error("expected a ticket");
+    expect(
+      await verifyTunnelTicket(fresh.body.ticket, "secret", owner, T0),
+    ).toMatchObject({ sid: primary });
   });
 });

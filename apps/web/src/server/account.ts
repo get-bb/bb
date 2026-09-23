@@ -115,9 +115,11 @@ export async function issueTunnelTicket(
   now: number = Date.now(),
 ): Promise<OkResult<TunnelTicketResponse> | ErrorResult<401, "unauthorized">> {
   const resolved = await resolveServerCredential(deps.db, credential);
-  if (!resolved) return { status: 401, body: { error: "unauthorized" } };
+  if (!resolved || resolved.server.credentialHash === null) {
+    return { status: 401, body: { error: "unauthorized" } };
+  }
   const { ticket, expiresAt } = await createTunnelTicket(
-    resolved.server.id,
+    { id: resolved.server.id, credentialHash: resolved.server.credentialHash },
     secret,
     now,
   );

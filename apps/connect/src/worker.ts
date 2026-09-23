@@ -314,9 +314,12 @@ export default {
       if (isTunnelTicket(credential)) {
         const ticket =
           resolved.kind === "server"
-            ? await verifyTunnelTicket(credential, env.BETTER_AUTH_SECRET)
+            ? await verifyTunnelTicket(credential, env.BETTER_AUTH_SECRET, {
+                id: owner.id,
+                credentialHash: owner.credentialHash,
+              })
             : null;
-        if (ticket === null || ticket.sid !== owner.id) {
+        if (ticket === null) {
           return text("bb connect: invalid ticket\n", 401);
         }
       } else if ((await sha256Hex(credential)) !== owner.credentialHash) {

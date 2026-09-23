@@ -228,7 +228,8 @@ hold is on.
   - Codes are single-use and expire after 10 minutes.
   - Polling is rate limited per device code.
 - Add `POST /api/connect/tunnel-ticket`. It returns an HMAC-signed
-  `{serverId, exp}` under a gate secret, valid for 5 minutes.
+  `{serverId, credential-hash prefix, exp}` under a gate secret, valid for 5
+  minutes. Rotating the server's credential invalidates its tickets.
 - Keep the dashboard's `bb connect --code … --server …` instructions until a
   bb release with bb account ships; the hosted side deploys first, and
   `bb connect --code` stays as an alias afterwards.
@@ -236,7 +237,8 @@ hold is on.
 **bb-connect gate (`apps/connect`)**
 
 - Tunnel dials accept a ticket as well as the raw credential. For a ticket the
-  gate checks the HMAC, the expiry, and that the server isn't revoked. The raw
+  gate checks the HMAC, the expiry, that the server isn't revoked, and that
+  the ticket's credential-hash prefix matches the server's current credential. The raw
   credential keeps working until old plugins age out.
 - Move credential resolution (`resolveAccountUserId`) into
   `packages/connect-db` so bb-ai-gateway can share it.
@@ -591,7 +593,7 @@ chain. Phase 2 adds:
   - UTC day rollover
   - prompt and output caps
   - a revoked credential gets a 401
-  - tunnel ticket expiry and tampering
+  - tunnel ticket expiry, tampering, and credential rotation
   - link codes: expiry, reuse, and approval by a different account
 - **Server:**
   - routing for each task: explicit, Automatic and Off

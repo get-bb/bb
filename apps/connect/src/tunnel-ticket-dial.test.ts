@@ -92,6 +92,29 @@ beforeEach(async () => {
     .run();
 });
 
+async function ownerOf(serverId: string) {
+  const row = await drizzle(d1, { schema })
+    .select({ id: server.id, credentialHash: server.credentialHash })
+    .from(server)
+    .where(eq(server.id, serverId))
+    .get();
+  if (!row?.credentialHash) throw new Error(`${serverId} is not paired`);
+  return { id: serverId, credentialHash: row.credentialHash };
+}
+
+async function ticketFor(
+  serverId: string,
+  secret = SECRET,
+  now: number = Date.now(),
+) {
+  const { ticket } = await createTunnelTicket(
+    await ownerOf(serverId),
+    secret,
+    now,
+  );
+  return ticket;
+}
+
 async function dial(host: string, bearer: string) {
   const forwarded: Request[] = [];
   const env = {
@@ -120,7 +143,7 @@ async function dial(host: string, bearer: string) {
 
 describe("tunnel dial with a ticket", () => {
   it("accepts a valid ticket for the resolved server", async () => {
-    const { ticket } = await createTunnelTicket("srv-primary", SECRET);
+    const ticket = await ticketFor("srv-primary");
     const { response, forwarded } = await dial("sawyer.getbb.app", ticket);
     expect(response.status).toBe(200);
     expect(forwarded).toHaveLength(1);
@@ -130,7 +153,7 @@ describe("tunnel dial with a ticket", () => {
   });
 
   it("rejects an expired ticket", async () => {
-    const { ticket } = await createTunnelTicket(
+    const ticket = await ticketFor(
       "srv-primary",
       SECRET,
       Date.now() - TUNNEL_TICKET_TTL_MS - 1,
@@ -142,11 +165,12 @@ describe("tunnel dial with a ticket", () => {
   });
 
   it("rejects a tampered payload", async () => {
-    const { ticket } = await createTunnelTicket("srv-other", SECRET);
+    const ticket = await ticketFor("srv-other");
     const signature = ticket.slice(ticket.indexOf(".") + 1);
     const payload = Buffer.from(
       JSON.stringify({
         sid: "srv-primary",
+        cred: (await ownerOf("srv-primary")).credentialHash.slice(0, 16),
         exp: Date.now() + TUNNEL_TICKET_TTL_MS,
       }),
     ).toString("base64url");
@@ -158,7 +182,7 @@ describe("tunnel dial with a ticket", () => {
   });
 
   it("rejects a tampered signature", async () => {
-    const { ticket } = await createTunnelTicket("srv-primary", SECRET);
+    const ticket = await ticketFor("srv-primary");
     const dot = ticket.indexOf(".");
     const swapped = ticket[dot + 1] === "A" ? "B" : "A";
     const { response } = await dial(
@@ -169,32 +193,54 @@ describe("tunnel dial with a ticket", () => {
   });
 
   it("rejects a ticket signed with another secret", async () => {
-    const { ticket } = await createTunnelTicket("srv-primary", "not-the-gate");
+    const ticket = await ticketFor("srv-primary", "not-the-gate");
     const { response } = await dial("sawyer.getbb.app", ticket);
     expect(response.status).toBe(401);
   });
 
   it("rejects a ticket minted for a different server", async () => {
-    const { ticket } = await createTunnelTicket("srv-other", SECRET);
+    const ticket = await ticketFor("srv-other");
     const { response, forwarded } = await dial("sawyer.getbb.app", ticket);
     expect(response.status).toBe(401);
     expect(forwarded).toHaveLength(0);
   });
 
+  it("rejects a ticket minted before the server's credential rotated", async () => {
+    const stale = await ticketFor("srv-primary");
+    await drizzle(d1, { schema })
+      .update(server)
+      .set({ credentialHash: await sha256Hex("bbcred_replacement") })
+      .where(eq(server.id, "srv-primary"))
+      .run();
+    const rejected = await dial("sawyer.getbb.app", stale);
+    expect(rejected.response.status).toBe(401);
+    expect(await rejected.response.text()).toContain("invalid ticket");
+    expect(rejected.forwarded).toHaveLength(0);
+
+    const accepted = await dial(
+      "sawyer.getbb.app",
+      await ticketFor("srv-primary"),
+    );
+    expect(accepted.response.status).toBe(200);
+  });
+
   it("rejects a ticket for a revoked server", async () => {
+    const ticket = await ticketFor("srv-primary");
     await drizzle(d1, { schema })
       .update(server)
       .set({ revokedAt: new Date(), credentialHash: null })
       .where(eq(server.id, "srv-primary"))
       .run();
-    const { ticket } = await createTunnelTicket("srv-primary", SECRET);
     const { response } = await dial("sawyer.getbb.app", ticket);
     expect(response.status).toBe(403);
     expect(await response.text()).toContain("server not paired");
   });
 
   it("does not accept server tickets on machine labels", async () => {
-    const { ticket } = await createTunnelTicket("machine-air", SECRET);
+    const { ticket } = await createTunnelTicket(
+      { id: "machine-air", credentialHash: await sha256Hex(MACHINE_CREDENTIAL) },
+      SECRET,
+    );
     const { response } = await dial("sawyer-air.getbb.app", ticket);
     expect(response.status).toBe(401);
   });
