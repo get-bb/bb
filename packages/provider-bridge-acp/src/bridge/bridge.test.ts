@@ -707,6 +707,45 @@ describe("acp bridge", () => {
     });
   });
 
+  it("keeps probing reasoning for later models after one model's probe fails", async () => {
+    const modelListId = sendModelList({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        FAKE_ACP_MODEL_COUNT: "3",
+        FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/strong",
+      },
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [
+        {
+          id: "fake/default",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+        },
+        {
+          id: "fake/strong",
+          supportedReasoningEfforts: [
+            {
+              reasoningEffort: "medium",
+              description:
+                "Reasoning effort is managed by the connected ACP agent.",
+            },
+          ],
+        },
+        {
+          id: "fake/gen-2",
+          defaultReasoningEffort: "low",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "low" },
+            { reasoningEffort: "medium" },
+            { reasoningEffort: "high" },
+          ],
+        },
+      ],
+    });
+  });
+
   it("advertises Cursor's parameterized model picker during discovery", async () => {
     const requestLog = join(workspaceDir, "cursor-discovery-requests.jsonl");
     const modelListId = sendModelList({
