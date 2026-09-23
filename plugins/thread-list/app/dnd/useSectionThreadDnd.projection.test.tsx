@@ -185,6 +185,72 @@ describe("useSectionThreadDnd pin mutations", () => {
       args: [{ threadId: pinned.id }],
     });
   });
+
+  it("unparents and pins every root when a worktree group is dropped in Pinned", async () => {
+    const environment = makeSidebarEnvironment({
+      id: "worktree",
+      isWorktree: true,
+    });
+    const rootItems = buildSectionThreadList(
+      [
+        createThread({ id: "parent", sectionId: "a", createdAt: 4 }),
+        createThread({
+          id: "first",
+          parentThreadId: "parent",
+          sectionId: "a",
+          environment,
+          createdAt: 3,
+        }),
+        createThread({
+          id: "second",
+          parentThreadId: "parent",
+          sectionId: "a",
+          environment,
+          createdAt: 2,
+        }),
+        createThread({
+          id: "child",
+          parentThreadId: "first",
+          sectionId: "a",
+          environment,
+        }),
+      ],
+      undefined,
+      SECTIONS,
+      new Set(),
+      true,
+    );
+    const lookup = collectSectionThreadDndLookup(
+      rootItems,
+      CHRONOLOGICAL_CONTAINER_ID,
+    );
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+    updateThreadFake.mockResolvedValueOnce(undefined as never);
+    updateThreadFake.mockResolvedValueOnce(undefined as never);
+    const { inspection, result } = renderSectionThreadDnd(rootItems);
+    const props = () => result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart(activeId)));
+    act(() => props().onDragEnd?.(dragEnd(activeId, "pinned")));
+    await flushTasks();
+
+    expect(inspection.sdkCalls).toEqual(
+      expect.arrayContaining([
+        {
+          method: "threads.update",
+          args: [{ threadId: "first", parentThreadId: null }],
+        },
+        {
+          method: "threads.update",
+          args: [{ threadId: "second", parentThreadId: null }],
+        },
+      ]),
+    );
+    expect(inspection.sidebarActionCalls).toEqual([
+      { method: "setPinned", threadId: "first", pinned: true },
+      { method: "setPinned", threadId: "second", pinned: true },
+    ]);
+  });
 });
 
 function notePointerMove() {

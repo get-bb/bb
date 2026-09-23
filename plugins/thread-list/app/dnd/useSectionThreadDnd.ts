@@ -155,6 +155,13 @@ export type SectionThreadDropDecision =
       toParentKey: string;
     }
   | {
+      kind: "pin-group";
+      activeId: string;
+      rootThreadIds: string[];
+      detachRootThreadIds: string[];
+      pinRootThreadIds: string[];
+    }
+  | {
       kind: "move";
       activeId: string;
       sectionId: string | null;
@@ -676,8 +683,28 @@ export function resolveSectionThreadDropDecision(
       overId === activeId
         ? projectedParentKey
         : resolveSectionThreadDropParentKey(lookup, overThreadId ?? overId);
-    if (!toParentKey || !lookup.sectionIdByParentKey.has(toParentKey))
-      return null;
+    if (!toParentKey) return null;
+    if (toParentKey === PINNED_THREAD_PARENT_KEY) {
+      const rootThreadIds = getGroupRootThreadIds(groupThreads);
+      const detachRootThreadIds = rootThreadIds.filter(
+        (threadId) =>
+          lookup.threadByItemId.get(threadId)?.parentThreadId !== null,
+      );
+      const pinRootThreadIds = rootThreadIds.filter(
+        (threadId) => lookup.threadByItemId.get(threadId)?.pinnedAt === null,
+      );
+      if (detachRootThreadIds.length === 0 && pinRootThreadIds.length === 0) {
+        return null;
+      }
+      return {
+        kind: "pin-group",
+        activeId,
+        rootThreadIds,
+        detachRootThreadIds,
+        pinRootThreadIds,
+      };
+    }
+    if (!lookup.sectionIdByParentKey.has(toParentKey)) return null;
     const sectionId = lookup.sectionIdByParentKey.get(toParentKey) ?? null;
     const rootThreadIds = getGroupRootThreadIds(groupThreads).filter(
       (threadId) =>
@@ -845,6 +872,7 @@ function resolveTargetParentKey(
 ): string | null {
   switch (decision?.kind) {
     case "pin":
+    case "pin-group":
       return PINNED_THREAD_PARENT_KEY;
     case "move-group":
     case "detach-group":
@@ -945,6 +973,11 @@ function hasDropDecisionLanded(
       return (
         lookup.parentKeyByItemId.get(decision.activeId) ===
         PINNED_THREAD_PARENT_KEY
+      );
+    case "pin-group":
+      return decision.rootThreadIds.every(
+        (threadId) =>
+          lookup.parentKeyByItemId.get(threadId) === PINNED_THREAD_PARENT_KEY,
       );
     case "unpin":
       return (
@@ -1461,6 +1494,27 @@ export function useSectionThreadDnd({
             })
             .finally(clearProjectedDrag);
           break;
+        case "pin-group": {
+          const detachRequest = Promise.all(
+            decision.detachRootThreadIds.map((threadId) =>
+              sdk.threads.update({ threadId, parentThreadId: null }),
+            ),
+          ).catch((error) => {
+            toast.error("Failed to pin worktree group.");
+            throw error;
+          });
+          settle(
+            detachRequest.then(() =>
+              Promise.all(
+                decision.pinRootThreadIds.map((threadId) =>
+                  sidebarActions.setPinned(threadId, true),
+                ),
+              ),
+            ),
+            null,
+          );
+          break;
+        }
         case "move":
           settle(
             sdk.threads.update({

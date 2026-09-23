@@ -885,7 +885,7 @@ describe("worktree group section dragging", () => {
     ).toMatchObject({ kind: "pin", detach: true });
   });
 
-  it("allows moving back to Threads and ignores same-section and pinned drops", () => {
+  it("allows moving back to Threads, pinning the group, and ignores same-section drops", () => {
     const lookup = groupLookup();
     const activeId = [...lookup.groupThreadsByItemId.keys()][0];
     expect(
@@ -896,7 +896,13 @@ describe("worktree group section dragging", () => {
     ).toBeNull();
     expect(
       resolveSectionThreadDropDecision(lookup, activeId, "pinned"),
-    ).toBeNull();
+    ).toEqual({
+      kind: "pin-group",
+      activeId,
+      rootThreadIds: ["first", "second"],
+      detachRootThreadIds: [],
+      pinRootThreadIds: ["first", "second"],
+    });
     expect(
       resolveSectionThreadDropDecision(
         lookup,
@@ -907,5 +913,20 @@ describe("worktree group section dragging", () => {
         { groups: true },
       ),
     ).toBeNull();
+  });
+
+  it("unparents and pins the roots of a nested worktree group", () => {
+    const lookup = nestedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(lookup, activeId, "pinned"),
+    ).toEqual({
+      kind: "pin-group",
+      activeId,
+      rootThreadIds: ["first", "second"],
+      detachRootThreadIds: ["first", "second"],
+      pinRootThreadIds: ["first", "second"],
+    });
   });
 });
