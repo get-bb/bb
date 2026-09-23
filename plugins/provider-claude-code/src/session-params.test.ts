@@ -288,6 +288,7 @@ describe("buildClaudeTurnParams", () => {
     });
     expect(params.workflowsEnabled).toBeUndefined();
     expect(params.chromeEnabled).toBeUndefined();
+    expect(params.sandboxEnabled).toBeUndefined();
     expect(params.memoryEnabled).toBeUndefined();
     expect(params.providerSubagentsEnabled).toBeUndefined();
     expect(params.permissionEscalation).toBeNull();

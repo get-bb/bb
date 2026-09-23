@@ -392,8 +392,8 @@ In Accept Edits and Approve for me modes, bb runs Claude Code's Bash commands in
 Claude Code's sandbox. Turn it off with
 `bb plugin config provider-claude-code set sandboxEnabled false`. Bash commands
 then go through Claude Code's normal approvals and your own Claude Code
-permission and sandbox settings. A change applies when a thread's Claude
-session starts or resumes.
+permission and sandbox settings. A change restarts the thread's Claude process
+before its next turn and keeps the conversation.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a

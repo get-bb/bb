@@ -3112,6 +3112,99 @@ describe("bridge", () => {
     },
   );
 
+  it("restarts the Claude process before the next turn when the sandbox setting changes", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const threadId = "thread-sandbox-setting";
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          instructions: "test",
+          providerOptions: { workflowsEnabled: false, sandboxEnabled: false },
+        },
+      });
+      await bridge.waitForResponse(1);
+      expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "same sandbox setting" }],
+          providerOptions: { sandboxEnabled: false },
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      expect(queries).toHaveLength(1);
+      queries[0]?.emit(createSuccessfulResultMessage(threadId));
+      await bridge.flushWork();
+
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "sandbox turned on" }],
+          providerOptions: { sandboxEnabled: true },
+        }),
+      );
+      await bridge.flushWork();
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalled();
+      expect(getLatestQueryOptions()).toMatchObject({
+        permissionMode: "acceptEdits",
+        resume: threadId,
+        sandbox: { enabled: true, autoAllowBashIfSandboxed: true },
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "sandbox turned on",
+      );
+      await bridge.waitForResponse(3);
+      expect(
+        bridge.messages.filter(
+          (message) => message.method === "session/replaced",
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            contextLost: false,
+            providerThreadId: threadId,
+            threadId,
+          }),
+        }),
+      );
+    } finally {
+      bridge.sendRequest(4, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries.at(-1)?.finish();
+      await bridge.waitForResponse(4);
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
   it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];

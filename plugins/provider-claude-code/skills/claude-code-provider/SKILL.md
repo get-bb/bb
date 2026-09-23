@@ -26,7 +26,7 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 - `sandboxEnabled` defaults to `true`. In Accept Edits and Approve for me modes
   bb runs Claude Code's Bash commands in its sandbox. Set it to `false` to use
   Claude Code's own command approvals and sandbox settings instead. A change
-  applies when a thread's Claude session starts or resumes.
+  restarts the thread's Claude process before its next turn, preserving context.
 - bb passes only `BB_CLAUDE_CODE_EXECUTABLE` and `CLAUDE_CODE_OAUTH_TOKEN` to
   the CLI. Mint the token with `claude setup-token` for machines with no
   interactive login.

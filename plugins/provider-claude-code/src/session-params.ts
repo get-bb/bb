@@ -251,6 +251,7 @@ export function buildClaudeTurnParams(
     workflowsEnabled: providerOptions.workflowsEnabled,
     chromeEnabled: providerOptions.chromeEnabled,
     disable1MContext: providerOptions.disable1MContext,
+    sandboxEnabled: providerOptions.sandboxEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),
