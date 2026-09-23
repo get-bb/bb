@@ -23,7 +23,8 @@ import { PluginCardAuthorName } from "./PluginCard";
 import {
   CatalogEntryIconChip,
   formatUrlLabel,
-  pluginCatalogCategoryMutedAccentStyle,
+  pluginCatalogCategoryIconName,
+  PluginCategoryIcon,
 } from "./plugin-ui";
 import {
   entriesByMarketplaceAuthor,
@@ -43,29 +44,22 @@ export function PluginMarketplaceByline({
       <span className="min-w-0 truncate">
         <PluginCardAuthorName entry={entry} />
       </span>
-      {entry.category === undefined ? null : (
-        <span className="flex min-w-0 shrink-[100] items-center gap-1.5">
-          <span
-            aria-hidden
-            className="size-1.5 shrink-0 rounded-full"
-            style={pluginCatalogCategoryMutedAccentStyle(entry.categoryId)}
-          />
-          {entry.categoryId === undefined ? (
-            <span className="min-w-0 truncate">{entry.category}</span>
-          ) : (
-            <Link
-              to={{
-                pathname: getPluginsRoutePath(),
-                search: new URLSearchParams({
-                  shelf: `category:${entry.categoryId}`,
-                }).toString(),
-              }}
-              aria-label={`Browse ${entry.category} plugins`}
-              className="min-w-0 truncate rounded-sm underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {entry.category}
-            </Link>
-          )}
+      {entry.category === undefined ||
+      pluginCatalogCategoryIconName(entry.categoryId) === undefined ? null : (
+        <span className="flex min-w-0 shrink-[100] items-center gap-1">
+          <PluginCategoryIcon categoryId={entry.categoryId} className="size-3" />
+          <Link
+            to={{
+              pathname: getPluginsRoutePath(),
+              search: new URLSearchParams({
+                shelf: `category:${entry.categoryId}`,
+              }).toString(),
+            }}
+            aria-label={`Browse ${entry.category} plugins`}
+            className="min-w-0 truncate rounded-sm underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {entry.category}
+          </Link>
         </span>
       )}
     </span>

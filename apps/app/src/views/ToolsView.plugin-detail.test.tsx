@@ -168,7 +168,7 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     expect(screen.getByRole("heading", { name: "GitHub" })).toBeTruthy();
     expect(screen.getAllByText("BB Official").length).toBeGreaterThan(0);
-    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(screen.queryByText("Developer tools")).toBeNull();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
@@ -312,7 +312,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
 
     expect(screen.getAllByText("BB Official").length).toBeGreaterThan(0);
-    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(screen.queryByText("Developer tools")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
