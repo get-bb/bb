@@ -166,8 +166,11 @@ async function compete(
 
 function cleanAndPrivate(dir: string, kind: string) {
   expect(readdirSync(dir).filter((file) => file.endsWith(".tmp"))).toEqual([]);
-  expect(statSync(join(dir, `${kind}.json`)).mode & 0o777).toBe(0o600);
-  expect(statSync(join(dir, `.${kind}.json.lock`)).mode & 0o777).toBe(0o600);
+  // bb-fork(windows): Windows does not enforce POSIX file modes.
+  if (process.platform !== "win32") {
+    expect(statSync(join(dir, `${kind}.json`)).mode & 0o777).toBe(0o600);
+    expect(statSync(join(dir, `.${kind}.json.lock`)).mode & 0o777).toBe(0o600);
+  }
 }
 
 const cases = [
@@ -306,7 +309,8 @@ describe("managed JSON CLI process transactions", options, () => {
         expect(read(path)).toEqual({
           [kind]: { [a]: va, ...(stage === "after-rename" ? { [b]: vb } : {}) },
         });
-        if (stage === "after-write")
+        // bb-fork(windows): Windows does not enforce POSIX file modes.
+        if (stage === "after-write" && process.platform !== "win32")
           expect(statSync(join(dir, `.${kind}.json.tmp`)).mode & 0o777).toBe(
             0o600,
           );
@@ -371,34 +375,39 @@ describe("managed JSON CLI process transactions", options, () => {
     cleanAndPrivate(dir, "env");
   });
 
-  it("times out without stealing an old paused writer lock or deleting its temp file", async () => {
-    const dir = directory();
-    const path = seed(dir, "env", { env: { SYNTHETIC_A: "synthetic" } });
-    const owner = start(dir, ["env", "set", "SYNTHETIC_B", "b"], {
-      pause: "after-write",
-    });
-    await owner.event("paused");
-    const lockPath = join(dir, ".env.json.lock");
-    const lockInode = statSync(lockPath).ino;
-    const old = new Date(0);
-    utimesSync(lockPath, old, old);
-    owner.child.kill("SIGSTOP");
-    const contender = start(dir, ["env", "unset", "SYNTHETIC_A"]);
-    await contender.event("blocked");
-    const result = await contender.done;
-    expect(result.code).toBe(1);
-    expect(result.stderr).toContain(`Timed out waiting to update ${path}`);
-    expect(result.stdout).not.toContain("Unset");
-    expect(statSync(lockPath).ino).toBe(lockInode);
-    expect(existsSync(join(dir, ".env.json.tmp"))).toBe(true);
-    expect(read(path)).toEqual({ env: { SYNTHETIC_A: "synthetic" } });
-    owner.child.kill("SIGCONT");
-    owner.release();
-    await success(owner);
-    await success(start(dir, ["env", "unset", "SYNTHETIC_A"]));
-    expect(read(path)).toEqual({ env: { SYNTHETIC_B: "b" } });
-    cleanAndPrivate(dir, "env");
-  }, 15_000);
+  // bb-fork(windows): Windows has no SIGSTOP to pause the writer.
+  it.skipIf(process.platform === "win32")(
+    "times out without stealing an old paused writer lock or deleting its temp file",
+    async () => {
+      const dir = directory();
+      const path = seed(dir, "env", { env: { SYNTHETIC_A: "synthetic" } });
+      const owner = start(dir, ["env", "set", "SYNTHETIC_B", "b"], {
+        pause: "after-write",
+      });
+      await owner.event("paused");
+      const lockPath = join(dir, ".env.json.lock");
+      const lockInode = statSync(lockPath).ino;
+      const old = new Date(0);
+      utimesSync(lockPath, old, old);
+      owner.child.kill("SIGSTOP");
+      const contender = start(dir, ["env", "unset", "SYNTHETIC_A"]);
+      await contender.event("blocked");
+      const result = await contender.done;
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(`Timed out waiting to update ${path}`);
+      expect(result.stdout).not.toContain("Unset");
+      expect(statSync(lockPath).ino).toBe(lockInode);
+      expect(existsSync(join(dir, ".env.json.tmp"))).toBe(true);
+      expect(read(path)).toEqual({ env: { SYNTHETIC_A: "synthetic" } });
+      owner.child.kill("SIGCONT");
+      owner.release();
+      await success(owner);
+      await success(start(dir, ["env", "unset", "SYNTHETIC_A"]));
+      expect(read(path)).toEqual({ env: { SYNTHETIC_B: "b" } });
+      cleanAndPrivate(dir, "env");
+    },
+    15_000,
+  );
 
   it("rejects invalid input and malformed documents without rewriting them", async () => {
     const dir = directory();
