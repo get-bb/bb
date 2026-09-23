@@ -314,6 +314,7 @@ export function QuestionForm({
     createInitialFormState(questions),
   );
   const [currentIndex, setCurrentIndex] = useState(0);
+  const formRef = useRef<HTMLDivElement>(null);
   const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
 
   const totalQuestions = questions.length;
@@ -390,9 +391,10 @@ export function QuestionForm({
     return registerChoiceHandler((index) => {
       const choice = resolveQuestionShortcutChoice(currentQuestion, index);
       if (!choice) return false;
-      if (choice.kind === "option")
+      if (choice.kind === "option") {
         handleToggleOption(currentQuestion, choice.value);
-      else handleSelectOther(currentQuestion);
+        formRef.current?.focus();
+      } else handleSelectOther(currentQuestion);
       return true;
     });
   }, [
@@ -408,7 +410,27 @@ export function QuestionForm({
   const currentState = answerStateFor(formState, currentQuestion);
 
   return (
-    <div className="flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col text-xs text-muted-foreground">
+    <div
+      ref={formRef}
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (
+          event.target !== event.currentTarget ||
+          event.defaultPrevented ||
+          event.nativeEvent.isComposing ||
+          event.key !== "Enter" ||
+          event.shiftKey ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          disabled
+        )
+          return;
+        event.preventDefault();
+        handleAdvance();
+      }}
+      className="flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col text-xs text-muted-foreground"
+    >
       {totalQuestions > 1 ? (
         <QuestionTabs
           currentIndex={currentIndex}
