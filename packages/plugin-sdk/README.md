@@ -178,13 +178,15 @@ slot.lifecycle.unmount();
 await scripts.lifecycle.dispose();
 ```
 
-`loadPluginApp` installs the runtime before a thunk import and validates all
-registrations. `mountPluginContentScripts` mirrors the host's ordered mount,
+`loadPluginApp` installs the runtime and validates all registrations; pass the
+imported module or a thunk. `@get-bb/plugin-sdk/app` exports look the runtime
+up when they are called or rendered, so a static import of `app.tsx` or of
+components works too. `mountPluginContentScripts` mirrors the host's ordered mount,
 rollback, independent per-window signal, and exact-once disposal. `renderSlot` supplies
 RPC, realtime, settings, navigation, context, and scoped composer behavior,
 then returns Testing Library queries plus the same behavior/inspection/lifecycle
-split. Use a setup-file `installTestPluginRuntime()` only when a static app
-import is unavoidable.
+split; it installs the runtime too. Call `installTestPluginRuntime()` yourself
+only when a test renders plugin components without `renderSlot`.
 
 ## Fidelity boundaries
 

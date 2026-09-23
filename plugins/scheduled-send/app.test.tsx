@@ -11,8 +11,6 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
-// Load through the thunk so the test runtime is installed before app.tsx binds
-// `definePluginApp`; pull the pure helpers from the same evaluation.
 const app = await loadPluginApp(() => import("./app"));
 const { composerScopeKey, openSendLater, resetSendLaterState } =
   await import("./app");
