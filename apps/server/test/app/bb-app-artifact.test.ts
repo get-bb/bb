@@ -24,7 +24,7 @@ function tar(
     "tar",
     process.platform === "win32" ? ["--force-local", ...args] : [...args],
     options,
-  );
+  ).then((result) => ({ stdout: String(result.stdout) }));
 }
 
 // bb-fork(windows): run the bundled npm CLI through Node; bare `npm` is a `.cmd`.

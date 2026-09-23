@@ -84,7 +84,7 @@ describe("Personal project file access", () => {
               case "host.read_file":
                 expect(request.command.path).toBe(
                   // bb-fork(windows): the route joins the host path natively.
-                  join(environment.path, "hello.txt"),
+                  join(String(environment.path), "hello.txt"),
                 );
                 expect(request.command.rootPath).toBe(environment.path);
                 return {
