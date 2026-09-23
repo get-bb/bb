@@ -37,18 +37,23 @@ built-ins held to this rule. Two checks read it:
   and helpers from `@/lib/*`. The plugin's `tsconfig.json` maps `@/*` onto
   `packages/shared-ui/src`, the source the registry is generated from, and
   `@/components/ui/icon` onto the registry's host-backed icon
-  (`packages/plugin-registry/flavors/components/ui/icon.tsx`). tsc, esbuild, and
+  (`packages/plugin-registry/flavors/components/ui/icon.tsx`); a plugin that
+  imports `@/components/ui/question-form-host` maps it onto that item's flavor
+  the same way. tsc, esbuild, and
   vitest follow the mapping, and `apps/app/vite-forkable-plugin-paths.ts`
-  applies it when app tests import the plugin. `@bb/shared-ui` stays in
-  `package.json` so pnpm links it; the fork replaces it with the registry
-  items' packages. A shared-ui component a plugin needs becomes a registry item
-  in `packages/plugin-registry/registry.json`. Plugin-only logic moves into the
-  plugin.
+  applies it when app tests and Ladle stories import the plugin.
+  `@bb/shared-ui` stays in `package.json` so pnpm links it; the fork replaces
+  it with the registry items' packages. A shared-ui component a plugin needs
+  becomes a registry item in `packages/plugin-registry/registry.json`.
+  Plugin-only logic moves into the plugin.
 - **Its own test config.** `vitest.config.ts` uses `defineConfig` from
   `vitest/config` with `resolve: { tsconfigPaths: true }`, not
   `vitest.shared.ts`, which a copy does not have. The tsconfig has no
   `customConditions: ["source"]`, which only resolves inside this
-  repository.
+  repository. With `tsconfigPaths`, it also maps nothing onto
+  `@get-bb/plugin-sdk`: vitest follows `paths` at runtime, so an entry
+  pointing at the SDK's bundled declarations loads a module with no exports.
+  The package's `types` condition already gives tsc those declarations.
 - **Declared test dependencies.** The fork installs without npm's peer
   resolution, so `devDependencies` lists everything the tests load, including
   the SDK test harness's optional peers the plugin uses: `better-sqlite3`,
@@ -60,7 +65,10 @@ built-ins held to this rule. Two checks read it:
   behavior. Host tests that load a listed plugin import it by a resolved path
   at runtime, as `apps/app/src/components/sidebar/sidebar.bench.test.tsx`
   does: a literal import would pull the plugin's `@/` imports into the host's
-  own type program, where `@/` means the host's source.
+  own type program, where `@/` means the host's source. Ladle stories run in
+  the browser, so they load the plugin with `import.meta.glob`, as
+  `apps/app/src/components/thread/pending-interactions/InteractionStates.stories.tsx`
+  does.
 - **Turbo entries.** `turbo.json` gives the plugin's `typecheck` and `test`
   tasks the registry flavors as inputs, and `test` depends on
   `@get-bb/plugin-sdk#build`, because vitest resolves the SDK's built entries.

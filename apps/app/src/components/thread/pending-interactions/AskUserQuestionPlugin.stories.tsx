@@ -7,9 +7,14 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
+import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
 installTestPluginRuntime();
-const { default: questionApp } = await import("./app");
+const questionApp = await loadPluginAppDefinition(
+  import.meta.glob<unknown>(
+    "../../../../../../plugins/ask-user-question/app.tsx",
+  ),
+);
 
 export default { title: "plugins/Question form" };
 
@@ -32,7 +37,7 @@ export function CompactQuestion() {
           threadId: "thread-demo",
           createdAt: 1,
         }}
-        dismissal="cancel"
+        origin="plugin"
         request={{
           pluginId: "ask-user-question",
           rendererId: "ask-user-question",

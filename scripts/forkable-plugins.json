@@ -3,6 +3,7 @@
   "plugins": [
     "plugins/account-pool",
     "plugins/agent-annotations",
+    "plugins/ask-user-question",
     "plugins/bb-guide",
     "plugins/browser-automation",
     "plugins/concurrency-limit",
@@ -24,6 +25,7 @@
     "plugins/provider-usage",
     "plugins/push-notifications",
     "plugins/scheduled-send",
+    "plugins/secrets",
     "plugins/side-chat",
     "plugins/tasks",
     "plugins/theme-preview",

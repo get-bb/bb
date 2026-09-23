@@ -889,7 +889,22 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-ask-user-question#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-ask-user-question#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-account-pool#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
@@ -1184,7 +1199,22 @@
       ]
     },
     "bb-plugin-secrets#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-secrets#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-scheduled-send#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
