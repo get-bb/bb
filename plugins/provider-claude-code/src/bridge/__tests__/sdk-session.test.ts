@@ -333,57 +333,65 @@ describe("SdkSession", () => {
     );
   });
 
-  it("only enables dangerous permission skipping for bypass mode", () => {
-    mockProcessUid(1000);
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(
-      {
-        ...defaultOptions,
-        permissionMode: "bypassPermissions",
-      },
-      onMessage,
-      onDone,
-    );
-
-    session.start();
-
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
+  // bb-fork(windows): process.getuid does not exist on Windows.
+  it.skipIf(process.platform === "win32")(
+    "only enables dangerous permission skipping for bypass mode",
+    () => {
+      mockProcessUid(1000);
+      const onMessage = vi.fn();
+      const onDone = vi.fn();
+      const session = new SdkSession(
+        {
+          ...defaultOptions,
           permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
+        },
+        onMessage,
+        onDone,
+      );
+
+      session.start();
+
+      expect(queryMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            permissionMode: "bypassPermissions",
+            allowDangerouslySkipPermissions: true,
+          }),
         }),
-      }),
-    );
-  });
+      );
+    },
+  );
 
-  it("does not send root-forbidden bypass flags when running as root", () => {
-    mockProcessUid(0);
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(
-      {
-        ...defaultOptions,
-        permissionMode: "bypassPermissions",
-      },
-      onMessage,
-      onDone,
-    );
+  // bb-fork(windows): process.getuid does not exist on Windows.
+  it.skipIf(process.platform === "win32")(
+    "does not send root-forbidden bypass flags when running as root",
+    () => {
+      mockProcessUid(0);
+      const onMessage = vi.fn();
+      const onDone = vi.fn();
+      const session = new SdkSession(
+        {
+          ...defaultOptions,
+          permissionMode: "bypassPermissions",
+        },
+        onMessage,
+        onDone,
+      );
 
-    session.start();
+      session.start();
 
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          permissionMode: "default",
+      expect(queryMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            permissionMode: "default",
+          }),
         }),
-      }),
-    );
-    expect(queryMock.mock.calls[0]?.[0]?.options).not.toHaveProperty(
-      "allowDangerouslySkipPermissions",
-    );
-  });
+      );
+      expect(queryMock.mock.calls[0]?.[0]?.options).not.toHaveProperty(
+        "allowDangerouslySkipPermissions",
+      );
+    },
+  );
 
   it("includes captured Claude stderr in SDK stream failures", async () => {
     rejectSdkStream({
