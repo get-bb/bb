@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import {
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
   experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  DeltaAssembler,
+  ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { RateLimitSnapshot } from "./generated/codex-app-server/schema/v2/RateLimitSnapshot.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
@@ -22,6 +24,7 @@ import {
   type CodexEventTranslator,
 } from "./translator.js";
 import { codexRateLimitReadResponseSchema } from "./schemas.js";
+import { threadScope, turnScope } from "./event-scope.test-support.js";
 
 const THREAD_ID = "t-codex-translation";
 const ENTROPY = "cx-test";

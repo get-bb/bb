@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { runFirstPartyRecordedConformance } from "@bb/provider-bridge-protocol/testing";
 
-it.concurrent.each(["claude-code"])(
+it.concurrent.each(["claude-code", "codex"])(
   "%s reproduces every recorded matrix cell",
   async (providerId) => {
     const run = await runFirstPartyRecordedConformance({

@@ -24,6 +24,7 @@
     "plugins/plugin-api-tester",
     "plugins/provider-acp",
     "plugins/provider-claude-code",
+    "plugins/provider-codex",
     "plugins/provider-pi",
     "plugins/provider-retry",
     "plugins/provider-usage",
