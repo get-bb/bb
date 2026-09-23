@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readdir, readFile, readlink, stat } from "node:fs/promises";
 import { hostname } from "node:os";
-import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, normalize, posix, resolve, win32 } from "node:path";
 import type {
   DesktopBrowserImportSourceId,
   DesktopBrowserImportSourceProfile,
@@ -249,7 +249,16 @@ export async function resolveCookieDatabase(
 export function parseFirefoxProfiles(
   ini: string,
   root: string,
+  platform?: NodeJS.Platform,
 ): DesktopBrowserImportSourceProfile[] {
+  // bb-fork(windows): follow the simulated platform when given, else the profile
+  // root's own convention.
+  const windowsPaths =
+    platform !== undefined
+      ? platform === "win32"
+      : /^[A-Za-z]:[\\/]/u.test(root) || root.startsWith("\\\\");
+  const pathApi = windowsPaths ? win32 : posix;
+  const { isAbsolute, normalize, relative, resolve, sep } = pathApi;
   const profiles: DesktopBrowserImportSourceProfile[] = [];
   let current: { name?: string; path?: string; isRelative?: string } | null =
     null;
@@ -441,7 +450,10 @@ async function listSourceProfilesInDirectory(
   if (definition.engine === "safari") return listSafariProfiles(root);
   if (definition.engine === "firefox") {
     const ini = await readTextFile(join(root, "profiles.ini"));
-    const declared = ini === undefined ? [] : parseFirefoxProfiles(ini, root);
+    const declared =
+      ini === undefined
+        ? []
+        : parseFirefoxProfiles(ini, root, context.platform);
     const scoped = { ...definition, userDataDirectory: () => root };
     const withDatabase: DesktopBrowserImportSourceProfile[] = [];
     for (const profile of declared) {
