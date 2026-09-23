@@ -14,25 +14,25 @@ import {
   type ExperimentalSidebarFooterDisclosureProps,
   useBbContext,
 } from "@get-bb/plugin-sdk/app";
-import { Icon } from "@bb/shared-ui/icon";
-import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import {
   formatUsageReset,
   formatUsdCents,
   usageBarColorClass,
-} from "@bb/shared-ui/lib/usage-format";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+} from "./usage-format.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
-} from "@bb/shared-ui/option-display";
+} from "@/components/ui/option-display";
 import {
   providerUsageTone,
   selectUsageMachine,

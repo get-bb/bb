@@ -10,7 +10,7 @@ import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   accountSchema,
   accountSecretSchema,
@@ -29,6 +29,7 @@ import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
 } from "./credentials.js";
+import { PARENT_TOKEN_ENV, PARENT_URL_ENV } from "./parent-pool.js";
 import { AccountStore, HubTokenStore } from "./store.js";
 import {
   createAccountPoolPlugin,
@@ -121,7 +122,13 @@ async function resolveCodexToken(
   return { token: token.value, baseUrl: baseUrl.value.serverPath };
 }
 
+beforeEach(() => {
+  vi.stubEnv(PARENT_URL_ENV, undefined);
+  vi.stubEnv(PARENT_TOKEN_ENV, undefined);
+});
+
 afterEach(async () => {
+  vi.unstubAllEnvs();
   while (cleanups.length > 0) await cleanups.pop()?.();
 });
 

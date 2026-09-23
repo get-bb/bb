@@ -1,5 +1,5 @@
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import type { UsageMachine, UsageProvider } from "./usage-schema.js";
 
 export const usageFeedbackMessages = {
