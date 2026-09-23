@@ -84,6 +84,8 @@ describe("0006 account link and AI usage", () => {
           purpose: "server-pair",
           deviceCodeHash: null,
           clientName: null,
+          requestLocation: null,
+          deliveredCredentialHash: null,
           polledAt: null,
           approvedAt: null,
           deniedAt: null,

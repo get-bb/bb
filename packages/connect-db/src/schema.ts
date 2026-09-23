@@ -129,6 +129,8 @@ export const connectCode = sqliteTable(
     purpose: text("purpose").notNull(),
     deviceCodeHash: text("device_code_hash"),
     clientName: text("client_name"),
+    requestLocation: text("request_location"),
+    deliveredCredentialHash: text("delivered_credential_hash"),
     polledAt: timestampMs("polled_at"),
     approvedAt: timestampMs("approved_at"),
     deniedAt: timestampMs("denied_at"),

@@ -30,6 +30,15 @@ Migration 0006 uses the normal schema-diff workflow. Drizzle Kit's
 its `INSERT … SELECT` was corrected to copy only the columns that existed
 before 0006. The snapshot is unchanged generated output.
 
+Migration 0007 uses the normal schema-diff workflow and adds two nullable
+`connect_code` columns for `server-link` rows: `request_location`, the
+Cloudflare city and country that started the request, shown on `/link`; and
+`delivered_credential_hash`, the hash of the credential the last poll
+delivered, which lets a poll whose response was lost receive a freshly
+rotated credential while that credential is still the server's current one.
+Both are additive: old workers never read them, and rows written before 0007
+keep `NULL` (unknown location; no re-delivery).
+
 ## Account-link and AI-usage migration deployment order
 
 Migration `0006_account_link_and_ai_usage.sql` rebuilds `connect_code` so

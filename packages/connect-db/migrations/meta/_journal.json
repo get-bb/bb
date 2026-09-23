@@ -50,6 +50,13 @@
       "when": 1790204836621,
       "tag": "0006_account_link_and_ai_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790206985030,
+      "tag": "0007_server_link_origin",
+      "breakpoints": true
     }
   ]
 }
