@@ -38,6 +38,7 @@ function openMenu(selectionLabel: string) {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   document.getElementById("toolbar-test-layout")?.remove();
   viewport.compact = false;
   vi.restoreAllMocks();
@@ -183,11 +184,13 @@ function ToolbarHarness({
   categoryShelf = false,
   createAction = false,
   installsKnown = false,
+  urlDelayMs = 0,
 }: {
   installed?: boolean;
   categoryShelf?: boolean;
   createAction?: boolean;
   installsKnown?: boolean;
+  urlDelayMs?: number;
 }) {
   const [params, setParams] = useState(
     new URLSearchParams(
@@ -196,11 +199,14 @@ function ToolbarHarness({
   );
   const sort = params.get("sort");
   const changeSearchParams = (change: (next: URLSearchParams) => void) => {
-    setParams((previous) => {
-      const next = new URLSearchParams(previous);
-      change(next);
-      return next;
-    });
+    const apply = () =>
+      setParams((previous) => {
+        const next = new URLSearchParams(previous);
+        change(next);
+        return next;
+      });
+    if (urlDelayMs === 0) apply();
+    else window.setTimeout(apply, urlDelayMs);
   };
   return (
     <>
@@ -433,7 +439,7 @@ describe("PluginCollectionToolbar", () => {
     ).toBeTruthy();
   });
 
-  it("opens compact search with the query selected and restores controls on submit or blur", () => {
+  it("opens compact search with the query selected and restores controls on submit or blur", async () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed createAction />);
     const trigger = screen.getByRole("button", { name: "Search plugins" });
@@ -461,22 +467,26 @@ describe("PluginCollectionToolbar", () => {
       screen.getByRole("button", { name: "Search plugins" }),
     );
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
-    expect(screen.getByLabelText("Parameters").textContent).toBe(
-      "query=Notes&category=security&source=user&sort=name&direction=desc",
+    await waitFor(() =>
+      expect(screen.getByLabelText("Parameters").textContent).toBe(
+        "query=Notes&category=security&source=user&sort=name&direction=desc",
+      ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Search plugins" }));
     act(() => screen.getByRole("textbox", { name: "Search plugins" }).blur());
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
   });
 
-  it("clears compact search, dismisses the input, and retains the other selections", () => {
+  it("clears compact search, dismisses the input, and retains the other selections", async () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed createAction />);
     fireEvent.click(screen.getByRole("button", { name: "Search plugins" }));
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     fireEvent.change(search, { target: { value: "Notes" } });
-    expect(screen.getByLabelText("Parameters").textContent).toContain(
-      "query=Notes",
+    await waitFor(() =>
+      expect(screen.getByLabelText("Parameters").textContent).toContain(
+        "query=Notes",
+      ),
     );
     expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
     const clear = screen.getByRole("button", { name: "Clear search" });
@@ -561,7 +571,29 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
   });
 
-  it("dismisses inline mobile search on Enter while preserving the query", () => {
+  it("keeps typed text while the URL query lags behind", () => {
+    vi.useFakeTimers();
+    render(<ToolbarHarness urlDelayMs={500} />);
+    const search = screen.getByRole<HTMLInputElement>("textbox", {
+      name: "Search plugins",
+    });
+    fireEvent.change(search, { target: { value: "Notes" } });
+    act(() => vi.advanceTimersByTime(250));
+    expect(search.value).toBe("Notes");
+    fireEvent.change(search, { target: { value: "Notes app" } });
+    act(() => vi.advanceTimersByTime(550));
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "query=Notes&",
+    );
+    expect(search.value).toBe("Notes app");
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "query=Notes+app",
+    );
+    expect(search.value).toBe("Notes app");
+  });
+
+  it("dismisses inline mobile search on Enter while preserving the query", async () => {
     viewport.compact = true;
     mockToolbarWidth(400);
     render(<ToolbarHarness categoryShelf />);
@@ -573,8 +605,10 @@ describe("PluginCollectionToolbar", () => {
     fireEvent.keyDown(search, { key: "Enter" });
     expect(document.activeElement).not.toBe(search);
     expect(search.value).toBe("Notes");
-    expect(screen.getByLabelText("Parameters").textContent).toContain(
-      "query=Notes",
+    await waitFor(() =>
+      expect(screen.getByLabelText("Parameters").textContent).toContain(
+        "query=Notes",
+      ),
     );
   });
 

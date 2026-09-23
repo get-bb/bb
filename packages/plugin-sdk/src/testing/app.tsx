@@ -46,6 +46,12 @@ import {
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
   type ExperimentalSidebarNavigationRegistration,
+  type ExperimentalSidebarHeaderRegistration,
+  type ExperimentalSidebarNavigationActions,
+  type ExperimentalSidebarNavigationIconProps,
+  type ExperimentalSidebarNavigationItem,
+  type ExperimentalSidebarNavigationSplit,
+  type ExperimentalSidebarNavigationState,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
   type PluginBrowserBbSdk,
@@ -244,6 +250,8 @@ interface SlotEnv {
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
   sidebarSplitLayout: PluginSidebarSplitLayout | null;
+  sidebarNavigation: ExperimentalSidebarNavigationState;
+  sidebarNavigationCalls: SidebarNavigationCall[];
   environmentProviders: PluginEnvironmentProvidersState;
   sdk: PluginBrowserBbSdk;
   sdkCalls: SdkCall[];
@@ -272,6 +280,18 @@ export interface SidebarActionCall {
   title?: string;
   pinned?: boolean;
   read?: boolean;
+}
+
+/**
+ * One recorded `experimental_useSidebarNavigation()` action, or a split drag
+ * started from `experimental_useSidebarNavigationSplit()` (`beginSplitDrag`).
+ */
+export interface SidebarNavigationCall {
+  method: keyof ExperimentalSidebarNavigationActions | "beginSplitDrag";
+  itemId?: string;
+  itemIds?: string[];
+  isVisible?: boolean;
+  openInSplit?: boolean;
 }
 
 function createSdkFakeNode(
@@ -319,6 +339,21 @@ function TestThreadTitle({ threadId }: { threadId: string }) {
   const thread = env.sidebarThreads.threads.find((row) => row.id === threadId);
   if (thread === undefined) return null;
   return <span data-thread-title={threadId}>{thread.displayTitle}</span>;
+}
+
+function TestSidebarNavigationIcon({
+  icon,
+  className,
+}: ExperimentalSidebarNavigationIconProps) {
+  return (
+    <span
+      aria-hidden="true"
+      className={className}
+      data-sidebar-navigation-icon={
+        icon.kind === "host" ? icon.name : `${icon.pluginId}/${icon.icon ?? ""}`
+      }
+    />
+  );
 }
 
 function SlotLifecycleGuard({
@@ -1033,6 +1068,31 @@ const testPluginSdkApp = {
     return env.sidebarShortcuts.get(threadId) ?? null;
   },
   ThreadTitle: TestThreadTitle,
+  experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState {
+    return useSlotEnv("experimental_useSidebarNavigation").sidebarNavigation;
+  },
+  experimental_useSidebarNavigationSplit(
+    itemId,
+    _options,
+  ): ExperimentalSidebarNavigationSplit {
+    const env = useSlotEnv("experimental_useSidebarNavigationSplit");
+    return useMemo(
+      () => ({
+        splitProps: {
+          onPointerDown: () => {
+            env.sidebarNavigationCalls.push({
+              method: "beginSplitDrag",
+              itemId,
+            });
+          },
+        },
+        isAvailable: true,
+        layout: null,
+      }),
+      [env, itemId],
+    );
+  },
+  experimental_SidebarNavigationIcon: TestSidebarNavigationIcon,
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;
   },
@@ -1108,6 +1168,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
+  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -1366,6 +1427,16 @@ export interface RenderSlotOptions<
   /** The split layout `useSidebarSplitLayout()` reports. Omitted → null. */
   sidebarSplitLayout?: PluginSidebarSplitLayout;
   /**
+   * Items and the active item `experimental_useSidebarNavigation()` reports.
+   * Omitted → no items. Actions are recorded in
+   * `inspection.sidebarNavigationCalls` and do not change the items.
+   */
+  sidebarNavigation?: {
+    items?: readonly ExperimentalSidebarNavigationItem[];
+    activeItemId?: string | null;
+    isShortcutModifierHeld?: boolean;
+  };
+  /**
    * The environment provider catalog `useEnvironmentProviders()` reports.
    * Omitted → a ready, empty list. Pass `{ status: "loading" }` to test that
    * branch.
@@ -1423,6 +1494,11 @@ export interface RenderedSlotInspectionState {
   readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
+  /**
+   * Every `experimental_useSidebarNavigation()` action and navigation split
+   * drag, in order.
+   */
+  readonly sidebarNavigationCalls: SidebarNavigationCall[];
   /** Every `useSdk()` call, in order, as `"<area>.<method>"`. */
   readonly sdkCalls: SdkCall[];
   /** Everything written through `useComposer()`. */
@@ -1612,6 +1688,44 @@ export function renderSlot<
     },
   };
   const sidebarActionCalls: SidebarActionCall[] = [];
+  const sidebarNavigationCalls: SidebarNavigationCall[] = [];
+  const sidebarNavigation: ExperimentalSidebarNavigationState = {
+    items: options.sidebarNavigation?.items ?? [],
+    activeItemId: options.sidebarNavigation?.activeItemId ?? null,
+    isShortcutModifierHeld:
+      options.sidebarNavigation?.isShortcutModifierHeld ?? false,
+    actions: {
+      activate(itemId, activationOptions) {
+        sidebarNavigationCalls.push({
+          method: "activate",
+          itemId,
+          openInSplit: activationOptions.openInSplit,
+        });
+      },
+      setVisible(itemId, isVisible) {
+        sidebarNavigationCalls.push({
+          method: "setVisible",
+          itemId,
+          isVisible,
+        });
+      },
+      setOrder(itemIds) {
+        sidebarNavigationCalls.push({
+          method: "setOrder",
+          itemIds: [...itemIds],
+        });
+      },
+      openCustomize() {
+        sidebarNavigationCalls.push({ method: "openCustomize" });
+      },
+      openDetails(itemId) {
+        sidebarNavigationCalls.push({ method: "openDetails", itemId });
+      },
+      async disablePlugin(itemId) {
+        sidebarNavigationCalls.push({ method: "disablePlugin", itemId });
+      },
+    },
+  };
   const sidebarPullRequests = new Map(
     Object.entries(options.sidebarPullRequests ?? {}),
   );
@@ -1902,6 +2016,8 @@ export function renderSlot<
     sidebarRowStatuses,
     sidebarShortcuts,
     sidebarSplitLayout: options.sidebarSplitLayout ?? null,
+    sidebarNavigation,
+    sidebarNavigationCalls,
     environmentProviders,
     sdk,
     sdkCalls,
@@ -1992,6 +2108,7 @@ export function renderSlot<
     navigateCalls,
     experimental_fixedTabOpenCalls,
     sidebarActionCalls,
+    sidebarNavigationCalls,
     sdkCalls,
     composer: composerLog,
     behavior: {
@@ -2005,6 +2122,7 @@ export function renderSlot<
       navigateCalls,
       experimental_fixedTabOpenCalls,
       sidebarActionCalls,
+      sidebarNavigationCalls,
       sdkCalls,
       composer: composerLog,
     },

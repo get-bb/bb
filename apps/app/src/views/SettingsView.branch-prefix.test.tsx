@@ -12,6 +12,7 @@ import { GeneralSettingsSection, PrivacySettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  desktopBrowserAvailable?: boolean;
   telemetryEnabled?: boolean;
   onTelemetryEnabledChange?: (enabled: boolean) => void;
   managedBranchPrefix?: string;
@@ -20,7 +21,7 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
-        desktopBrowserAvailable={false}
+        desktopBrowserAvailable={overrides?.desktopBrowserAvailable ?? false}
         generalSettingsDisabled={false}
         managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
         navigateToThreadAfterCreate={false}
@@ -109,6 +110,20 @@ describe("new branch prefix setting", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input.value).toBe("bb/");
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("localhost link rewrite setting", () => {
+  it("hides the ineffective setting on localhost", () => {
+    renderSection();
+    expect(screen.queryByText("Rewrite localhost links")).toBeNull();
+    expect(screen.queryByText("Links")).toBeNull();
+  });
+
+  it("keeps the Links section for the in-app browser setting", () => {
+    renderSection({ desktopBrowserAvailable: true });
+    expect(screen.getByText("Links")).not.toBeNull();
+    expect(screen.queryByText("Rewrite localhost links")).toBeNull();
   });
 });
 

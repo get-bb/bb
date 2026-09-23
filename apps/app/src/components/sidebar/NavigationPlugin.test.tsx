@@ -8,15 +8,21 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { useEffect, useState, type ComponentType } from "react";
-import { createStore, Provider } from "jotai";
-import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { SidebarProvider } from "@/components/ui/sidebar.js";
+import { useEffect, type ComponentType } from "react";
+import { createStore } from "jotai";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/sidebar/sidebarRowClasses";
-import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
+import { SidebarVisibilityCustomize } from "@/components/sidebar/SidebarVisibilityControls";
+import { useSidebarReorderDnd as useHostSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -28,22 +34,21 @@ import {
 import {
   resetAllCrashedPluginSlotsForTest,
   resetCrashedPluginSlots,
-} from "./PluginSlotMount";
+} from "@/components/plugin/PluginSlotMount";
 import { appToast } from "@/components/ui/app-toast";
 import {
   makeInstalledPlugin,
   makePluginRegistrationSet as registrationSet,
 } from "@/test/fixtures/plugins";
+import { registerNavigationPlugin } from "@/test/fixtures/navigation-plugin";
 import {
-  type BuiltInSidebarNavEntry,
-  ResourceNavSidebarItem,
-  PluginNavSidebarItems,
-  type SidebarNavActivationModifiers,
-} from "./PluginNavSidebarItems";
+  renderNavigationHarness,
+  type NavigationHarnessOptions,
+} from "@/test/navigation-harness";
 import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
-} from "./pluginNavSidebarAtoms";
+} from "@/components/plugin/pluginNavSidebarAtoms";
 import {
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
@@ -57,7 +62,15 @@ import {
   findPaneByContent,
   type SplitLayout,
 } from "@/lib/split-layout";
-import { usePublishPluginDetailOpener } from "./plugin-detail-opener";
+import { usePublishPluginDetailOpener } from "@/components/plugin/plugin-detail-opener";
+import { useSidebarReorderDnd as usePluginSidebarReorderDnd } from "../../../../../plugins/navigation/app/ui/useSidebarReorderDnd";
+
+const mocks = vi.hoisted(() => ({
+  dispatch: vi.fn(),
+  onNewChat: vi.fn(),
+  onSearchThreads: vi.fn(),
+}));
+
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -68,6 +81,56 @@ vi.mock("@/components/ui/app-toast", () => ({
     warning: vi.fn(),
   },
 }));
+
+vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/commands/AppCommandProvider")
+  >()),
+  useAppCommandRunner: () => ({
+    dispatch: mocks.dispatch,
+    getShortcutCommand: () => null,
+    isCommandAvailable: () => true,
+  }),
+  useAppCommandShortcut: () => null,
+  useIsAppCommandModifierHeld: () => false,
+}));
+
+vi.mock(
+  "../../../../../plugins/navigation/app/ui/useSidebarReorderDnd",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../../../plugins/navigation/app/ui/useSidebarReorderDnd")
+      >();
+    return {
+      ...actual,
+      useSidebarReorderDnd: vi.fn(actual.useSidebarReorderDnd),
+    };
+  },
+);
+
+vi.mock("@/components/sidebar/useSidebarReorderDnd", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/sidebar/useSidebarReorderDnd")
+    >();
+  return {
+    ...actual,
+    useSidebarReorderDnd: vi.fn(actual.useSidebarReorderDnd),
+  };
+});
+
+const HOST_KEYS = [
+  "__bb__/new-thread",
+  "__bb__/search-threads",
+  "__bb__/extensions",
+  "__bb__/skills",
+];
+const DEFAULT_VISIBLE_HOST_KEYS = [
+  "__bb__/new-thread",
+  "__bb__/extensions",
+  "__bb__/skills",
+];
 
 function disabledPluginMutationResponse(id: string) {
   return {
@@ -81,38 +144,37 @@ function disabledPluginMutationResponse(id: string) {
   };
 }
 
-vi.mock("@/components/sidebar/useSidebarReorderDnd", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/components/sidebar/useSidebarReorderDnd")
-    >();
+function dragEndEvent(activeId: string, overId: string): DragEndEvent {
   return {
-    ...actual,
-    useSidebarReorderDnd: vi.fn(actual.useSidebarReorderDnd),
+    active: {
+      id: activeId,
+      data: { current: {} },
+      rect: { current: { initial: null, translated: null } },
+    },
+    over: {
+      id: overId,
+      data: { current: {} },
+      rect: new DOMRect(),
+      disabled: false,
+    },
+    activatorEvent: new Event("pointerdown"),
+    collisions: [],
+    delta: { x: 0, y: 0 },
   };
-});
+}
 
-function reorderSidebar(activeId: string, overId: string) {
-  const options = vi.mocked(useSidebarReorderDnd).mock.lastCall?.[0];
-  if (!options) throw new Error("Sidebar reorder handler is not mounted");
-  act(() => {
-    options.onDragEnd({
-      active: {
-        id: activeId,
-        data: { current: {} },
-        rect: { current: { initial: null, translated: null } },
-      },
-      over: {
-        id: overId,
-        data: { current: {} },
-        rect: new DOMRect(),
-        disabled: false,
-      },
-      activatorEvent: new Event("pointerdown"),
-      collisions: [],
-      delta: { x: 0, y: 0 },
-    });
-  });
+function reorderSidebar(
+  activeId: string,
+  overId: string,
+  surface: "sidebar" | "customize" = "sidebar",
+) {
+  const options = (
+    surface === "sidebar"
+      ? vi.mocked(usePluginSidebarReorderDnd)
+      : vi.mocked(useHostSidebarReorderDnd)
+  ).mock.lastCall?.[0];
+  if (!options) throw new Error(`${surface} reorder handler is not mounted`);
+  act(() => options.onDragEnd(dragEndEvent(activeId, overId)));
 }
 
 function registerPanel(
@@ -141,58 +203,23 @@ function registerPanel(
   );
 }
 
-interface RenderSidebarItemsOptions {
-  builtInEntries?: readonly BuiltInSidebarNavEntry[];
+interface RenderNavigationOptions extends Omit<
+  NavigationHarnessOptions,
+  "store"
+> {
   storedOrder?: string[];
   storedVisibleKeys?: string[] | null;
-  compactViewport?: boolean;
-  compactCustomizeMode?: boolean;
-  initialEntry?: string;
-  initialEntries?: string[];
   initialLayout?: SplitLayout;
-  onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
-  splitEnabled?: boolean;
 }
 
-function PluginNavSidebarItemsHarness({
-  options,
-}: {
-  options: RenderSidebarItemsOptions;
-}) {
-  const [compactCustomizeMode, setCompactCustomizeMode] = useState(
-    options.compactCustomizeMode ?? false,
-  );
-  const compactControlProps = options.compactViewport
-    ? {
-        compactCustomizeMode,
-        onCompactCustomizeModeChange: (isCustomizing: boolean) => {
-          setCompactCustomizeMode(isCustomizing);
-          options.onCompactCustomizeModeChange?.(isCustomizing);
-        },
-      }
-    : {};
-
-  return (
-    <PluginNavSidebarItems
-      builtInEntries={options.builtInEntries}
-      splitEnabled={options.splitEnabled}
-      {...compactControlProps}
-    />
-  );
-}
-
-function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
+function renderNavigation(options: RenderNavigationOptions = {}) {
+  const { storedOrder, storedVisibleKeys, initialLayout, ...harness } = options;
   const store = createStore();
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  if (options.storedOrder) {
-    store.set(pluginNavPanelOrderAtom, options.storedOrder);
-  }
+  if (storedOrder) store.set(pluginNavPanelOrderAtom, storedOrder);
   if ("storedVisibleKeys" in options) {
-    store.set(pluginNavVisiblePanelKeysAtom, options.storedVisibleKeys ?? null);
+    store.set(pluginNavVisiblePanelKeysAtom, storedVisibleKeys ?? null);
   }
-  if (options.splitEnabled) {
+  if (harness.splitEnabled) {
     store.set(splitLayoutAtom, {
       root: {
         type: "pane",
@@ -202,39 +229,27 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
       focusedPaneId: "pane-1",
     });
   }
-  if (options.initialLayout) store.set(splitLayoutAtom, options.initialLayout);
-  const view = render(
-    <CompactViewportOverrideProvider
-      isCompactViewport={options.compactViewport ?? false}
-    >
-      <QueryClientProvider client={queryClient}>
-        <Provider store={store}>
-          <MemoryRouter
-            initialEntries={
-              options.initialEntries ?? [options.initialEntry ?? "/"]
-            }
-          >
-            <SidebarProvider>
-              <PluginNavSidebarItemsHarness options={options} />
-              <LocationProbe />
-            </SidebarProvider>
-          </MemoryRouter>
-        </Provider>
-      </QueryClientProvider>
-    </CompactViewportOverrideProvider>,
-  );
-  return { ...view, store };
+  if (initialLayout) store.set(splitLayoutAtom, initialLayout);
+  return renderNavigationHarness({
+    onNewChat: mocks.onNewChat,
+    onSearchThreads: mocks.onSearchThreads,
+    ...harness,
+    store,
+  });
 }
 
-function LocationProbe() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  return (
-    <>
-      <output data-testid="location-path">{location.pathname}</output>
-      <button onClick={() => void navigate(-1)}>History back</button>
-      <button onClick={() => void navigate(1)}>History forward</button>
-    </>
+function navigationRoot(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    '[data-testid="plugin-nav-sidebar-items"]:not([data-sidebar-navigation-customize-mode])',
+  );
+}
+
+function visibleRowKeys(): string[] {
+  const root = navigationRoot();
+  if (!root) return [];
+  return Array.from(
+    root.querySelectorAll("[data-sidebar-navigation-item]"),
+    (row) => row.getAttribute("data-sidebar-navigation-item") ?? "",
   );
 }
 
@@ -242,29 +257,13 @@ function panelRowNames(
   labels: readonly string[] = ["Docs", "GitHub"],
 ): string[] {
   const rowLabels = new Set(labels);
-  const container = screen.queryByTestId("plugin-nav-sidebar-items");
-  if (!container) return [];
+  const root = navigationRoot();
+  if (!root) return [];
   return Array.from(
-    container.querySelectorAll<HTMLElement>("[data-sidebar-navigation-item]"),
+    root.querySelectorAll<HTMLElement>("[data-sidebar-navigation-item]"),
   )
     .map((row) => row.textContent?.trim() ?? "")
     .filter((label) => rowLabels.has(label));
-}
-
-function builtInEntry(
-  id: string,
-  title: string,
-  onActivate: (event: SidebarNavActivationModifiers) => void = vi.fn(),
-): BuiltInSidebarNavEntry {
-  return {
-    kind: "built-in",
-    pluginId: "__bb__",
-    id,
-    title,
-    icon: <span aria-hidden="true" />,
-    content: <button type="button">{title}</button>,
-    onActivate,
-  };
 }
 
 function customizeRows(): HTMLElement[] {
@@ -275,26 +274,23 @@ function customizeRows(): HTMLElement[] {
   );
 }
 
-function visibleRowKeys(): string[] {
-  return Array.from(
-    screen
-      .getByTestId("plugin-nav-sidebar-items")
-      .querySelectorAll("[data-sidebar-navigation-item]"),
-  ).map((row) => row.getAttribute("data-sidebar-navigation-item") ?? "");
-}
-
 function moreTrigger(): HTMLElement {
   return screen.getByRole("button", { name: "More sidebar navigation" });
 }
 
-async function openMoreMenu(): Promise<HTMLElement[]> {
-  fireEvent.click(moreTrigger());
-  await screen.findByRole("button", { name: "Customize sidebar" });
+function menuEntryLabels(): (string | undefined)[] {
   return Array.from(
     document.querySelectorAll<HTMLElement>(
       '[data-sidebar-navigation-more-item], [data-testid="sidebar-navigation-customize-trigger"]',
     ),
+    (item) => item.textContent?.trim(),
   );
+}
+
+async function openMoreMenu(): Promise<(string | undefined)[]> {
+  fireEvent.click(moreTrigger());
+  await screen.findByRole("button", { name: "Customize sidebar" });
+  return menuEntryLabels();
 }
 
 async function openCustomizeFromMore(): Promise<HTMLElement> {
@@ -312,7 +308,24 @@ async function openCustomizeFromContextMenu(
   return await screen.findByRole("list", { name: "Sidebar navigation" });
 }
 
-beforeEach(() => {
+beforeAll(async () => {
+  render(
+    <SidebarVisibilityCustomize
+      items={[]}
+      listLabel="Preloaded editor"
+      onDone={() => {}}
+      onReorder={() => {}}
+      onVisibleChange={() => {}}
+      title="Preloaded editor"
+      variant="card"
+      visibleIds={[]}
+    />,
+  );
+  await screen.findByRole("list", { name: "Preloaded editor" });
+  cleanup();
+});
+
+beforeEach(async () => {
   vi.clearAllMocks();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
@@ -320,6 +333,7 @@ beforeEach(() => {
   resetAllCrashedPluginSlotsForTest();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
+  await registerNavigationPlugin();
 });
 
 afterEach(() => {
@@ -332,22 +346,26 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("PluginNavSidebarItems", () => {
+describe("Navigation plugin in the sidebar navigation region", () => {
   it("keeps built-in actions visible without placeholders during startup", () => {
     resetPluginFrontendBootStateForTest();
-    renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread")],
-    });
+    renderNavigation();
     expect(
       screen.queryByRole("status", { name: "Loading plugins" }),
     ).toBeNull();
     expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
+    expect(
+      document.querySelector("[data-sidebar-navigation-placeholder]"),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
     act(() => markPluginFrontendsSettled());
     expect(
       screen.queryByRole("status", { name: "Loading plugins" }),
     ).toBeNull();
     expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
+    expect(
+      document.querySelector("[data-sidebar-navigation-placeholder]"),
+    ).toBeNull();
   });
 
   it("keeps remembered labels while the server starts, then reveals ready panels in place", () => {
@@ -361,7 +379,7 @@ describe("PluginNavSidebarItems", () => {
       },
     ]);
     setServerPluginsStarting(true);
-    renderSidebarItems();
+    renderNavigation();
     const row = screen.getByRole("button", { name: "Docs" });
     expect(row.getAttribute("aria-busy")).toBe("true");
     expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
@@ -381,24 +399,52 @@ describe("PluginNavSidebarItems", () => {
     ).toBeNull();
   });
 
-  it("collapses the entire subsection with zero traditional plugins", () => {
-    renderSidebarItems();
+  it("shows only the default host rows when no plugin panels are registered", async () => {
+    renderNavigation();
 
-    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
-    expect(screen.queryByText("Plugins")).toBeNull();
+    expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
+    expect(await openMoreMenu()).toEqual([
+      "Search threads",
+      "Customize sidebar",
+    ]);
   });
 
-  it("shows one plugin without a More row", () => {
-    registerPanel("docs", "Docs");
-    renderSidebarItems();
+  it.each([
+    ["Plugins", "Plug02", "/plugins"],
+    ["Skills", "Zap", "/skills"],
+  ] as const)(
+    "renders the static %s row without plugin-panel options and routes to it",
+    (title, icon, routePath) => {
+      renderNavigation();
 
-    expect(screen.queryByText("Plugins")).toBeNull();
+      const row = screen.getByRole("button", { name: title });
+      expect(row.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+      expect(
+        screen.queryByRole("button", { name: `${title} panel options` }),
+      ).toBeNull();
+      fireEvent.click(row);
+      expect(screen.getByTestId("location-path").textContent).toBe(routePath);
+      expect(
+        screen
+          .getByRole("button", { name: title })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+    },
+  );
+
+  it("shows one plugin directly with its row options", () => {
+    registerPanel("docs", "Docs");
+    renderNavigation({
+      storedOrder: [...HOST_KEYS, "docs/main"],
+      storedVisibleKeys: [...HOST_KEYS, "docs/main"],
+    });
+
     expect(panelRowNames(["Docs"])).toEqual(["Docs"]);
+    expect(visibleRowKeys()).toEqual([...HOST_KEYS, "docs/main"]);
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Customize sidebar navigation" }),
     ).toBeNull();
-
     expect(
       screen.queryByRole("button", { name: "Docs panel options" }),
     ).not.toBeNull();
@@ -407,7 +453,7 @@ describe("PluginNavSidebarItems", () => {
   it("keeps an accessory-less plugin row unchanged", () => {
     registerPanel("docs", "Docs");
 
-    const view = renderSidebarItems();
+    const view = renderNavigation();
 
     expect(screen.getByRole("button", { name: "Docs" }).textContent).toBe(
       "Docs",
@@ -436,7 +482,7 @@ describe("PluginNavSidebarItems", () => {
   it("keeps the panel options trigger visible on mobile", () => {
     registerPanel("docs", "Docs");
 
-    renderSidebarItems();
+    renderNavigation();
 
     expect(
       screen
@@ -450,7 +496,7 @@ describe("PluginNavSidebarItems", () => {
     "uses the focused plugin action set for the options button and right-click (compact=%s)",
     async (compactViewport) => {
       registerPanel("docs", "Docs");
-      renderSidebarItems({ splitEnabled: true, compactViewport });
+      renderNavigation({ splitEnabled: true, compactViewport });
 
       const trigger = screen.getByRole("button", {
         name: "Docs panel options",
@@ -510,9 +556,9 @@ describe("PluginNavSidebarItems", () => {
       },
       focusedPaneId: "docs-pane",
     };
-    const { store } = renderSidebarItems({
+    const { store } = renderNavigation({
       compactViewport: true,
-      initialEntry: "/plugins/docs/main",
+      initialEntries: ["/plugins/docs/main"],
       initialLayout,
     });
     fireEvent.click(screen.getByRole("button", { name: "Docs panel options" }));
@@ -520,8 +566,10 @@ describe("PluginNavSidebarItems", () => {
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     );
 
-    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
-    expect(visibleRowKeys()).toEqual([]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual(
+      DEFAULT_VISIBLE_HOST_KEYS,
+    );
+    expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
     expect(store.get(splitLayoutAtom)).toEqual(initialLayout);
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/plugins/docs/main",
@@ -529,18 +577,16 @@ describe("PluginNavSidebarItems", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(moreTrigger());
     expect(await screen.findByRole("button", { name: "Docs" })).not.toBeNull();
-    expect(
-      Array.from(
-        document.querySelectorAll(
-          '[data-sidebar-navigation-more-item], [data-testid="sidebar-navigation-customize-trigger"]',
-        ),
-      ).map((item) => item.textContent?.trim()),
-    ).toEqual(["Docs", "Customize sidebar"]);
+    expect(menuEntryLabels()).toEqual([
+      "Search threads",
+      "Docs",
+      "Customize sidebar",
+    ]);
   });
 
   it("opens plugin details and omits split when the layout cannot split", async () => {
     registerPanel("docs", "Docs");
-    renderSidebarItems();
+    renderNavigation();
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Docs panel options" }),
@@ -565,7 +611,7 @@ describe("PluginNavSidebarItems", () => {
     }
     render(<Workspace />);
     registerPanel("docs", "Docs");
-    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
+    renderNavigation({ initialEntries: ["/plugins/docs/main"] });
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Docs panel options" }),
       { button: 0 },
@@ -597,7 +643,7 @@ describe("PluginNavSidebarItems", () => {
       );
       vi.stubGlobal("fetch", fetchMock);
       registerPanel(pluginId, title);
-      const { store } = renderSidebarItems({
+      const { store } = renderNavigation({
         initialEntries: ["/skills", `/plugins/${pluginId}/main`],
         initialLayout: {
           root: {
@@ -662,8 +708,8 @@ describe("PluginNavSidebarItems", () => {
     async (focusedPaneId) => {
       registerPanel("docs", "Docs");
       registerPanel("github", "GitHub");
-      const { store } = renderSidebarItems({
-        initialEntry: `/plugins/${focusedPaneId}/main`,
+      const { store } = renderNavigation({
+        initialEntries: [`/plugins/${focusedPaneId}/main`],
         initialLayout: {
           root: {
             type: "split",
@@ -760,8 +806,8 @@ describe("PluginNavSidebarItems", () => {
         }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { store } = renderSidebarItems({
-      initialEntry: "/",
+    const { store } = renderNavigation({
+      initialEntries: ["/"],
       splitEnabled: true,
     });
     const originalLayout = store.get(splitLayoutAtom);
@@ -782,7 +828,7 @@ describe("PluginNavSidebarItems", () => {
       <span>123456789012345678901234567890</span>
     ));
 
-    const view = renderSidebarItems();
+    const view = renderNavigation();
     const accessory = view.container.querySelector(
       "[data-plugin-nav-sidebar-accessory]",
     );
@@ -821,7 +867,7 @@ describe("PluginNavSidebarItems", () => {
     }
     registerPanel("tasks", "Tasks", LiveAccessory);
 
-    const view = renderSidebarItems();
+    const view = renderNavigation();
     const accessory = view.container.querySelector(
       "[data-plugin-nav-sidebar-accessory]",
     );
@@ -858,8 +904,9 @@ describe("PluginNavSidebarItems", () => {
       return <span>12</span>;
     });
 
-    const view = renderSidebarItems({ compactViewport: true });
+    const view = renderNavigation({ compactViewport: true });
 
+    expect(screen.getByRole("button", { name: "Tasks" })).not.toBeNull();
     expect(mounts).toBe(0);
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
@@ -867,23 +914,19 @@ describe("PluginNavSidebarItems", () => {
   });
 
   it("uses an in-place customization mode from the More drawer on compact viewports", async () => {
-    const onCompactCustomizeModeChange = vi.fn();
-    renderSidebarItems({
+    const onCustomizingChange = vi.fn();
+    renderNavigation({
       compactViewport: true,
-      builtInEntries: [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("search-threads", "Search threads"),
-      ],
-      onCompactCustomizeModeChange,
+      onCustomizingChange,
     });
 
-    expect(visibleRowKeys()).toEqual(["__bb__/new-thread"]);
+    expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
     fireEvent.click(moreTrigger());
     fireEvent.click(
       await screen.findByRole("button", { name: "Customize sidebar" }),
     );
 
-    expect(onCompactCustomizeModeChange).toHaveBeenCalledWith(true);
+    expect(onCustomizingChange).toHaveBeenCalledWith(true);
     expect(
       await screen.findByTestId("sidebar-navigation-customize-inline"),
     ).not.toBeNull();
@@ -924,7 +967,7 @@ describe("PluginNavSidebarItems", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to sidebar" }));
 
-    expect(onCompactCustomizeModeChange).toHaveBeenLastCalledWith(false);
+    expect(onCustomizingChange).toHaveBeenLastCalledWith(false);
     expect(
       screen.queryByTestId("sidebar-navigation-customize-inline"),
     ).toBeNull();
@@ -933,10 +976,10 @@ describe("PluginNavSidebarItems", () => {
   });
 
   it("keeps compact visibility changes in place and closes the mode when launching", async () => {
-    const onActivate = vi.fn();
-    const { store } = renderSidebarItems({
+    const { store } = renderNavigation({
       compactViewport: true,
-      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
+      storedOrder: HOST_KEYS,
+      storedVisibleKeys: HOST_KEYS,
     });
 
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
@@ -950,11 +993,15 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen.getByTestId("sidebar-navigation-customize-inline"),
     ).not.toBeNull();
-    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "__bb__/search-threads",
+      "__bb__/extensions",
+      "__bb__/skills",
+    ]);
 
     fireEvent.click(screen.getByRole("button", { name: "New thread" }));
 
-    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(mocks.onNewChat).toHaveBeenCalledTimes(1);
     expect(
       screen.queryByTestId("sidebar-navigation-customize-inline"),
     ).toBeNull();
@@ -962,12 +1009,7 @@ describe("PluginNavSidebarItems", () => {
   });
 
   it("replaces the desktop rows with an inline card until Done", async () => {
-    renderSidebarItems({
-      builtInEntries: [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("search-threads", "Search threads"),
-      ],
-    });
+    renderNavigation();
 
     await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
@@ -976,14 +1018,14 @@ describe("PluginNavSidebarItems", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(
-      screen
-        .getByTestId("plugin-nav-sidebar-items")
-        .getAttribute("data-sidebar-navigation-customize-mode"),
-    ).toBe("true");
+      document.querySelector('[data-sidebar-navigation-customize-mode="true"]'),
+    ).not.toBeNull();
     expect(
       screen.getByTestId("sidebar-navigation-customize-inline"),
     ).not.toBeNull();
-    expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "More sidebar navigation" }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Back to sidebar" }),
     ).toBeNull();
@@ -1000,14 +1042,24 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen.queryByRole("list", { name: "Sidebar navigation" }),
     ).toBeNull();
-    expect(visibleRowKeys()).toEqual(["__bb__/new-thread"]);
+    expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "New thread" }),
+    );
+  });
+
+  it("returns focus to More after Done when Customize was opened from More", async () => {
+    renderNavigation();
+
+    await openMoreMenu();
+    await openCustomizeFromMore();
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+
     expect(moreTrigger()).toBe(document.activeElement);
   });
 
   it("closes the inline card on Escape", async () => {
-    renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread")],
-    });
+    renderNavigation();
 
     await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
@@ -1024,13 +1076,12 @@ describe("PluginNavSidebarItems", () => {
   });
 
   it("hides a built-in row from its context menu", async () => {
-    const { store } = renderSidebarItems({
-      builtInEntries: [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("extensions", "Plugins"),
-      ],
+    const { store } = renderNavigation({
+      storedOrder: HOST_KEYS,
+      storedVisibleKeys: HOST_KEYS,
     });
 
+    expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
@@ -1038,8 +1089,14 @@ describe("PluginNavSidebarItems", () => {
 
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
       "__bb__/new-thread",
+      "__bb__/search-threads",
+      "__bb__/skills",
     ]);
-    expect(visibleRowKeys()).toEqual(["__bb__/new-thread"]);
+    expect(visibleRowKeys()).toEqual([
+      "__bb__/new-thread",
+      "__bb__/search-threads",
+      "__bb__/skills",
+    ]);
     expect(screen.getByTestId("sidebar-navigation-more-row")).not.toBeNull();
   });
 
@@ -1049,9 +1106,10 @@ describe("PluginNavSidebarItems", () => {
     }
     registerPanel("tasks", "Tasks", CrashingAccessory);
 
-    const view = renderSidebarItems();
+    const view = renderNavigation();
 
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
+    expect(screen.getByRole("button", { name: "Tasks" })).not.toBeNull();
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
     ).not.toBeNull();
@@ -1063,31 +1121,35 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("shows every plugin directly by default", () => {
+  it("shows every plugin directly by default", async () => {
     const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
 
-    renderSidebarItems();
+    renderNavigation();
 
     expect(panelRowNames(labels)).toEqual(labels);
-    expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
+    expect(visibleRowKeys()).toEqual([
+      ...DEFAULT_VISIBLE_HOST_KEYS,
+      ...labels.map((_, index) => `plugin-${index}/main`),
+    ]);
+    expect(await openMoreMenu()).toEqual([
+      "Search threads",
+      "Customize sidebar",
+    ]);
   });
 
   it("hides only Search by default and offers it under More", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
-    const onSearch = vi.fn();
-    renderSidebarItems({
-      builtInEntries: [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("search-threads", "Search threads", onSearch),
-      ],
+    renderNavigation({
       storedOrder: [
         "plugin-0/main",
         "__bb__/new-thread",
         "plugin-1/main",
         "__bb__/search-threads",
         "plugin-2/main",
+        "__bb__/extensions",
+        "__bb__/skills",
         "plugin-3/main",
       ],
     });
@@ -1097,11 +1159,13 @@ describe("PluginNavSidebarItems", () => {
       "__bb__/new-thread",
       "plugin-1/main",
       "plugin-2/main",
+      "__bb__/extensions",
+      "__bb__/skills",
       "plugin-3/main",
     ]);
-    expect(
-      screen.getByTestId("plugin-nav-sidebar-items").lastElementChild,
-    ).toBe(screen.getByTestId("sidebar-navigation-more-row"));
+    expect(navigationRoot()?.lastElementChild).toBe(
+      screen.getByTestId("sidebar-navigation-more-row"),
+    );
 
     const trigger = moreTrigger();
     for (const token of [
@@ -1116,10 +1180,7 @@ describe("PluginNavSidebarItems", () => {
 
     const items = await openMoreMenu();
     expect(trigger.getAttribute("data-state")).toBe("open");
-    expect(items.map((item) => item.textContent?.trim())).toEqual([
-      "Search threads",
-      "Customize sidebar",
-    ]);
+    expect(items).toEqual(["Search threads", "Customize sidebar"]);
     expect(
       screen
         .getByRole("button", { name: "Customize sidebar" })
@@ -1130,20 +1191,17 @@ describe("PluginNavSidebarItems", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Search threads" }));
 
-    expect(onSearch).toHaveBeenCalledOnce();
-    expect(onSearch.mock.calls[0]?.[0]).toEqual({
-      metaKey: false,
-      ctrlKey: false,
-    });
+    expect(mocks.onSearchThreads).toHaveBeenCalledOnce();
+    expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", null);
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(trigger.getAttribute("data-state")).toBe("closed");
   });
 
   it("opens a hidden plugin in a split on modifier-click from More", async () => {
     registerPanel("docs", "Docs");
-    const { store } = renderSidebarItems({
+    const { store } = renderNavigation({
       splitEnabled: true,
-      storedOrder: ["docs/main"],
+      storedOrder: [...HOST_KEYS, "docs/main"],
       storedVisibleKeys: [],
     });
 
@@ -1167,9 +1225,9 @@ describe("PluginNavSidebarItems", () => {
 
   it("opens a hidden plugin in a split from its explicit actions button", async () => {
     registerPanel("docs", "Docs");
-    const { store } = renderSidebarItems({
+    const { store } = renderNavigation({
       splitEnabled: true,
-      storedOrder: ["docs/main"],
+      storedOrder: [...HOST_KEYS, "docs/main"],
       storedVisibleKeys: [],
     });
 
@@ -1218,9 +1276,9 @@ describe("PluginNavSidebarItems", () => {
     "drags a portaled overflow row directly $direction into a split",
     async ({ x, y }) => {
       registerPanel("docs", "Docs");
-      const { store } = renderSidebarItems({
+      const { store } = renderNavigation({
         splitEnabled: true,
-        storedOrder: ["docs/main"],
+        storedOrder: [...HOST_KEYS, "docs/main"],
         storedVisibleKeys: [],
       });
       const pane = document.createElement("main");
@@ -1310,12 +1368,8 @@ describe("PluginNavSidebarItems", () => {
     "adds a hidden %s row to the sidebar without navigating",
     async (kind) => {
       registerPanel("docs", "Docs");
-      const onActivate = vi.fn();
-      const { store } = renderSidebarItems({
-        builtInEntries: [
-          builtInEntry("search-threads", "Search threads", onActivate),
-        ],
-        storedOrder: ["docs/main", "__bb__/search-threads"],
+      const { store } = renderNavigation({
+        storedOrder: ["docs/main", ...HOST_KEYS],
         storedVisibleKeys: [],
       });
       const title = kind === "plugin" ? "Docs" : "Search threads";
@@ -1335,7 +1389,8 @@ describe("PluginNavSidebarItems", () => {
 
       expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([key]);
       expect(visibleRowKeys()).toEqual([key]);
-      expect(onActivate).not.toHaveBeenCalled();
+      expect(mocks.onSearchThreads).not.toHaveBeenCalled();
+      expect(mocks.dispatch).not.toHaveBeenCalled();
       expect(screen.getByTestId("location-path").textContent).toBe("/");
       await waitFor(() =>
         expect(
@@ -1348,9 +1403,7 @@ describe("PluginNavSidebarItems", () => {
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
-    const { store, unmount } = renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread")],
-    });
+    const { store, unmount } = renderNavigation();
 
     await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
@@ -1365,6 +1418,9 @@ describe("PluginNavSidebarItems", () => {
     );
     expect(choices.map((choice) => choice.getAttribute("data-state"))).toEqual([
       "checked",
+      "unchecked",
+      "checked",
+      "checked",
       "checked",
       "checked",
       "checked",
@@ -1372,17 +1428,19 @@ describe("PluginNavSidebarItems", () => {
     ]);
     expect(
       document.querySelectorAll("[data-plugin-nav-customize-drag-handle]"),
-    ).toHaveLength(5);
+    ).toHaveLength(8);
     expect(
       customizeRows()[0]?.classList.contains("hover:bg-sidebar-accent"),
     ).toBe(true);
 
-    fireEvent.click(choices[1]!);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Show One in sidebar" }),
+    );
     expect(
       screen.getByRole("list", { name: "Sidebar navigation" }),
     ).not.toBeNull();
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
-      "__bb__/new-thread",
+      ...DEFAULT_VISIBLE_HOST_KEYS,
       "plugin-1/main",
       "plugin-2/main",
       "plugin-3/main",
@@ -1392,7 +1450,7 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.getByTestId("sidebar-navigation-more-row")).not.toBeNull();
 
     unmount();
-    renderSidebarItems({
+    renderNavigation({
       storedOrder: store.get(pluginNavPanelOrderAtom),
       storedVisibleKeys: store.get(pluginNavVisiblePanelKeysAtom),
     });
@@ -1400,10 +1458,7 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByRole("button", { name: "One" })).toBeNull();
 
     const items = await openMoreMenu();
-    expect(items.map((item) => item.textContent?.trim())).toEqual([
-      "One",
-      "Customize sidebar",
-    ]);
+    expect(items).toEqual(["Search threads", "One", "Customize sidebar"]);
     fireEvent.click(screen.getByRole("button", { name: "One" }));
 
     expect(screen.getByTestId("location-path").textContent).toBe(
@@ -1417,20 +1472,13 @@ describe("PluginNavSidebarItems", () => {
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
   });
 
-  it.each(["sidebar", "desktop customize", "compact customize"])(
+  it.each(["sidebar", "desktop customize", "compact customize"] as const)(
     "persists new rows and existing hidden choices when reordered through %s",
     async (mode) => {
       registerPanel("docs", "Docs");
       registerPanel("github", "GitHub");
       registerPanel("tasks", "Tasks");
-      const builtInEntries = [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("search-threads", "Search threads"),
-        builtInEntry("extensions", "Plugins"),
-        builtInEntry("skills", "Skills"),
-      ];
-      const view = renderSidebarItems({
-        builtInEntries,
+      const view = renderNavigation({
         compactViewport: mode === "compact customize",
         storedOrder: [
           "__bb__/extensions",
@@ -1457,7 +1505,11 @@ describe("PluginNavSidebarItems", () => {
           screen.getByRole("button", { name: "New thread" }),
         );
       }
-      reorderSidebar("tasks/main", "docs/main");
+      reorderSidebar(
+        "tasks/main",
+        "docs/main",
+        mode === "sidebar" ? "sidebar" : "customize",
+      );
       const storedOrder = view.store.get(pluginNavPanelOrderAtom);
       const storedVisibleKeys = view.store.get(pluginNavVisiblePanelKeysAtom);
       expect(new Set(storedVisibleKeys)).toEqual(
@@ -1468,7 +1520,7 @@ describe("PluginNavSidebarItems", () => {
         storedOrder.indexOf("docs/main"),
       );
       view.unmount();
-      renderSidebarItems({ builtInEntries, storedOrder, storedVisibleKeys });
+      renderNavigation({ storedOrder, storedVisibleKeys });
       expect(visibleRowKeys()).toEqual([
         "__bb__/new-thread",
         "__bb__/extensions",
@@ -1482,12 +1534,13 @@ describe("PluginNavSidebarItems", () => {
   it("keeps Skills hidden when inherited from a hidden Plugins row after reordering", () => {
     registerPanel("docs", "Docs");
     registerPanel("tasks", "Tasks");
-    const { store } = renderSidebarItems({
-      builtInEntries: [
-        builtInEntry("extensions", "Plugins"),
-        builtInEntry("skills", "Skills"),
+    const { store } = renderNavigation({
+      storedOrder: [
+        "__bb__/new-thread",
+        "__bb__/search-threads",
+        "__bb__/extensions",
+        "docs/main",
       ],
-      storedOrder: ["__bb__/extensions", "docs/main"],
       storedVisibleKeys: ["docs/main"],
     });
     reorderSidebar("tasks/main", "docs/main");
@@ -1501,25 +1554,28 @@ describe("PluginNavSidebarItems", () => {
   it("preserves default visibility when reordering the sidebar without saved choices", () => {
     registerPanel("docs", "Docs");
     registerPanel("tasks", "Tasks");
-    const { store } = renderSidebarItems({ storedVisibleKeys: null });
+    const { store } = renderNavigation({ storedVisibleKeys: null });
     reorderSidebar("tasks/main", "docs/main");
-    expect(visibleRowKeys()).toEqual(["tasks/main", "docs/main"]);
+    expect(visibleRowKeys()).toEqual([
+      ...DEFAULT_VISIBLE_HOST_KEYS,
+      "tasks/main",
+      "docs/main",
+    ]);
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toBeNull();
   });
 
   it("seeds newly introduced built-ins without overriding existing plugin visibility", () => {
     registerPanel("docs", "Docs");
     registerPanel("tasks", "Tasks");
-    const { store } = renderSidebarItems({
-      builtInEntries: [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("search-threads", "Search threads"),
-      ],
+    const { store } = renderNavigation({
       storedOrder: ["tasks/main", "docs/main"],
       storedVisibleKeys: ["docs/main"],
     });
 
-    expect(visibleRowKeys()).toEqual(["__bb__/new-thread", "docs/main"]);
+    expect(visibleRowKeys()).toEqual([
+      ...DEFAULT_VISIBLE_HOST_KEYS,
+      "docs/main",
+    ]);
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual(["docs/main"]);
     expect(store.get(pluginNavPanelOrderAtom)).toEqual([
       "tasks/main",
@@ -1530,9 +1586,8 @@ describe("PluginNavSidebarItems", () => {
   it("shows a newly installed plugin without touching existing choices", () => {
     registerPanel("docs", "Docs");
     registerPanel("tasks", "Tasks");
-    const { store } = renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread")],
-      storedOrder: ["__bb__/new-thread", "docs/main"],
+    const { store } = renderNavigation({
+      storedOrder: [...HOST_KEYS, "docs/main"],
       storedVisibleKeys: ["__bb__/new-thread"],
     });
 
@@ -1541,31 +1596,25 @@ describe("PluginNavSidebarItems", () => {
       "__bb__/new-thread",
     ]);
     expect(store.get(pluginNavPanelOrderAtom)).toEqual([
-      "__bb__/new-thread",
+      ...HOST_KEYS,
       "docs/main",
     ]);
   });
 
   it("respects a stored choice to keep Search visible", () => {
-    renderSidebarItems({
-      builtInEntries: [
-        builtInEntry("new-thread", "New thread"),
-        builtInEntry("search-threads", "Search threads"),
-      ],
-      storedOrder: ["__bb__/new-thread", "__bb__/search-threads"],
-      storedVisibleKeys: ["__bb__/new-thread", "__bb__/search-threads"],
+    renderNavigation({
+      storedOrder: HOST_KEYS,
+      storedVisibleKeys: HOST_KEYS,
     });
 
-    expect(visibleRowKeys()).toEqual([
-      "__bb__/new-thread",
-      "__bb__/search-threads",
-    ]);
+    expect(visibleRowKeys()).toEqual(HOST_KEYS);
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
   });
 
   it("shows More only while something is hidden", async () => {
-    renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread")],
+    renderNavigation({
+      storedOrder: HOST_KEYS,
+      storedVisibleKeys: HOST_KEYS,
     });
 
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
@@ -1577,7 +1626,7 @@ describe("PluginNavSidebarItems", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
-    expect(visibleRowKeys()).toEqual([]);
+    expect(visibleRowKeys()).toEqual(HOST_KEYS.slice(1));
     expect(screen.getByTestId("sidebar-navigation-more-row")).not.toBeNull();
 
     await openMoreMenu();
@@ -1587,17 +1636,14 @@ describe("PluginNavSidebarItems", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
-    expect(visibleRowKeys()).toEqual(["__bb__/new-thread"]);
+    expect(visibleRowKeys()).toEqual(HOST_KEYS);
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
   });
 
   it("applies one persisted mixed order to direct rows and the menu", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
-    const newThread = builtInEntry("new-thread", "New thread");
-    const searchThreads = builtInEntry("search-threads", "Search threads");
-    renderSidebarItems({
-      builtInEntries: [newThread, searchThreads],
+    renderNavigation({
       storedOrder: [
         "plugin-3/main",
         "__bb__/search-threads",
@@ -1605,6 +1651,8 @@ describe("PluginNavSidebarItems", () => {
         "__bb__/new-thread",
         "plugin-0/main",
         "plugin-2/main",
+        "__bb__/extensions",
+        "__bb__/skills",
       ],
       storedVisibleKeys: [
         "plugin-3/main",
@@ -1622,9 +1670,11 @@ describe("PluginNavSidebarItems", () => {
     ]);
 
     const items = await openMoreMenu();
-    expect(items.map((item) => item.textContent?.trim())).toEqual([
+    expect(items).toEqual([
       "Two",
       "Three",
+      "Plugins",
+      "Skills",
       "Customize sidebar",
     ]);
     await openCustomizeFromMore();
@@ -1635,6 +1685,8 @@ describe("PluginNavSidebarItems", () => {
       "New thread",
       "One",
       "Three",
+      "Plugins",
+      "Skills",
     ]);
     expect(
       screen
@@ -1647,14 +1699,13 @@ describe("PluginNavSidebarItems", () => {
       "checked",
       "checked",
       "unchecked",
+      "unchecked",
+      "unchecked",
     ]);
   });
 
   it("launches a built-in row from the menu without changing its visibility", async () => {
-    const onActivate = vi.fn();
-    renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
-    });
+    const { store } = renderNavigation();
 
     await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
@@ -1665,18 +1716,27 @@ describe("PluginNavSidebarItems", () => {
       within(row as HTMLElement).getByRole("button", { name: "New thread" }),
     );
 
-    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(mocks.onNewChat).toHaveBeenCalledTimes(1);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toBeNull();
     await waitFor(() =>
       expect(
         screen.queryByRole("list", { name: "Sidebar navigation" }),
       ).toBeNull(),
     );
+    expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
   });
 
   it("preserves modifier-click when launching a built-in from Customize", async () => {
-    const onActivate = vi.fn();
-    renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread", onActivate)],
+    const { store } = renderNavigation({
+      splitEnabled: true,
+      initialLayout: {
+        root: {
+          type: "pane",
+          paneId: "pane-1",
+          content: { kind: "thread", projectId: "proj_1", threadId: "thr_1" },
+        },
+        focusedPaneId: "pane-1",
+      },
     });
 
     await openCustomizeFromContextMenu(
@@ -1689,8 +1749,13 @@ describe("PluginNavSidebarItems", () => {
       { metaKey: true },
     );
 
-    expect(onActivate).toHaveBeenCalledOnce();
-    expect(onActivate.mock.calls[0]?.[0]).toMatchObject({ metaKey: true });
+    expect(mocks.onNewChat).not.toHaveBeenCalled();
+    const layout = store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    expect(countPanes(layout!.root)).toBe(2);
+    expect(
+      findPaneByContent(layout!.root, { kind: "new-thread" }),
+    ).not.toBeNull();
     await waitFor(() =>
       expect(
         screen.queryByRole("list", { name: "Sidebar navigation" }),
@@ -1700,10 +1765,7 @@ describe("PluginNavSidebarItems", () => {
 
   it("preserves modifier-click when launching a plugin from Customize", async () => {
     registerPanel("docs", "Docs");
-    const { store } = renderSidebarItems({
-      builtInEntries: [builtInEntry("new-thread", "New thread")],
-      splitEnabled: true,
-    });
+    const { store } = renderNavigation({ splitEnabled: true });
 
     await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
@@ -1738,7 +1800,7 @@ describe("PluginNavSidebarItems", () => {
     registerPanel(AUTOMATIONS_PLUGIN_ID, "Automations", () => (
       <span>Scheduled</span>
     ));
-    const view = renderSidebarItems({ splitEnabled: true });
+    const view = renderNavigation({ splitEnabled: true });
 
     expect(
       view.container.querySelector(
@@ -1768,30 +1830,4 @@ describe("PluginNavSidebarItems", () => {
       }),
     ).not.toBeNull();
   });
-});
-
-describe("ResourceNavSidebarItem", () => {
-  it.each([
-    ["Plugins", "Plug02", "/plugins"],
-    ["Skills", "Zap", "/skills"],
-  ] as const)(
-    "renders the static %s icon without plugin-panel options",
-    (title, icon, routePath) => {
-      render(
-        <MemoryRouter>
-          <ResourceNavSidebarItem
-            icon={icon}
-            title={title}
-            routePath={routePath}
-          />
-        </MemoryRouter>,
-      );
-
-      const row = screen.getByRole("button", { name: title });
-      expect(row.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
-      expect(
-        screen.queryByRole("button", { name: `${title} panel options` }),
-      ).toBeNull();
-    },
-  );
 });

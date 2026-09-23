@@ -286,6 +286,8 @@ Remaining reference examples in `examples/plugins/`:
   with host token classes, no custom `@theme` colors, no hand-set oklch.
 - `onDispose` hooks run LIFO; stale `bb` handles from before a reload throw
   on use.
+- `harness.lifecycle.install()` runs `bb.onInstall`
+  handlers as a fresh install does; a throwing handler is logged at warn.
 - Backend API imports normally remain type-only. The root runtime exports
   `defineRpcContract`, `experimental_defineHostEntry`, and
   `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are plugin dependencies. The

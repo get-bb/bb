@@ -2,6 +2,7 @@ import {
   ThreadListVisibility,
   ThreadListMore,
   ThreadListVisibilityGroupScope,
+  ThreadListVisibilityMenuItems,
   type ThreadListVisibilityGroup,
 } from "./ThreadListVisibility.js";
 import {
@@ -26,6 +27,7 @@ import {
   useSidebarRename,
   useSidebarRenameState,
 } from "../rows/SidebarInlineRename.js";
+import { AppThreadSectionMoveProvider } from "../rows/ThreadSectionMoveProvider.js";
 import { useDialogState } from "../ui/useDialogState.js";
 import {
   buildProjectThreadGroups,
@@ -371,6 +373,19 @@ export function ProjectListShell({ children }: ProjectListShellProps) {
         <SidebarGroupContent>{children}</SidebarGroupContent>
       </SidebarStickyStack>
     </SidebarContentElementProvider>
+  );
+}
+
+function ProjectListSectionMoveScope({
+  children,
+  sections,
+}: ProjectListShellProps & {
+  sections: readonly SidebarSectionDefinition[];
+}) {
+  return (
+    <AppThreadSectionMoveProvider sections={sections}>
+      <ProjectListShell>{children}</ProjectListShell>
+    </AppThreadSectionMoveProvider>
   );
 }
 
@@ -1502,7 +1517,9 @@ function ProjectListComponent({
       >
         {renameActions ? (
           <SidebarSectionMenuItems onRename={renameActions.onRename} />
-        ) : null}
+        ) : (
+          <ThreadListVisibilityMenuItems leadingSeparator={false} />
+        )}
       </SidebarHeaderControls>
     );
   };
@@ -1671,7 +1688,7 @@ function ProjectListComponent({
         isCreatingSection: isCreateThreadSectionPending,
       }}
     >
-      <ProjectListShell>
+      <ProjectListSectionMoveScope sections={sections}>
         <ActiveSidebarModeSections
           mode={organizationMode}
           renderMachine={() => (
@@ -1787,7 +1804,7 @@ function ProjectListComponent({
             )}
           </>
         )}
-      </ProjectListShell>
+      </ProjectListSectionMoveScope>
       {sectionCreateDialog}
       {sectionDeleteDialogContent}
     </SidebarHeaderActionsProvider>

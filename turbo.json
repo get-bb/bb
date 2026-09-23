@@ -715,7 +715,10 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
+      // variables, so without these they start unauthenticated.
+      "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
     "smoke:tarball": {
       "dependsOn": ["build"],
@@ -784,7 +787,10 @@
     },
     "test:integration": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
+      // variables, so without these they start unauthenticated.
+      "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
     "@bb/integration-tests#test:integration": {
       "dependsOn": [
@@ -802,7 +808,8 @@
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
         "$TURBO_ROOT$/vitest.shared.ts"
-      ]
+      ],
+      "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
     // bundled-types/*.d.ts: the package's published `types` surface and the
     // in-repo plugins' typecheck surface. ~20s (rollup-plugin-dts), so only

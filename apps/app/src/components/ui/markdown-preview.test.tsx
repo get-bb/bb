@@ -481,6 +481,18 @@ describe("MarkdownPreview", () => {
     );
   });
 
+  it("keeps a rewritten link mounted across unrelated preview rerenders", () => {
+    const content = "Open [preview](http://localhost:5173/demo).";
+    const { rerender } = render(
+      <MarkdownPreview className="first" content={content} />,
+    );
+    const link = screen.getByRole("link", { name: "preview" });
+
+    rerender(<MarkdownPreview className="second" content={content} />);
+
+    expect(screen.getByRole("link", { name: "preview" })).toBe(link);
+  });
+
   it("renders inline LaTeX math with KaTeX", async () => {
     const { container } = render(
       <MarkdownPreview content={"Mass-energy is $$E = mc^2$$ exactly."} />,

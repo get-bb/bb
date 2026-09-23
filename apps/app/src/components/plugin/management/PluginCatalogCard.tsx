@@ -1,3 +1,8 @@
+import {
+  RESOURCE_GRID_PAGE_SIZE,
+  ResourceInfiniteScrollSentinel,
+  useResourceInfiniteItems,
+} from "@bb/shared-ui/resource-pagination";
 import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
@@ -9,27 +14,40 @@ import {
 
 export function PluginCatalogGrid({
   entries,
+  resetKey,
   onInstall,
   onUninstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
+  resetKey: string;
   onInstall: (initial: AddPluginInitial) => void;
   onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
+  const list = useResourceInfiniteItems(entries, {
+    pageSize: RESOURCE_GRID_PAGE_SIZE,
+    resetKey,
+  });
   return (
-    <PluginCardGrid>
-      {entries.map((entry) => (
-        <PluginCatalogCard
-          key={`${entry.marketplace}/${entry.entryId}`}
-          entry={entry}
-          onInstall={onInstall}
-          onUninstall={onUninstall}
-          onOpenPlugin={onOpenPlugin}
-        />
-      ))}
-    </PluginCardGrid>
+    <>
+      <PluginCardGrid>
+        {list.items.map((entry) => (
+          <PluginCatalogCard
+            key={`${entry.marketplace}/${entry.entryId}`}
+            entry={entry}
+            onInstall={onInstall}
+            onUninstall={onUninstall}
+            onOpenPlugin={onOpenPlugin}
+          />
+        ))}
+      </PluginCardGrid>
+      <ResourceInfiniteScrollSentinel
+        itemCount={list.items.length}
+        hasMore={list.hasMore}
+        onLoadMore={list.loadMore}
+      />
+    </>
   );
 }
 

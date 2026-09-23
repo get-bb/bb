@@ -146,28 +146,58 @@ export type ExperimentalSidebarNavigationAction =
   | { kind: "new-thread" }
   | { kind: "search-threads" }
   | { kind: "open-extensions" }
+  | { kind: "open-skills" }
   | {
       kind: "open-plugin-panel";
       pluginId: string;
       panelId: string;
     };
 
-/** Semantic icon identity for one sidebar navigation item. */
+/**
+ * Semantic icon identity for one sidebar navigation item. Render it with
+ * {@link PluginSdkApp.experimental_SidebarNavigationIcon} to match bb's
+ * artwork, including plugin branding.
+ */
 export type ExperimentalSidebarNavigationIcon =
-  | { kind: "host"; name: "new-thread" | "search" | "extensions" }
+  | { kind: "host"; name: "new-thread" | "search" | "extensions" | "skills" }
   | { kind: "plugin"; pluginId: string; icon: string | null };
 
 /** One host-owned destination or action a plugin may arrange. */
 export interface ExperimentalSidebarNavigationItem {
+  /**
+   * Arrangement key, stable across reloads: `__bb__/new-thread`,
+   * `__bb__/search-threads`, `__bb__/extensions`, `__bb__/skills`,
+   * `__bb__/automations`, or `<pluginId>/<panelId>`. The same keys appear in
+   * the `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
+   * settings.
+   */
   id: string;
   label: string;
   icon: ExperimentalSidebarNavigationIcon;
   action: ExperimentalSidebarNavigationAction;
   isDisabled: boolean;
+  /**
+   * False when the user hid the item from the sidebar. Draw hidden items in an
+   * overflow menu rather than dropping them, so they stay reachable.
+   */
+  isVisible: boolean;
+  /**
+   * A plugin panel remembered from the last session whose bundle has not
+   * registered yet. Activating it does nothing until it loads.
+   */
+  isLoading: boolean;
+  /**
+   * The plugin that contributed this panel; null for bb's own items. Gates
+   * `openDetails` and `disablePlugin`.
+   */
+  pluginId: string | null;
   shortcut: ExperimentalSidebarNavigationShortcut | null;
-  experimental_splitProps: {
-    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
-  };
+  /**
+   * The panel's `experimental_sidebarAccessory`, already wrapped in the host's
+   * crash boundary. Null for bb's items, panels without an accessory, and on
+   * compact viewports. Keep it within one line, about 4rem by 1.25rem.
+   */
+  experimental_Accessory: ComponentType | null;
 }
 
 /** How the host should activate a sidebar navigation item. */
@@ -175,16 +205,131 @@ export interface ExperimentalSidebarNavigationActivationOptions {
   openInSplit: boolean;
 }
 
-/** Props passed to an `experimental_sidebarNavigation` component. */
-export interface ExperimentalSidebarNavigationProps {
-  items: readonly ExperimentalSidebarNavigationItem[];
-  activeItemId: string | null;
-  isCompactViewport: boolean;
-  experimental_activate(
+/**
+ * Host behavior for sidebar navigation items (see
+ * {@link ExperimentalSidebarNavigationState}). Unknown item ids are ignored.
+ * Calls made after the calling component unmounts do nothing.
+ */
+export interface ExperimentalSidebarNavigationActions {
+  /**
+   * Run the item's host behavior and close the mobile sidebar drawer.
+   * `openInSplit` is ignored where splits are unavailable, and disabled or
+   * loading items do nothing.
+   */
+  activate(
     itemId: string,
     options: ExperimentalSidebarNavigationActivationOptions,
   ): void;
+  /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
+  setVisible(itemId: string, isVisible: boolean): void;
+  /**
+   * Save a new order. Pass item ids in the order you want; unknown ids are
+   * dropped and ids you leave out keep their relative order after the ones
+   * you pass. Persists to `sidebar.pluginPanelOrder`.
+   */
+  setOrder(itemIds: readonly string[]): void;
+  /** Open bb's customize editor, which reorders and hides items. */
+  openCustomize(): void;
+  /** Open the owning plugin's details. Does nothing when `pluginId` is null. */
+  openDetails(itemId: string): void;
+  /**
+   * Disable the owning plugin, leave its panel if it is open, and show a
+   * toast. Rejects after the host's error toast when disabling fails. Does
+   * nothing when `pluginId` is null.
+   */
+  disablePlugin(itemId: string): Promise<void>;
+}
+
+/** What {@link PluginSdkApp.experimental_useSidebarNavigation} returns. */
+export interface ExperimentalSidebarNavigationState {
+  /** Every item in the user's saved order, visible and hidden. */
+  items: readonly ExperimentalSidebarNavigationItem[];
+  /** The item whose destination the route currently shows, or null. */
+  activeItemId: string | null;
+  /**
+   * True while the user holds the app command modifier, when bb's own rows
+   * reveal their `shortcut` labels. Show yours at the same time.
+   */
+  isShortcutModifierHeld: boolean;
+  actions: ExperimentalSidebarNavigationActions;
+}
+
+/**
+ * Per-item drag-to-split support (see
+ * {@link PluginSdkApp.experimental_useSidebarNavigationSplit}). Same contract
+ * as {@link PluginSidebarThreadSplit}.
+ */
+export interface ExperimentalSidebarNavigationSplit {
+  /**
+   * Spread onto the item's interactive element. Empty when the item cannot
+   * open in a pane, so spreading it is always safe.
+   */
+  splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+  /**
+   * False for items that cannot open in a pane (Search, Plugins, Skills), on
+   * compact viewports, and when splits are unavailable.
+   */
+  isAvailable: boolean;
+  /** Where this item's destination sits in the split layout, or null. */
+  layout: { panes: readonly PluginSidebarSplitPane[] } | null;
+}
+
+/** Options for {@link PluginSdkApp.experimental_useSidebarNavigationSplit}. */
+export interface ExperimentalSidebarNavigationSplitOptions {
+  /**
+   * `sidebar` (the default) engages the drag once the pointer leaves the
+   * sidebar, so a row list with its own drag-to-reorder keeps working.
+   * `distance` engages after a short movement in any direction; use it for
+   * rows inside a menu or popover that covers the main area.
+   */
+  activation?: "sidebar" | "distance";
+  /** Called when the drag engages, for example to close the menu the row is in. */
+  onDragStart?: () => void;
+}
+
+/** Props for {@link PluginSdkApp.experimental_SidebarNavigationIcon}. */
+export interface ExperimentalSidebarNavigationIconProps {
+  icon: ExperimentalSidebarNavigationIcon;
+  className?: string;
+}
+
+/**
+ * Props passed to an `experimental_sidebarNavigation` component. Read the
+ * items and their actions with
+ * {@link PluginSdkApp.experimental_useSidebarNavigation}.
+ */
+export interface ExperimentalSidebarNavigationProps {
+  isCompactViewport: boolean;
+  /**
+   * Renders bb's bundled Navigation plugin, or nothing while it is disabled.
+   * Kept for plugins written before `experimental_useSidebarNavigation`;
+   * render items from that hook instead. Scheduled for removal.
+   *
+   * @deprecated
+   */
   experimental_Original: ComponentType;
+}
+
+/**
+ * Props passed to an `experimental_sidebarHeader` component, rendered in the
+ * sidebar's header row between the sidebar toggle (and the macOS window
+ * controls) and bb's back and forward buttons.
+ */
+export interface ExperimentalSidebarHeaderProps {
+  /**
+   * Width in px of the space the component may use, updated when the sidebar
+   * resizes or the window chrome changes. It can be smaller than
+   * `controlSize` in a narrow sidebar.
+   */
+  width: number;
+  /**
+   * Width and height in px of the header's own buttons, equal to the
+   * `--bb-sidebar-control-size` CSS variable. Size your controls to match.
+   */
+  controlSize: number;
+  isCompactViewport: boolean;
 }
 
 /**
@@ -1404,7 +1549,14 @@ export interface PluginThreadListRegistration {
   component: ComponentType<PluginThreadListProps>;
 }
 
-/** Replace the bounded navigation controls above the sidebar thread list. */
+/**
+ * Replace the navigation controls above the sidebar thread list. Exclusive:
+ * the user picks one provider under Settings → Appearance → Navigation, and
+ * bb ships its own rows as the bundled Navigation plugin
+ * (`navigation/navigation`, the default). A picked provider that is disabled
+ * or removed falls back to Navigation; a crashing provider is replaced by a
+ * placeholder with a Reload button.
+ */
 export interface ExperimentalSidebarNavigationRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -1413,6 +1565,24 @@ export interface ExperimentalSidebarNavigationRegistration {
   /** Optional one-line description shown with the provider choice. */
   description?: string;
   component: ComponentType<ExperimentalSidebarNavigationProps>;
+}
+
+/**
+ * Render a component in the sidebar's header row, between the sidebar toggle
+ * and bb's back and forward buttons. Exclusive: the user picks at most one
+ * header under Settings → Appearance, and by default the header shows only
+ * bb's own controls. Content is clipped to the row, so it cannot move the
+ * thread list or bb's controls. On macOS the empty space keeps dragging the
+ * window; buttons, links, and inputs do not.
+ */
+export interface ExperimentalSidebarHeaderRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Settings → Appearance and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalSidebarHeaderProps>;
 }
 
 /**
@@ -1832,6 +2002,14 @@ export interface PluginAppSlots {
   /** Replace the bounded sidebar navigation controls. */
   experimental_sidebarNavigation(
     registration: ExperimentalSidebarNavigationRegistration,
+  ): void;
+  /**
+   * Render a component in the sidebar header row (see
+   * {@link ExperimentalSidebarHeaderRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_sidebarHeader(
+    registration: ExperimentalSidebarHeaderRegistration,
   ): void;
   /**
    * Replace the sidebar's thread list (see
@@ -2968,6 +3146,30 @@ export interface PluginSdkApp {
   experimental_useSidebarThreadSplit(
     threadId: string,
   ): PluginSidebarThreadSplit;
+  /**
+   * The sidebar navigation items in the user's saved order, the active item,
+   * and the host actions that activate, hide, reorder, and customize them
+   * (see {@link ExperimentalSidebarNavigationState}). One model shared by
+   * every caller in the sidebar. Items keep their identity while unchanged.
+   * Outside the sidebar it returns no items and actions that do nothing.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState;
+  /**
+   * Per-item drag-to-split support for navigation items (see
+   * {@link ExperimentalSidebarNavigationSplit}). Call it once per rendered
+   * item. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarNavigationSplit(
+    itemId: string,
+    options?: ExperimentalSidebarNavigationSplitOptions,
+  ): ExperimentalSidebarNavigationSplit;
+  /**
+   * bb's artwork for a navigation item's icon: bb's glyphs for its own items,
+   * and the contributing plugin's branding for plugin panels. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_SidebarNavigationIcon: ComponentType<ExperimentalSidebarNavigationIconProps>;
   /**
    * Whether the composer holds an unsent draft for one thread (see
    * {@link PluginSidebarThreadDraftState}). Per row, because a draft is

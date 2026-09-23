@@ -52,9 +52,57 @@ describe("public ui preferences", () => {
             }),
           ),
         ).toMatchObject({ revision: 2, value: expected });
-        expect(await readJson(await resetPreference(harness, key))).toMatchObject({
+        expect(
+          await readJson(await resetPreference(harness, key)),
+        ).toMatchObject({
           revision: 3,
           value: "thread-list/thread-list",
+        });
+      });
+    },
+  );
+
+  it.each(["__automatic__", "__builtin__", "garden/icons"])(
+    "normalizes legacy navigation selection %s while preserving explicit plugins",
+    async (previous) => {
+      await withTestHarness(async (harness) => {
+        const key = "sidebar.navigationProvider";
+        const expected =
+          previous === "garden/icons" ? previous : "navigation/navigation";
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: {
+            [key]: { revision: 0, value: "navigation/navigation" },
+          },
+        });
+        overwriteStoredUiPreference(harness.deps.db, {
+          key,
+          valueJson: JSON.stringify(previous),
+        });
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 1, value: expected } },
+        });
+      });
+    },
+  );
+
+  it.each([
+    ["__automatic__", "__builtin__"],
+    ["__builtin__", "__builtin__"],
+    ["garden/icons", "garden/icons"],
+  ])(
+    "keeps the sidebar header opt-in: %s resolves to %s",
+    async (previous, expected) => {
+      await withTestHarness(async (harness) => {
+        const key = "sidebar.headerProvider";
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 0, value: "__builtin__" } },
+        });
+        overwriteStoredUiPreference(harness.deps.db, {
+          key,
+          valueJson: JSON.stringify(previous),
+        });
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 1, value: expected } },
         });
       });
     },
@@ -102,10 +150,12 @@ describe("public ui preferences", () => {
         revision: 2,
         value: ["section:section_review"],
       });
-      expect(await readJson(await resetPreference(harness, key))).toMatchObject({
-        revision: 3,
-        value: [],
-      });
+      expect(await readJson(await resetPreference(harness, key))).toMatchObject(
+        {
+          revision: 3,
+          value: [],
+        },
+      );
       expect(await readJson(await listPreferences(harness))).toMatchObject({
         preferences: {
           [key]: { revision: 3, value: [] },

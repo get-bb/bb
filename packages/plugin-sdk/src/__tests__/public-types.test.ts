@@ -19,6 +19,7 @@ type ExpectedBbPluginApiKey =
   | "experimental_environments"
   | "experimental_hooks"
   | "experimental_machines"
+  | "onInstall"
   | "experimental_serverAccess"
   | "hosts"
   | "http"
