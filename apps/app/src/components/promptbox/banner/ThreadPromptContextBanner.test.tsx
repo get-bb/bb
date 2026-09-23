@@ -96,10 +96,12 @@ describe("ThreadPromptContextBanner", () => {
     ["removed", "Machine removed"],
     ["removing", "Machine removal in progress"],
     ["cleanup-failed", "Machine cleanup failed"],
+    ["destroyed", "Environment unavailable"],
   ] as const)(
-    "explains the %s machine without execution actions",
+    "collapses the %s explanation behind its status toggle by default",
     (status, label) => {
-      const markup = renderToStaticMarkup(
+      const toggled: string[] = [];
+      render(
         <ThreadPromptContextBanner
           gitSection={null}
           gitSectionPending={false}
@@ -109,38 +111,42 @@ describe("ThreadPromptContextBanner", () => {
           childThreadsSection={null}
           pullRequestSection={null}
           expandedSection={null}
-          onToggleSection={noop}
+          onToggleSection={(section) => toggled.push(section)}
         />,
       );
-      expect(markup).toContain(label);
-      expect(markup).not.toContain("<button");
-      expect(markup).not.toContain("Environment archived");
+      const toggle = screen.getByRole("button", { name: label });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.queryByText(/history|machine settings/)).toBeNull();
+      expect(screen.queryByText("Provision")).toBeNull();
+      toggle.click();
+      expect(toggled).toEqual(["status"]);
     },
   );
 
-  it("renders the environment-gone read-only status without a provision action", () => {
-    const markup = renderToStaticMarkup(
+  it("shows the machine removal explanation once the status is expanded", () => {
+    render(
       <ThreadPromptContextBanner
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
-        environmentGoneSection={{ status: "destroyed" }}
+        environmentGoneSection={{ status: "cleanup-failed" }}
         parentThreadSection={null}
         childThreadsSection={null}
         pullRequestSection={null}
-        expandedSection={null}
+        expandedSection="status"
         onToggleSection={noop}
       />,
     );
-
-    expect(markup).toContain("Environment unavailable");
-    expect(markup).toContain(
-      "Environment unavailable. You can still view this thread’s history.",
-    );
-    expect(markup).not.toContain("to keep working");
-    expect(markup).toContain('role="status"');
-    expect(markup).not.toContain("<button");
-    expect(markup).not.toContain("Provision");
+    expect(
+      screen
+        .getByRole("button", { name: "Machine cleanup failed" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(
+      screen.getByText(
+        "This thread is unavailable while machine cleanup is pending. Retry cleanup in machine settings.",
+      ),
+    ).toBeDefined();
   });
 
   it.each([

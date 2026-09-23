@@ -8,7 +8,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeHost as makeHostFixture,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import type {
   ProviderCliKey,
@@ -45,6 +48,7 @@ vi.mock("@/lib/sdk", () => ({
     },
     providers: { list: vi.fn() },
     system: { config: vi.fn(), version: vi.fn() },
+    threads: { count: vi.fn(), list: vi.fn() },
   },
 }));
 
@@ -422,13 +426,49 @@ describe("MachineSettingsView", () => {
 
     expect(
       await screen.findByText(
-        "Revokes dev-vm's access to this server. The compute and its saved snapshots are deleted. Thread history is preserved.",
+        "Revokes dev-vm's access to this server. The compute and its saved snapshots are deleted. Its environments remain as read-only history.",
       ),
     ).toBeDefined();
     const heading = await screen.findByRole("heading", { name: "dev-vm" });
     expect(heading.querySelector('[data-icon="Cloud"]')).not.toBeNull();
     expect(heading.querySelector('[data-icon="Laptop"]')).toBeNull();
     expect(screen.queryByText("Modal Sandbox")).toBeNull();
+  });
+
+  it("lists a few of the machine's unarchived threads in the removal dialog", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    stubSupportingFetches();
+    vi.mocked(sdk.threads.list).mockResolvedValue(
+      [
+        "Fix login",
+        "Refactor auth",
+        "Add retries",
+        "Tune cache",
+        "Ship docs",
+      ].map((title, index) =>
+        makeThreadListEntry({ id: `thr_${index}`, title }),
+      ),
+    );
+    vi.mocked(sdk.threads.count).mockResolvedValue({ total: 7 });
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove machine" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText("7 unarchived threads on this machine:"),
+    ).toBeDefined();
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(dialog).getByText("Refactor auth")).toBeDefined();
+    expect(within(dialog).getByText("and 2 more")).toBeDefined();
+    expect(sdk.threads.list).toHaveBeenCalledWith(
+      expect.objectContaining({ archived: false, hostId: HOST_ID, limit: 5 }),
+    );
+    expect(sdk.threads.count).toHaveBeenCalledWith(
+      expect.objectContaining({ hostId: HOST_ID }),
+    );
   });
 
   it("shows client-local identity only when several machines need disambiguation", async () => {

@@ -133,7 +133,8 @@ export function isThreadDisplayStatusBannerActive(
 export type ThreadPromptContextBannerExpandedSection =
   | "git"
   | "parentThread"
-  | "childThreads";
+  | "childThreads"
+  | "status";
 
 interface ThreadPromptContextBannerProps {
   gitSection: ThreadPromptGitSection | null;
@@ -156,24 +157,24 @@ const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 const ENVIRONMENT_GONE_STATUS_COPY: Record<
   ThreadPromptEnvironmentGoneSection["status"],
-  { ariaLabel: string; label: string }
+  { description: string; label: string }
 > = {
   destroyed: {
-    ariaLabel:
+    description:
       "Environment unavailable. You can still view this thread’s history.",
     label: "Environment unavailable",
   },
   removed: {
     label: machineRemovalLabels.removed,
-    ariaLabel: machineRemovalDescriptions.removed,
+    description: machineRemovalDescriptions.removed,
   },
   removing: {
     label: machineRemovalLabels.removing,
-    ariaLabel: machineRemovalDescriptions.removing,
+    description: machineRemovalDescriptions.removing,
   },
   "cleanup-failed": {
     label: machineRemovalLabels["cleanup-failed"],
-    ariaLabel: machineRemovalDescriptions["cleanup-failed"],
+    description: machineRemovalDescriptions["cleanup-failed"],
   },
 };
 
@@ -189,6 +190,10 @@ const SECTION_IDS = {
   git: {
     toggle: "thread-prompt-banner-git-toggle",
     body: "thread-prompt-banner-git-body",
+  },
+  status: {
+    toggle: "thread-prompt-banner-status-toggle",
+    body: "thread-prompt-banner-status-body",
   },
 } as const;
 
@@ -694,7 +699,6 @@ function ActiveChildThreadsCard({
 
 interface ReadOnlyContextBannerProps {
   iconName: IconName;
-  statusAriaLabel: string;
   statusLabel: string;
   description: string | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
@@ -705,7 +709,6 @@ interface ReadOnlyContextBannerProps {
 
 function ReadOnlyContextBanner({
   iconName,
-  statusAriaLabel,
   statusLabel,
   description,
   parentThreadSection,
@@ -715,7 +718,11 @@ function ReadOnlyContextBanner({
 }: ReadOnlyContextBannerProps) {
   const isParentThreadExpanded =
     expandedSection === "parentThread" && parentThreadSection !== null;
+  const isStatusExpanded = expandedSection === "status" && description !== null;
   const hasMultipleSegments = parentThreadSection !== null;
+  const statusIcon = (
+    <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden="true" />
+  );
   const showStatusAction = statusAction !== null && !hasMultipleSegments;
   return (
     <PromptStackCard
@@ -736,29 +743,46 @@ function ReadOnlyContextBanner({
             onToggle={() => onToggleSection("parentThread")}
           />
         ) : null}
-        <div
-          className={cn(
-            "flex min-w-0 items-center gap-1.5 text-xs",
-            PROMPT_STACK_INLAY_SEGMENT_CLASS,
-          )}
-          role="status"
-          aria-label={statusAriaLabel}
-        >
-          <Icon
-            name={iconName}
-            className="size-3.5 shrink-0"
-            aria-hidden="true"
+        {description === null ? (
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-xs",
+              PROMPT_STACK_INLAY_SEGMENT_CLASS,
+            )}
+            role="status"
+            aria-label={statusLabel}
+          >
+            {statusIcon}
+            <span className="min-w-0 truncate" aria-hidden="true">
+              {statusLabel}
+            </span>
+          </div>
+        ) : (
+          <SectionToggleButton
+            id={SECTION_IDS.status.toggle}
+            controlsId={SECTION_IDS.status.body}
+            icon={statusIcon}
+            label={statusLabel}
+            hideLabelInCompact={false}
+            isExpanded={isStatusExpanded}
+            onToggle={() => onToggleSection("status")}
           />
-          <span className="min-w-0 truncate" aria-hidden="true">
-            {statusLabel}
-          </span>
-        </div>
+        )}
         {showStatusAction ? (
           <BannerActionSlot>{statusAction}</BannerActionSlot>
         ) : null}
       </div>
       {description === null ? null : (
-        <p className="px-3 pb-2 text-xs text-muted-foreground">{description}</p>
+        <AnimatedBody
+          collapsedBorder="reserve"
+          id={SECTION_IDS.status.body}
+          labelledBy={SECTION_IDS.status.toggle}
+          isExpanded={isStatusExpanded}
+        >
+          <p className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </AnimatedBody>
       )}
       {parentThreadSection ? (
         <ParentThreadSectionBody
@@ -789,11 +813,8 @@ export function ThreadPromptContextBanner({
     return (
       <ReadOnlyContextBanner
         iconName={environmentGone ? "CircleX" : "Archive"}
-        statusAriaLabel={
-          environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
-        }
         statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
-        description={environmentGoneCopy?.ariaLabel ?? null}
+        description={environmentGoneCopy?.description ?? null}
         statusAction={
           archivedSection?.onUnarchive && !environmentGone ? (
             <PendingBannerActionButton

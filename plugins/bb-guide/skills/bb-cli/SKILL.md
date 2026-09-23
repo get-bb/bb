@@ -120,7 +120,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   `--json` returns without waiting.
 - `bb machine remove <id-or-name>` stops dependent work and retains threads
   as read-only history for both persistent and disposable machines. No prior
-  archiving is required.
+  archiving is required. Preview what it affects with
+  `bb thread list --machine <id-or-name>`.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. With `--project <id> --machine <id>`
   it also prints that machine's availability (`available`, `setup-required`,

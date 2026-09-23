@@ -83,6 +83,7 @@ const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "plugin-catalog-install-plan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
 export interface ThreadListQueryFilters {
   projectId?: string;
+  hostId?: string;
   hasParent?: ThreadListFilters["hasParent"];
   parentThreadId?: string;
   sourceThreadId?: string;

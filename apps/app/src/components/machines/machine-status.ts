@@ -5,29 +5,22 @@ export type MachineStatusTone = "online" | "attention" | "failed" | "offline";
 
 export function machinePhaseLabel(
   lifecycle: MachineLifecycle,
-):
-  | "Paused"
-  | "Pausing"
-  | "Resuming"
-  | "Machine removal in progress"
-  | "Machine cleanup failed"
-  | null {
+): "Paused" | "Pausing" | "Resuming" | "Removing" | "Cleanup failed" | null {
   if (
     lifecycle.phase === "removing" &&
     lifecycle.teardown?.status === "failed"
   ) {
-    return "Machine cleanup failed";
+    return "Cleanup failed";
   }
   if (lifecycle.phase === "suspending") return "Pausing";
   if (lifecycle.phase === "suspended") return "Paused";
   if (lifecycle.phase === "resuming") return "Resuming";
-  if (lifecycle.phase === "removing") return "Machine removal in progress";
+  if (lifecycle.phase === "removing") return "Removing";
   return null;
 }
 
 export function machineStatusTone(host: Host): MachineStatusTone {
-  if (machinePhaseLabel(host.lifecycle) === "Machine cleanup failed")
-    return "failed";
+  if (machinePhaseLabel(host.lifecycle) === "Cleanup failed") return "failed";
   if (
     host.lifecycle.phase === "removing" ||
     host.lifecycle.phase === "suspending" ||

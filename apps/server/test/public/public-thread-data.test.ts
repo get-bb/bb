@@ -17,6 +17,7 @@ import {
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
   setThreadExecutionOverride,
+  threads as threadRows,
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -57,6 +58,7 @@ import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedEvent,
+  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedQueuedMessage,
@@ -302,6 +304,65 @@ describe("public thread data routes", () => {
       expect(response.status).toBe(200);
       const listed = z.array(threadSchema).parse(await readJson(response));
       expect(listed.map((thread) => thread.id)).toEqual([onEnvironment.id]);
+    });
+  });
+
+  it("lists only the unarchived threads whose environment is on one machine", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const other = seedHost(harness.deps, {
+        id: "host_other",
+        name: "Other",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const first = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-list-host-a",
+        projectId: project.id,
+      });
+      const second = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-list-host-b",
+        projectId: project.id,
+      });
+      const elsewhere = seedEnvironment(harness.deps, {
+        hostId: other.id,
+        path: "/tmp/thread-list-host-other",
+        projectId: project.id,
+      });
+      const onFirst = seedThread(harness.deps, {
+        environmentId: first.id,
+        projectId: project.id,
+      });
+      const onSecond = seedThread(harness.deps, {
+        environmentId: second.id,
+        projectId: project.id,
+      });
+      const archived = seedThread(harness.deps, {
+        environmentId: second.id,
+        projectId: project.id,
+      });
+      harness.db
+        .update(threadRows)
+        .set({ archivedAt: 1 })
+        .where(eq(threadRows.id, archived.id))
+        .run();
+      seedThread(harness.deps, {
+        environmentId: elsewhere.id,
+        projectId: project.id,
+      });
+      seedThread(harness.deps, { projectId: project.id });
+
+      const response = await harness.app.request(
+        `/api/v1/threads?hostId=${host.id}&archived=false`,
+      );
+      expect(response.status).toBe(200);
+      const listed = z.array(threadSchema).parse(await readJson(response));
+      expect(listed.map((thread) => thread.id).sort()).toEqual(
+        [onFirst.id, onSecond.id].sort(),
+      );
     });
   });
 

@@ -754,6 +754,7 @@ export type ThreadArchiveAllResponse = z.infer<
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
+  hostId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),

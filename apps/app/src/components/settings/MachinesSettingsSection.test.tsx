@@ -44,6 +44,10 @@ vi.mock("@/lib/sdk", () => ({
       update: vi.fn(),
     },
     system: { config: vi.fn() },
+    threads: {
+      count: vi.fn(async () => ({ total: 0 })),
+      list: vi.fn(async () => []),
+    },
   },
 }));
 

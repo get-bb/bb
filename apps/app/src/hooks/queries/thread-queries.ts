@@ -57,6 +57,7 @@ import {
 } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
+  requireEnabledQueryArg,
   requireThreadId,
   shouldRetryTransientReadQuery,
   TRANSIENT_READ_RETRY_DELAY_MS,
@@ -388,6 +389,42 @@ export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
         projectId: requireThreadId(projectId ?? "", "useThreads"),
         signal,
       }),
+    enabled,
+    staleTime: THREAD_LIST_STALE_TIME_MS,
+  });
+}
+
+interface MachineThreadPreview {
+  threads: ThreadListResponse;
+  total: number;
+}
+
+export function useMachineThreadPreview({
+  hostId,
+  limit,
+}: {
+  hostId: string | null;
+  limit: number;
+}) {
+  const enabled = hostId !== null;
+  useThreadListRealtimeSubscription({ enabled });
+  return useQuery<MachineThreadPreview>({
+    queryKey:
+      hostId === null
+        ? disabledThreadListQueryKey({ archived: false, limit })
+        : threadListQueryKey({ archived: false, hostId, limit }),
+    queryFn: async ({ signal }) => {
+      const id = requireEnabledQueryArg({
+        value: hostId,
+        hookName: "useMachineThreadPreview",
+        argName: "host id",
+      });
+      const [threads, count] = await Promise.all([
+        sdk.threads.list({ archived: false, hostId: id, limit, signal }),
+        sdk.threads.count({ hostId: id, signal }),
+      ]);
+      return { threads, total: count.total };
+    },
     enabled,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
