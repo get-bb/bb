@@ -1,12 +1,14 @@
 {
-  "$comment": "Source manifest for the BB plugin component registry (plugin design §5.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill) are excluded until deliberately listed. `pluginFlavors` replaces a shared-ui file with a plugin-side version: the app's icon module carries the full glyph map, while a plugin's icon draws from the host's icon registry through the SDK.",
+  "$comment": "Source manifest for the BB plugin component registry (plugin design \u00a75.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill) are excluded until deliberately listed. `pluginFlavors` replaces a shared-ui file with a plugin-side version: the app's icon module carries the full glyph map, while a plugin's icon draws from the host's icon registry through the SDK.",
   "uiItems": [
     "accordion",
+    "activity-row-styles",
     "alert",
     "alert-dialog",
     "aspect-ratio",
     "avatar",
     "badge",
+    "branch-picker-primitives",
     "breadcrumb",
     "button",
     "calendar",
@@ -15,9 +17,11 @@
     "chart",
     "checkbox",
     "chrome-style-tokens",
+    "coarse-pointer-visibility",
     "collapsible",
     "command",
     "context-menu",
+    "delayed-loading",
     "dialog",
     "drawer",
     "dropdown-menu",
@@ -29,11 +33,15 @@
     "label",
     "menubar",
     "navigation-menu",
+    "option-display",
     "pagination",
+    "plugin-icon",
     "popover",
     "progress",
     "radio-group",
     "resizable",
+    "resource-list",
+    "resource-pagination",
     "scroll-area",
     "select",
     "separator",
@@ -46,7 +54,8 @@
     "textarea",
     "toggle",
     "toggle-group",
-    "tooltip"
+    "tooltip",
+    "workflow-progress"
   ],
   "pluginFlavors": {
     "components/ui/icon.tsx": "flavors/components/ui/icon.tsx"

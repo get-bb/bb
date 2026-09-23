@@ -6,6 +6,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "activity-row-styles",
+      "type": "registry:ui"
+    },
+    {
       "name": "alert",
       "type": "registry:ui"
     },
@@ -23,6 +27,10 @@
     },
     {
       "name": "badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "branch-picker-primitives",
       "type": "registry:ui"
     },
     {
@@ -62,6 +70,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "coarse-pointer-visibility",
+      "type": "registry:ui"
+    },
+    {
       "name": "collapsible",
       "type": "registry:ui"
     },
@@ -71,6 +83,10 @@
     },
     {
       "name": "context-menu",
+      "type": "registry:ui"
+    },
+    {
+      "name": "delayed-loading",
       "type": "registry:ui"
     },
     {
@@ -130,11 +146,19 @@
       "type": "registry:ui"
     },
     {
+      "name": "option-display",
+      "type": "registry:ui"
+    },
+    {
       "name": "overlay-trigger",
       "type": "registry:ui"
     },
     {
       "name": "pagination",
+      "type": "registry:ui"
+    },
+    {
+      "name": "plugin-icon",
       "type": "registry:ui"
     },
     {
@@ -155,6 +179,46 @@
     },
     {
       "name": "resizable",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-atoms",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-collection",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-detail-controls",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-detail-sections",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-detail-shell",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-list",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-pagination",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-route-label",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-row",
+      "type": "registry:ui"
+    },
+    {
+      "name": "resource-toolbar",
       "type": "registry:ui"
     },
     {
@@ -232,6 +296,10 @@
     {
       "name": "utils",
       "type": "registry:lib"
+    },
+    {
+      "name": "workflow-progress",
+      "type": "registry:ui"
     }
   ]
 }
