@@ -554,6 +554,8 @@
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-sdk/package.json",
+        "$TURBO_ROOT$/packages/plugin-sdk/src/**",
         "$TURBO_ROOT$/plugins/provider-acp/package.json",
         "$TURBO_ROOT$/plugins/provider-acp/src/**",
         "$TURBO_ROOT$/plugins/provider-acp/tsconfig.json",
@@ -1190,7 +1192,22 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-provider-pi#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-provider-pi#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "bb-plugin-provider-usage#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],

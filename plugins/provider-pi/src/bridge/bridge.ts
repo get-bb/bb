@@ -563,9 +563,6 @@ async function handleRequest(
         request.params.providerThreadId,
       );
       const requestedCwd = request.params.cwd;
-      // The persisted cwd is stale when bb already moved the thread to a
-      // new environment directory and the old one was removed; resume at
-      // the requested, existing cwd instead of failing the whole turn.
       if (missingCwd !== null && !existsSync(requestedCwd ?? "")) {
         sendError(
           request.id,
