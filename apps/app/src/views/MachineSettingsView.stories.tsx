@@ -107,6 +107,22 @@ export function Header() {
         />
       </StoryRow>
       <StoryRow
+        label="offline"
+        hint="an active machine that stopped connecting, for example after its access was revoked; reconnecting is offered in the menu"
+      >
+        <Row
+          host={makeHost({
+            id: "host_offline",
+            name: "michael-old-laptop",
+            machineProviderId: MANUAL_MACHINE_PROVIDER.id,
+            status: "disconnected",
+            lastSeenAt: now - 2 * 24 * 60 * 60_000,
+            createdAt: now - 90 * 24 * 60 * 60_000,
+          })}
+          machineProvider={MANUAL_MACHINE_PROVIDER}
+        />
+      </StoryRow>
+      <StoryRow
         label="running"
         hint="a live sandbox from a provider that suspends, so pausing it is offered here rather than only in the list"
       >
