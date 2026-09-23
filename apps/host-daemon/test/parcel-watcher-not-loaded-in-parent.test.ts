@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
@@ -91,7 +91,8 @@ describe("daemon bundle keeps @parcel/watcher out of the parent process", () => 
         preload,
         "--input-type=module",
         "--eval",
-        `await import(${JSON.stringify(outfile)}); console.log("[imported]");`,
+        // bb-fork(windows): ESM import needs a file URL, not a drive path.
+        `await import(${JSON.stringify(pathToFileURL(outfile).href)}); console.log("[imported]");`,
       ],
       { cwd: workspaceRoot, env: { ...process.env, NODE_PATH: "" } },
     );

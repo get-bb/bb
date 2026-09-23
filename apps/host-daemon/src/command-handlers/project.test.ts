@@ -97,9 +97,12 @@ describe("project.clone", () => {
 
     expect(isExpectedCommandDispatchError(error)).toBe(true);
     expect(error).toMatchObject({ code: "git_command_failed" });
-    expect(error.message).toContain(
-      `fatal: repository '${missingRemote}' does not exist`,
-    );
+    // bb-fork(windows): git words a missing local repository differently.
+    const expectedGitError =
+      process.platform === "win32"
+        ? `fatal: '${missingRemote}' does not appear to be a git repository`
+        : `fatal: repository '${missingRemote}' does not exist`;
+    expect(error.message).toContain(expectedGitError);
   });
 
   it("derives the checkout convention without touching the filesystem", async () => {

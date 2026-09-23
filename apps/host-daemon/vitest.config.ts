@@ -10,12 +10,27 @@ export default defineWorkspaceTestConfig({
       BB_DATA_DIR: "/tmp/bb-host-daemon-test",
       BB_SERVER_URL: "http://127.0.0.1:49161",
       BB_HOST_DAEMON_PORT: "49162",
+      // bb-fork(windows): ignore host git config so cloned fixtures keep LF.
+      GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
     },
     testTimeout: 15_000,
     projects: sharedWorkerProjects({
       pkgDir: __dirname,
       name: "@bb/host-daemon",
       include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+      // bb-fork(windows): systemd/launchd moves and the ssh credential shim are
+      // POSIX-only.
+      exclude: [
+        "dist/**",
+        "node_modules/**",
+        ...(process.platform === "win32"
+          ? [
+              "src/server-move/**",
+              "test/command/host-branches-dispatch.test.ts",
+            ]
+          : []),
+      ],
     }),
   },
 });

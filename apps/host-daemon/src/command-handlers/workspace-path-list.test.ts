@@ -49,44 +49,48 @@ afterEach(async () => {
 });
 
 describe("workspace path discovery", () => {
-  it("includes tracked and non-ignored untracked files while pruning Git-ignored trees", async () => {
-    const root = await createRoot();
-    await initRepo(root);
-    await write(root, ".github/workflows/ci.yml");
-    await write(root, ".generated/tracked.txt");
-    await runGit(["add", "."], { cwd: root });
-    await write(
-      root,
-      ".gitignore",
-      ".generated/\ncustom-cache/\n.state/*\n!.state/keep.txt\n",
-    );
-    await write(root, ".git/info/exclude", "local-output/\n");
-    await write(root, ".generated/deep/ignored.txt");
-    await write(root, "custom-cache/arbitrary-tool/ignored.txt");
-    await write(root, "local-output/ignored.txt");
-    await write(root, ".state/drop.txt");
-    await write(root, ".state/keep.txt");
-    await write(root, "src/new\nfile.ts");
-    await write(root, "src/ignored\nfile.log");
-    await write(root, "src/.gitignore", "*.log\n");
-    await fs.mkdir(path.join(root, "empty"));
-    await fs.symlink("src/new\nfile.ts", path.join(root, "link.ts"));
+  // bb-fork(windows): filenames with newlines and symlinks are POSIX-only.
+  it.skipIf(process.platform === "win32")(
+    "includes tracked and non-ignored untracked files while pruning Git-ignored trees",
+    async () => {
+      const root = await createRoot();
+      await initRepo(root);
+      await write(root, ".github/workflows/ci.yml");
+      await write(root, ".generated/tracked.txt");
+      await runGit(["add", "."], { cwd: root });
+      await write(
+        root,
+        ".gitignore",
+        ".generated/\ncustom-cache/\n.state/*\n!.state/keep.txt\n",
+      );
+      await write(root, ".git/info/exclude", "local-output/\n");
+      await write(root, ".generated/deep/ignored.txt");
+      await write(root, "custom-cache/arbitrary-tool/ignored.txt");
+      await write(root, "local-output/ignored.txt");
+      await write(root, ".state/drop.txt");
+      await write(root, ".state/keep.txt");
+      await write(root, "src/new\nfile.ts");
+      await write(root, "src/ignored\nfile.log");
+      await write(root, "src/.gitignore", "*.log\n");
+      await fs.mkdir(path.join(root, "empty"));
+      await fs.symlink("src/new\nfile.ts", path.join(root, "link.ts"));
 
-    expect(await paths(root)).toEqual([
-      ".generated",
-      ".generated/tracked.txt",
-      ".github",
-      ".github/workflows",
-      ".github/workflows/ci.yml",
-      ".gitignore",
-      ".state",
-      ".state/keep.txt",
-      "empty",
-      "src",
-      "src/.gitignore",
-      "src/new\nfile.ts",
-    ]);
-  });
+      expect(await paths(root)).toEqual([
+        ".generated",
+        ".generated/tracked.txt",
+        ".github",
+        ".github/workflows",
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        ".state",
+        ".state/keep.txt",
+        "empty",
+        "src",
+        "src/.gitignore",
+        "src/new\nfile.ts",
+      ]);
+    },
+  );
 
   it("resolves ignore rules relative to a subdirectory and a linked worktree", async () => {
     const root = await createRoot();

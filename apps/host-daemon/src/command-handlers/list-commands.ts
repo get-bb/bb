@@ -331,7 +331,8 @@ async function resolvedScanRoots(args: {
           providerId: args.providerId,
           recursive: root.recursive,
           skipIfManifest: root.skipIfManifest,
-          relativePath: path.relative(workspace.cwd, root.path),
+          // bb-fork(windows): the identity seed uses `/` on every host.
+          relativePath: toPosixRelativePath(workspace.cwd, root.path),
           side: args.side,
           workspace,
         })),

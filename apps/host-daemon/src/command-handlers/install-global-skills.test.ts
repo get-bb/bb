@@ -120,11 +120,12 @@ describe("install global skills", () => {
     await expect(
       readFile(path.join(claudeRoot, "bb-cli", "SKILL.md"), "utf8"),
     ).resolves.toContain("fresh body");
-    expect(await readdir(path.join(claudeRoot, "bb-cli"))).toEqual([
+    // bb-fork(windows): readdir order is filesystem-dependent; compare sorted.
+    expect((await readdir(path.join(claudeRoot, "bb-cli"))).sort()).toEqual([
       "SKILL.md",
       "references",
     ]);
-    expect(await readdir(claudeRoot)).toEqual(["bb-cli", "unrelated"]);
+    expect((await readdir(claudeRoot)).sort()).toEqual(["bb-cli", "unrelated"]);
   });
 
   it("leaves the installed copy intact when the tree cannot be fetched", async () => {
