@@ -42,10 +42,11 @@ describe("desktop packaging task", () => {
 
   it("runs the packaged app from the desktop package directory", () => {
     const command = createDesktopRunCommand();
-    expect(command.cwd.endsWith("/apps/desktop")).toBe(true);
-    expect(command.args[0]?.endsWith("/scripts/run-packaged-app.mjs")).toBe(
-      true,
-    );
+    // bb-fork(windows): compare native separators, not POSIX `/`.
+    expect(command.cwd.endsWith(join("apps", "desktop"))).toBe(true);
+    expect(
+      command.args[0]?.endsWith(join("scripts", "run-packaged-app.mjs")),
+    ).toBe(true);
   });
 });
 
@@ -90,7 +91,11 @@ describe("desktop launch environment", () => {
   });
 
   it("preserves an explicit Electron user data directory", () => {
-    const userDataDir = "/tmp/bb-desktop-profile";
+    // bb-fork(windows): an explicit dir must already be native; `resolve` keeps it.
+    const userDataDir =
+      process.platform === "win32"
+        ? "C:\\tmp\\bb-desktop-profile"
+        : "/tmp/bb-desktop-profile";
     const env = toDesktopLaunchProcessEnv({
       baseEnv: { BB_DESKTOP_USER_DATA_DIR: ` ${userDataDir} ` },
       config,
