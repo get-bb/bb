@@ -40,6 +40,13 @@ additive for the current workers: existing pairing codes keep their owner and
 nothing reads the new tables yet. Apply it before deploying the web worker that
 serves `/api/account/*` or the `bb-ai-gateway` worker.
 
+On a merge to `main`, `deploy-web.yml`, `deploy-connect.yml`, and
+`deploy-ai-gateway.yml` each apply pending migrations before their deploy and
+share one concurrency group, so 0006 lands once before any of the three
+workers ships. The gateway workflow uploads `OPENROUTER_API_KEY` from the
+repository's Actions secrets with every deploy; add that secret before the
+first merge, or the gateway job fails without deploying.
+
 ## Machine-label migration deployment order
 
 Migration `0004_machine_labels.sql` creates `label_claim` and the nullable
