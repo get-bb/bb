@@ -192,6 +192,11 @@ experiment in Settings → Experiments or with
 Move server here, and `bb server move`, `bb server export`, and deleting an old
 server copy from the server are refused.
 
+Agents must not move a server, abandon a move, or unlock an old copy without
+the user's explicit confirmation in the conversation. Run `--check`, show the
+user the checklist, and wait for their confirmation; don't pass `--yes` to skip
+the confirmation on their behalf.
+
 A move copies the server's data (database, settings, plugin data, attachments)
 to another persistent machine, points every machine and app at it, and keeps the
 old computer running as a regular machine. Worktrees, thread storage, and

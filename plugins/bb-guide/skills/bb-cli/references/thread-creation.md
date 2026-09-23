@@ -221,6 +221,12 @@ Moving the server needs the default-off `serverMove` experiment:
 `bb server move`, `bb server export`, and old-copy deletion with
 `server_move_experiment_disabled`.
 
+Server moves are experimental. As an agent, never start a move, abandon one,
+or unlock an old copy unless the user explicitly confirmed that action in the
+conversation. Run `--check`, show the user the checklist, and wait for their
+confirmation before running the command; don't pass `--yes` to skip the
+confirmation on their behalf.
+
 Run `bb server move --to <machine> --check` first. It prints blockers,
 warnings, and notes and exits nonzero while the move is blocked. A
 direct-address server also needs `--address <url>`: the URL every machine and

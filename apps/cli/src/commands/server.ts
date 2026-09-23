@@ -274,7 +274,7 @@ export function registerServerCommands(
 
   const move = server
     .command("move")
-    .description("Move the bb server to another machine")
+    .description("Move the bb server to another machine (experimental)")
     .option("--to <machine>", "Machine ID or name that should run the server")
     .option(
       "--address <url>",

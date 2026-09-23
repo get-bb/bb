@@ -96,9 +96,12 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Use `bb machine enroll` for a private core-prepared bundle. Local lifecycle is
   handled by `install-machine.sh --start|--stop|--uninstall --host-id <id>`;
   see references/thread-creation.md for ownership checks.
-- Move the bb server to another machine with
-  `bb server move --to <machine> --check`, then the same command without
-  `--check`; it stops all running work. `bb server export --out <file>` backs
+- Moving the bb server to another machine is experimental (the `serverMove`
+  experiment). Never move a server, abandon a move, or unlock an old copy
+  without the user's explicit confirmation in this conversation: run
+  `bb server move --to <machine> --check`, show them the checklist, and run
+  the same command without `--check` only after they confirm. A move stops
+  all running work. `bb server export --out <file>` backs
   up a running server. `bb server import`, `unlock`, `allow-connect`, and
   `delete-old-copy` act on this computer's data directory without calling a
   server. An imported server keeps its connect tunnel off until
