@@ -109,6 +109,7 @@ import {
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
+  promptEditorSliceWithoutSelectionAncestors,
   promptEditorValueFromDoc,
   promptEditorValueFromSlice,
   parsePromptEditorMentionAttrs,
@@ -1739,6 +1740,8 @@ export function PromptBoxInternal({
           ...(id ? { id } : {}),
           role: "textbox",
         },
+        transformCopied: (slice, view) =>
+          promptEditorSliceWithoutSelectionAncestors(slice, view.state.schema),
         clipboardTextSerializer: (slice, view) =>
           promptEditorClipboardTextFromSlice(slice, view.state.schema),
         handleDOMEvents: {

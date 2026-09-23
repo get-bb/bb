@@ -9,6 +9,7 @@ import {
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
+  promptEditorSliceWithoutSelectionAncestors,
   promptMentionResourceFromSuggestion,
   promptEditorValueFromDoc,
   type PromptEditorValue,
@@ -177,6 +178,62 @@ describe("prompt editor clipboard serialization", () => {
         },
       ]),
     ).toBe("> quoted");
+  });
+});
+
+describe("promptEditorSliceWithoutSelectionAncestors", () => {
+  function copiedText(markdown: string, from: string, to: string): string {
+    const doc = Node.fromJSON(
+      schema,
+      promptEditorContentFromValue(
+        { text: markdown, mentions: [] },
+        { richTextMarkdown: true },
+      ),
+    );
+    const positionOf = (needle: string): number => {
+      let position: number | null = null;
+      doc.descendants((node, nodePosition) => {
+        const index = node.isText ? (node.text ?? "").indexOf(needle) : -1;
+        if (position === null && index >= 0) {
+          position = nodePosition + index;
+        }
+      });
+      if (position === null) {
+        throw new Error(`Missing ${needle}`);
+      }
+      return position;
+    };
+    return promptEditorClipboardTextFromSlice(
+      promptEditorSliceWithoutSelectionAncestors(
+        doc.slice(positionOf(from), positionOf(to), true),
+        schema,
+      ),
+      schema,
+    );
+  }
+
+  it("drops the quote, list, and heading around text selected inside one block", () => {
+    expect(copiedText("> hello world", "ello", "world")).toBe("ello ");
+    expect(copiedText("- hello world", "ello", "world")).toBe("ello ");
+    expect(copiedText("# hello world", "ello", "world")).toBe("ello ");
+  });
+
+  it("drops a quote around a selection spanning several of its paragraphs", () => {
+    expect(copiedText("> first\n>\n> second", "irst", "ond")).toBe(
+      "irst\n\nsec",
+    );
+  });
+
+  it("keeps list items when the selection spans several of them", () => {
+    expect(copiedText("- first\n- second", "irst", "ond")).toBe(
+      "- irst\n- sec",
+    );
+  });
+
+  it("keeps a quote the selection only partly covers", () => {
+    expect(copiedText("> quoted\n\nafter", "uoted", "ter")).toBe(
+      "> uoted\n\naf",
+    );
   });
 });
 

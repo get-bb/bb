@@ -2,6 +2,7 @@
 
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type { PromptTextMention } from "@bb/domain";
+import type { TiptapEditorHTMLElement } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import {
@@ -4348,6 +4349,51 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
+  });
+
+  it("pastes text copied from inside a blockquote without quoting it", async () => {
+    const { changes, promptBoxRef } = renderPromptBox(
+      "> hello world\n\nafter",
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    const editor = (getPromptEditorElement() as TiptapEditorHTMLElement).editor;
+    if (!editor) {
+      throw new Error("Prompt editor was not mounted");
+    }
+    const quoteTextStart = 2;
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          TextSelection.create(
+            editor.state.doc,
+            quoteTextStart + 1,
+            quoteTextStart + 6,
+          ),
+        ),
+      );
+    });
+    const copied = new Map<string, string>();
+    fireEvent.copy(getPromptEditorElement(), {
+      clipboardData: {
+        clearData: () => copied.clear(),
+        setData: (type: string, value: string) => copied.set(type, value),
+      },
+    });
+    expect(copied.get("text/plain")).toBe("ello ");
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({
+      html: copied.get("text/html") ?? "",
+      plainText: copied.get("text/plain") ?? "",
+    });
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("> hello world\n\nafterello "),
+    );
+    expect(
+      getPromptEditorElement().querySelectorAll("blockquote"),
+    ).toHaveLength(1);
   });
 
   it("inserts a dropped sidebar thread as a serialized mention pill", async () => {
