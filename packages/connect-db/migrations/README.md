@@ -25,6 +25,21 @@ pnpm exec drizzle-kit generate --config drizzle.config.ts --custom --name <migra
 This creates the SQL file plus its journal/snapshot entry. Edit only the custom
 SQL file; never hand-edit `_journal.json` or snapshot JSON.
 
+Migration 0006 uses the normal schema-diff workflow. Drizzle Kit's
+`connect_code` table rebuild selected the new columns from the old table, so
+its `INSERT … SELECT` was corrected to copy only the columns that existed
+before 0006. The snapshot is unchanged generated output.
+
+## Account-link and AI-usage migration deployment order
+
+Migration `0006_account_link_and_ai_usage.sql` rebuilds `connect_code` so
+`user_id` is nullable, adds the `server-link` columns (`device_code_hash`,
+`client_name`, `polled_at`, `approved_at`, `denied_at`), and creates
+`ai_usage_day`, `ai_global_usage_day`, and `ai_request_log`. Every change is
+additive for the current workers: existing pairing codes keep their owner and
+nothing reads the new tables yet. Apply it before deploying the web worker that
+serves `/api/account/*` or the `bb-ai-gateway` worker.
+
 ## Machine-label migration deployment order
 
 Migration `0004_machine_labels.sql` creates `label_claim` and the nullable

@@ -1,4 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
+import { MAX_PER_ACCOUNT } from "@bb/connect-db";
+import {
+  type LinkApprovalTarget,
+  type LinkRequestView,
+  approveServerLink,
+  denyServerLink,
+  getLinkRequestView,
+} from "./account.js";
 import {
   checkAvailability,
   claimHandle,
@@ -101,4 +109,64 @@ export const revokeMachineFn = createServerFn({ method: "POST" })
       if (!machineId) return { error: "not-found" as const };
       return revokeMachine(deps, userId, machineId);
     }),
+  );
+
+type LinkPageState =
+  | { authed: false; emailPasswordEnabled: boolean }
+  | { authed: true; view: LinkRequestView };
+
+function linkCodeValidator(input: { code: string }): { code: string } {
+  return { code: typeof input?.code === "string" ? input.code : "" };
+}
+
+function linkApprovalValidator(input: {
+  code: string;
+  target: LinkApprovalTarget;
+}): { code: string; target: LinkApprovalTarget | null } {
+  const code = typeof input?.code === "string" ? input.code : "";
+  const target = input?.target;
+  if (target?.kind === "new" && typeof target.label === "string") {
+    return { code, target: { kind: "new", label: target.label } };
+  }
+  if (target?.kind === "existing" && typeof target.serverId === "string") {
+    return { code, target: { kind: "existing", serverId: target.serverId } };
+  }
+  return { code, target: null };
+}
+
+export const getLinkPageFn = createServerFn({ method: "GET" })
+  .validator(linkCodeValidator)
+  .handler(async ({ data }): Promise<LinkPageState> => {
+    const env = getEnv();
+    const userId = await getSessionUserId();
+    if (!userId) {
+      return {
+        authed: false,
+        emailPasswordEnabled: resolveDevEmailPasswordEnabled(env),
+      };
+    }
+    return {
+      authed: true,
+      view: await getLinkRequestView(
+        depsFromEnv(env),
+        userId,
+        data.code,
+        MAX_PER_ACCOUNT,
+      ),
+    };
+  });
+
+export const approveLinkFn = createServerFn({ method: "POST" })
+  .validator(linkApprovalValidator)
+  .handler(async ({ data }) =>
+    withSessionUser(async (userId, deps) => {
+      if (data.target === null) return { error: "invalid" as const };
+      return approveServerLink(deps, userId, data.code, data.target);
+    }),
+  );
+
+export const denyLinkFn = createServerFn({ method: "POST" })
+  .validator(linkCodeValidator)
+  .handler(async ({ data }) =>
+    withSessionUser((_userId, deps) => denyServerLink(deps, data.code)),
   );

@@ -10,6 +10,8 @@ import {
   machine,
   machineRoutingKey,
   profile,
+  resolveServerCredential,
+  rowsChanged,
   server,
   sha256Hex,
   user,
@@ -51,8 +53,12 @@ export function resolveServerUrlTemplate(
   return `${url.protocol}//{label}.${baseDomain}${url.port ? `:${url.port}` : ""}`;
 }
 
-function serverUrlForLabel(label: string, template: string): string {
+export function serverUrlForLabel(label: string, template: string): string {
   return template.replace("{label}", label);
+}
+
+export function tunnelUrlForServerUrl(serverUrl: string): string {
+  return `${serverUrl.replace(/^http/u, "ws")}/__tunnel`;
 }
 
 export function depsFromEnv(env: Env): Deps {
@@ -75,7 +81,7 @@ export function depsFromEnv(env: Env): Deps {
 
 type ProfileRow = typeof profile.$inferSelect;
 
-async function findProfile(
+export async function findProfile(
   db: ConnectDb,
   userId: string,
 ): Promise<ProfileRow | undefined> {
@@ -86,18 +92,10 @@ async function findServerByCredential(
   db: ConnectDb,
   credential: string,
 ): Promise<{ id: string; userId: string } | undefined> {
-  const presented = credential.trim();
-  if (!presented) return undefined;
-  return db
-    .select({ id: server.id, userId: server.userId })
-    .from(server)
-    .where(
-      and(
-        eq(server.credentialHash, await sha256Hex(presented)),
-        isNull(server.revokedAt),
-      ),
-    )
-    .get();
+  const resolved = await resolveServerCredential(db, credential);
+  return resolved
+    ? { id: resolved.server.id, userId: resolved.userId }
+    : undefined;
 }
 
 async function insertConnectCode(
@@ -140,16 +138,7 @@ async function hasMachineCapacity(
   return active.length < MAX_PER_ACCOUNT;
 }
 
-function rowsChanged(result: unknown): number {
-  if (result && typeof result === "object") {
-    const r = result as { meta?: { changes?: number }; changes?: number };
-    if (typeof r.meta?.changes === "number") return r.meta.changes;
-    if (typeof r.changes === "number") return r.changes;
-  }
-  return 0;
-}
-
-async function consumeConnectCode(
+export async function consumeConnectCode(
   db: ConnectDb,
   code: string,
 ): Promise<boolean> {
@@ -207,7 +196,7 @@ export interface MachineSummary {
 
 type ServerRow = typeof server.$inferSelect;
 
-function toServerSummary(
+export function toServerSummary(
   srv: ServerRow,
   handle: string,
   serverUrlTemplate: string,
@@ -457,7 +446,11 @@ export async function claimHandle(
   return { ok: true, handle };
 }
 
-type CreateServerError = "no-handle" | "server-limit" | "taken" | ClaimError;
+export type CreateServerError =
+  | "no-handle"
+  | "server-limit"
+  | "taken"
+  | ClaimError;
 
 export async function createServer(
   deps: Deps,
@@ -703,7 +696,7 @@ export async function redeemConnectCode(
     .from(connectCode)
     .where(eq(connectCode.code, normalized))
     .get();
-  if (!row || row.serverId == null)
+  if (!row || row.serverId == null || row.purpose === "server-link")
     return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now())
@@ -712,30 +705,35 @@ export async function redeemConnectCode(
   if (!(await consumeConnectCode(db, normalized)))
     return { error: "already-used", status: 409 };
 
-  const credential = generateToken("bbcred_");
-  await db
-    .update(server)
-    .set({ credentialHash: await sha256Hex(credential), revokedAt: null })
-    .where(eq(server.id, row.serverId))
-    .run();
-
-  const srv = await db
-    .select()
-    .from(server)
-    .where(eq(server.id, row.serverId))
-    .get();
-  const handle = srv?.subdomain ?? null;
+  const minted = await mintServerCredential(db, row.serverId);
+  const handle = minted.server?.subdomain ?? null;
   const serverUrl = handle
     ? serverUrlForLabel(handle, serverUrlTemplate)
     : null;
   return {
-    credential,
+    credential: minted.credential,
     serverId: row.serverId,
     handle,
-    tunnelUrl: serverUrl
-      ? `${serverUrl.replace(/^http/u, "ws")}/__tunnel`
-      : null,
+    tunnelUrl: serverUrl ? tunnelUrlForServerUrl(serverUrl) : null,
   };
+}
+
+export async function mintServerCredential(
+  db: ConnectDb,
+  serverId: string,
+): Promise<{ credential: string; server: ServerRow | undefined }> {
+  const credential = generateToken("bbcred_");
+  await db
+    .update(server)
+    .set({ credentialHash: await sha256Hex(credential), revokedAt: null })
+    .where(eq(server.id, serverId))
+    .run();
+  const minted = await db
+    .select()
+    .from(server)
+    .where(eq(server.id, serverId))
+    .get();
+  return { credential, server: minted };
 }
 
 async function machineIdForCode(userId: string, code: string): Promise<string> {
@@ -765,7 +763,8 @@ export async function lookupMachineCodeForServerCredential(
       ),
     )
     .get();
-  if (!row) return { error: "invalid-code", status: 404 };
+  if (!row || row.userId === null)
+    return { error: "invalid-code", status: 404 };
   const device = await deps.db
     .select({ id: machine.id })
     .from(machine)
@@ -800,13 +799,14 @@ export async function redeemMachineCode(
     .from(connectCode)
     .where(eq(connectCode.code, normalized))
     .get();
-  if (!row || row.purpose !== "machine-pair")
+  if (!row || row.purpose !== "machine-pair" || row.userId === null)
     return { error: "invalid-code", status: 404 };
+  const ownerId = row.userId;
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now())
     return { error: "expired", status: 410 };
 
-  if (!(await hasMachineCapacity(db, row.userId))) {
+  if (!(await hasMachineCapacity(db, ownerId))) {
     return { error: "machine-limit", status: 409 };
   }
 
@@ -814,18 +814,18 @@ export async function redeemMachineCode(
     return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcm_");
-  const machineId = await machineIdForCode(row.userId, normalized);
+  const machineId = await machineIdForCode(ownerId, normalized);
   await db
     .insert(machine)
     .values({
       id: machineId,
-      userId: row.userId,
+      userId: ownerId,
       credentialHash: await sha256Hex(credential),
       createdAt: new Date(),
     })
     .run();
 
-  const prof = await findProfile(db, row.userId);
+  const prof = await findProfile(db, ownerId);
   const targetServer =
     row.serverId == null
       ? null

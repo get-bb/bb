@@ -26,6 +26,9 @@ const GATEWAY_URL = `http://127.0.0.1:${ports.cloudPort}`;
 const WORKER_URL = `http://127.0.0.1:${ports.cloudWorkerPort}`;
 const webPort = ports.cloudWorkerPort + 8_000;
 const webUrl = `http://127.0.0.1:${webPort}`;
+const AI_GATEWAY_PATH_PREFIX = "/api/ai/";
+let aiGatewayUrl;
+let aiGatewayInspectorPort;
 const SHUTDOWN_GRACE_MS = 5_000;
 const BOLD = process.stdout.isTTY ? "\u001b[1m" : "";
 const RESET = process.stdout.isTTY ? "\u001b[0m" : "";
@@ -128,11 +131,25 @@ function assertPortAvailable(port, label) {
   });
 }
 
+function reserveLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const server = createTcpServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close((error) => (error ? reject(error) : resolve(address.port)));
+    });
+  });
+}
+
 function routeRequest(request) {
   try {
     const hostname = new URL(`http://${request.headers.host ?? ""}`).hostname;
     if (hostname === DEV_BASE_DOMAIN) {
       delete request.headers[CLOUD_DEV_HOST_HEADER];
+      if (request.url?.startsWith(AI_GATEWAY_PATH_PREFIX)) {
+        return { target: aiGatewayUrl, changeOrigin: false };
+      }
       return { target: webUrl, changeOrigin: false };
     }
     const suffix = `.${DEV_BASE_DOMAIN}`;
@@ -155,6 +172,8 @@ try {
     assertPortAvailable(ports.cloudWorkerPort, "Connect worker"),
     assertPortAvailable(webPort, "Cloud dashboard"),
   ]);
+  aiGatewayUrl = `http://127.0.0.1:${await reserveLoopbackPort()}`;
+  aiGatewayInspectorPort = await reserveLoopbackPort();
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
@@ -229,6 +248,29 @@ const worker = spawnService([
   "--show-interactive-dev-session=false",
 ]);
 
+const aiGateway = spawnService([
+  "--filter",
+  "@bb/ai-gateway",
+  "exec",
+  "wrangler",
+  "dev",
+  "--port",
+  new URL(aiGatewayUrl).port,
+  "--ip",
+  "127.0.0.1",
+  "--inspector-port",
+  String(aiGatewayInspectorPort),
+  "--persist-to",
+  STATE_DIR,
+  ...(process.env.BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL
+    ? [
+        "--var",
+        `AI_UPSTREAM_BASE_URL:${process.env.BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL}`,
+      ]
+    : []),
+  "--show-interactive-dev-session=false",
+]);
+
 const web = spawnService(
   [
     "--filter",
@@ -267,6 +309,11 @@ try {
       host: `probe.${DEV_BASE_DOMAIN}:${ports.cloudPort}`,
       serviceExited: () => worker.exitCode !== null,
     }),
+    waitForCloudService({
+      url: `${GATEWAY_URL}/api/ai/v1/usage`,
+      host: `${DEV_BASE_DOMAIN}:${ports.cloudPort}`,
+      serviceExited: () => aiGateway.exitCode !== null,
+    }),
   ]);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
@@ -279,6 +326,12 @@ Local bb Cloud is ready at ${BOLD}${CLOUD_URL}/dashboard${RESET}
 Claim a handle, generate a pairing code, and run the command shown in the
 dashboard against a bb started with pnpm dev. Local handles use:
   http://<handle>.${DEV_BASE_DOMAIN}:${ports.cloudPort}
+
+Hosted generation is served at ${CLOUD_URL}/api/ai/v1/*. ${
+  process.env.OPENROUTER_API_KEY?.trim()
+    ? "It uses OPENROUTER_API_KEY from this shell."
+    : "Set OPENROUTER_API_KEY before starting to enable it; until then it answers 503."
+}
 
 Press Ctrl-C to stop local Cloud.
 `);

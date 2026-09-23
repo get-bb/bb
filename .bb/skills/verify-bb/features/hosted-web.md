@@ -18,6 +18,9 @@ test services; document unavailable prerequisites instead of using real users.
 - `apps/web/src/server/fns.ts`
 - `apps/web/src/routes/marketplace_.tsx`
 - `apps/web/src/routes/api.subscribe.tsx`
+- `apps/web/src/routes/link.tsx`
+- `apps/web/src/server/account.ts`
+- `apps/ai-gateway/src/gateway.ts`
 - `scripts/bb-cloud-dev.mjs`
 
 ## Feature recipes
@@ -29,6 +32,9 @@ test services; document unavailable prerequisites instead of using real users.
 | Claim account handle | Claim an available test handle and try invalid/taken handles; inspect availability feedback. | Normalized handle and validation match persisted account state; collisions cannot claim another account. |
 | Server registration and labels | Create a test dashboard server, check label availability/account limit and inspect disconnected/connected panels. | Unique labels and maximum-per-account policy are enforced; panel state matches the actual test tunnel. |
 | Pairing codes | Issue/redeem server and machine codes through their supported dashboard/API flows; test reuse/expiry. | Codes authorize only intended test resources once and do not expose unrelated accounts. |
+| Browser link sign-in | Run `account login` from a fresh dev bb against the local cloud, open the printed `/link?code=…` URL, claim a handle if prompted, and approve as a new server; repeat choosing Replace for an existing server, and once Deny. | The CLI reports sign-in only after approval; `/api/account/me` answers for the new credential; a replaced server's old bb is signed out; a denied or expired code never yields a credential; polling faster than the interval gets `slow-down`. |
+| Tunnel tickets | With a signed-in dev bb, let Connect dial through the local gate; tamper with or reuse an expired ticket through curl. | The tunnel comes up with a `bbtkt_` ticket and reconnects mint fresh ones; tampered, expired, or other-server tickets get 401. |
+| AI gateway metering | Start `pnpm cloud:dev` with and without `OPENROUTER_API_KEY`; with a signed-in dev bb, pick bb cloud for Thread titles, create threads, and read `ai usage`; set a tiny `AI_DAILY_BUDGET_MICROS` and repeat. | Without a key the gateway answers 503 and titles fall back; with a key titles come from bb cloud and usage grows by the reported cost; an exhausted budget answers 402 with the next UTC midnight and bb cloud reports not ready. |
 | Open, disconnect, remove | Open the test server link, disconnect and remove only that server; cancel an alternative removal. | Tunnel availability and dashboard state agree; removal cannot revoke unrelated machines. |
 | Machine revocation | Inspect paired machines and revoke a disposable enrollment. | Revoked credentials cannot reopen the test server; other authorized clients remain usable. |
 | Marketplace browse | Browse plugin cards, author pages, detail, search/filter controls and invalid plugin IDs. | Visible metadata/version/author come from the selected catalog and unavailable items fail clearly. |
