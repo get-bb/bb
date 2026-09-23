@@ -11,7 +11,7 @@ import {
 
 export interface ThreadArchiveDialogTarget {
   thread: Thread;
-  childThreadCount?: number;
+  childThreadCount: number;
 }
 
 interface ThreadArchiveDialogProps {
@@ -56,23 +56,22 @@ export function ThreadArchiveDialogContent({
   onOpenChange,
   onArchive,
 }: ThreadArchiveDialogContentProps) {
-  const childThreadCount = target.childThreadCount ?? 0;
+  const { childThreadCount } = target;
+  const archivedThreadCount = childThreadCount + 1;
   const active =
     target.thread.status === "starting" ||
     target.thread.status === "active" ||
     target.thread.status === "stopping";
   const sentences = [
     active ? "This will stop current work." : null,
-    childThreadCount > 0
-      ? `${childThreadCount} child ${childThreadCount === 1 ? "thread" : "threads"} will be archived too.`
-      : null,
+    `${childThreadCount} child ${childThreadCount === 1 ? "thread" : "threads"} will be archived with this thread.`,
     "Archived threads stay available and can be unarchived.",
   ].filter((sentence): sentence is string => sentence !== null);
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Archive thread?</DialogTitle>
+        <DialogTitle>Archive {archivedThreadCount} threads?</DialogTitle>
         <DialogDescription>{sentences.join(" ")}</DialogDescription>
       </DialogHeader>
       <DialogFooter>
@@ -89,7 +88,7 @@ export function ThreadArchiveDialogContent({
           disabled={pending}
           onClick={() => onArchive(target)}
         >
-          Archive thread
+          Archive {archivedThreadCount} threads
         </Button>
       </DialogFooter>
     </>

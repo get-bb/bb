@@ -1421,7 +1421,7 @@ export interface PluginSidebarThreadActions {
   setRead(threadId: string, read: boolean): Promise<void>;
   /** Silent rename — no dialog. For inline editing in your own row. */
   rename(threadId: string, title: string): Promise<void>;
-  /** Opens bb's confirmation before archiving the thread and its children. */
+  /** Archives immediately, or confirms first if child threads will also be archived. */
   archive(threadId: string): void;
   /**
    * Opens bb's delete confirmation, which counts child threads first. Deletion
