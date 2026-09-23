@@ -164,7 +164,7 @@ export async function runNpmShim(args: RunNpmShimArgs): Promise<number> {
             phase: "rollback",
           };
     await recordUpdateResult({
-      current: installedNpmRevision(from),
+      current: installedNpmRevision(from, nodeAbi),
       dataDir: args.dataDir,
       discardBackup: restoreError === null,
       failure: recordedFailure,
@@ -208,7 +208,7 @@ export async function runNpmShim(args: RunNpmShimArgs): Promise<number> {
     }
     await mutateAppUpdateState(args.dataDir, (state) => ({
       ...state,
-      current: installedNpmRevision(pending.to),
+      current: installedNpmRevision(pending.to, nodeAbi),
     }));
     args.output.info(`Restarting into bb-app ${pending.to.version}`);
     return pending.to;

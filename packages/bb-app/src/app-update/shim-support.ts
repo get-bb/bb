@@ -225,10 +225,11 @@ export function isSameRevision(left: AppRevision, right: AppRevision): boolean {
 
 export function installedNpmRevision(
   revision: NpmAppRevision,
+  nodeAbi: string,
 ): InstalledNpmAppRevision {
   return {
     kind: "npm",
-    nodeAbi: process.versions.modules,
+    nodeAbi,
     packageRoot: revision.packageRoot,
     version: revision.version,
   };

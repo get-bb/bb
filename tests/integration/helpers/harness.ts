@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import type { DbConnection } from "@bb/db";
+import { listRunningThreads, type DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
 import {
   acquireDaemonLock,
@@ -36,6 +36,7 @@ import {
 } from "../../../apps/server/src/services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
+import { createAppUpdateService } from "../../../apps/server/src/services/system/app-update.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
@@ -248,7 +249,18 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
+  const appUpdate = createAppUpdateService({
+    appSurface: "web",
+    appVersion,
+    config,
+    countRunningThreads: () => listRunningThreads(db).length,
+    launcher: null,
+    logger: testLogger,
+    mode: null,
+    notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+  });
   const serverDeps = {
+    appUpdate,
     appVersion,
     bbAppManagedConfig,
     providerRegistry,
