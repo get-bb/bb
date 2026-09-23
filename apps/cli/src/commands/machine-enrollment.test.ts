@@ -61,7 +61,10 @@ describe("machine enroll", () => {
     expect(h.fetchFn.mock.calls[1]?.[1]?.headers).toMatchObject({
       authorization: "Bearer replacement-bootstrap",
     });
-    expect((await stat(join(h.dir, "auth.json"))).mode & 0o777).toBe(0o600);
+    // bb-fork(windows): Windows does not enforce POSIX file modes.
+    if (process.platform !== "win32") {
+      expect((await stat(join(h.dir, "auth.json"))).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("exchanges through authorization, persists private credentials, and no-ops on same identity with expired material", async () => {
@@ -71,7 +74,10 @@ describe("machine enroll", () => {
     expect(h.fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject({
       authorization: "Bearer private-bootstrap",
     });
-    expect((await stat(join(h.dir, "auth.json"))).mode & 0o777).toBe(0o600);
+    // bb-fork(windows): Windows does not enforce POSIX file modes.
+    if (process.platform !== "win32") {
+      expect((await stat(join(h.dir, "auth.json"))).mode & 0o777).toBe(0o600);
+    }
     const port = Number(
       (await readFile(join(h.dir, "host-daemon-port"), "utf8")).trim(),
     );

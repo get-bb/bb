@@ -102,7 +102,10 @@ describe("bb server export", () => {
     const written = await readFile(outPath);
     expect(written.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
     expect(written.length).toBe(2 + 1024 * 1024 + 512 + 4);
-    expect((await stat(outPath)).mode & 0o777).toBe(0o600);
+    // bb-fork(windows): Windows does not enforce POSIX file modes.
+    if (process.platform !== "win32") {
+      expect((await stat(outPath)).mode & 0o777).toBe(0o600);
+    }
     expect(await readdir(dir)).toEqual(["backup.tar.gz"]);
   });
 
