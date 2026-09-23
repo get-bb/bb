@@ -2204,7 +2204,9 @@ describe("plugin detail source and settings", () => {
       .closest("[data-resource-detail-section]");
     expect(source).not.toBeNull();
     if (source === null) return;
-    expect(within(source as HTMLElement).getByText("Local source")).toBeTruthy();
+    expect(
+      within(source as HTMLElement).getByText("~/src/bb-plugin-github"),
+    ).toBeTruthy();
     fireEvent.click(
       within(source as HTMLElement).getByRole("button", {
         name: "Open source",

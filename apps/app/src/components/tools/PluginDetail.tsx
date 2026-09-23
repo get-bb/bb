@@ -104,7 +104,6 @@ function PluginLocalSource({
           aria-hidden
         />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-foreground">Local source</p>
           <TooltipProvider delayDuration={250}>
             <Tooltip>
               <TooltipTrigger asChild>
