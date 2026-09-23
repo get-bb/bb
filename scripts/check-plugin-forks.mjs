@@ -207,9 +207,12 @@ async function checkPlugin(pluginDir, workDir, sdkTarball) {
     }`,
   );
 
-  await step("npm install", "npm", ["install", "--no-audit", "--no-fund"], {
-    cwd: target,
-  });
+  await step(
+    "npm install",
+    "npm",
+    ["install", "--no-audit", "--no-fund", "--legacy-peer-deps"],
+    { cwd: target },
+  );
   await step("typecheck", "npm", ["run", "typecheck"], { cwd: target });
   await step("test", "npm", ["test"], { cwd: target });
   await step(
