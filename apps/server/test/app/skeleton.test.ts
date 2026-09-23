@@ -113,10 +113,16 @@ describe("server skeleton", () => {
     }
   });
 
-  it("reports the host package failure to the installer", async () => {
+  it.each([
+    ["ENOENT", "required server package file or packaging tool is missing"],
+    ["EACCES", "lacks permission"],
+    ["ENOSPC", "ran out of disk space"],
+    ["OTHER", "could not build or read"],
+  ])("reports safe host package diagnostics for %s", async (code, message) => {
     const harness = await createTestAppHarness();
-    const error = new Error(
-      "ENOENT: no such file or directory, copyfile 'host-daemon/dist/daemon-bundle.mjs'",
+    const error = Object.assign(
+      new Error("private server path and credentials"),
+      { code },
     );
     const log = vi.spyOn(harness.deps.logger, "error");
     const { app } = createApp(harness.deps, {
@@ -131,13 +137,22 @@ describe("server skeleton", () => {
       const response = await app.request("/install/bb-app.tgz");
       expect(response.status).toBe(500);
       expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(await readJson(response)).toEqual({
+      const body = await readJson(response);
+      expect(body).toMatchObject({
         code: "host_package_unavailable",
-        message:
-          "Could not prepare the host package: ENOENT: no such file or directory, copyfile 'host-daemon/dist/daemon-bundle.mjs'",
+        message: expect.stringContaining(message),
+        diagnosticId: expect.any(String),
       });
+      if (
+        body === null ||
+        typeof body !== "object" ||
+        !("diagnosticId" in body)
+      ) {
+        throw new Error("Missing diagnostic ID");
+      }
+      expect(JSON.stringify(body)).not.toContain("private server path");
       expect(log).toHaveBeenCalledWith(
-        { err: error },
+        { err: error, diagnosticId: body.diagnosticId },
         "Host package download failed",
       );
     } finally {

@@ -747,8 +747,9 @@ dependencies, and the bundled `bb` CLI; it omits the server and web app. The
 installer verifies the digest and skips the download and npm install when its
 recorded installed digest receives `304 Not Modified`. It falls back to the npm
 registry only when the package route returns 404. When the server cannot prepare
-the package, the route returns the underlying error message and the installer
-prints it; the full exception is logged as "Host package download failed". It
+the package, the route returns a generic reason and a diagnostic ID, and the
+installer prints them; the full exception is logged with that ID as "Host
+package download failed". It
 installs the package under the machine's bb data directory rather than npm's
 system-wide prefix, so enrollment needs neither `sudo` nor a global npm configuration.
 Installed services enable `--auto-update`; remove that flag from the launchd

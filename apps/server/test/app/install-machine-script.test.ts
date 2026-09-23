@@ -874,9 +874,9 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     [
       JSON.stringify({
         message:
-          "Could not prepare the host package: ENOSPC: no space left on device",
+          "The server ran out of disk space while preparing the host package. Check the server logs for diagnostic ID test-123, then retry installation.",
       }),
-      "Server: Could not prepare the host package: ENOSPC: no space left on device",
+      "Server: The server ran out of disk space while preparing the host package. Check the server logs for diagnostic ID test-123, then retry installation.",
     ],
     ["<html>upstream failure</html>", null],
     ["{invalid json", null],
