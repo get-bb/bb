@@ -3224,7 +3224,7 @@ hostId })` deletes the locked old server data on that machine. All refuse
 requests authenticated by a machine credential. `checkMove`, `startMove`,
 `export`, and old-copy deletion also require the default-off `serverMove`
 experiment and otherwise fail with 403 `server_move_experiment_disabled`. The CLI equivalents are
-`bb server move|export|import|unlock|allow-connect|delete-old-copy`.
+`bb server move|export|import|unlock|allow-connect|delete-old-copy|install-machine-service`.
 
 Before stabilization, audit: authorization for plugin backends (`bb.sdk` runs
 with owner access, so a plugin can export every secret or move the server);

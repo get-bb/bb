@@ -314,6 +314,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "codex",
           code: "provider_unavailable",
+          detail: null,
         });
       },
     );
@@ -600,6 +601,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(response.modelLoadError).toEqual({
         providerId: "codex",
         code: "failed",
+        detail: "Host is suspended",
       });
       expect(request).not.toHaveBeenCalled();
       expect(warn).not.toHaveBeenCalled();
@@ -904,6 +906,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "codex",
           code: "failed",
+          detail: "Local host daemon is not initialized",
         });
         const hostLookupWarning = warn.mock.calls.find(
           ([, message]) =>
@@ -954,6 +957,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "claude-code",
           code: "failed",
+          detail: "Provider failed",
         });
         expect(response.models.map((model) => model.model)).toEqual([
           "claude-example-preview",
@@ -1090,6 +1094,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(response.modelLoadError).toEqual({
         providerId: "fallback-probe",
         code: "timeout",
+        detail: "Model probe timed out",
       });
       expect(response.models.map((model) => model.model)).toEqual([
         "fallback-a",
@@ -1127,6 +1132,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "claude-code",
           code: errorCode,
+          detail: "Claude Code is not usable",
         });
         expect(response.models).toEqual([]);
       });
@@ -1384,6 +1390,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(response.modelLoadError).toEqual({
         providerId: "acp-cursor",
         code: "auth_required",
+        detail: "Cursor agent is not authenticated.",
       });
       expect(
         responder.requests.filter(
@@ -1442,6 +1449,7 @@ describe("resolveSystemExecutionOptions", () => {
           expect(response.modelLoadError).toEqual({
             providerId: "acp-broken-agent",
             code: expectedCode,
+            detail: "model list failed",
           });
           expect(response.providers).toEqual(
             expect.arrayContaining([

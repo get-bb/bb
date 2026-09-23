@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Host } from "@bb/domain";
+import type { SystemAppUpdateStatus } from "@bb/server-contract";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -43,6 +44,22 @@ const NPM_VERSION = {
   updateAvailable: false,
   isDevelopment: false,
   upgradeCommand: "npx bb-app@latest",
+};
+
+const IN_APP_UPDATE: SystemAppUpdateStatus = {
+  activity: { phase: "idle" },
+  available: {
+    channel: "latest",
+    commit: null,
+    commitCount: null,
+    subjects: [],
+    version: "0.39.0",
+  },
+  blocked: null,
+  current: { commit: null, version: "0.38.0" },
+  lastResult: null,
+  runningThreadCount: 0,
+  support: { kind: "supported", mode: "npm" },
 };
 
 const DESKTOP_UPDATE = {
@@ -384,6 +401,119 @@ export function UpdateStates() {
               isDesktop={false}
               onRelaunchDesktop={null}
               onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="In-app update available"
+          note="bb runs under the update shim, so it can download the update and restart itself."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              appUpdate={IN_APP_UPDATE}
+              desktopInfo={null}
+              isDesktop={false}
+              onApplyAppUpdate={noop}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+              onShowAppUpdateResult={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="In-app update downloading"
+          note="The launcher is installing the new version while bb keeps running."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              appUpdate={{
+                ...IN_APP_UPDATE,
+                activity: {
+                  output: [],
+                  phase: "preparing",
+                  startedAt: "2026-09-23T00:00:00.000Z",
+                  step: "Downloading bb-app 0.39.0",
+                  targetVersion: "0.39.0",
+                },
+              }}
+              desktopInfo={null}
+              isDesktop={false}
+              onApplyAppUpdate={noop}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+              onShowAppUpdateResult={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="In-app update failed"
+          note="The download failed, bb kept running the current version, and the row keeps the details until dismissed."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              appUpdate={{
+                ...IN_APP_UPDATE,
+                lastResult: {
+                  acknowledged: false,
+                  finishedAt: "2026-09-23T00:00:00.000Z",
+                  from: { commit: null, version: "0.38.0" },
+                  id: "update-1",
+                  logTail: ["npm error code E404"],
+                  message: "npm install failed",
+                  outcome: "failed",
+                  phase: "install",
+                  to: { commit: null, version: "0.39.0" },
+                },
+              }}
+              desktopInfo={null}
+              isDesktop={false}
+              onApplyAppUpdate={noop}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+              onShowAppUpdateResult={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Source checkout blocked"
+          note="A pnpm start checkout explains why it cannot fast-forward instead of offering a button."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              appUpdate={{
+                ...IN_APP_UPDATE,
+                available: {
+                  channel: "main",
+                  commit: "4f1c2e9a7b0d3c5e8f1a2b3c4d5e6f7a8b9c0d1e",
+                  commitCount: 12,
+                  subjects: ["Fix sidebar flicker"],
+                  version: "0.38.0",
+                },
+                blocked: {
+                  message:
+                    "The working tree has uncommitted changes. Commit or stash them to update from the app.",
+                  reason: "uncommitted-changes",
+                },
+                current: {
+                  commit: "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+                  version: "0.38.0",
+                },
+                support: { kind: "supported", mode: "source" },
+              }}
+              desktopInfo={null}
+              isDesktop={false}
+              onApplyAppUpdate={noop}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+              onShowAppUpdateResult={noop}
             />
           </StoryAppState>
         </State>

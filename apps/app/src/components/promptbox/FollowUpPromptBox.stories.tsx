@@ -88,6 +88,7 @@ const baseExecution = makeExecutionControlsProps({
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail: "model list command_failed: codex exited before responding",
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [

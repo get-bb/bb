@@ -631,7 +631,9 @@ async function handleModelList(
   if (!gate.ok) {
     sendError(
       id,
-      -32000,
+      gate.status === "not_installed"
+        ? BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE
+        : -32000,
       gate.status === "not_installed"
         ? "Could not find the pi CLI on this host. Install @earendil-works/pi-coding-agent and retry."
         : (gate.statusMessage ?? "Pi is not supported on this host."),

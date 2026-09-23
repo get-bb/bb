@@ -34,7 +34,7 @@ import {
   sortPluginEntries,
   type PluginBrowseShelf,
 } from "./plugin-browse-discovery";
-import { pluginCatalogCategoryMutedAccentStyle } from "./plugin-ui";
+import { PluginCategoryIcon } from "./plugin-ui";
 
 const SHELF_ENTRY_LIMIT = 6;
 
@@ -215,12 +215,9 @@ export function BrowsePluginsTab({
               <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
                 <span className="inline-flex min-w-0 items-center gap-2">
                   {selectedShelf.key.startsWith("category:") ? (
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={pluginCatalogCategoryMutedAccentStyle(
-                        selectedShelf.categoryId,
-                      )}
-                      aria-hidden
+                    <PluginCategoryIcon
+                      categoryId={selectedShelf.categoryId}
+                      className="size-5"
                     />
                   ) : null}
                   {selectedShelf.label}
@@ -362,11 +359,7 @@ function BrowseShelf({
         ) : shelf.key === "collection:new-and-notable" ? (
           <Icon name="News01" className="size-4 text-foreground" aria-hidden />
         ) : (
-          <span
-            className="size-2 rounded-full"
-            style={pluginCatalogCategoryMutedAccentStyle(shelf.categoryId)}
-            aria-hidden
-          />
+          <PluginCategoryIcon categoryId={shelf.categoryId} className="size-4" />
         )
       }
       browseAction={

@@ -112,7 +112,11 @@ function renderList(
   options: RenderSlotOptions = {},
 ) {
   return renderSlot(registration, props(), {
-    sidebarThreads: { projects: PROJECTS, sections: SECTIONS, threads: THREADS },
+    sidebarThreads: {
+      projects: PROJECTS,
+      sections: SECTIONS,
+      threads: THREADS,
+    },
     rpc: {
       listPreferences: () => ({
         preferences: { ...defaultPreferences(), ...preferences },
@@ -147,7 +151,11 @@ describe("thread-list plugin", () => {
   it("shows the navigation skeleton until preferences load", () => {
     setPreferencesMirrorStorageForTest(null);
     renderSlot(registration, props(), {
-      sidebarThreads: { projects: PROJECTS, sections: SECTIONS, threads: THREADS },
+      sidebarThreads: {
+        projects: PROJECTS,
+        sections: SECTIONS,
+        threads: THREADS,
+      },
       rpc: { listPreferences: () => new Promise(() => undefined) },
     });
     expect(screen.getByLabelText("Loading sidebar navigation")).not.toBeNull();
@@ -183,7 +191,9 @@ describe("thread-list plugin", () => {
       .getByTitle("Laptop")
       .closest("[data-sidebar-sticky-group]");
     expect(laptop).not.toBeNull();
-    expect(within(laptop as HTMLElement).getByText("Later thread")).not.toBeNull();
+    expect(
+      within(laptop as HTMLElement).getByText("Later thread"),
+    ).not.toBeNull();
     const noMachine = screen
       .getByTitle("No machine")
       .closest("[data-sidebar-sticky-group]");
@@ -197,13 +207,7 @@ describe("thread-list plugin", () => {
     renderList({ organizationMode: "project" });
 
     await screen.findByText("Pinned thread");
-    expect(sectionHeaders()).toEqual([
-      "Pinned",
-      "Personal",
-      "App",
-      "Web",
-      "Threads",
-    ]);
+    expect(sectionHeaders()).toEqual(["Pinned", "App", "Web", "Threads"]);
     const appGroup = screen
       .getByTitle("App")
       .closest("[data-sidebar-sticky-group]") as HTMLElement;
@@ -233,18 +237,54 @@ describe("thread-list plugin", () => {
     window.localStorage.clear();
   });
 
+  it.each([true, false])(
+    "renders personal rows once with standard projects: %s",
+    async (includeStandardProjects) => {
+      setPreferencesMirrorStorageForTest(null);
+      renderList(
+        { organizationMode: "project" },
+        {
+          sidebarThreads: {
+            projects: includeStandardProjects
+              ? PROJECTS
+              : PROJECTS.filter((project) => project.isPersonal),
+            sections: [],
+            threads: THREADS.filter(
+              (thread) => thread.projectId === PERSONAL_PROJECT_ID,
+            ),
+          },
+        },
+      );
+
+      await screen.findByTitle("Threads");
+      expect(threadIds()).toEqual(["thr_personal"]);
+      expect(sectionHeaders()).toEqual(
+        includeStandardProjects ? ["App", "Web", "Threads"] : ["Threads"],
+      );
+    },
+  );
+
   it("calls onNavigate when a thread row is opened", async () => {
     setPreferencesMirrorStorageForTest(null);
     const listProps = props();
     renderSlot(registration, listProps, {
-      sidebarThreads: { projects: PROJECTS, sections: SECTIONS, threads: THREADS },
+      sidebarThreads: {
+        projects: PROJECTS,
+        sections: SECTIONS,
+        threads: THREADS,
+      },
       rpc: {
         listPreferences: () => ({
-          preferences: { ...defaultPreferences(), organizationMode: "chronological" },
+          preferences: {
+            ...defaultPreferences(),
+            organizationMode: "chronological",
+          },
         }),
       },
     });
-    const link = await screen.findByRole("link", { name: "Open Personal thread" });
+    const link = await screen.findByRole("link", {
+      name: "Open Personal thread",
+    });
     link.click();
     await waitFor(() => expect(listProps.onNavigate).toHaveBeenCalledOnce());
   });

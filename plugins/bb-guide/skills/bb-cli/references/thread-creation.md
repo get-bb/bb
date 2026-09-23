@@ -103,8 +103,11 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
 - `bb updates` runs the default `bb updates status` action. It aggregates BB and provider
   CLI update state across every machine — the CLI counterpart of Settings →
   Updates. `bb updates apply [--machine <id-or-name>]` runs every available
-  provider CLI install/update sequentially; update bb-app itself with the
-  printed upgrade command or the desktop relaunch.
+  provider CLI install/update sequentially. `bb updates app` shows whether bb
+  can update itself, which needs bb started with `--in-app-updates`;
+  `bb updates app apply [--yes] [--no-wait]` downloads the
+  update and restarts bb into it, without rolling back if it fails to start.
+  Running it from a thread restarts bb and interrupts that thread.
 - Use `bb project create --name <name> --root <path> --machine <id-or-name>`
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Without a selector, the CLI asks its local host daemon.
@@ -175,7 +178,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   intentionally inspect the server machine. Model lists answer from the
   machine's last stored list while a background refresh runs, so a list can be
   hours old. A provider whose refresh keeps failing or timing out keeps
-  answering from its last stored list.
+  answering from its last stored list. When nothing can be listed, the command
+  prints the provider, failure code, and underlying host message on stderr.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. Use a provider ID returned by the target host's catalog. Acceptance
   of unlisted models is provider-specific; consult that provider's skill.
@@ -221,6 +225,12 @@ Moving the server needs the default-off `serverMove` experiment:
 `bb server move`, `bb server export`, and old-copy deletion with
 `server_move_experiment_disabled`.
 
+Server moves are experimental. As an agent, never start a move, abandon one,
+or unlock an old copy unless the user explicitly confirmed that action in the
+conversation. Run `--check`, show the user the checklist, and wait for their
+confirmation before running the command; don't pass `--yes` to skip the
+confirmation on their behalf.
+
 Run `bb server move --to <machine> --check` first. It prints blockers,
 warnings, and notes and exits nonzero while the move is blocked. A
 direct-address server also needs `--address <url>`: the URL every machine and
@@ -263,7 +273,14 @@ time that server starts.
 
 The old computer's data directory keeps a `server-moved.json` lock, so bb runs
 there as a regular machine. `bb server delete-old-copy` deletes the server files
-the move left behind and keeps the lock. `bb server unlock` removes the lock so
+the move left behind and keeps the lock. The desktop app installs a persistent,
+self-updating machine service there after the move; until that succeeds, and
+after a move from `bb-app`, the machine stays connected only while the app runs.
+`bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` stops
+bb there and runs `install-machine.sh --adopt --data-dir <dir>` to install the
+persistent, self-updating service with the same machine ID. It needs Node.js
+22.19 or newer on the PATH, and `bb server unlock` refuses while the service
+exists. `bb server unlock` removes the lock so
 the old copy can start again; everything since the move is lost there, and the
 new server must be stopped first. It probes `<serverUrl>/health` (connect
 mode: `/api/v1/system/version` with the machine grant in `config.json`) and

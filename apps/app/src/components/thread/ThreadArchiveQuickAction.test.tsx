@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("ThreadArchiveQuickAction", () => {
-  it("requests archive confirmation on one click without bubbling to the row", () => {
+  it("requests archive on one click without bubbling to the row", () => {
     const onRowClick = vi.fn();
     const thread = makeThread();
     render(

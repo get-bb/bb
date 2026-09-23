@@ -156,6 +156,24 @@ afterEach(() => {
 });
 
 describe("ThreadActionsProvider archive confirmation", () => {
+  it("archives a thread without children without opening a dialog", async () => {
+    vi.mocked(sdk.threads.childSummary).mockResolvedValue({
+      nonDeletedChildCount: 0,
+    });
+    renderProvider(<ArchiveButton thread={makeThread()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    await vi.waitFor(() => {
+      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+        threadId: "thr_parent",
+      });
+    });
+    expect(
+      screen.queryByRole("heading", { name: /Archive \d+ threads\?/ }),
+    ).toBeNull();
+  });
+
   it("reports child threads and archives nothing before confirmation", async () => {
     vi.mocked(sdk.threads.childSummary).mockResolvedValue({
       nonDeletedChildCount: 4,
@@ -165,7 +183,9 @@ describe("ThreadActionsProvider archive confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
     expect(
-      await screen.findByText(/4 child threads will be archived too\./),
+      await screen.findByText(
+        /4 child threads will be archived with this thread\./,
+      ),
     ).not.toBeNull();
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
   });
@@ -177,7 +197,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
 
     expect(
-      screen.queryByRole("heading", { name: "Archive thread?" }),
+      screen.queryByRole("heading", { name: /Archive \d+ threads\?/ }),
     ).toBeNull();
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
   });
@@ -189,7 +209,7 @@ describe("ThreadActionsProvider archive feedback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Archive thread" }),
+      await screen.findByRole("button", { name: "Archive 2 threads" }),
     );
 
     await vi.waitFor(() => {
@@ -234,7 +254,7 @@ describe("ThreadActionsProvider archive feedback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Archive thread" }),
+      await screen.findByRole("button", { name: "Archive 2 threads" }),
     );
 
     await vi.waitFor(() => {
@@ -271,7 +291,7 @@ describe("ThreadActionsProvider archive feedback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Archive thread" }),
+      await screen.findByRole("button", { name: "Archive 2 threads" }),
     );
 
     await vi.waitFor(() => {

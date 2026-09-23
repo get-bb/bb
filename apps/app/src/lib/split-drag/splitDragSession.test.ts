@@ -226,6 +226,49 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     expect(onEnd).toHaveBeenCalledWith({ dropped: false });
   });
 
+  it("cancels an engaged split drag on Escape before pointer release", () => {
+    const onEnd = vi.fn();
+    const config = baseConfig({ onEnd });
+    beginSplitDrag(config);
+
+    fireWindowPointer("pointermove", 900, 400);
+    expect(document.querySelector("[data-split-drag-label]")).not.toBeNull();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(document.querySelector("[data-split-drag-label]")).toBeNull();
+    expect(config.onDrop).not.toHaveBeenCalled();
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(onEnd).toHaveBeenCalledWith({ dropped: false });
+  });
+
+  it("cancels a pending split drag on Escape", () => {
+    const onEngage = vi.fn();
+    const config = baseConfig({ onEngage });
+    beginSplitDrag(config);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+      }),
+    );
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(onEngage).not.toHaveBeenCalled();
+    expect(config.onDrop).not.toHaveBeenCalled();
+  });
+
   it("falls back to the container when no marked pane is under the pointer", () => {
     document.elementsFromPoint = vi.fn(
       () => [],

@@ -78,7 +78,6 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
-  useThreadQueuedMessages,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -652,10 +651,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   );
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
-  const { data: queuedMessagesForEditEligibility = [] } =
-    useThreadQueuedMessages(thread?.id ?? "", {
-      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-    });
   const unreadDividerState = useThreadUnreadDividerState({
     routeThreadId: threadId,
     thread,
@@ -1035,7 +1030,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     !createQueuedMessage.isPending &&
     !editMessage.isPending &&
     !(timelineLoading && timelineRows.length === 0) &&
-    queuedMessagesForEditEligibility.length === 0 &&
     activeWorkflows.length === 0 &&
     thread.activeBackgroundAgentCount === 0 &&
     activeBackgroundCommands.length === 0;

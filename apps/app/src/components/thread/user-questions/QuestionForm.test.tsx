@@ -124,6 +124,51 @@ function getButtonByText(
 }
 
 describe("answering a single-select question", () => {
+  it("submits after a number shortcut followed by Enter", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.keyDown(document.body, { key: "2" });
+    expect(getButtonByText(slot, "SQLite").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Enter",
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not intercept modified Enter after a shortcut", () => {
+    const submit = vi.fn(async () => undefined);
+    render(singleSelect, { submit });
+    fireEvent.keyDown(document.body, { key: "2" });
+    for (const modifier of [
+      "shiftKey",
+      "ctrlKey",
+      "metaKey",
+      "altKey",
+      "isComposing",
+    ]) {
+      fireEvent.keyDown(document.activeElement!, {
+        key: "Enter",
+        [modifier]: true,
+      });
+    }
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("leaves free-text Enter available for newlines", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.keyDown(document.body, { key: "3" });
+    const textarea = slot.getByLabelText("Database answer");
+    expect(document.activeElement).toBe(textarea);
+    fireEvent.change(textarea, { target: { value: "Custom" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
   it("submits the selected option value", () => {
     const submit = vi.fn<(value: InteractionResponse) => Promise<void>>(
       async () => undefined,
@@ -243,6 +288,24 @@ describe("multi-select and multi-question flows", () => {
       },
     ],
   };
+
+  it("advances and submits multiple questions entirely by keyboard", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(multi, { submit });
+    fireEvent.keyDown(document.body, { key: "1" });
+    fireEvent.keyDown(document.activeElement!, { key: "2" });
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement!, { key: "2" });
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: {
+        q0: { selected: ["q0o0", "q0o1"] },
+        q1: { selected: ["q1o1"] },
+      },
+    });
+  });
 
   it("keeps several options selected and walks both questions before submitting", () => {
     const submit = vi.fn<(value: InteractionResponse) => Promise<void>>(

@@ -108,6 +108,11 @@
       "types": "./src/app-runtime-file.ts",
       "default": "./src/app-runtime-file.ts"
     },
+    "./app-update": {
+      "source": "./src/app-update.ts",
+      "types": "./src/app-update.ts",
+      "default": "./src/app-update.ts"
+    },
     "./app-surface": {
       "source": "./src/app-surface.ts",
       "types": "./src/app-surface.ts",
@@ -127,6 +132,11 @@
       "source": "./src/verified-process-stop.ts",
       "types": "./src/verified-process-stop.ts",
       "default": "./src/verified-process-stop.ts"
+    },
+    "./machine-service": {
+      "source": "./src/machine-service.ts",
+      "types": "./src/machine-service.ts",
+      "default": "./src/machine-service.ts"
     },
     "./child-process-exit": {
       "source": "./src/child-process-exit.ts",

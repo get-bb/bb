@@ -84,7 +84,7 @@ describe("ExecutionControls", () => {
         active: { model: "o4-mini" },
         options: [],
         loadFailed: true,
-        loadError: { providerId: "codex", code: "failed" },
+        loadError: { providerId: "codex", code: "failed", detail: null },
       },
     });
 

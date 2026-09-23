@@ -141,8 +141,11 @@ Editing a sent message:
   Failed and incomplete turns are eligible. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
   replaces the selected turn and every later turn while retaining workspace
-  changes. From an agent thread, the command carries `BB_THREAD_ID` so the
-  replacement runs under agent permission policy.
+  changes. Unsent queued messages remain in the queue and dispatch after the
+  replacement turn when their waits clear. An already-sending queued message
+  must finish before the edit can start. Retries of turns replaced by the edit
+  are removed from the queue. From an agent thread, the command
+  carries `BB_THREAD_ID` so the replacement runs under agent permission policy.
   An edit is refused if removing its history would erase ownership evidence
   shared with another thread. Use bb thread clear <id> to start a new session
   while keeping the history and its ownership evidence.

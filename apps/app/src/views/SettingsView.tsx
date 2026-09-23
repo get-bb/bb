@@ -1046,11 +1046,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Pair the bb mobile app over bb connect: shows Add mobile device under Remote access and enables bb connect machine-code.",
   },
-  multiMachinePicker: {
-    label: "Multi-machine picker",
-    description:
-      "Use searchable, target-first environment and machine pickers when many machines are available.",
-  },
   serverMove: {
     label: "Server move",
     description:

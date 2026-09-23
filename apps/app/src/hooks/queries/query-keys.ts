@@ -64,6 +64,7 @@ const SYSTEM_THEME_QUERY_KEY = "systemTheme";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
+const SYSTEM_APP_UPDATE_QUERY_KEY = "systemAppUpdate";
 const SERVER_MOVE_STATUS_QUERY_KEY = "serverMoveStatus";
 const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
@@ -470,6 +471,7 @@ type SystemThemeQueryKey = readonly [typeof SYSTEM_THEME_QUERY_KEY, string];
 type AllSystemThemesQueryKeyPrefix = readonly [typeof SYSTEM_THEME_QUERY_KEY];
 type SystemCliSkillsQueryKey = readonly [typeof SYSTEM_CLI_SKILLS_QUERY_KEY];
 type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
+type SystemAppUpdateQueryKey = readonly [typeof SYSTEM_APP_UPDATE_QUERY_KEY];
 type ServerMoveStatusQueryKey = readonly [typeof SERVER_MOVE_STATUS_QUERY_KEY];
 type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
@@ -1134,6 +1136,10 @@ export function allSystemThemesQueryKeyPrefix(): AllSystemThemesQueryKeyPrefix {
 
 export function systemVersionQueryKey(): SystemVersionQueryKey {
   return [SYSTEM_VERSION_QUERY_KEY];
+}
+
+export function systemAppUpdateQueryKey(): SystemAppUpdateQueryKey {
+  return [SYSTEM_APP_UPDATE_QUERY_KEY];
 }
 
 export function serverMoveStatusQueryKey(): ServerMoveStatusQueryKey {

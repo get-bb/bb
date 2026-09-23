@@ -348,6 +348,9 @@ type ExpectedProvidersKey = "list" | "models";
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
+  | "acknowledgeAppUpdate"
+  | "appUpdate"
+  | "applyAppUpdate"
   | "setMachineEnvironmentVariable"
   | "deleteMachineEnvironmentVariable"
   | "machineEnvironment"

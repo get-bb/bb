@@ -928,7 +928,7 @@ function EnvironmentThreadGroupHeader({
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
           onToggle={() => onToggleCollapsed(environmentId)}
-          revealOnHover
+          revealOnHover={!isCollapsed}
         />
       </span>
       <span
@@ -943,7 +943,7 @@ function EnvironmentThreadGroupHeader({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "pointer-events-none absolute right-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:static max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
+              "pointer-events-none absolute right-0 flex items-center justify-center text-subtle-foreground max-md:pointer-coarse:static max-md:pointer-coarse:shrink-0",
             )}
           >
             <CollapsedThreadStatusGlyph activity={childActivity} />

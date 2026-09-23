@@ -44,7 +44,6 @@ function renderMachineMenu(overrides?: {
   selectedHostId?: string | null;
   onChange?: (hostId: string) => void;
   machineProviders?: readonly MachineProviderPresentation[];
-  multiMachinePickerEnabled?: boolean;
 }) {
   render(
     <MachinePickerUI
@@ -55,7 +54,6 @@ function renderMachineMenu(overrides?: {
       onChange={overrides?.onChange ?? vi.fn()}
       modal={false}
       machineProviders={overrides?.machineProviders}
-      multiMachinePickerEnabled={overrides?.multiMachinePickerEnabled ?? true}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Machine" }));
@@ -71,7 +69,6 @@ describe("MachinePickerUI", () => {
         selectedHostId={thisMachine.id}
         onChange={vi.fn()}
         modal={false}
-        multiMachinePickerEnabled
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Machine" }));
@@ -88,25 +85,12 @@ describe("MachinePickerUI", () => {
         selectedHostId={thisMachine.id}
         onChange={vi.fn()}
         modal={false}
-        multiMachinePickerEnabled
       />,
     );
 
     expect(
       screen.getByRole("combobox", { name: "Search machines" }),
     ).toBeTruthy();
-  });
-
-  it("hides search when the experiment is off", () => {
-    renderMachineMenu({
-      hosts: manyHosts,
-      multiMachinePickerEnabled: false,
-    });
-
-    expect(
-      screen.queryByRole("combobox", { name: "Search machines" }),
-    ).toBeNull();
-    expect(screen.getAllByRole("option")).toHaveLength(manyHosts.length);
   });
 
   it("fuzzy-searches machine names and host ids, then resets after selection", () => {

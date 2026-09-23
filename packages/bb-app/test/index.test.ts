@@ -38,6 +38,7 @@ import {
   resolveServerListenerUrl,
   resolveWorktreeRuntimePolicy,
   runBbApp,
+  shouldRunSourceAppUpdateShim,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
@@ -770,6 +771,17 @@ describe("bb-app launcher", () => {
     });
   });
 
+  it("runs the source update shim only for a start with --in-app-updates", () => {
+    expect(shouldRunSourceAppUpdateShim(["--in-app-updates"])).toBe(true);
+    expect(shouldRunSourceAppUpdateShim(["start", "--in-app-updates"])).toBe(
+      true,
+    );
+    expect(shouldRunSourceAppUpdateShim(["start"])).toBe(false);
+    expect(shouldRunSourceAppUpdateShim(["stop", "--in-app-updates"])).toBe(
+      false,
+    );
+  });
+
   it("reports the server bind host separately from the loopback connection URL", async () => {
     const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
@@ -850,6 +862,26 @@ describe("bb-app launcher", () => {
     await expect(
       runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
     ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+  });
+
+  it("tells the bundled CLI where the server's machine installer is", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-installer-"));
+    const outputPath = join(dataDir, "installer-path.txt");
+
+    const exitCode = await runBundledCliCommand({
+      args: [
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], process.env.BB_MACHINE_INSTALLER ?? 'missing')",
+        outputPath,
+      ],
+      context: { ...createTestStartContext(), dataDir },
+      env: { BB_CLI: process.execPath },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe(
+      "/tmp/bb-app-test/server/dist/assets/install-machine.sh",
+    );
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {

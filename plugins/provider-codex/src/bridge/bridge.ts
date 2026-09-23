@@ -400,8 +400,12 @@ function buildAppServerEnv(
   );
 }
 
+function isCodexSpawnFailure(error: unknown): boolean {
+  return error instanceof CodexAppServerExitedError && error.spawnFailed;
+}
+
 function describeCodexLaunchError(error: unknown): string {
-  if (error instanceof CodexAppServerExitedError && error.spawnFailed) {
+  if (isCodexSpawnFailure(error)) {
     return MISSING_CODEX_CLI_GUIDANCE;
   }
   return error instanceof Error ? error.message : String(error);
@@ -1401,7 +1405,9 @@ async function handleModelList(id: string | number): Promise<void> {
     }
     sendError(
       id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      isCodexSpawnFailure(error)
+        ? BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE
+        : BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
       describeCodexLaunchError(error),
     );
   }

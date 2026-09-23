@@ -55,6 +55,7 @@ import {
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   serverMoveStatusQueryKey,
+  systemAppUpdateQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   uiPreferencesQueryKey,
@@ -554,6 +555,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "server-move-changed": {
     dirty: [dirtyServerMoveStatusQueries],
+  },
+  "app-update-changed": {
+    dirty: [dirtyAppUpdateStatusQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -1173,6 +1177,10 @@ function dirtyUiPreferencesQueries({
 
 function dirtyServerMoveStatusQueries(): QueryKey[] {
   return [serverMoveStatusQueryKey()];
+}
+
+function dirtyAppUpdateStatusQueries(): QueryKey[] {
+  return [systemAppUpdateQueryKey()];
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {

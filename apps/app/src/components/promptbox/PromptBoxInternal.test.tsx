@@ -2,6 +2,7 @@
 
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type { PromptTextMention } from "@bb/domain";
+import type { TiptapEditorHTMLElement } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import {
@@ -4349,6 +4350,68 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
   });
+
+  it.each([
+    {
+      label: "drops the quote from part of a quoted line",
+      selection: { from: 1, to: 6 },
+      copiedText: "ello ",
+      value: "> hello world\n\nafterello ",
+      blockquotes: 1,
+    },
+    {
+      label: "keeps the quote on a whole quoted line",
+      selection: { from: 0, to: 11 },
+      copiedText: "> hello world",
+      value: "> hello world\n\nafter\n> hello world",
+      blockquotes: 2,
+    },
+  ])(
+    "$label when copying and pasting",
+    async ({ selection, copiedText, value, blockquotes }) => {
+      const { changes, promptBoxRef } = renderPromptBox(
+        "> hello world\n\nafter",
+      );
+
+      await focusPromptEnd(promptBoxRef);
+      const editor = (getPromptEditorElement() as TiptapEditorHTMLElement)
+        .editor;
+      if (!editor) {
+        throw new Error("Prompt editor was not mounted");
+      }
+      const quoteTextStart = 2;
+      act(() => {
+        editor.view.dispatch(
+          editor.state.tr.setSelection(
+            TextSelection.create(
+              editor.state.doc,
+              quoteTextStart + selection.from,
+              quoteTextStart + selection.to,
+            ),
+          ),
+        );
+      });
+      const copied = new Map<string, string>();
+      fireEvent.copy(getPromptEditorElement(), {
+        clipboardData: {
+          clearData: () => copied.clear(),
+          setData: (type: string, data: string) => copied.set(type, data),
+        },
+      });
+      expect(copied.get("text/plain")).toBe(copiedText);
+
+      await focusPromptEnd(promptBoxRef);
+      pasteClipboard({
+        html: copied.get("text/html") ?? "",
+        plainText: copied.get("text/plain") ?? "",
+      });
+
+      await waitFor(() => expect(latestValue(changes)).toBe(value));
+      expect(
+        getPromptEditorElement().querySelectorAll("blockquote"),
+      ).toHaveLength(blockquotes);
+    },
+  );
 
   it("inserts a dropped sidebar thread as a serialized mention pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("Review ");
