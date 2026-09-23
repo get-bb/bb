@@ -3,6 +3,7 @@
   "plugins": [
     "plugins/account-pool",
     "plugins/agent-annotations",
+    "plugins/bb-guide",
     "plugins/browser-automation",
     "plugins/concurrency-limit",
     "plugins/custom-instructions",

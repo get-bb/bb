@@ -3194,10 +3194,6 @@ importers:
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
   plugins/bb-guide:
-    dependencies:
-      '@bb/templates':
-        specifier: workspace:*
-        version: link:../../packages/templates
     devDependencies:
       '@bb/plugin-build':
         specifier: workspace:*
@@ -3205,9 +3201,21 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      better-sqlite3:
+        specifier: 12.10.0
+        version: 12.10.0
+      cron-parser:
+        specifier: ^5.5.0
+        version: 5.5.0
+      hono:
+        specifier: 4.11.9
+        version: 4.11.9
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
