@@ -409,6 +409,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         <PluginDetailBanners
           plugin={selectedPlugin}
           configurationPath={configurationPath}
+          onOpenConfiguration={() => setConfigurationOpen(true)}
         />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
         <CatalogPluginDetailBanner entry={selectedCatalogEntry} />

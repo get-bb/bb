@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { pluginCliCall } from "@bb/domain/plugin-cli";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -125,6 +125,26 @@ interface PluginCapabilityItem {
   detail?: ReactNode;
   mono?: boolean;
   destinationPath?: string;
+  onOpen?: () => void;
+}
+
+function openInPlaceClickHandler(
+  onOpen: (() => void) | undefined,
+): MouseEventHandler<HTMLAnchorElement> | undefined {
+  if (onOpen === undefined) return undefined;
+  return (event) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    onOpen();
+  };
 }
 
 function namedSurface(
@@ -180,6 +200,7 @@ function pluginAppSurfaceItems(
   plugin: PluginListItem,
   slots: PluginSlotSnapshot,
   configurationPath: string | undefined,
+  onOpenConfiguration: (() => void) | undefined,
 ): PluginCapabilityItem[] {
   const pluginId = plugin.id;
   const settingsSections = slots.settingsSections.filter(
@@ -188,13 +209,17 @@ function pluginAppSurfaceItems(
   return [
     ...(plugin.hasSettings || settingsSections.length > 0
       ? [
-          namedSurface(
-            "settings",
-            "settings",
-            "Settings",
-            "Opens this plugin's configuration.",
-            configurationPath ?? getPluginConfigurationRoutePath({ pluginId }),
-          ),
+          {
+            ...namedSurface(
+              "settings",
+              "settings",
+              "Settings",
+              "Opens this plugin's configuration.",
+              configurationPath ??
+                getPluginConfigurationRoutePath({ pluginId }),
+            ),
+            onOpen: onOpenConfiguration,
+          },
         ]
       : []),
     ...namedSlotItems(
@@ -372,16 +397,23 @@ function pluginAppSurfaceItems(
 export function PluginIncludes({
   plugin,
   configurationPath,
+  onOpenConfiguration,
 }: {
   plugin: PluginListItem;
   configurationPath?: string;
+  onOpenConfiguration?: () => void;
 }) {
   const slots = usePluginSlots();
   const queryClient = useQueryClient();
   const cachedSkills = queryClient.getQueryData<SkillListResponse>(
     projectSkillsQueryKey(PERSONAL_PROJECT_ID),
   );
-  const appItems = pluginAppSurfaceItems(plugin, slots, configurationPath);
+  const appItems = pluginAppSurfaceItems(
+    plugin,
+    slots,
+    configurationPath,
+    onOpenConfiguration,
+  );
 
   const skillDestination = (capabilityId: string): string => {
     const installedSkill = cachedSkills?.skills.find((skill) => {
@@ -488,6 +520,7 @@ export function PluginIncludes({
                 ) : (
                   <Link
                     to={item.destinationPath}
+                    onClick={openInPlaceClickHandler(item.onOpen)}
                     className="rounded-sm text-xs underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     {item.label}
@@ -514,12 +547,14 @@ function PluginRuntimeStatusAlert({
   plugin,
   runtimeStatus,
   configurationPath,
+  onOpenConfiguration,
   onReload,
   reloadPending,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation;
   configurationPath: string | undefined;
+  onOpenConfiguration: (() => void) | undefined;
   onReload: () => void;
   reloadPending: boolean;
 }) {
@@ -564,6 +599,7 @@ function PluginRuntimeStatusAlert({
                     configurationPath ??
                     getPluginConfigurationRoutePath({ pluginId: plugin.id })
                   }
+                  onClick={openInPlaceClickHandler(onOpenConfiguration)}
                 >
                   Open settings
                   <Icon name="ChevronRight" className="size-3.5" aria-hidden />
@@ -591,10 +627,12 @@ export function PluginHealthBanner({
   plugin,
   runtimeStatus,
   configurationPath,
+  onOpenConfiguration,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
   configurationPath?: string;
+  onOpenConfiguration?: () => void;
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
@@ -614,6 +652,7 @@ export function PluginHealthBanner({
       plugin={plugin}
       runtimeStatus={runtimeStatus}
       configurationPath={configurationPath}
+      onOpenConfiguration={onOpenConfiguration}
       reloadPending={reload.isPending}
       onReload={() => reload.mutate()}
     />

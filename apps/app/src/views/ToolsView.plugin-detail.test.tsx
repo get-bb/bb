@@ -2425,6 +2425,40 @@ describe("plugin detail source and settings", () => {
     );
   });
 
+  it("opens settings in place from the banner and Capabilities in a thread pane", async () => {
+    stubConfigurablePlugin("needs-configuration");
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_1?panel=files"]}>
+        <TooltipProvider>
+          <PluginDetailPaneView pluginId="github" />
+        </TooltipProvider>
+        <LocationProbe />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(
+      await screen.findByRole("link", { name: "Open settings" }),
+    );
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(screen.getByTestId("route-path").textContent).toBe("/threads/thr_1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Settings" }));
+    expect(await screen.findByLabelText("Repository")).toHaveProperty(
+      "value",
+      "get-bb/bb",
+    );
+    expect(screen.getByTestId("route-path").textContent).toBe("/threads/thr_1");
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?panel=files",
+    );
+  });
+
   it("keeps in-place settings out of the URL when the detail pane is embedded in a thread", async () => {
     vi.stubGlobal(
       "fetch",

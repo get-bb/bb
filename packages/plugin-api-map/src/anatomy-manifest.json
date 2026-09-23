@@ -253,7 +253,7 @@
           "anchors": [
             "label=\"Details\"",
             "label={updatesWithBb ? \"Delivery\" : \"Installed\"}",
-            "<PluginIncludes plugin={plugin} configurationPath={configurationPath} />"
+            "onOpenConfiguration={onConfigure}"
           ]
         }
       ]

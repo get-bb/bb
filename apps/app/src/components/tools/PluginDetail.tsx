@@ -228,9 +228,11 @@ export function pluginFrontendDiagnosticRequiresFailureBanner(
 export function PluginDetailBanners({
   plugin,
   configurationPath,
+  onOpenConfiguration,
 }: {
   plugin: PluginListItem;
   configurationPath?: string;
+  onOpenConfiguration?: () => void;
 }) {
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
@@ -244,6 +246,7 @@ export function PluginDetailBanners({
     <PluginHealthBanner
       plugin={banner.plugin}
       configurationPath={configurationPath}
+      onOpenConfiguration={onOpenConfiguration}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
     />
   );
@@ -460,7 +463,11 @@ export function PluginDetail({
             </div>
           ) : null}
         </ResourceDetailReleaseSection>
-        <PluginIncludes plugin={plugin} configurationPath={configurationPath} />
+        <PluginIncludes
+          plugin={plugin}
+          configurationPath={configurationPath}
+          onOpenConfiguration={onConfigure}
+        />
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">
             <PluginServices plugin={plugin} />
