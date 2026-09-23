@@ -4,6 +4,7 @@
     "plugins/custom-instructions",
     "plugins/drafts",
     "plugins/environment-personal-workspace",
+    "plugins/monaco-editor",
     "plugins/navigation",
     "plugins/pdf-preview",
     "plugins/plugin-api-tester",
