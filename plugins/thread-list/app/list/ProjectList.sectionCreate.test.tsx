@@ -86,6 +86,18 @@ async function createSectionFrom(actionsLabel: string) {
 }
 
 describe("creating a sidebar section", () => {
+  it("keeps the composer project when starting a thread in a section", async () => {
+    const { inspection } = renderCustomSections();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New thread in Alpha section" }),
+    );
+
+    expect(inspection.sidebarActionCalls).toContainEqual({
+      method: "openNewThread",
+      options: { sectionId: "sec_a", focusPrompt: true },
+    });
+  });
+
   it("offers section moves from a thread row in the rendered list", async () => {
     const slot = renderCustomSections();
     fireEvent.pointerDown(
