@@ -82,7 +82,7 @@ describe("codex app-server connection", () => {
   // bb-fork(windows): Windows reports SIGTERM, not SIGKILL, for a killed child.
   it(
     "forces termination when a provider ignores stdin shutdown and SIGTERM",
-    { skip: process.platform === "win32" },
+    { skip: process.platform === "win32", timeout: 10_000 },
     async () => {
       const ready = deferred<void>();
       const exited = deferred<CodexAppServerExitInfo>();
@@ -115,7 +115,6 @@ describe("codex app-server connection", () => {
         await connection.kill();
       }
     },
-    10_000,
   );
 
   it("ignores late approval replies and rejects new requests during graceful shutdown", async () => {
@@ -202,7 +201,7 @@ describe("codex app-server connection", () => {
   // bb-fork(windows): Windows stdio drain/exit ordering differs.
   it(
     "preserves final output and exit details while stdio drains",
-    { skip: process.platform === "win32" },
+    { skip: process.platform === "win32", timeout: 30_000 },
     async () => {
       const exited = deferred<CodexAppServerExitInfo>();
       const lateResponseLine = `${JSON.stringify({
@@ -258,7 +257,6 @@ describe("codex app-server connection", () => {
         await stopConnection(connection, exited.promise);
       }
     },
-    30_000,
   );
 
   it("preserves a natural exit status when EPIPE precedes exit", async () => {
@@ -299,7 +297,7 @@ describe("codex app-server connection", () => {
   // bb-fork(windows): a broken Windows stdin reports EOF, not an exit.
   it(
     "makes a broken child stdin immediately terminal",
-    { skip: process.platform === "win32" },
+    { skip: process.platform === "win32", timeout: 30_000 },
     async () => {
       const ready = deferred<void>();
       const exited = deferred<CodexAppServerExitInfo>();
@@ -360,6 +358,5 @@ describe("codex app-server connection", () => {
         await stopConnection(connection, exited.promise);
       }
     },
-    30_000,
   );
 });
