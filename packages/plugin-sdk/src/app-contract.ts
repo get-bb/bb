@@ -3091,6 +3091,15 @@ export interface PluginSdkApp {
   useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
+  /**
+   * The id of the plugin that owns the calling component: the same id
+   * `bb.pluginId` reports on the server, derived from the package name. Key
+   * state the plugin keeps outside bb's per-plugin storage with it, such as
+   * localStorage entries and log prefixes, so a copy of the plugin published
+   * under another name does not collide with the original. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_usePluginId(): string;
   useBbNavigate(): BbNavigate;
   /** Select one of this plugin's eligible fixed tabs on the current surface. */
   experimental_useAppPanel(): ExperimentalAppPanel;

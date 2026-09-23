@@ -149,6 +149,9 @@ export const useRealtimeConnectionState = runtimeFunction(
 );
 export const useSettings = runtimeFunction("useSettings");
 export const useBbContext = runtimeFunction("useBbContext");
+export const experimental_usePluginId = runtimeFunction(
+  "experimental_usePluginId",
+);
 export const useBbNavigate = runtimeFunction("useBbNavigate");
 export const experimental_useAppPanel = runtimeFunction(
   "experimental_useAppPanel",

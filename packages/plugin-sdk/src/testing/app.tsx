@@ -236,6 +236,7 @@ interface SlotEnv {
   realtimeConnection: TestRealtimeConnectionStore;
   settingsState: PluginSettingsState;
   bbContext: BbContext;
+  pluginId: string;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
   appPanel: ExperimentalAppPanel;
@@ -921,6 +922,9 @@ const testPluginSdkApp = {
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
+  experimental_usePluginId(): string {
+    return useSlotEnv("experimental_usePluginId").pluginId;
+  },
   useBbNavigate(): BbNavigate {
     return useSlotEnv("useBbNavigate").navigate;
   },
@@ -1380,6 +1384,8 @@ export interface RenderSlotOptions<
   settings?: Record<string, string | number | boolean>;
   /** `useBbContext()` selection; both default to null. */
   context?: { projectId?: string | null; threadId?: string | null };
+  /** `experimental_usePluginId()` value; defaults to `test-plugin`. */
+  pluginId?: string;
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
   /** Initial state for this render's isolated composer scope and view. */
@@ -2005,6 +2011,7 @@ export function renderSlot<
     realtimeConnection,
     settingsState: { values: options.settings, isLoading: false },
     bbContext: { projectId, threadId },
+    pluginId: options.pluginId ?? "test-plugin",
     navigate,
     navigateCalls,
     appPanel,

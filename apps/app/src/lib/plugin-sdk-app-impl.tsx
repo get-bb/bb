@@ -22,6 +22,7 @@ import { buildMarkdownDocumentLinkRouting } from "@/components/ui/markdown-docum
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import { usePluginId } from "@/components/plugin/plugin-context";
 import { definePluginApp } from "./plugin-app-definition";
 import { installDeprecatedAliases } from "./plugin-sdk-deprecated-aliases";
 import {
@@ -67,6 +68,7 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     experimental_Icon: Icon,
     experimental_ProviderIcon: ProviderIcon,
     useBbContext,
+    experimental_usePluginId: usePluginId,
     useBbNavigate,
     experimental_useAppPanel,
     experimental_useFixedTabTarget,

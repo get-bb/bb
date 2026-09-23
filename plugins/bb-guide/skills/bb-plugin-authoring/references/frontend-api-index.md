@@ -30,6 +30,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtimeConnectionState`
 - `useSettings`
 - `useBbContext`
+- `experimental_usePluginId` — this plugin's id, for keying browser-side
+  state such as localStorage entries
 - `useBbNavigate`
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`

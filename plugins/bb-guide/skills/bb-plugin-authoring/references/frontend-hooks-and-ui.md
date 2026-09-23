@@ -28,6 +28,11 @@ Hooks:
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
+- `experimental_usePluginId()` → this plugin's id, the same value as the
+  server's `bb.pluginId`. Key anything kept outside bb's plugin storage with
+  it (localStorage entries, log prefixes) so a copy published under another
+  package name does not share the original's state. `renderSlot` returns its
+  `pluginId` option, `test-plugin` by default.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),

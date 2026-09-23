@@ -1833,6 +1833,28 @@ while a palette switch resolves, so a consumer never paints an unthemed frame.
 4. **Consumer count.** One consumer today. Confirm a second engine (CodeMirror,
    xterm) needs the same payload before the prefix drops.
 
+## `app.experimental_usePluginId` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Returns the id of the plugin that owns the calling component,
+the same value `bb.pluginId` gives the plugin's server. The id comes from the
+package name, so a plugin that keys browser-side state by it (a localStorage
+mirror, log prefixes) keeps working unchanged when someone copies it and
+publishes the copy under another name, instead of sharing or clobbering the
+original's state. The Thread list plugin is the first consumer: its
+preferences mirror key and log prefixes come from this hook. The test harness
+returns `renderSlot`'s `pluginId` option, `test-plugin` by default.
+
+**Audit before stabilizing.**
+
+1. **Hook or setup value.** Code that runs in `definePluginApp`'s setup, not
+   in a component, cannot call a hook. Decide whether the builder should carry
+   the id as well, or instead.
+2. **Scope.** The hook throws outside a plugin slot component, like the other
+   SDK hooks. Content scripts already receive `context.pluginId`; confirm no
+   other frontend entry point needs it.
+3. **Consumer count.** One consumer today. Confirm a second plugin needs it
+   before the prefix drops.
+
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero shipped registrations — first-party

@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { definePluginApp, experimental_Icon, useBbContext } from "../../app.js";
+import {
+  definePluginApp,
+  experimental_Icon,
+  experimental_usePluginId,
+  useBbContext,
+} from "../../app.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
 
 interface RuntimeHost {
@@ -66,6 +71,23 @@ describe("@get-bb/plugin-sdk/app without a runtime at import time", () => {
     expect(() => render(<ContextProbe />)).toThrow(
       /useBbContext needs the bb app's plugin runtime/,
     );
+  });
+
+  it("reports the renderSlot plugin id, test-plugin by default", () => {
+    function PluginIdProbe() {
+      return <p>{experimental_usePluginId()}</p>;
+    }
+
+    expect(
+      renderSlot({ component: PluginIdProbe }, {}).getByText("test-plugin"),
+    ).toBeTruthy();
+    expect(
+      renderSlot(
+        { component: PluginIdProbe },
+        {},
+        { pluginId: "my-sidebar" },
+      ).getByText("my-sidebar"),
+    ).toBeTruthy();
   });
 
   it("renders a component through the runtime's React", () => {
