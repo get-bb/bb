@@ -41,7 +41,6 @@ export function MachineRemoveDialog({
 
   return (
     <ConfirmDeleteDialog
-      modal={false}
       open={target !== null}
       onOpenChange={(open) => {
         if (!open && !removeHost.isPending) {

@@ -42,7 +42,7 @@ export function MachineReconnectDialog({
     : null;
 
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange} modal={false}>
+    <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
         onInteractOutside={(event) => event.preventDefault()}
