@@ -15,8 +15,9 @@ The plugin has no bridge of its own. Every agent it registers runs on the
 published ACP kit, `@get-bb/plugin-sdk/provider-bridge/acp`, which its
 `bb.host` entry re-exports (`src/host.ts`). That is the whole
 point of the kit: a third-party plugin adds an ACP agent exactly the way this
-one does, with no bb-side code, and `public-sdk-only.test.ts` proves this
-plugin takes no shortcut — no file here may import a private `@bb/*` package.
+one does, with no bb-side code. The plugin is forkable
+(`docs/forkable-plugins.md`): its lint rule and the fork check prove it takes
+no shortcut — no file here may import a workspace package.
 
 What lives here:
 

@@ -22,6 +22,7 @@
     "plugins/pdf-preview",
     "plugins/plugin-api-docs",
     "plugins/plugin-api-tester",
+    "plugins/provider-acp",
     "plugins/provider-retry",
     "plugins/provider-usage",
     "plugins/push-notifications",
