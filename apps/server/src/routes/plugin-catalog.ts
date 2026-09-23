@@ -12,6 +12,7 @@ import type {
 import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
 import { errorMessage } from "../services/lib/error-log-fields.js";
 import { hashedAssetCacheControl } from "./plugin-image-response.js";
+import { prefersRespondAsync } from "./plugin-install-jobs.js";
 
 function entrySelector(
   entryId: string | undefined,
@@ -90,8 +91,18 @@ export function registerPluginCatalogRoutes(
         422,
       );
     }
-    const job = installJobs.start(() => catalog.install(body.data));
-    return context.json({ ok: true as const, job }, 202);
+    if (prefersRespondAsync(context)) {
+      const job = installJobs.start(() => catalog.install(body.data));
+      return context.json({ ok: true as const, job }, 202);
+    }
+    try {
+      return context.json({
+        ok: true as const,
+        plugin: await catalog.install(body.data),
+      });
+    } catch (error) {
+      return context.json({ error: errorMessage(error) }, 422);
+    }
   });
 
   app.get("/marketplaces", (context) =>

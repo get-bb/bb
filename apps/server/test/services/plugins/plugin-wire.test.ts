@@ -334,7 +334,11 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         body,
       },
     );
-    expect(nodeClient.status).toBe(202);
+    expect(nodeClient.status).toBe(422);
+    expect(await nodeClient.json()).toEqual({
+      ok: false,
+      error: "install sentinel",
+    });
     expect(install).toHaveBeenCalledOnce();
   });
 

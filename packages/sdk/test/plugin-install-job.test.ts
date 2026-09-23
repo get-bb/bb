@@ -46,10 +46,12 @@ function jsonResponse(body: unknown, status: number): Response {
 function createJobServerSdk(polledJobs: readonly unknown[]): {
   sdk: ReturnType<typeof createBbSdk>;
   urls: string[];
+  preferences: (string | null)[];
 } {
   const urls: string[] = [];
+  const preferences: (string | null)[] = [];
   let poll = 0;
-  const fetch: FetchImplementation = (input) => {
+  const fetch: FetchImplementation = (input, init) => {
     const url = String(input);
     urls.push(url);
     if (url.endsWith("/install-jobs/job-1")) {
@@ -57,6 +59,7 @@ function createJobServerSdk(polledJobs: readonly unknown[]): {
       poll += 1;
       return Promise.resolve(jsonResponse({ ok: true, job }, 200));
     }
+    preferences.push(new Headers(init?.headers).get("prefer"));
     return Promise.resolve(
       jsonResponse({ ok: true, job: { id: "job-1", state: "running" } }, 202),
     );
@@ -68,12 +71,12 @@ function createJobServerSdk(polledJobs: readonly unknown[]): {
       runtime: "node",
     }),
   });
-  return { sdk, urls };
+  return { sdk, urls, preferences };
 }
 
 describe("plugin install against a server that answers with a job", () => {
-  it("polls until the job succeeds and returns the installed plugin", async () => {
-    const { sdk, urls } = createJobServerSdk([
+  it("asks for a job, then polls until it succeeds and returns the plugin", async () => {
+    const { sdk, urls, preferences } = createJobServerSdk([
       { id: "job-1", state: "running" },
       { id: "job-1", state: "succeeded", plugin: installedPlugin },
     ]);
@@ -81,6 +84,7 @@ describe("plugin install against a server that answers with a job", () => {
     await expect(
       sdk.plugins.install({ source: "npm:@bb/notes@^1" }),
     ).resolves.toMatchObject({ id: "notes", status: "running" });
+    expect(preferences).toEqual(["respond-async"]);
     expect(urls).toEqual([
       "http://bb.test/api/v1/plugins/install",
       "http://bb.test/api/v1/plugins/install-jobs/job-1",
@@ -99,13 +103,14 @@ describe("plugin install against a server that answers with a job", () => {
   });
 
   it("follows the job for a catalog install too", async () => {
-    const { sdk, urls } = createJobServerSdk([
+    const { sdk, urls, preferences } = createJobServerSdk([
       { id: "job-1", state: "succeeded", plugin: installedPlugin },
     ]);
 
     await expect(
       sdk.plugins.catalog.install({ entryId: "notes" }),
     ).resolves.toMatchObject({ id: "notes" });
+    expect(preferences).toEqual(["respond-async"]);
     expect(urls[0]).toBe("http://bb.test/api/v1/plugin-catalog/install");
   });
 });

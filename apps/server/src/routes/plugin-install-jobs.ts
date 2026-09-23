@@ -1,5 +1,14 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
+
+export function prefersRespondAsync(context: Context): boolean {
+  return (context.req.header("prefer") ?? "")
+    .split(",")
+    .some(
+      (preference) =>
+        preference.split(";")[0]?.trim().toLowerCase() === "respond-async",
+    );
+}
 
 export function registerPluginInstallJobRoutes(
   app: Hono,

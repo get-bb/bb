@@ -275,6 +275,7 @@ function pluginPath(pluginId: string, suffix = ""): string {
 }
 
 const PLUGIN_INSTALL_JOB_POLL_INTERVAL_MS = 500;
+const RESPOND_ASYNC_HEADERS = { prefer: "respond-async" };
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -296,10 +297,14 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     return schema.parse(json);
   }
 
-  function jsonInit(method: "POST" | "PUT", body: unknown): RequestInit {
+  function jsonInit(
+    method: "POST" | "PUT",
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): RequestInit {
     return {
       method,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
     };
   }
@@ -328,7 +333,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         await requestParsed(
           "/api/v1/plugin-catalog/install",
           pluginInstallResponseSchema,
-          jsonInit("POST", body),
+          jsonInit("POST", body, RESPOND_ASYNC_HEADERS),
         ),
       );
     },
@@ -494,7 +499,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         await requestParsed(
           "/api/v1/plugins/install",
           pluginInstallResponseSchema,
-          jsonInit("POST", body),
+          jsonInit("POST", body, RESPOND_ASYNC_HEADERS),
         ),
       );
     },

@@ -2,18 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
-import {
-  pluginInstallJobSchema,
-  type PluginInstallJob,
-} from "@bb/server-contract";
-import { z } from "zod";
+import { pluginInstallJobSchema } from "@bb/server-contract";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
-import {
-  createPluginInstallJobs,
-  type PluginInstallJobs,
-} from "../../../src/services/plugins/plugin-install-jobs.js";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
@@ -28,23 +22,6 @@ const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h16v16H0z"/></svg>',
 );
-
-async function settledJob(
-  installJobs: PluginInstallJobs,
-  started: Response,
-): Promise<PluginInstallJob> {
-  const body: unknown = await started.json();
-  const { job } = z
-    .object({ ok: z.literal(true), job: pluginInstallJobSchema })
-    .parse(body);
-  return vi.waitFor(() => {
-    const current = installJobs.get(job.id);
-    if (current === undefined || current.state === "running") {
-      throw new Error(`install job ${job.id} is still running`);
-    }
-    return current;
-  });
-}
 
 describe("plugin catalog routes", () => {
   let db: DbConnection;
@@ -91,7 +68,7 @@ describe("plugin catalog routes", () => {
   }
 
   it("serves status/search and validates install requests", async () => {
-    const { app, installJobs } = catalogApp();
+    const { app } = catalogApp();
 
     const status = await app.request("/plugin-catalog");
     await expect(status.json()).resolves.toMatchObject({
@@ -121,9 +98,8 @@ describe("plugin catalog routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ entryId: "memory" }),
     });
-    expect(install.status).toBe(202);
-    await expect(settledJob(installJobs, install)).resolves.toMatchObject({
-      state: "failed",
+    expect(install.status).toBe(422);
+    await expect(install.json()).resolves.toMatchObject({
       error: expect.stringContaining("unexpected install"),
     });
 
@@ -133,6 +109,30 @@ describe("plugin catalog routes", () => {
       body: JSON.stringify({ entryId: "memory", version: "0.2.0" }),
     });
     expect(versionOverride.status).toBe(422);
+  });
+
+  it("answers a respond-async install with a job that reports the outcome", async () => {
+    const { app, installJobs } = catalogApp();
+
+    const install = await app.request("/plugin-catalog/install", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        prefer: "respond-async",
+      },
+      body: JSON.stringify({ entryId: "memory" }),
+    });
+
+    expect(install.status).toBe(202);
+    const { job } = z
+      .object({ ok: z.literal(true), job: pluginInstallJobSchema })
+      .parse(await install.json());
+    await vi.waitFor(() => {
+      expect(installJobs.get(job.id)).toMatchObject({
+        state: "failed",
+        error: expect.stringContaining("unexpected install"),
+      });
+    });
   });
 
   it("serves a cached icon with hash-gated caching and refuses unknown ones", async () => {
@@ -337,7 +337,7 @@ describe("plugin catalog routes", () => {
     });
 
     it("routes an install to the named marketplace", async () => {
-      const { app, installJobs } = acmeApp();
+      const { app } = acmeApp();
       await postJson(app, "/marketplaces", { source: ACME_URL });
 
       const install = await postJson(app, "/plugin-catalog/install", {
@@ -350,9 +350,8 @@ describe("plugin catalog routes", () => {
           unresolvedReason: "no registry in this test",
         },
       });
-      expect(install.status).toBe(202);
-      await expect(settledJob(installJobs, install)).resolves.toMatchObject({
-        state: "failed",
+      expect(install.status).toBe(422);
+      await expect(install.json()).resolves.toMatchObject({
         error: expect.stringContaining("the npm source could not be resolved"),
       });
 
@@ -361,11 +360,8 @@ describe("plugin catalog routes", () => {
         "/plugin-catalog/install",
         { entryId: "notes", marketplace: "nope" },
       );
-      expect(unknownMarketplace.status).toBe(202);
-      await expect(
-        settledJob(installJobs, unknownMarketplace),
-      ).resolves.toMatchObject({
-        state: "failed",
+      expect(unknownMarketplace.status).toBe(422);
+      await expect(unknownMarketplace.json()).resolves.toMatchObject({
         error: expect.stringContaining('unknown marketplace "nope"'),
       });
     });

@@ -23,7 +23,10 @@ async function startInstall(
 ): Promise<PluginInstallJob> {
   const response = await harness.app.request(`${BASE}/api/v1/plugins/install`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      prefer: "respond-async",
+    },
     body: JSON.stringify({ source }),
   });
   expect(response.status).toBe(202);
@@ -82,6 +85,23 @@ describe("plugin install jobs", () => {
       id: started.id,
       state: "failed",
       error: "install sentinel",
+    });
+  });
+
+  it("keeps answering with the installed plugin when the client did not ask for a job", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/install`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: "builtin:keep-awake" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      plugin: { id: "keep-awake", status: "running" },
     });
   });
 
