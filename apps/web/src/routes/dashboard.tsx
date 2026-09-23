@@ -260,7 +260,7 @@ function SetupCodePanel({
   }, [code, fetchCode]);
 
   const cli = code
-    ? `npx -p bb-app@latest bb account login --code ${code.code}`
+    ? `npx -p bb-app@latest bb connect --code ${code.code} --server ${code.serverUrl}`
     : "";
 
   return (
@@ -268,10 +268,8 @@ function SetupCodePanel({
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Paste in{" "}
-        <span className="font-medium text-foreground">
-          Settings → bb account
-        </span>{" "}
-        (Remote access on older versions) on your bb{" · "}
+        <span className="font-medium text-foreground">Plugins → connect</span>{" "}
+        on your bb{" · "}
         <button
           className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
           onClick={() => setShowCli((v) => !v)}
@@ -314,10 +312,7 @@ function RepairCodeBlock({ serverId }: { serverId: string }) {
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Re-pairing replaces this bb&rsquo;s credential. Paste in{" "}
-        <span className="font-medium text-foreground">
-          Settings → bb account
-        </span>{" "}
-        (Remote access on older versions)
+        <span className="font-medium text-foreground">Plugins → connect</span>
         {code ? ` · expires in ${minutes(code.expiresInMs)} min` : ""}
       </p>
     </div>

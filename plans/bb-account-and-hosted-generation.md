@@ -229,7 +229,9 @@ hold is on.
   - Polling is rate limited per device code.
 - Add `POST /api/connect/tunnel-ticket`. It returns an HMAC-signed
   `{serverId, exp}` under a gate secret, valid for 5 minutes.
-- Change the dashboard instructions to `bb account login --code …`.
+- Keep the dashboard's `bb connect --code … --server …` instructions until a
+  bb release with bb account ships; the hosted side deploys first, and
+  `bb connect --code` stays as an alias afterwards.
 
 **bb-connect gate (`apps/connect`)**
 
