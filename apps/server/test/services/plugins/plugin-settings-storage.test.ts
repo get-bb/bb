@@ -22,6 +22,7 @@ import {
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
@@ -288,7 +289,12 @@ describe("plugin settings + storage", () => {
       ).rejects.toThrow("lowercase letters only");
 
       const app = new Hono();
-      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      registerPluginRoutes(
+        app,
+        { config: { serverPort: 3334 }, db },
+        service,
+        createPluginInstallJobs(),
+      );
       const got = await app.request("/plugins/self-configuring/settings");
       const body = (await got.json()) as {
         schema: Record<string, Record<string, unknown>>;
@@ -347,7 +353,12 @@ describe("plugin settings + storage", () => {
     it("serves schema+values over the routes; PUT validates with 400s", async () => {
       await installConfigurable();
       const app = new Hono();
-      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      registerPluginRoutes(
+        app,
+        { config: { serverPort: 3334 }, db },
+        service,
+        createPluginInstallJobs(),
+      );
 
       const got = await app.request("/plugins/configurable/settings");
       expect(got.status).toBe(200);

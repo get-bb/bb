@@ -31,6 +31,7 @@ import {
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -360,7 +361,12 @@ describe("plugin update service and routes", () => {
     });
     await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
-    registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+    registerPluginRoutes(
+      app,
+      { config: { serverPort: 3334 }, db },
+      service,
+      createPluginInstallJobs(),
+    );
   });
 
   afterEach(async () => {

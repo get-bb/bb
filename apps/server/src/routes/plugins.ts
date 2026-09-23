@@ -23,6 +23,7 @@ import type {
   PluginMentionTrigger,
   PluginWebSocketRouteRecord,
 } from "../services/plugins/plugin-api.js";
+import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import {
   createAppAssetCompressionCache,
@@ -313,6 +314,7 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  installJobs: PluginInstallJobs,
   upgradeWebSocket?: UpgradeWebSocket,
 ): void {
   const appAssetCompressionCache = createAppAssetCompressionCache(
@@ -647,21 +649,10 @@ export function registerPluginRoutes(
         422,
       );
     }
-    try {
-      const plugin = await plugins.install(
-        parsed.data.source,
-        parsed.data.selection,
-      );
-      return context.json({ ok: true, plugin });
-    } catch (error) {
-      return context.json(
-        {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        422,
-      );
-    }
+    const job = installJobs.start(() =>
+      plugins.install(parsed.data.source, parsed.data.selection),
+    );
+    return context.json({ ok: true, job }, 202);
   });
 
   app.get("/plugins/:id/source", async (context) => {

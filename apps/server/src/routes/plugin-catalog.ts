@@ -9,6 +9,7 @@ import type {
   PluginCatalogEntrySelector,
   PluginCatalogService,
 } from "../services/plugin-catalog/plugin-catalog-service.js";
+import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
 import { errorMessage } from "../services/lib/error-log-fields.js";
 import { hashedAssetCacheControl } from "./plugin-image-response.js";
 
@@ -26,6 +27,7 @@ function entrySelector(
 export function registerPluginCatalogRoutes(
   app: Hono,
   catalog: PluginCatalogService,
+  installJobs: PluginInstallJobs,
 ): void {
   app.get("/plugin-catalog", (context) =>
     context.json({ catalog: catalog.status() }),
@@ -88,14 +90,8 @@ export function registerPluginCatalogRoutes(
         422,
       );
     }
-    try {
-      return context.json({
-        ok: true as const,
-        plugin: await catalog.install(body.data),
-      });
-    } catch (error) {
-      return context.json({ error: errorMessage(error) }, 422);
-    }
+    const job = installJobs.start(() => catalog.install(body.data));
+    return context.json({ ok: true as const, job }, 202);
   });
 
   app.get("/marketplaces", (context) =>
