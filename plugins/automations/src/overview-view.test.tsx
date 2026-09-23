@@ -8,13 +8,21 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
-import { focusWithKeyboard } from "@/test/keyboard-focus";
+import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
+import { AutomationOverviewView } from "../overview-view.js";
 import type {
   AutomationResponse,
   AutomationsOverviewResponse,
-} from "bb-plugin-automations/rpc-types";
+} from "./rpc-types.js";
+
+installTestPluginRuntime();
+
+function focusWithKeyboard(element: HTMLElement): void {
+  fireEvent.keyDown(element.ownerDocument.body, { key: "Tab" });
+  element.focus();
+  fireEvent.focus(element);
+}
 
 function iconNames(element: HTMLElement): string[] {
   return [...element.querySelectorAll("[data-icon]")].map(

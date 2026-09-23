@@ -48,8 +48,10 @@ built-ins held to this rule. Two checks read it:
   Plugin-only logic moves into the plugin.
 - **Its own test config.** `vitest.config.ts` uses `defineConfig` from
   `vitest/config` with `resolve: { tsconfigPaths: true }`, not
-  `vitest.shared.ts`, which a copy does not have. The tsconfig has no
-  `customConditions: ["source"]`, which only resolves inside this
+  `vitest.shared.ts`, which a copy does not have. Vite maps `@/` only in
+  files the tsconfig includes, so `include` names every file that imports
+  `@/`; tsc reaching a file through an import is not enough. The tsconfig has
+  no `customConditions: ["source"]`, which only resolves inside this
   repository. With `tsconfigPaths`, it also maps nothing onto
   `@get-bb/plugin-sdk`: vitest follows `paths` at runtime, so an entry
   pointing at the SDK's bundled declarations loads a module with no exports.
@@ -62,11 +64,17 @@ built-ins held to this rule. Two checks read it:
   `react-dom`, and their `@types` for `renderSlot`.
 - **Portable tests.** Tests use the SDK test harness and plugin-local fixtures.
   They do not import app or workspace source, and they do not assert on host
-  behavior. Host tests that load a listed plugin import it by a resolved path
-  at runtime, as `apps/app/src/components/sidebar/sidebar.bench.test.tsx`
-  does: a literal import would pull the plugin's `@/` imports into the host's
-  own type program, where `@/` means the host's source. Ladle stories run in
-  the browser, so they load the plugin with `import.meta.glob`, as
+  behavior. Tests of the plugin's own components live in the plugin. Host
+  tests that load a listed plugin import it by a resolved path at runtime, as
+  `apps/app/src/components/sidebar/sidebar.bench.test.tsx` does: a literal
+  import would pull the plugin's `@/` imports into the host's own type
+  program, where `@/` means the host's source. For the same reason, Ladle
+  stories either live in the plugin directory, are listed in
+  `apps/app/.ladle/config.mjs`, and import nothing outside the plugin (they
+  lay out their own rows, and a story whose host components need app data
+  asks for it in its Ladle `meta`: `modelPickerCatalog` seeds the model
+  picker catalog, read by `apps/app/.ladle/components.tsx`), or live in the
+  app and load the plugin with `import.meta.glob`, as
   `apps/app/src/components/thread/pending-interactions/InteractionStates.stories.tsx`
   does.
 - **Turbo entries.** `turbo.json` gives the plugin's `typecheck` and `test`

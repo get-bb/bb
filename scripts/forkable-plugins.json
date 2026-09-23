@@ -4,6 +4,7 @@
     "plugins/account-pool",
     "plugins/agent-annotations",
     "plugins/ask-user-question",
+    "plugins/automations",
     "plugins/bb-guide",
     "plugins/browser-automation",
     "plugins/concurrency-limit",

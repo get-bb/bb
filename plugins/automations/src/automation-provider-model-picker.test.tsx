@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  ExperimentalIconProps,
   ExperimentalPermissionModePickerProps,
   ExperimentalProviderIconProps,
   ExperimentalProviderModelPickerProps,
@@ -13,6 +14,9 @@ import type {
 } from "./rpc-types.js";
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
+  experimental_Icon: ({ name }: ExperimentalIconProps) => (
+    <span data-icon={name} />
+  ),
   experimental_ProviderIcon: ({ provider }: ExperimentalProviderIconProps) => (
     <span data-provider-icon={provider.id} />
   ),

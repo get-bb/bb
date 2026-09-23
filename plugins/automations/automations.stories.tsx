@@ -1,22 +1,68 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AgentAutomationDefinition,
+  AutomationLifecycleControl,
   AutomationScriptContent,
   ScriptAutomationDefinition,
   RunRow,
-} from "bb-plugin-automations/detail-view";
-import { OverviewRow } from "bb-plugin-automations/overview-view";
+} from "./detail-view";
+import { AUTOMATION_CREATE_TEMPLATES, OverviewRow } from "./overview-view";
 import type {
   AutomationResponse,
   AgentEnvironment,
   AutomationRunResponse,
   AutomationsOverviewResponse,
-} from "bb-plugin-automations/rpc-types";
-import { ResourceListState } from "@bb/shared-ui/resource-list";
-import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
+} from "./src/rpc-types";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import {
+  ResourceActionButton,
+  ResourceCreateButton,
+  ResourceListState,
+  ResourceOverflowMenu,
+} from "@/components/ui/resource-list";
 
-export default { title: "Automations" };
+export default {
+  title: "Automations",
+  meta: { modelPickerCatalog: { environmentIds: ["env_story_reuse"] } },
+};
+
+function StoryCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col rounded-md" style={{ margin: "1.5rem" }}>
+      {children}
+    </div>
+  );
+}
+
+function StoryRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="grid items-start gap-x-4 px-4 py-3"
+      style={{ gridTemplateColumns: "210px minmax(0, 1fr)" }}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        {hint === undefined ? null : (
+          <span className="text-xs break-words text-muted-foreground">
+            {hint}
+          </span>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 const noop = () => {};
 const now = new Date(2027, 0, 15, 9).getTime();
@@ -257,35 +303,27 @@ function PromptVariant({
   const [editing, setEditing] = useState(editable);
   if (execution.mode !== "agent") return null;
   return (
-    <ModelPickerStoryQueryProvider
-      environmentId={
-        execution.environment.type === "reuse"
-          ? execution.environment.environmentId
-          : null
-      }
-    >
-      <div className="w-full max-w-2xl">
-        <AgentAutomationDefinition
-          execution={execution}
-          editing={editing}
-          personalProject={value.projectId === "proj_personal"}
-          projectContextLabel={
-            projectLabel ??
-            (value.projectId === "proj_personal" ? "Personal" : "bb")
-          }
-          pending={false}
-          onCancel={() => setEditing(false)}
-          onUpdate={async (update) => {
-            setExecution({
-              ...execution,
-              ...update,
-              serviceTier: update.serviceTier ?? undefined,
-            });
-            setEditing(false);
-          }}
-        />
-      </div>
-    </ModelPickerStoryQueryProvider>
+    <div className="w-full max-w-2xl">
+      <AgentAutomationDefinition
+        execution={execution}
+        editing={editing}
+        personalProject={value.projectId === "proj_personal"}
+        projectContextLabel={
+          projectLabel ??
+          (value.projectId === "proj_personal" ? "Personal" : "bb")
+        }
+        pending={false}
+        onCancel={() => setEditing(false)}
+        onUpdate={async (update) => {
+          setExecution({
+            ...execution,
+            ...update,
+            serviceTier: update.serviceTier ?? undefined,
+          });
+          setEditing(false);
+        }}
+      />
+    </div>
   );
 }
 
@@ -518,7 +556,7 @@ export function DetailStates() {
         label="Narrow prompt box"
         hint="A 320px-wide reused-environment prompt. Exercises compact labels and permission-control sizing."
       >
-        <div className="w-80 max-w-full">
+        <div className="max-w-full" style={{ width: 320 }}>
           <PromptVariant
             value={environmentVariant({
               type: "reuse",
@@ -591,6 +629,158 @@ export function RunStates() {
           ),
         ),
       )}
+    </StoryCard>
+  );
+}
+
+const automationMenuItems = [
+  { label: "Run now", icon: "Play" as const, onSelect: noop },
+  { kind: "separator" as const },
+  {
+    label: "Delete",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
+export function ControlStates() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="Active"
+        hint="A recurring or future one-time automation is enabled."
+      >
+        <AutomationLifecycleControl
+          checked
+          label="Pause automation"
+          onCheckedChange={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Paused"
+        hint="The automation is retained but will not run."
+      >
+        <AutomationLifecycleControl
+          checked={false}
+          label="Resume automation"
+          onCheckedChange={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Lifecycle pending"
+        hint="An automation mutation is in flight."
+      >
+        <AutomationLifecycleControl
+          checked
+          disabled
+          label="Pause automation"
+          onCheckedChange={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Completed one-time"
+        hint="The schedule is terminal; focus or hover the disabled switch for the reason."
+      >
+        <AutomationLifecycleControl
+          checked={false}
+          disabled
+          disabledReason="This one-time automation has completed. Edit it to schedule another run."
+          label="Completed automation"
+          onCheckedChange={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Expired one-time"
+        hint="The scheduled time passed without a completed run."
+      >
+        <AutomationLifecycleControl
+          checked={false}
+          disabled
+          disabledReason="This one-time automation expired. Edit it to schedule another run."
+          label="Expired automation"
+          onCheckedChange={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Create"
+        hint="Starts a blank chat-authored automation or opens the example menu."
+      >
+        <ResourceCreateButton
+          label="New automation"
+          templates={AUTOMATION_CREATE_TEMPLATES}
+          onCreate={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Edit"
+        hint="Contextual action attached to the Prompt or Script section."
+      >
+        <ResourceActionButton
+          label="Edit with chat"
+          tooltipLabel="Edit with chat"
+          icon="Edit"
+          onClick={noop}
+        />
+      </StoryRow>
+      <StoryRow label="Edit loading" hint="The section action is in flight.">
+        <ResourceActionButton
+          label="Editing with chat"
+          tooltipLabel="Editing with chat"
+          icon="Edit"
+          loading
+          onClick={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Edit unavailable"
+        hint="The action remains discoverable and explains why it cannot run."
+      >
+        <ResourceActionButton
+          label="Edit with chat"
+          icon="Edit"
+          disabled
+          disabledReason="No writable automation source"
+          onClick={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Actions"
+        hint="Run now and Delete live in the automation ownership menu."
+      >
+        <ResourceOverflowMenu
+          label="Automation actions"
+          items={automationMenuItems}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Actions pending"
+        hint="The menu is disabled while another automation action is pending."
+      >
+        <ResourceOverflowMenu
+          label="Automation actions pending"
+          disabled
+          items={automationMenuItems}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Run now"
+        hint="The empty Runs state offers the manual action inline."
+      >
+        <Button type="button" variant="outline" size="sm" onClick={noop}>
+          <Icon name="Play" className="size-3.5" aria-hidden />
+          Run now
+        </Button>
+      </StoryRow>
+      <StoryRow
+        label="Run now pending"
+        hint="Manual execution is unavailable while another action is pending."
+      >
+        <Button type="button" variant="outline" size="sm" disabled>
+          <Icon name="Play" className="size-3.5" aria-hidden />
+          Run now
+        </Button>
+      </StoryRow>
     </StoryCard>
   );
 }
