@@ -187,7 +187,9 @@ not call a server. `install-machine-service` runs locally on the computer a
 server moved away from: it stops bb there and runs
 `install-machine.sh --adopt --data-dir <dir>`, which downloads the new server's
 bb-app package and installs the persistent, self-updating machine service with
-the same machine ID.
+the same machine ID. When the old server ran in the desktop app, the app runs
+the same installer itself after the move and on later launches while the
+service is missing, then keeps only the old-address responder running.
 
 Routes and SDK (`docs/api_to_audit.md` covers stabilization):
 

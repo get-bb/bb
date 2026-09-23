@@ -254,10 +254,13 @@ once the original server is stopped (`--json` prints `dataDir` and
 After a move, the old computer's data directory keeps `server-moved.json`, so
 bb there refuses to start the old server and runs as a regular machine.
 `bb server delete-old-copy` deletes the server files left behind and keeps that
-lock. The desktop app or `bb-app` keeps that machine connected only while it
-runs, and its daemon can't update itself.
-`bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` gives
-it the persistent, self-updating service a CLI-installed machine gets: it needs
+lock. The desktop app installs the persistent, self-updating service a
+CLI-installed machine gets as soon as its server moves, and on later launches
+if the service is missing; until that succeeds (it needs Node.js 22.19 or newer
+on the PATH), the app keeps that machine connected only while it is open and
+explains why once. After a move from `bb-app`, or to retry by hand,
+`bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` installs
+the same service: it needs
 Node.js 22.19 or newer on the PATH, stops bb running from that directory, and
 runs `install-machine.sh --adopt --data-dir <dir>`, which keeps the machine ID,
 downloads the new server's bb-app package, and installs the launchd or systemd

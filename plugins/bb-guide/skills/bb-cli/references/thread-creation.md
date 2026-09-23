@@ -263,8 +263,9 @@ time that server starts.
 
 The old computer's data directory keeps a `server-moved.json` lock, so bb runs
 there as a regular machine. `bb server delete-old-copy` deletes the server files
-the move left behind and keeps the lock. That machine stays connected only while
-the desktop app or `bb-app` runs, and its daemon can't update itself;
+the move left behind and keeps the lock. The desktop app installs a persistent,
+self-updating machine service there after the move; until that succeeds, and
+after a move from `bb-app`, the machine stays connected only while the app runs.
 `bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` stops
 bb there and runs `install-machine.sh --adopt --data-dir <dir>` to install the
 persistent, self-updating service with the same machine ID. It needs Node.js
