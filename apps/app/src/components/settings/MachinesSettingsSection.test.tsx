@@ -810,6 +810,39 @@ describe("MachinesSettingsSection", () => {
     }
   });
 
+  it("keeps a dialog chosen from the row menu with the keyboard open", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.hosts.experimental_reconnect).mockReturnValue(
+      new Promise(() => {}),
+    );
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    for (const [itemName, dialogName] of [
+      ["Remove machine", "Remove dev-vm?"],
+      ["Reconnect", "Reconnect machine"],
+    ]) {
+      const trigger = await screen.findByRole("button", {
+        name: "dev-vm actions",
+      });
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      const item = await screen.findByRole("menuitem", { name: itemName });
+      item.focus();
+      fireEvent.keyDown(item, { key: "Enter" });
+
+      const dialog = await screen.findByRole("dialog", { name: dialogName });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(dialog.isConnected).toBe(true);
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+      });
+    }
+  });
+
   it("requests a reconnect command and shows it for the chosen machine", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);

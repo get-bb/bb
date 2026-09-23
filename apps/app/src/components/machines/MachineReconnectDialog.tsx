@@ -43,7 +43,10 @@ export function MachineReconnectDialog({
 
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange} modal={false}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Reconnect machine</DialogTitle>
           <DialogDescription
