@@ -42,6 +42,7 @@ const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 const DEFAULT_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const DEFAULT_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 const DEFAULT_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
+const EXHAUSTED_USAGE_REFRESH_INTERVAL_MS = 30 * 1_000;
 const MAX_INLINE_HOLD_MS = 20_000;
 const MAX_REFRESH_BACKOFF_MS = 60_000;
 const MAX_REFRESH_BACKOFFS = 1_024;
@@ -276,26 +277,54 @@ export class AccountPoolHub {
         (accountId === undefined || account.id === accountId),
     );
     await Promise.all(
-      accounts.map((account) => this.refreshAccountUsage(account, force)),
+      accounts.map((account) =>
+        this.refreshAccountUsage(
+          account,
+          force ? 0 : DEFAULT_USAGE_REFRESH_INTERVAL_MS,
+        ),
+      ),
     );
+  }
+
+  private async refreshExhaustedUsage(
+    candidateIds: ReadonlySet<string>,
+    attempted: ReadonlySet<string>,
+    family: ModelFamily,
+  ): Promise<boolean> {
+    const now = this.options.now();
+    const threshold = this.options.getSettings().switchThreshold;
+    const accounts = (await this.options.accounts.list()).filter((account) => {
+      if (
+        !candidateIds.has(account.id) ||
+        attempted.has(account.id) ||
+        !account.enabled ||
+        account.kind !== "oauth"
+      )
+        return false;
+      const quota = this.options.quotas.get(account.id);
+      return (
+        quota.error === null && isQuotaExhausted(quota, family, threshold, now)
+      );
+    });
+    const refreshed = await Promise.all(
+      accounts.map((account) =>
+        this.refreshAccountUsage(account, EXHAUSTED_USAGE_REFRESH_INTERVAL_MS),
+      ),
+    );
+    return refreshed.includes(true);
   }
 
   private async refreshAccountUsage(
     account: Account,
-    force: boolean,
-  ): Promise<void> {
+    minIntervalMs: number,
+  ): Promise<boolean> {
     const adapter = this.adapter(account.provider);
-    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return;
+    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return false;
     const now = this.options.now();
     const last = this.lastUsageRefreshAt.get(account.id);
-    if (
-      !force &&
-      last !== undefined &&
-      now - last < DEFAULT_USAGE_REFRESH_INTERVAL_MS
-    )
-      return;
+    if (last !== undefined && now - last < minIntervalMs) return false;
     const running = this.usageRefreshes.get(account.id);
-    if (running !== undefined) return running;
+    if (running !== undefined) return running.then(() => true);
     this.lastUsageRefreshAt.set(account.id, now);
     const refresh = adapter
       .refreshUsage({
@@ -310,7 +339,7 @@ export class AccountPoolHub {
       .catch(() => undefined)
       .finally(() => this.usageRefreshes.delete(account.id));
     this.usageRefreshes.set(account.id, refresh);
-    return refresh;
+    return refresh.then(() => true);
   }
 
   async stop(): Promise<void> {
@@ -377,6 +406,7 @@ export class AccountPoolHub {
     };
     let previousAccountId: string | null = null;
     let failure: FailureSummary | null = null;
+    let usageRefreshed = false;
     const accounts = (await this.options.accounts.list()).filter(
       (account) => account.provider === adapter.provider,
     );
@@ -405,7 +435,18 @@ export class AccountPoolHub {
           routing,
           signal,
         );
-        if (selected === null) break;
+        if (selected === null) {
+          if (usageRefreshed) break;
+          usageRefreshed = true;
+          if (
+            !(await abortable(
+              this.refreshExhaustedUsage(candidateIds, attempted, family),
+              signal,
+            ))
+          )
+            break;
+          continue;
+        }
         let pacing: PacingFlight | null = null;
         const heldMs = (selected.quota.heldUntil ?? 0) - this.options.now();
         let activePacing = this.pacingByAccount.get(selected.account.id);

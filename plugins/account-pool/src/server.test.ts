@@ -5842,6 +5842,53 @@ describe("sequential pool recovery", () => {
         ?.status,
     ).toBe("exhausted");
   });
+
+  it("refreshes exhausted usage before refusing a request, at most every 30 seconds per account", async () => {
+    let now = Date.now();
+    let usagePercent = 100;
+    const calls: string[] = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "import",
+      options: {
+        now: () => now,
+        usageUrl: "https://upstream.example/usage",
+        importCredentials: async () => importedCredentials(),
+        fetch: async (input) => {
+          const url = new URL(String(input));
+          calls.push(url.pathname);
+          if (url.pathname === "/usage")
+            return Response.json({
+              seven_day: {
+                utilization: usagePercent,
+                resets_at: String(Math.floor(now / 1_000) + 3 * 86_400),
+              },
+            });
+          return Response.json({});
+        },
+      },
+    });
+    const send = async () => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+      return response.status;
+    };
+    expect(calls).toEqual(["/usage"]);
+    expect(await send()).toBe(429);
+    now += 30_000;
+    expect(await send()).toBe(429);
+    expect(await send()).toBe(429);
+    usagePercent = 30;
+    expect(await send()).toBe(429);
+    now += 30_000;
+    expect(await send()).toBe(200);
+    expect(calls).toEqual(["/usage", "/usage", "/usage", "/v1/messages"]);
+  });
+
   it("applies reordered failover atomically without moving current conversations", async () => {
     const attempts: Array<string | null> = [];
     let rejectFirst = false;
