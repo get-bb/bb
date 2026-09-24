@@ -599,13 +599,12 @@ describe("createServerMovedWatcher", () => {
     await harness.timers.flush();
 
     await vi.waitFor(() => {
-      expect(harness.onMove).toHaveBeenCalledOnce();
+      expect(harness.onMove).toHaveBeenCalledExactlyOnceWith({
+        ...CONNECT_MOVE,
+        moveId: "move-3",
+      });
     });
     expect(harness.confirmMove).toHaveBeenCalledTimes(2);
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith({
-      ...CONNECT_MOVE,
-      moveId: "move-3",
-    });
     harness.watcher.stop();
   });
 

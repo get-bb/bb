@@ -220,12 +220,6 @@ function notifyZoomChangeIfChanged(): void {
   }
 }
 
-if (typeof window !== "undefined" && typeof document !== "undefined") {
-  window.addEventListener("resize", notifyZoomChangeIfChanged, {
-    passive: true,
-  });
-}
-
 function addListener<T>(listeners: Set<T>, listener: T): () => void {
   listeners.add(listener);
   return () => {
@@ -564,6 +558,7 @@ forwardParsed(
 );
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
+  window.addEventListener("resize", notifyZoomChangeIfChanged);
   window.addEventListener("DOMContentLoaded", () => {
     document
       .querySelector('[data-testid="bb-startup-retry"]')

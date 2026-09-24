@@ -58,7 +58,10 @@ export function DesktopZoomIndicator() {
           restartHideTimer();
         }}
       >
-        <span aria-live="polite" className="min-w-12 text-center text-sm font-medium tabular-nums">
+        <span
+          aria-live="polite"
+          className="min-w-12 text-center text-sm font-medium tabular-nums"
+        >
           {Math.round(zoomFactor * 100)}%
         </span>
         <Button
@@ -86,7 +89,7 @@ export function DesktopZoomIndicator() {
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs"
+          className="h-7 px-2"
           aria-label="Reset zoom"
           disabled={zoomFactor === 1}
           onClick={() => zoom?.("reset")}
