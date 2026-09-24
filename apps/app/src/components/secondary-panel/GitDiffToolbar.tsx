@@ -154,13 +154,9 @@ function GitDiffFileFilterInput({
 
   return (
     <div className="relative mt-2">
-      <Icon
-        name="Search"
-        className={cn(
-          "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
-          COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-        )}
-      />
+      <span className="pointer-events-none absolute inset-y-0 left-2.25 flex w-8 items-center justify-center text-muted-foreground">
+        <Icon name="Search" className="size-3.5" />
+      </span>
       <Input
         ref={inputRef}
         aria-label="Filter changed files by path"
@@ -168,7 +164,7 @@ function GitDiffFileFilterInput({
         autoCorrect="off"
         spellCheck={false}
         className={cn(
-          "h-8 rounded-lg border-border pl-8 pr-8 text-xs focus-visible:ring-0 max-md:pointer-coarse:h-10 max-md:pointer-coarse:text-base",
+          "h-8 rounded-lg border-border pl-12 pr-8 text-xs focus-visible:ring-0 max-md:pointer-coarse:h-10 max-md:pointer-coarse:text-base",
         )}
         placeholder="Filter files, e.g. *.md, docs/**, !*.test.ts"
         value={value}
