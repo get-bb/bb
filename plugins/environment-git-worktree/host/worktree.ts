@@ -154,6 +154,14 @@ async function isPathInside(root: string, target: string): Promise<boolean> {
   );
 }
 
+async function directoryExists(target: string): Promise<boolean> {
+  try {
+    return (await fs.stat(target)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 async function removeAbandonedAttemptWorktree(args: {
   sourcePath: string;
   ownWorktreesRoot: string;
@@ -166,15 +174,36 @@ async function removeAbandonedAttemptWorktree(args: {
     return;
   }
   throwIfProvisionAborted(args.signal);
-  const status = await runGit(["status", "--porcelain"], {
-    cwd: holder,
-    ...(args.signal !== undefined ? { signal: args.signal } : {}),
-  });
-  if (status.stdout.trim() !== "") {
-    throw new WorkspaceError(
-      "abandoned_worktree_dirty",
-      `Branch ${args.branchName} is still checked out at ${holder} by an earlier attempt, and that worktree has uncommitted changes, so it was left alone. Remove it to retry.`,
-    );
+  // bb-fork: an attempt killed in the middle of `git worktree add` (a dev-mode
+  // bb-fork: plugin reload disposes the host worker mid-call) leaves the git
+  // bb-fork: admin record behind — locked as "initializing" and without its
+  // bb-fork: directory. Reading the status of a missing directory fails, so
+  // bb-fork: every later attempt for that branch died here with a bare
+  // bb-fork: "git status --porcelain failed". Drop the record instead: unlock
+  // bb-fork: plus `worktree remove --force` clear the admin entry even when
+  // bb-fork: the directory is already gone, and the branch is kept.
+  if (await directoryExists(holder)) {
+    const status = await runGit(["status", "--porcelain"], {
+      cwd: holder,
+      ...(args.signal !== undefined ? { signal: args.signal } : {}),
+    });
+    if (status.stdout.trim() !== "") {
+      throw new WorkspaceError(
+        "abandoned_worktree_dirty",
+        `Branch ${args.branchName} is still checked out at ${holder} by an earlier attempt, and that worktree has uncommitted changes, so it was left alone. Remove it to retry.`,
+      );
+    }
+  } else {
+    await runGit(["worktree", "unlock", holder], {
+      cwd: args.sourcePath,
+      ...(args.signal !== undefined ? { signal: args.signal } : {}),
+      allowFailure: true,
+    });
+    throwIfProvisionAborted(args.signal);
+    await runGit(["worktree", "remove", "--force", holder], {
+      cwd: args.sourcePath,
+      ...(args.signal !== undefined ? { signal: args.signal } : {}),
+    });
   }
   const startedAt = Date.now();
   emitStep({

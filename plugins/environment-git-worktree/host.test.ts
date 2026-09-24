@@ -282,6 +282,54 @@ describe("worktree host entry", () => {
     },
   );
 
+  // bb-fork: a worker killed mid `worktree add` leaves a locked admin record
+  // bb-fork: with no directory behind it. The next attempt for the same branch
+  // bb-fork: used to die here with a bare "git status --porcelain failed".
+  it("drops a locked worktree record whose directory is gone", async () => {
+    const { sourcePath, dataDir } = await createSourceRepository();
+    const harness = createHarness(dataDir);
+    const first = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "stale-record-first",
+        sourcePath,
+        pathKey: "stale-record-1",
+        branchName: "bb/stale-record",
+      }),
+    );
+    expect(first.status).toBe("created");
+    if (first.status !== "created") throw new Error(first.message);
+    await git(
+      sourcePath,
+      "worktree",
+      "lock",
+      "--reason",
+      "initializing",
+      first.path,
+    );
+    await rm(first.path, { recursive: true, force: true });
+
+    const second = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "stale-record-second",
+        sourcePath,
+        pathKey: "stale-record-2",
+        branchName: "bb/stale-record",
+      }),
+    );
+    expect(second.status).toBe("created");
+    if (second.status !== "created") throw new Error(second.message);
+    expect(existsSync(join(second.path, "README.md"))).toBe(true);
+    expect(await git(sourcePath, "worktree", "list")).not.toContain(
+      first.path,
+    );
+    expect(await git(sourcePath, "branch", "--list", "bb/stale-record")).toContain(
+      "bb/stale-record",
+    );
+    await harness.experimental_dispose();
+  });
+
   it("provisions the same specially named repository concurrently", async () => {
     const { sourcePath, dataDir } =
       await createSourceRepository("Concurrent Repo");

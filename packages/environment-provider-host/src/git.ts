@@ -197,7 +197,16 @@ export function runGit(
         succeed({ stdout: "", stderr: "", exitCode: 1 });
         return;
       }
-      fail(createGitCommandFailedError(args, "", error));
+      // bb-fork: the spawn failure is the only diagnostic here (ENOENT for a
+      // bb-fork: missing cwd, EPERM, ...); dropping it reported a bare
+      // bb-fork: "git status --porcelain failed" with no clue why.
+      fail(
+        createGitCommandFailedError(
+          args,
+          error instanceof Error ? error.message : String(error),
+          error,
+        ),
+      );
     });
 
     child.on("close", (code) => {
