@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
 import { buildPluginApp, resolvePluginBuildToolchain } from "@bb/plugin-build";
+import { anchorTsconfigPaths } from "./helpers/plugin-copy.js";
 function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
 }
@@ -44,6 +45,7 @@ describe("GitHub official plugin frontend bundle", () => {
         return name !== "dist" && name !== "node_modules";
       },
     });
+    await anchorTsconfigPaths(GITHUB_DIR, pluginDir);
     const sharedUiLink = join(pluginDir, "node_modules", "@bb", "shared-ui");
     await mkdir(dirname(sharedUiLink), { recursive: true });
     await symlink(

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Icon } from "@bb/shared-ui/icon";
-import { Skeleton } from "@bb/shared-ui/skeleton";
+import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   definePluginApp,
   Markdown,

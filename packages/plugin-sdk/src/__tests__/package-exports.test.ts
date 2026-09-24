@@ -27,7 +27,6 @@ describe("packed plugin SDK exports", () => {
     expect(packageJson.files).toEqual(["bundled-types", "dist", "README.md"]);
     expect(Object.keys(packageJson.exports)).toEqual([
       ".",
-      "./ai-services",
       "./provider-bridge",
       "./provider-bridge/testing",
       "./provider-bridge/acp",

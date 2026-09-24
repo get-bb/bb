@@ -5,7 +5,6 @@ export const experimentKeys = [
   "mobileApp",
   "serverMove",
   "sidebarProgressiveDisclosure",
-  "timelineWindowing",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -18,5 +17,4 @@ export const defaultExperiments: Experiments = {
   mobileApp: false,
   serverMove: false,
   sidebarProgressiveDisclosure: false,
-  timelineWindowing: false,
 };

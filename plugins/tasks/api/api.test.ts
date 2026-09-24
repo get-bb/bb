@@ -1107,11 +1107,13 @@ describe("Tasks RPC domain API", () => {
       modelId: "claude-sonnet-6",
       permissionMode: "accept-edits",
     });
-    expect(updated.preset).toMatchObject({
-      name: "Renamed",
-      modelId: "claude-sonnet-6",
-      permissionMode: "accept-edits",
-      builtin: true,
+    expect(updated).toMatchObject({
+      preset: {
+        name: "Renamed",
+        modelId: "claude-sonnet-6",
+        permissionMode: "accept-edits",
+        builtin: true,
+      },
     });
     await expect(
       harness.callRpc("deletePreset", { presetId: preset.id }),

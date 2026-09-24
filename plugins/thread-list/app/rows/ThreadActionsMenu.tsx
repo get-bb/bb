@@ -282,7 +282,7 @@ function ThreadActionsMenuItems({
         surface={surface}
         icon={isPinned ? "PinOff" : "Pin"}
         onSelect={() => {
-          void actions.setPinned(thread.id, !isPinned);
+          void actions.setPinned(thread.id, !isPinned).catch(() => undefined);
         }}
       >
         {isPinned ? "Unpin" : "Pin"}

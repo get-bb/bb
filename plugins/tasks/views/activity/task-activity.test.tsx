@@ -28,7 +28,8 @@ vi.mock("../../shell/data.js", () => ({
   useTasksRpc: () => ({ call: rpcCall }),
 }));
 
-vi.mock("@get-bb/plugin-sdk/app", () => ({
+vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@get-bb/plugin-sdk/app")>()),
   useBbNavigate: () => ({ toThread: vi.fn() }),
 }));
 
@@ -74,6 +75,7 @@ function comment(
     body: "Reply",
     notifiedCount: 0,
     createdAt: "2026-07-15T00:00:00.000Z",
+    provider: null,
   };
 }
 

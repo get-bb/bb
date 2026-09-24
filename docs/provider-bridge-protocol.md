@@ -648,7 +648,10 @@ carries one, and they assemble to the same pinned counts as the recordings.
 The conformance kit runs the same recordings as its recorded-traffic
 scenario set: `checkRecordedCellReplay` replays a bridge's cells and
 `checkRecordedCellReplay` reports `recorded/<cell>/{replays,
-events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
-first-party bridge has a `bridge.recorded-conformance.test.ts` beside its
-scripted suite, so conformance reflects the real dialect as well as the
-protocol.
+events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. The ACP
+bridge's `bridge.recorded-conformance.test.ts` sits beside its scripted suite.
+The pi, Claude Code, and Codex plugins' tests use only public dependencies,
+so they cannot read the committed recordings; `packages/provider-parity`
+replays their cells instead (`pi-recorded-conformance.test.ts` and
+`recorded-conformance.test.ts`). Conformance reflects the real dialect as
+well as the protocol.

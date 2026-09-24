@@ -4,7 +4,7 @@ Status: **2026-09-05: 3 passed, 1 partial/blocked**. See [the audit](../MAINTENA
 
 ## Setup and entry points
 
-Open Plugin Guide; source of surface inventory is packages/plugin-api-map/src/surfaces.ts. This is the in-app public API guide.
+Open Plugin Guide; source of surface inventory is plugins/plugin-api-docs/src/surfaces.ts. This is the in-app public API guide.
 
 Use the main skill’s isolated targets and evidence rules. A plugin can be present
 in this checkout but disabled in an installation. Enable it only in the test
@@ -38,5 +38,5 @@ External account changes use authorized disposable targets.
 
 ## Maintenance notes
 
-- Open representative numbered cards, read their capability descriptions, and follow internal surface links. Use Copy for agent and the resolved mention context to inspect relevant SDK symbols; do not expect a symbol or code-example section in the visible card. Source: `packages/plugin-api-map/src/surface-card.tsx:1`, `packages/plugin-api-map/src/agent-reference.ts:70`.
-- Reload a map-group URL such as /plugins/plugin-api-docs/plugin-api/headless. Copy for agent inserts a rich Plugin Guide mention; plain @surface search is not advertised because this provider search returns an empty list. Verify resolution by pasting the copied mention into a synthetic turn. Source: `plugins/plugin-api-docs/app.tsx:57`, `plugins/plugin-api-docs/server.ts:8`, `packages/plugin-api-map/src/agent-reference.ts:53`.
+- Open representative numbered cards, read their capability descriptions, and follow internal surface links. Use Copy for agent and the resolved mention context to inspect relevant SDK symbols; do not expect a symbol or code-example section in the visible card. Source: `plugins/plugin-api-docs/src/surface-card.tsx:1`, `plugins/plugin-api-docs/src/agent-reference.ts:35`.
+- Reload a map-group URL such as /plugins/plugin-api-docs/plugin-api/headless. Copy for agent inserts a rich Plugin Guide mention; plain @surface search is not advertised because this provider search returns an empty list. Verify resolution by pasting the copied mention into a synthetic turn. Source: `plugins/plugin-api-docs/app.tsx:57`, `plugins/plugin-api-docs/server.ts:8`, `plugins/plugin-api-docs/src/agent-reference.ts:60`.

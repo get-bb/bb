@@ -75,10 +75,6 @@ function overloadedFailure(
   });
 }
 
-/**
- * A queued retry as the server would return it: a retry payload and a `sendAt`
- * for core's due sweep.
- */
 function queuedRetry(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return makeQueueEntry({
     id: "queued_1",
@@ -151,9 +147,6 @@ function createHost(queued: QueueEntry[] = []) {
 
 describe("provider retry policy", () => {
   it("waits for the reported reset plus a buffer, jittered within its bound", () => {
-    // The jitter is what keeps every thread on one exhausted account from
-    // retrying in the same instant, so its bounds are the contract: never
-    // before the buffer, never a full jitter window past it.
     const earliest = decideRetry({
       failure: failure(),
       maximumWaitMs: null,
@@ -245,7 +238,6 @@ describe("provider retry policy", () => {
         random: 0,
       }),
     ).toEqual({ kind: "decline", reason: "beyond-maximum-wait" });
-    // The same window is fine once the limit is raised past it.
     expect(
       decideRetry({
         failure: failure(),
@@ -306,7 +298,6 @@ describe("provider retry policy", () => {
         random: 0,
       }),
     ).toEqual({ kind: "decline", reason: "no-rate-limit-state" });
-    // Credits do not come back on a clock, so waiting is not a fix.
     expect(
       decideRetry({
         failure: failure({ rateLimits: rateLimits({ kind: "credits" }) }),
@@ -355,10 +346,6 @@ describe("provider retry plugin", () => {
   });
 
   it("listens for one event and answers no hook", async () => {
-    // The load-bearing half is the empty hook slot. This plugin must never
-    // intercept a send: a remembered rate limit is a stale cache of provider
-    // state, and refusing an attempt on it strands a user who fixed the limit
-    // out of band.
     const host = createHost();
     await plugin(host.bb);
 
@@ -395,12 +382,8 @@ describe("provider retry plugin", () => {
     expect(host.retries).toHaveLength(1);
     const retry = host.retries[0];
     expect(retry?.threadId).toBe(THREAD_ID);
-    // By reference: core re-submits the turn itself, so the id is the whole of
-    // what this plugin has to say about WHAT to retry.
     expect(retry?.turnRequestId).toBe(REQUEST_ID);
     expect(retry?.sendAt).toBeGreaterThanOrEqual(RESET_AT_MS + RESET_BUFFER_MS);
-    // Just the cause, no time: every surface renders the row's `sendAt`
-    // itself, so a time here shows up twice on the card and in the queue list.
     expect(retry?.reason).toBe("Rate limited");
     await host.harness.dispose();
   });
@@ -450,8 +433,6 @@ describe("provider retry plugin", () => {
   });
 
   it("re-reads the maximum wait when the setting changes", async () => {
-    // The listener closes over a cached number, so the `onChange` wiring is the
-    // only thing that stops a raised limit from being ignored until restart.
     const host = createHost();
     await plugin(host.bb);
     const beyondSixHours = failure({
@@ -491,8 +472,6 @@ describe("provider retry plugin", () => {
         },
       ],
     });
-    // Scoped to the thread the user asked about; a retry is identified by its
-    // payload, not by a wait this plugin owns.
     expect(
       host.harness.inspection.sdk.callsTo("threads.queue.list")[0]?.[0],
     ).toEqual({ threadId: THREAD_ID });
@@ -500,8 +479,6 @@ describe("provider retry plugin", () => {
   });
 
   it("cancels by deleting the queued row and retries by sending it now", async () => {
-    // Both are the affordances the user already has on the queued card, rather
-    // than a second mechanism this plugin owns.
     const host = createHost([queuedRetry()]);
     await plugin(host.bb);
 

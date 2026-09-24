@@ -134,7 +134,6 @@ const FRONTEND_TEST_EXPORT_NAMES = [
 
 const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
   "bb-plugin-sdk.d.ts",
-  "bb-plugin-sdk-ai-services.d.ts",
   "bb-plugin-sdk-provider-bridge.d.ts",
   "bb-plugin-sdk-provider-bridge-testing.d.ts",
   "bb-plugin-sdk-provider-bridge-acp.d.ts",
@@ -218,6 +217,7 @@ void _assertAllAuthModesListed;
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_thread.events": ["thread", "sequence"],
   "experimental_terminal.input": ["terminal"],
+  "experimental_host.deleted": ["host"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],

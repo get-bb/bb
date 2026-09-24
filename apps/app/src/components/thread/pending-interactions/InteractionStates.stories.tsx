@@ -18,10 +18,12 @@ import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPend
 import { PendingInteractionShell } from "./PendingInteractionShell";
 import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
 installTestPluginRuntime();
-const { default: secretsApp } =
-  await import("../../../../../../plugins/secrets/app");
+const secretsApp = await loadPluginAppDefinition(
+  import.meta.glob<unknown>("../../../../../../plugins/secrets/app.tsx"),
+);
 
 export default { title: "thread/Pending Interaction/Additional States" };
 

@@ -3,8 +3,8 @@ import {
   definePluginApp,
   type PluginPendingInteractionProps,
 } from "@get-bb/plugin-sdk/app";
-import { Button } from "@bb/shared-ui/button";
-import { QuestionForm } from "@bb/shared-ui/question-form";
+import { Button } from "@/components/ui/button";
+import { QuestionForm } from "@/components/ui/question-form";
 import {
   PI_EXTENSION_UI_RENDERER_ID,
   piExtensionUiPayloadDataSchema,
@@ -25,7 +25,10 @@ function ExtensionUiInteraction({
   submit,
   cancel,
 }: PluginPendingInteractionProps) {
-  const request = useMemo(() => parseRequest(interaction.payload), [interaction.payload]);
+  const request = useMemo(
+    () => parseRequest(interaction.payload),
+    [interaction.payload],
+  );
   const [text, setText] = useState(request?.prefill ?? "");
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +36,12 @@ function ExtensionUiInteraction({
     return (
       <div className="space-y-3 text-xs text-muted-foreground">
         <p>This request could not be displayed.</p>
-        <Button type="button" size="sm" variant="outline" onClick={() => void cancel()}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void cancel()}
+        >
           Cancel
         </Button>
       </div>
@@ -97,7 +105,9 @@ function ExtensionUiInteraction({
       onSubmit={onSubmit}
       className="flex flex-col gap-3 text-xs text-muted-foreground"
     >
-      {request.message ? <p className="text-sm text-foreground">{request.message}</p> : null}
+      {request.message ? (
+        <p className="text-sm text-foreground">{request.message}</p>
+      ) : null}
       {request.method === "input" ? (
         <input
           type="text"
@@ -128,14 +138,25 @@ function ExtensionUiInteraction({
           >
             No
           </Button>
-          <Button type="button" size="sm" disabled={busy} onClick={() => finish(true)}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            onClick={() => finish(true)}
+          >
             Yes
           </Button>
         </div>
       ) : null}
       {request.method !== "confirm" ? (
         <div className="flex items-center justify-between gap-2">
-          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void cancel()}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void cancel()}
+          >
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={busy}>

@@ -1,6 +1,6 @@
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkspaceTestConfig({
+export default defineConfig({
   test: {
     silent: "passed-only",
     name: "bb-plugin-plugin-api-tester",

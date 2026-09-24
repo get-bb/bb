@@ -150,13 +150,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     featureFlags: serverConfig.featureFlags,
     hostDaemonPort: serverConfig.BB_HOST_DAEMON_PORT,
     inheritedSkillsRootPaths: serverConfig.BB_INHERITED_SKILLS_ROOTS,
-    inferenceFallbackModel: serverConfig.BB_INFERENCE_FALLBACK,
-    inferenceModel: serverConfig.BB_INFERENCE,
     isDevelopment: !isProduction,
-    openAiApiKey: serverConfig.OPENAI_API_KEY,
     serverPort: serverConfig.BB_SERVER_PORT,
     sharedSkillRoots: { user: [], project: [] },
-    transcriptionModel: serverConfig.BB_TRANSCRIPTION,
   };
 
   const providerRegistry = createProviderRegistryService({
@@ -211,7 +207,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const skillTreeRegistry = new SkillTreeRegistry();
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
   const providerNativeRoots = createProviderNativeRootsCache();
-  const aiServices = createAiServiceRegistry();
+  const aiServices = createAiServiceRegistry({
+    onStatusChange: () => hub.notifySystem(["config-changed"]),
+  });
   const pendingInteractions = new PendingInteractionLifecycle({
     config: runtimeConfig,
     db,

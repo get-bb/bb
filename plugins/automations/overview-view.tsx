@@ -14,14 +14,14 @@ import {
   AutomationLifecycleControl,
   automationIconName,
 } from "./detail-view.js";
-import { Icon } from "@bb/shared-ui/icon";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { Icon } from "@/components/ui/icon";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
   ResourcePagination,
   useResourcePagination,
   useResourceViewportPageSize,
-} from "@bb/shared-ui/resource-pagination";
-import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+} from "@/components/ui/resource-pagination";
+import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import {
   ResourceBrowseGrid,
   ResourceCollectionPage,
@@ -36,9 +36,9 @@ import {
   ResourceSortMenu,
   ResourceTemplateBrowseCard,
   ResourceToolbar,
-} from "@bb/shared-ui/resource-list";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { Button } from "@bb/shared-ui/button";
+} from "@/components/ui/resource-list";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   type AutomationStatusFilter,
   formatAutomationTrigger,

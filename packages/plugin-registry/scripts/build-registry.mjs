@@ -99,10 +99,18 @@ const RUNTIME_PROVIDED = new Set(["react", "react-dom", "@get-bb/plugin-sdk"]);
 /** Item name from an app-src-relative file path. */
 function itemNameFor(relPath) {
   const base = path.basename(relPath).replace(/\.(tsx?|jsx?)$/, "");
+  const componentGroup = componentGroupOf(relPath);
   // camelCase hooks (useBrowserDimmingModal) → kebab-case item names.
-  return base
+  return [...componentGroup, base]
+    .join("-")
     .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
     .toLowerCase();
+}
+
+function componentGroupOf(relPath) {
+  if (!relPath.startsWith("components/ui/")) return [];
+  const segments = path.dirname(relPath).split("/").slice(2);
+  return segments[0] === "hooks" ? [] : segments;
 }
 
 /** shadcn item type + install target for an app-src-relative path. */
@@ -112,7 +120,7 @@ function classify(relPath) {
     return { type: "registry:hook", target: `components/ui/hooks/${base}` };
   }
   if (relPath.startsWith("components/ui/")) {
-    return { type: "registry:ui", target: `components/ui/${base}` };
+    return { type: "registry:ui", target: relPath };
   }
   if (relPath.startsWith("lib/")) {
     return { type: "registry:lib", target: `lib/${base}` };

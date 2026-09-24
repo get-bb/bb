@@ -181,6 +181,61 @@ describe("thread-list plugin", () => {
     ).not.toBeNull();
   });
 
+  it("groups pinned worktree roots when environment grouping is enabled", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    const environment = {
+      id: "env_review",
+      name: "Reviewer worktree group",
+      branchName: "review",
+      path: null,
+      providerId: null,
+      isWorktree: true,
+      workspaceDisplayKind: "managed-worktree" as const,
+    };
+    const pinnedWorktreeThreads = [
+      makeSidebarThread({
+        id: "thr_worktree_a",
+        projectId: "proj_app",
+        title: "Worktree root A",
+        pinnedAt: 20,
+        pinSortKey: "a",
+        environment,
+      }),
+      makeSidebarThread({
+        id: "thr_worktree_b",
+        projectId: "proj_app",
+        title: "Worktree root B",
+        pinnedAt: 19,
+        pinSortKey: "b",
+        environment,
+      }),
+    ];
+    renderList(
+      {
+        organizationMode: "chronological",
+        environmentGrouping: true,
+      },
+      {
+        sidebarThreads: {
+          projects: PROJECTS,
+          sections: SECTIONS,
+          threads: [...THREADS, ...pinnedWorktreeThreads],
+        },
+      },
+    );
+
+    const environmentGroup = (
+      await screen.findByText("Reviewer worktree group")
+    ).closest("[data-sidebar-sticky-group]");
+    expect(environmentGroup).not.toBeNull();
+    expect(
+      within(environmentGroup as HTMLElement).getByText("Worktree root A"),
+    ).not.toBeNull();
+    expect(
+      within(environmentGroup as HTMLElement).getByText("Worktree root B"),
+    ).not.toBeNull();
+  });
+
   it("groups threads by machine in machine mode", async () => {
     setPreferencesMirrorStorageForTest(null);
     renderList({ organizationMode: "machine" });

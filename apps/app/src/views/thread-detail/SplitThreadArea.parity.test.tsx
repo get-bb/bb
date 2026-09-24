@@ -7,6 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { SplitThreadArea } from "./SplitThreadArea";
 
 vi.mock("./ThreadDetailView", () => ({
@@ -59,7 +60,9 @@ function renderArea(layout: SplitLayout) {
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects/p1/threads/t1"]}>
-          <SplitThreadArea />
+          <RouteNavigationProvider>
+            <SplitThreadArea />
+          </RouteNavigationProvider>
         </MemoryRouter>
       </QueryClientProvider>
     </Provider>,

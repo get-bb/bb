@@ -42,7 +42,8 @@ function providerThreadIdFor(threadId: string): string {
   const providerThreadId = (identity?.params as { providerThreadId?: unknown })
     .providerThreadId;
   expect(typeof providerThreadId).toBe("string");
-  if (typeof providerThreadId !== "string") throw new Error("missing provider thread identity");
+  if (typeof providerThreadId !== "string")
+    throw new Error("missing provider thread identity");
   return providerThreadId;
 }
 
@@ -432,10 +433,6 @@ it("a resumed thread reports the session header's cwd, not the cwd bb asked for"
 }, 90_000);
 
 it("resumes at bb's requested cwd when the session header's cwd was removed", async () => {
-  // bb moved the thread's environment directory; the old environment's
-  // directory (recorded in the pi session header) no longer exists. The
-  // bridge must still resume at the requested, existing cwd instead of
-  // rejecting the turn.
   const sessionDir = join(harness.workspaceDir, "sessions");
   mkdirSync(sessionDir, { recursive: true });
   const ghostCwd = join(harness.workspaceDir, "worktree-removed");

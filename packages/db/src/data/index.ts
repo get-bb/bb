@@ -113,8 +113,10 @@ export type {
 } from "./threads.js";
 
 export {
+  getAiServiceSelections,
   getAppKeybindingOverrides,
   getAppSettings,
+  setAiServiceSelection,
   setAppKeybindingOverrides,
   setAppSettings,
 } from "./app-settings.js";
@@ -253,6 +255,7 @@ export {
   listPublicHosts,
   updateHost,
 } from "./hosts.js";
+export type { HostRow } from "./hosts.js";
 
 export {
   deleteStoredProviderModelCatalogsForHost,

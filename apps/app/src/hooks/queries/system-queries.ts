@@ -45,6 +45,7 @@ import {
   allSystemProvidersQueryKeyPrefix,
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
+  systemAiServicesQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
@@ -382,6 +383,24 @@ export function systemConfigQueryOptions() {
     queryKey: systemConfigQueryKey(),
     queryFn: ({ signal }) => sdk.system.config({ signal }),
     staleTime: 60_000,
+  });
+}
+
+export function systemAiServicesQueryOptions() {
+  return queryOptions({
+    queryKey: systemAiServicesQueryKey(),
+    queryFn: ({ signal }) => sdk.system.aiServices({ signal }),
+    staleTime: 10_000,
+  });
+}
+
+export function useSystemAiServices(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+
+  return useQuery({
+    ...systemAiServicesQueryOptions(),
+    enabled,
   });
 }
 

@@ -57,6 +57,7 @@ import {
   serverMoveStatusQueryKey,
   systemAppUpdateQueryKey,
   sidebarNavigationQueryKey,
+  systemAiServicesQueryKey,
   systemConfigQueryKey,
   uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
@@ -1153,7 +1154,11 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
 function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
-    queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
+    queryKeys: [
+      systemConfigQueryKey(),
+      systemAiServicesQueryKey(),
+      allSystemThemesQueryKeyPrefix(),
+    ],
   });
 }
 

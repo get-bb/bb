@@ -3,9 +3,9 @@ import {
   definePluginApp,
   type PluginPendingInteractionProps,
 } from "@get-bb/plugin-sdk/app";
-import { Button } from "@bb/shared-ui/button";
-import { Input } from "@bb/shared-ui/input";
-import { Label } from "@bb/shared-ui/label";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOffSlashIcon from "@hugeicons/core-free-icons/ViewOffSlashIcon";
@@ -14,7 +14,7 @@ import {
   SECRET_REQUEST_RENDERER_ID,
   secretRequestPayloadSchema,
   secretRequestResponseSchema,
-} from "@bb/plugin-interaction-contracts";
+} from "./src/secret-request.js";
 import { reconcileDotenv } from "./src/dotenv.js";
 
 function SecretRequestInteraction({

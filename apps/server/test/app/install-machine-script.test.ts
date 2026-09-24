@@ -172,9 +172,10 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
-  artifactStatus: 200 | 404,
+  artifactStatus: 200 | 404 | 500,
   artifactDigest = FIXTURE_ARTIFACT_DIGEST,
   transientFailures = 0,
+  artifactBody = "fixture-tarball",
 ): void {
   const curlLog = join(fixture.dataDir, "curl.log");
   const curlConfigLog = join(fixture.dataDir, "curl-config.log");
@@ -213,7 +214,7 @@ case "$*" in
     if [ "$unchanged" = yes ] && [ '${artifactStatus}' = 200 ]; then
       printf '%s' 304
     else
-      [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
+      [ -z "$output" ] || printf '%s' '${Buffer.from(artifactBody).toString("base64")}' | base64 --decode >"$output"
       printf '%s' '${artifactStatus}'
     fi
     ;;
@@ -770,6 +771,64 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     }
   });
 
+  it("restarts its own running daemon on reconnect when service setup is skipped", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    const daemonPidPath = join(fixture.dataDir, "install-daemon.pid");
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(fixture, invocationPath);
+    const reconnectEnv = {
+      BB_DATA_DIR: "",
+      BB_INSTALL_SKIP_SERVICE: "1",
+      BB_ENROLLMENT: JSON.stringify({
+        ...JSON.parse(bootstrapBundle()),
+        reconnect: true,
+        dataDir: fixture.dataDir,
+      }),
+    };
+    const running = new Set<number>();
+    const isRunning = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const readPid = () => {
+      const pid = Number(readFileSync(daemonPidPath, "utf8"));
+      running.add(pid);
+      return pid;
+    };
+    try {
+      const installed = runScript(BOOTSTRAP_ARGS, fixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+      });
+      expect(installed.status, installed.stderr).toBe(0);
+      const oldPid = readPid();
+
+      const reconnected = runScript(BOOTSTRAP_ARGS, fixture, reconnectEnv);
+      expect(reconnected.status, reconnected.stderr).toBe(0);
+      expect(reconnected.stdout).toContain("Stopped the host daemon");
+      const newPid = readPid();
+      expect(newPid).not.toBe(oldPid);
+      expect(isRunning(oldPid)).toBe(false);
+      expect(isRunning(newPid)).toBe(true);
+
+      rmSync(daemonPidPath);
+      const unowned = runScript(BOOTSTRAP_ARGS, fixture, reconnectEnv);
+      expect(unowned.status).toBe(1);
+      expect(unowned.stdout + unowned.stderr).toContain(
+        "this installer did not start",
+      );
+      expect(isRunning(newPid)).toBe(true);
+    } finally {
+      for (const pid of running) {
+        if (isRunning(pid)) process.kill(pid, "SIGTERM");
+      }
+    }
+  });
+
   it("accepts the daemon's normalized loopback server URL", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
@@ -867,6 +926,29 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
     process.kill(daemonPid, "SIGTERM");
+  });
+
+  it.each([
+    [
+      JSON.stringify({
+        message:
+          "The server ran out of disk space while preparing the host package. Check the server logs for diagnostic ID test-123, then retry installation.",
+      }),
+      "Server: The server ran out of disk space while preparing the host package. Check the server logs for diagnostic ID test-123, then retry installation.",
+    ],
+    ["<html>upstream failure</html>", null],
+    ["{invalid json", null],
+  ])("handles failed package response %s", (body, expected) => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 500, FIXTURE_ARTIFACT_DIGEST, 0, body);
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("HTTP 500");
+    if (expected !== null) expect(result.stderr).toContain(expected);
+    else expect(result.stderr).not.toContain("Server:");
+    expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
   });
 
   it("retries a transient server artifact download failure", () => {
@@ -1006,10 +1088,31 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "Refusing to overwrite a different machine identity",
+      "belongs to machine host-other, not host-test",
     );
-    expect(result.stdout).not.toContain("Host daemon connected");
+    expect(result.stdout).not.toContain("Downloading");
     expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
+  });
+
+  it("refuses a reconnect before downloading on a computer without that machine", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const missingDir = join(fixture.homeDir, "elsewhere");
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      BB_DATA_DIR: "",
+      BB_ENROLLMENT: JSON.stringify({
+        ...JSON.parse(bootstrapBundle()),
+        reconnect: true,
+        dataDir: missingDir,
+      }),
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `Machine host-test is not installed in ${missingDir} on this computer.`,
+    );
+    expect(result.stdout).not.toContain("Downloading");
+    expect(existsSync(missingDir)).toBe(false);
   });
 
   it("adopts an enrolled data directory as a launch agent without enrolling it again", () => {

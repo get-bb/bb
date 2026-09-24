@@ -12,11 +12,15 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   getInstalledPluginRegistration,
+  getPluginSettingsValues,
+  listPluginSchedules,
   migrate,
+  setPluginSettingsValues,
+  upsertPluginSchedule,
   type DbConnection,
 } from "@bb/db";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -38,6 +42,11 @@ import {
 import { copyPluginRuntime } from "@bb/plugin-build";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
 
 const logger = testLogger as unknown as Logger;
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -367,22 +376,78 @@ describe("builtin plugin reconciliation", () => {
     );
   });
 
-  it("marks a persisted builtin as orphaned after it leaves the registry", async () => {
-    service = createService({ db, dataDir: join(workDir, "data") });
+  it("removes a builtin and its data once bb no longer bundles it", async () => {
+    const dataDir = join(workDir, "data");
+    const secretsDir = join(dataDir, "plugins", "builtin-fixture", "secrets");
+    service = createService({ db, dataDir });
     await service.start();
     expect(service.list()[0]?.isOrphanedBuiltin).toBe(false);
     await service.stop();
-
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      includeBuiltin: false,
+    setPluginSettingsValues(db, "builtin-fixture", { mode: "on" });
+    upsertPluginSchedule(db, {
+      pluginId: "builtin-fixture",
+      name: "tick",
+      cron: "* * * * *",
+      nextRunAt: 0,
     });
+    await mkdir(secretsDir, { recursive: true });
+    await writeFile(join(secretsDir, "token"), "secret");
+
+    service = createService({ db, dataDir, includeBuiltin: false });
+    await service.start();
+
+    expect(service.list()).toEqual([]);
+    expect(
+      getInstalledPluginRegistration(db, "builtin-fixture"),
+    ).toBeUndefined();
+    expect(getPluginSettingsValues(db, "builtin-fixture")).toEqual({});
+    expect(listPluginSchedules(db, "builtin-fixture")).toEqual([]);
+    await expect(stat(secretsDir)).rejects.toThrow();
+    await service.stop();
+
+    service = createService({ db, dataDir });
     await service.start();
 
     expect(service.list()).toMatchObject([
-      { id: "builtin-fixture", isOrphanedBuiltin: true },
+      { id: "builtin-fixture", enabled: true, isOrphanedBuiltin: false },
     ]);
+  });
+
+  it("retries orphaned builtin cleanup after secret removal fails", async () => {
+    const dataDir = join(workDir, "data");
+    const secretsDir = join(dataDir, "plugins", "builtin-fixture", "secrets");
+    service = createService({ db, dataDir });
+    await service.start();
+    await service.stop();
+    await mkdir(secretsDir, { recursive: true });
+    await writeFile(join(secretsDir, "token"), "secret");
+
+    const actual = await vi.importActual<typeof import("node:fs/promises")>(
+      "node:fs/promises",
+    );
+    let failed = false;
+    vi.mocked(rm).mockImplementation(async (...args) => {
+      if (!failed && args[0] === secretsDir) {
+        failed = true;
+        throw new Error("secret removal failed");
+      }
+      return actual.rm(...args);
+    });
+    try {
+      service = createService({ db, dataDir, includeBuiltin: false });
+      await expect(service.start()).rejects.toThrow("secret removal failed");
+      expect(getInstalledPluginRegistration(db, "builtin-fixture")).toBeDefined();
+      expect(await readFile(join(secretsDir, "token"), "utf8")).toBe(
+        "secret",
+      );
+
+      service = createService({ db, dataDir, includeBuiltin: false });
+      await service.start();
+      expect(getInstalledPluginRegistration(db, "builtin-fixture")).toBeUndefined();
+      await expect(stat(secretsDir)).rejects.toThrow();
+    } finally {
+      vi.mocked(rm).mockImplementation(actual.rm);
+    }
   });
 
   it("backfills every legacy source form once while preserving registration state", async () => {

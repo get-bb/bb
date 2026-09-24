@@ -302,6 +302,27 @@ calls a server. The SDK equivalents are `sdk.experimental_server.checkMove`,
 directory that is already enrolled, reading its machine ID from `auth.json` and
 its server address and headers from `config.json`; `bb server
 install-machine-service` runs it for the directory a server move left behind.
+
+Reconnect a disconnected machine whose server access or host key was revoked
+or became stale, without changing its BB host ID:
+
+  bb machine reconnect <id-or-name>       Print a short-lived reconnect command and wait for reconnection
+    --json                                Print the command and expiry without waiting
+
+Run the printed command on the affected machine. It is a one-time enrollment
+command for the existing host ID. Fetching the installer releases the machine's
+access grant and acquires a new one from the same provider; if that fails, run
+the command again. The machine then re-enrolls: it replaces `auth.json` with a
+new host key, replaces the server-access headers, and restarts the owned daemon
+service. Environments, workspaces, and thread associations are kept.
+
+The command reuses the data directory the machine's daemon last reported, so it
+works unchanged for a custom `BB_DATA_DIR` and for `~/.bb` on a computer that a
+server moved away from; an explicit `BB_DATA_DIR` still takes precedence. Before
+downloading anything, the installer refuses a directory that does not hold this
+machine, which is what happens when the command runs on another computer.
+The server's own machine cannot be reconnected this way.
+
 `install-machine.sh --start|--stop|--uninstall --host-id <id>` starts, stops or removes an
 owned local installation. Optional `--server-url <url>` and `--data-dir <path>`
 assert the expected installation. BB_DATA_DIR is treated as an assertion too.
@@ -318,7 +339,7 @@ is paused. `bb machine resume` likewise waits for provider restore and bootstrap
 
 `bb machine enroll --bootstrap-file <path>` or `bb machine enroll --bootstrap-env <NAME>` consumes a versioned private enrollment bundle prepared by core. Supply exactly one source. The environment source is removed from the CLI process environment after reading it; files remain under the caller's ownership. Neither command prints the bundle or credentials.
 
-The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory.
+The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory unless its `host-id` already names this machine.
 
 The manual copy command fetches `/install.sh` using a short-lived `X-BB-Enrollment` header. The server supplies the bootstrap only for a pending, unexpired, uncancelled manual enrollment whose credential has not been consumed; downloaded responses are not cached. The command contains no bootstrap JSON or access-provider credentials.
 

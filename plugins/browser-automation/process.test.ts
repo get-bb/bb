@@ -63,14 +63,7 @@ try {
       try {
         await promisify(execFile)(
           process.execPath,
-          [
-            "--conditions=source",
-            "--import",
-            "tsx",
-            "--input-type=module",
-            "-e",
-            code,
-          ],
+          ["--import", "tsx", "--input-type=module", "-e", code],
           {
             env: {
               ...process.env,

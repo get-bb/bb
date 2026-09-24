@@ -1,4 +1,4 @@
-import type { ApplyThreadLifecycleEventOutcome } from "@bb/db";
+import type { ApplyThreadLifecycleEventOutcome, HostRow } from "@bb/db";
 import type { PendingInteraction, Thread } from "@bb/domain";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { PluginThreadEventEmitter } from "./plugin-service.js";
@@ -107,4 +107,8 @@ export function emitPluginTerminalInput(
   terminal: import("@bb/server-contract").TerminalSession,
 ): void {
   emitter?.emitTerminalInput(terminal);
+}
+
+export function emitPluginHostDeleted(host: HostRow): void {
+  emitter?.emitHostDeleted(host);
 }

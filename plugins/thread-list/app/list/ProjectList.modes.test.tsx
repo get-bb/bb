@@ -175,6 +175,7 @@ function MachineModeProbe({
         showPinnedSection={false}
         pinnedSection={{ label: "Pinned", content: null }}
         pinnedReorderPending={false}
+        pinnedRootItems={[]}
         pinnedRootNodes={[]}
         pinnedThreads={[]}
         onReorderPinnedThread={vi.fn()}

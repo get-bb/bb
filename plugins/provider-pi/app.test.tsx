@@ -48,9 +48,11 @@ describe("pi extension ui interaction", () => {
       method: "select",
       options: ["A", "B"],
     });
-    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled).toBe(true);
+    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled)
+      .toBe(true);
     fireEvent.click(view.getByText("B"));
-    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled).toBe(false);
+    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled)
+      .toBe(false);
   });
 
   it("submits a boolean for a confirm dialog", async () => {
@@ -94,7 +96,11 @@ describe("pi extension ui interaction", () => {
   it("renders the unwrapped payload the host passes to plugin components", async () => {
     const submit = vi.fn(async () => undefined);
     const view = render(
-      { requestId: "ui-1", method: "select", options: ["Allow once", "Keep blocked"] },
+      {
+        requestId: "ui-1",
+        method: "select",
+        options: ["Allow once", "Keep blocked"],
+      },
       { submit },
     );
     fireEvent.click(view.getByText("Allow once"));

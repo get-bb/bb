@@ -123,6 +123,32 @@ export interface PluginPendingInteractionProps {
   cancel(): Promise<void>;
 }
 
+/** Display and accessibility metadata for a host-owned answer shortcut. */
+export interface ExperimentalQuestionShortcut {
+  label: string;
+  ariaKeyshortcuts: string;
+}
+
+/**
+ * The keyboard shortcuts bb binds while a pending interaction is open. The
+ * host owns the bindings (users can remap them); a form shows them and decides
+ * what choosing an option means.
+ */
+export interface ExperimentalQuestionFormHost {
+  /**
+   * Shortcut per zero-based option index, as a string (`"0"` is the first
+   * option). Missing entries have no binding.
+   */
+  shortcuts: ReadonlyMap<string, ExperimentalQuestionShortcut>;
+  /**
+   * Receive the index of the option the person chose with a shortcut while
+   * the thread's pane is focused. Return true when the index names an option
+   * the form handled. The last registered handler wins; call the returned
+   * function to unregister.
+   */
+  registerChoiceHandler(handler: (index: number) => boolean): () => void;
+}
+
 /**
  * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
  * Deliberately empty; the registration's `run` carries the behavior.
@@ -1526,12 +1552,13 @@ export interface PluginSidebarThreadSplit {
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. Registering activates the replacement while the plugin is
- * enabled. If multiple plugins register one, the first in deterministic slot
- * order is active by default; removing it reveals the next. The user can pin
- * BB's list or a specific provider under Settings → Appearance. A plugin can
- * also use its own setting and render `Original` conditionally.
- * An absent or crashing replacement falls back to BB's list rather than
+ * scroll area. bb ships its own list as the bundled Thread list plugin
+ * (`thread-list/thread-list`). Registering activates the replacement while the
+ * plugin is enabled: by default the first registered list other than the
+ * bundled one, in deterministic slot order, is active, falling back to the
+ * bundled list; removing it reveals the next. The user can pin a specific
+ * provider, including the bundled one, under Settings → Appearance → Sidebar.
+ * A missing pinned provider or a crashing list shows a placeholder rather than
  * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
@@ -1551,11 +1578,12 @@ export interface PluginThreadListRegistration {
 
 /**
  * Replace the navigation controls above the sidebar thread list. Exclusive:
- * the user picks one provider under Settings → Appearance → Navigation, and
  * bb ships its own rows as the bundled Navigation plugin
- * (`navigation/navigation`, the default). A picked provider that is disabled
- * or removed falls back to Navigation; a crashing provider is replaced by a
- * placeholder with a Reload button.
+ * (`navigation/navigation`). By default the first registered provider other
+ * than Navigation is active, falling back to Navigation; the user can pin one
+ * provider under Settings → Appearance → Navigation. A pinned provider that is
+ * disabled or removed falls back to Navigation; a crashing provider is
+ * replaced by a placeholder with a Reload button.
  */
 export interface ExperimentalSidebarNavigationRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -3100,6 +3128,13 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_usePluginId(): string;
+  /**
+   * The answer shortcuts bb binds while a pending interaction is open. Inside
+   * a `pendingInteraction` component the form shows each option's shortcut and
+   * registers a handler that chooses the option; outside one, the map is empty
+   * and handlers never run. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useQuestionFormHost(): ExperimentalQuestionFormHost;
   useBbNavigate(): BbNavigate;
   /** Select one of this plugin's eligible fixed tabs on the current surface. */
   experimental_useAppPanel(): ExperimentalAppPanel;
@@ -3247,9 +3282,10 @@ export interface PluginSdkApp {
    * surfaces without further work. Reserve `useRpc` for work that needs your
    * server: secrets, host files, or your plugin's own storage.
    *
-   * Writes made here are not optimistic in bb's surfaces; they land when the
-   * realtime update does. `experimental_useSidebarThreadActions()` stays the
-   * optimistic path for pin, read state, rename, and archive.
+   * Thread title, section, and parent updates are optimistic in bb's surfaces
+   * and synchronous calls are applied as one cache transaction. Other writes
+   * land when their realtime update does. `experimental_useSidebarThreadActions()`
+   * stays the optimistic path for pin, read state, rename, and archive.
    *
    * The client is stable for the plugin's lifetime, so it is safe in effect
    * and callback dependency lists.

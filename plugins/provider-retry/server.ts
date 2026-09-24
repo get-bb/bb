@@ -36,14 +36,6 @@ export default async function plugin(bb: BbPluginApi) {
     maximumWait = maximumWaitMs(next.maximumWait);
   });
 
-  /**
-   * The retry decision, which is the whole plugin.
-   *
-   * Everything it needs — which turn failed, what the provider said about its
-   * windows, how many times this turn has been retried — arrives on the event.
-   * What is left is policy, and then one call: core owns the queue, the
-   * schedule and the re-attempt, so asking for the retry IS scheduling it.
-   */
   bb.events.on("turn.failed", async (event) => {
     const decision = decideRetry({
       failure: event,

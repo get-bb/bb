@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Run bb threads with Pi.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.5.22"
   },
   "bb": {
     "name": "Pi provider",
@@ -23,6 +24,7 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
@@ -31,14 +33,18 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@bb/domain": "workspace:*",
     "@bb/plugin-build": "workspace:*",
-    "@bb/provider-bridge-protocol": "workspace:*",
     "@earendil-works/pi-ai": "0.84.0",
     "@earendil-works/pi-coding-agent": "0.84.0",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "better-sqlite3": "12.10.0",
+    "cron-parser": "^5.5.0",
+    "hono": "4.11.9",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

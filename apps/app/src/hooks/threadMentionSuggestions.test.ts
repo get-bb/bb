@@ -55,6 +55,7 @@ function getSuggestionThreadIds(
       ["proj-2", "Docs Site"],
     ]),
     limit: args.limit ?? 8,
+    resolveTitle: (title) => title,
   }).map((suggestion) => suggestion.threadId);
 }
 
@@ -269,6 +270,7 @@ describe("buildThreadMentionSuggestions", () => {
         ["proj-2", "Docs Site"],
       ]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -312,6 +314,7 @@ describe("buildThreadMentionSuggestions", () => {
         ["proj-2", "Docs Site"],
       ]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -356,6 +359,7 @@ describe("buildThreadMentionSuggestions", () => {
         ["proj-2", "Docs Site"],
       ]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -410,6 +414,7 @@ describe("buildThreadMentionSuggestions", () => {
       currentThreadId: "thr_current",
       projectNamesById: new Map([["proj-1", "Core App"]]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -450,6 +455,7 @@ describe("buildThreadMentionSuggestions", () => {
       currentThreadId: "thr_current",
       projectNamesById: new Map([["proj-1", "Core App"]]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([
@@ -477,6 +483,7 @@ describe("buildThreadMentionSuggestions", () => {
       currentThreadId: "thr_current",
       projectNamesById: new Map([["proj-1", "Core App"]]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([
@@ -642,5 +649,31 @@ describe("buildThreadMentionSuggestions", () => {
         limit: 1,
       }),
     ).toEqual(["thr_unrelated_exact"]);
+  });
+  it("matches a title mention by the mentioned thread's visible name", () => {
+    const threads = [
+      makeThread({
+        id: "thr_follow_up",
+        projectId: "proj-1",
+        title: "Continue from @thread:thr_design",
+      }),
+    ];
+    const buildWithResolver = (resolveTitle: (title: string) => string) =>
+      buildThreadMentionSuggestions({
+        threads,
+        query: "design review",
+        currentEnvironmentId: null,
+        currentProjectId: "proj-1",
+        projectNamesById: new Map(),
+        limit: 8,
+        resolveTitle,
+      }).map((suggestion) => suggestion.threadId);
+
+    expect(buildWithResolver((title) => title)).toEqual([]);
+    expect(
+      buildWithResolver((title) =>
+        title.replace("@thread:thr_design", "Design review"),
+      ),
+    ).toEqual(["thr_follow_up"]);
   });
 });

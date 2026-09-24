@@ -152,6 +152,9 @@ export const useBbContext = runtimeFunction("useBbContext");
 export const experimental_usePluginId = runtimeFunction(
   "experimental_usePluginId",
 );
+export const experimental_useQuestionFormHost = runtimeFunction(
+  "experimental_useQuestionFormHost",
+);
 export const useBbNavigate = runtimeFunction("useBbNavigate");
 export const experimental_useAppPanel = runtimeFunction(
   "experimental_useAppPanel",

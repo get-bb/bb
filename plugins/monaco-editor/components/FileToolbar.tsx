@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "@/lib/utils";
 
 export type SaveIndicator = "clean" | "dirty" | "saving" | "error";
 

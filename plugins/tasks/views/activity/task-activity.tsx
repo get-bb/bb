@@ -5,14 +5,14 @@ import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import Notification02Icon from "@hugeicons/core-free-icons/Notification02Icon";
 import NotificationOff02Icon from "@hugeicons/core-free-icons/NotificationOff02Icon";
-import { Button } from "@bb/shared-ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import {
@@ -469,7 +469,7 @@ interface TaskActivityProps {
 export function TaskActivity({ taskId }: TaskActivityProps) {
   const feed = useActivityFeed(taskId);
   const nowMs = useNowTick();
-  const entries = feed.data ?? [];
+  const entries = useMemo(() => feed.data ?? [], [feed.data]);
   const notificationTarget = useMemo(
     () => agentNotificationTarget(entries.map((entry) => entry.comment)),
     [entries],

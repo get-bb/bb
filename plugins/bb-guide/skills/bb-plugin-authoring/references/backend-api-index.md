@@ -110,9 +110,11 @@ Read the installed declarations for exact current signatures.
 - `PluginAgentToolResult`
 - `PluginAgentToolSelection`
 - `PluginAgents`
+- `PluginAiCompleteOptions`
 - `PluginAiServiceDeclaration`
-- `PluginAiServiceKind`
+- `PluginAiServiceStatus`
 - `PluginAiServices`
+- `PluginAiTranscribeOptions`
 - `PluginAppBuilder`
 - `PluginAppComposer`
 - `PluginAppContentScripts`
@@ -334,21 +336,6 @@ Read the installed declarations for exact current signatures.
 - `PluginMachineProviderResourceResult`
 - `PluginMachineProviderRemoveResult`
 
-## `@get-bb/plugin-sdk/ai-services`
-
-- `experimental_aiInferenceCompleteInputSchema`
-- `experimental_aiInferenceCompleteOutputSchema`
-- `experimental_aiServiceErrorCodeSchema`
-- `experimental_aiServicesHostContract`
-- `experimental_aiVoiceTranscribeInputSchema`
-- `experimental_aiVoiceTranscribeOutputSchema`
-- `ExperimentalAiInferenceCompleteInput`
-- `ExperimentalAiInferenceCompleteOutput`
-- `ExperimentalAiServiceErrorCode`
-- `ExperimentalAiServicesHostContract`
-- `ExperimentalAiVoiceTranscribeInput`
-- `ExperimentalAiVoiceTranscribeOutput`
-
 ## `@get-bb/plugin-sdk/host`
 
 - `experimental_defineHostEntry`
@@ -383,6 +370,8 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalNativeRootsResolveAnswer`
 - `ExperimentalNativeRootsResolveInput`
 - `ExperimentalNativeRootsResolveOutput`
+- `ExperimentalQuestionFormHost`
+- `ExperimentalQuestionShortcut`
 - `ExperimentalSanitizeInheritedChildProcessEnvArgs`
 - `ExperimentalVendorPlugin`
 - `ExperimentalVendorPluginRoots`

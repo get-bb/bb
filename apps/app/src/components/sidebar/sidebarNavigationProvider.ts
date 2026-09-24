@@ -10,6 +10,8 @@ import {
 
 export const BUNDLED_NAVIGATION_PLUGIN_ID = "navigation";
 
+export const BUNDLED_NAVIGATION_PROVIDER = "navigation/navigation";
+
 export const sidebarNavigationProviderAtom = createSyncedPreferenceAtom(
   "sidebar.navigationProvider",
 );
@@ -21,6 +23,7 @@ export function useSidebarNavigationReplacement(): ResolvedReplacement<Experimen
   const resolved = resolvePreferredReplacement(
     experimentalSidebarNavigations,
     preference,
+    BUNDLED_NAVIGATION_PROVIDER,
   );
   if (resolved.kind === "plugin" || !bootSettled) return resolved;
   const bundled = experimentalSidebarNavigations.find(

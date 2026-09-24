@@ -191,15 +191,11 @@ async function startIntegrationServer(
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,
-    inferenceFallbackModel: "test/mock-fallback-model",
-    inferenceModel: "test/mock-model",
     inheritedSkillsRootPaths: [],
     marketplaceUrl: "https://marketplace.invalid/marketplace.json",
-    openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
     serverPort: 0,
     sharedSkillRoots: { user: [], project: [] },
-    transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
   };
   const terminalSessions = new TerminalSessionLifecycle({

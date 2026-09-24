@@ -747,19 +747,25 @@ async function sweepProviderEnvironmentInSlot(
     row.teardownStatus === "removed"
   )
     return;
-  const cancelled = row.ownerThreadId !== null && row.teardownStatus !== null;
+  const environmentProviderId = row.environmentProviderId;
   const shared = environmentHasLiveThreads(deps.db, environmentId);
-  if (cancelled && shared) {
-    writeEnvironment(deps, environmentId, {
+  if (
+    row.ownerThreadId !== null &&
+    row.teardownStatus !== null &&
+    (shared || (row.status === "ready" && row.path !== null))
+  ) {
+    const released = {
       ownerThreadId: null,
       claimPath: null,
       retireAt: null,
       teardownStatus: null,
-    });
-    return;
+    };
+    writeEnvironment(deps, environmentId, released);
+    row = { ...row, ...released };
   }
+  const cancelled = row.ownerThreadId !== null && row.teardownStatus !== null;
   if (!cancelled && row.ownerThreadId !== null) return;
-  const record = getEnvironmentProvider(row.environmentProviderId);
+  const record = getEnvironmentProvider(environmentProviderId);
   if (record === undefined) return;
   const now = Date.now();
   if (shared) {

@@ -5,6 +5,7 @@ import {
   definePluginApp,
   experimental_Icon,
   experimental_usePluginId,
+  experimental_useQuestionFormHost,
   useBbContext,
 } from "../../app.js";
 import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
@@ -88,6 +89,25 @@ describe("@get-bb/plugin-sdk/app without a runtime at import time", () => {
         { pluginId: "my-sidebar" },
       ).getByText("my-sidebar"),
     ).toBeTruthy();
+  });
+
+  it("gives a form rendered outside a pending interaction no answer shortcuts", () => {
+    const chosen: number[] = [];
+    function QuestionShortcutProbe() {
+      const host = experimental_useQuestionFormHost();
+      host.registerChoiceHandler((index) => {
+        chosen.push(index);
+        return true;
+      })();
+      return <p>{`${host.shortcuts.size} shortcuts`}</p>;
+    }
+
+    expect(
+      renderSlot({ component: QuestionShortcutProbe }, {}).getByText(
+        "0 shortcuts",
+      ),
+    ).toBeTruthy();
+    expect(chosen).toEqual([]);
   });
 
   it("renders a component through the runtime's React", () => {

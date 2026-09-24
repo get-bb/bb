@@ -103,6 +103,15 @@ vi.mock("react-router-dom", async (importOriginal) => {
   };
 });
 
+vi.mock("@/components/ui/app-route-anchor", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/components/ui/app-route-anchor")>();
+  return {
+    ...actual,
+    useImmediateRouteNavigate: () => mocks.navigate,
+  };
+});
+
 vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
   const { ComposerBannersSlot } = await vi.importActual<
     typeof import("@/components/plugin/PluginComposerBanners")

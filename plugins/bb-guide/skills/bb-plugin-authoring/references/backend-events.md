@@ -5,6 +5,7 @@
 ```ts
 bb.events.on("experimental_thread.events", ({ thread, sequence }) => { ... });
 bb.events.on("experimental_terminal.input", ({ terminal }) => { ... });
+bb.events.on("experimental_host.deleted", ({ host }) => { ... });
 bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
 bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
@@ -110,6 +111,11 @@ the delivered thread is active before extending its idle deadline.
 `experimental_terminal.input` fires after nonempty real user input is forwarded to a
 terminal. Its public terminal DTO includes hostId; keystrokes are not included. Output,
 keepalives and opening a terminal do not count.
+
+`experimental_host.deleted` fires once after a machine is removed, whether a user
+removed it or its machine provider finished tearing it down. `host` is the public
+host DTO as it was at removal; `bb.sdk.hosts.get` answers 404 for it afterwards, so
+drop any per-host state here. Connect prunes shared ports for the removed machine.
 
 ### bb.experimental_hooks — the dispatch checkpoint
 

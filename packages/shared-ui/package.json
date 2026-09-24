@@ -244,11 +244,6 @@
       "types": "./src/lib/utils.ts",
       "default": "./src/lib/utils.ts"
     },
-    "./lib/usage-format": {
-      "source": "./src/lib/usage-format.ts",
-      "types": "./src/lib/usage-format.ts",
-      "default": "./src/lib/usage-format.ts"
-    },
     "./lib/portal-scope": {
       "source": "./src/lib/portal-scope.ts",
       "types": "./src/lib/portal-scope.ts",

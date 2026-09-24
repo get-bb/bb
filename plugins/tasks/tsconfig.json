@@ -8,14 +8,14 @@
     "lib": ["ES2022", "DOM"],
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
+    }
   },
-  "include": [
-    "server.ts",
-    "server.test.ts",
-    "app.tsx",
-    "vitest.config.ts",
-    "components",
-    "editor"
-  ]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
 }

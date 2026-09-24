@@ -965,7 +965,7 @@ a.marketplace-detail-author:hover {
 .marketplace-overview-lead {
   margin: 0;
   color: var(--ink);
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1.55;
 }
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { makeSidebarThread, type SidebarThreadOverrides } from "./fixtures.js";
+import {
+  makeSidebarEnvironment,
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "./fixtures.js";
 import { buildPinnedSidebarState } from "./pinned-sidebar-threads.js";
 import type { SidebarThread } from "./sidebar-thread.js";
 
@@ -175,5 +179,37 @@ describe("buildPinnedSidebarState", () => {
     });
 
     expect(rootIds(state)).toEqual(["a"]);
+  });
+
+  it("retains pinned environment groups when environment grouping is enabled", () => {
+    const environment = makeSidebarEnvironment({
+      id: "env_worktree",
+      isWorktree: true,
+      name: "Reviewer worktree group",
+    });
+    const threads = [
+      createThread({ id: "first", pinnedAt: 2_000, environment }),
+      createThread({ id: "second", pinnedAt: 1_000, environment }),
+    ];
+
+    const grouped = buildPinnedSidebarState({
+      groupEnvironmentThreads: true,
+      threads,
+    });
+    const flat = buildPinnedSidebarState({
+      groupEnvironmentThreads: false,
+      threads,
+    });
+
+    expect(grouped.rootItems).toHaveLength(1);
+    expect(grouped.rootItems[0]).toMatchObject({
+      kind: "environment",
+      group: { environmentId: "env_worktree" },
+    });
+    expect(rootIds(grouped)).toEqual(["first", "second"]);
+    expect(flat.rootItems.map((item) => item.kind)).toEqual([
+      "thread",
+      "thread",
+    ]);
   });
 });

@@ -1855,6 +1855,32 @@ returns `renderSlot`'s `pluginId` option, `test-plugin` by default.
 3. **Consumer count.** One consumer today. Confirm a second plugin needs it
    before the prefix drops.
 
+## `app.experimental_useQuestionFormHost` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Returns the answer shortcuts bb binds while a pending
+interaction is open (`question.select.1` and on, which users can remap), keyed
+by zero-based option index, and `registerChoiceHandler`, which receives the
+index a person chose with a shortcut while the thread's pane is focused. A
+`pendingInteraction` component shows each option's shortcut and decides what
+choosing it means. Outside a pending interaction the map is empty and handlers
+never run; the test harness returns that empty host. The registry's
+`question-form-host` item re-exports it as `useQuestionFormHost`, so the
+registry's `question-form` works in any plugin. Before this, the built-in Ask
+User Question and pi plugins reached the same host context through a private
+`@bb/shared-ui` module the build shimmed, which a copy of either plugin could
+not import.
+
+**Audit before stabilizing.**
+
+1. **Props or hook.** The host already renders the pending-interaction slot;
+   decide whether the shortcuts belong in `PluginPendingInteractionProps`
+   instead of a hook any component can call.
+2. **Scope.** Only pending interactions bind the shortcuts. Confirm no other
+   surface (a message action form, a panel) should get them.
+3. **Consumer count.** Two first-party consumers (Ask User Question, pi's
+   extension dialogs). Confirm a third-party form needs it before the prefix
+   drops.
+
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero shipped registrations — first-party
@@ -2265,9 +2291,10 @@ its customize editor in the region and keeps the provider mounted but hidden.
 
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
-bb's own rows ship as the bundled Navigation plugin, the default provider
-(`sidebar.navigationProvider` is `navigation/navigation`; legacy
-`__automatic__` and `__builtin__` resolve to it). A picked provider that is
+bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
+defaults to `__automatic__`, which uses the first other registered navigation
+plugin in slot snapshot order and falls back to the bundled plugin; legacy
+`__builtin__` resolves to the bundled plugin. A picked provider that is
 disabled or removed falls back to the bundled plugin once plugin frontends
 have loaded. The host keeps a placeholder for loading (skeleton rows at the
 provider's remembered height), missing (the bundled plugin is also off), and
@@ -2283,8 +2310,9 @@ mounted.
    `experimental_Original` never recurse or remount the thread list and
    footer. Remove `experimental_Original` once released plugins (Compact Nav
    0.1.x) no longer render it.
-3. **Arbitration.** Confirm an explicit provider choice with no Automatic
-   option is right when several navigation replacements exist.
+3. **Arbitration.** Confirm Automatic preferring installed navigation over
+   the bundled plugin, in plugin-id order, is right when several navigation
+   replacements exist.
 4. **Customize handoff.** Confirm providers accept the host editor replacing
    their region, and that focus returns to the control that opened it from a
    button, a dropdown item, and a context-menu item.
@@ -2374,12 +2402,14 @@ and navigation from `bb.onInstall`; later choices are the user's.
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
 one list at a time fills the scroll area. Automatic activation is the default.
-If several are registered, the first in the slot snapshot wins (plugin ids are
-sorted, then each plugin's registration order is preserved); removing the
-automatic winner reveals the next. The user can override that behavior under
-Settings → Appearance by pinning a specific provider; the choice is stored per
-client. bb ships its own list as the bundled `thread-list` plugin and has no
-separate built-in list, so there is no `Original` prop on this slot.
+bb ships its own list as the bundled `thread-list` plugin, and Automatic prefers
+any other registered list: the first in the slot snapshot wins (plugin ids are
+sorted, then each plugin's registration order is preserved), falling back to
+the bundled plugin; removing the automatic winner reveals the next. The user can
+override that behavior under Settings → Appearance by pinning a specific
+provider, including the bundled one; the choice is the synced
+`sidebar.threadListProvider` preference. bb has no separate built-in list, so
+there is no `Original` prop on this slot.
 
 Placeholders keep the sidebar usable: while plugin frontends boot the region
 shows skeleton rows; with no provider it shows "No thread list plugin is
@@ -2390,9 +2420,10 @@ place of a whole sidebar would strand the user) plus one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm automatic/pinned is the right long-term
-   selection model and alphabetical plugin-id order is an acceptable default
-   tie-breaker when multiple replacements are enabled.
+1. **Arbitration.** Confirm automatic/pinned, with installed lists preferred
+   over the bundled one, is the right long-term selection model and
+   alphabetical plugin-id order is an acceptable default tie-breaker when
+   multiple replacements are enabled.
 2. **Fallback discoverability.** Confirm one toast plus the placeholder's
    Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
@@ -2408,48 +2439,56 @@ place of a whole sidebar would strand the user) plus one toast.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
-## AI services (`bb.experimental_aiServices.register`, `@get-bb/plugin-sdk/ai-services`)
+## AI services (`bb.experimental_aiServices.register`)
 
-**Kept experimental (2026-08-22).** one consumer (the codex plugin); the 5 MB plugin-served transcription cap (the old direct path allowed 25 MB) and the host-pull alternative are still open; the reserved-id model is now one static SDK list (`SERVER_DIRECT_AI_SERVICE_IDS`), pinned to pi-ai's provider registry by plugin-ai-services.test.ts.
+**Reshaped (2026-09-22).** The host contract (`@get-bb/plugin-sdk/ai-services`),
+its error codes, `kinds`, the reserved server-direct ids, and the
+`BB_INFERENCE` / `BB_INFERENCE_FALLBACK` / `BB_TRANSCRIPTION` settings are gone.
+Consumers: the codex plugin and the bb-ai plugin.
 
-**What it does.** Lets a plugin serve bb's own AI services — server-side
-helper inference (thread titles, commit messages: prompt + JSON Schema in,
-structured value out) and voice transcription — from its `bb.host` entry.
-`bb.experimental_aiServices.register({ id, displayName, kinds })` stages the
-service during the factory and lands it when the load commits; the host entry
-implements `experimental_aiServicesHostContract` (`ai.inference.complete`,
-`ai.voice.transcribe`), both carrying `serviceId`. Core routes the user's
-`BB_INFERENCE` / `BB_TRANSCRIPTION` (`<serviceId>/<model>`) to the plugin
-through the generic host RPC call on the primary host; failures ride the result
-(`{ ok: false, code }`) so core's retry/fallback policy stays generic. Ids the
-server serves itself (`openai` transcription, the builtin inference providers)
-are reserved: they route server-direct before the registry is consulted and a
-plugin cannot register them, so a plugin can never capture that traffic. A
-cross-plugin id collision fails the later plugin's load at the `register`
-call. The
-codex plugin is the first registrant (its ChatGPT client moved out of the
-daemon); `GET /system/config` and `bb settings ai-services` list the registered
-options.
+**What it does.** A plugin registers plain server-side functions:
+`bb.experimental_aiServices.register({ id, displayName, complete?, transcribe?, status? })`.
+`complete(prompt, { signal }) → Promise<string>` serves thread titles and
+commit messages; `transcribe(audio: File, { signal, hint }) → Promise<string>`
+serves voice input; `status() → Promise<{ ready: true } | { ready: false, message }>`
+feeds the picker, Automatic, and the microphone (cached ~10 s; a task awaits a
+fresh status, bounded at 2 s, before skipping a service whose cached status is
+older). At least one of `complete` / `transcribe` is required; which tasks a
+service appears for follows from the functions it declares. bb owns the
+prompts and the reply cleanup; the plugin owns the model, the API, and any retries. Failure is a
+rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
+
+The user picks per task in Settings → AI services, `bb settings ai-services
+set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |
+`{ pluginId, serviceId }`, stored server-side under the `aiServiceSelections`
+app-settings key). Automatic walks `AUTOMATIC_AI_SERVICE_PLUGIN_IDS` in the
+builtin registry (`provider-codex`, then `bb-ai`) and only matches builtin
+installs, so a third-party plugin receives text only after the user picks it.
+An explicit pick is strict: failure uses the plain fallback text and never
+moves to another service. Services are keyed by plugin id plus service id, so
+ids only need to be unique within a plugin: a plugin that registers one id
+twice fails its load, and two plugins may share an id without either failing.
+`automatic` and `off` are reserved ids because the CLI and selections use them
+as modes. `bb settings ai-services set` takes `--plugin` to pick between
+plugins that share an id; the Settings → AI services test result names both
+ids (`pluginId`, `serviceId`). The voice-transcription and test routes abort
+the service's `signal` when the HTTP request is cancelled.
 
 **Audit before stabilizing.**
 
-1. **Chooser.** Confirm `BB_INFERENCE` / `BB_TRANSCRIPTION` strings stay the
-   setting, or move to a structured core setting whose options are the
-   registered services (a picker needs per-service model lists, which the
-   contract does not carry yet).
-2. **Payload cap.** A plugin-served transcription travels as base64 inside one
-   host RPC call (32 MiB JSON input cap → 20 MB audio), below the 25 MB
-   the server-direct path accepts for long recordings. The daemon retains
-   its existing 32 MiB aggregate active-input budget. The alternative is a host
-   pull: the server stores the audio under a short-lived token and the call carries the token, so the host
-   worker fetches the bytes over the internal route instead of receiving
-   them inline; decide whether that or a streamed path replaces the cap.
-3. **Failure vocabulary.** Confirm the six codes are enough for core's policy
-   and whether a service should be able to declare per-call retry hints.
-4. **Multiple services per plugin / per kind.** Confirm the `serviceId`-on-
-   every-call shape and the first-registered-wins collision rule.
-5. **Host choice.** Calls go to the primary host; decide whether a service may
-   declare which host(s) can serve it.
+1. **Structured input.** Confirm a bare prompt string stays enough, or whether
+   services need the task (title vs commit) or a length hint without breaking
+   the "plugin owns the model" split.
+2. **Status freshness.** The picker and the microphone can show a status up
+   to 10 s stale, and a task past that age waits up to 2 s for a fresh one; a
+   plugin whose readiness flips (sign-in, quota) might want to push a change
+   instead of waiting for the next poll.
+3. **Voice payloads.** `transcribe` receives the whole `File` in process
+   (25 MB cap). Decide whether streaming matters for long recordings.
+4. **Automatic order as policy.** The order lives in core's builtin registry.
+   Decide whether it should become a user-editable setting.
+5. **Several services per plugin.** Confirm the id-per-registration shape and
+   the per-plugin id scope (plugin id plus service id).
 
 ## `PluginFileOpenerSource.experimental_hostId` (`@get-bb/plugin-sdk/app`)
 
@@ -3149,6 +3188,18 @@ Follow-ups before the suspend callback cancel preparation after work stopping se
 After callback invocation, core completes pause and resumes for queued work. Reconnection
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
+
+## Host deletion notifications
+
+`PluginEvents.on("experimental_host.deleted", handler)` delivers `{host}` once after a
+machine is removed: from `DELETE /hosts/:id` for manually added machines, and after a
+machine provider finishes removal for provider machines. `host` is the public host DTO
+at removal time (status `disconnected`); `bb.sdk.hosts.get` returns 404 for it afterwards.
+Delivery is fire-and-forget like every other event: a plugin that is not loaded at
+removal time never sees it, so per-host state must also be reconciled against a 404
+from `bb.sdk.hosts.get`. Connect does both to prune shared ports of removed machines.
+Stabilization requires deciding whether hosts deserve their own event map instead of
+`PluginThreadEventPayloads`, covering removal paths added later, and a second consumer.
 
 ## `bb.experimental_machines.getResource`
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "resource-atoms",
+  "type": "registry:ui",
+  "title": "resource-atoms",
+  "description": "BB ui \"resource-atoms\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/resource/atoms.tsx",
+      "content": "import type { CSSProperties, ReactNode } from \"react\";\nimport { Icon, type IconName } from \"../icon\";\nimport { cn } from \"../../../lib/utils\";\n\nexport type ResourceStatusTone = \"success\" | \"warning\" | \"error\" | \"muted\";\n\nexport function ResourceStatus({\n  tone,\n  children,\n}: {\n  tone: ResourceStatusTone;\n  children: ReactNode;\n}) {\n  return (\n    <span className=\"inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground\">\n      <span\n        aria-hidden\n        className={cn(\n          \"size-1.5 shrink-0 rounded-full\",\n          tone === \"success\" && \"bg-success\",\n          tone === \"warning\" && \"bg-warning\",\n          tone === \"error\" && \"bg-destructive\",\n          tone === \"muted\" && \"bg-muted-foreground/50\",\n        )}\n      />\n      <span className=\"truncate\">{children}</span>\n    </span>\n  );\n}\n\nexport function ResourceIconFrame({\n  className,\n  style,\n  children,\n}: {\n  className?: string;\n  style?: CSSProperties;\n  children: (glyphClassName: string) => ReactNode;\n}) {\n  return (\n    <span\n      className={cn(\n        \"flex size-6 shrink-0 items-center justify-center overflow-hidden\",\n        className,\n      )}\n      style={style}\n    >\n      {children(\"size-3.5\")}\n    </span>\n  );\n}\n\nexport function ResourceMeta({\n  items,\n}: {\n  items: readonly (ReactNode | null | undefined | false)[];\n}) {\n  const visibleItems = items.filter(Boolean);\n  return (\n    <span className=\"inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5\">\n      {visibleItems.map((item, index) => (\n        <span key={index} className=\"inline-flex min-w-0 items-center gap-1.5\">\n          {index > 0 ? (\n            <span aria-hidden className=\"text-subtle-foreground\">\n              ·\n            </span>\n          ) : null}\n          <span className=\"min-w-0 truncate\">{item}</span>\n        </span>\n      ))}\n    </span>\n  );\n}\n\nexport function ResourceCardStat({\n  icon,\n  iconClassName,\n  accessibleLabel,\n  children,\n}: {\n  icon: IconName;\n  iconClassName?: string;\n  accessibleLabel?: string;\n  children: ReactNode;\n}) {\n  return (\n    <span\n      aria-label={accessibleLabel}\n      className=\"inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-muted-foreground\"\n    >\n      <Icon\n        name={icon}\n        className={cn(\"size-3 shrink-0\", iconClassName)}\n        aria-hidden\n      />\n      <span>{children}</span>\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/resource/atoms.tsx"
+    }
+  ]
+}

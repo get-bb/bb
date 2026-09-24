@@ -1,11 +1,12 @@
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import { enrolledInstallerScript } from "./services/machines/manual-enrollment-command.js";
+import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { INSTALL_MACHINE_SCRIPT_PATH } from "./install-machine-asset.js";
 import { createNodeWebSocket } from "@hono/node-ws";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
@@ -527,12 +528,29 @@ export function createApp(
   app.get("/install.sh", async (context) => {
     const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH, "utf8");
     const credential = context.req.header("X-BB-Enrollment");
-    const bootstrap =
+    let bootstrap =
       credential === undefined
         ? null
         : await getMachineEnrollmentService(deps).pendingBootstrapForCredential(
             credential,
           );
+    if (credential !== undefined && bootstrap === null) {
+      try {
+        bootstrap = await reconnectBootstrapForCredential(deps, credential);
+      } catch (error) {
+        deps.logger.warn({ error }, "Could not refresh machine access");
+        return new Response(
+          "Could not refresh machine access. Run the command again, or generate a new one in bb.\n",
+          {
+            status: 503,
+            headers: {
+              "cache-control": "no-store",
+              "content-type": "text/plain",
+            },
+          },
+        );
+      }
+    }
     if (credential !== undefined && bootstrap === null) {
       return new Response(
         "Enrollment is expired or unavailable. Generate a new command in bb.\n",
@@ -562,21 +580,48 @@ export function createApp(
     });
   });
   app.get("/install/bb-app.tgz", async (context) => {
-    const artifact = await bbAppArtifactService.getArtifact();
-    const etag = `"sha256-${artifact.digest}"`;
-    const headers = {
-      "cache-control": "public, max-age=300",
-      "content-type": "application/gzip",
-      etag,
-      "x-bb-artifact-sha256": artifact.digest,
-    };
-    if (context.req.header("if-none-match") === etag) {
-      return new Response(null, { headers, status: 304 });
+    try {
+      const artifact = await bbAppArtifactService.getArtifact();
+      const etag = `"sha256-${artifact.digest}"`;
+      const headers = {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/gzip",
+        etag,
+        "x-bb-artifact-sha256": artifact.digest,
+      };
+      if (context.req.header("if-none-match") === etag) {
+        return new Response(null, { headers, status: 304 });
+      }
+      const tarball = await readFile(artifact.path);
+      return new Response(tarball, {
+        headers: { ...headers, "content-length": String(artifact.size) },
+      });
+    } catch (error) {
+      const diagnosticId = randomUUID();
+      const code =
+        error instanceof Error && "code" in error ? error.code : undefined;
+      const reason =
+        code === "ENOENT"
+          ? "A required server package file or packaging tool is missing."
+          : code === "EACCES" || code === "EPERM"
+            ? "The server lacks permission to prepare or read the host package."
+            : code === "ENOSPC"
+              ? "The server ran out of disk space while preparing the host package."
+              : "The server could not build or read its host package.";
+      deps.logger.error(
+        { err: error, diagnosticId },
+        "Host package download failed",
+      );
+      return context.json(
+        {
+          code: "host_package_unavailable",
+          message: `${reason} Check the server logs for diagnostic ID ${diagnosticId}, then retry installation.`,
+          diagnosticId,
+        },
+        500,
+        { "cache-control": "no-store" },
+      );
     }
-    const tarball = await readFile(artifact.path);
-    return new Response(tarball, {
-      headers: { ...headers, "content-length": String(artifact.size) },
-    });
   });
   app.use("/api/v1/*", async (context, next) => {
     const startedAt = performance.now();

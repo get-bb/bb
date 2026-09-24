@@ -11,27 +11,18 @@ import {
   defaultRangeExtractor,
   useVirtualizer,
   type Range,
-  type Virtualizer,
 } from "@tanstack/react-virtual";
 import {
   DEFAULT_WINDOWING_MIN_ITEM_COUNT,
-  NOOP_ITEM_REF,
   recordTimelineMeasurement,
   type TimelineWindowedItemsProps,
 } from "./TimelineWindowedItemsLoader.js";
 
 const TIMELINE_WINDOW_OVERSCAN_ITEMS = 8;
-const TIMELINE_WINDOW_IDLE_DELAY_MS = 300;
 const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 const GET_NO_SCROLL_ELEMENT = () => null;
-
-interface ScrollSample {
-  at: number;
-  fast: boolean;
-  offset: number;
-}
 
 function measureBorderBox(
   element: HTMLElement,
@@ -56,7 +47,6 @@ function findOwnedWindowKey(
 }
 
 export function TimelineWindowedItems({
-  enabled,
   alwaysMountedKeys = EMPTY_KEY_SET,
   estimateItemHeight,
   gap,
@@ -67,16 +57,11 @@ export function TimelineWindowedItems({
   renderItem,
 }: TimelineWindowedItemsProps) {
   const configured =
-    enabled && itemKeys.length >= minItemCount && getScrollElement !== null;
+    itemKeys.length >= minItemCount && getScrollElement !== null;
   const [scrollRootUsable, setScrollRootUsable] = useState(true);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);
   const containerElementRef = useRef<HTMLDivElement>(null);
-  const scrollSampleRef = useRef<ScrollSample>({
-    at: 0,
-    fast: false,
-    offset: 0,
-  });
   const windowingEnabled = configured && scrollRootUsable;
   const resolvedGetScrollElement = getScrollElement ?? GET_NO_SCROLL_ELEMENT;
 
@@ -137,31 +122,6 @@ export function TimelineWindowedItems({
     },
     [forcedIndexes],
   );
-  const handleVirtualizerChange = useCallback(
-    (
-      instance: Virtualizer<HTMLElement, HTMLDivElement>,
-      scrolling: boolean,
-    ) => {
-      const sample = scrollSampleRef.current;
-      if (!scrolling) {
-        sample.fast = false;
-        sample.at = 0;
-        sample.offset = instance.scrollOffset ?? sample.offset;
-        return;
-      }
-      const now = performance.now();
-      const offset = instance.scrollOffset ?? 0;
-      const elapsed = sample.at === 0 ? 0 : now - sample.at;
-      const distance = Math.abs(offset - sample.offset);
-      const viewportSize = instance.scrollRect?.height ?? 0;
-      sample.fast =
-        (sample.at === 0 || elapsed <= 100) &&
-        distance >= Math.max(200, viewportSize * 0.5);
-      sample.at = now;
-      sample.offset = offset;
-    },
-    [],
-  );
   const initialOffset = useCallback(
     () => resolvedGetScrollElement()?.scrollTop ?? 0,
     [resolvedGetScrollElement],
@@ -177,9 +137,7 @@ export function TimelineWindowedItems({
     getItemKey,
     getScrollElement: resolvedGetScrollElement,
     initialOffset,
-    isScrollingResetDelay: TIMELINE_WINDOW_IDLE_DELAY_MS,
     measureElement,
-    onChange: handleVirtualizerChange,
     overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
     scrollMargin,
@@ -215,6 +173,7 @@ export function TimelineWindowedItems({
     };
     const scrollElement = resolvedGetScrollElement();
     if (scrollElement === null) {
+      setScrollRootUsable(false);
       const frame = requestAnimationFrame(() => {
         updateRootUsability();
         updateScrollGeometry();
@@ -253,23 +212,6 @@ export function TimelineWindowedItems({
     [indexByKey],
   );
 
-  if (!windowingEnabled) {
-    return (
-      <>
-        {itemKeys.map((key, index) =>
-          renderItem(index, {
-            isRealized: true,
-            itemIndex: undefined,
-            itemRef: NOOP_ITEM_REF,
-            itemStyle: undefined,
-            windowingEnabled: false,
-          }),
-        )}
-      </>
-    );
-  }
-
-  const fastScrolling = scrollSampleRef.current.fast;
   const virtualItemsByIndex = new Map(
     virtualizer.getVirtualItems().map((item) => [item.index, item]),
   );
@@ -280,35 +222,40 @@ export function TimelineWindowedItems({
   const virtualItems = [...virtualItemsByIndex.values()].sort(
     (left, right) => left.index - right.index,
   );
+  const renderWindow = windowingEnabled && virtualizer.range !== null;
+  const indexes = renderWindow
+    ? virtualItems.map((item) => item.index)
+    : itemKeys.map((_, index) => index);
   return (
     <div
       ref={containerRef}
       className="relative w-full"
-      data-timeline-virtual-spacer=""
+      style={renderWindow ? undefined : { display: "contents" }}
+      data-timeline-items=""
+      data-timeline-virtual-spacer={renderWindow ? "" : undefined}
       onClickCapture={retainInteractedItem}
       onFocusCapture={retainInteractedItem}
     >
-      {virtualItems.map((item) => {
-        const isRealized = !fastScrolling || forcedIndexes.has(item.index);
-        return renderItem(item.index, {
-          isRealized,
-          itemIndex: item.index,
-          itemRef: virtualizer.measureElement,
-          itemStyle: {
-            position: "absolute",
-            left: 0,
-            width: "100%",
-            ...(isRealized
-              ? undefined
-              : {
-                  height: item.size,
-                  minHeight: item.size,
-                  overflow: "hidden",
-                }),
-          },
-          windowingEnabled: true,
-        });
-      })}
+      {indexes.map((index) =>
+        renderItem(index, {
+          isRealized: true,
+          itemIndex: index,
+          itemRef: renderWindow
+            ? virtualizer.measureElement
+            : (element) => {
+                if (element === null) return;
+                const key = itemKeys[index];
+                const height = element.getBoundingClientRect().height;
+                if (key !== undefined && height > 0) {
+                  recordTimelineMeasurement(measurements, key, height);
+                }
+              },
+          itemStyle: renderWindow
+            ? { position: "absolute", left: 0, width: "100%" }
+            : undefined,
+          windowingEnabled: renderWindow,
+        }),
+      )}
     </div>
   );
 }
