@@ -836,10 +836,10 @@ export function AppearanceSettingsSection({
       </SettingsSection>
       <SettingsSection title="Interface">
         <div className="space-y-5">
-          <SidebarHeaderSetting />
-          <CodeRendererSettings />
           <SidebarThreadListSetting />
           <SidebarNavigationSetting />
+          <SidebarHeaderSetting />
+          <CodeRendererSettings />
           <SidebarFooterSettings />
         </div>
       </SettingsSection>
