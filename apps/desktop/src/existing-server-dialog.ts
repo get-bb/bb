@@ -159,7 +159,7 @@ ${DESKTOP_DIALOG_BASE_CSS}
   </style>
 </head>
 <body>
-  <h1>bb is already running on ${BUILTIN_SERVER_NAME.toLowerCase()}</h1>
+  <h1>bb is already running on ${BUILTIN_SERVER_NAME}</h1>
   <p>${introText}</p>
   <div class="details">
       ${detailHtml}

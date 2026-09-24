@@ -143,6 +143,7 @@ export function createAccountCookieSource(args: {
   accountCookie: { name: string; value: string };
   fetchImpl?: typeof fetch;
   remoteServerUrl: string;
+  targetHandle: string;
 }): DesktopSessionCookieSource {
   return async () => {
     const connectApiOrigin = new URL(args.remoteServerUrl).origin;
@@ -150,7 +151,6 @@ export function createAccountCookieSource(args: {
       cookie: `${args.accountCookie.name}=${args.accountCookie.value}`,
     };
     const fetchImpl = args.fetchImpl ?? globalThis.fetch;
-    const targetHandle = new URL(args.remoteServerUrl).hostname.split(".")[0];
     let serversResponse: Response;
     try {
       serversResponse = await fetchImpl(
@@ -182,7 +182,9 @@ export function createAccountCookieSource(args: {
       );
     }
     if (
-      !servers.data.servers.some((server) => server.handle === targetHandle)
+      !servers.data.servers.some(
+        (server) => server.handle === args.targetHandle,
+      )
     ) {
       return failure(
         "unauthorized",

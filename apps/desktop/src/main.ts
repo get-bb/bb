@@ -1175,6 +1175,7 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
 
 async function authenticateConnectTarget(
   remoteServerUrl: string,
+  targetHandle: string,
   isCurrent: () => boolean,
 ): Promise<ConnectDesktopSessionResult> {
   const cookieStore = session.defaultSession.cookies;
@@ -1242,6 +1243,7 @@ async function authenticateConnectTarget(
       mintCookie: createAccountCookieSource({
         accountCookie,
         remoteServerUrl,
+        targetHandle,
       }),
       remoteServerUrl,
     });
@@ -1800,6 +1802,7 @@ async function applyServerTarget(): Promise<void> {
     stopServerMovedWatcher();
     const result = await authenticateConnectTarget(
       target.server.url,
+      target.server.handle,
       isCurrent,
     );
     if (!isCurrent()) {
@@ -2885,8 +2888,13 @@ async function runDesktopApp(): Promise<void> {
   connectServerSync.start();
   connectSessionRenewal = createConnectSessionRenewal({
     async authenticate(remoteServerUrl, isCurrent) {
+      const target = serverTargetStore?.getTarget();
+      if (target?.kind !== "connect" || target.server.url !== remoteServerUrl) {
+        return { detail: "the app no longer targets this server", ok: false };
+      }
       const result = await authenticateConnectTarget(
         remoteServerUrl,
+        target.server.handle,
         isCurrent,
       );
       return result.ok

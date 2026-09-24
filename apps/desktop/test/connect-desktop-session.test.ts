@@ -56,6 +56,7 @@ describe("createAccountCookieSource", () => {
         },
         fetchImpl: fetchImpl as typeof fetch,
         remoteServerUrl: "https://laptop.getbb.app",
+        targetHandle: "laptop",
       }),
       remoteServerUrl: "https://laptop.getbb.app",
     });
@@ -80,9 +81,7 @@ describe("createAccountCookieSource", () => {
   it("uses the server origin including its protocol and port for local Connect", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json({ servers: [{ handle: "laptop" }] }),
-      )
+      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
       .mockResolvedValueOnce(gateResponse());
     const source = createAccountCookieSource({
       accountCookie: {
@@ -91,6 +90,7 @@ describe("createAccountCookieSource", () => {
       },
       fetchImpl,
       remoteServerUrl: "http://laptop.bb.localhost:8787/threads?view=full",
+      targetHandle: "laptop",
     });
 
     await expect(source()).resolves.toEqual({ cookie: COOKIE, ok: true });
@@ -109,11 +109,31 @@ describe("createAccountCookieSource", () => {
     );
   });
 
+  it("checks the selected handle when the server uses a custom hostname", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(gateResponse());
+    const source = createAccountCookieSource({
+      accountCookie: {
+        name: "__Secure-better-auth.session_token",
+        value: "account-token",
+      },
+      fetchImpl,
+      remoteServerUrl: "https://bb.example.com",
+      targetHandle: "laptop",
+    });
+
+    await expect(source()).resolves.toEqual({ cookie: COOKIE, ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("reports an expired account session as unauthorized", async () => {
     const source = createAccountCookieSource({
       accountCookie: { name: "better-auth.session_token", value: "expired" },
       fetchImpl: async () => new Response(null, { status: 401 }),
       remoteServerUrl: "http://laptop.getbb.localhost:8787",
+      targetHandle: "laptop",
     });
     await expect(source()).resolves.toEqual({
       code: "unauthorized",
@@ -134,6 +154,7 @@ describe("createAccountCookieSource", () => {
       },
       fetchImpl: fetchImpl as typeof fetch,
       remoteServerUrl: "https://laptop.getbb.app",
+      targetHandle: "laptop",
     });
     await expect(source()).resolves.toEqual({
       code: "unauthorized",
