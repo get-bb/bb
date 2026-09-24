@@ -1,5 +1,17 @@
 const DEBOUNCE_MS = 300;
-const IGNORED_SEGMENTS = new Set(["dist", "node_modules", ".git"]);
+const IGNORED_SEGMENTS = new Set([
+  "dist",
+  "node_modules",
+  ".git",
+  // bb-fork(windows): turbo task logs and the prebuilt bundled runtime live
+  // bb-fork(windows): inside the plugin directory. Treating them as source
+  // bb-fork(windows): changes makes every `turbo` run (prepare:bundled,
+  // bb-fork(windows): typecheck) rebuild and reload the plugin, which disposes
+  // bb-fork(windows): its host worker mid-call and can kill in-flight
+  // bb-fork(windows): environment provisioning.
+  ".turbo",
+  ".bundled-runtime",
+]);
 // bb-fork(windows): how long to wait before retrying a hot reload that was
 // bb-fork(windows): held back by an open plugin form.
 export const PLUGIN_DEV_DEFER_RETRY_MS = 3000;

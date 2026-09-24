@@ -202,4 +202,13 @@ describe("isIgnoredPluginDevPath", () => {
     expect(isIgnoredPluginDevPath("src/server.ts")).toBe(false);
     expect(isIgnoredPluginDevPath("distros/notes.md")).toBe(false);
   });
+
+  it("ignores turbo task logs and the bundled runtime so hot reload stays off during a turbo run", () => {
+    expect(isIgnoredPluginDevPath(".turbo/turbo-prepare$colon$bundled.log")).toBe(
+      true,
+    );
+    expect(isIgnoredPluginDevPath(".turbo/turbo-typecheck.log")).toBe(true);
+    expect(isIgnoredPluginDevPath(".bundled-runtime/package.json")).toBe(true);
+    expect(isIgnoredPluginDevPath(".bundled-runtime/dist/host.js")).toBe(true);
+  });
 });
