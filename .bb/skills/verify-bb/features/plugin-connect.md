@@ -23,7 +23,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Account pairing | Create a dashboard pairing code and redeem it with `connect --code` (the alias for `account login --code`), then try expired/reused codes; separately upgrade a store that still holds a legacy Connect credential. | Only the intended test server signs in; the tunnel dials with a `bbtkt_` ticket; a legacy credential is adopted by bb account once and removed from Connect; invalid codes cannot claim another account or tunnel. |
+| Account pairing | Create a dashboard pairing code and redeem it with `connect --code` (signs in like `account login --code` and turns remote access back on), then try expired/reused codes; separately upgrade a store that still holds a legacy Connect credential. | Only the intended test server signs in; the tunnel dials with a `bbtkt_` ticket; a legacy credential is adopted by bb account once and removed from Connect; invalid codes cannot claim another account or tunnel. |
 | Remote app and status | Open the returned test tunnel URL, inspect connect status, and perform a read-only project lookup. | Remote browser and CLI address the same synthetic server and authenticated account. |
 | Reconnect | Interrupt only the test tunnel, observe disconnected status, and restore its connection. | The same authorized test server recovers; stale credentials cannot take ownership. |
 | Port shares | Start a harmless HTTP fixture, expose its port, inspect shares, request the returned URL, then unexpose it. | Shared response is the fixture’s; removal makes that share unavailable without stopping unrelated shares. |

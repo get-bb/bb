@@ -70,7 +70,7 @@ export function resolveDevLaunchMode(args: string[]): DevLaunchMode {
     return "worktree";
   }
   throw new Error(
-    `[dev] Unknown arguments: ${args.join(" ")}. Expected no arguments or --worktree.`,
+    `[dev] Unknown arguments: ${args.join(" ")}. Expected no arguments, --staging, or --worktree.`,
   );
 }
 

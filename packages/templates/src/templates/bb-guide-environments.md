@@ -186,25 +186,29 @@ bb account (getbb.app sign-in):
   bb account login                        Print a getbb.app link and code to approve
     --wait                                Wait for that sign-in to finish
     --code <code>                         Pair with a one-time dashboard code
-    --base-url <url>                      getbb.app origin; only for local testing
+    --base-url <url>                      https://getbb.app or https://vibecodethis.site
   bb account logout                       Revoke the credential and sign out
 
   `bb account login` returns after printing the link; approve it in any
   browser and bb finishes signing in on its own. Every command accepts
-  `--json`. In a source checkout, `pnpm dev` points sign-in at that
-  worktree's local Cloud origin through `BB_DEV_CONNECT_BASE_URL`; an
-  explicit `--base-url` still wins.
+  `--json`. `bb account status` reports a paired bb whose account hasn't
+  loaded yet as pending; it keeps retrying. `bb account logout` says so when
+  getbb.app didn't confirm revoking the server. In a source checkout,
+  `pnpm dev` points sign-in at that worktree's local Cloud origin through
+  `BB_DEV_CONNECT_BASE_URL`; an explicit `--base-url` still wins, and a
+  development build also accepts `http://bb.localhost:<port>` there.
 
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any
   browser. Remote access starts once this bb is signed in to its bb account
   (`bb account login`). A pairing command from the getbb.app dashboard still
-  works as an alias of `bb account login --code`:
+  works like `bb account login --code`, and also turns remote access back on:
 
   bb connect --code <code> [--server https://<handle>.getbb.app]
     --code <code>          One-time pairing code from the dashboard
-    --server <url>         Dashboard server URL; only its getbb.app origin is used
+    --server <url>         Dashboard server URL; only its getbb.app or
+                           vibecodethis.site apex is used
 
   The bb SERVER holds the tunnel itself — so it stays up as long as bb is
   running and reconnects on restart (no foreground process). Each connection

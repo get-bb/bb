@@ -274,7 +274,7 @@ describe("run-dev", () => {
     expect(resolveDevLaunchMode([])).toBe("vite");
     expect(resolveDevLaunchMode(["--worktree"])).toBe("worktree");
     expect(() => resolveDevLaunchMode(["--watch"])).toThrow(
-      "Expected no arguments or --worktree",
+      "Expected no arguments, --staging, or --worktree",
     );
   });
 

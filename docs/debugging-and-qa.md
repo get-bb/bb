@@ -306,7 +306,8 @@ pnpm cloud:dev
 The command applies migrations and prints the dashboard URL. Create a local
 email/password account, claim a handle, create a pairing code, and run the
 displayed `bb account login --code` command against a bb started with
-`pnpm dev` (`bb connect --code` is an alias). A browser sign-in started with
+`pnpm dev` (`bb connect --code` does the same and also turns remote access
+back on). A browser sign-in started with
 `bb account login` opens `<local origin>/link?code=…` on the same origin. The
 same worktree-specific local origin serves the dashboard at `bb.localhost`,
 sends `bb.localhost/api/ai/*` to the AI gateway worker, and routes
