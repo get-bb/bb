@@ -389,16 +389,23 @@ export class ShareRegistry {
 
   async pruneHost(hostId: string): Promise<void> {
     await this.load();
-    const keys = [...this.shares]
-      .filter(([, share]) => share.hostId === hostId)
-      .map(([key]) => key);
-    if (keys.length === 0) return;
-    for (const key of keys) this.shares.delete(key);
+    const removedShares = [...this.shares].filter(
+      ([, share]) => share.hostId === hostId,
+    );
+    if (removedShares.length === 0) return;
+    for (const [key] of removedShares) this.shares.delete(key);
+    try {
+      await this.persist();
+    } catch (error) {
+      for (const [key, share] of removedShares) {
+        if (!this.shares.has(key)) this.shares.set(key, share);
+      }
+      throw error;
+    }
     this.declaredMachineHostIds.delete(hostId);
     this.lastListings = this.lastListings.filter(
       (entry) => entry.hostId !== hostId,
     );
-    await this.persist();
     this.options.onChange?.();
   }
 
