@@ -1568,10 +1568,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         throw new Error(providerWithoutBridgeMessage(providerId));
       },
-      isAiServiceIdTaken: (serviceId) => {
-        const existing = deps.aiServices.get(serviceId);
-        return existing !== null && existing.pluginId !== row.id;
-      },
       isProviderIdTaken: (providerId) => {
         if (!deps.providerRegistry) {
           throw new Error("the provider registry is unavailable in this host");

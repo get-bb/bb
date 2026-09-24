@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { setAiServiceSelection } from "@bb/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
@@ -73,7 +73,10 @@ describe("voice transcription", () => {
   it("maps outcomes to API errors", async () => {
     await withTestHarness({}, async (harness) => {
       await expect(
-        transcribeVoiceInput(harness.deps, { file: voiceFile() }),
+        transcribeVoiceInput(harness.deps, {
+          file: voiceFile(),
+          signal: new AbortController().signal,
+        }),
       ).rejects.toMatchObject({
         status: 501,
         body: { code: "not_configured" },
@@ -83,7 +86,10 @@ describe("voice transcription", () => {
         throw new Error("Codex rejected the audio");
       });
       await expect(
-        transcribeVoiceInput(harness.deps, { file: voiceFile() }),
+        transcribeVoiceInput(harness.deps, {
+          file: voiceFile(),
+          signal: new AbortController().signal,
+        }),
       ).rejects.toMatchObject({
         status: 502,
         body: { code: "provider_rpc_error" },
@@ -91,8 +97,40 @@ describe("voice transcription", () => {
 
       setAiServiceSelection(harness.deps.db, "voice", { mode: "off" });
       await expect(
-        transcribeVoiceInput(harness.deps, { file: voiceFile() }),
+        transcribeVoiceInput(harness.deps, {
+          file: voiceFile(),
+          signal: new AbortController().signal,
+        }),
       ).rejects.toMatchObject({ status: 501 });
+    });
+  });
+
+  it("aborts the service's signal when the request is cancelled", async () => {
+    await withTestHarness({}, async (harness) => {
+      const controller = new AbortController();
+      let serviceSignal: AbortSignal | undefined;
+      registerFakeAiService(harness.deps.aiServices, {
+        id: "codex",
+        pluginId: "provider-codex",
+        builtin: true,
+        transcribe: (_audio, { signal }) => {
+          serviceSignal = signal;
+          return new Promise<string>(() => undefined);
+        },
+      });
+
+      const pending = transcribeVoiceInput(harness.deps, {
+        file: voiceFile(),
+        signal: controller.signal,
+      });
+      await vi.waitFor(() => expect(serviceSignal).toBeDefined());
+      controller.abort();
+
+      await expect(pending).rejects.toMatchObject({
+        status: 400,
+        body: { code: "cancelled" },
+      });
+      expect(serviceSignal?.aborted).toBe(true);
     });
   });
 
@@ -100,7 +138,10 @@ describe("voice transcription", () => {
     await withTestHarness({}, async (harness) => {
       expect(resolveVoiceTranscriptionEnabled(harness.deps)).toBe(false);
       registerCodexVoice(harness, async () => "hi");
-      await harness.deps.aiServices.status("codex");
+      await harness.deps.aiServices.status({
+        pluginId: "provider-codex",
+        serviceId: "codex",
+      });
       expect(resolveVoiceTranscriptionEnabled(harness.deps)).toBe(true);
       setAiServiceSelection(harness.deps.db, "voice", { mode: "off" });
       expect(resolveVoiceTranscriptionEnabled(harness.deps)).toBe(false);

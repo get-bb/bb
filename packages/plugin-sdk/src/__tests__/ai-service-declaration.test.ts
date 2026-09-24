@@ -51,6 +51,21 @@ describe("validatePluginAiServiceDeclaration", () => {
     ).toThrow(/invalid AI service id/u);
   });
 
+  it.each(["automatic", "off"])(
+    "reserves %j, which the CLI and selections use as a mode",
+    (id) => {
+      expect(() =>
+        validatePluginAiServiceDeclaration({
+          id,
+          displayName: "Acme",
+          complete,
+        }),
+      ).toThrow(
+        `AI service id "${id}" is reserved: bb uses "automatic" and "off" as selection modes. Choose another id.`,
+      );
+    },
+  );
+
   it("rejects an empty or oversized displayName", () => {
     expect(() =>
       validatePluginAiServiceDeclaration({

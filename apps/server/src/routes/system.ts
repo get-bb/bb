@@ -619,7 +619,12 @@ export function registerSystemRoutes(
   );
 
   post(routes.testAiService, async (context, payload) =>
-    context.json(await testAiService(deps, payload.task)),
+    context.json(
+      await testAiService(deps, {
+        task: payload.task,
+        signal: context.req.raw.signal,
+      }),
+    ),
   );
 
   post(routes.voiceTranscription, async (context) => {
@@ -635,6 +640,7 @@ export function registerSystemRoutes(
           typeof formData.get("prompt") === "string"
             ? String(formData.get("prompt"))
             : undefined,
+        signal: context.req.raw.signal,
       }),
     });
   });

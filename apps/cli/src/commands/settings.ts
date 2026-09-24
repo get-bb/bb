@@ -38,6 +38,10 @@ interface JsonOptions {
   json?: boolean;
 }
 
+interface AiServiceSetOptions extends JsonOptions {
+  plugin?: string;
+}
+
 function requireAiTask(input: string): AiTask {
   const task = aiTaskSchema.safeParse(input);
   if (!task.success) {
@@ -48,17 +52,34 @@ function requireAiTask(input: string): AiTask {
 
 function resolveAiServiceChoice(
   view: SystemAiServicesResponse,
-  task: AiTask,
-  choice: string,
+  args: { task: AiTask; choice: string; pluginId: string | undefined },
 ): AiServiceSelection {
-  if (choice === "automatic" || choice === "off") return { mode: choice };
-  const service = view.services.find((candidate) => candidate.id === choice);
-  const eligible = view.services
-    .filter((candidate) => candidate.tasks.includes(task))
-    .map((candidate) => candidate.id);
-  if (service === undefined || !service.tasks.includes(task)) {
+  const { task, choice, pluginId } = args;
+  if (choice === "automatic" || choice === "off") {
+    if (pluginId !== undefined) {
+      throw new Error(`--plugin applies only to a service id, not ${choice}.`);
+    }
+    return { mode: choice };
+  }
+  const eligible = view.services.filter((candidate) =>
+    candidate.tasks.includes(task),
+  );
+  const matches = eligible.filter(
+    (candidate) =>
+      candidate.id === choice &&
+      (pluginId === undefined || candidate.pluginId === pluginId),
+  );
+  const [service] = matches;
+  if (service === undefined) {
+    const ids = [...new Set(eligible.map((candidate) => candidate.id))];
+    const from = pluginId === undefined ? "" : ` from plugin '${pluginId}'`;
     throw new Error(
-      `No AI service '${choice}' handles ${task}. Choose automatic, off${eligible.length > 0 ? `, or one of: ${eligible.join(", ")}` : ""}.`,
+      `No AI service '${choice}'${from} handles ${task}. Choose automatic, off${ids.length > 0 ? `, or one of: ${ids.join(", ")}` : ""}.`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `Several plugins register AI service '${choice}': ${matches.map((candidate) => candidate.pluginId).join(", ")}. Pass --plugin <plugin-id>.`,
     );
   }
   return { mode: "service", pluginId: service.pluginId, serviceId: service.id };
@@ -382,21 +403,35 @@ export function registerSettingsCommands(
     .description(
       `Set the service for a task (${AI_TASKS.join(", ")}): automatic, off, or a service id`,
     )
+    .option(
+      "--plugin <plugin-id>",
+      "Plugin that registers the service, when several plugins use the same service id",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (taskInput: string, choice: string, opts: JsonOptions) => {
-        const task = requireAiTask(taskInput);
-        const sdk = createCliBbSdk(getUrl());
-        const current = await sdk.system.aiServices();
-        const result = await sdk.system.setAiServiceSelection({
-          task,
-          selection: resolveAiServiceChoice(current, task, choice),
-        });
-        if (outputJson(opts, result)) return;
-        console.log(
-          `${task}: ${describeAiSelection(result, result.selections[task])}`,
-        );
-      }),
+      action(
+        async (
+          taskInput: string,
+          choice: string,
+          opts: AiServiceSetOptions,
+        ) => {
+          const task = requireAiTask(taskInput);
+          const sdk = createCliBbSdk(getUrl());
+          const current = await sdk.system.aiServices();
+          const result = await sdk.system.setAiServiceSelection({
+            task,
+            selection: resolveAiServiceChoice(current, {
+              task,
+              choice,
+              pluginId: opts.plugin,
+            }),
+          });
+          if (outputJson(opts, result)) return;
+          console.log(
+            `${task}: ${describeAiSelection(result, result.selections[task])}`,
+          );
+        },
+      ),
     );
   aiServices
     .command("test <task>")

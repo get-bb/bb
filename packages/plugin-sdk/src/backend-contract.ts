@@ -1920,7 +1920,11 @@ export type PluginAiServiceStatus =
  * Failure is a rejected promise.
  */
 export interface PluginAiServiceDeclaration {
-  /** Stable, lowercase id, unique across plugins. */
+  /**
+   * Stable, lowercase id, unique within this plugin. bb identifies a service
+   * by plugin id and service id, so another plugin may use the same id.
+   * `automatic` and `off` are reserved.
+   */
   readonly id: string;
   /** Shown in the picker; 1-64 characters. */
   readonly displayName: string;
@@ -1950,7 +1954,7 @@ export interface PluginAiServices {
   /**
    * Register an AI service. Call during the factory; the registration lands
    * when the plugin load commits and is removed on reload or disable. Throws
-   * on an id another live plugin already serves.
+   * when this plugin already registered the id.
    */
   register(declaration: PluginAiServiceDeclaration): { dispose(): void };
 }

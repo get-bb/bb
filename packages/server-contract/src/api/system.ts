@@ -177,6 +177,7 @@ export type TestAiServiceRequest = z.infer<typeof testAiServiceRequestSchema>;
 export const testAiServiceResponseSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
+    pluginId: z.string().min(1),
     serviceId: z.string().min(1),
     displayName: z.string().min(1),
     text: z.string(),

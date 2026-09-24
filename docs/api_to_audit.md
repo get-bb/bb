@@ -2446,10 +2446,11 @@ Consumers: the codex plugin and the bb-ai plugin.
 `complete(prompt, { signal }) → Promise<string>` serves thread titles and
 commit messages; `transcribe(audio: File, { signal, hint }) → Promise<string>`
 serves voice input; `status() → Promise<{ ready: true } | { ready: false, message }>`
-feeds the picker, Automatic, and the microphone (cached ~10 s). At least one of
-`complete` / `transcribe` is required; which tasks a service appears for
-follows from the functions it declares. bb owns the prompts and the reply
-cleanup; the plugin owns the model, the API, and any retries. Failure is a
+feeds the picker, Automatic, and the microphone (cached ~10 s; a task awaits a
+fresh status, bounded at 2 s, before skipping a service whose cached status is
+older). At least one of `complete` / `transcribe` is required; which tasks a
+service appears for follows from the functions it declares. bb owns the
+prompts and the reply cleanup; the plugin owns the model, the API, and any retries. Failure is a
 rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
 
 The user picks per task in Settings → AI services, `bb settings ai-services
@@ -2459,23 +2460,30 @@ app-settings key). Automatic walks `AUTOMATIC_AI_SERVICE_PLUGIN_IDS` in the
 builtin registry (`provider-codex`, then `bb-ai`) and only matches builtin
 installs, so a third-party plugin receives text only after the user picks it.
 An explicit pick is strict: failure uses the plain fallback text and never
-moves to another service. A selection stores the plugin id too, so a different
-plugin that later registers the same service id does not inherit it.
+moves to another service. Services are keyed by plugin id plus service id, so
+ids only need to be unique within a plugin: a plugin that registers one id
+twice fails its load, and two plugins may share an id without either failing.
+`automatic` and `off` are reserved ids because the CLI and selections use them
+as modes. `bb settings ai-services set` takes `--plugin` to pick between
+plugins that share an id; the Settings → AI services test result names both
+ids (`pluginId`, `serviceId`). The voice-transcription and test routes abort
+the service's `signal` when the HTTP request is cancelled.
 
 **Audit before stabilizing.**
 
 1. **Structured input.** Confirm a bare prompt string stays enough, or whether
    services need the task (title vs commit) or a length hint without breaking
    the "plugin owns the model" split.
-2. **Status freshness.** A cached status can be up to 10 s stale; a plugin
-   whose readiness flips (sign-in, quota) might want to push a change instead
-   of waiting for the next poll.
+2. **Status freshness.** The picker and the microphone can show a status up
+   to 10 s stale, and a task past that age waits up to 2 s for a fresh one; a
+   plugin whose readiness flips (sign-in, quota) might want to push a change
+   instead of waiting for the next poll.
 3. **Voice payloads.** `transcribe` receives the whole `File` in process
    (25 MB cap). Decide whether streaming matters for long recordings.
 4. **Automatic order as policy.** The order lives in core's builtin registry.
    Decide whether it should become a user-editable setting.
 5. **Several services per plugin.** Confirm the id-per-registration shape and
-   the first-registered-wins collision rule.
+   the per-plugin id scope (plugin id plus service id).
 
 ## `PluginFileOpenerSource.experimental_hostId` (`@get-bb/plugin-sdk/app`)
 

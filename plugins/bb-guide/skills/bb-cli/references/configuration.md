@@ -28,7 +28,9 @@
 - Use `bb settings ai-services set <thread-title|commit-message|voice>
 <automatic|off|service-id>` to choose which plugin AI service writes titles,
   commit messages, or voice transcripts, and `bb settings ai-services test
-<thread-title|commit-message>` to try the current choice.
+<thread-title|commit-message>` to try the current choice. Add
+  `--plugin <plugin-id>` to `set` when two plugins register the same service
+  id.
 - Use `bb settings general <key> <value>` or
   `bb settings experiment <key> <value>` for updates.
 - Use `bb settings keyboard list`, `set`, and `reset` for shortcut overrides.

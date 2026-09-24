@@ -4,14 +4,17 @@ import {
   type AiServiceRegistration,
 } from "../../src/services/ai/ai-service-registry.js";
 
+const ACME = { pluginId: "acme-plugin", serviceId: "acme" };
+
 function service(
   status: AiServiceRegistration["status"],
   id = "acme",
+  pluginId = "acme-plugin",
 ): AiServiceRegistration {
   return {
     id,
     displayName: "Acme",
-    pluginId: "acme-plugin",
+    pluginId,
     builtin: false,
     complete: async () => "reply",
     transcribe: null,
@@ -26,14 +29,39 @@ describe("AI service registry", () => {
     const registry = createAiServiceRegistry({ now: () => clock });
     registry.register(service(status));
 
-    expect(registry.peekStatus("acme")).toBeNull();
-    await expect(registry.status("acme")).resolves.toEqual({ ready: true });
-    await registry.status("acme");
+    expect(registry.peekStatus(ACME)).toBeNull();
+    await expect(registry.status(ACME)).resolves.toEqual({ ready: true });
+    await registry.status(ACME);
     expect(status).toHaveBeenCalledTimes(1);
 
     clock += 10_001;
-    await registry.status("acme");
+    await registry.status(ACME);
     expect(status).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps services with the same id from different plugins apart", async () => {
+    const registry = createAiServiceRegistry();
+    registry.register(service(null));
+    registry.register(
+      service(
+        async () => ({ ready: false, message: "Other plugin" }),
+        "acme",
+        "other-plugin",
+      ),
+    );
+
+    expect(registry.list().map((entry) => entry.pluginId)).toEqual([
+      "acme-plugin",
+      "other-plugin",
+    ]);
+    expect(registry.get(ACME)?.pluginId).toBe("acme-plugin");
+    await expect(registry.status(ACME)).resolves.toEqual({ ready: true });
+    await expect(
+      registry.status({ pluginId: "other-plugin", serviceId: "acme" }),
+    ).resolves.toEqual({ ready: false, message: "Other plugin" });
+    expect(() => registry.register(service(null))).toThrow(
+      'AI service "acme" is already registered by this plugin.',
+    );
   });
 
   it("reports a throwing or invalid status as not ready", async () => {
@@ -51,11 +79,13 @@ describe("AI service registry", () => {
       ),
     );
 
-    await expect(registry.status("acme")).resolves.toEqual({
+    await expect(registry.status(ACME)).resolves.toEqual({
       ready: false,
       message: "Sign in first",
     });
-    await expect(registry.status("broken")).resolves.toEqual({
+    await expect(
+      registry.status({ pluginId: "acme-plugin", serviceId: "broken" }),
+    ).resolves.toEqual({
       ready: false,
       message: "Reported an invalid status",
     });
@@ -64,7 +94,7 @@ describe("AI service registry", () => {
   it("treats a service without a status function as always ready", async () => {
     const registry = createAiServiceRegistry();
     registry.register(service(null));
-    await expect(registry.status("acme")).resolves.toEqual({ ready: true });
+    await expect(registry.status(ACME)).resolves.toEqual({ ready: true });
   });
 
   it("notifies when readiness changes and when services come and go", async () => {
@@ -82,19 +112,19 @@ describe("AI service registry", () => {
     );
     expect(onStatusChange).toHaveBeenCalledTimes(1);
 
-    await registry.status("acme");
+    await registry.status(ACME);
     expect(onStatusChange).toHaveBeenCalledTimes(2);
     clock += 20_000;
-    await registry.status("acme");
+    await registry.status(ACME);
     expect(onStatusChange).toHaveBeenCalledTimes(2);
 
     ready = true;
     clock += 20_000;
-    await registry.status("acme");
+    await registry.status(ACME);
     expect(onStatusChange).toHaveBeenCalledTimes(3);
 
     registration.dispose();
     expect(onStatusChange).toHaveBeenCalledTimes(4);
-    expect(registry.get("acme")).toBeNull();
+    expect(registry.get(ACME)).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { isAiTaskAvailable, runAiTask } from "./ai-tasks.js";
 interface TranscribeVoiceInputArgs {
   file: File;
   prompt?: string;
+  signal: AbortSignal;
 }
 
 const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
@@ -35,6 +36,7 @@ export async function transcribeVoiceInput(
   const outcome = await runAiTask(deps, {
     task: "voice",
     label: "Voice transcription",
+    signal: args.signal,
     call: (service, signal) => {
       if (service.transcribe === null) {
         throw new Error("This service does not transcribe audio");
@@ -59,5 +61,7 @@ export async function transcribeVoiceInput(
       );
     case "failed":
       throw new ApiError(502, "provider_rpc_error", outcome.message);
+    case "cancelled":
+      throw new ApiError(400, "cancelled", "Voice transcription was cancelled");
   }
 }

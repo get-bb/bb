@@ -26,6 +26,11 @@ export interface AiServiceInfo {
   tasks: AiTask[];
 }
 
+export interface AiServiceKey {
+  pluginId: string;
+  serviceId: string;
+}
+
 interface CachedStatus {
   status: AiServiceStatus;
   checkedAt: number;
@@ -33,10 +38,10 @@ interface CachedStatus {
 
 export interface AiServiceRegistry {
   register(registration: AiServiceRegistration): { dispose(): void };
-  get(id: string): AiServiceRegistration | null;
+  get(key: AiServiceKey): AiServiceRegistration | null;
   list(): AiServiceRegistration[];
-  peekStatus(id: string): AiServiceStatus | null;
-  status(id: string): Promise<AiServiceStatus>;
+  peekStatus(key: AiServiceKey): AiServiceStatus | null;
+  status(key: AiServiceKey): Promise<AiServiceStatus>;
 }
 
 interface CreateAiServiceRegistryArgs {
@@ -60,6 +65,14 @@ export function aiServiceSupportsTask(
   return task === "voice"
     ? service.transcribe !== null
     : service.complete !== null;
+}
+
+export function aiServiceKey(service: AiServiceRegistration): AiServiceKey {
+  return { pluginId: service.pluginId, serviceId: service.id };
+}
+
+function mapKey(key: AiServiceKey): string {
+  return `${key.pluginId}/${key.serviceId}`;
 }
 
 export function toAiServiceInfo(service: AiServiceRegistration): AiServiceInfo {
@@ -115,7 +128,7 @@ export function createAiServiceRegistry(
     const request = readStatus(service)
       .then((status) => {
         const previous = statuses.get(service)?.status;
-        if (services.get(service.id) === service) {
+        if (services.get(mapKey(aiServiceKey(service))) === service) {
           statuses.set(service, { status, checkedAt: now() });
         }
         if (previous === undefined || previous.ready !== status.ready) {
@@ -130,32 +143,33 @@ export function createAiServiceRegistry(
 
   return {
     register(registration) {
-      if (services.has(registration.id)) {
+      const key = mapKey(aiServiceKey(registration));
+      if (services.has(key)) {
         throw new Error(aiServiceAlreadyRegisteredMessage(registration.id));
       }
-      services.set(registration.id, registration);
+      services.set(key, registration);
       args.onStatusChange?.();
       let disposed = false;
       return {
         dispose() {
           if (disposed) return;
           disposed = true;
-          if (services.get(registration.id) === registration) {
-            services.delete(registration.id);
+          if (services.get(key) === registration) {
+            services.delete(key);
             statuses.delete(registration);
             args.onStatusChange?.();
           }
         },
       };
     },
-    get(id) {
-      return services.get(id) ?? null;
+    get(key) {
+      return services.get(mapKey(key)) ?? null;
     },
     list() {
       return [...services.values()];
     },
-    peekStatus(id) {
-      const service = services.get(id);
+    peekStatus(key) {
+      const service = services.get(mapKey(key));
       if (service === undefined) return null;
       const cached = statuses.get(service);
       if (cached === undefined || now() - cached.checkedAt > STATUS_TTL_MS) {
@@ -163,8 +177,8 @@ export function createAiServiceRegistry(
       }
       return cached?.status ?? null;
     },
-    async status(id) {
-      const service = services.get(id);
+    async status(key) {
+      const service = services.get(mapKey(key));
       if (service === undefined) {
         return { ready: false, message: "Plugin not loaded" };
       }

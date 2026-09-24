@@ -376,7 +376,7 @@ function createStagedRegistrations<
 >(options: {
   validate: (declaration: TDeclaration) => TNormalized;
   bind: (id: string) => TBinding;
-  isTaken: (id: string) => boolean;
+  isTaken?: (id: string) => boolean;
   registerLive: (
     declaration: TNormalized,
     binding: TBinding,
@@ -415,7 +415,7 @@ function createStagedRegistrations<
       };
       if (options.isActivated()) {
         entry.disposer = options.registerLive(normalized, binding);
-      } else if (options.isTaken(normalized.id)) {
+      } else if (options.isTaken?.(normalized.id) === true) {
         throw new Error(options.alreadyRegisteredMessage(normalized.id));
       }
       entries.set(normalized.id, entry);
@@ -511,7 +511,6 @@ export function createPluginApi(options: {
     dispose(): void;
   };
   isProviderIdTaken: (providerId: string) => boolean;
-  isAiServiceIdTaken: (serviceId: string) => boolean;
   assertProviderRegistrable: (providerId: string) => void;
 }): PluginApiHandle {
   const {
@@ -540,7 +539,6 @@ export function createPluginApi(options: {
     registerAiService,
     isProviderIdTaken,
     assertProviderRegistrable,
-    isAiServiceIdTaken,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -1284,7 +1282,6 @@ export function createPluginApi(options: {
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
     bind: () => null,
-    isTaken: isAiServiceIdTaken,
     registerLive: (declaration) => registerAiService(declaration),
     alreadyRegisteredMessage: aiServiceAlreadyRegisteredMessage,
     assertLive,

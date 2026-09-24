@@ -9,6 +9,7 @@ import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { buildThreadTitlePrompt } from "../threads/title-generation.js";
 import {
+  aiServiceKey,
   aiServiceSupportsTask,
   aiServiceTasks,
 } from "./ai-service-registry.js";
@@ -52,7 +53,7 @@ export async function buildAiServicesView(
 ): Promise<SystemAiServicesResponse> {
   const services = deps.aiServices.list();
   const statuses = await Promise.all(
-    services.map((service) => deps.aiServices.status(service.id)),
+    services.map((service) => deps.aiServices.status(aiServiceKey(service))),
   );
   return {
     selections: getAiServiceSelections(deps.db),
@@ -80,8 +81,8 @@ export async function updateAiServiceSelection(
 ): Promise<SystemAiServicesResponse> {
   const { selection, task } = request;
   if (selection.mode === "service") {
-    const service = deps.aiServices.get(selection.serviceId);
-    if (service === null || service.pluginId !== selection.pluginId) {
+    const service = deps.aiServices.get(selection);
+    if (service === null) {
       throw new ApiError(
         400,
         "invalid_request",
@@ -120,13 +121,14 @@ function sampleFor(task: AiTextTask): {
 
 export async function testAiService(
   deps: AiServicesViewDeps,
-  task: AiTextTask,
+  args: { task: AiTextTask; signal: AbortSignal },
 ): Promise<TestAiServiceResponse> {
-  const sample = sampleFor(task);
+  const sample = sampleFor(args.task);
   const outcome = await runTextAiTask(deps, {
-    task,
+    task: args.task,
     label: "AI service test",
     prompt: sample.prompt,
+    signal: args.signal,
   });
   if (!outcome.ok) {
     return {
@@ -145,6 +147,7 @@ export async function testAiService(
   }
   return {
     ok: true,
+    pluginId: outcome.service.pluginId,
     serviceId: outcome.service.id,
     displayName: outcome.service.displayName,
     text,

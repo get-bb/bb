@@ -11,6 +11,7 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { AUTOMATIC_AI_SERVICE_PLUGIN_IDS } from "../plugins/builtin-registry.js";
 import { cleanGeneratedLine } from "./ai-reply.js";
 import {
+  aiServiceKey,
   aiServiceSupportsTask,
   type AiServiceRegistration,
 } from "./ai-service-registry.js";
@@ -21,7 +22,12 @@ export const AI_TASK_TIMEOUT_MS: Record<AiTask, number> = {
   voice: 10_000,
 };
 
-export type AiTaskFailureReason = "off" | "unavailable" | "timeout" | "failed";
+export type AiTaskFailureReason =
+  | "off"
+  | "unavailable"
+  | "timeout"
+  | "failed"
+  | "cancelled";
 
 export type AiTaskOutcome<T> =
   | {
@@ -51,6 +57,8 @@ interface RunAiTaskArgs<T> {
   call: (service: AiServiceRegistration, signal: AbortSignal) => Promise<T>;
   accept: (value: T) => T | null;
 }
+
+const REQUEST_CANCELLED_MESSAGE = "The request was cancelled";
 
 class AiTaskTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -87,10 +95,8 @@ export function selectedAiService(
   task: AiTask,
   selection: Extract<AiServiceSelection, { mode: "service" }>,
 ): AiServiceRegistration | null {
-  const service = deps.aiServices.get(selection.serviceId);
-  return service !== null &&
-    service.pluginId === selection.pluginId &&
-    aiServiceSupportsTask(service, task)
+  const service = deps.aiServices.get(selection);
+  return service !== null && aiServiceSupportsTask(service, task)
     ? service
     : null;
 }
@@ -112,7 +118,8 @@ export function isAiTaskAvailable(
 ): boolean {
   const selection = getAiServiceSelections(deps.db)[task];
   return aiTaskServices(deps, task, selection).some(
-    (service) => deps.aiServices.peekStatus(service.id)?.ready === true,
+    (service) =>
+      deps.aiServices.peekStatus(aiServiceKey(service))?.ready === true,
   );
 }
 
@@ -183,6 +190,9 @@ export async function runAiTask<T>(
   if (selection.mode === "off") {
     return fail("off", "Turned off in Settings → AI services");
   }
+  if (args.signal?.aborted) {
+    return fail("cancelled", REQUEST_CANCELLED_MESSAGE);
+  }
   const services = aiTaskServices(deps, args.task, selection);
   if (services.length === 0) {
     return fail(
@@ -198,11 +208,17 @@ export async function runAiTask<T>(
     message: "No AI service is ready",
   };
   for (const service of services) {
-    const status = deps.aiServices.peekStatus(service.id);
-    const skipped = status === null ? null : skipMessage(service, status);
+    const skipped = skipMessage(
+      service,
+      await deps.aiServices.status(aiServiceKey(service)),
+    );
     if (skipped !== null) {
       last = { reason: "unavailable", message: skipped };
       continue;
+    }
+    if (args.signal?.aborted) {
+      last = { reason: "cancelled", message: REQUEST_CANCELLED_MESSAGE };
+      break;
     }
     const link = linkedSignal(timeoutMs, args.signal);
     const fields = {
@@ -231,6 +247,11 @@ export async function runAiTask<T>(
       };
       deps.logger.warn(fields, `${args.label} returned an empty reply`);
     } catch (error) {
+      if (args.signal?.aborted) {
+        last = { reason: "cancelled", message: REQUEST_CANCELLED_MESSAGE };
+        deps.logger.info(fields, `${args.label} was cancelled`);
+        break;
+      }
       if (link.timedOut()) {
         last = {
           reason: "timeout",
@@ -251,7 +272,6 @@ export async function runAiTask<T>(
           `${args.label} failed`,
         );
       }
-      if (args.signal?.aborted) break;
     } finally {
       link.dispose();
     }
@@ -267,6 +287,7 @@ export function runTextAiTask(
     prompt: string;
     logContext?: JsonObject;
     timeoutMs?: number;
+    signal?: AbortSignal;
   },
 ): Promise<AiTaskOutcome<string>> {
   return runAiTask(deps, {
@@ -274,6 +295,7 @@ export function runTextAiTask(
     label: args.label,
     ...(args.logContext === undefined ? {} : { logContext: args.logContext }),
     ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
+    ...(args.signal === undefined ? {} : { signal: args.signal }),
     call: (service, signal) => {
       if (service.complete === null) {
         throw new Error("This service does not answer text prompts");

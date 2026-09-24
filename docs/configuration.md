@@ -214,7 +214,9 @@ bb settings ai-services set voice off
 bb settings ai-services test thread-title
 ```
 
-Each task is `automatic` (the default), `off`, or a service id. Automatic tries
+Each task is `automatic` (the default), `off`, or a service id. A service is
+identified by its plugin and its id, so two plugins may register the same id;
+pass `--plugin <plugin-id>` to `set` when they do. Automatic tries
 the services bb ships in order: Codex (`codex`, using the Codex CLI login on the
 primary machine), then bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb
 account). Automatic never sends text to a third-party plugin. A service you pick
@@ -230,6 +232,9 @@ With a ChatGPT subscription login, Codex voice transcription posts to a
 networks Cloudflare challenges that request and transcription fails. If that
 happens often, run `codex login --with-api-key` on the primary machine, or pick
 another voice service.
+
+bb accepts voice recordings up to 25 MB. A service may set a lower limit;
+Codex transcribes recordings up to 20 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as

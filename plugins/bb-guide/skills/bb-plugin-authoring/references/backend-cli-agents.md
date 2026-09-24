@@ -306,5 +306,7 @@ bb.experimental_aiServices.register({
   file, a local model), call your own `bb.host` entry through
   `bb.hosts.experimental_client`, as the Codex plugin does.
 - Automatic only uses services bb ships. A third-party service receives text
-  only after the user selects it. A second registration of a live id fails the
-  later plugin's load.
+  only after the user selects it.
+- bb identifies a service by plugin id and service id, so ids only need to be
+  unique within your plugin; registering one id twice fails your plugin's
+  load. `automatic` and `off` are reserved.

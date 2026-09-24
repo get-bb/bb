@@ -1138,6 +1138,11 @@ export interface NormalizedPluginAiService {
   readonly status: NonNullable<PluginAiServiceDeclaration["status"]> | null;
 }
 
+const RESERVED_AI_SERVICE_IDS: ReadonlySet<string> = new Set([
+  "automatic",
+  "off",
+]);
+
 function optionalAiServiceFunction<T>(
   id: string,
   name: string,
@@ -1167,6 +1172,11 @@ export function validatePluginAiServiceDeclaration(
       `invalid AI service id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
     );
   }
+  if (RESERVED_AI_SERVICE_IDS.has(id)) {
+    throw new Error(
+      `AI service id "${id}" is reserved: bb uses "automatic" and "off" as selection modes. Choose another id.`,
+    );
+  }
   const displayName =
     typeof declaration.displayName === "string"
       ? declaration.displayName.trim()
@@ -1193,9 +1203,9 @@ export function validatePluginAiServiceDeclaration(
   return Object.freeze({ id, displayName, complete, transcribe, status });
 }
 
-/** The collision a second registration of a live AI-service id raises. */
+/** The collision a plugin's second registration of one AI-service id raises. */
 export function aiServiceAlreadyRegisteredMessage(id: string): string {
-  return `AI service "${id}" is already registered; a plugin cannot shadow an existing service.`;
+  return `AI service "${id}" is already registered by this plugin.`;
 }
 
 /** The collision a second registration of a live provider id raises. */
