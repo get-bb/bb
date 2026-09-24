@@ -266,7 +266,7 @@ export function GitDiffToolbar({
           />
         </div>
         <div
-          className="flex min-w-0 flex-1 basis-auto items-center gap-2"
+          className="flex min-w-0 flex-1 basis-auto items-center gap-3"
           data-testid="git-diff-toolbar-details"
         >
           <span
