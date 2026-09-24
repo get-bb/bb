@@ -692,7 +692,7 @@ export function createDesktopBrowserViewManager(
         entry.suppressNextFocusNotification = false;
         return;
       }
-      if (automationControlled.has(webContents)) {
+      if (automationControlled.has(webContents) || !entry.visible) {
         setTimeout(() => returnFocusToHost(hostWindow), 0);
         return;
       }
@@ -1004,7 +1004,7 @@ export function createDesktopBrowserViewManager(
     for (const [key, entry] of entries) {
       if (
         key.startsWith(hostPrefix) &&
-        automationControlled.has(entry.webContents) &&
+        (automationControlled.has(entry.webContents) || !entry.visible) &&
         !entry.webContents.isDestroyed() &&
         entry.webContents.isFocused()
       ) {

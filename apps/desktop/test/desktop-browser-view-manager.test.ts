@@ -1733,6 +1733,42 @@ describe("DesktopBrowserCdpAdapter", () => {
       vi.useRealTimers();
     }
   });
+
+  it("returns native focus to the host from a hidden tab", async () => {
+    vi.useFakeTimers();
+    const focusHostWebContents = vi.fn();
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+      focusHostWebContents,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 92,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false },
+    });
+    const view = requireFakeView(0);
+    try {
+      view.webContents.nativelyFocused = true;
+      view.webContents.emitFocus();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledExactlyOnceWith(92);
+      expect(hostWindow.webContents.sentChannels).not.toContain(
+        "bb-desktop:browser:focused",
+      );
+    } finally {
+      manager.destroyAll();
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("DesktopBrowserViewManager", () => {
