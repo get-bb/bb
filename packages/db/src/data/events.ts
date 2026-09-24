@@ -1160,10 +1160,19 @@ function storedEventRowFieldsWithInlineOutputLimit(
       };
 }
 
-function storedEventRowSqlFields(maxInlineOutputChars: InlineOutputCharLimit) {
+function storedEventRowSqlFields(
+  maxInlineOutputChars: InlineOutputCharLimit,
+  includeCommandOutput = true,
+) {
+  const data = storedEventRowFieldsWithInlineOutputLimit(maxInlineOutputChars).data;
   return {
     createdAt: sql<number>`${events.createdAt}`,
-    data: sql<string>`${storedEventRowFieldsWithInlineOutputLimit(maxInlineOutputChars).data}`,
+    data: includeCommandOutput ? sql<string>`${data}` : sql<string>`CASE
+      WHEN ${events.itemKind} = 'commandExecution' AND ${events.type} IN ('item/started', 'item/completed')
+        THEN json_remove(${events.data}, '$.item.aggregatedOutput')
+      WHEN ${events.type} = 'item/commandExecution/outputDelta'
+        THEN json_set(${events.data}, '$.delta', '')
+      ELSE ${data} END`,
     id: sql<string>`${events.id}`,
     itemId: sql<string | null>`${events.itemId}`,
     itemKind: sql<StoredEventRow["itemKind"]>`${events.itemKind}`,
@@ -1193,6 +1202,8 @@ export interface FindStoredEventRowArgs {
 }
 
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
+  excludedEventIds?: readonly string[];
+  includeCommandOutput?: boolean;
   excludeDiagnosticEvents?: boolean;
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
@@ -1706,7 +1717,7 @@ export function listStoredEventRowsByParentToolCallIds(
   }
 
   return db
-    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+    .select(storedEventRowSqlFields(args.maxInlineOutputChars, args.includeCommandOutput))
     .from(
       sql`${events} INDEXED BY events_parent_tool_call_thread_parent_sequence_idx`,
     )
@@ -1739,6 +1750,10 @@ function storedEventRowsByParentToolCallIdsConditions(
   }
   if (args.beforeSequence !== undefined) {
     conditions.push(lt(events.sequence, args.beforeSequence));
+  }
+
+  if (args.excludedEventIds?.length) {
+    conditions.push(sql`${events.id} NOT IN (SELECT value FROM json_each(${JSON.stringify(args.excludedEventIds)}))`);
   }
 
   return conditions;
@@ -3166,9 +3181,61 @@ export function findStoredTimelineWindowByteBudgetFloor(
   return { eventDataBytes: includedDataBytes, kind: "fits" };
 }
 
-export function listStoredTimelineTurnEventRows(
+export function hasTimelineTurnEventsInWindow(
+  db: DbConnection,
+  args: Omit<ListStoredTimelineWindowEventRowsArgs, "maxInlineOutputChars"> & {
+    turnId: string;
+  },
+): boolean {
+  return (
+    db
+      .select({ sequence: events.sequence })
+      .from(events)
+      .where(
+        and(
+          ...storedTimelineWindowConditions({ ...args, maxInlineOutputChars: null }),
+          eq(events.turnId, args.turnId),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function listTimelineWindowItemIds(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
+): string[] {
+  return db
+    .selectDistinct({ itemId: sql<string>`${events.itemId}` })
+    .from(events)
+    .where(
+      and(
+        ...storedTimelineWindowConditions(args),
+        or(
+          inArray(events.turnId, [...args.turnIds]),
+          isNotNull(events.parentToolCallId),
+        ),
+        isNotNull(events.itemId),
+      ),
+    )
+    .all()
+    .map((row) => row.itemId);
+}
+
+export function listStoredTimelineTurnEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs & {
+    turnIds: readonly string[];
+    excludedEventIds?: readonly string[];
+    includeCommandOutput?: boolean;
+    itemContext?: {
+      turnIds: readonly string[];
+      itemIds: readonly string[];
+      sequenceStart: number;
+      beforeSequence: number;
+    };
+  },
 ): StoredEventRow[] {
   if (args.turnIds.length === 0) return [];
   return queryInSqliteVariableBatches({
@@ -3176,20 +3243,74 @@ export function listStoredTimelineTurnEventRows(
     variableCountPerValue: 1,
     dedupeKey: (turnId) => turnId,
     fixedVariableCount: 32,
-    queryBatch: (turnIds) =>
-      db
-        .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+    queryBatch: (turnIds) => {
+      const query = db
+        .select(
+          Object.fromEntries(
+            Object.entries(
+              storedEventRowSqlFields(
+                args.maxInlineOutputChars,
+                args.includeCommandOutput,
+              ),
+            ).map(([name, field]) => [name, field.as(name)]),
+          ),
+        )
         .from(
           sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
         )
         .where(
           and(
+            args.itemContext === undefined
+              ? undefined
+              : or(
+                  sql`${events.type} NOT LIKE 'item/%'`,
+                  sql`${events.itemId} IN (SELECT value FROM json_each(${JSON.stringify(args.itemContext.itemIds)}))`,
+                  and(
+                    inArray(events.turnId, [...args.itemContext.turnIds]),
+                    or(
+                      and(
+                        gte(events.sequence, args.itemContext.sequenceStart),
+                        lt(events.sequence, args.itemContext.beforeSequence),
+                      ),
+                      inArray(events.itemKind, [
+                        "agentMessage",
+                        "contextCompaction",
+                      ]),
+                      eq(events.type, "item/agentMessage/delta"),
+                    ),
+                  ),
+                ),
             ...storedTimelineWindowConditions(args),
             inArray(events.turnId, [...turnIds]),
+            args.excludedEventIds?.length
+              ? sql`${events.id} NOT IN (SELECT value FROM json_each(${JSON.stringify(args.excludedEventIds)}))`
+              : undefined,
           ),
         )
-        .all(),
+        .toSQL();
+      return db.$client
+        .prepare<unknown[], StoredEventRow>(query.sql)
+        .all(...query.params);
+    },
   }).sort((left, right) => left.sequence - right.sequence);
+}
+
+export function listStoredEventRowsByIds(
+  db: DbConnection,
+  args: { ids: readonly string[]; maxInlineOutputChars: InlineOutputCharLimit },
+): StoredEventRow[] {
+  return queryInSqliteVariableBatches({
+    values: args.ids,
+    variableCountPerValue: 1,
+    dedupeKey: (id) => id,
+    fixedVariableCount: 32,
+    queryBatch: (ids) =>
+      db
+        .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+        .from(events)
+        .where(inArray(events.id, [...ids]))
+        .all(),
+  });
 }
 
 export function listTimelineRootWindowTurnIds(
@@ -3217,11 +3338,11 @@ export function listTimelineRootWindowTurnIds(
 
 export function listStoredTimelineThreadWindowEventRows(
   db: DbConnection,
-  args: ListStoredTimelineWindowEventRowsArgs,
+  args: ListStoredTimelineWindowEventRowsArgs & { includeCommandOutput?: boolean },
 ): StoredEventRow[] {
   return db
     .select(
-      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+      storedEventRowSqlFields(args.maxInlineOutputChars, args.includeCommandOutput),
     )
     .from(events)
     .where(and(...storedTimelineWindowConditions(args), isNull(events.turnId)))

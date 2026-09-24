@@ -844,6 +844,7 @@ describe("flat completed turn display", () => {
     const { finishedEvents } = narratedTurn();
     const events = fromRows(finishedEvents);
     const detailOptions = {
+      turnId: "turn-1",
       includeDiagnosticOperations: false,
       sourceSeqEnd: 5,
       sourceSeqStart: 4,
@@ -863,10 +864,8 @@ describe("flat completed turn display", () => {
 
     expect(flat.kind).toBe("ungrouped");
     expect(flat.kind === "ungrouped" ? rowSignatures(flat.rows) : []).toEqual([
-      "conversation:user",
       "conversation:assistant",
       "work:command",
-      "conversation:assistant",
     ]);
     expect(collapsed.kind).toBe("matched");
     expect(

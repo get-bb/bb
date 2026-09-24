@@ -150,6 +150,7 @@ describe("timeline row planning", () => {
       events: fromRows(events),
       options: {
         ...options,
+        turnId: "parent",
         sourceSeqStart: expected.sourceSeqStart,
         sourceSeqEnd: expected.sourceSeqEnd,
       },

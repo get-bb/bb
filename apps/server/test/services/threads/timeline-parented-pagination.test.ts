@@ -16,7 +16,10 @@ import {
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
 import type { TimelineRow } from "@bb/server-contract";
-import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
+import {
+  buildThreadTimelineWithProfile,
+  buildTimelineTurnSummaryDetails,
+} from "../../../src/services/threads/timeline.js";
 
 const providerThreadId = "provider-root";
 
@@ -57,6 +60,7 @@ function requestId(value: number): ClientTurnRequestId {
 function insertCrossWindowSubagentEvents(
   db: DbConnection,
   thread: Thread,
+  childStartSequence = 50,
 ): void {
   const firstRequestId = requestId(1);
   const secondRequestId = requestId(2);
@@ -269,7 +273,7 @@ function insertCrossWindowSubagentEvents(
     },
     {
       threadId: thread.id,
-      sequence: 50,
+      sequence: childStartSequence,
       type: "turn/started",
       scope: turnScope("child-turn"),
       providerThreadId,
@@ -328,6 +332,106 @@ function rowTexts(rows: readonly TimelineRow[]): string[] {
 }
 
 describe("thread timeline parented pagination", () => {
+  it.each([49, 54])(
+    "preserves a child command starting at %i whose completion omits its parent call",
+    (commandSequence) => {
+      const { db, thread } = setup();
+      try {
+        insertCrossWindowSubagentEvents(db, thread, 48);
+        insertEvents(db, noopNotifier, [
+          {
+            threadId: thread.id,
+            sequence: commandSequence,
+            type: "item/started",
+            scope: turnScope("child-turn"),
+            providerThreadId,
+            itemId: "child-command",
+            itemKind: "commandExecution",
+            parentToolCallId: "toolu_agent_1",
+            data: JSON.stringify({
+              item: {
+                type: "commandExecution",
+                id: "child-command",
+                command: "sleep 10",
+                cwd: "/tmp",
+                status: "pending",
+                approvalStatus: null,
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            sequence: commandSequence + 3,
+            type: "item/completed",
+            scope: turnScope("child-turn"),
+            providerThreadId,
+            itemId: "child-command",
+            itemKind: "commandExecution",
+            parentToolCallId: null,
+            data: JSON.stringify({
+              item: {
+                type: "commandExecution",
+                id: "child-command",
+                command: "sleep 10",
+                cwd: "/tmp",
+                status: "failed",
+                approvalStatus: null,
+                exitCode: -1,
+                aggregatedOutput: "stopped",
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            sequence: 53,
+            type: "turn/completed",
+            scope: turnScope("parent-turn"),
+            providerThreadId,
+            itemId: null,
+            itemKind: null,
+            parentToolCallId: null,
+            data: JSON.stringify({ status: "completed" }),
+          },
+        ]);
+        const full = buildThreadTimelineWithProfile(db, thread, {
+          completedTurnDisplay: "collapse",
+          eventBudget: 1_000_000,
+          includeDiagnosticOperations: false,
+          includeNestedRows: true,
+          maxInlineOutputChars: null,
+          maxSeq: Math.max(53, commandSequence + 3),
+          page: { kind: "latest", segmentLimit: 20 },
+        }).response;
+        const summary = full.rows.find(
+          (row) => row.kind === "turn" && row.turnId === "parent-turn",
+        );
+        if (summary?.kind !== "turn" || summary.turnId === null)
+          throw new Error("Missing parent summary");
+        const details = buildTimelineTurnSummaryDetails(db, thread, {
+          turnId: summary.turnId,
+          sourceSeqStart: summary.sourceSeqStart,
+          sourceSeqEnd: summary.sourceSeqEnd,
+          completedTurnDisplay: "collapse",
+          includeDiagnosticOperations: false,
+        });
+        expect(details.rows).toEqual(summary.children);
+        const command = flattenRows(details.rows).find(
+          (row) =>
+            row.kind === "work" &&
+            row.workKind === "command" &&
+            row.callId === "child-command",
+        );
+        expect(command).toMatchObject({
+          status: "error",
+          exitCode: -1,
+          sourceSeqEnd: commandSequence + 3,
+        });
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
+
   it("keeps child-only subagent output off the latest page", () => {
     const { db, thread } = setup();
     insertCrossWindowSubagentEvents(db, thread);

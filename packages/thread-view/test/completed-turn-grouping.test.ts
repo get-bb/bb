@@ -47,7 +47,6 @@ function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
     callId: args.id,
     command: "pnpm test",
     cwd: "/repo",
-    parsedIntents: [],
     source: null,
     output: "",
     exitCode: 0,

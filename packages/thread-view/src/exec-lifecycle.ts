@@ -10,12 +10,8 @@ import { getEventParentToolCallId, type EventMeta } from "./event-decode.js";
 import type {
   EventProjectionApprovalLifecycleStatus,
   EventProjectionToolCallMessage,
-  EventProjectionToolParsedIntent,
 } from "./event-projection-types.js";
-import {
-  extractShellCommandFromString,
-  parseShellCommandIntents,
-} from "./tool-call-parsing.js";
+import { extractShellCommandFromString } from "./tool-call-parsing.js";
 
 interface DelegationMetadata {
   subagentType?: string;
@@ -77,7 +73,6 @@ export interface CommandExecutionUpdate extends ExecutionUpdateBase {
   kind: "command";
   command?: string;
   cwd?: string | null;
-  parsedIntents?: EventProjectionToolParsedIntent[];
   source?: string | null;
   exitCode?: number | null;
   approvalStatus?: EventProjectionApprovalLifecycleStatus | null;
@@ -168,7 +163,6 @@ export function parseExecLifecycleEvent(
         callId,
         command,
         cwd: decoded.item.cwd,
-        parsedIntents: parseShellCommandIntents(command),
         output: decoded.item.aggregatedOutput,
         exitCode,
         completedAt,
