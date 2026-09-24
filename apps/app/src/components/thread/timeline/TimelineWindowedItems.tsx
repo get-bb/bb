@@ -231,6 +231,7 @@ export function TimelineWindowedItems({
       ref={containerRef}
       className="relative w-full"
       style={renderWindow ? undefined : { display: "contents" }}
+      data-timeline-items=""
       data-timeline-virtual-spacer={renderWindow ? "" : undefined}
       onClickCapture={retainInteractedItem}
       onFocusCapture={retainInteractedItem}
