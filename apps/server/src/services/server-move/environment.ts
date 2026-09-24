@@ -15,8 +15,7 @@ import type {
 } from "./coordinator.js";
 import { exportServerArchive } from "./export.js";
 import { createFullBbAppArtifactService } from "./full-artifact.js";
-import { CONNECT_HOLD_SOURCES } from "./connect-hold.js";
-import { resolveServerMoveMode } from "./mode.js";
+import { CONNECT_PLUGIN_SOURCE, resolveServerMoveMode } from "./mode.js";
 import { stopRunningServerWork } from "./stop-work.js";
 
 export const SERVER_MOVE_ALLOW_LOOPBACK_URL_ENV =
@@ -134,8 +133,7 @@ export function createDefaultServerMoveEnvironment(
       stop: () => pluginService.stop(),
       suspendAllButConnect: async () => {
         await pluginService.suspendPlugins({
-          keep: (plugin) =>
-            CONNECT_HOLD_SOURCES.some((source) => source === plugin.source),
+          keep: (plugin) => plugin.source === CONNECT_PLUGIN_SOURCE,
         });
       },
     },

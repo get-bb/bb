@@ -60,7 +60,6 @@ import type {
 } from "../backend-contract.js";
 import type { JsonValue } from "../json-value.js";
 import type {
-  ExperimentalPluginRpcHandlerContext,
   PluginRpcError,
   PluginRpcMethodContract,
   PluginRpcValidationIssue,
@@ -2849,10 +2848,7 @@ type RpcRegistrationRecord = {
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (
-    input: unknown,
-    context: ExperimentalPluginRpcHandlerContext,
-  ) => unknown;
+  handler: (input: unknown) => unknown;
 };
 
 export function normalizeRpcRegistration(

@@ -99,7 +99,6 @@ import type {
 import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
-import { createPluginRpcCallerRegistry } from "./plugin-rpc-caller.js";
 
 const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
 const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
@@ -310,7 +309,7 @@ interface PluginRuntimeContext {
 }
 
 export interface PluginLoadHold {
-  sources: readonly string[];
+  source: string;
   detail: string;
   isActive(): Promise<boolean>;
 }
@@ -372,7 +371,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
-  const rpcCallers = createPluginRpcCallerRegistry();
   let loadHold: PluginLoadHold | null = null;
 
   function publishStatus(
@@ -1349,7 +1347,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   async function heldDetail(row: InstalledPluginRow): Promise<string | null> {
     const hold = loadHold;
-    if (hold === null || !row.enabled || !hold.sources.includes(row.source)) {
+    if (hold === null || !row.enabled || row.source !== hold.source) {
       return null;
     }
     return (await hold.isActive()) ? hold.detail : null;
@@ -1453,7 +1451,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       },
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
-      rpcCaller: rpcCallers.issue(row.id),
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1830,7 +1827,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     appBundles,
     hostArtifacts,
     bindSdk,
-    resolveRpcCaller: rpcCallers.resolve,
     buildThreadDto,
     builtinSourceWatchers,
     checkEngineRange,

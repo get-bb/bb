@@ -230,7 +230,7 @@ checkouts stay on the machines that own them.
     --data-dir <dir>                      Target data directory
   bb server unlock                        Let this computer's old copy start again
     --force                               Skip the new-server health check
-  bb server allow-connect                 Turn bb connect and bb account on for an imported copy
+  bb server allow-connect                 Turn bb connect on for an imported copy
   bb server delete-old-copy               Delete the old copy a move left here
   bb server install-machine-service       Keep this computer connected after a move
 
@@ -265,13 +265,10 @@ until then bb refuses to start a server on that directory. Stop the original
 server before starting the imported one; two servers holding the same bb
 connect credential take each other's tunnel.
 
-An imported server starts with bb connect and bb account off
-(`server-connect-hold.json`), so the copy can't take the original server's
-tunnel or use its getbb.app account.
+An imported server starts with bb connect off (`server-connect-hold.json`).
 `bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold
 once the original server is stopped (`--json` prints `dataDir` and
-`connectHoldRemoved`); bb connect and bb account start the next time that
-server starts.
+`connectHoldRemoved`); bb connect starts the next time that server starts.
 
 After a move, the old computer's data directory keeps `server-moved.json`, so
 bb there refuses to start the old server and runs as a regular machine.

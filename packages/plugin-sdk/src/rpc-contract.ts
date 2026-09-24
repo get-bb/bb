@@ -85,40 +85,9 @@ export function defineRpcContract<const Contract extends PluginRpcContract>(
   return contract;
 }
 
-/**
- * Who invoked an rpc method. `plugin` means another loaded plugin (or this
- * one) called through its own `bb.sdk.plugins.callRpc`; the host verifies
- * that with a per-load token only the server knows. Every other caller — the
- * app, the `bb` CLI, agents, and bb itself — is `client`.
- */
-export type ExperimentalPluginRpcCaller =
-  | { readonly kind: "plugin"; readonly pluginId: string }
-  | { readonly kind: "client" };
-
-/** Second argument of every rpc handler. */
-export interface ExperimentalPluginRpcHandlerContext {
-  readonly experimental_caller: ExperimentalPluginRpcCaller;
-}
-
 export type PluginRpcHandlers<Contract extends PluginRpcContract> = {
   [Method in keyof Contract]: (
     input: StandardSchemaV1InferOutput<Contract[Method]["input"]>,
-  ) =>
-    | StandardSchemaV1InferInput<Contract[Method]["output"]>
-    | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
-};
-
-/**
- * Handlers as `bb.rpc.register` calls them: the validated input, then the
- * call's context. A `PluginRpcHandlers` map is assignable to this type, so
- * handlers that ignore the context keep their one-argument signature.
- */
-export type ExperimentalPluginRpcHandlersWithContext<
-  Contract extends PluginRpcContract,
-> = {
-  [Method in keyof Contract]: (
-    input: StandardSchemaV1InferOutput<Contract[Method]["input"]>,
-    context: ExperimentalPluginRpcHandlerContext,
   ) =>
     | StandardSchemaV1InferInput<Contract[Method]["output"]>
     | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;

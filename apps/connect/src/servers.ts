@@ -2,7 +2,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   SERVER_OFFLINE_AFTER_MS,
-  resolveServerCredential,
   schema,
   server,
   sha256Hex,
@@ -125,8 +124,13 @@ export async function verifyServerCredential(
   if (cached && cached.expires > now) return cached.value;
   if (cached) serverCredentialCache.delete(credential);
 
-  const userId =
-    (await resolveServerCredential(db, credential))?.userId ?? null;
+  const hash = await sha256Hex(credential);
+  const row = await db
+    .select({ userId: server.userId })
+    .from(server)
+    .where(and(eq(server.credentialHash, hash), isNull(server.revokedAt)))
+    .get();
+  const userId = row?.userId ?? null;
   serverCredentialCache.set(credential, {
     value: userId,
     expires: now + SERVER_CRED_TTL_MS,

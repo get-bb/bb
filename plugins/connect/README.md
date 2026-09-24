@@ -1,37 +1,7 @@
-# Connect
-
-Connect holds no getbb.app credential. Every hosted request goes through the
-bb account plugin's `bb-account.v1.fetch` RPC, which serves `/api/connect/`
-paths only to the connect plugin, and connect follows sign-in changes with
-`bb-account.v1.waitForStatusChange`. While bb account reports any state other
-than `signed-in`, or is stopped or held, connect treats this bb as signed out.
-
-## Tunnel
-
-Before each dial, connect asks for `POST /api/connect/tunnel-ticket` through
-bb account and dials the returned `tunnelUrl` with
-`authorization: Bearer <ticket>`. Every reconnect gets a new ticket. A gate
-rejection, or bb account being briefly unavailable during the ticket request,
-retries with backoff; a rejected credential signs bb account out, which tears
-the tunnel down.
-
-The `remoteAccess` setting (`bb connect off` and `bb connect on`) closes and
-reopens the tunnel and machine shares without signing out.
-
-## Legacy pairing
-
-Older connect versions kept `{serverUrl, handle, credential}` under the KV key
-`credential`. On start, connect hands the credential and its apex origin to
-`bb-account.v1.adoptConnectCredential`. bb account adopts it while signed out;
-while it holds another server's credential it revokes the legacy one on
-getbb.app instead. Connect deletes its copy once bb account answers. While bb
-account is unavailable or can't reach getbb.app, connect keeps the copy and
-tries again later.
-
-## Server access
+# Connect server access
 
 Connect redeems machine codes on the server and returns the grant's server URL
-and authentication headers. Its plugin KV stores one record per machine,
+and authentication headers. Its existing plugin KV stores one record per machine,
 under `server-access-grant:<hostId>`, outside settings descriptors and the UI.
 
 The record contains either a pending redemption (code and expiry) or a completed
@@ -39,7 +9,7 @@ grant (credentials and Cloud device ID). Connect persists the pending record
 before redeeming and the completed grant before returning it to core.
 
 If a redemption response is lost, acquire and release look up the original code
-through the authenticated Cloud machine-code lookup. If consumed, Connect
+through the authenticated Cloud machine-code endpoint. If consumed, Connect
 revokes its device before issuing a replacement. If unconsumed, a valid code can
 be reused; an expired code is replaced. An unavailable or ambiguous lookup keeps
 the pending record and reports that dashboard revocation may be needed. It does

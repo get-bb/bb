@@ -16,7 +16,6 @@ export interface ShareListing {
 export interface ConnectStatus {
   state: ConnectStateName;
   paired: boolean;
-  enabled: boolean;
   handle: string | null;
   url: string | null;
   dashboardUrl: string;

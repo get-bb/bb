@@ -10,9 +10,7 @@ import {
 import {
   createDevTurboCommand,
   createStartWorktreeCommand,
-  resolveDevCloud,
   resolveDevLaunchMode,
-  STAGING_CLOUD_URL,
   toDevLaunchProcessEnv,
 } from "../src/commands/run-dev.js";
 import { migrateLegacyDevData } from "../src/lib/legacy-dev-data-migration.js";
@@ -274,37 +272,8 @@ describe("run-dev", () => {
     expect(resolveDevLaunchMode([])).toBe("vite");
     expect(resolveDevLaunchMode(["--worktree"])).toBe("worktree");
     expect(() => resolveDevLaunchMode(["--watch"])).toThrow(
-      "Expected no arguments, --staging, or --worktree",
+      "Expected no arguments or --worktree",
     );
-  });
-
-  it("points bb account and Connect at staging only for pnpm dev --staging", () => {
-    const config = resolveDevInstanceConfig({
-      homeDir: "/Users/tester",
-      repoRoot: "/Users/tester/src/bb",
-    });
-
-    expect(resolveDevCloud({ staging: false, mode: "vite" })).toBe("local");
-    expect(resolveDevCloud({ staging: true, mode: "vite" })).toBe("staging");
-    expect(() => resolveDevCloud({ staging: true, mode: "worktree" })).toThrow(
-      "--staging is supported by pnpm dev only",
-    );
-    expect(
-      toDevLaunchProcessEnv({
-        baseEnv: {},
-        cloud: "staging",
-        config,
-        mode: "vite",
-      }).BB_DEV_CONNECT_BASE_URL,
-    ).toBe(STAGING_CLOUD_URL);
-    expect(
-      toDevLaunchProcessEnv({
-        baseEnv: { BB_DEV_CONNECT_BASE_URL: STAGING_CLOUD_URL },
-        cloud: "local",
-        config,
-        mode: "vite",
-      }).BB_DEV_CONNECT_BASE_URL,
-    ).toBe(`http://bb.localhost:${config.ports.cloudPort}`);
   });
 
   it("uses production serving with checkout-specific dev selectors", () => {
@@ -321,7 +290,6 @@ describe("run-dev", () => {
         NODE_ENV: "development",
         OPENAI_API_KEY: "test-key",
       },
-      cloud: "local",
       config,
       mode: "worktree",
     });

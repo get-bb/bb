@@ -37,13 +37,13 @@ async function writeHold(dataDir: string): Promise<void> {
 }
 
 describe("bb connect hold", () => {
-  it("holds the builtin connect and bb account plugins while server-connect-hold.json exists, even when it can't be read", async () => {
+  it("holds the builtin connect plugin while server-connect-hold.json exists, even when it can't be read", async () => {
     const dataDir = await makeDataDir();
     const logger = { warn: vi.fn() };
     const hold = createConnectHold({ dataDir, logger });
 
     expect(hold).toMatchObject({
-      sources: ["builtin:connect", "builtin:bb-account"],
+      source: "builtin:connect",
       detail: CONNECT_HOLD_DETAIL,
     });
     expect(await hold.isActive()).toBe(false);
@@ -88,7 +88,7 @@ describe("bb connect hold", () => {
     expect(events).toEqual(["start", "registrations-settled", "update-checks"]);
     const hold = starts[0]?.hold;
     expect(hold).toMatchObject({
-      sources: ["builtin:connect", "builtin:bb-account"],
+      source: "builtin:connect",
       detail: CONNECT_HOLD_DETAIL,
     });
     expect(await hold?.isActive()).toBe(true);

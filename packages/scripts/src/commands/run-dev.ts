@@ -22,10 +22,6 @@ interface DevCommand {
 
 export type DevLaunchMode = "vite" | "worktree";
 
-export type DevCloud = "local" | "staging";
-
-export const STAGING_CLOUD_URL = "https://vibecodethis.site";
-
 const LOOPBACK_HOST = "127.0.0.1";
 
 export function createDevTurboCommand(): DevCommand {
@@ -70,26 +66,12 @@ export function resolveDevLaunchMode(args: string[]): DevLaunchMode {
     return "worktree";
   }
   throw new Error(
-    `[dev] Unknown arguments: ${args.join(" ")}. Expected no arguments, --staging, or --worktree.`,
+    `[dev] Unknown arguments: ${args.join(" ")}. Expected no arguments or --worktree.`,
   );
-}
-
-export function resolveDevCloud(args: {
-  staging: boolean;
-  mode: DevLaunchMode;
-}): DevCloud {
-  if (!args.staging) {
-    return "local";
-  }
-  if (args.mode !== "vite") {
-    throw new Error("[dev] --staging is supported by pnpm dev only.");
-  }
-  return "staging";
 }
 
 export function toDevLaunchProcessEnv(args: {
   baseEnv: NodeJS.ProcessEnv;
-  cloud: DevCloud;
   config: DevInstanceConfig;
   mode: DevLaunchMode;
 }): NodeJS.ProcessEnv {
@@ -97,9 +79,6 @@ export function toDevLaunchProcessEnv(args: {
     baseEnv: args.baseEnv,
     config: args.config,
   });
-  if (args.cloud === "staging") {
-    env.BB_DEV_CONNECT_BASE_URL = STAGING_CLOUD_URL;
-  }
   if (args.mode === "vite") {
     return env;
   }
@@ -110,11 +89,7 @@ export function toDevLaunchProcessEnv(args: {
   return env;
 }
 
-function formatConfig(
-  config: DevInstanceConfig,
-  mode: DevLaunchMode,
-  cloud: DevCloud,
-): string {
+function formatConfig(config: DevInstanceConfig, mode: DevLaunchMode): string {
   const prefix = mode === "worktree" ? "[start:worktree]" : "[dev]";
   const appUrl =
     mode === "worktree"
@@ -126,9 +101,6 @@ function formatConfig(
     `${prefix} App ${appUrl}`,
     `${prefix} Server ${config.serverUrl}`,
     `${prefix} Host daemon http://127.0.0.1:${config.ports.hostDaemonPort}`,
-    ...(cloud === "staging"
-      ? [`${prefix} bb account and Connect use ${STAGING_CLOUD_URL}`]
-      : []),
   ].join("\n");
 }
 
@@ -178,10 +150,7 @@ async function resolveExistingRepoRoot(): Promise<string> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dryrun");
-  const mode = resolveDevLaunchMode(
-    args.filter((arg) => arg !== "--dryrun" && arg !== "--staging"),
-  );
-  const cloud = resolveDevCloud({ staging: args.includes("--staging"), mode });
+  const mode = resolveDevLaunchMode(args.filter((arg) => arg !== "--dryrun"));
   if (dryRun && mode !== "worktree") {
     throw new Error(
       "--dryrun is supported by pnpm start and pnpm start:worktree.",
@@ -200,7 +169,7 @@ async function main(): Promise<void> {
       );
     }
     await assertPortsAvailable(config, mode);
-    process.stdout.write(`${formatConfig(config, mode, cloud)}\n`);
+    process.stdout.write(`${formatConfig(config, mode)}\n`);
   }
 
   const command =
@@ -213,7 +182,6 @@ async function main(): Promise<void> {
     cwd: config.repoRoot,
     env: toDevLaunchProcessEnv({
       baseEnv: process.env,
-      cloud,
       config,
       mode,
     }),

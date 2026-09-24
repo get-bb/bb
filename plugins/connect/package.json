@@ -45,7 +45,6 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.0",
     "@types/ws": "^8.18.1",
-    "bb-plugin-bb-account": "workspace:*",
     "better-sqlite3": "12.10.0",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",

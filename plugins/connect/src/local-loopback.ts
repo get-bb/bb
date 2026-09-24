@@ -12,11 +12,7 @@ export function resolveLocalCloudLoopbackUrl(
   } catch {
     return null;
   }
-  const localCloud =
-    url.protocol === "http:" && url.hostname.endsWith(".localhost");
-  const stagingCloud =
-    url.protocol === "https:" && url.hostname.endsWith(".vibecodethis.site");
-  if (!localCloud && !stagingCloud) {
+  if (url.protocol !== "http:" || !url.hostname.endsWith(".localhost")) {
     return null;
   }
   return `http://127.0.0.1:${port}`;

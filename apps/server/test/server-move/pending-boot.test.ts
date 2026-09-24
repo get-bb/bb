@@ -225,38 +225,6 @@ describe("imported server boot", () => {
     }
   });
 
-  it("leaves machineServerUrl alone for bb connect moves when bb account holds the pairing", async () => {
-    const { dataDir, db } = await openImportedDataDir();
-    try {
-      setPluginKvValue(
-        db,
-        "bb-account",
-        "credential",
-        JSON.stringify({
-          baseUrl: "https://getbb.test",
-          serverUrl: "https://laptop.getbb.test",
-          serverId: "srv_1",
-          credential: "bbcred_secret",
-        }),
-      );
-      await writeServerImportFile(
-        dataDir,
-        moveMarker({ serverUrl: "https://laptop.getbb.test/" }),
-      );
-
-      await applyServerImportAtBoot({
-        dataDir,
-        db,
-        logger: testLogger,
-        now: 1,
-      });
-
-      expect(getAppSettings(db).machineServerUrl).toBeNull();
-    } finally {
-      db.$client.close();
-    }
-  });
-
   it("leaves machineServerUrl alone for bb connect moves", async () => {
     const { dataDir, db } = await openImportedDataDir();
     try {

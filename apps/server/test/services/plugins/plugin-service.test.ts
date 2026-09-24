@@ -1121,15 +1121,8 @@ describe("plugin service", () => {
     expect(enabled?.status).toBe("running");
   });
 
-  it("holds every plugin a hold names at start without running its factory or starting its services", async () => {
+  it("holds a plugin at start without running its factory or starting its services", async () => {
     const globals = globalThis as Record<string, unknown>;
-    const heldAccountRoot = await writePlugin(workDir, {
-      name: "bb-plugin-held-account",
-      serverSource: `export default function plugin() {
-        const g = globalThis as any;
-        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
-      }`,
-    });
     const heldRoot = await writePlugin(workDir, {
       name: "bb-plugin-held-tunnel",
       serverSource: `export default function plugin(bb: any) {
@@ -1150,7 +1143,6 @@ describe("plugin service", () => {
       serverSource: `export default function plugin() {}`,
     });
     const held = await service.installPath(heldRoot);
-    const heldAccount = await service.installPath(heldAccountRoot);
     await service.installPath(otherRoot);
     await service.stop();
     globals.__heldFactoryRuns = 0;
@@ -1160,20 +1152,20 @@ describe("plugin service", () => {
     try {
       await service.start({
         hold: {
-          sources: [held.source, heldAccount.source],
+          source: held.source,
           detail: "Held for this test.",
           isActive: async () => true,
         },
       });
 
-      for (const id of ["held-tunnel", "held-account"]) {
-        expect(service.getApi(id)).toBeUndefined();
-        expect(service.list().find((entry) => entry.id === id)).toMatchObject({
-          enabled: true,
-          status: "disabled",
-          statusDetail: "Held for this test.",
-        });
-      }
+      expect(service.getApi("held-tunnel")).toBeUndefined();
+      expect(
+        service.list().find((entry) => entry.id === "held-tunnel"),
+      ).toMatchObject({
+        enabled: true,
+        status: "disabled",
+        statusDetail: "Held for this test.",
+      });
       expect(globals.__heldFactoryRuns).toBe(0);
       expect(globals.__heldServiceStarts).toBe(0);
       expect(service.getApi("unheld")).toBeDefined();
@@ -1209,7 +1201,7 @@ describe("plugin service", () => {
       service = createTelemetryTrackedService([]);
       await service.start({
         hold: {
-          sources: [held.source],
+          source: held.source,
           detail: HELD_DETAIL,
           isActive: async () => holdActive,
         },

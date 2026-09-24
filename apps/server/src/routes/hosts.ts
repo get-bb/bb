@@ -103,7 +103,6 @@ async function revokeConnectMachineCredential(
       "revokeMachine",
       handler.value,
       { machineId },
-      { kind: "client" },
     );
     if (!result.ok) throw new Error(result.error.message);
   } catch (error) {

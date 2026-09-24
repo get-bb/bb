@@ -6,19 +6,12 @@ import {
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import {
-  deriveConnectBaseUrl,
   mobilePairingPayload,
   type MobilePairingPayload,
 } from "@bb/connect-client";
-import {
-  accountErrorCode,
-  AccountUnavailableError,
-  type AccountClient,
-} from "./account-client.js";
-import type { HostedConnectApi } from "./hosted.js";
 import type { ShareHostResolver } from "./hosts.js";
 import { MachineCodeError } from "./machine-code.js";
-import type { MobilePairingGate, RemoteAccessSwitch } from "./rpc.js";
+import type { MobilePairingGate } from "./rpc.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
@@ -27,14 +20,11 @@ const DESCRIPTION = [
   "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app.",
   "Share HTTP ports from any enrolled host (owner session only).",
   "",
-  "  1. Sign this bb in to your bb account:",
-  "       bb account login",
-  "     (or paste a dashboard code: bb connect --code <code>, which also turns",
-  "     remote access back on)",
-  "  2. Remote access starts on its own and stays up while bb is running.",
+  "  1. Sign in at https://getbb.app and claim a handle.",
+  "  2. Copy the connect command from the dashboard and run it here:",
+  "       bb connect --code <code> --server https://<handle>.getbb.app",
   "",
-  "`bb connect off` turns remote access off and keeps the account signed in;",
-  "`bb connect on` turns it back on; `bb account logout` forgets the pairing.",
+  "The server holds the tunnel; it stays up while bb is running.",
 ].join("\n");
 
 const HOST_OPTION = {
@@ -48,28 +38,9 @@ const JSON_OPTION = {
   description: "Emit machine-readable JSON",
 } as const;
 
-const PAIR_ERROR_TEXT: Record<string, string> = {
-  invalid_code:
-    "that code is invalid or has expired — get a new one from the getbb.app dashboard",
-  expired_code:
-    "that code has expired — get a new one from the getbb.app dashboard",
-  already_used:
-    "that code was already used — get a new one from the getbb.app dashboard",
-  network: "couldn't reach getbb.app — check the connection and try again",
-  unauthorized:
-    "getbb.app rejected the new pairing — get a new code from the getbb.app dashboard and try again",
-  profile_unavailable:
-    "this bb saved the pairing, but getbb.app didn't return your account yet — bb keeps retrying, and remote access starts once it does (see `bb account status`)",
-  superseded:
-    "another sign-in or a sign-out replaced this one — run `bb account status` to see which account this bb uses",
-};
-
 function formatStatus(status: ConnectStatus): string {
   if (!status.paired) {
-    return "Not signed in to a bb account\nRun `bb account status` to see why, or `bb account login` to sign in; remote access starts once the account is ready.";
-  }
-  if (!status.enabled) {
-    return `${status.handle}  ${status.url}  off\nRemote access is off. Run \`bb connect on\` to turn it back on.`;
+    return "Not paired\nPair from the getbb.app dashboard — run `bb connect` for a how-to.";
   }
   const lines = [`${status.handle}  ${status.url}  ${status.state}`];
   if (status.lastError !== null && status.state !== "connected") {
@@ -92,20 +63,9 @@ function asJson(value: unknown): string {
 
 function notPairedError(): PluginCliError {
   return new PluginCliError(
-    "this bb isn't signed in to a bb account — run `bb account login`",
+    "this bb is not connected to getbb.app — run `bb connect` for how to pair",
     { code: "not_paired" },
   );
-}
-
-function pairError(error: unknown): PluginCliError {
-  if (error instanceof AccountUnavailableError) {
-    return new PluginCliError(
-      "the bb account plugin isn't running — enable it in Settings → Plugins, then try again",
-      { code: "account_unavailable" },
-    );
-  }
-  const code = accountErrorCode(error);
-  return new PluginCliError(PAIR_ERROR_TEXT[code] ?? code, { code });
 }
 
 function machineCodeError(
@@ -163,55 +123,36 @@ async function attempt(
 export function registerConnectCli(args: {
   bb: Pick<BbPluginApi, "cli">;
   tunnel: ConnectTunnel;
-  account: AccountClient;
-  hosted: HostedConnectApi;
   hostResolver: ShareHostResolver;
   mobilePairing: MobilePairingGate;
-  remoteAccess: RemoteAccessSwitch;
 }): void {
-  const {
-    bb,
-    tunnel,
-    account,
-    hosted,
-    hostResolver,
-    mobilePairing,
-    remoteAccess,
-  } = args;
+  const { bb, tunnel, hostResolver, mobilePairing } = args;
   bb.cli.register(
     defineCli({
       name: "connect",
       summary:
-        "Expose this bb at https://<handle>.getbb.app once it is signed in to your bb account",
+        "Expose this bb at https://<handle>.getbb.app (pair with --code/--server from the dashboard)",
       description: DESCRIPTION,
       root: cliCommand({
-        summary:
-          "Sign in with a dashboard code (bb account login --code) and turn remote access on",
+        summary: "Pair this bb with a getbb.app handle",
         options: {
           code: {
             type: "string",
             placeholder: "code",
-            description:
-              "One-time pairing code from the getbb.app dashboard; signs this bb in to your bb account",
+            description: "One-time pairing code from the getbb.app dashboard",
           },
           server: {
             type: "string",
             placeholder: "url",
-            description:
-              "Server URL the dashboard printed, https://<handle>.getbb.app or https://<handle>.vibecodethis.site; only its apex origin is used",
+            description: "Server URL the dashboard printed for the handle",
           },
           "base-url": {
             type: "string",
             placeholder: "url",
-            description:
-              "getbb.app origin: https://getbb.app or https://vibecodethis.site (development builds also accept http://bb.localhost:<port>)",
+            description: "Connect service base URL; only for local testing",
           },
           json: JSON_OPTION,
         },
-        constraints: [
-          { kind: "requires", option: "server", needs: ["code"] },
-          { kind: "requires", option: "base-url", needs: ["code"] },
-        ],
         run: (input) =>
           attempt(async () => {
             const code = input.options.code;
@@ -219,24 +160,12 @@ export function registerConnectCli(args: {
               return { exitCode: 0, stdout: input.help };
             }
             const server = input.options.server;
-            const baseUrl =
-              input.options["base-url"] ??
-              (server === undefined ? null : deriveConnectBaseUrl(server));
-            let status: ConnectStatus;
-            try {
-              status = await tunnel.signIn(
-                async () =>
-                  (await account.redeemCode({ code: code.trim(), baseUrl }))
-                    .account,
-              );
-            } catch (error) {
-              const failure = pairError(error);
-              if (failure.code === "profile_unavailable") {
-                await remoteAccess.set(true);
-              }
-              throw failure;
-            }
-            if (!status.enabled) status = await remoteAccess.set(true);
+            const baseUrl = input.options["base-url"];
+            const status = await tunnel.pair({
+              code,
+              ...(server !== undefined ? { serverUrl: server } : {}),
+              ...(baseUrl !== undefined ? { baseUrl } : {}),
+            });
             if (input.options.json) {
               return { exitCode: 0, stdout: asJson(status) };
             }
@@ -244,7 +173,7 @@ export function registerConnectCli(args: {
               exitCode: 0,
               stdout:
                 `Paired as ${status.handle} — reachable at ${status.url}\n` +
-                "This bb is signed in to your bb account (see `bb account status`); the server holds the tunnel while bb is running.\n",
+                "The server holds the tunnel; it stays up while bb is running.\n",
             };
           }),
       }),
@@ -264,35 +193,16 @@ export function registerConnectCli(args: {
             }),
         }),
         off: cliCommand({
-          summary: "Turn remote access off and stay signed in",
+          summary: "Disconnect and forget the pairing",
           description:
-            "Closes the tunnel until `bb connect on`. This bb stays signed in to your bb account; `bb account logout` forgets the pairing.",
+            "Re-pairing needs a new code from the getbb.app dashboard.",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              const status = await remoteAccess.set(false);
+              const status = await tunnel.disconnect();
               return {
                 exitCode: 0,
-                stdout: input.options.json
-                  ? asJson(status)
-                  : "Remote access is off. This bb stays signed in to your bb account; run `bb connect on` to turn it back on, or `bb account logout` to forget the pairing.\n",
-              };
-            }),
-        }),
-        on: cliCommand({
-          summary: "Turn remote access back on",
-          options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const status = await remoteAccess.set(true);
-              if (input.options.json) {
-                return { exitCode: 0, stdout: asJson(status) };
-              }
-              return {
-                exitCode: 0,
-                stdout: status.paired
-                  ? `Remote access is on — reachable at ${status.url}\n`
-                  : "Remote access is on. Run `bb account login` to sign in; the tunnel starts once you do.\n",
+                stdout: input.options.json ? asJson(status) : "Disconnected\n",
               };
             }),
         }),
@@ -388,9 +298,8 @@ export function registerConnectCli(args: {
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              const identity = tunnel.getIdentity();
-              if (identity === null) throw notPairedError();
-              const result = await hosted.listAccountServers(identity);
+              if (!tunnel.status().paired) throw notPairedError();
+              const result = await tunnel.listAccountServers();
               if (input.options.json) {
                 return { exitCode: 0, stdout: asJson(result) };
               }
@@ -432,11 +341,10 @@ export function registerConnectCli(args: {
                   { code: "mobile_pairing_disabled" },
                 );
               }
-              if (tunnel.getIdentity() === null) throw notPairedError();
               let payload: MobilePairingPayload;
               try {
                 payload = mobilePairingPayload(
-                  await hosted.createMachineCode(AbortSignal.timeout(10_000)),
+                  await tunnel.createMachineCode(),
                 );
               } catch (error) {
                 if (error instanceof MachineCodeError) {

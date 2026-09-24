@@ -34,8 +34,8 @@ import type {
 } from "@bb/server-contract";
 import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
-  ExperimentalPluginRpcHandlersWithContext,
   PluginRpcContract,
+  PluginRpcHandlers,
   StandardSchemaV1,
 } from "./rpc-contract.js";
 import type {
@@ -852,13 +852,11 @@ export interface PluginRpc {
    * `/api/v1/plugins/<id>/rpc/<method>` with "local" auth semantics. The
    * host validates input before invocation and output before strict JSON
    * serialization. The response is `{ ok: true, result }` or
-   * `{ ok: false, error: { code, message, issues? } }`. Each handler gets
-   * the call's context as its second argument; `experimental_caller` names
-   * the plugin that called through `bb.sdk.plugins.callRpc`, or `client`.
+   * `{ ok: false, error: { code, message, issues? } }`.
    */
   register<Contract extends PluginRpcContract>(
     contract: Contract,
-    handlers: ExperimentalPluginRpcHandlersWithContext<Contract>,
+    handlers: PluginRpcHandlers<Contract>,
     options?: {
       experimental_discoverable?: boolean;
       experimental_description?: string;

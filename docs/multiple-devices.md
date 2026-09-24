@@ -19,10 +19,10 @@ machine cannot be removed.
 
 ## Open bb from another browser
 
-The simplest managed route is **bb connect**. Sign the server in to your bb
-account from Settings → Remote access (or `bb account login`, or
-`bb connect --code ...` with a dashboard code), then open its getbb.app URL.
-The server owns the tunnel and reconnects after restart.
+The simplest managed route is **bb connect**. Pair the server from Settings →
+Connect (or `bb connect --code ... --server
+...`), then open its getbb.app URL. The server owns the tunnel and reconnects
+after restart.
 
 For a private tailnet route, keep bb on its loopback default and publish it
 through Tailscale Serve:
@@ -98,8 +98,8 @@ bb connect it pairs the same way the desktop app does: the phone enrolls as a
 connect machine with its own credential, which the getbb.app dashboard lists
 and can revoke.
 
-1. Sign the bb server in to your bb account first (Settings → Remote
-   access, `bb account login`, or `bb connect --code …`).
+1. Pair the bb server with bb connect first (Settings → Remote access, or
+   `bb connect --code … --server …`).
 2. Turn on the **Mobile app** experiment (Settings → Experiments, or
    `bb settings experiment mobileApp true`). Mobile pairing stays hidden
    without it while the app is in early access.

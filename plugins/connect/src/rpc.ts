@@ -5,11 +5,17 @@ import {
   type DesktopSession,
   type ListAccountServersResult,
 } from "@bb/connect-client";
+import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus, ShareListing } from "./types.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 import type { ShareHostResolver } from "./hosts.js";
-import type { HostedConnectApi } from "./hosted.js";
+
+const pairInputSchema = z.object({
+  code: z.string().min(1),
+  server: z.string().url().optional(),
+  baseUrl: z.string().url().optional(),
+});
 
 const portInputSchema = z
   .object({
@@ -34,7 +40,6 @@ const connectStatusSchema: z.ZodType<ConnectStatus> = z
   .object({
     state: z.enum(["disconnected", "pairing", "connected", "reconnecting"]),
     paired: z.boolean(),
-    enabled: z.boolean(),
     handle: z.string().nullable(),
     url: z.string().nullable(),
     dashboardUrl: z.string(),
@@ -91,11 +96,9 @@ const machineCodeSchema: z.ZodType<MachineCode> = z
   .strict();
 
 export const connectRpcContract = defineRpcContract({
+  pair: { input: pairInputSchema, output: connectStatusSchema },
   status: { input: z.null(), output: connectStatusSchema },
-  setRemoteAccess: {
-    input: z.object({ enabled: z.boolean() }).strict(),
-    output: connectStatusSchema,
-  },
+  disconnect: { input: z.null(), output: connectStatusSchema },
   expose: { input: portInputSchema, output: shareListingSchema },
   unexpose: {
     input: portInputSchema,
@@ -140,34 +143,28 @@ export interface MobilePairingGate {
   enabled(): Promise<boolean>;
 }
 
-export interface RemoteAccessSwitch {
-  set(enabled: boolean): Promise<ConnectStatus>;
-}
-
-export function createRpcHandlers(args: {
-  tunnel: ConnectTunnel;
-  hosted: HostedConnectApi;
-  hostResolver: ShareHostResolver;
-  mobilePairing: MobilePairingGate;
-  remoteAccess: RemoteAccessSwitch;
-}): ConnectRpcHandlers {
-  const { tunnel, hosted, hostResolver, mobilePairing, remoteAccess } = args;
-  const identity = () => {
-    const current = tunnel.getIdentity();
-    if (current === null) {
-      throw new ConnectListError(
-        "not_paired",
-        "this bb isn't signed in to a bb account — run `bb account login`",
-      );
-    }
-    return current;
-  };
+export function createRpcHandlers(
+  tunnel: ConnectTunnel,
+  hostResolver: ShareHostResolver,
+  mobilePairing: MobilePairingGate,
+): ConnectRpcHandlers {
   return {
+    async pair(args) {
+      return rethrowErrorCode(
+        () =>
+          tunnel.pair({
+            code: args.code,
+            ...(args.server !== undefined ? { serverUrl: args.server } : {}),
+            ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
+          }),
+        (error) => error instanceof ConnectPairError,
+      );
+    },
     async status() {
       return tunnel.refreshStatus();
     },
-    async setRemoteAccess(args) {
-      return remoteAccess.set(args.enabled);
+    async disconnect() {
+      return tunnel.disconnect();
     },
     async expose(args) {
       const host =
@@ -187,16 +184,13 @@ export function createRpcHandlers(args: {
     },
     async listAccountServers() {
       return rethrowErrorCode(
-        () => hosted.listAccountServers(identity()),
+        () => tunnel.listAccountServers(),
         (error) => error instanceof ConnectListError,
       );
     },
     async createDesktopSession() {
       return rethrowErrorCode(
-        () => {
-          identity();
-          return hosted.createDesktopSession();
-        },
+        () => tunnel.createDesktopSession(),
         (error) => error instanceof ConnectListError,
       );
     },
@@ -205,18 +199,12 @@ export function createRpcHandlers(args: {
     },
     async createMachineCode() {
       return rethrowErrorCode(
-        () => {
-          if (tunnel.getIdentity() === null) {
-            throw new MachineCodeError("not_paired");
-          }
-          return hosted.createMachineCode(AbortSignal.timeout(10_000));
-        },
+        () => tunnel.createMachineCode(),
         (error) => error instanceof MachineCodeError,
       );
     },
     async revokeMachine(args) {
-      if (tunnel.getIdentity() === null) throw new Error("not_paired");
-      await hosted.revokeMachine(args.machineId);
+      await tunnel.revokeMachine(args.machineId);
       return { ok: true };
     },
   };

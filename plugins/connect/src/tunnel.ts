@@ -10,9 +10,20 @@ import {
   type StreamOriginResult,
 } from "@bb/tunnel-client";
 import type { PluginLogger } from "@get-bb/plugin-sdk";
-import { deriveConnectBaseUrl } from "@bb/connect-client";
-import { AccountUnavailableError, type Account } from "./account-client.js";
-import { NotSignedInError, type TunnelTicket } from "./hosted.js";
+import {
+  ConnectListError,
+  deriveConnectBaseUrl,
+  fetchDesktopSession,
+  listAccountServers,
+  serverUrlForHandle,
+  type ConnectCredential,
+  type DesktopSession,
+  type ListAccountServersResult,
+} from "@bb/connect-client";
+import type { CredentialStore } from "./credential.js";
+import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
+import { asConnectPairError, redeemConnectCode } from "./redeem.js";
+import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
   shareLoopbackHost,
@@ -23,51 +34,36 @@ import {
 import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus, ShareListing } from "./types.js";
 
+const DISCONNECT_TIMEOUT_MS = 5_000;
 const TUNNEL_HANDSHAKE_TIMEOUT_MS = 15_000;
 
-export interface ConnectIdentity {
-  serverId: string;
-  serverUrl: string;
-  handle: string;
-  baseUrl: string;
+async function notifyCloudOfDisconnect(
+  credential: ConnectCredential,
+): Promise<void> {
+  const response = await fetch(
+    new URL("/api/connect/disconnect", credential.serverUrl),
+    {
+      method: "POST",
+      headers: { "x-bb-connect-machine": credential.credential },
+      signal: AbortSignal.timeout(DISCONNECT_TIMEOUT_MS),
+    },
+  );
+  if (!response.ok && response.status !== 401 && response.status !== 403) {
+    throw new Error(`Cloud returned HTTP ${response.status}`);
+  }
 }
 
 interface ConnectTunnelOptions {
+  store: CredentialStore;
   shares: ShareRegistry;
-  mintTicket: () => Promise<TunnelTicket>;
   defaultBaseUrl: string;
-  enabled: boolean;
   getLoopbackBaseUrl: () => string;
   log: PluginLogger;
   onStatusChange?: (status: ConnectStatus) => void;
 }
 
-function identityOf(account: Account | null): ConnectIdentity | null {
-  if (account === null) return null;
-  return {
-    serverId: account.serverId,
-    serverUrl: account.serverUrl.replace(/\/$/u, ""),
-    handle: account.serverLabel,
-    baseUrl: account.baseUrl,
-  };
-}
-
-function sameIdentity(
-  left: ConnectIdentity | null,
-  right: ConnectIdentity | null,
-): boolean {
-  if (left === null || right === null) return left === right;
-  return (
-    left.serverId === right.serverId &&
-    left.serverUrl === right.serverUrl &&
-    left.handle === right.handle &&
-    left.baseUrl === right.baseUrl
-  );
-}
-
 export class ConnectTunnel {
-  private identity: ConnectIdentity | null = null;
-  private enabled: boolean;
+  private credential: ConnectCredential | null = null;
   private tunnel: NodeWebSocket | undefined;
   private session: TunnelSession | undefined;
   private connected = false;
@@ -75,8 +71,7 @@ export class ConnectTunnel {
   private lastError: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly backoff = new ReconnectBackoff();
-  private stopped = true;
-  private dialEpoch = 0;
+  private stopped = false;
   private lastState: ConnectStateName = "disconnected";
   private stateSince = Date.now();
   private lastRemoteActivityAt: number | null = null;
@@ -85,60 +80,84 @@ export class ConnectTunnel {
   private shareRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private shareActivationEpoch = 0;
 
-  constructor(private readonly options: ConnectTunnelOptions) {
-    this.enabled = options.enabled;
-  }
+  constructor(private readonly options: ConnectTunnelOptions) {}
 
-  getIdentity(): ConnectIdentity | null {
-    return this.identity;
+  getCredential(): ConnectCredential | null {
+    return this.credential;
   }
 
   async start(): Promise<void> {
-    this.stopped = false;
-    this.openTunnel();
+    const stored = await this.options.store.read();
+    if (stored) {
+      this.credential = stored;
+      this.stopped = false;
+      this.openTunnel();
+    }
     this.startShareActivation();
     this.publish();
   }
 
-  setAccount(account: Account | null): void {
-    const next = identityOf(account);
-    if (sameIdentity(this.identity, next)) return;
-    const running = !this.stopped;
-    this.teardown();
-    this.options.shares.clearMachineDeclarations();
-    this.identity = next;
-    this.lastError = null;
-    if (running) {
-      this.stopped = false;
-      this.openTunnel();
-      this.startShareActivation();
-    }
-    this.publish();
-  }
-
-  setEnabled(enabled: boolean): void {
-    if (this.enabled === enabled) return;
-    this.enabled = enabled;
-    const running = !this.stopped;
-    this.teardown();
-    if (!enabled) this.options.shares.clearMachineDeclarations();
-    this.lastError = null;
-    if (running) {
-      this.stopped = false;
-      this.openTunnel();
-      this.startShareActivation();
-    }
-    this.publish();
-  }
-
-  async signIn(work: () => Promise<Account | null>): Promise<ConnectStatus> {
+  async pair(args: {
+    code: string;
+    serverUrl?: string;
+    baseUrl?: string;
+  }): Promise<ConnectStatus> {
+    const baseUrl =
+      args.baseUrl ??
+      (args.serverUrl !== undefined
+        ? deriveConnectBaseUrl(args.serverUrl)
+        : this.options.defaultBaseUrl);
     this.pairing = true;
     this.publish();
     try {
-      this.setAccount(await work());
+      let redeemed;
+      try {
+        redeemed = await redeemConnectCode({ code: args.code, baseUrl });
+      } catch (error) {
+        const pairError = asConnectPairError(error);
+        this.options.log.warn(
+          `pair failed (${pairError.code}): ${pairError.message}`,
+        );
+        throw pairError;
+      }
+      const serverUrl = (
+        args.serverUrl ?? serverUrlForHandle(baseUrl, redeemed.handle)
+      ).replace(/\/$/, "");
+      const credential: ConnectCredential = {
+        serverUrl,
+        handle: redeemed.handle,
+        credential: redeemed.credential,
+      };
+      await this.options.store.write(credential);
+      this.credential = credential;
+      this.lastError = null;
+      this.reconnect();
+      this.startShareActivation();
     } finally {
       this.pairing = false;
       this.publish();
+    }
+    return this.status();
+  }
+
+  async disconnect(): Promise<ConnectStatus> {
+    const credential = this.credential;
+    this.teardown();
+    await this.options.store.clear();
+    this.options.shares.clearMachineDeclarations();
+    this.credential = null;
+    this.lastError = null;
+    this.publish();
+    if (credential !== null) {
+      try {
+        await notifyCloudOfDisconnect(credential);
+      } catch (error) {
+        this.options.log.warn(
+          `Cloud disconnect could not be confirmed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
     return this.status();
   }
@@ -162,6 +181,37 @@ export class ConnectTunnel {
     return this.options.shares.list(hostId);
   }
 
+  async listAccountServers(): Promise<ListAccountServersResult> {
+    const credential = this.credential;
+    if (credential === null) {
+      throw new ConnectListError(
+        "not_paired",
+        "this bb is not connected to getbb.app — run `bb connect` for how to pair",
+      );
+    }
+    return listAccountServers(credential);
+  }
+
+  async createDesktopSession(): Promise<DesktopSession> {
+    if (this.credential === null) {
+      throw new ConnectListError("not_paired", "this bb is not connected");
+    }
+    return fetchDesktopSession(this.credential);
+  }
+
+  async createMachineCode() {
+    if (this.credential === null) {
+      throw new MachineCodeError("not_paired");
+    }
+    return fetchMachineCode(this.credential, AbortSignal.timeout(10_000));
+  }
+
+  async revokeMachine(machineId: string): Promise<void> {
+    const credential = this.getCredential();
+    if (credential === null) throw new Error("not_paired");
+    await revokeMachine(credential, machineId);
+  }
+
   status(): ConnectStatus {
     return this.statusWithShares(this.options.shares.snapshot());
   }
@@ -170,19 +220,13 @@ export class ConnectTunnel {
     return this.statusWithShares(await this.listShares());
   }
 
-  stop(): void {
-    this.teardown();
-    this.publish();
-  }
-
   private statusWithShares(shares: ConnectStatus["shares"]): ConnectStatus {
     const state = this.computeState();
     return {
       state,
-      paired: this.identity !== null,
-      enabled: this.enabled,
-      handle: this.identity?.handle ?? null,
-      url: this.identity?.serverUrl ?? null,
+      paired: this.credential !== null,
+      handle: this.credential?.handle ?? null,
+      url: this.credential?.serverUrl ?? null,
       dashboardUrl: this.dashboardUrl(),
       lastError: this.lastError,
       nextRetryAt: state === "reconnecting" ? this.nextRetryAt : null,
@@ -194,13 +238,21 @@ export class ConnectTunnel {
   }
 
   private dashboardUrl(): string {
-    const base = this.identity?.baseUrl ?? this.options.defaultBaseUrl;
-    return `${base.replace(/\/$/u, "")}/dashboard`;
+    const base =
+      this.credential !== null
+        ? deriveConnectBaseUrl(this.credential.serverUrl)
+        : this.options.defaultBaseUrl;
+    return `${base.replace(/\/$/, "")}/dashboard`;
+  }
+
+  stop(): void {
+    this.teardown();
+    this.publish();
   }
 
   private computeState(): ConnectStateName {
     if (this.pairing) return "pairing";
-    if (this.identity === null || !this.enabled) return "disconnected";
+    if (this.credential === null) return "disconnected";
     return this.connected ? "connected" : "reconnecting";
   }
 
@@ -215,7 +267,6 @@ export class ConnectTunnel {
 
   private teardown(): void {
     this.shareActivationEpoch += 1;
-    this.dialEpoch += 1;
     this.stopped = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -235,6 +286,12 @@ export class ConnectTunnel {
     this.nextRetryAt = null;
   }
 
+  private reconnect(): void {
+    this.teardown();
+    this.stopped = false;
+    this.openTunnel();
+  }
+
   private startShareActivation(): void {
     const epoch = ++this.shareActivationEpoch;
     void this.activateShares(epoch);
@@ -248,13 +305,11 @@ export class ConnectTunnel {
     try {
       await this.options.shares.load();
       if (!this.isShareActivationCurrent(epoch)) return;
-      if (this.enabled) {
-        await this.options.shares.declareMachineShares(() =>
-          this.isShareActivationCurrent(epoch),
-        );
-        if (!this.isShareActivationCurrent(epoch)) return;
-      }
-      if (this.identity !== null) {
+      await this.options.shares.declareMachineShares(() =>
+        this.isShareActivationCurrent(epoch),
+      );
+      if (!this.isShareActivationCurrent(epoch)) return;
+      if (this.credential !== null) {
         await this.options.shares.list();
         if (!this.isShareActivationCurrent(epoch)) return;
       }
@@ -264,7 +319,7 @@ export class ConnectTunnel {
         `shared-port activation failed; retrying: ${error instanceof Error ? error.message : String(error)}`,
       );
       if (
-        this.identity !== null &&
+        this.credential !== null &&
         this.isShareActivationCurrent(epoch) &&
         this.shareRetryTimer === undefined
       ) {
@@ -276,14 +331,31 @@ export class ConnectTunnel {
     }
   }
 
+  private credentialRejected(statusCode: number): void {
+    this.lastError =
+      `the gate rejected this bb's credential (HTTP ${statusCode}) — ` +
+      "pairing was revoked; get a new code from the getbb.app dashboard and re-pair";
+    this.options.log.warn(this.lastError);
+    this.credential = null;
+    this.teardown();
+    this.publish();
+    void this.options.store.clear().catch((error: unknown) => {
+      this.options.log.warn(
+        `failed to clear the rejected credential: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }
+
   private resolveStreamOrigin(target: string | undefined): StreamOriginResult {
     if (target === undefined) {
       return {
         kind: "ok",
         resolved: {
           origin: this.options.getLoopbackBaseUrl().replace(/\/$/, ""),
-          publicOrigin: this.identity
-            ? new URL(this.identity.serverUrl).origin
+          publicOrigin: this.credential
+            ? new URL(this.credential.serverUrl).origin
             : this.options.getLoopbackBaseUrl(),
         },
       };
@@ -292,132 +364,86 @@ export class ConnectTunnel {
     if (!Number.isInteger(port) || !this.options.shares.hasServerPort(port)) {
       return { kind: "unregistered" };
     }
-    const identity = this.identity;
-    if (identity === null) {
+    const credential = this.credential;
+    if (credential === null) {
       return { kind: "unregistered" };
     }
     return {
       kind: "ok",
       resolved: {
         origin: shareLoopbackOrigin(port),
-        publicOrigin: new URL(sharePublicUrl(identity, port)).origin,
+        publicOrigin: new URL(sharePublicUrl(credential, port)).origin,
         host: shareLoopbackHost(port),
       },
     };
   }
 
-  private isCurrentDial(epoch: number): boolean {
-    return !this.stopped && epoch === this.dialEpoch;
-  }
-
-  private scheduleRetry(epoch: number, detail: string, stableMs: number): void {
-    if (!this.isCurrentDial(epoch) || this.reconnectTimer !== undefined) return;
-    this.connected = false;
-    this.session?.dispose();
-    this.session = undefined;
-    this.remoteClients = 0;
-    const delay = this.backoff.nextDelayAfterClose(stableMs);
-    this.nextRetryAt = Date.now() + delay;
-    this.options.log.warn(`${detail}; reconnecting in ${delay}ms`);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = undefined;
-      if (!this.isCurrentDial(epoch)) return;
-      this.nextRetryAt = null;
-      this.publish();
-      this.openTunnel();
-    }, delay);
-    this.publish();
-  }
-
   private openTunnel(): void {
-    const identity = this.identity;
-    if (identity === null || this.stopped || !this.enabled) return;
-    const epoch = ++this.dialEpoch;
-    void this.mintAndDial(identity, epoch);
-  }
+    const credential = this.credential;
+    if (!credential || this.stopped) return;
 
-  private async mintAndDial(
-    identity: ConnectIdentity,
-    epoch: number,
-  ): Promise<void> {
-    let ticket: TunnelTicket;
-    try {
-      ticket = await this.options.mintTicket();
-    } catch (error) {
-      if (!this.isCurrentDial(epoch)) return;
-      if (error instanceof NotSignedInError) {
-        this.lastError =
-          "this bb isn't signed in to a bb account — sign in to turn remote access back on";
-        this.options.log.warn(this.lastError);
-        this.publish();
-        return;
-      }
-      this.lastError =
-        error instanceof AccountUnavailableError
-          ? `can't get a tunnel ticket — ${error.message}`
-          : `can't get a tunnel ticket from ${connectApexHost(identity)} — ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-      this.scheduleRetry(epoch, this.lastError, 0);
-      return;
-    }
-    if (!this.isCurrentDial(epoch)) return;
-    this.dial(identity, ticket, epoch);
-  }
-
-  private dial(
-    identity: ConnectIdentity,
-    ticket: TunnelTicket,
-    epoch: number,
-  ): void {
-    const tunnelUrl = tunnelDialUrl(ticket.tunnelUrl);
+    const tunnelUrl = tunnelUrlForServer(credential.serverUrl);
     this.options.log.info(
       `tunnel connecting to ${tunnelUrl} (origin ${this.options.getLoopbackBaseUrl()})`,
     );
     let tunnel: NodeWebSocket;
     try {
       tunnel = new NodeWebSocket(tunnelUrl, {
-        headers: { authorization: `Bearer ${ticket.ticket}` },
+        headers: { authorization: `Bearer ${credential.credential}` },
         handshakeTimeout: TUNNEL_HANDSHAKE_TIMEOUT_MS,
       });
     } catch (error) {
       this.lastError = `cannot dial ${tunnelUrl}: ${
         error instanceof Error ? error.message : String(error)
       }`;
-      this.scheduleRetry(epoch, this.lastError, 0);
+      this.options.log.warn(this.lastError);
+      this.publish();
       return;
     }
     this.tunnel = tunnel;
     let connectedAt = 0;
     let retryScheduled = false;
     let handshakeDeadline: ReturnType<typeof setTimeout> | undefined;
-    const isCurrent = () =>
-      !retryScheduled && this.isCurrentDial(epoch) && this.tunnel === tunnel;
 
-    const retry = (detail: string): void => {
-      if (!isCurrent()) return;
+    const scheduleReconnect = (detail: string): void => {
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
       retryScheduled = true;
       clearTimeout(handshakeDeadline);
+      this.connected = false;
+      this.session?.dispose();
+      this.session = undefined;
+      this.remoteClients = 0;
+      const stable = connectedAt ? Date.now() - connectedAt : 0;
+      const delay = this.backoff.nextDelayAfterClose(stable);
       if (this.lastError === null) {
-        this.lastError = `can't reach ${connectApexHost(identity)} — connection closed`;
+        this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
       }
-      this.scheduleRetry(
-        epoch,
-        detail,
-        connectedAt ? Date.now() - connectedAt : 0,
-      );
+      this.nextRetryAt = Date.now() + delay;
+      this.options.log.warn(`${detail}; reconnecting in ${delay}ms`);
+      this.reconnectTimer = setTimeout(() => {
+        if (this.stopped || this.tunnel !== tunnel) return;
+        this.reconnectTimer = undefined;
+        this.nextRetryAt = null;
+        this.publish();
+        this.openTunnel();
+      }, delay);
+      this.publish();
     };
 
     handshakeDeadline = setTimeout(() => {
-      if (!isCurrent()) return;
-      this.lastError = `can't reach ${connectApexHost(identity)} — handshake timed out`;
-      retry(this.lastError);
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) return;
+      this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — handshake timed out`;
+      scheduleReconnect(this.lastError);
       tunnel.terminate();
     }, TUNNEL_HANDSHAKE_TIMEOUT_MS);
     handshakeDeadline.unref?.();
 
     tunnel.on("open", () => {
-      if (!isCurrent()) return;
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
       clearTimeout(handshakeDeadline);
       connectedAt = Date.now();
       this.connected = true;
@@ -440,42 +466,46 @@ export class ConnectTunnel {
       this.publish();
     });
     tunnel.on("unexpected-response", (_req, res) => {
-      if (!isCurrent()) return;
+      if (this.stopped || this.tunnel !== tunnel) return;
       res.resume();
       const statusCode = res.statusCode ?? 0;
-      this.lastError =
-        statusCode === 401 || statusCode === 403
-          ? `the gate refused this bb's tunnel ticket (HTTP ${statusCode})`
-          : `tunnel rejected: HTTP ${statusCode}`;
-      retry(this.lastError);
+      if (statusCode === 401 || statusCode === 403) {
+        this.credentialRejected(statusCode);
+        return;
+      }
+      this.lastError = `tunnel rejected: HTTP ${statusCode}`;
+      scheduleReconnect(this.lastError);
       tunnel.terminate();
     });
     tunnel.on("error", (e: Error) => {
-      if (!isCurrent()) return;
-      this.lastError = humanizeTransportError(e, connectApexHost(identity));
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
+      this.lastError = humanizeTransportError(
+        e,
+        connectApexHost(credential.serverUrl),
+      );
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
-      retry(
+      scheduleReconnect(
         `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
       );
     });
   }
 }
 
-function connectApexHost(identity: ConnectIdentity): string {
+function connectApexHost(serverUrl: string): string {
   try {
-    return new URL(identity.baseUrl).host;
+    return new URL(deriveConnectBaseUrl(serverUrl)).host;
   } catch {
-    try {
-      return new URL(deriveConnectBaseUrl(identity.serverUrl)).host;
-    } catch {
-      return "getbb.app";
-    }
+    return "getbb.app";
   }
 }
 
-function tunnelDialUrl(tunnelUrl: string): string {
-  const url = new URL(tunnelUrl);
+function tunnelUrlForServer(serverUrl: string): string {
+  const base =
+    serverUrl.replace(/^http/, "ws").replace(/\/$/, "") + "/__tunnel";
+  const url = new URL(base);
   url.searchParams.set(TUNNEL_PROTOCOL_QUERY_PARAM, String(PROTOCOL_VERSION));
   return url.toString();
 }

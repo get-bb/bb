@@ -61,13 +61,6 @@
       "bucket_name": "bb-marketplace-staging",
     },
   ],
-  "ratelimits": [
-    {
-      "name": "LINK_START_RATE_LIMITER",
-      "namespace_id": "4203",
-      "simple": { "limit": 10, "period": 60 },
-    },
-  ],
   "routes": [{ "pattern": "vibecodethis.site", "custom_domain": true }],
   "env": {
     // Production (getbb.app). Cutover note: the getbb.app + www custom domains
@@ -115,13 +108,6 @@
         {
           "binding": "MARKETPLACE",
           "bucket_name": "bb-marketplace",
-        },
-      ],
-      "ratelimits": [
-        {
-          "name": "LINK_START_RATE_LIMITER",
-          "namespace_id": "4204",
-          "simple": { "limit": 10, "period": 60 },
         },
       ],
     },
