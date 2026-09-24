@@ -77,6 +77,8 @@ The Ladle providers decorator seeds app state at the boundary. WebSocket state i
 seeded through the Jotai atoms that components already read rather than by
 monkey-patching the `useWebSocket` hook.
 
+`packages/shared-ui` components follow a different, atomic convention (one story per distinct visual state, not an `Overview` grid) — see `docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md` for why and how.
+
 ## Story Coverage
 
 | Batch | Scope                                        | Status   |

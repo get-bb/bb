@@ -4,7 +4,7 @@ export default {
   title: "shared-ui/Icon",
 };
 
-export const Default = () => <Icon name="Plus" className="size-3.5" />;
+export const Default = () => <Icon name="X" className="size-3.5" />;
 
 export const Loading = () => (
   <Icon name="Spinner" className="size-4 animate-spin" />
