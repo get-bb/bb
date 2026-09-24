@@ -17,7 +17,7 @@ import {
 } from "@bb/db";
 import type { Host, Project } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
-import { HOST_OFFLINE_DISPLAY_DELAY_MS } from "../../src/constants.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { ApiError } from "../../src/errors.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import {
@@ -329,7 +329,7 @@ describe("host status after a lost daemon connection", () => {
       const session = openTestSession(db, host.id);
       closeTestSession(db, {
         closeReason: "daemon-disconnect",
-        closedAt: Date.now() - HOST_OFFLINE_DISPLAY_DELAY_MS + 5_000,
+        closedAt: Date.now() - HOST_RECONNECT_GRACE_MS + 5_000,
         sessionId: session.id,
       });
 
@@ -348,13 +348,13 @@ describe("host status after a lost daemon connection", () => {
     }
   });
 
-  it("shows the host disconnected once the offline display delay passes", () => {
+  it("shows the host disconnected once the reconnect grace ends", () => {
     const { db, host, hub } = setup();
     try {
       const session = openTestSession(db, host.id);
       closeTestSession(db, {
         closeReason: "daemon-disconnect",
-        closedAt: Date.now() - HOST_OFFLINE_DISPLAY_DELAY_MS - 1,
+        closedAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1,
         sessionId: session.id,
       });
 

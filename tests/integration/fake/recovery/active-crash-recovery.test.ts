@@ -15,6 +15,7 @@ import {
   ACTIVE_TIMEOUT_MS,
   createRecoveryThread,
   RECOVERY_TEST_TIMEOUT_MS,
+  HOST_OFFLINE_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   STOP_DELAY_TEXT,
 } from "./shared.js";
@@ -43,7 +44,7 @@ describe.sequential("fake provider active crash recovery integration", () => {
         await waitForHostDisconnected(
           harness.api,
           harness.hostId,
-          RECOVERY_TIMEOUT_MS,
+          HOST_OFFLINE_TIMEOUT_MS,
         );
         const disconnectedThread = await getThreadResponse(
           harness.api,
@@ -51,7 +52,7 @@ describe.sequential("fake provider active crash recovery integration", () => {
         );
         if (disconnectedThread.status === "active") {
           expect(disconnectedThread.runtime.displayStatus).toBe(
-            "host-reconnecting",
+            "waiting-for-host",
           );
         } else {
           expect(disconnectedThread.status).toBe("error");

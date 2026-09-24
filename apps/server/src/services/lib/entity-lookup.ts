@@ -14,7 +14,7 @@ import type { Host, HostType } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
-import { resolveHostDisconnectDisplay } from "../hosts/host-disconnect-display.js";
+import { isHostDisconnectHidden } from "../hosts/host-disconnect-display.js";
 import {
   destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
@@ -81,7 +81,7 @@ function listShownConnectedHostIds(
   for (const session of listLatestClosedSessionsForHosts(deps.db, {
     hostIds: unregisteredHostIds,
   })) {
-    if (resolveHostDisconnectDisplay(session, now).kind === "hidden") {
+    if (isHostDisconnectHidden(session, now)) {
       connectedHostIds.add(session.hostId);
     }
   }

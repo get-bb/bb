@@ -31,10 +31,7 @@ import type {
   Thread,
   ThreadRuntimeState,
 } from "@bb/domain";
-import {
-  HOST_OFFLINE_DISPLAY_DELAY_MS,
-  HOST_RECONNECT_GRACE_MS,
-} from "../../../src/constants.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../../src/constants.js";
 import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
@@ -289,12 +286,12 @@ describe("thread runtime display", () => {
     } satisfies ThreadRuntimeState);
   });
 
-  it("keeps an active thread active while its host's closed socket is within the offline display delay", () => {
+  it("keeps an active thread active while its host's closed socket is within the reconnect grace", () => {
     const { db, hostId, hub } = setup();
     const now = 60_000;
     const session = openTestSession({ db, hostId });
     closeTestSession({
-      closedAt: now - HOST_OFFLINE_DISPLAY_DELAY_MS + 1,
+      closedAt: now - HOST_RECONNECT_GRACE_MS + 1_000,
       db,
       sessionId: session.id,
     });
@@ -332,36 +329,13 @@ describe("thread runtime display", () => {
     } satisfies ThreadRuntimeState);
   });
 
-  it("shows host-reconnecting for the full reconnect grace after a daemon disconnect", () => {
+  it("shows waiting-for-host as soon as the server closes a silent daemon session", () => {
     const { db, hostId, hub } = setup();
     const now = 60_000;
     const session = openTestSession({ db, hostId });
-    const closedAt = now - HOST_RECONNECT_GRACE_MS + 1_000;
-    closeTestSession({
-      closedAt,
-      db,
-      sessionId: session.id,
-    });
-
-    expect(
-      resolveThreadRuntimeState(
-        { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
-      ),
-    ).toEqual({
-      displayStatus: "host-reconnecting",
-      hostReconnectGraceExpiresAt: closedAt + HOST_RECONNECT_GRACE_MS,
-    } satisfies ThreadRuntimeState);
-  });
-
-  it("shows host-reconnecting after the server closes a silent daemon session", () => {
-    const { db, hostId, hub } = setup();
-    const now = 60_000;
-    const session = openTestSession({ db, hostId });
-    const closedAt = now - 1_000;
     closeTestSession({
       closeReason: "expired",
-      closedAt,
+      closedAt: now - 1_000,
       db,
       sessionId: session.id,
     });
@@ -372,8 +346,8 @@ describe("thread runtime display", () => {
         { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
-      displayStatus: "host-reconnecting",
-      hostReconnectGraceExpiresAt: closedAt + HOST_RECONNECT_GRACE_MS,
+      displayStatus: "waiting-for-host",
+      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 

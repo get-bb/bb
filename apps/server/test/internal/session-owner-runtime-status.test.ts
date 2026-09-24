@@ -1,9 +1,6 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
 import { getThread, markThreadDeleted } from "@bb/db";
-import {
-  HOST_OFFLINE_DISPLAY_DELAY_MS,
-  HOST_RECONNECT_GRACE_MS,
-} from "../../src/constants.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleDaemonSocketClosed,
@@ -138,7 +135,7 @@ function lastStatusChange(
 }
 
 describe("host thread runtime status notifications", () => {
-  it("keeps a closed daemon socket hidden until the offline display delay passes", async () => {
+  it("keeps a closed daemon socket hidden until the reconnect grace ends, without interrupting the thread", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedHostThreadsFixture(harness, 1);
       const socket = createMockHubSocket();
@@ -161,12 +158,12 @@ describe("host thread runtime status notifications", () => {
           lastStatusChange(socket.messages, fixture.idleThreadId).metadata
             ?.statusChange,
         ).toBeUndefined();
-        const hostChangesBeforeDelay = hostDisconnectedMessagesFor(
+        const hostChangesBeforeGraceEnd = hostDisconnectedMessagesFor(
           socket.messages,
           fixture.hostId,
         ).length;
 
-        vi.advanceTimersByTime(HOST_OFFLINE_DISPLAY_DELAY_MS);
+        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS);
 
         expect(
           lastStatusChange(socket.messages, fixture.activeThreadId).metadata
@@ -174,13 +171,16 @@ describe("host thread runtime status notifications", () => {
         ).toMatchObject({
           status: "active",
           runtime: {
-            displayStatus: "host-reconnecting",
-            hostReconnectGraceExpiresAt: expect.any(Number),
+            displayStatus: "waiting-for-host",
+            hostReconnectGraceExpiresAt: null,
           },
         });
         expect(
           hostDisconnectedMessagesFor(socket.messages, fixture.hostId),
-        ).toHaveLength(hostChangesBeforeDelay + 1);
+        ).toHaveLength(hostChangesBeforeGraceEnd + 1);
+        expect(getThread(harness.db, fixture.activeThreadId)?.status).toBe(
+          "active",
+        );
       } finally {
         harness.hub.cancelPendingDaemonDisconnect(fixture.sessionId);
         vi.useRealTimers();
@@ -188,7 +188,7 @@ describe("host thread runtime status notifications", () => {
     });
   });
 
-  it("never shows a disconnect for a daemon that reconnects within the offline display delay", async () => {
+  it("never shows a disconnect for a daemon that reconnects within the reconnect grace", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedHostThreadsFixture(harness, 5);
       const socket = createMockHubSocket();
@@ -199,7 +199,7 @@ describe("host thread runtime status notifications", () => {
         handleDaemonSocketClosed(harness.deps, {
           sessionId: fixture.sessionId,
         });
-        vi.advanceTimersByTime(HOST_OFFLINE_DISPLAY_DELAY_MS - 1_000);
+        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS - 1_000);
         const reconnected = seedSession(harness.deps, fixture.hostId);
         harness.hub.registerDaemon(
           reconnected.id,
@@ -216,38 +216,6 @@ describe("host thread runtime status notifications", () => {
           (message) => message.metadata?.statusChange?.runtime.displayStatus,
         ),
       ).toEqual(["active"]);
-    });
-  });
-
-  it("tells clients the host is disconnected when the reconnect grace ends, without interrupting the thread", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedHostThreadsFixture(harness, 4);
-      const socket = createMockHubSocket();
-      harness.hub.subscribe(socket, { kind: "thread-list" });
-
-      vi.useFakeTimers();
-      try {
-        handleDaemonSocketClosed(harness.deps, {
-          sessionId: fixture.sessionId,
-        });
-        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS);
-      } finally {
-        vi.useRealTimers();
-      }
-
-      expect(
-        lastStatusChange(socket.messages, fixture.activeThreadId).metadata
-          ?.statusChange,
-      ).toMatchObject({
-        status: "active",
-        runtime: {
-          displayStatus: "waiting-for-host",
-          hostReconnectGraceExpiresAt: null,
-        },
-      });
-      expect(getThread(harness.db, fixture.activeThreadId)?.status).toBe(
-        "active",
-      );
     });
   });
 
