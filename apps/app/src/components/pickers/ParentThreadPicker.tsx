@@ -15,9 +15,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
-  resolveThreadTitleDisplayText,
   ThreadTitle,
-  useThreadTitleMentionResources,
+  useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
@@ -53,19 +52,16 @@ export function ParentThreadPicker({
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
-  const titleMentionResources = useThreadTitleMentionResources();
+  const resolveTitle = useResolveThreadTitle();
   const filteredOptions = useMemo(
     () =>
       searchPickerOptions({
         options,
         query: searchQuery,
         getLabel: (option) => option.label,
-        getAliases: (option) => [
-          option.value,
-          resolveThreadTitleDisplayText(option.label, titleMentionResources),
-        ],
+        getAliases: (option) => [option.value, resolveTitle(option.label)],
       }),
-    [options, searchQuery, titleMentionResources],
+    [options, resolveTitle, searchQuery],
   );
   const selectedLabel =
     options.find((option) => option.value === value)?.label ?? "None";

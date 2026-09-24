@@ -18,9 +18,8 @@ import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { LiveDurationText } from "./LiveDurationText.js";
 import {
-  resolveThreadTitleDisplayText,
   ThreadTitleMentions,
-  useThreadTitleMentionResources,
+  useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
 import {
   ConversationMessageOverflowToggle,
@@ -328,9 +327,9 @@ export function TimelineTitleView({
 }: TimelineTitleViewProps) {
   const onClick =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
-  const titleMentionResources = useThreadTitleMentionResources();
+  const resolveTitle = useResolveThreadTitle();
   const plainTitle = title.segments.some((segment) => segment.link)
-    ? resolveThreadTitleDisplayText(title.plain, titleMentionResources)
+    ? resolveTitle(title.plain)
     : title.plain;
 
   return (

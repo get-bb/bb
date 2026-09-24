@@ -26,10 +26,8 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
-  resolveThreadTitleDisplayText,
   ThreadTitle,
-  useThreadTitleMentionResources,
-  type ThreadTitleMentionResources,
+  useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
 
 const ALL_PROJECTS = "all";
@@ -94,14 +92,14 @@ function ArchiveFilterMenu<T extends string>({
 function filterArchivedThreadsBySearch(
   threads: ThreadListEntry[],
   search: string,
-  resources: ThreadTitleMentionResources,
+  resolveTitle: (title: string) => string,
 ): ThreadListEntry[] {
   const normalizedSearch = search.trim().toLocaleLowerCase();
   if (normalizedSearch.length === 0) return threads;
   return threads.filter((thread) => {
     const title = getThreadDisplayTitle(thread);
-    return [title, resolveThreadTitleDisplayText(title, resources)].some(
-      (text) => text.toLocaleLowerCase().includes(normalizedSearch),
+    return [title, resolveTitle(title)].some((text) =>
+      text.toLocaleLowerCase().includes(normalizedSearch),
     );
   });
 }
@@ -125,7 +123,7 @@ export function ArchivedThreadsSettingsSection() {
     query: search,
   });
   const unarchiveThread = useUnarchiveThread();
-  const titleMentionResources = useThreadTitleMentionResources();
+  const resolveTitle = useResolveThreadTitle();
 
   const projects = useMemo(() => {
     if (!sidebarNavigation.data) return [];
@@ -163,11 +161,7 @@ export function ArchivedThreadsSettingsSection() {
     );
     return searchIsActive
       ? filteredThreads
-      : filterArchivedThreadsBySearch(
-          filteredThreads,
-          search,
-          titleMentionResources,
-        );
+      : filterArchivedThreadsBySearch(filteredThreads, search, resolveTitle);
   }, [
     archivedThreadsQuery.data,
     kind,
@@ -175,7 +169,7 @@ export function ArchivedThreadsSettingsSection() {
     search,
     searchIsActive,
     threadSearch.data,
-    titleMentionResources,
+    resolveTitle,
   ]);
 
   const groupedThreads = useMemo(() => {

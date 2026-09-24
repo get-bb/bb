@@ -26,9 +26,8 @@ import {
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { resolveEnvironmentDisplayName } from "@bb/core-ui";
 import {
-  resolveThreadTitleDisplayText,
   ThreadTitle,
-  useThreadTitleMentionResources,
+  useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
@@ -130,7 +129,7 @@ export function ReuseEnvironmentPicker({
   modal,
 }: ReuseEnvironmentPickerProps) {
   const { providers } = useSystemEnvironmentProviders();
-  const titleMentionResources = useThreadTitleMentionResources();
+  const resolveTitle = useResolveThreadTitle();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const activeOption = useMemo(
@@ -141,11 +140,14 @@ export function ReuseEnvironmentPicker({
   const visibleOptions = useMemo(
     () =>
       showSearch
-        ? filterReuseThreadOptions(options, searchQuery, providers, (title) =>
-            resolveThreadTitleDisplayText(title, titleMentionResources),
+        ? filterReuseThreadOptions(
+            options,
+            searchQuery,
+            providers,
+            resolveTitle,
           )
         : options,
-    [options, providers, searchQuery, showSearch, titleMentionResources],
+    [options, providers, resolveTitle, searchQuery, showSearch],
   );
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);

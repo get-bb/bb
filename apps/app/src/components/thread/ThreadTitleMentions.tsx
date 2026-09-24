@@ -672,6 +672,14 @@ export function resolveThreadTitleDisplayText(
     .join("");
 }
 
+export function useResolveThreadTitle(): (title: string) => string {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  return useCallback(
+    (title: string) => resolveThreadTitleDisplayText(title, resources),
+    [resources],
+  );
+}
+
 function useUnavailableRawThreadMentionIds(): ReadonlySet<string> {
   const batch = useContext(RawThreadMentionBatchContext);
   const resolver = useContext(RawThreadMentionResolverContext);
@@ -867,7 +875,7 @@ function ResolvingThreadTitleMention({
   );
 }
 
-export interface ThreadTitleHighlightRange {
+interface ThreadTitleHighlightRange {
   start: number;
   end: number;
 }
