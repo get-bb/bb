@@ -22,6 +22,7 @@ import {
   pluginRemoveResponseSchema,
   pluginSafeModeRequestSchema,
   pluginSafeModeResponseSchema,
+  pluginSafeModeUpdateResponseSchema,
   pluginSettingsResponseSchema,
   pluginSettingsUpdateRequestSchema,
   pluginSourceDetailSchema,
@@ -42,6 +43,7 @@ import {
   type PluginReloadResponse,
   type PluginRemoveResponse,
   type PluginSafeModeResponse,
+  type PluginSafeModeUpdateResponse,
   type PluginSettingsResponse,
   type PluginSourceDetail,
   type PluginSourceSelection,
@@ -196,6 +198,7 @@ export type PluginListResult = PluginListResponse;
 export type PluginReloadResult = PluginReloadResponse;
 export type PluginRemoveResult = PluginRemoveResponse;
 export type PluginSafeModeResult = PluginSafeModeResponse;
+export type PluginSetSafeModeResult = PluginSafeModeUpdateResponse;
 export type PluginTokenResult = PluginTokenResponse;
 export type PluginUpdateSettingsResult = PluginSettingsResponse;
 export type PluginGetSourceResult = PluginSourceDetail;
@@ -243,7 +246,7 @@ export interface PluginsArea {
   ): Promise<PluginSafeModeResult>;
   experimental_setSafeMode(
     args: PluginSetSafeModeArgs,
-  ): Promise<PluginSafeModeResult>;
+  ): Promise<PluginSetSafeModeResult>;
   applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
@@ -444,7 +447,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       });
       return requestParsed(
         "/api/v1/plugins/safe-mode",
-        pluginSafeModeResponseSchema,
+        pluginSafeModeUpdateResponseSchema,
         jsonInit("PUT", body),
       );
     },

@@ -328,9 +328,14 @@ added/updated/unchanged counts.
                                  activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin safe-mode [on|off]   Show or change safe mode. `on` stops every
-                                 plugin that is not built in without changing
-                                 its enabled setting; `off` restarts the ones
-                                 that were enabled. Also in the command palette
+                                 plugin you installed (official store plugins
+                                 included) without changing its enabled
+                                 setting; plugins included with bb keep
+                                 running. `off` restarts the ones that were
+                                 enabled and exits 1 if any fail to start.
+                                 Installs and updates of stopped plugins are
+                                 refused until it is off. Also in the command
+                                 palette
   bb plugin reload [id]          Re-run factories against current sources.
                                  Exits 1 when a plugin does not come up on
                                  them (previous instance kept, or degraded

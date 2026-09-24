@@ -58,7 +58,7 @@ describe("/plugins/safe-mode", () => {
 
     const on = await put({ enabled: true });
     expect(on.status).toBe(200);
-    await expect(on.json()).resolves.toEqual({ enabled: true });
+    await expect(on.json()).resolves.toEqual({ enabled: true, problems: [] });
     await expect((await request()).json()).resolves.toEqual({ enabled: true });
     expect(
       harness.pluginService.list().find((plugin) => plugin.id === "extra"),
@@ -66,6 +66,7 @@ describe("/plugins/safe-mode", () => {
 
     await expect((await put({ enabled: false })).json()).resolves.toEqual({
       enabled: false,
+      problems: [],
     });
     expect(
       harness.pluginService.list().find((plugin) => plugin.id === "extra"),

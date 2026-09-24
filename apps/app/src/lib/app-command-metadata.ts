@@ -207,7 +207,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command(
         "plugins.enterSafeMode",
         "Turn on plugin safe mode",
-        "Stop every plugin that is not built in, keeping each plugin's enabled setting.",
+        "Stop every plugin you installed, keeping each plugin's enabled setting. Plugins included with bb keep running.",
       ),
       command(
         "plugins.exitSafeMode",

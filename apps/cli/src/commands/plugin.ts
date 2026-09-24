@@ -1610,7 +1610,7 @@ export function registerPluginCommands(
   plugin
     .command("safe-mode [state]")
     .description(
-      "Show plugin safe mode, or turn it on or off. `on` stops every plugin that is not built in; `off` restarts the ones that were enabled",
+      "Show plugin safe mode, or turn it on or off. `on` stops every plugin you installed (official store plugins included) while plugins included with bb keep running; `off` restarts the ones that were enabled and exits 1 if any fail to start",
     )
     .option("--json", "Output JSON")
     .action(
@@ -1619,17 +1619,21 @@ export function registerPluginCommands(
           exitWithError({ error: `expected "on" or "off", got "${state}"` });
         }
         const plugins = createCliBbSdk(getUrl()).plugins;
-        const result =
+        const updated =
           state === undefined
-            ? await plugins.experimental_getSafeMode()
+            ? null
             : await plugins.experimental_setSafeMode({
                 enabled: state === "on",
               });
+        const result = updated ?? (await plugins.experimental_getSafeMode());
+        const problems = updated?.problems ?? [];
         if (opts.json) {
           outputJson(opts, result);
-          return;
+        } else {
+          console.log(`Plugin safe mode is ${result.enabled ? "on" : "off"}.`);
+          for (const problem of problems) console.error(problem);
         }
-        console.log(`Plugin safe mode is ${result.enabled ? "on" : "off"}.`);
+        if (problems.length > 0) process.exit(1);
       }),
     );
 

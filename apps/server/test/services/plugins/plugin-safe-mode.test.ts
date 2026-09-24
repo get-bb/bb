@@ -44,6 +44,7 @@ async function writePathPlugin(dir: string, name: string): Promise<string> {
     join(rootDir, "server.ts"),
     `export default function plugin(bb: any) {
       const g = globalThis as any;
+      if (g.__safeModeFailing === ${JSON.stringify(name)}) throw new Error("boom");
       g.__safeModeLoads = { ...g.__safeModeLoads, ${JSON.stringify(name)}: (g.__safeModeLoads?.[${JSON.stringify(name)}] ?? 0) + 1 };
       bb.onDispose(() => {
         g.__safeModeDisposed = [...(g.__safeModeDisposed ?? []), ${JSON.stringify(name)}];
@@ -58,7 +59,7 @@ describe("plugin safe mode", () => {
   let workDir: string;
   let service: PluginService;
 
-  function createService(): PluginService {
+  function createService(autoInstall = true): PluginService {
     return createPluginService({
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
@@ -75,7 +76,7 @@ describe("plugin safe mode", () => {
         {
           name: "fixture",
           pluginId: "builtin-fixture",
-          autoInstall: true,
+          autoInstall,
           defaultEnabled: true,
           rootDir: fixtureRoot,
         },
@@ -102,6 +103,7 @@ describe("plugin safe mode", () => {
     await rm(workDir, { recursive: true, force: true });
     delete globals.__safeModeLoads;
     delete globals.__safeModeDisposed;
+    delete globals.__safeModeFailing;
     delete globals.__builtinFixtureLoads;
   });
 
@@ -111,7 +113,10 @@ describe("plugin safe mode", () => {
     await service.setEnabled("beta", false);
     expect(service.getSafeMode()).toBe(false);
 
-    await expect(service.setSafeMode(true)).resolves.toBe(true);
+    await expect(service.setSafeMode(true)).resolves.toEqual({
+      enabled: true,
+      problems: [],
+    });
 
     expect(service.getSafeMode()).toBe(true);
     expect(entry("builtin-fixture")).toMatchObject({ status: "running" });
@@ -128,7 +133,10 @@ describe("plugin safe mode", () => {
     expect(service.getApi("alpha")).toBeUndefined();
     expect(globals.__safeModeDisposed).toEqual(["beta", "alpha"]);
 
-    await expect(service.setSafeMode(false)).resolves.toBe(false);
+    await expect(service.setSafeMode(false)).resolves.toEqual({
+      enabled: false,
+      problems: [],
+    });
 
     expect(entry("alpha")).toMatchObject({ enabled: true, status: "running" });
     expect(entry("beta")).toMatchObject({ enabled: false, status: "disabled" });
@@ -145,11 +153,66 @@ describe("plugin safe mode", () => {
       status: "disabled",
       statusDetail: "safe mode is on",
     });
-    await service.reload("alpha");
+    await expect(service.reload("alpha")).resolves.toMatchObject({
+      ok: false,
+      error: 'plugin "alpha" was not reloaded: plugin safe mode is on',
+    });
     expect(service.getApi("alpha")).toBeUndefined();
 
     await service.setSafeMode(false);
     expect(entry("alpha")).toMatchObject({ status: "running" });
+  });
+
+  it("reports plugins that fail to start when safe mode ends", async () => {
+    await service.installPath(await writePathPlugin(workDir, "alpha"));
+    await service.setSafeMode(true);
+    globals.__safeModeFailing = "alpha";
+
+    await expect(service.setSafeMode(false)).resolves.toEqual({
+      enabled: false,
+      problems: [expect.stringContaining('plugin "alpha" did not start:')],
+    });
+    expect(entry("alpha")).toMatchObject({ status: "error" });
+  });
+
+  it("refuses installs and updates of non-builtin plugins during safe mode", async () => {
+    await service.installPath(await writePathPlugin(workDir, "alpha"));
+    await service.setSafeMode(true);
+
+    await expect(
+      service.installPath(await writePathPlugin(workDir, "beta")),
+    ).rejects.toThrow(
+      'plugin safe mode is on; turn it off with `bb plugin safe-mode off` before you install "beta"',
+    );
+    expect(entry("beta")).toBeUndefined();
+    await expect(service.applyUpdate("alpha")).resolves.toEqual({
+      ok: false,
+      error:
+        'plugin safe mode is on; turn it off with `bb plugin safe-mode off` before you update "alpha"',
+    });
+
+    await service.setSafeMode(false);
+    await expect(
+      service.installPath(await writePathPlugin(workDir, "beta")),
+    ).resolves.toMatchObject({ id: "beta", status: "running" });
+  });
+
+  it("keeps an included plugin running when its row kept catalog provenance", async () => {
+    await service.stop();
+    db.$client.close();
+    db = createConnection(":memory:");
+    migrate(db);
+    service = createService(false);
+    await service.start();
+    await service.installOfficialPlugin("fixture");
+    await service.stop();
+    service = createService();
+    await service.start();
+    expect(entry("builtin-fixture")).toMatchObject({ provenance: "catalog" });
+
+    await service.setSafeMode(true);
+
+    expect(entry("builtin-fixture")).toMatchObject({ status: "running" });
   });
 
   it("persists across a restart without loading non-builtin plugins", async () => {

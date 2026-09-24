@@ -55,6 +55,7 @@ import {
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
   type PluginCapabilitySummary,
+  type PluginSafeModeUpdateResponse,
   type PluginSourceDetail,
   type PluginSourceSelection,
   type PluginUpdateCheckEntry,
@@ -280,7 +281,7 @@ export interface PluginService {
   ): Promise<InstalledPlugin | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getSafeMode(): boolean;
-  setSafeMode(enabled: boolean): Promise<boolean>;
+  setSafeMode(enabled: boolean): Promise<PluginSafeModeUpdateResponse>;
   getApi(id: string): BbPluginApi | undefined;
   /**
    * Whether this server still means to run this plugin, which is what decides
@@ -620,6 +621,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     identities,
     invokeWrapped,
     isBuiltinPluginId,
+    isSafeModeExemptRow,
+    isSuppressedBySafeMode,
     listPluginHooks,
     listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
@@ -632,6 +635,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loaded,
     loadOne,
     brandingAssets,
+    safeModeActivationRefusal,
     setDevBuildProblem,
     setLoadHold,
     setStatus,
@@ -645,6 +649,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    includedBuiltinNames: new Set(
+      bundledPlugins
+        .filter((plugin) => plugin.autoInstall)
+        .map((plugin) => plugin.name),
+    ),
     machineEnrollments: deps.machineEnrollments ?? null,
     settingsChanged: notifyPluginsChanged,
   });
@@ -669,6 +678,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     sourceFingerprint,
   } = createPluginRegistration({
     runInstallHandlers,
+    safeModeActivationRefusal,
     deps,
     bundledPlugins,
     withLifecycleLock,
@@ -726,6 +736,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const pluginUpdates = createPluginUpdates({
     deps,
+    safeModeActivationRefusal,
     registrationMutationKey: REGISTRATION_MUTATION_KEY,
     withLifecycleLock,
     withPluginOperationLock,
@@ -1646,18 +1657,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async setSafeMode(enabled) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        if (getPluginSafeMode(deps.db) === enabled) return enabled;
+        if (getPluginSafeMode(deps.db) === enabled) {
+          return { enabled, problems: [] };
+        }
         setPluginSafeMode(deps.db, enabled);
         const rows = listInstalledPlugins(deps.db)
-          .filter((row) => row.enabled && row.provenance !== "builtin")
+          .filter((row) => row.enabled && !isSafeModeExemptRow(row))
           .sort((a, b) => a.id.localeCompare(b.id));
+        const problems: string[] = [];
         for (const row of rows) {
-          await withLifecycleLock(row.id, () => loadOne(row));
+          const problem = await withLifecycleLock(row.id, () => loadOne(row));
+          if (problem !== null) {
+            problems.push(`plugin "${row.id}" did not start: ${problem}`);
+          }
           if (enabled) deps.onPluginUnregistered?.(row.id);
         }
         await syncCliSkill();
         notifyPluginsChanged();
-        return enabled;
+        return { enabled, problems };
       });
     },
 
@@ -1670,6 +1687,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const problem = await withLifecycleLock(row.id, () => loadOne(row));
         if (problem !== null) {
           failures.push(`plugin "${row.id}" reload failed: ${problem}`);
+        } else if (isSuppressedBySafeMode(row)) {
+          failures.push(
+            `plugin "${row.id}" was not reloaded: plugin safe mode is on`,
+          );
         }
       }
       await syncCliSkill();

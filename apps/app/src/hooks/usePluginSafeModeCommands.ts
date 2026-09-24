@@ -17,13 +17,24 @@ export function usePluginSafeModeCommands(): void {
   function run(enabled: boolean): boolean {
     void setPluginSafeMode(fetch, enabled)
       .then(
-        (active) => {
-          applyPluginSafeMode({ queryClient, enabled: active });
+        (result) => {
+          applyPluginSafeMode({ queryClient, enabled: result.enabled });
+          if (result.problems.length > 0) {
+            appToast.warning(
+              result.enabled
+                ? "Plugin safe mode is on"
+                : "Some plugins did not start",
+              { description: result.problems.join("\n") },
+            );
+            return;
+          }
           appToast.success(
-            active ? "Plugin safe mode is on" : "Plugin safe mode is off",
+            result.enabled
+              ? "Plugin safe mode is on"
+              : "Plugin safe mode is off",
             {
-              description: active
-                ? "Only built-in plugins are running."
+              description: result.enabled
+                ? "Only plugins included with bb are running."
                 : "Your enabled plugins are running again.",
             },
           );

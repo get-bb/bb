@@ -306,7 +306,15 @@ interface ServiceInstance {
 interface PluginRuntimeContext {
   machineEnrollments: MachineEnrollmentService | null;
   deps: PluginServiceDeps;
+  includedBuiltinNames: ReadonlySet<string>;
   settingsChanged?: () => void;
+}
+
+export interface SafeModeActivationRefusalArgs {
+  pluginId: string;
+  provenance: InstalledPluginRow["provenance"];
+  builtinName: string | null;
+  action: "install" | "update";
 }
 
 const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
@@ -1356,12 +1364,45 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return (await hold.isActive()) ? hold.detail : null;
   }
 
+  function isSafeModeExempt(args: {
+    provenance: InstalledPluginRow["provenance"];
+    builtinName: string | null;
+  }): boolean {
+    return (
+      args.provenance === "builtin" ||
+      (args.builtinName !== null &&
+        context.includedBuiltinNames.has(args.builtinName))
+    );
+  }
+
+  function isSafeModeExemptRow(
+    row: Pick<
+      InstalledPluginRow,
+      "provenance" | "sourceKind" | "sourceBuiltinName"
+    >,
+  ): boolean {
+    return isSafeModeExempt({
+      provenance: row.provenance,
+      builtinName: row.sourceKind === "builtin" ? row.sourceBuiltinName : null,
+    });
+  }
+
   function isSuppressedBySafeMode(
-    row: Pick<InstalledPluginRow, "enabled" | "provenance">,
+    row: Pick<
+      InstalledPluginRow,
+      "enabled" | "provenance" | "sourceKind" | "sourceBuiltinName"
+    >,
   ): boolean {
     return (
-      row.enabled && row.provenance !== "builtin" && getPluginSafeMode(deps.db)
+      row.enabled && !isSafeModeExemptRow(row) && getPluginSafeMode(deps.db)
     );
+  }
+
+  function safeModeActivationRefusal(
+    args: SafeModeActivationRefusalArgs,
+  ): string | null {
+    if (isSafeModeExempt(args) || !getPluginSafeMode(deps.db)) return null;
+    return `plugin safe mode is on; turn it off with \`bb plugin safe-mode off\` before you ${args.action} "${args.pluginId}"`;
   }
 
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
@@ -1860,6 +1901,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
+    isSafeModeExemptRow,
+    isSuppressedBySafeMode,
     listPluginHooks,
     listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
@@ -1873,6 +1916,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loaded,
     loadOne,
     brandingAssets,
+    safeModeActivationRefusal,
     setDevBuildProblem,
     setLoadHold,
     setStatus,

@@ -1,5 +1,6 @@
 import type {
   InstalledPlugin,
+  PluginSafeModeUpdateResponse,
   PluginSettingDescriptor,
   PluginSettingsResponse,
 } from "@bb/server-contract";
@@ -207,10 +208,8 @@ export async function removePlugin(
 export async function setPluginSafeMode(
   fetchImpl: FetchLike,
   enabled: boolean,
-): Promise<boolean> {
-  return (
-    await createPluginsClient(fetchImpl).experimental_setSafeMode({ enabled })
-  ).enabled;
+): Promise<PluginSafeModeUpdateResponse> {
+  return createPluginsClient(fetchImpl).experimental_setSafeMode({ enabled });
 }
 
 export function usePluginSafeMode() {

@@ -33,9 +33,15 @@ const SAFE_MODE_BINDINGS = [
 
 const testState = vi.hoisted(() => ({ safeMode: false }));
 const setPluginSafeMode = vi.hoisted(() =>
-  vi.fn((_fetch: unknown, enabled: boolean) => Promise.resolve(enabled)),
+  vi.fn((_fetch: unknown, enabled: boolean) =>
+    Promise.resolve({ enabled, problems: [] as string[] }),
+  ),
 );
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  warning: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -118,6 +124,28 @@ describe("usePluginSafeModeCommands", () => {
     });
     expect(setPluginSafeMode).toHaveBeenCalledWith(expect.anything(), true);
     expect(queryClient.getQueryData(pluginSafeModeQueryKey())).toBe(true);
+  });
+
+  it("warns with the plugins that did not start when safe mode ends", async () => {
+    setPluginSafeMode.mockResolvedValueOnce({
+      enabled: false,
+      problems: ['plugin "alpha" did not start: boom'],
+    });
+    renderHarness(true);
+    await waitFor(() => {
+      expect(runner?.isCommandAvailable("plugins.exitSafeMode", null)).toBe(
+        true,
+      );
+    });
+
+    runner?.dispatch("plugins.exitSafeMode", null);
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith("Some plugins did not start", {
+        description: 'plugin "alpha" did not start: boom',
+      });
+    });
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("turns safe mode off and reports a failure", async () => {

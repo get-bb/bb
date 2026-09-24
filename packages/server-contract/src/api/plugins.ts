@@ -332,6 +332,14 @@ export type PluginSafeModeResponse = z.infer<
   typeof pluginSafeModeResponseSchema
 >;
 
+export const pluginSafeModeUpdateResponseSchema = z.object({
+  enabled: z.boolean(),
+  problems: z.array(z.string()),
+});
+export type PluginSafeModeUpdateResponse = z.infer<
+  typeof pluginSafeModeUpdateResponseSchema
+>;
+
 export const pluginTokenRequestSchema = z
   .object({ rotate: z.boolean().optional().default(false) })
   .strict();

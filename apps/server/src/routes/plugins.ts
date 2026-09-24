@@ -693,9 +693,7 @@ export function registerPluginRoutes(
         400,
       );
     }
-    return context.json({
-      enabled: await plugins.setSafeMode(body.data.enabled),
-    });
+    return context.json(await plugins.setSafeMode(body.data.enabled));
   });
 
   app.post("/plugins/:id/enable", async (context) => {
