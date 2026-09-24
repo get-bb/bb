@@ -26,7 +26,6 @@ import {
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
 import { findMachineServiceFile } from "@bb/config/machine-service";
-import { probeMovedServer } from "@bb/server-archive";
 import {
   deriveConnectBaseUrl,
   type ConnectCredential,
@@ -99,10 +98,6 @@ import {
   type ServerProbeResult,
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
-import {
-  removeMachineService,
-  restoreLocalServer,
-} from "./restore-local-server.js";
 import {
   applyServerMove,
   createServerMovedWatcher,
@@ -1719,92 +1714,14 @@ function openConnectSignIn(parentWindow: BrowserWindow | null): void {
     });
 }
 
-async function showDesktopMessageBox(
-  browserWindow: BrowserWindow | null,
-  options: MessageBoxOptions,
-): Promise<number> {
-  const { response } =
-    browserWindow === null
-      ? await dialog.showMessageBox(options)
-      : await dialog.showMessageBox(browserWindow, options);
-  return response;
-}
-
-async function restoreBuiltinServer(
-  browserWindow: BrowserWindow | null,
-): Promise<void> {
-  const dataDir = builtinDataDir;
-  if (dataDir === null) {
-    return;
-  }
-  await movedMachineConnection;
-  const result = await restoreLocalServer({
-    async confirm(confirmation) {
-      const response = await showDesktopMessageBox(browserWindow, {
-        buttons: [confirmation.confirmLabel, "Cancel"],
-        cancelId: 1,
-        defaultId: 1,
-        detail: confirmation.detail,
-        message: confirmation.message,
-        type: "warning",
-      });
-      return response === 0;
-    },
-    dataDir,
-    findService: () =>
-      findMachineServiceFile({
-        dataDir,
-        homeDir: homedir(),
-        platform: process.platform,
-      }),
-    probeMovedServer: (lock) => probeMovedServer({ dataDir, lock }),
-    removeService: removeMachineService,
-  }).catch((error: unknown) => ({
-    kind: "refused" as const,
-    reason: error instanceof Error ? error.message : String(error),
-  }));
-  if (result.kind === "cancelled") {
-    return;
-  }
-  if (result.kind === "refused") {
-    await showDesktopMessageBox(browserWindow, {
-      detail: result.reason,
-      message: "bb can't run on this computer again yet",
-      type: "warning",
-    });
-    return;
-  }
-  desktopLogger.info(
-    `[desktop] removed the server move lock in ${dataDir}; running the bb server on ${BUILTIN_SERVER_NAME} again`,
-  );
-  localServerMove = null;
-  startupErrorPage = null;
-  await serverTargetStore?.setTarget("builtin");
-  await loadLoadingView();
-  if (currentRuntime !== null || (await hasLiveBbAppLauncher({ dataDir }))) {
-    await waitForCompatibleServer({
-      intervalMs: STARTUP_POLL_INTERVAL_MS,
-      serverUrl: builtinServerUrl,
-      timeoutMs: STARTUP_TIMEOUT_MS,
-    });
-  }
-  await applyServerTarget();
-}
-
-async function selectBuiltinServer(
-  browserWindow: BrowserWindow | null,
-): Promise<void> {
+async function selectBuiltinServer(): Promise<void> {
   if (serverTargetStore === null) {
     return;
   }
   const move = await readCommittedLocalServerMove();
-  if (move?.oldCopyKept) {
-    await restoreBuiltinServer(browserWindow);
-    return;
-  }
   if (move !== null) {
     localServerMove = move;
-    await loadDeletedServerMovedView(move);
+    await loadServerMovedView(move);
     refreshApplicationMenu();
     return;
   }
@@ -1816,7 +1733,7 @@ async function selectBuiltinServer(
   await applyServerTarget();
 }
 
-async function loadDeletedServerMovedView(
+async function loadServerMovedView(
   move: DesktopServerMove,
 ): Promise<void> {
   await loadActionView({
@@ -1824,7 +1741,9 @@ async function loadDeletedServerMovedView(
       { id: "open-moved-server", label: `Open ${move.toHostName}` },
       { id: "choose-server", label: "Choose server…" },
     ],
-    details: "The old copy on this computer was deleted.",
+    details: move.oldCopyKept
+      ? "The old copy on this computer is locked after the move."
+      : "The old copy on this computer was deleted.",
     logs: "",
     title: `bb moved to ${move.toHostName}`,
   });
@@ -1988,7 +1907,7 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
     return;
   }
   if (serverId === "builtin") {
-    await selectBuiltinServer(getFocusedApplicationWindow());
+    await selectBuiltinServer();
     return;
   }
   const switched = await serverTargetStore.setTarget(serverId);

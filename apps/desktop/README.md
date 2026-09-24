@@ -406,16 +406,11 @@ the `x-bb-connect-machine` header that the move wrote to the data dir's
 
 On startup, a saved built-in server choice also switches to the moved server;
 it never starts the old copy automatically. A different saved remote server
-choice remains selected. Explicitly picking the built-in
-server while the lock exists and an old copy remains runs the local-copy safety
-check and confirmation. It refuses while the new server still answers.
-Cancelling leaves the current server selected. If a launchd or systemd machine
-service runs this data dir, confirmation removes it with `launchctl bootout` or
-`systemctl --user disable --now`. The app then removes the lock and the
-moved-server keys from `config.json`, and opens the local server again
-(`src/restore-local-server.ts`). If the old copy was deleted, explicitly picking
-the built-in server shows "bb moved to <toHostName>" with **Open <toHostName>**
-and **Choose server…**.
+choice remains selected. Explicitly picking the built-in server while the move
+lock exists shows "bb moved to <toHostName>" with **Open <toHostName>** and
+**Choose server…**. The screen explains whether the old copy is locked or was
+deleted. Selecting the built-in server does not unlock the old copy or remove
+its background machine service.
 
 Startup error screens list their actions as buttons. Any screen where
 retrying can help shows **Try again**. **Choose server…** opens the Server menu,

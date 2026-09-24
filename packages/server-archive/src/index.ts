@@ -68,12 +68,6 @@ export {
   writeServerMovedFile,
 } from "./markers.js";
 export {
-  type MovedServerProbeResult,
-  probeMovedServer,
-  type ProbeMovedServerArgs,
-  unlockServerCopy,
-} from "./unlock.js";
-export {
   type ServerArchiveSourceFile,
   type WriteServerArchiveArgs,
   type WriteServerArchiveResult,
