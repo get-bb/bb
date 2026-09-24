@@ -31,7 +31,7 @@ import type {
   Thread,
   ThreadRuntimeState,
 } from "@bb/domain";
-import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../../src/constants.js";
 import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
@@ -54,6 +54,7 @@ interface OpenTestSessionArgs {
 }
 
 interface CloseTestSessionArgs {
+  closeReason?: "daemon-disconnect" | "expired";
   closedAt: number;
   db: DbConnection;
   sessionId: string;
@@ -168,7 +169,12 @@ function openTestSession(args: OpenTestSessionArgs) {
 }
 
 function closeTestSession(args: CloseTestSessionArgs): void {
-  closeSession(args.db, noopNotifier, args.sessionId, "daemon-disconnect");
+  closeSession(
+    args.db,
+    noopNotifier,
+    args.sessionId,
+    args.closeReason ?? "daemon-disconnect",
+  );
   args.db
     .update(hostDaemonSessions)
     .set({
@@ -280,11 +286,11 @@ describe("thread runtime display", () => {
     } satisfies ThreadRuntimeState);
   });
 
-  it("shows host-reconnecting for the full active-work grace after a daemon disconnect", () => {
+  it("shows host-reconnecting for the full reconnect grace after a daemon disconnect", () => {
     const { db, hostId, hub } = setup();
     const now = 60_000;
     const session = openTestSession({ db, hostId });
-    const closedAt = now - DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS + 1_000;
+    const closedAt = now - HOST_RECONNECT_GRACE_MS + 1_000;
     closeTestSession({
       closedAt,
       db,
@@ -298,17 +304,39 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "host-reconnecting",
-      hostReconnectGraceExpiresAt:
-        closedAt + DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
+      hostReconnectGraceExpiresAt: closedAt + HOST_RECONNECT_GRACE_MS,
     } satisfies ThreadRuntimeState);
   });
 
-  it("shows waiting-for-host after the active-work disconnect grace expires", () => {
+  it("shows host-reconnecting after the server closes a silent daemon session", () => {
+    const { db, hostId, hub } = setup();
+    const now = 60_000;
+    const session = openTestSession({ db, hostId });
+    const closedAt = now - 1_000;
+    closeTestSession({
+      closeReason: "expired",
+      closedAt,
+      db,
+      sessionId: session.id,
+    });
+
+    expect(
+      resolveThreadRuntimeState(
+        { db, hub },
+        { environmentHostId: hostId, now, status: "active" },
+      ),
+    ).toEqual({
+      displayStatus: "host-reconnecting",
+      hostReconnectGraceExpiresAt: closedAt + HOST_RECONNECT_GRACE_MS,
+    } satisfies ThreadRuntimeState);
+  });
+
+  it("shows waiting-for-host after the reconnect grace expires", () => {
     const { db, hostId, hub } = setup();
     const now = 60_000;
     const session = openTestSession({ db, hostId });
     closeTestSession({
-      closedAt: now - DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS - 1,
+      closedAt: now - HOST_RECONNECT_GRACE_MS - 1,
       db,
       sessionId: session.id,
     });

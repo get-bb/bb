@@ -30,7 +30,7 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import type { ThreadResponse } from "@bb/server-contract";
-import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
@@ -139,13 +139,16 @@ function getDaemonDisconnectGraceExpiresAt(
   if (session.status !== "closed") {
     return null;
   }
-  if (session.closeReason !== "daemon-disconnect") {
+  if (
+    session.closeReason !== "daemon-disconnect" &&
+    session.closeReason !== "expired"
+  ) {
     return null;
   }
   if (session.closedAt === null) {
     return null;
   }
-  return session.closedAt + DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS;
+  return session.closedAt + HOST_RECONNECT_GRACE_MS;
 }
 
 function hasOpenDaemonSessionForHost(

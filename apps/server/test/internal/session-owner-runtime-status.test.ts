@@ -1,5 +1,6 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
 import { getThread, markThreadDeleted } from "@bb/db";
+import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleDaemonSocketClosed,
@@ -144,6 +145,38 @@ describe("host thread runtime status notifications", () => {
         fixture.idleThreadId,
       );
       expect(idleMessage.metadata?.statusChange).toBeUndefined();
+    });
+  });
+
+  it("tells clients the host is disconnected when the reconnect grace ends, without interrupting the thread", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHostThreadsFixture(harness, 4);
+      const socket = createMockHubSocket();
+      harness.hub.subscribe(socket, { kind: "thread-list" });
+
+      vi.useFakeTimers();
+      try {
+        handleDaemonSocketClosed(harness.deps, {
+          sessionId: fixture.sessionId,
+        });
+        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(
+        lastStatusChange(socket.messages, fixture.activeThreadId).metadata
+          ?.statusChange,
+      ).toMatchObject({
+        status: "active",
+        runtime: {
+          displayStatus: "waiting-for-host",
+          hostReconnectGraceExpiresAt: null,
+        },
+      });
+      expect(getThread(harness.db, fixture.activeThreadId)?.status).toBe(
+        "active",
+      );
     });
   });
 

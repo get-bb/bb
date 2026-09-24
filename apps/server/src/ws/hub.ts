@@ -244,10 +244,6 @@ export class NotificationHub implements DbNotifier {
     string,
     ReturnType<typeof setTimeout>
   >();
-  private readonly pendingDaemonActiveWorkDisconnects = new Map<
-    string,
-    ReturnType<typeof setTimeout>
-  >();
   private readonly terminalClientSocketsById = new Map<
     string,
     Set<HubSocket>
@@ -733,22 +729,8 @@ export class NotificationHub implements DbNotifier {
     scheduleTimer(this.pendingDaemonDisconnects, sessionId, delayMs, callback);
   }
 
-  scheduleDaemonActiveWorkDisconnect(
-    sessionId: string,
-    delayMs: number,
-    callback: () => void,
-  ): void {
-    scheduleTimer(
-      this.pendingDaemonActiveWorkDisconnects,
-      sessionId,
-      delayMs,
-      callback,
-    );
-  }
-
   cancelPendingDaemonDisconnect(sessionId: string): void {
     cancelTimer(this.pendingDaemonDisconnects, sessionId);
-    cancelTimer(this.pendingDaemonActiveWorkDisconnects, sessionId);
   }
 
   requestHostOnlineRpc(args: {
