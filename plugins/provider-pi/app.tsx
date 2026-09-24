@@ -69,7 +69,7 @@ function ExtensionUiInteraction({
         questions={[
           {
             id: request.requestId,
-            prompt: request.message ?? interaction.title,
+            prompt: request.message ?? "",
             shortLabel: "Select",
             multiSelect: false,
             allowFreeText: false,

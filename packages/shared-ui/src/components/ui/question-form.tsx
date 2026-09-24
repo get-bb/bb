@@ -238,9 +238,11 @@ function QuestionInputBlock({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
-      <div className="text-sm font-semibold text-foreground">
-        {question.prompt}
-      </div>
+      {question.prompt ? (
+        <div className="text-sm font-semibold text-foreground">
+          {question.prompt}
+        </div>
+      ) : null}
       <div className="mt-2 space-y-0.5">
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
