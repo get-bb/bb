@@ -22,6 +22,11 @@
     "SplitWorkspaceRoute limits rose by the code that moved there (about 64 KB",
     "raw, 20 KB brotli). The total budget went down.",
     "",
+    "On 2026-09-23 the SplitWorkspaceRoute brotli limit rose 2 KB. main sat",
+    "0.1 KB under it, and a change that shrank the raw closure by 29 bytes",
+    "still moved the compressed closure 0.6 KB through minifier renaming and",
+    "chunk-hash churn alone. The raw limit did not change.",
+    "",
     "There is deliberately no per-chunk limit. Parse and compile cost scales",
     "with the total bytes on the boot path, not with how they are divided, so",
     "splitting one boot chunk into two would satisfy a per-chunk cap while",
@@ -87,7 +92,7 @@
   "routeClosures": {
     "SplitWorkspaceRoute": {
       "maxBytes": 2333454,
-      "maxBrotliBytes": 626017,
+      "maxBrotliBytes": 628065,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",
