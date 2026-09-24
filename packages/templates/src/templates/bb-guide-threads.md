@@ -307,6 +307,7 @@ Ownership:
     --parent-thread <id>                   Assign to a parent thread
     --clear-parent-thread                  Remove parent assignment
     --no-ownership-notice                  Reparent without a system turn on the old or new parent
+    --parent-notifications <mode>          Child-to-parent notifications: muted or on
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
     --model <model>                        Set the sticky model for the next and later turns
@@ -321,6 +322,12 @@ Ownership:
   Every parent change runs a real system turn on the old and new parent
   (ownership-removed / ownership-assigned). Pass --no-ownership-notice to
   reparent quietly; the child still records an ownership_change event.
+
+  <!-- bb-fork(parent-mute): parent notification mute is a fork feature -->
+  A child notifies its parent about turn outcomes and blockers. While the
+  child is muted (--parent-notifications muted) it keeps the parent link but
+  stays silent; `--parent-notifications on` restores the notifications.
+  Muting does not hold back notifications already queued.
 
   Model and reasoning updates stay within the thread's current provider. BB
   validates them against that provider's current model catalog, applies them on

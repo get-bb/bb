@@ -602,6 +602,8 @@ export const threads = sqliteTable(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
+    // bb-fork(parent-mute): null = parent notifications on, timestamp = muted since
+    parentNotificationsMutedAt: integer("parent_notifications_muted_at"),
     lifecycleOwnerThreadId: text("lifecycle_owner_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "restrict" },

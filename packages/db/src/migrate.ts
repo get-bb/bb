@@ -8,6 +8,11 @@ import {
   compatibleMigrationHashes,
   publishedMigrationWhensByTag,
 } from "./migration-history.js";
+// bb-fork(parent-mute): keep the parent notification mute migration replay-safe
+import {
+  restoreStagedParentNotificationsMutedAtColumn,
+  stageExistingParentNotificationsMutedAtColumn,
+} from "./migrate-parent-notifications-mute.fork.js";
 
 export interface ResolveMigrationsFolderForModuleDirArgs {
   moduleDir: string;
@@ -1584,12 +1589,17 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     );
     const stagedThreadStorageDeletedAt =
       stageExistingThreadStorageDeletedAtColumn(db, migrationsFolder);
+    // bb-fork(parent-mute): keep the parent notification mute migration replay-safe
+    const stagedParentNotificationsMutedAt =
+      stageExistingParentNotificationsMutedAtColumn(db, migrationsFolder);
     try {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
       if (stagedThreadStorageDeletedAt)
         restoreStagedThreadStorageDeletedAtColumn(db);
+      if (stagedParentNotificationsMutedAt)
+        restoreStagedParentNotificationsMutedAtColumn(db);
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);

@@ -173,6 +173,8 @@ function toPublicThread(thread: Thread): Thread {
     sectionId: thread.sectionId,
     status: thread.status,
     parentThreadId: thread.parentThreadId,
+    // bb-fork(parent-mute): keep the mute state on the public thread copy
+    parentNotificationsMutedAt: thread.parentNotificationsMutedAt,
     sourceThreadId: thread.sourceThreadId,
     lifecycleOwnerThreadId: thread.lifecycleOwnerThreadId,
     originKind: thread.originKind,

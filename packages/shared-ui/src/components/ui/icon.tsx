@@ -40,6 +40,9 @@ import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleI
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
 import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+// bb-fork(parent-mute): parent notification mute toggle icons
+import Notification01Icon from "@hugeicons/core-free-icons/Notification01Icon";
+import NotificationBlock01Icon from "@hugeicons/core-free-icons/NotificationBlock01Icon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
@@ -190,6 +193,9 @@ const CORE_ICON_MAP = {
   MessageSquarePlus: BubbleChatAddIcon,
   MessageSquare: BubbleChatIcon,
   MoreHorizontal: MoreHorizontalIcon,
+  // bb-fork(parent-mute): parent notification mute toggle icons
+  Notification: Notification01Icon,
+  NotificationOff: NotificationBlock01Icon,
   PanelLeft: SidebarLeftIcon,
   Search: Search01Icon,
   SectionAdd: SectionAddStrokeRoundedIcon,

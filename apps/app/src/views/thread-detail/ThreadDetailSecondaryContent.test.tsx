@@ -230,6 +230,8 @@ function makeThread(): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
     lastReadAt: null,
     latestAttentionAt: 0,
     parentThreadId: null,
+    // bb-fork(parent-mute): default = parent notifications on
+    parentNotificationsMutedAt: null,
     pinnedAt: null,
     projectId: "proj-test",
     providerId: "codex",

@@ -81,6 +81,7 @@ import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
 import { Checkbox } from "@bb/shared-ui/checkbox";
+import { ParentNotificationsMuteToggle } from "./parent-notifications-mute.fork";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -100,6 +101,8 @@ interface ParentSelectorRowProps {
   // bb-fork(quiet-reparent): quiet switch; absent = no quiet control
   quietReparent?: boolean;
   onQuietReparentChange?: (next: boolean) => void;
+  // bb-fork(parent-mute): mute toggle; absent = no mute control
+  onParentNotificationsMutedChange?: (next: boolean) => void;
 }
 
 export function ParentSelectorRow({
@@ -119,6 +122,7 @@ export function ParentSelectorRow({
   defaultOpen,
   quietReparent,
   onQuietReparentChange,
+  onParentNotificationsMutedChange,
 }: ParentSelectorRowProps) {
   const parentThreadId = thread.parentThreadId ?? undefined;
   const parentSelectorOptions = useMemo(
@@ -178,6 +182,14 @@ export function ParentSelectorRow({
             >
               <Icon name="X" />
             </Button>
+            {/* bb-fork(parent-mute): mute toggle beside the clear button */}
+            {onParentNotificationsMutedChange ? (
+              <ParentNotificationsMuteToggle
+                disabled={updateThreadPending}
+                muted={thread.parentNotificationsMutedAt !== null}
+                onChange={onParentNotificationsMutedChange}
+              />
+            ) : null}
           </div>
         ) : (
           <ParentThreadPicker
@@ -940,6 +952,8 @@ export interface ThreadMetadataContentProps {
   // bb-fork(quiet-reparent): quiet switch; absent = no quiet control
   quietReparent?: boolean;
   onQuietReparentChange?: (next: boolean) => void;
+  // bb-fork(parent-mute): mute toggle; absent = no mute control
+  onParentNotificationsMutedChange?: (next: boolean) => void;
 }
 
 export function hasAnyThreadMetadata(
@@ -1067,6 +1081,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     onCommitClick,
     quietReparent,
     onQuietReparentChange,
+    onParentNotificationsMutedChange,
   } = props;
 
   return (
@@ -1087,6 +1102,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onRetryParentThreads={onRetryParentThreads}
         quietReparent={quietReparent}
         onQuietReparentChange={onQuietReparentChange}
+        onParentNotificationsMutedChange={onParentNotificationsMutedChange}
       />
       <ForksRow thread={thread} projectId={projectId} />
       <EnvironmentRow

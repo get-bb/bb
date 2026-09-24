@@ -445,6 +445,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "updateThreadRequestSchema.model",
       // bb-fork(quiet-reparent): omitted keeps the default parent notification
       "updateThreadRequestSchema.ownershipNotice",
+      // bb-fork(parent-mute): omitted leaves the mute state untouched
+      "updateThreadRequestSchema.parentNotificationsMuted",
       "updateThreadRequestSchema.sectionId",
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
@@ -1194,6 +1196,8 @@ describe("server-contract canonical schemas", () => {
           sectionId: null,
           status: "idle",
           parentThreadId: null,
+          // bb-fork(parent-mute): default = parent notifications on
+          parentNotificationsMutedAt: null,
           sourceThreadId: null,
           lifecycleOwnerThreadId: null,
           originKind: null,

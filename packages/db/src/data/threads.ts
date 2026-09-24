@@ -876,7 +876,7 @@ function normalizeThreadSearchHighlightText(text: string): {
   const originalStarts: number[] = [];
   const originalEnds: number[] = [];
 
-  for (let index = 0; index < text.length;) {
+  for (let index = 0; index < text.length; ) {
     const codePoint = text.codePointAt(index);
     if (codePoint === undefined) {
       break;
@@ -1767,6 +1767,8 @@ export interface UpdateThreadInput {
   sectionId?: string | null;
   lastReadAt?: number | null;
   parentThreadId?: string | null;
+  // bb-fork(parent-mute): set/clear the parent notification mute
+  parentNotificationsMutedAt?: number | null;
   title?: string | null;
   titleFallback?: string | null;
   visibility?: ThreadVisibility;
@@ -1797,6 +1799,13 @@ export function updateThread(
   ) {
     changes.push("parent-changed");
   }
+  // bb-fork(parent-mute): mute toggles ride the parent relationship change
+  if (
+    "parentNotificationsMutedAt" in input &&
+    input.parentNotificationsMutedAt !== existing.parentNotificationsMutedAt
+  ) {
+    changes.push("parent-changed");
+  }
   if (
     "environmentId" in input &&
     input.environmentId !== existing.environmentId
@@ -1815,6 +1824,10 @@ export function updateThread(
     set.lastReadAt = input.lastReadAt;
   }
   if ("parentThreadId" in input) set.parentThreadId = input.parentThreadId;
+  // bb-fork(parent-mute): write the mute timestamp
+  if ("parentNotificationsMutedAt" in input) {
+    set.parentNotificationsMutedAt = input.parentNotificationsMutedAt;
+  }
   if ("visibility" in input) set.visibility = input.visibility;
 
   const updated = db

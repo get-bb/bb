@@ -113,6 +113,8 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     sectionId: null,
     environmentId: null,
     parentThreadId: null,
+    // bb-fork(parent-mute): default = parent notifications on
+    parentNotificationsMutedAt: null,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,

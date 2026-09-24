@@ -418,6 +418,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;
     }
+    // bb-fork(parent-mute): a boolean field maps onto the mute timestamp; a
+    // repeated mute keeps the original timestamp as the mute start.
+    if ("parentNotificationsMuted" in payload) {
+      metadataUpdate.parentNotificationsMutedAt =
+        payload.parentNotificationsMuted
+          ? (thread.parentNotificationsMutedAt ?? Date.now())
+          : null;
+    }
     if ("visibility" in payload) {
       metadataUpdate.visibility = payload.visibility;
     }

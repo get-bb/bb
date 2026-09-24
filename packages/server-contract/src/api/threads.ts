@@ -627,6 +627,8 @@ export const updateThreadRequestSchema = z
     // bb-fork(quiet-reparent): false suppresses the ownership-assigned/removed
     // system turns on the old and new parent during a reparent.
     ownershipNotice: z.boolean(),
+    // bb-fork(parent-mute): true mutes child->parent notifications, false unmutes
+    parentNotificationsMuted: z.boolean(),
   })
   .partial()
   .refine(
@@ -636,7 +638,8 @@ export const updateThreadRequestSchema = z
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined ||
-      value.visibility !== undefined,
+      value.visibility !== undefined ||
+      value.parentNotificationsMuted !== undefined,
     "At least one field must be provided",
   );
 export type UpdateThreadRequest = z.infer<typeof updateThreadRequestSchema>;

@@ -14,9 +14,17 @@ export function isAgentDelegatedChildThread<
 }
 
 export function isParentNotifiableChildThread<
-  T extends Pick<Thread, "parentThreadId" | "originKind">,
+  T extends Pick<
+    Thread,
+    "parentThreadId" | "originKind" | "parentNotificationsMutedAt"
+  >,
 >(thread: T): thread is T & { parentThreadId: string } {
-  return isAgentDelegatedChildThread(thread) && thread.originKind === null;
+  // bb-fork(parent-mute): muted children keep the parent link but stay silent
+  return (
+    isAgentDelegatedChildThread(thread) &&
+    thread.originKind === null &&
+    thread.parentNotificationsMutedAt === null
+  );
 }
 
 export type ParentThread = Pick<

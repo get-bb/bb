@@ -273,6 +273,8 @@ describe("isParentNotifiableChildThread", () => {
       isParentNotifiableChildThread({
         originKind: null,
         parentThreadId: "thr_parent",
+        // bb-fork(parent-mute): unmuted child
+        parentNotificationsMutedAt: null,
       }),
     ).toBe(true);
   });
@@ -282,6 +284,7 @@ describe("isParentNotifiableChildThread", () => {
       isParentNotifiableChildThread({
         originKind: "fork",
         parentThreadId: "thr_parent",
+        parentNotificationsMutedAt: null,
       }),
     ).toBe(false);
   });
@@ -291,12 +294,25 @@ describe("isParentNotifiableChildThread", () => {
       isParentNotifiableChildThread({
         originKind: "fork",
         parentThreadId: "thr_parent",
+        parentNotificationsMutedAt: null,
       }),
     ).toBe(false);
     expect(
       isParentNotifiableChildThread({
         originKind: null,
         parentThreadId: null,
+        parentNotificationsMutedAt: null,
+      }),
+    ).toBe(false);
+  });
+
+  // bb-fork(parent-mute): muting keeps the parent link but silences the child
+  it("is false for a delegated child whose parent notifications are muted", () => {
+    expect(
+      isParentNotifiableChildThread({
+        originKind: null,
+        parentThreadId: "thr_parent",
+        parentNotificationsMutedAt: 1_700_000_000_000,
       }),
     ).toBe(false);
   });

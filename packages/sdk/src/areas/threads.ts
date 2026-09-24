@@ -208,7 +208,8 @@ export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
 export type ThreadStoragePathsResult = ThreadStoragePathListResponse;
 export type ThreadChildSummaryResult = ThreadChildSummaryResponse;
-export type ThreadDefaultExecutionOptionsResult = ResolvedThreadExecutionOptions | null;
+export type ThreadDefaultExecutionOptionsResult =
+  ResolvedThreadExecutionOptions | null;
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
@@ -670,6 +671,8 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
     visibility: args.visibility,
     // bb-fork(quiet-reparent): pass through the quiet-reparent switch
     ownershipNotice: args.ownershipNotice,
+    // bb-fork(parent-mute): pass through the parent notification mute
+    parentNotificationsMuted: args.parentNotificationsMuted,
   };
 }
 

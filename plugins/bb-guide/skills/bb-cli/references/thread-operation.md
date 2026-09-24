@@ -202,5 +202,11 @@ For review or fix pipelines, get the environment ID from
   same scope, size, and title. It does not replay the original launch command.
 
 Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.
+
 <!-- bb-fork(quiet-reparent): quiet reparent is a fork feature -->
+
 A parent change normally runs a system turn on the old and new parent (`ownership-removed` / `ownership-assigned`); `--no-ownership-notice` reparents quietly.
+
+<!-- bb-fork(parent-mute): parent notification mute is a fork feature -->
+
+`bb thread update --parent-notifications muted` keeps the parent link while silencing the child's outcome and blocker notifications; `--parent-notifications on` restores them. This is the way to work inside a child thread without waking the parent.

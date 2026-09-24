@@ -126,6 +126,8 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     sectionId: null,
     status: "idle",
     parentThreadId: null,
+    // bb-fork(parent-mute): default = parent notifications on
+    parentNotificationsMutedAt: null,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,

@@ -2046,6 +2046,20 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [thread, updateThread, quietReparent],
   );
+  // bb-fork(parent-mute): mute/unmute child->parent notifications in place
+  const handleSetParentNotificationsMuted = useCallback(
+    (next: boolean) => {
+      if (!thread || updateThread.isPending) {
+        return;
+      }
+
+      updateThread.mutate({
+        id: thread.id,
+        parentNotificationsMuted: next,
+      });
+    },
+    [thread, updateThread],
+  );
   const handleTimelineLocalFileLinkResolution = useCallback(
     (
       resolution: ThreadLocalFileLinkResolution,
@@ -2943,6 +2957,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               onAssignParent: handleAssignParent,
               quietReparent,
               onQuietReparentChange: setQuietReparent,
+              // bb-fork(parent-mute): mute toggle in the Parent row
+              onParentNotificationsMutedChange:
+                handleSetParentNotificationsMuted,
               onParentSelectorOpenChange: handleParentSelectorOpenChange,
               onRetryParentThreads: handleRetryParentThreads,
               onMergeBaseBranchChange: handleMergeBaseBranchChange,

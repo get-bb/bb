@@ -47,6 +47,8 @@ interface ThreadUpdateCommandOptions {
   visibility?: string;
   // bb-fork(quiet-reparent): commander --no- flag, defaults to true
   ownershipNotice?: boolean;
+  // bb-fork(parent-mute): muted or on
+  parentNotifications?: string;
 }
 
 interface ThreadArchiveCommandOptions {
@@ -140,6 +142,8 @@ interface ThreadUpdateBody {
   visibility?: ThreadVisibility;
   // bb-fork(quiet-reparent): false suppresses the parent ownership turns
   ownershipNotice?: boolean;
+  // bb-fork(parent-mute): true mutes child->parent notifications
+  parentNotificationsMuted?: boolean;
 }
 
 export function registerActionsCommands(
@@ -169,6 +173,10 @@ export function registerActionsCommands(
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
+    .option(
+      "--parent-notifications <mode>",
+      "Child-to-parent notifications: muted or on",
+    )
     .action(
       action(
         async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
@@ -195,6 +203,20 @@ export function registerActionsCommands(
             opts.visibility === undefined
               ? undefined
               : threadVisibilitySchema.parse(opts.visibility);
+          // bb-fork(parent-mute): muted or on, nothing else
+          if (
+            opts.parentNotifications !== undefined &&
+            opts.parentNotifications !== "muted" &&
+            opts.parentNotifications !== "on"
+          ) {
+            throw new Error(
+              `--parent-notifications expects muted or on, got "${opts.parentNotifications}".`,
+            );
+          }
+          const parentNotificationsMuted =
+            opts.parentNotifications === undefined
+              ? undefined
+              : opts.parentNotifications === "muted";
           if (
             !opts.parentThread &&
             !opts.clearParentThread &&
@@ -203,10 +225,11 @@ export function registerActionsCommands(
             !opts.title &&
             !opts.model &&
             !reasoningLevel &&
-            !visibility
+            !visibility &&
+            parentNotificationsMuted === undefined
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, or --visibility.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --parent-notifications.",
             );
           }
 
@@ -245,6 +268,10 @@ export function registerActionsCommands(
           if (visibility) {
             body.visibility = visibility;
           }
+          // bb-fork(parent-mute): explicit mute request
+          if (parentNotificationsMuted !== undefined) {
+            body.parentNotificationsMuted = parentNotificationsMuted;
+          }
 
           const sdk = createCliBbSdk(getUrl());
           const thread = await sdk.threads.update({ threadId, ...body });
@@ -273,6 +300,11 @@ export function registerActionsCommands(
           }
           if (visibility) {
             console.log(`Visibility: ${visibility}`);
+          }
+          if (parentNotificationsMuted !== undefined) {
+            console.log(
+              `Parent notifications: ${parentNotificationsMuted ? "muted" : "on"}`,
+            );
           }
         },
       ),

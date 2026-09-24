@@ -403,6 +403,8 @@ export const threadSchema = z.object({
   sectionId: z.string().nullable(),
   status: threadStatusSchema,
   parentThreadId: z.string().nullable(),
+  // bb-fork(parent-mute): null = parent notifications on, timestamp = muted since
+  parentNotificationsMutedAt: z.number().nullable(),
   lifecycleOwnerThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),
   originKind: threadOriginKindSchema.nullable(),

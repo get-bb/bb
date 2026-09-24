@@ -20,6 +20,8 @@ function makeThread(
     sectionId: null,
     status: "idle",
     parentThreadId: null,
+    // bb-fork(parent-mute): default = parent notifications on
+    parentNotificationsMutedAt: null,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
@@ -91,12 +93,24 @@ describe("buildPaletteThreadSearchRows", () => {
   it("keeps saved-message threads in Active recents", () => {
     const saved = makeThread("saved", { status: "pending", updatedAt: NOW });
     const archived = makeThread("archived", { archivedAt: 1, updatedAt: 2 });
-    const active = Array.from({ length: 25 }, (_, index) => makeThread(`active-${index}`, { updatedAt: 1 }));
+    const active = Array.from({ length: 25 }, (_, index) =>
+      makeThread(`active-${index}`, { updatedAt: 1 }),
+    );
     const recentThreads = [...active, saved, archived];
-    const result = build({ query: "", recentThreads, lifecycles: ["active", "archived"] });
+    const result = build({
+      query: "",
+      recentThreads,
+      lifecycles: ["active", "archived"],
+    });
     expect(result.rows).toHaveLength(21);
-    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active" });
-    expect(result.rows[20]).toMatchObject({ threadId: "archived", lifecycle: "archived" });
+    expect(result.rows[0]).toMatchObject({
+      threadId: "saved",
+      lifecycle: "active",
+    });
+    expect(result.rows[20]).toMatchObject({
+      threadId: "archived",
+      lifecycle: "archived",
+    });
   });
 
   it("keeps saved-message snippets in the owning thread result without inventing an event anchor", () => {
@@ -105,16 +119,30 @@ describe("buildPaletteThreadSearchRows", () => {
       searchResponse: {
         active: {
           total: 1,
-          results: [{
-            thread: makeThread("saved", { status: "pending" }),
-            matches: [{ sourceKind: "user_message", text: "matching saved message", highlightRanges: [{ start: 0, end: 5 }], sourceSeq: null }],
-          }],
+          results: [
+            {
+              thread: makeThread("saved", { status: "pending" }),
+              matches: [
+                {
+                  sourceKind: "user_message",
+                  text: "matching saved message",
+                  highlightRanges: [{ start: 0, end: 5 }],
+                  sourceSeq: null,
+                },
+              ],
+            },
+          ],
         },
         archived: { total: 0, results: [] },
       },
     });
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active", primaryText: "matching saved message", messageSeq: null });
+    expect(result.rows[0]).toMatchObject({
+      threadId: "saved",
+      lifecycle: "active",
+      primaryText: "matching saved message",
+      messageSeq: null,
+    });
   });
 
   it("preserves active and archived server matches in their ranked order", () => {
