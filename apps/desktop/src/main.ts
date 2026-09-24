@@ -193,6 +193,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
@@ -1840,6 +1841,19 @@ async function openServerDaemonLogs(): Promise<void> {
   });
 }
 
+async function openDataDirectory(): Promise<void> {
+  const dataDir = resolveDataDirFromEnv({
+    env: process.env,
+    homeDir: homedir(),
+  });
+  const errorMessage = await shell.openPath(dataDir);
+  if (errorMessage.length > 0) {
+    desktopLogger.error(
+      `[desktop] could not open the data directory ${dataDir}: ${errorMessage}`,
+    );
+  }
+}
+
 async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
   startupRetryUrl = null;
   currentWindowUrl = args.url;
@@ -1967,6 +1981,9 @@ function registerDesktopUpdateIpc(): void {
   });
   ipcMain.handle(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL, async () => {
     await openServerDaemonLogs();
+  });
+  ipcMain.handle(BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL, async () => {
+    await openDataDirectory();
   });
   ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
     await Promise.all([

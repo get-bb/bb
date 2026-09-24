@@ -633,7 +633,7 @@ Keep the SDK in exact devDependencies: the builder supplies and bundles its
 small host runtime, so managed installs and remote workers do not resolve an
 SDK package at runtime. That covers the bare `@get-bb/plugin-sdk` import. An
 SDK subpath (`@get-bb/plugin-sdk/host`, `/provider-bridge`,
-`/provider-bridge/acp`, `/ai-services`) imported from server or host code is
+`/provider-bridge/acp`) imported from server or host code is
 bundled from the plugin's own installed SDK, so a plugin that imports one
 needs the SDK as a real dependency; the build names the missing install
 rather than shipping an import bb cannot serve.

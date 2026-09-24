@@ -654,6 +654,111 @@ describe("PluginDetail official catalog lifecycle", () => {
       ),
     ).not.toHaveLength(0);
   });
+
+  it("copies the public marketplace link for a BB Community catalog entry", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      entryId: "acme github",
+      pluginId: "acme-github",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      official: false,
+    } satisfies PluginCatalogSearchEntry;
+    render(
+      <CatalogPluginDetail
+        entry={entry}
+        onInstall={() => {}}
+        catalogEntries={[entry]}
+        onOpenPlugin={() => undefined}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Copy marketplace link" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "https://getbb.app/marketplace/acme%20github",
+      ),
+    );
+  });
+
+  it("copies the marketplace link for an installed BB Community plugin without a loaded catalog entry", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={{
+              ...GITHUB_PLUGIN,
+              source: "github:acme/bb-github",
+              catalogEntryId: "acme-github",
+              catalogMarketplaceName: "bb-community",
+            }}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+            catalogEntries={[]}
+            onOpenPlugin={() => undefined}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Copy marketplace link" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "https://getbb.app/marketplace/acme-github",
+      ),
+    );
+  });
+
+  it("offers no marketplace link for plugins outside BB Community", async () => {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={GITHUB_PLUGIN}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+            catalogEntry={GITHUB_CATALOG_ENTRY}
+            catalogEntries={[GITHUB_CATALOG_ENTRY]}
+            onOpenPlugin={() => undefined}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    await screen.findByRole("menuitem", { name: "Uninstall" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Copy marketplace link" }),
+    ).toBeNull();
+  });
 });
 
 describe("BB Official plugin detail routing", () => {

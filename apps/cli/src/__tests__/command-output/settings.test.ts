@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, defaultExperiments } from "@bb/domain";
 import {
+  collectLogLines,
   collectLogPayloads,
   runCommand,
   setupCommandOutputTestEnvironment,
@@ -338,6 +339,207 @@ describe("bb settings commands", () => {
 
     expect(getUsage).toHaveBeenCalledWith({
       query: { hostId: "host-remote" },
+    });
+  });
+
+  describe("ai-services", () => {
+    const aiView = {
+      selections: {
+        "thread-title": { mode: "automatic" },
+        "commit-message": {
+          mode: "service",
+          pluginId: "my-openrouter",
+          serviceId: "helper",
+        },
+        voice: { mode: "off" },
+      },
+      services: [
+        {
+          id: "codex",
+          displayName: "Codex",
+          pluginId: "provider-codex",
+          tasks: ["thread-title", "commit-message", "voice"],
+          automaticRank: 0,
+          status: { ready: false, message: "Run `codex login`" },
+        },
+        {
+          id: "helper",
+          displayName: "OpenRouter",
+          pluginId: "my-openrouter",
+          tasks: ["thread-title", "commit-message"],
+          automaticRank: null,
+          status: { ready: true },
+        },
+        {
+          id: "helper",
+          displayName: "Other helper",
+          pluginId: "other-plugin",
+          tasks: ["thread-title", "commit-message"],
+          automaticRank: null,
+          status: { ready: true },
+        },
+      ],
+    };
+
+    function stubAiServices() {
+      const put = vi.fn(async ({ json }) => ({
+        ...aiView,
+        selections: { ...aiView.selections, [json.task]: json.selection },
+      }));
+      const test = vi.fn(async () => ({
+        ok: true,
+        pluginId: "my-openrouter",
+        serviceId: "helper",
+        displayName: "OpenRouter",
+        text: "Add a dark mode toggle",
+        durationMs: 250,
+      }));
+      stubServerApi({
+        "v1.system.ai-services.$get": vi.fn(async () => aiView),
+        "v1.system.ai-services.selection.$put": put,
+        "v1.system.ai-services.test.$post": test,
+      });
+      return { put, test };
+    }
+
+    afterEach(() => {
+      process.exitCode = undefined;
+    });
+
+    it("shows each task's choice and every service", async () => {
+      stubAiServices();
+
+      await runCommand(["settings", "ai-services"], register);
+
+      const lines = collectLogLines(vi.mocked(console.log));
+      expect(lines[0]).toBe("thread-title    Automatic (nothing ready)");
+      expect(lines[1]).toBe("commit-message  OpenRouter");
+      expect(lines[2]).toBe("voice           Off");
+      expect(lines).toContain(
+        "  codex  Codex  plugin provider-codex  [thread-title, commit-message, voice]  Automatic #1  not ready: Run `codex login`",
+      );
+      expect(lines).toContain(
+        "  helper  Other helper  plugin other-plugin  [thread-title, commit-message]  ready",
+      );
+    });
+
+    it("sets automatic, off, and a service picked by id and plugin", async () => {
+      const { put } = stubAiServices();
+
+      await runCommand(
+        ["settings", "ai-services", "set", "voice", "automatic"],
+        register,
+      );
+      await runCommand(
+        ["settings", "ai-services", "set", "thread-title", "off"],
+        register,
+      );
+      await runCommand(
+        [
+          "settings",
+          "ai-services",
+          "set",
+          "commit-message",
+          "helper",
+          "--plugin",
+          "other-plugin",
+        ],
+        register,
+      );
+
+      expect(put.mock.calls.map(([request]) => request.json)).toEqual([
+        { task: "voice", selection: { mode: "automatic" } },
+        { task: "thread-title", selection: { mode: "off" } },
+        {
+          task: "commit-message",
+          selection: {
+            mode: "service",
+            pluginId: "other-plugin",
+            serviceId: "helper",
+          },
+        },
+      ]);
+      expect(console.log).toHaveBeenLastCalledWith(
+        "commit-message: Other helper",
+      );
+    });
+
+    it("refuses an ambiguous, unknown, or ineligible service without saving", async () => {
+      const { put } = stubAiServices();
+
+      await expect(
+        runCommand(
+          ["settings", "ai-services", "set", "thread-title", "helper"],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Several plugins register AI service 'helper': my-openrouter, other-plugin. Pass --plugin <plugin-id>.",
+        ),
+      );
+
+      await expect(
+        runCommand(
+          ["settings", "ai-services", "set", "voice", "helper"],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No AI service 'helper' handles voice. Choose automatic, off, or one of: codex.",
+        ),
+      );
+
+      await expect(
+        runCommand(
+          ["settings", "ai-services", "set", "subtitles", "codex"],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Unknown task 'subtitles'. Tasks: thread-title, commit-message, voice",
+        ),
+      );
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it("runs a test and reports a failure with a non-zero exit code", async () => {
+      const { test } = stubAiServices();
+
+      await runCommand(
+        ["settings", "ai-services", "test", "commit-message"],
+        register,
+      );
+      expect(test).toHaveBeenCalledWith({ json: { task: "commit-message" } });
+      expect(console.log).toHaveBeenLastCalledWith(
+        "OpenRouter (250ms): Add a dark mode toggle",
+      );
+      expect(process.exitCode).toBeUndefined();
+
+      test.mockResolvedValueOnce({
+        ok: false,
+        message: "OpenRouter: bad key",
+        durationMs: 40,
+      } as never);
+      await runCommand(
+        ["settings", "ai-services", "test", "thread-title"],
+        register,
+      );
+      expect(console.log).toHaveBeenLastCalledWith(
+        "Failed after 40ms: OpenRouter: bad key",
+      );
+      expect(process.exitCode).toBe(1);
+
+      await expect(
+        runCommand(["settings", "ai-services", "test", "voice"], register),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Unknown task 'voice'. Testable tasks: thread-title, commit-message",
+        ),
+      );
     });
   });
 });

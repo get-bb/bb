@@ -11,6 +11,9 @@ This index lists every command path that the core CLI registers, including alias
 - `bb settings`
 - `bb settings show`
 - `bb settings ai-services`
+- `bb settings ai-services show`
+- `bb settings ai-services set`
+- `bb settings ai-services test`
 - `bb settings general`
 - `bb settings completed-turns`
 - `bb settings experiment`

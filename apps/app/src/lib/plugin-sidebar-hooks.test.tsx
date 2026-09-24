@@ -367,18 +367,18 @@ describe("useSidebarThreadActions", () => {
     });
   });
 
-  it("files a new thread under a section the way bb's section menu does", () => {
+  it("opens a section without changing the selected project", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
-        projectId: PERSONAL_PROJECT_ID,
         sectionId: "sec_later",
         focusPrompt: true,
       });
     });
 
+    expect(actions.setRootComposeProjectId).not.toHaveBeenCalled();
     expect(actions.navigate).toHaveBeenCalledWith("/", {
       state: { focusPrompt: true, sectionId: "sec_later" },
     });

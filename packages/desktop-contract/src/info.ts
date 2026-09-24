@@ -61,6 +61,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
     listener: BbDesktopCloseWindowRequestHandler,
   ): BbDesktopInfoUnsubscribe;
   openWindowFind?(request: BbDesktopWindowFindRequest): void;
+  openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
   setSplitNavigationEnabled?(

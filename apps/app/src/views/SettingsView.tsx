@@ -64,6 +64,7 @@ import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
+import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
@@ -1160,6 +1161,8 @@ export function SettingsView() {
         }
       />
     );
+  } else if (activeSection === "ai-services") {
+    content = <AiServicesSettingsSection />;
   } else if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection

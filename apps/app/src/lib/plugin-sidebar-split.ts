@@ -8,6 +8,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import { useThreadRowSplitDrag } from "@/components/sidebar/useThreadRowSplitDrag";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { getThreadDisplayTitle } from "./thread-title";
 import { useSidebarThreadEntry } from "./plugin-sidebar-hooks";
 import {
@@ -62,7 +63,9 @@ export function useSidebarThreadSplit(
 ): PluginSidebarThreadSplit {
   const entry = useSidebarThreadEntry(threadId);
   const projectId = entry?.projectId ?? "";
-  const title = entry ? getThreadDisplayTitle(entry) : "";
+  const title = useThreadTitleDisplayText(
+    entry ? getThreadDisplayTitle(entry) : "",
+  );
   const { onPointerDown } = useThreadRowSplitDrag({
     projectId,
     threadId,

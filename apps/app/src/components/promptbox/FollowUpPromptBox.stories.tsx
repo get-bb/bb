@@ -153,7 +153,6 @@ function makeEnvironmentSummary({
   const chrome = getEnvironmentSummaryChrome({
     display,
     providerLookup,
-    environmentName: environment.name,
     hasMultipleMachines,
     host:
       machineName === undefined

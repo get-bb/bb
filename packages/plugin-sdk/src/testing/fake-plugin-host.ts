@@ -15,7 +15,6 @@ import {
   adoptHttpRouteResponse,
   aiServiceAlreadyRegisteredMessage,
   pluginHookAlreadyRegisteredMessage,
-  assertAiServiceRegistrable,
   coerceStoredPluginSettingValue,
   enforcePluginCliOutputLimit,
   isStandardSchema,
@@ -527,10 +526,8 @@ export interface CreateFakePluginHostOptions {
   sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
   /**
    * Whether the plugin's manifest declares a `bb.host` entry. Production
-   * refuses `bb.providers.register` (the provider would have no bridge to
-   * run on) and `experimental_aiServices.register` (the service would have
-   * nothing to run on) without one; the fake applies the same rules.
-   * Defaults to true.
+   * refuses `bb.providers.register` without one (the provider would have no
+   * bridge to run on); the fake applies the same rule. Defaults to true.
    */
   experimental_hostEntry?: boolean;
   /**
@@ -981,25 +978,28 @@ function createFakePluginHostInternal(
     register(declaration) {
       assertLive();
       const normalized = validatePluginAiServiceDeclaration(declaration);
-      // The same refusals production makes at the register call. The fake
-      // host builds no artifact; the declared entry stands in for it.
-      assertAiServiceRegistrable({
-        id: normalized.id,
-        hostArtifact:
-          options.experimental_hostEntry === false ? null : "declared",
-        hostArtifactProblem: null,
-      });
       if (
         aiServiceRegistrations.some((existing) => existing.id === normalized.id)
       ) {
         throw new Error(aiServiceAlreadyRegisteredMessage(normalized.id));
       }
-      aiServiceRegistrations.push(normalized);
+      const registration: PluginAiServiceDeclaration = Object.freeze({
+        id: normalized.id,
+        displayName: normalized.displayName,
+        ...(normalized.complete === null
+          ? {}
+          : { complete: normalized.complete }),
+        ...(normalized.transcribe === null
+          ? {}
+          : { transcribe: normalized.transcribe }),
+        ...(normalized.status === null ? {} : { status: normalized.status }),
+      });
+      aiServiceRegistrations.push(registration);
       let disposed = false;
       const dispose = (): void => {
         if (disposed) return;
         disposed = true;
-        const index = aiServiceRegistrations.indexOf(normalized);
+        const index = aiServiceRegistrations.indexOf(registration);
         if (index !== -1) aiServiceRegistrations.splice(index, 1);
       };
       disposeHooks.push(dispose);

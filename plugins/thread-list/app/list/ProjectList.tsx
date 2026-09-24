@@ -1399,9 +1399,9 @@ function ProjectListComponent({
   }, [openRootComposeForProject, personalProjectId]);
   const handleCreateThreadInSection = useCallback(
     (sectionId: string) => {
-      openRootComposeForProject(personalProjectId, sectionId);
+      openRootComposeForProject(null, sectionId);
     },
-    [openRootComposeForProject, personalProjectId],
+    [openRootComposeForProject],
   );
   const [isSectionCreateDialogOpen, setIsSectionCreateDialogOpen] =
     useState(false);

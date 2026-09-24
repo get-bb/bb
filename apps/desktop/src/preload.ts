@@ -90,6 +90,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
@@ -419,6 +420,9 @@ const bbDesktopApi: BbDesktopApi = {
     ipcRenderer.send(BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL, {
       topOffset: Math.round(request.topOffset * webFrame.getZoomFactor()),
     } satisfies BbDesktopWindowFindRequest);
+  },
+  async openDataDirectory(): Promise<void> {
+    await ipcRenderer.invoke(BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL);
   },
   openExternalUrl(url: string): void {
     ipcRenderer.send(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, url);

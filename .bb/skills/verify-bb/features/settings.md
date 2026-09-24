@@ -20,6 +20,8 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 - `packages/domain/src/experiments.ts`
 - `apps/cli/src/commands/settings.ts`
 - `apps/cli/src/commands/theme.ts`
+- `apps/app/src/components/settings/AiServicesSettingsSection.tsx`
+- `apps/server/src/services/ai/ai-tasks.ts`
 
 ## Feature recipes
 
@@ -32,8 +34,9 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Theme and palette | Run appearance; additionally cycle every built-in palette, install a synthetic custom theme, and use theme list/dir/set/show/reset. | Theme catalog, active palette, and loaded styles agree; invalid theme selection fails cleanly. |
 | Favicon and split dimming | Change/reset favicon through UI and theme favicon; toggle Fade inactive splits with two panes. | Favicon updates without changing palette; only inactive splits dim. |
 | File openers and local editor | Configure file/directory defaults, extension-specific openers, and local editor integration; open a fixture through each. | Chosen handler and line/path are correct; reset/default fallbacks remain usable. |
-| Voice configuration | Load microphones, select one, configure the available AI service, and transcribe a harmless fixture. | Choice is applied to recording/transcription; missing browser permission or service is clearly reported. |
-| Usage and AI services | Inspect Usage limits, settings usage, and settings ai-services; compare provider-reported windows and service selections. | Unavailable data remains unavailable rather than zero; configured services are resolved by their owning plugin. |
+| Voice configuration | Load microphones, select one, pick the Voice input service in Settings → AI services, and transcribe a harmless fixture. | Choice is applied to recording/transcription; the microphone hides when the selected service is not ready or Voice input is Off. |
+| Usage | Inspect Usage limits and settings usage; compare provider-reported windows. | Unavailable data remains unavailable rather than zero. |
+| AI services picker | Open Settings → AI services. For Thread titles and Commit messages pick Automatic, a registered service, and Off; press Test; mirror with `settings ai-services`, `settings ai-services set <task> <choice>`, and `settings ai-services test <task>`. Create a thread and use the Commit action under each choice. | Each row lists only services that handle the task, with their status line; Automatic names the first ready builtin service; a picked service is used alone and a failure falls back to prompt-text titles and `bb: automated commit`; Off never calls a service; a failed Test shows the reason in the row; choices persist across reload and match the CLI. |
 | Experiments | Exercise changelogPreview, mobileApp, serverMove, and sidebarProgressiveDisclosure on/off in isolated data. | Only the named feature gate changes; disabled routes/actions fail or disappear as designed; state restores. |
 | Debug events | Toggle Show unhandled provider events and render a trusted unsupported-event fixture. | The diagnostic row visibility follows the toggle without changing persisted event data. |
 | Community and update surfaces | Open Community links, version/update view, changelog, and CLI skills status. | Destinations and installed/latest status are correct; viewing does not perform an update. |

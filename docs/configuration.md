@@ -12,9 +12,6 @@ Use `bb-app config` for non-secret bb settings:
 
 ```bash
 npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
-npx bb-app config set BB_INFERENCE codex/gpt-5.6-luna
-npx bb-app config set BB_INFERENCE_FALLBACK codex/gpt-5.4-mini
-npx bb-app config set BB_TRANSCRIPTION codex/gpt-transcribe
 npx bb-app config list
 npx bb-app config unset BB_APP_URL
 npx bb-app config refresh
@@ -90,23 +87,19 @@ After `bb-app config` writes `~/.bb/config.json` or `bb-app env` writes
 running, the new values apply on the next start. If you edit either file by
 hand, run `npx bb-app config refresh` to apply the files to a running server.
 
-The live reload applies config keys such as `BB_APP_URL`, `BB_INFERENCE`,
-`BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION`, plus env values explicitly
-consumed at runtime such as `OPENAI_API_KEY`. If one of those config keys is
-stored with `bb-app env` instead, it is startup-only; use `bb-app config` when
-you need a live change.
+The live reload applies the `BB_APP_URL` config key and provider env values. If
+`BB_APP_URL` is stored with `bb-app env` instead, it is startup-only; use
+`bb-app config` when you need a live change.
 
 `BB_LOG_LEVEL` is the startup-only `bb-app config` key. The complete current
 set of startup-only server or launcher env entries is:
 
 - `BB_APP_SURFACE`, `BB_APP_URL`, `BB_DATA_DIR`, `BB_DEV_APP_PORT`, and
   `BB_EXTERNAL_URL`
-- `BB_HOST_DAEMON_PORT`, `BB_INFERENCE`,
-  `BB_INFERENCE_FALLBACK`, and `BB_INHERITED_SKILLS_ROOTS`
+- `BB_HOST_DAEMON_PORT` and `BB_INHERITED_SKILLS_ROOTS`
 - `BB_LOG_LEVEL`, `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`,
   `BB_MARKETPLACE_URL`, `BB_POSTHOG_API_KEY`, and `BB_TELEMETRY`
-- `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, `BB_TRANSCRIPTION`, and all
-  `BB_FF_*` feature flags
+- `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, and all `BB_FF_*` feature flags
 
 Setting or unsetting one still runs the reload for any other pending changes,
 but the running processes keep their current values. Apply it with a full
@@ -191,9 +184,6 @@ child; do not set it yourself.
 | Key                            | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------ | -------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BB_APP_URL`                   | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
-| `BB_INFERENCE`                 | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                              |
-| `BB_INFERENCE_FALLBACK`        | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                             |
-| `BB_TRANSCRIPTION`             | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                                        |
 | `BB_MARKETPLACE_URL`           | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
 | `BB_SERVER_URL`                | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
 | `BB_SERVER_BIND_HOST`          | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
@@ -202,7 +192,6 @@ child; do not set it yourself.
 | `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                          |
 | `BB_ACCOUNT_POOL_PARENT_URL`   | Set automatically by a parent bb server            | Nested bb servers       | Account Pooler hub of the bb server whose thread launched this one. When present the Account Pooler plugin is enabled on first run and defaults to proxying to that parent; `bb pool parent isolate` opts out. Not a `bb-app config` key.                                                                                                                                                                      |
 | `BB_ACCOUNT_POOL_PARENT_TOKEN` | Set automatically by a parent bb server            | Nested bb servers       | Machine token this nested server presents to the parent Account Pooler hub. Paired with `BB_ACCOUNT_POOL_PARENT_URL`; both must be well formed or proxying stays off. Not a `bb-app config` key.                                                                                                                                                                                                               |
-| `OPENAI_API_KEY`               | `bb-app env`                                       | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                                                                                                                                                                                                                                                                                          |
 
 The `bb` CLI records each failed invocation on the machine that ran it, in
 `<data dir>/logs/cli-errors.jsonl`: the time, CLI version, command path, error
@@ -212,22 +201,45 @@ at 2 MB. `bb diagnostics cli-errors [--since 7d] [--json]` tallies it and
 `--clear` deletes it. Set `BB_CLI_ERROR_LOG=0` in the environment that runs `bb`
 to turn recording off.
 
-By default, helper inference and voice transcription use Codex credentials from
-the host daemon. Run `codex login` on the host for the default path. Set
-provider env keys only when opting into a non-Codex provider route.
+## AI services
 
-With a ChatGPT subscription login, `codex/` voice transcription posts to a
+Thread titles (and the branch names built from them), commit messages, and
+voice transcripts come from AI services that plugins register. Choose one per
+task in Settings → AI services or with the CLI:
+
+```bash
+bb settings ai-services
+bb settings ai-services set commit-message my-openrouter
+bb settings ai-services set voice off
+bb settings ai-services test thread-title
+```
+
+Each task is `automatic` (the default), `off`, or a service id. A service is
+identified by its plugin and its id, so two plugins may register the same id;
+pass `--plugin <plugin-id>` to `set` when they do. Automatic tries
+the services bb ships in order: Codex (`codex`, using the Codex CLI login on the
+primary machine), then bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb
+account). Automatic never sends text to a third-party plugin. A service you pick
+is used alone; if it fails, titles fall back to the start of the prompt and
+commits to `bb: automated commit`. Each plugin picks its own model.
+
+`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION` were removed.
+bb ignores them in `~/.bb/config.json` with a warning, and `bb-app config set`
+refuses them.
+
+With a ChatGPT subscription login, Codex voice transcription posts to a
 `chatgpt.com` endpoint that sits behind Cloudflare bot protection. On some
-networks Cloudflare challenges that request; bb retries, then reports
-"Voice transcription is temporarily unavailable" and logs the Cloudflare
-challenge on the server. If that happens often, route transcription through an
-API key instead: `codex login --with-api-key`, or set `BB_TRANSCRIPTION` to
-`openai/gpt-transcribe` with `OPENAI_API_KEY`.
+networks Cloudflare challenges that request and transcription fails. If that
+happens often, run `codex login --with-api-key` on the primary machine, or pick
+another voice service.
+
+bb accepts voice recordings up to 25 MB. A service may set a lower limit;
+Codex transcribes recordings up to 20 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
-`bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
-server-side transcription model.
+`bb.voiceInput.audioInputDeviceId`; it does not change which service
+transcribes.
 
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.
 The default is `https://exp.host/--/api/v2/push/send`. Change it with
@@ -453,6 +465,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
+| Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
 | Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
 | Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients              |

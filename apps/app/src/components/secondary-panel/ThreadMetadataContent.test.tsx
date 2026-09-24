@@ -347,16 +347,16 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain('data-icon="Folder"');
   });
 
-  it("shows an explicit environment name before its machine", () => {
+  it("shows the provider and machine without the custom environment name", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({ name: "Design system polish" }),
       [worktreeProvider],
       connectedLocalHost,
     );
 
-    expect(markup).toContain("Design system polish");
+    expect(markup).not.toContain("Design system polish");
     expect(markup).toContain("Michael-M4");
-    expect(markup).not.toContain("· Worktree");
+    expect(markup).toContain("Worktree");
   });
 
   it("shows no provider id while the registered provider list is still loading", () => {

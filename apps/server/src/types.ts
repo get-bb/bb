@@ -30,14 +30,10 @@ export interface ServerRuntimeConfig {
   featureFlags: FeatureFlags;
   hostDaemonPort: number;
   inheritedSkillsRootPaths: string[];
-  inferenceFallbackModel: string;
-  inferenceModel: string;
   isDevelopment: boolean;
   marketplaceUrl: string;
-  openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
-  transcriptionModel: string;
   appUrl?: string;
   devAppPort?: number;
   launchId?: string;

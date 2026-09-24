@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -121,18 +122,26 @@ export const connectCode = sqliteTable(
   "connect_code",
   {
     code: text("code").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     serverId: text("server_id").references(() => server.id, {
       onDelete: "cascade",
     }),
     purpose: text("purpose").notNull(),
+    deviceCodeHash: text("device_code_hash"),
+    clientName: text("client_name"),
+    requestLocation: text("request_location"),
+    deliveredCredentialHash: text("delivered_credential_hash"),
+    polledAt: timestampMs("polled_at"),
+    approvedAt: timestampMs("approved_at"),
+    deniedAt: timestampMs("denied_at"),
     expiresAt: timestampMs("expires_at").notNull(),
     consumedAt: timestampMs("consumed_at"),
     createdAt: timestampMs("created_at").notNull(),
   },
-  (table) => [index("connect_code_user_id_idx").on(table.userId)],
+  (table) => [
+    index("connect_code_user_id_idx").on(table.userId),
+    uniqueIndex("connect_code_device_code_hash_idx").on(table.deviceCodeHash),
+  ],
 );
 
 export const machine = sqliteTable(
@@ -167,6 +176,62 @@ export const auditLog = sqliteTable(
   (table) => [index("audit_log_user_id_idx").on(table.userId)],
 );
 
+export const aiUsageDay = sqliteTable(
+  "ai_usage_day",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    spentMicros: integer("spent_micros").notNull().default(0),
+    reservedMicros: integer("reserved_micros").notNull().default(0),
+    requests: integer("requests").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.day] }),
+    index("ai_usage_day_day_idx").on(table.day),
+  ],
+);
+
+export const aiRequestOutcomes = [
+  "ok",
+  "invalid_request",
+  "budget_exhausted",
+  "rate_limited",
+  "unavailable",
+  "upstream_error",
+  "timeout",
+] as const;
+
+export type AiRequestOutcome = (typeof aiRequestOutcomes)[number];
+
+export const aiRequestLog = sqliteTable(
+  "ai_request_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id").references(() => server.id, {
+      onDelete: "set null",
+    }),
+    model: text("model"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    costMicros: integer("cost_micros").notNull().default(0),
+    latencyMs: integer("latency_ms").notNull(),
+    outcome: text("outcome", { enum: aiRequestOutcomes }).notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [
+    index("ai_request_log_created_at_idx").on(table.createdAt),
+    index("ai_request_log_user_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -178,4 +243,6 @@ export const schema = {
   machine,
   connectCode,
   auditLog,
+  aiUsageDay,
+  aiRequestLog,
 };

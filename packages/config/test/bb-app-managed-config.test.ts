@@ -17,6 +17,19 @@ function parseWithWarnings(rawConfig: unknown) {
 }
 
 describe("parseBbAppManagedConfig", () => {
+  it("drops the removed AI service keys with one warning", () => {
+    const { parsed, warnings } = parseWithWarnings({
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+        BB_INFERENCE: "codex/gpt-5.6-luna",
+        BB_TRANSCRIPTION: "openai/gpt-4o-mini-transcribe",
+      },
+    });
+
+    expect(parsed.config).toEqual({ BB_APP_URL: "https://bb.example.test" });
+    expect(warnings).toEqual([{ keys: ["BB_INFERENCE", "BB_TRANSCRIPTION"] }]);
+  });
+
   it("parses shared user and project skill roots", () => {
     expect(
       parseBbAppManagedConfig({

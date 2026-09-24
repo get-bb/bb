@@ -195,6 +195,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open the desktop log viewer for the bb server and host daemon.",
       ),
       command(
+        "dataDirectory.open",
+        "Open data directory",
+        "Reveal the bb data directory in the system file manager.",
+      ),
+      command(
         "notifications.open",
         "Show all notifications",
         "Open the notification center to read and clear past notifications.",

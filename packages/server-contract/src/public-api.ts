@@ -8,7 +8,13 @@ import {
 } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
+  setAiServiceSelectionRequestSchema,
+  testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
+  type SetAiServiceSelectionRequest,
+  type SystemAiServicesResponse,
+  type TestAiServiceRequest,
+  type TestAiServiceResponse,
 } from "./api/system.js";
 import {
   desktopBrowserHostRequestSchema,
@@ -1746,6 +1752,28 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemConfigResponse>(),
+    }),
+    aiServices: defineRoute({
+      path: "/system/ai-services",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemAiServicesResponse>(),
+    }),
+    setAiServiceSelection: defineRoute({
+      path: "/system/ai-services/selection",
+      method: "put",
+      request: jsonRequest<EmptyInput, SetAiServiceSelectionRequest>(
+        setAiServiceSelectionRequestSchema,
+      ),
+      response: jsonResponse<SystemAiServicesResponse>(),
+    }),
+    testAiService: defineRoute({
+      path: "/system/ai-services/test",
+      method: "post",
+      request: jsonRequest<EmptyInput, TestAiServiceRequest>(
+        testAiServiceRequestSchema,
+      ),
+      response: jsonResponse<TestAiServiceResponse>(),
     }),
     generalSettings: defineRoute({
       path: "/settings/general",

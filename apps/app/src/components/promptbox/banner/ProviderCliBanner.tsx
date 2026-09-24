@@ -2,13 +2,14 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { ProviderRequirementBanner } from "./ProviderRequirementBanner";
 
-interface ProviderCliVersionBannerProps {
+interface ProviderCliBannerProps {
   displayName: string;
+  installed: boolean;
   currentVersion: string | null;
   minimumSupportedVersion: string | null;
-  canUpdate: boolean;
-  updating: boolean;
-  onUpdate: () => void;
+  canRunAction: boolean;
+  actionRunning: boolean;
+  onAction: () => void;
 }
 
 function versionRequirementCopy(
@@ -27,39 +28,59 @@ function versionRequirementCopy(
   return "A newer version is required.";
 }
 
-export function ProviderCliVersionBanner({
+export function providerCliBlockedReason({
   displayName,
+  installed,
+}: {
+  displayName: string;
+  installed: boolean;
+}): string {
+  return `${installed ? "Update" : "Install"} ${displayName} before starting a thread.`;
+}
+
+export function ProviderCliBanner({
+  displayName,
+  installed,
   currentVersion,
   minimumSupportedVersion,
-  canUpdate,
-  updating,
-  onUpdate,
-}: ProviderCliVersionBannerProps) {
+  canRunAction,
+  actionRunning,
+  onAction,
+}: ProviderCliBannerProps) {
+  const blockedReason = providerCliBlockedReason({ displayName, installed });
   return (
     <ProviderRequirementBanner
-      title={`${displayName} update required`}
+      title={
+        installed
+          ? `${displayName} update required`
+          : `${displayName} not installed`
+      }
       description={
-        <>
-          Update {displayName} before starting a thread.{" "}
-          {versionRequirementCopy(currentVersion, minimumSupportedVersion)}
-        </>
+        installed ? (
+          <>
+            {blockedReason}{" "}
+            {versionRequirementCopy(currentVersion, minimumSupportedVersion)}
+          </>
+        ) : (
+          blockedReason
+        )
       }
       action={
-        canUpdate ? (
+        canRunAction ? (
           <Button
             type="button"
             size="sm"
             className="h-8 shrink-0 px-3"
-            disabled={updating}
-            onClick={onUpdate}
+            disabled={actionRunning}
+            onClick={onAction}
           >
-            {updating ? (
+            {actionRunning ? (
               <>
                 <Icon name="Spinner" className="animate-spin" />
-                Updating…
+                {installed ? "Updating…" : "Installing…"}
               </>
             ) : (
-              `Update ${displayName}`
+              `${installed ? "Update" : "Install"} ${displayName}`
             )}
           </Button>
         ) : null

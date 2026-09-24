@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import {
+  resolveThreadTitleDisplayText,
   ThreadTitleMentionResourcesProvider,
   useSidebarThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
@@ -84,6 +85,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
+import { useDataDirectoryCommand } from "@/hooks/useDataDirectoryCommand";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
 import {
   getLegacyProjectComposeRoutePath,
@@ -462,6 +464,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return true;
   });
   useServerDaemonLogsCommand();
+  useDataDirectoryCommand();
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;
@@ -558,7 +561,10 @@ export function AppLayout({ children }: AppLayoutProps) {
         : "always",
   });
   const threadDisplayTitle = thread
-    ? getThreadDisplayTitle(thread)
+    ? resolveThreadTitleDisplayText(
+        getThreadDisplayTitle(thread),
+        titleMentionResources,
+      )
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";

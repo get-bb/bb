@@ -1202,7 +1202,7 @@ describe("CommandPalette", () => {
     const match = rows[0].querySelector("mark");
     expectText(match, "Matching");
     expectClasses(match, "bg-[var(--sidebar-search-match)]", "text-foreground");
-    expectClasses(match?.parentElement, "text-foreground");
+    expectClasses(match?.closest(".bb-thread-title"), "text-foreground");
     expect(
       within(rows[1]).getByRole("img", { name: "Unread thread succeeded" }),
     ).toBeTruthy();

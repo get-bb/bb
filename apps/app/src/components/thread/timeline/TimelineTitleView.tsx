@@ -18,6 +18,10 @@ import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { LiveDurationText } from "./LiveDurationText.js";
 import {
+  ThreadTitleMentions,
+  useResolveThreadTitle,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
@@ -104,6 +108,14 @@ function renderStatusDecorationText(
   );
 }
 
+function segmentContent(segment: TimelineTitleSegment): ReactNode {
+  return segment.link?.kind === "thread" ? (
+    <ThreadTitleMentions title={segment.text} />
+  ) : (
+    segment.text
+  );
+}
+
 function renderSegment(
   segment: TimelineTitleSegment,
   index: number,
@@ -150,7 +162,7 @@ function renderSegment(
           }
         }}
       >
-        {segment.text}
+        {segmentContent(segment)}
       </RouteAnchor>
     );
   }
@@ -178,14 +190,14 @@ function renderSegment(
           }
         }}
       >
-        {segment.text}
+        {segmentContent(segment)}
       </span>
     );
   }
 
   return (
     <span key={index} className={baseClass}>
-      {segment.text}
+      {segmentContent(segment)}
     </span>
   );
 }
@@ -315,6 +327,10 @@ export function TimelineTitleView({
 }: TimelineTitleViewProps) {
   const onClick =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
+  const resolveTitle = useResolveThreadTitle();
+  const plainTitle = title.segments.some((segment) => segment.link)
+    ? resolveTitle(title.plain)
+    : title.plain;
 
   return (
     <span
@@ -324,7 +340,7 @@ export function TimelineTitleView({
           ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
           : "inline-flex items-baseline gap-1 overflow-hidden whitespace-nowrap",
       )}
-      title={title.plain}
+      title={plainTitle}
     >
       {title.segments.map((segment, index) => {
         const linkHref =
