@@ -165,8 +165,7 @@ function GitDiffFileFilterInput({
         ref={inputRef}
         aria-label="Filter changed files by path"
         className={cn(
-          "h-8 rounded-lg border-border pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
-          COARSE_POINTER_TEXT_SM_CLASS,
+          "h-8 rounded-lg border-border pl-8 pr-8 text-xs focus-visible:ring-0 max-md:pointer-coarse:h-10 max-md:pointer-coarse:text-base",
         )}
         placeholder="Filter files, e.g. *.md, docs/**, !*.test.ts"
         value={value}
