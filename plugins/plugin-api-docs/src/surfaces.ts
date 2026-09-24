@@ -1119,8 +1119,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
           "Read the server's loopback URL, public app URL, and data directory when it needs server facts",
+          "Read or toggle plugin safe mode with sdk.plugins.experimental_getSafeMode and experimental_setSafeMode; safe mode stops every plugin that is not built in and restores the enabled ones when it ends",
         ],
-        apiSymbols: ["BbPluginApi", "PluginServerApi"],
+        apiSymbols: [
+          "BbPluginApi",
+          "PluginServerApi",
+          "PluginsArea.experimental_getSafeMode",
+          "PluginsArea.experimental_setSafeMode",
+        ],
         firstParty: [
           "Automations",
           "Docs",

@@ -37,6 +37,7 @@ import {
   pluginApplyUpdateRequestSchema,
   pluginRpcDiscoveryQuerySchema,
   pluginInstallRequestSchema,
+  pluginSafeModeRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
   pluginUpdateCheckRequestSchema,
@@ -677,6 +678,24 @@ export function registerPluginRoutes(
     const outcome = await plugins.reload(id);
     if (!outcome.ok) return context.json(outcome, 422);
     return context.json(outcome);
+  });
+
+  app.get("/plugins/safe-mode", (context) =>
+    context.json({ enabled: plugins.getSafeMode() }),
+  );
+
+  app.put("/plugins/safe-mode", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginSafeModeRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { ok: false, error: "expected { enabled: boolean }" },
+        400,
+      );
+    }
+    return context.json({
+      enabled: await plugins.setSafeMode(body.data.enabled),
+    });
   });
 
   app.post("/plugins/:id/enable", async (context) => {

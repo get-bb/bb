@@ -89,6 +89,8 @@ export const APP_COMMAND_IDS = [
   "logs.openServerDaemon",
   "dataDirectory.open",
   "notifications.open",
+  "plugins.enterSafeMode",
+  "plugins.exitSafeMode",
   ...QUESTION_SELECT_APP_COMMAND_IDS,
 ] as const;
 

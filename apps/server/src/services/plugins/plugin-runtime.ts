@@ -39,6 +39,7 @@ import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
   getInstalledPlugin,
+  getPluginSafeMode,
   listInstalledPlugins,
   prunePluginSchedules,
   upsertPluginSchedule,
@@ -307,6 +308,8 @@ interface PluginRuntimeContext {
   deps: PluginServiceDeps;
   settingsChanged?: () => void;
 }
+
+const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
 
 export interface PluginLoadHold {
   source: string;
@@ -1353,6 +1356,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return (await hold.isActive()) ? hold.detail : null;
   }
 
+  function isSuppressedBySafeMode(
+    row: Pick<InstalledPluginRow, "enabled" | "provenance">,
+  ): boolean {
+    return (
+      row.enabled && row.provenance !== "builtin" && getPluginSafeMode(deps.db)
+    );
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
     const held = await heldDetail(row);
     if (held !== null) {
@@ -1360,6 +1371,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       await populateIdentity(row);
       setStatus(row.id, "disabled", held);
       logger.warn(`plugin ${row.id} not loaded (held): ${held}`);
+      return null;
+    }
+    if (isSuppressedBySafeMode(row)) {
+      await disposeOne(row.id);
+      await populateIdentity(row);
+      if ((hungServices.get(row.id)?.size ?? 0) === 0) {
+        setStatus(row.id, "disabled", PLUGIN_SAFE_MODE_DETAIL);
+      }
       return null;
     }
     if (row.enabled && !loaded.has(row.id)) setStatus(row.id, "starting");

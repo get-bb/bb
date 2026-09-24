@@ -65,6 +65,7 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
+  getPluginSafeMode,
   getThread,
   getLatestThreadSequence,
   listDuePluginSchedules,
@@ -76,6 +77,7 @@ import {
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
+  setPluginSafeMode,
   type InstalledPluginRow,
   type PluginMarketplaceRow,
 } from "@bb/db";
@@ -277,6 +279,8 @@ export interface PluginService {
     enabled: boolean,
   ): Promise<InstalledPlugin | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
+  getSafeMode(): boolean;
+  setSafeMode(enabled: boolean): Promise<boolean>;
   getApi(id: string): BbPluginApi | undefined;
   /**
    * Whether this server still means to run this plugin, which is what decides
@@ -1633,6 +1637,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
+      });
+    },
+
+    getSafeMode() {
+      return getPluginSafeMode(deps.db);
+    },
+
+    async setSafeMode(enabled) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        if (getPluginSafeMode(deps.db) === enabled) return enabled;
+        setPluginSafeMode(deps.db, enabled);
+        const rows = listInstalledPlugins(deps.db)
+          .filter((row) => row.enabled && row.provenance !== "builtin")
+          .sort((a, b) => a.id.localeCompare(b.id));
+        for (const row of rows) {
+          await withLifecycleLock(row.id, () => loadOne(row));
+          if (enabled) deps.onPluginUnregistered?.(row.id);
+        }
+        await syncCliSkill();
+        notifyPluginsChanged();
+        return enabled;
       });
     },
 

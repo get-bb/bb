@@ -204,6 +204,16 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Show all notifications",
         "Open the notification center to read and clear past notifications.",
       ),
+      command(
+        "plugins.enterSafeMode",
+        "Turn on plugin safe mode",
+        "Stop every plugin that is not built in, keeping each plugin's enabled setting.",
+      ),
+      command(
+        "plugins.exitSafeMode",
+        "Turn off plugin safe mode",
+        "Restart the plugins that were enabled before safe mode.",
+      ),
     ],
   },
   {

@@ -138,6 +138,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allPluginListQueryKeyPrefix",
     "pluginListQueryKey",
     "pluginMarketplacesQueryKey",
+    "pluginSafeModeQueryKey",
     "pluginSettingsViewQueryKey",
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
@@ -164,6 +165,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentPullRequestQueryKey",
     "environmentWorkStatusQueryKeyPrefix",
     "hostsQueryKey",
+    "pluginSafeModeQueryKey",
     "serverMoveStatusQueryKey",
     "sidebarNavigationQueryKey",
     "systemAiServicesQueryKey",
