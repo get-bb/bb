@@ -69,6 +69,7 @@ export {
   setThreadExecutionOverride,
   getThreadStartupContext,
   setThreadStartupContext,
+  listExistingThreadIds,
   listHostThreadIds,
   listActiveHostThreads,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,

@@ -1548,6 +1548,21 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .all();
 }
 
+export function listExistingThreadIds(
+  db: DbQueryConnection,
+  threadIds: string[],
+): string[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(inArray(threads.id, threadIds))
+    .all()
+    .map((row) => row.id);
+}
+
 export function listHostThreadIds(
   db: DbConnection,
   args: ListHostThreadIdsArgs,
