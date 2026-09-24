@@ -963,11 +963,10 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-overview-lead {
-  max-width: 65ch;
   margin: 0;
   color: var(--ink);
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .marketplace-overview-rule {
@@ -978,7 +977,6 @@ a.marketplace-detail-author:hover {
 
 .marketplace-overview {
   width: 100%;
-  max-width: 65ch;
   color: var(--dim);
   font-size: 15px;
   line-height: 1.6;
@@ -989,20 +987,16 @@ a.marketplace-detail-author:hover {
   margin-top: 0;
 }
 
-.marketplace-overview h3 {
-  margin: 24px 0 4px;
-  color: var(--heading);
-  font-size: 15px;
-  font-weight: 600;
-}
-
+.marketplace-overview h3,
 .marketplace-overview h4,
 .marketplace-overview h5,
 .marketplace-overview h6 {
-  margin: 16px 0 4px;
-  color: var(--heading);
-  font-size: 14px;
-  font-weight: 600;
+  margin: 22px 0 6px;
+  color: var(--dim);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .marketplace-overview p,
@@ -1010,21 +1004,16 @@ a.marketplace-detail-author:hover {
 .marketplace-overview ol,
 .marketplace-overview blockquote,
 .marketplace-overview pre {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 
 .marketplace-overview ul,
 .marketplace-overview ol {
-  padding-left: 18px;
+  padding-left: 22px;
 }
 
 .marketplace-overview li {
   margin-bottom: 4px;
-  padding-left: 2px;
-}
-
-.marketplace-overview li::marker {
-  color: var(--subtle);
 }
 
 .marketplace-overview blockquote {
@@ -1034,10 +1023,8 @@ a.marketplace-detail-author:hover {
 }
 
 .marketplace-overview code {
-  padding: 0 4px;
-  border-radius: 4px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+  padding: 1px 5px;
+  border-radius: 5px;
   background: var(--surface);
   font-family: var(--font-mono);
   font-size: 13px;
