@@ -516,6 +516,20 @@ function PairForm({
   );
 }
 
+function signInStartErrorText(error: unknown): string {
+  if (isUnavailableError(error)) {
+    return "The bb account plugin is off. Turn it on under Plugins, then try again.";
+  }
+  switch (accountErrorCode(error)) {
+    case "rate_limited":
+      return "Too many sign-in attempts from this network. Wait a minute, then try again.";
+    case "unavailable":
+      return "getbb.app couldn't start sign-in right now. Try again in a minute.";
+    default:
+      return "Couldn't reach getbb.app to start sign-in. Check your connection, then try again.";
+  }
+}
+
 function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
   const message = errorText(error);
   if (message === "machine_limit" || message === "not_paired") return message;
@@ -1054,11 +1068,7 @@ function useAccountLogin(onSignedIn: () => void) {
         },
         (rpcError: unknown) => {
           setStarting(false);
-          setError(
-            isUnavailableError(rpcError)
-              ? "The bb account plugin is off. Turn it on under Plugins, then try again."
-              : "Couldn't reach getbb.app to start sign-in. Check your connection, then try again.",
-          );
+          setError(signInStartErrorText(rpcError));
         },
       );
   }, [sdk]);

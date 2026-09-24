@@ -46,6 +46,10 @@ const ERROR_COPY: Record<string, string> = {
   already_used:
     "That code was already used. Get a new one from the getbb.app dashboard.",
   network: "Couldn't reach getbb.app. Check your connection, then try again.",
+  rate_limited:
+    "Too many sign-in attempts from this network. Wait a minute, then try again.",
+  unavailable:
+    "getbb.app couldn't handle that request right now. Try again in a minute.",
   unauthorized: "getbb.app rejected the new pairing. Try again.",
   profile_unavailable:
     "bb saved the pairing, but getbb.app didn't return your account yet. bb keeps retrying.",

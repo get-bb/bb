@@ -18,6 +18,11 @@ export class HostedRequestError extends Error {
     super(message);
     this.name = "HostedRequestError";
   }
+
+  get code(): "network" | "rate_limited" | "unavailable" {
+    if (this.status === null) return "network";
+    return this.status === 429 ? "rate_limited" : "unavailable";
+  }
 }
 
 export class RedeemError extends Error {

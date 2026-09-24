@@ -327,6 +327,24 @@ describe("bb account sign-in", () => {
     await host.harness.callRpc("login.cancel", { loginId: view.id });
   });
 
+  it("tells a throttled sign-in apart from getbb.app being unreachable", async () => {
+    const host = await loadAccount();
+    stub.route("POST", "/api/account/link/start", () => ({
+      status: 429,
+      body: { error: "rate-limited" },
+    }));
+    await expect(
+      host.harness.callRpc("login.start", { baseUrl: stub.apexUrl }),
+    ).rejects.toThrow("rate_limited");
+    stub.route("POST", "/api/account/link/start", () => ({
+      status: 404,
+      body: { error: "not-found" },
+    }));
+    await expect(
+      host.harness.callRpc("login.start", { baseUrl: stub.apexUrl }),
+    ).rejects.toThrow("unavailable");
+  });
+
   it("cancels a pending link", async () => {
     const host = await loadAccount();
     const view = (await host.harness.callRpc("login.start", {

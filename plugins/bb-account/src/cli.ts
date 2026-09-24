@@ -36,6 +36,13 @@ const REDEEM_ERROR_TEXT: Record<RedeemError["code"], string> = {
   network: "couldn't reach getbb.app — check the connection and try again",
 };
 
+const HOSTED_ERROR_TEXT: Partial<Record<HostedRequestError["code"], string>> = {
+  rate_limited:
+    "too many sign-in attempts from this network — wait a minute, then try again",
+  unavailable:
+    "getbb.app couldn't handle that request right now — try again in a minute",
+};
+
 function asJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -110,7 +117,9 @@ function accountFailure(error: unknown): PluginCliError {
     return new PluginCliError(error.message, { code: error.code });
   }
   if (error instanceof HostedRequestError) {
-    return new PluginCliError(error.message, { code: "network" });
+    return new PluginCliError(HOSTED_ERROR_TEXT[error.code] ?? error.message, {
+      code: error.code,
+    });
   }
   return new PluginCliError(
     error instanceof Error ? error.message : String(error),

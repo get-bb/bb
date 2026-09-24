@@ -36,7 +36,7 @@ export function toCodedError(error: unknown): Error {
   if (error instanceof RedeemError || error instanceof AccountError) {
     return new Error(error.code);
   }
-  if (error instanceof HostedRequestError) return new Error("network");
+  if (error instanceof HostedRequestError) return new Error(error.code);
   return error instanceof Error ? error : new Error(String(error));
 }
 
