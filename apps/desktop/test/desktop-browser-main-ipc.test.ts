@@ -136,6 +136,8 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     return () => undefined;
   }
 
+  setAutomationControlled(): void {}
+
   profileSession(): never {
     throw new Error("profileSession is not used by IPC tests");
   }

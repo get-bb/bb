@@ -23,6 +23,7 @@ interface CreateDesktopBrowserCdpAdapterArgs {
 }
 
 function createPage(
+  manager: DesktopBrowserViewManager,
   tabId: string,
   webContents: WebContents,
   isCurrent: () => boolean,
@@ -44,6 +45,7 @@ function createPage(
     ownsAttachment = false;
     generation += 1;
     attachmentReady = null;
+    manager.setAutomationControlled(webContents, false);
     if (previousBackgroundThrottling !== null && !webContents.isDestroyed())
       webContents.setBackgroundThrottling(previousBackgroundThrottling);
     previousBackgroundThrottling = null;
@@ -83,6 +85,7 @@ function createPage(
       }
       nativeDebugger.attach("1.3");
       ownsAttachment = true;
+      manager.setAutomationControlled(webContents, true);
       previousBackgroundThrottling = webContents.getBackgroundThrottling();
       webContents.setBackgroundThrottling(false);
       generation += 1;
@@ -211,7 +214,7 @@ export function createDesktopBrowserCdpAdapter(
           let page = pages.get(webContents);
           if (page === undefined) {
             const owningScope = { ...scope };
-            page = createPage(tabId, webContents, () =>
+            page = createPage(args.manager, tabId, webContents, () =>
               args.manager
                 .getAutomationTabs(owningScope)
                 .some(

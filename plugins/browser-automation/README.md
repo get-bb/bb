@@ -128,7 +128,8 @@ Desktop sessions create a tab in a dedicated automation profile. Acquiring
 control opens the side panel and selects its browser tab only when the owning
 thread is already focused. New or activated controller pages follow
 the same rule. Automation does not switch threads or bring the desktop window
-forward. Pass
+forward. While controlled, a desktop tab never takes keyboard focus from the
+composer or other apps; press Take over to type into it. Pass
 `--tab <tab-id>` only for an explicit handoff of an existing tab. This grants the
 existing profile's browsing authority, including its authenticated cookies;
 release preserves that tab and login. Plugin-created tabs in its dedicated

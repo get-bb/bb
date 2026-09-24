@@ -385,6 +385,7 @@ const electronMock = vi.hoisted(() => {
     public canGoForwardResult = false;
     public destroyed = false;
     public focusCalls = 0;
+    public nativelyFocused = false;
     public readonly goBackCalls: string[] = [];
     public readonly goForwardCalls: string[] = [];
     public historyEntries: Array<{ title: string; url: string }> = [];
@@ -451,6 +452,10 @@ const electronMock = vi.hoisted(() => {
     focus(): void {
       this.focusCalls += 1;
       this.emitFocus();
+    }
+
+    isFocused(): boolean {
+      return this.nativelyFocused;
     }
 
     findInPage(
@@ -869,12 +874,28 @@ class FakeHostWindow implements DesktopBrowserHostWindow {
     this.webContents = new FakeHostWebContents(webContentsId);
   }
 
+  public focused = true;
+  private readonly focusListeners: Array<() => void> = [];
+
   getContentBounds(): DesktopBrowserHostContentBounds {
     return this.contentBounds;
   }
 
   isDestroyed(): boolean {
     return this.destroyed;
+  }
+
+  isFocused(): boolean {
+    return this.focused;
+  }
+
+  once(_event: "focus", listener: () => void): void {
+    this.focusListeners.push(listener);
+  }
+
+  emitFocus(): void {
+    this.focused = true;
+    for (const listener of this.focusListeners.splice(0)) listener();
   }
 }
 
@@ -1643,6 +1664,74 @@ describe("DesktopBrowserCdpAdapter", () => {
     unsubscribe();
     manager.destroyAll();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns native focus to the host while a controller owns the tab", async () => {
+    vi.useFakeTimers();
+    const focusHostWebContents = vi.fn();
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+      focusHostWebContents,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 92,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      threadId: "thread-1",
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    const page = createDesktopBrowserCdpAdapter({
+      manager,
+      createTab: async () => "browser:a",
+      activateTab: async () => undefined,
+      closeTab: async () => undefined,
+    }).listTabs({ hostWebContentsId: 92, threadId: "thread-1" })[0];
+    if (page === undefined) throw new Error("Expected a native CDP page");
+    const focusedPushes = () =>
+      hostWindow.webContents.sentChannels.filter(
+        (channel) => channel === "bb-desktop:browser:focused",
+      ).length;
+    try {
+      page.attach();
+      view.webContents.nativelyFocused = true;
+      view.webContents.emitFocus();
+      expect(focusedPushes()).toBe(0);
+      expect(focusHostWebContents).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledExactlyOnceWith(92);
+
+      hostWindow.focused = false;
+      view.webContents.emitFocus();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledTimes(1);
+      hostWindow.emitFocus();
+      expect(focusHostWebContents).toHaveBeenCalledTimes(2);
+
+      view.webContents.nativelyFocused = false;
+      view.webContents.emitFocus();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledTimes(2);
+
+      manager.focus({ hostWindow, tabId: "browser:a" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledTimes(2);
+
+      page.detach();
+      view.webContents.nativelyFocused = true;
+      view.webContents.emitFocus();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledTimes(2);
+      expect(focusedPushes()).toBe(1);
+    } finally {
+      page.detach();
+      manager.destroyAll();
+      vi.useRealTimers();
+    }
   });
 });
 
