@@ -14,7 +14,7 @@ import {
   safeStorage,
   session,
   shell,
-  type BaseWindow,
+  webContents as electronWebContents,
   type Event,
   type IpcMainInvokeEvent,
   type MessageBoxOptions,
@@ -527,17 +527,14 @@ function resolveApplicationWindow(
   return BrowserWindow.fromWebContents(webContents);
 }
 
-function zoomApplicationWindow(
-  browserWindow: BaseWindow | null | undefined,
+function zoomWebContents(
+  target: WebContents | null | undefined,
   command: BbDesktopZoomCommand,
 ): void {
-  if (!(browserWindow instanceof BrowserWindow)) {
+  if (!target) {
     return;
   }
-  const { webContents } = browserWindow;
-  webContents.setZoomFactor(
-    nextZoomFactor(webContents.getZoomFactor(), command),
-  );
+  target.setZoomFactor(nextZoomFactor(target.getZoomFactor(), command));
 }
 
 function sendToApplicationRenderer(
@@ -846,7 +843,9 @@ function refreshApplicationMenu(): void {
         );
       }
     },
-    zoomWindow: zoomApplicationWindow,
+    zoomFocusedPage(command) {
+      zoomWebContents(electronWebContents.getFocusedWebContents(), command);
+    },
     reloadWindow(browserWindow, ignoreCache) {
       if (!(browserWindow instanceof BrowserWindow)) {
         return;
@@ -1995,8 +1994,8 @@ function registerDesktopUpdateIpc(): void {
   ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopZoomCommandSchema.safeParse(payload);
     if (parsed.success) {
-      zoomApplicationWindow(
-        resolveApplicationWindow(event.sender),
+      zoomWebContents(
+        resolveApplicationWindow(event.sender)?.webContents,
         parsed.data,
       );
     }

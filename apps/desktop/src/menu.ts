@@ -57,10 +57,7 @@ export interface InstallApplicationMenuArgs {
     browserWindow: BaseWindow | undefined,
     ignoreCache: boolean,
   ): void;
-  zoomWindow(
-    browserWindow: BaseWindow | undefined,
-    command: BbDesktopZoomCommand,
-  ): void;
+  zoomFocusedPage(command: BbDesktopZoomCommand): void;
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
@@ -262,22 +259,22 @@ export function buildApplicationMenuTemplate(
         {
           accelerator: "CommandOrControl+0",
           label: "Actual Size",
-          click(_menuItem, browserWindow) {
-            args.zoomWindow(browserWindow, "reset");
+          click() {
+            args.zoomFocusedPage("reset");
           },
         },
         {
           accelerator: "CommandOrControl+Plus",
           label: "Zoom In",
-          click(_menuItem, browserWindow) {
-            args.zoomWindow(browserWindow, "in");
+          click() {
+            args.zoomFocusedPage("in");
           },
         },
         {
           accelerator: "CommandOrControl+-",
           label: "Zoom Out",
-          click(_menuItem, browserWindow) {
-            args.zoomWindow(browserWindow, "out");
+          click() {
+            args.zoomFocusedPage("out");
           },
         },
         ...createServerDaemonLogsMenuItems(args),
