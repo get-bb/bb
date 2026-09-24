@@ -69,7 +69,7 @@ bb machine reconcile <id-or-name> Reconcile compute with core’s recorded state
 bb machine suspend <id-or-name> Suspend a provider-managed machine
 bb machine resume <id-or-name> Resume a machine (already active is a no-op)
 bb machine retry-cleanup <id-or-name> Retry failed teardown now
-bb machine remove <id-or-name> [--yes] Remove a machine, stop work, and keep thread history
+bb machine remove <id-or-name> [--yes] Revoke and remove a machine
 bb machine provider-cli status <machine>
 bb machine provider-cli install <machine> <provider-id>
 --action <install|update>

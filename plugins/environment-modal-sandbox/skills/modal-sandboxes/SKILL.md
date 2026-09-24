@@ -74,8 +74,6 @@ Remove with `bb machine remove MACHINE --yes --json`. This removes
 owned environments, compute and private snapshots. Shared standard images remain
 cached for future launches. Builds and machines incur Modal usage; obtain task
 authorization before allocating them during testing.
-Removal stops dependent work and keeps threads as read-only history;
-archiving them first is not required.
 
 ## Debug an image
 
