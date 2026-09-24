@@ -180,6 +180,14 @@ interface CreateServerClientOptions {
   hostKey: string;
   logger: HostDaemonLogger;
   serverHeaders?: Record<string, string>;
+  /**
+   * Skip the HTTPS-or-loopback check before fetching project attachments.
+   * Set from BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL for private networks
+   * where the server is only reachable over plain HTTP (an in-cluster
+   * Service, for example). Every other daemon request already uses the same
+   * transport; this only widens attachment fetches to match.
+   */
+  allowInsecureServerUrl?: boolean;
   getSessionId: () => string;
   beforeInteractiveRequestRegistrationAttempt?: () => Promise<void>;
   fetchFn?: FetchFn;
@@ -489,7 +497,10 @@ export function createServerClient(
     async fetchProjectAttachment(
       args: FetchProjectAttachmentArgs,
     ): Promise<FetchedProjectAttachment> {
-      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+      if (
+        options.allowInsecureServerUrl !== true &&
+        !usesSecureInternalFetchTransport(options.serverUrl)
+      ) {
         throw new AbortError(
           `Refusing to fetch project attachment over insecure server URL: ${options.serverUrl}`,
         );

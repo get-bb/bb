@@ -218,6 +218,33 @@ describe("createServerClient", () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it("fetches project attachments over non-loopback HTTP when allowInsecureServerUrl is set", async () => {
+    const fetchFn = vi.fn<FetchFn>(async () =>
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-length": "3" },
+      }),
+    );
+    const client = createServerClient({
+      allowInsecureServerUrl: true,
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "http://bb.example.test",
+    });
+
+    await expect(
+      client.fetchProjectAttachment({
+        maxBytes: 25,
+        projectId: "project-1",
+        threadId: "thread-1",
+        path: "network-tab.har",
+      }),
+    ).resolves.toEqual({ bytes: new Uint8Array([1, 2, 3]) });
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
   it("refuses to fetch project attachments when the server URL is malformed", async () => {
     const fetchFn = vi.fn<FetchFn>();
     const client = createServerClient({
