@@ -15,6 +15,11 @@
     "icon": "Repeat"
   },
   {
+    "id": "bb-ai",
+    "name": "bb cloud AI",
+    "icon": "AiBrain01"
+  },
+  {
     "id": "browser-automation",
     "name": "Browser Automation",
     "icon": "Globe"
