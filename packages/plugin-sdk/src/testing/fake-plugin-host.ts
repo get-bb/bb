@@ -110,6 +110,8 @@ import type {
   PluginThreadEventPayloads,
   PluginUi,
   PluginRpcError,
+  ExperimentalPluginRpcCaller,
+  ExperimentalPluginRpcHandlerContext,
   StandardSchemaV1,
   JsonValue,
 } from "@get-bb/plugin-sdk";
@@ -371,9 +373,16 @@ export interface FakePluginBehaviorDrivers {
   /**
    * Invoke a registered rpc method with host semantics: input/output schemas,
    * strict JSON result normalization, and structured failure codes. Rejects
-   * with the same message/code/issues the frontend client surfaces.
+   * with the same message/code/issues the frontend client surfaces. The
+   * handler sees `options.experimental_caller` as its caller, `{ kind:
+   * "client" }` by default; pass `{ kind: "plugin", pluginId }` to act as
+   * another plugin calling through `bb.sdk.plugins.callRpc`.
    */
-  callRpc(method: string, input?: unknown): Promise<unknown>;
+  callRpc(
+    method: string,
+    input?: unknown,
+    options?: { experimental_caller?: ExperimentalPluginRpcCaller },
+  ): Promise<unknown>;
   /**
    * Invoke the plugin's CLI command with host semantics: the result's
    * exitCode must be a number, stdout/stderr default to "", and a throwing
@@ -591,7 +600,10 @@ interface FakeRpcRecord {
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: never) => unknown;
+  handler: (
+    input: never,
+    context: ExperimentalPluginRpcHandlerContext,
+  ) => unknown;
 }
 
 type FakeHostWorkerExitSubscription = (event: {
@@ -1757,7 +1769,7 @@ function createFakePluginHostInternal(
       await setSettingsValues(values);
     },
 
-    async callRpc(method, input) {
+    async callRpc(method, input, options = {}) {
       const record = rpcHandlers.get(method);
       if (!record) {
         return throwRpcError({
@@ -1777,7 +1789,11 @@ function createFakePluginHostInternal(
       );
       let result: unknown;
       try {
-        result = await record.handler(validatedInput as never);
+        result = await record.handler(validatedInput as never, {
+          experimental_caller: options.experimental_caller ?? {
+            kind: "client",
+          },
+        });
       } catch (error) {
         return throwRpcError({
           code: "handler_error",

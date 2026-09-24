@@ -51,6 +51,7 @@ export async function resolveServerMoveMode(
     "status",
     handler.value,
     null,
+    { kind: "client" },
   );
   if (!result.ok) {
     return { mode: "unavailable", message: result.error.message };

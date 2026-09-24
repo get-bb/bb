@@ -404,6 +404,30 @@ function IssuesButton() {
 }
 ```
 
+Each handler also receives a context as its second argument.
+`context.experimental_caller` is `{ kind: "plugin", pluginId }` when another
+loaded plugin (or this one) called through its own `bb.sdk.plugins.callRpc`,
+and `{ kind: "client" }` for the app, the `bb` CLI, agents, and bb itself. bb
+verifies the plugin identity with a per-load token only the server holds, so a
+client cannot claim to be a plugin. Use it to keep a method to the plugins
+that should call it:
+
+```ts
+bb.rpc.register(privateContract, {
+  handOver(input, context) {
+    const caller = context.experimental_caller;
+    if (caller.kind !== "plugin" || caller.pluginId !== "connect") {
+      throw new Error("only the connect plugin can call handOver");
+    }
+    return handOver(input);
+  },
+});
+```
+
+`register` types handlers as `ExperimentalPluginRpcHandlersWithContext`; a
+`PluginRpcHandlers` map (one argument) still assigns to it. Tests set the
+caller with `harness.callRpc(method, input, { experimental_caller })`.
+
 The wire envelope is `{ ok: true, result }` or `{ ok: false, error }`.
 Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
