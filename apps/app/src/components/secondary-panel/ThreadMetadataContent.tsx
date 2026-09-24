@@ -80,6 +80,7 @@ import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatu
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
+import { Checkbox } from "@bb/shared-ui/checkbox";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -96,6 +97,9 @@ interface ParentSelectorRowProps {
   onParentSelectorOpenChange: (open: boolean) => void;
   onRetryParentThreads: () => void;
   defaultOpen?: boolean;
+  // bb-fork(quiet-reparent): quiet switch; absent = no quiet control
+  quietReparent?: boolean;
+  onQuietReparentChange?: (next: boolean) => void;
 }
 
 export function ParentSelectorRow({
@@ -113,6 +117,8 @@ export function ParentSelectorRow({
   onParentSelectorOpenChange,
   onRetryParentThreads,
   defaultOpen,
+  quietReparent,
+  onQuietReparentChange,
 }: ParentSelectorRowProps) {
   const parentThreadId = thread.parentThreadId ?? undefined;
   const parentSelectorOptions = useMemo(
@@ -139,54 +145,82 @@ export function ParentSelectorRow({
       label={<DetailRowIconLabel icon="UserRound">Parent</DetailRowIconLabel>}
       valueClassName="min-w-0"
     >
-      {parentThreadId ? (
-        <div
-          className={cn(
-            "inline-flex max-w-full min-w-0 items-center gap-1 text-foreground",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          <Link
-            to={getThreadRoutePath({
-              projectId: parentThreadProjectId ?? projectId,
-              threadId: parentThreadId,
-            })}
+      <div className="flex min-w-0 flex-col items-start gap-1">
+        {parentThreadId ? (
+          <div
             className={cn(
-              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              "inline-flex max-w-full min-w-0 items-center gap-1 text-foreground",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           >
-            {selectedParentOptionLabel ?? "Parent thread"}
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-3.5 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5"
+            <Link
+              to={getThreadRoutePath({
+                projectId: parentThreadProjectId ?? projectId,
+                threadId: parentThreadId,
+              })}
+              className={cn(
+                "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            >
+              {selectedParentOptionLabel ?? "Parent thread"}
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-3.5 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5"
+              disabled={updateThreadPending}
+              onClick={() => {
+                onAssignParent(null);
+              }}
+              aria-label="Clear parent thread"
+            >
+              <Icon name="X" />
+            </Button>
+          </div>
+        ) : (
+          <ParentThreadPicker
+            value={parentSelectorValue}
+            options={parentSelectorOptions}
+            isLoading={isLoadingParentThreads}
+            isError={isParentThreadsError}
             disabled={updateThreadPending}
-            onClick={() => {
-              onAssignParent(null);
+            onChange={(value) => {
+              onAssignParent(value === "none" ? null : value);
             }}
-            aria-label="Clear parent thread"
+            onOpenChange={onParentSelectorOpenChange}
+            onRetry={onRetryParentThreads}
+            defaultOpen={defaultOpen}
+          />
+        )}
+        {onQuietReparentChange ? (
+          <label
+            className={cn(
+              "inline-flex items-center gap-1.5 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
           >
-            <Icon name="X" />
-          </Button>
-        </div>
-      ) : (
-        <ParentThreadPicker
-          value={parentSelectorValue}
-          options={parentSelectorOptions}
-          isLoading={isLoadingParentThreads}
-          isError={isParentThreadsError}
-          disabled={updateThreadPending}
-          onChange={(value) => {
-            onAssignParent(value === "none" ? null : value);
-          }}
-          onOpenChange={onParentSelectorOpenChange}
-          onRetry={onRetryParentThreads}
-          defaultOpen={defaultOpen}
-        />
-      )}
+            <Checkbox
+              checked={quietReparent === true}
+              disabled={updateThreadPending}
+              onCheckedChange={(next) => onQuietReparentChange(next === true)}
+              aria-label="Quiet reparent"
+            />
+            Quiet reparent
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center">
+                  <Icon name="Info" className="size-3" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Reparent without a system turn on the old or new parent
+              </TooltipContent>
+            </Tooltip>
+          </label>
+        ) : null}
+      </div>
     </DetailRow>
   );
 }
@@ -903,6 +937,9 @@ export interface ThreadMetadataContentProps {
   onMergeBaseBranchSearchQueryChange?: (query: string) => void;
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
   onCommitClick?: (sha: string) => void;
+  // bb-fork(quiet-reparent): quiet switch; absent = no quiet control
+  quietReparent?: boolean;
+  onQuietReparentChange?: (next: boolean) => void;
 }
 
 export function hasAnyThreadMetadata(
@@ -1028,6 +1065,8 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     onMergeBaseBranchSearchQueryChange,
     onChangedFileClick,
     onCommitClick,
+    quietReparent,
+    onQuietReparentChange,
   } = props;
 
   return (
@@ -1046,6 +1085,8 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onAssignParent={onAssignParent}
         onParentSelectorOpenChange={onParentSelectorOpenChange}
         onRetryParentThreads={onRetryParentThreads}
+        quietReparent={quietReparent}
+        onQuietReparentChange={onQuietReparentChange}
       />
       <ForksRow thread={thread} projectId={projectId} />
       <EnvironmentRow

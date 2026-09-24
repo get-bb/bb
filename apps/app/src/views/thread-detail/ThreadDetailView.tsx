@@ -181,6 +181,7 @@ import {
   useThreadStorageViewer,
 } from "@/components/secondary-panel/useThreadStorageViewer";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { useQuietReparentPreference } from "@/components/secondary-panel/quiet-reparent.fork";
 import { BrowserTabLifecycleObserver } from "@/components/secondary-panel/BrowserTabDeck";
 import {
   LazyBrowserTabDeck,
@@ -2029,6 +2030,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     parentThread?.title && parentThread.title.trim().length > 0
       ? parentThread.title
       : parentThreadId;
+  const [quietReparent, setQuietReparent] = useQuietReparentPreference();
   const handleAssignParent = useCallback(
     (nextParentThreadId: string | null) => {
       if (!thread || updateThread.isPending) {
@@ -2038,9 +2040,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       updateThread.mutate({
         id: thread.id,
         parentThreadId: nextParentThreadId,
+        // bb-fork(quiet-reparent): the quiet switch rides the same PATCH
+        ...(quietReparent ? { ownershipNotice: false } : {}),
       });
     },
-    [thread, updateThread],
+    [thread, updateThread, quietReparent],
   );
   const handleTimelineLocalFileLinkResolution = useCallback(
     (
@@ -2937,6 +2941,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
                 updateThread.isPending || updateEnvironment.isPending,
               storage: metadataStorage,
               onAssignParent: handleAssignParent,
+              quietReparent,
+              onQuietReparentChange: setQuietReparent,
               onParentSelectorOpenChange: handleParentSelectorOpenChange,
               onRetryParentThreads: handleRetryParentThreads,
               onMergeBaseBranchChange: handleMergeBaseBranchChange,
