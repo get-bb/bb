@@ -31,7 +31,10 @@ import type {
   Thread,
   ThreadRuntimeState,
 } from "@bb/domain";
-import { HOST_RECONNECT_GRACE_MS } from "../../../src/constants.js";
+import {
+  HOST_OFFLINE_DISPLAY_DELAY_MS,
+  HOST_RECONNECT_GRACE_MS,
+} from "../../../src/constants.js";
 import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
@@ -282,6 +285,49 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      hostReconnectGraceExpiresAt: null,
+    } satisfies ThreadRuntimeState);
+  });
+
+  it("keeps an active thread active while its host's closed socket is within the offline display delay", () => {
+    const { db, hostId, hub } = setup();
+    const now = 60_000;
+    const session = openTestSession({ db, hostId });
+    closeTestSession({
+      closedAt: now - HOST_OFFLINE_DISPLAY_DELAY_MS + 1,
+      db,
+      sessionId: session.id,
+    });
+
+    expect(
+      resolveThreadRuntimeState(
+        { db, hub },
+        { environmentHostId: hostId, now, status: "active" },
+      ),
+    ).toEqual({
+      displayStatus: "active",
+      hostReconnectGraceExpiresAt: null,
+    } satisfies ThreadRuntimeState);
+  });
+
+  it("keeps an active thread active while its reconnecting daemon has not registered its socket", () => {
+    const { db, hostId, hub } = setup();
+    const now = Date.now();
+    const lost = openTestSession({ db, hostId });
+    closeTestSession({
+      closedAt: now - 1_000,
+      db,
+      sessionId: lost.id,
+    });
+    openTestSession({ db, hostId });
+
+    expect(
+      resolveThreadRuntimeState(
+        { db, hub },
+        { environmentHostId: hostId, now, status: "active" },
+      ),
+    ).toEqual({
+      displayStatus: "active",
       hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });

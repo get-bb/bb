@@ -10,7 +10,11 @@ import type {
   HostDaemonActiveThread,
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
-import { HOST_RECONNECT_GRACE_MS, LEASE_TIMEOUT_MS } from "../constants.js";
+import {
+  HOST_OFFLINE_DISPLAY_DELAY_MS,
+  HOST_RECONNECT_GRACE_MS,
+  LEASE_TIMEOUT_MS,
+} from "../constants.js";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
@@ -166,15 +170,41 @@ function handleDaemonSessionLost(
   closeSession(deps.db, deps.hub, args.sessionId, args.reason);
 
   notifyHostThreadRuntimeStatusChanged(deps, session.hostId);
+  if (args.reason === "expired") {
+    scheduleReconnectGraceEnd(deps, {
+      delayMs: HOST_RECONNECT_GRACE_MS,
+      hostId: session.hostId,
+      sessionId: args.sessionId,
+    });
+    return;
+  }
   deps.hub.scheduleDaemonDisconnect(
     args.sessionId,
-    HOST_RECONNECT_GRACE_MS,
+    HOST_OFFLINE_DISPLAY_DELAY_MS,
     () => {
-      if (!deps.hub.hasDaemonForHost(session.hostId)) {
-        notifyHostThreadRuntimeStatusChanged(deps, session.hostId);
+      if (deps.hub.hasDaemonForHost(session.hostId)) {
+        return;
       }
+      deps.hub.notifyHost(session.hostId, ["host-disconnected"]);
+      notifyHostThreadRuntimeStatusChanged(deps, session.hostId);
+      scheduleReconnectGraceEnd(deps, {
+        delayMs: HOST_RECONNECT_GRACE_MS - HOST_OFFLINE_DISPLAY_DELAY_MS,
+        hostId: session.hostId,
+        sessionId: args.sessionId,
+      });
     },
   );
+}
+
+function scheduleReconnectGraceEnd(
+  deps: DaemonSocketClosedDeps,
+  args: { delayMs: number; hostId: string; sessionId: string },
+): void {
+  deps.hub.scheduleDaemonDisconnect(args.sessionId, args.delayMs, () => {
+    if (!deps.hub.hasDaemonForHost(args.hostId)) {
+      notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
+    }
+  });
 }
 
 export function handleHostRemoved(

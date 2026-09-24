@@ -16,7 +16,7 @@ export interface GetLatestSessionForHostArgs {
   hostId: string;
 }
 
-export interface ListLatestSessionsForHostsArgs {
+export interface ListLatestClosedSessionsForHostsArgs {
   hostIds: readonly string[];
 }
 
@@ -139,9 +139,9 @@ export function getLatestSessionForHost(
   );
 }
 
-export function listLatestSessionsForHosts(
+export function listLatestClosedSessionsForHosts(
   db: SessionReadConnection,
-  args: ListLatestSessionsForHostsArgs,
+  args: ListLatestClosedSessionsForHostsArgs,
 ): HostDaemonSessionRow[] {
   const hostIds = [...new Set(args.hostIds)];
   if (hostIds.length === 0) {
@@ -158,11 +158,8 @@ export function listLatestSessionsForHosts(
           SELECT latest.id
           FROM host_daemon_sessions AS latest
           WHERE latest.host_id = ${hostDaemonSessions.hostId}
-          ORDER BY
-            latest.updated_at DESC,
-            latest.created_at DESC,
-            CASE WHEN latest.status = 'active' THEN 1 ELSE 0 END DESC,
-            latest.id DESC
+            AND latest.status = 'closed'
+          ORDER BY latest.closed_at DESC, latest.id DESC
           LIMIT 1
         )`,
       ),

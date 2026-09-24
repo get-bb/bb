@@ -1,6 +1,9 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
 import { getThread, markThreadDeleted } from "@bb/db";
-import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
+import {
+  HOST_OFFLINE_DISPLAY_DELAY_MS,
+  HOST_RECONNECT_GRACE_MS,
+} from "../../src/constants.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleDaemonSocketClosed,
@@ -11,6 +14,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -107,6 +111,20 @@ function statusChangedMessagesFor(
   });
 }
 
+function hostDisconnectedMessagesFor(
+  messages: readonly string[],
+  hostId: string,
+): string[] {
+  return messages.filter((raw) => {
+    const message = changedMessageSchema.parse(JSON.parse(raw));
+    return (
+      message.entity === "host" &&
+      message.id === hostId &&
+      message.changes.includes("host-disconnected")
+    );
+  });
+}
+
 function lastStatusChange(
   messages: readonly string[],
   threadId: string,
@@ -120,31 +138,84 @@ function lastStatusChange(
 }
 
 describe("host thread runtime status notifications", () => {
-  it("carries a statusChange snapshot for the active host threads when the daemon socket closes", async () => {
+  it("keeps a closed daemon socket hidden until the offline display delay passes", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedHostThreadsFixture(harness, 1);
       const socket = createMockHubSocket();
       harness.hub.subscribe(socket, { kind: "thread-list" });
+      harness.hub.subscribe(socket, { kind: "host-list" });
 
-      handleDaemonSocketClosed(harness.deps, { sessionId: fixture.sessionId });
-      harness.hub.cancelPendingDaemonDisconnect(fixture.sessionId);
+      vi.useFakeTimers();
+      try {
+        handleDaemonSocketClosed(harness.deps, {
+          sessionId: fixture.sessionId,
+        });
+        expect(
+          lastStatusChange(socket.messages, fixture.activeThreadId).metadata
+            ?.statusChange,
+        ).toMatchObject({
+          status: "active",
+          runtime: { displayStatus: "active" },
+        });
+        expect(
+          lastStatusChange(socket.messages, fixture.idleThreadId).metadata
+            ?.statusChange,
+        ).toBeUndefined();
+        const hostChangesBeforeDelay = hostDisconnectedMessagesFor(
+          socket.messages,
+          fixture.hostId,
+        ).length;
 
-      const activeMessage = lastStatusChange(
-        socket.messages,
-        fixture.activeThreadId,
-      );
-      expect(activeMessage.metadata?.statusChange).toMatchObject({
-        status: "active",
-        runtime: {
-          displayStatus: "host-reconnecting",
-          hostReconnectGraceExpiresAt: expect.any(Number),
-        },
-      });
-      const idleMessage = lastStatusChange(
-        socket.messages,
-        fixture.idleThreadId,
-      );
-      expect(idleMessage.metadata?.statusChange).toBeUndefined();
+        vi.advanceTimersByTime(HOST_OFFLINE_DISPLAY_DELAY_MS);
+
+        expect(
+          lastStatusChange(socket.messages, fixture.activeThreadId).metadata
+            ?.statusChange,
+        ).toMatchObject({
+          status: "active",
+          runtime: {
+            displayStatus: "host-reconnecting",
+            hostReconnectGraceExpiresAt: expect.any(Number),
+          },
+        });
+        expect(
+          hostDisconnectedMessagesFor(socket.messages, fixture.hostId),
+        ).toHaveLength(hostChangesBeforeDelay + 1);
+      } finally {
+        harness.hub.cancelPendingDaemonDisconnect(fixture.sessionId);
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("never shows a disconnect for a daemon that reconnects within the offline display delay", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHostThreadsFixture(harness, 5);
+      const socket = createMockHubSocket();
+      harness.hub.subscribe(socket, { kind: "thread-list" });
+
+      vi.useFakeTimers();
+      try {
+        handleDaemonSocketClosed(harness.deps, {
+          sessionId: fixture.sessionId,
+        });
+        vi.advanceTimersByTime(HOST_OFFLINE_DISPLAY_DELAY_MS - 1_000);
+        const reconnected = seedSession(harness.deps, fixture.hostId);
+        harness.hub.registerDaemon(
+          reconnected.id,
+          fixture.hostId,
+          createMockHubSocket(),
+        );
+        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(
+        statusChangedMessagesFor(socket.messages, fixture.activeThreadId).map(
+          (message) => message.metadata?.statusChange?.runtime.displayStatus,
+        ),
+      ).toEqual(["active"]);
     });
   });
 
@@ -227,7 +298,7 @@ describe("host thread runtime status notifications", () => {
           lastStatusChange(largeMessages, threadId).metadata?.statusChange,
         ).toMatchObject({
           status: "active",
-          runtime: { displayStatus: "host-reconnecting" },
+          runtime: { displayStatus: "active" },
         });
       }
       for (const threadId of [...largeIdleThreadIds, deletedActiveThread.id]) {
