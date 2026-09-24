@@ -34,7 +34,6 @@ import {
   getPreparingEnvironment,
   getThread,
   getProject,
-  pruneDestroyedEnvironments,
   reserveEnvironment,
   updatePreparingEnvironment,
   threads,
@@ -1503,32 +1502,6 @@ describe("core environment orchestration", () => {
         teardownStatus: "removed",
         teardownAttempt: 1,
       });
-    }));
-
-  it("keeps destroyed rows until provider remove finishes", async () =>
-    withTestHarness(async (harness) => {
-      const fixture = setup(harness);
-      fixture.ask();
-      await fixture.settled();
-      const environmentId = fixture.attach();
-      harness.db
-        .update(environments)
-        .set({ status: "destroyed", updatedAt: 1, teardownStatus: "failed" })
-        .where(eq(environments.id, environmentId))
-        .run();
-      const prune = () =>
-        pruneDestroyedEnvironments(harness.db, harness.hub, {
-          updatedBefore: Date.now(),
-          eventBatchSize: 10,
-          limit: 10,
-        });
-      expect(prune().deleted).toBe(0);
-      harness.db
-        .update(environments)
-        .set({ teardownStatus: "removed" })
-        .where(eq(environments.id, environmentId))
-        .run();
-      expect(prune().deleted).toBe(1);
     }));
 
   it.each([
