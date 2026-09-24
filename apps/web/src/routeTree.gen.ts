@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
+import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
@@ -32,6 +34,16 @@ import { Route as ApiConnectRedeemRouteImport } from "./routes/api.connect.redee
 import { Route as ApiConnectMachineCodeRouteImport } from "./routes/api.connect.machine-code";
 import { Route as ApiAuthSplatRouteImport } from "./routes/api.auth.$";
 
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: "/sitemap.xml",
+  path: "/sitemap.xml",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: "/robots.txt",
+  path: "/robots.txt",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const PrivacyRoute = PrivacyRouteImport.update({
   id: "/privacy",
   path: "/privacy",
@@ -152,6 +164,8 @@ export interface FileRoutesByFullPath {
   "/dashboard": typeof DashboardRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/privacy": typeof PrivacyRoute;
+  "/robots.txt": typeof RobotsDottxtRoute;
+  "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
@@ -176,6 +190,8 @@ export interface FileRoutesByTo {
   "/dashboard": typeof DashboardRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/privacy": typeof PrivacyRoute;
+  "/robots.txt": typeof RobotsDottxtRoute;
+  "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
@@ -201,6 +217,8 @@ export interface FileRoutesById {
   "/dashboard": typeof DashboardRoute;
   "/marketplace_": typeof MarketplaceRouteWithChildren;
   "/privacy": typeof PrivacyRoute;
+  "/robots.txt": typeof RobotsDottxtRoute;
+  "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
@@ -227,6 +245,8 @@ export interface FileRouteTypes {
     | "/dashboard"
     | "/marketplace"
     | "/privacy"
+    | "/robots.txt"
+    | "/sitemap.xml"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
@@ -251,6 +271,8 @@ export interface FileRouteTypes {
     | "/dashboard"
     | "/marketplace"
     | "/privacy"
+    | "/robots.txt"
+    | "/sitemap.xml"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
@@ -275,6 +297,8 @@ export interface FileRouteTypes {
     | "/dashboard"
     | "/marketplace_"
     | "/privacy"
+    | "/robots.txt"
+    | "/sitemap.xml"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
@@ -300,6 +324,8 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute;
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
   PrivacyRoute: typeof PrivacyRoute;
+  RobotsDottxtRoute: typeof RobotsDottxtRoute;
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute;
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute;
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
@@ -318,6 +344,20 @@ export interface RootRouteChildren {
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/sitemap.xml": {
+      id: "/sitemap.xml";
+      path: "/sitemap.xml";
+      fullPath: "/sitemap.xml";
+      preLoaderRoute: typeof SitemapDotxmlRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/robots.txt": {
+      id: "/robots.txt";
+      path: "/robots.txt";
+      fullPath: "/robots.txt";
+      preLoaderRoute: typeof RobotsDottxtRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/privacy": {
       id: "/privacy";
       path: "/privacy";
@@ -496,6 +536,8 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   DotwellKnownAppleAppSiteAssociationRoute:
     DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
