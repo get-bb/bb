@@ -20,6 +20,7 @@ import {
   environments,
   events,
   getEnvironment,
+  getHost,
   getLatestThreadInterruptedReason,
   getThread,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
@@ -1111,7 +1112,12 @@ export function requestThreadStorageDeletion(
     reason: "thread-deleted",
   });
   abortPluginToolCallsForThreads([thread.id], "thread-deleted");
-  if (thread.environmentId === null) {
+  const host =
+    environment === null ? null : getHost(deps.db, environment.hostId);
+  if (
+    thread.environmentId === null ||
+    (host !== null && host.destroyedAt !== null)
+  ) {
     markThreadStorageDeleted(deps.db, { threadId: thread.id });
     finalizeStoppedThread(deps, { threadId: thread.id });
     return;
