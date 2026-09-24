@@ -225,3 +225,73 @@ describe("task detail pull request pills", () => {
     });
   });
 });
+
+describe("task dispatch", () => {
+  const PRESET_ID = "01HZZZZZZZZZZZZZZZZZZZZZS1";
+  const preset = {
+    id: PRESET_ID,
+    name: "Sonnet worktree",
+    providerId: "claude-code",
+    modelId: "claude-sonnet-5",
+    reasoningLevel: "medium",
+    serviceTier: null,
+    permissionMode: "accept-edits",
+    environmentKind: "new-worktree",
+    baseBranch: null,
+    machineId: null,
+    instructions: "",
+    builtin: false,
+    createdAt: "2026-07-15T00:00:00.000Z",
+  };
+
+  it("opens the dispatched thread once the delegation succeeds", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "task/TSK-5" },
+      {
+        rpc: detailRpc({
+          listPresets: () => ({ presets: [preset] }),
+          delegate: () => ({ threadId: "thr_dispatched" }),
+        }),
+      },
+    );
+
+    const [dispatchButton] = await slot.findAllByRole("button", {
+      name: "Sonnet worktree",
+    });
+    fireEvent.click(dispatchButton!);
+
+    await waitFor(() => {
+      expect(slot.navigateCalls).toEqual([
+        { method: "toThread", threadId: "thr_dispatched" },
+      ]);
+    });
+    expect(slot.rpcCalls).toContainEqual({
+      method: "delegate",
+      input: { taskId: TASK_ID, presetId: PRESET_ID },
+    });
+  });
+
+  it("stays on the task and shows the error when the delegation fails", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "task/TSK-5" },
+      {
+        rpc: detailRpc({
+          listPresets: () => ({ presets: [preset] }),
+          delegate: () => {
+            throw new Error("No machine available");
+          },
+        }),
+      },
+    );
+
+    const [dispatchButton] = await slot.findAllByRole("button", {
+      name: "Sonnet worktree",
+    });
+    fireEvent.click(dispatchButton!);
+
+    await slot.findByText(/No machine available/);
+    expect(slot.navigateCalls).toEqual([]);
+  });
+});
