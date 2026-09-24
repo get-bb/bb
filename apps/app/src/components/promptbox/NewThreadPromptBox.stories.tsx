@@ -16,7 +16,7 @@ import {
   AUTOMATION_PROMPT_ACTION,
   CREATE_PLUGIN_PROMPT_ACTION,
 } from "@/components/promptbox/PromptBoxActionsMenu";
-import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
+import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
@@ -45,10 +45,13 @@ const baseExecution = makeExecutionControlsProps();
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail:
+    "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.",
 } satisfies SystemExecutionOptionsModelLoadError;
 const codexMissingCliModelLoadError = {
   providerId: "codex",
   code: "missing_executable",
+  detail: null,
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const baseEnvironment: NewThreadEnvironmentConfig = {
@@ -283,13 +286,14 @@ function UnsupportedCodexCliRow() {
         modeConfig={{
           ...baseModeConfig,
           banner: (
-            <ProviderCliVersionBanner
+            <ProviderCliBanner
               displayName="Codex"
+              installed
               currentVersion="0.135.0"
               minimumSupportedVersion="0.136.0"
-              canUpdate
-              updating={false}
-              onUpdate={noop}
+              canRunAction
+              actionRunning={false}
+              onAction={noop}
             />
           ),
         }}
@@ -315,10 +319,24 @@ function MissingCodexCliRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
+        autoFocus={false}
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={baseModeConfig}
+        modeConfig={{
+          ...baseModeConfig,
+          banner: (
+            <ProviderCliBanner
+              displayName="Codex"
+              installed={false}
+              currentVersion={null}
+              minimumSupportedVersion={null}
+              canRunAction
+              actionRunning={false}
+              onAction={noop}
+            />
+          ),
+        }}
         project={baseProject}
         execution={{
           ...baseExecution,
@@ -636,7 +654,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="missing Codex CLI"
-          hint="provider-specific install help; picker menu keeps provider tabs"
+          hint="thread creation blocked; banner exposes Install action, picker keeps provider tabs"
         >
           <MissingCodexCliRow />
         </StoryRow>

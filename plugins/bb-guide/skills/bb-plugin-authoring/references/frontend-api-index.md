@@ -32,6 +32,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `useBbContext`
 - `experimental_usePluginId` — this plugin's id, for keying browser-side
   state such as localStorage entries
+- `experimental_useQuestionFormHost` — bb's answer shortcuts inside a
+  `pendingInteraction` form
 - `useBbNavigate`
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`
@@ -84,6 +86,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginNewThreadPanelProps`
 - `PluginPendingInteractionView`
 - `PluginPendingInteractionProps`
+- `ExperimentalQuestionFormHost`
+- `ExperimentalQuestionShortcut`
 - `BranchPickerProps`
 - `UseBranchesArgs`
 - `BranchesState`

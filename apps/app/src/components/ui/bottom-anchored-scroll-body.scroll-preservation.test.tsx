@@ -117,6 +117,7 @@ interface RenderArgs {
   rowIds: string[];
   showCapturePrependAnchorControl?: boolean;
   showScrollToBottomControl?: boolean;
+  scrollIntoViewRowId?: string;
   virtualized?: boolean;
 }
 
@@ -138,11 +139,34 @@ function ScrollToBottomControl() {
   );
 }
 
+function ScrollRowIntoViewControl({ rowId }: { rowId: string }) {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const element = bottomAnchor
+          ?.getScrollElement()
+          ?.querySelector(`[data-timeline-row-id="${rowId}"]`);
+        if (element instanceof HTMLElement) {
+          bottomAnchor?.scrollElementIntoView({
+            element,
+            options: { block: "start", inline: "nearest" },
+          });
+        }
+      }}
+    >
+      Reveal row
+    </button>
+  );
+}
+
 function renderTimeline({
   threadId,
   rowIds,
   showCapturePrependAnchorControl = false,
   showScrollToBottomControl = false,
+  scrollIntoViewRowId,
   virtualized = false,
 }: RenderArgs) {
   const timeline = (renderedRowIds: string[]) => {
@@ -162,6 +186,9 @@ function renderTimeline({
           <CapturePrependAnchorControl />
         ) : null}
         {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
+        {scrollIntoViewRowId ? (
+          <ScrollRowIntoViewControl rowId={scrollIntoViewRowId} />
+        ) : null}
         {virtualized ? (
           <div data-timeline-row-list="top-level">
             <div data-timeline-virtual-spacer="">{rows}</div>
@@ -275,6 +302,38 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       offsetWithinRow: 20,
       atBottom: false,
     });
+  });
+
+  it("notifies scroll listeners synchronously when revealing a row moves the viewport", () => {
+    const { scrollArea, getRow, getByRole } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      scrollIntoViewRowId: "row-a",
+    });
+    mockScrollAreaRect(scrollArea);
+    const row = getRow("row-a");
+    mockRowRect(row, { top: -300, bottom: -200 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+    row.scrollIntoView = vi.fn(() => {
+      scrollArea.scrollTop = 0;
+    });
+    const observedScrollTops: number[] = [];
+    scrollArea.addEventListener("scroll", () => {
+      observedScrollTops.push(scrollArea.scrollTop);
+    });
+
+    fireEvent.click(getByRole("button", { name: "Reveal row" }));
+
+    expect(row.scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      inline: "nearest",
+    });
+    expect(observedScrollTops).toEqual([0]);
   });
 
   it("captures rows nested in a virtualizer spacer", () => {

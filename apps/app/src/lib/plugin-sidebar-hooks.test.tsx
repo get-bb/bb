@@ -28,6 +28,12 @@ const actions = vi.hoisted(() => ({
   setRootComposeProjectId: vi.fn(),
 }));
 
+const mutations = vi.hoisted(() => ({
+  pinThreadAsync: vi.fn(),
+  unpinThreadAsync: vi.fn(),
+  updateThreadAsync: vi.fn(),
+}));
+
 type SidebarSection = {
   id: string;
   name: string;
@@ -84,7 +90,9 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useUpdateThread: () => ({ mutateAsync: vi.fn() }),
+  usePinThread: () => ({ mutateAsync: mutations.pinThreadAsync }),
+  useUnpinThread: () => ({ mutateAsync: mutations.unpinThreadAsync }),
+  useUpdateThread: () => ({ mutateAsync: mutations.updateThreadAsync }),
 }));
 
 vi.mock("@/components/ui/app-route-anchor", () => ({
@@ -309,6 +317,39 @@ describe("useSidebarThreads sections", () => {
 });
 
 describe("useSidebarThreadActions", () => {
+  it.each([
+    { pinned: true, pinnedAt: null, mutate: mutations.pinThreadAsync },
+    { pinned: false, pinnedAt: 42, mutate: mutations.unpinThreadAsync },
+  ])(
+    "waits for the optimistic host mutation when setPinned is $pinned",
+    async ({ pinned, pinnedAt, mutate }) => {
+      const thread = makeThreadListEntry({ id: "thr_1", pinnedAt });
+      state.data = payload([thread]);
+      let resolveMutation: (() => void) | undefined;
+      mutate.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveMutation = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useSidebarThreadActions());
+
+      let settled = false;
+      const request = result.current.setPinned(thread.id, pinned).then(() => {
+        settled = true;
+      });
+      await act(async () => Promise.resolve());
+
+      expect(mutate).toHaveBeenCalledWith({ id: thread.id });
+      expect(settled).toBe(false);
+
+      await act(async () => {
+        resolveMutation?.();
+        await request;
+      });
+      expect(settled).toBe(true);
+    },
+  );
+
   it("opens a project composer without a legacy route transition", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
@@ -326,18 +367,18 @@ describe("useSidebarThreadActions", () => {
     });
   });
 
-  it("files a new thread under a section the way bb's section menu does", () => {
+  it("opens a section without changing the selected project", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
-        projectId: PERSONAL_PROJECT_ID,
         sectionId: "sec_later",
         focusPrompt: true,
       });
     });
 
+    expect(actions.setRootComposeProjectId).not.toHaveBeenCalled();
     expect(actions.navigate).toHaveBeenCalledWith("/", {
       state: { focusPrompt: true, sectionId: "sec_later" },
     });

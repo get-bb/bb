@@ -168,7 +168,7 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     expect(screen.getByRole("heading", { name: "GitHub" })).toBeTruthy();
     expect(screen.getAllByText("BB Official").length).toBeGreaterThan(0);
-    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(screen.queryByText("Developer tools")).toBeNull();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
@@ -223,6 +223,32 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screenshot.getAttribute("loading")).toBe("lazy");
     expect(screen.getByText("Listed")).toBeTruthy();
     expect(container.textContent).not.toContain("Last updated");
+  });
+
+  it("links the category from the byline and drops the duplicate official marketplace", () => {
+    render(
+      <MemoryRouter>
+        <CatalogPluginDetail
+          entry={{
+            ...GITHUB_CATALOG_ENTRY,
+            categoryId: "code-and-reviews",
+            category: "Code & Reviews",
+          }}
+          onInstall={() => undefined}
+          catalogEntries={[]}
+          onOpenPlugin={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", {
+      name: "Browse Code & Reviews plugins",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "/plugins?shelf=category%3Acode-and-reviews",
+    );
+    expect(screen.queryByText("Marketplace")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Details" })).toBeNull();
   });
 
   it("explains why an incompatible official plugin cannot be installed", () => {
@@ -286,7 +312,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
 
     expect(screen.getAllByText("BB Official").length).toBeGreaterThan(0);
-    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(screen.queryByText("Developer tools")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();

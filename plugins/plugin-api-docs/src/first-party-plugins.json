@@ -1,0 +1,157 @@
+[
+  {
+    "id": "account-pool",
+    "name": "Account Pooler [Experimental]",
+    "icon": "Layers"
+  },
+  {
+    "id": "ask-user-question",
+    "name": "Ask User Question",
+    "icon": "MessageQuestion"
+  },
+  {
+    "id": "automations",
+    "name": "Automations",
+    "icon": "Repeat"
+  },
+  {
+    "id": "browser-automation",
+    "name": "Browser Automation",
+    "icon": "Globe"
+  },
+  {
+    "id": "concurrency-limit",
+    "name": "Concurrency limit",
+    "icon": "Limitation"
+  },
+  {
+    "id": "custom-instructions",
+    "name": "Custom instructions",
+    "icon": "EditFile"
+  },
+  {
+    "id": "simple-notes",
+    "name": "Docs",
+    "icon": "FileText"
+  },
+  {
+    "id": "drafts",
+    "name": "Drafts",
+    "icon": "EditFile"
+  },
+  {
+    "id": "monaco-editor",
+    "name": "File Editor",
+    "icon": "Code"
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "icon": "Github"
+  },
+  {
+    "id": "inline-vis",
+    "name": "Inline visualizations",
+    "icon": "AppWindow"
+  },
+  {
+    "id": "keep-awake",
+    "name": "Keep Awake",
+    "icon": "Coffee"
+  },
+  {
+    "id": "memory",
+    "name": "Memory",
+    "icon": "Brain"
+  },
+  {
+    "id": "navigation",
+    "name": "Navigation",
+    "icon": "PanelLeft"
+  },
+  {
+    "id": "environment-modal-sandbox",
+    "name": "Modal Sandbox [Experimental]",
+    "icon": null
+  },
+  {
+    "id": "environment-personal-workspace",
+    "name": "Personal workspace",
+    "icon": "Folder"
+  },
+  {
+    "id": "environment-project-checkout",
+    "name": "Project checkout",
+    "icon": "Laptop"
+  },
+  {
+    "id": "provider-usage",
+    "name": "Provider usage",
+    "icon": "ChartColumn"
+  },
+  {
+    "id": "provider-retry",
+    "name": "Provider retry",
+    "icon": "ArrowReloadHorizontal"
+  },
+  {
+    "id": "push-notifications",
+    "name": "Push notifications",
+    "icon": "BellDot"
+  },
+  {
+    "id": "connect",
+    "name": "Remote access",
+    "icon": "Smartphone"
+  },
+  {
+    "id": "secrets",
+    "name": "Secrets",
+    "icon": "Lock"
+  },
+  {
+    "id": "scheduled-send",
+    "name": "Send later",
+    "icon": "Calendar"
+  },
+  {
+    "id": "side-chat",
+    "name": "Side chat",
+    "icon": "SideChat"
+  },
+  {
+    "id": "tasks",
+    "name": "Tasks",
+    "icon": "ListTodo"
+  },
+  {
+    "id": "workflows",
+    "name": "Workflows",
+    "icon": "Workflow"
+  },
+  {
+    "id": "environment-git-worktree",
+    "name": "Worktree",
+    "icon": "FolderGit"
+  },
+  {
+    "id": "provider-acp",
+    "name": "ACP providers",
+    "icon": null
+  },
+  {
+    "id": "provider-claude-code",
+    "name": "Claude Code provider",
+    "icon": null
+  },
+  {
+    "id": "provider-codex",
+    "name": "Codex provider",
+    "icon": null
+  },
+  {
+    "id": "provider-pi",
+    "name": "Pi provider",
+    "icon": null
+  }
+]

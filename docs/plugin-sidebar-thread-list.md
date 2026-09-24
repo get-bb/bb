@@ -623,8 +623,9 @@ the monorepo uses. The copy's CLI command, preferences mirror, and log
 prefixes follow its new plugin id.
 
 Inside this repository, `scripts/forkable-plugins.json` lists the built-ins
-held to that rule. The `bb/forkable-plugin-imports` lint rule rejects `@bb/*`
-imports in them and `@/` imports that no registry item provides.
+held to that rule ([forkable-plugins.md](forkable-plugins.md)). The
+`bb/forkable-plugin-imports` lint rule rejects workspace-package imports in
+them and `@/` imports that no registry item provides.
 `pnpm check:plugin-forks` makes that copy in a temporary directory, with the
 same rewrite `scripts/lib/plugin-fork.mjs` implements, and runs its install,
 typecheck, tests, and `bb plugin build` there.

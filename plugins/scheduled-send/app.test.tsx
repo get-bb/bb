@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
-// Frontend tests: the registration shape the host reads, and the plus-menu →
-// dialog → composer-submit → clear flow that is the whole interaction.
+
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk/app";
 
-// jsdom omits this browser method; Radix uses it when opening the time picker.
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
@@ -85,14 +83,10 @@ describe("registration", () => {
     expect(app.composerCustomizations).toMatchObject([
       {
         id: "send-later",
-        // Queued-message editors and side chats are deliberately excluded:
-        // neither owns a dispatchable submission of its own.
         scopes: ["thread", "new-thread"],
         plusMenu: [
           { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
-        // The picker is a portalled dialog, so the mount point wears no card
-        // chrome.
         banners: [{ id: "send-later", chrome: "bare" }],
       },
     ]);
@@ -117,8 +111,6 @@ describe("picker visibility", () => {
   });
 
   it("stays closed in a composer other than the one it was opened from", () => {
-    // The store is module-level and every composer mounts this slot, so scope
-    // identity is what keeps the picker in one place.
     openSendLater(
       composerView({ scope: { kind: "thread", threadId: "thr_a" } }),
     );
@@ -134,7 +126,6 @@ describe("picker visibility", () => {
     const slot = openPicker();
     expect(slot.getByRole("dialog")).toBeTruthy();
 
-    // The user sent the message the ordinary way while the picker was open.
     await slot.behavior.setComposerText("");
 
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
@@ -162,16 +153,11 @@ describe("scheduling", () => {
     expect(sendAt).toBeGreaterThanOrEqual(before + HOUR_MS);
     expect(sendAt).toBeLessThanOrEqual(Date.now() + HOUR_MS);
 
-    // The host's own submit pipeline consumed the draft, so nothing is left to
-    // schedule and the picker closes.
     await waitFor(() => expect(slot.inspection.composer.text).toBe(""));
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
   });
 
   it("schedules a new-thread draft through the same composer pipeline", async () => {
-    // The whole point of routing through the composer: a new-thread draft is
-    // scheduled with the execution selections the host resolves, not with
-    // anything this plugin could assemble.
     const before = Date.now();
     const slot = openPicker({
       scope: { kind: "new-thread", projectId: "prj_1" },
@@ -185,9 +171,9 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    expect(
-      slot.inspection.composer.submits[0]!.sendAt,
-    ).toBeGreaterThanOrEqual(before + HOUR_MS);
+    expect(slot.inspection.composer.submits[0]!.sendAt).toBeGreaterThanOrEqual(
+      before + HOUR_MS,
+    );
   });
 
   it("reveals structured custom fields and schedules their local time", async () => {
@@ -208,9 +194,7 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    expect(slot.inspection.composer.submits[0]!.sendAt).toBe(
-      target.getTime(),
-    );
+    expect(slot.inspection.composer.submits[0]!.sendAt).toBe(target.getTime());
   });
 
   it("blocks a custom time that has already passed", async () => {

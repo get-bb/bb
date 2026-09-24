@@ -52,24 +52,21 @@ Packaged launcher settings
 but the CLI identifies server and launcher settings that are startup-only,
 including binding/ports, data and the dev-app port, telemetry, inherited skill
 roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
-`bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
-`BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
-change, run `bb-app stop && bb-app start` or restart the desktop app. Until
-then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
-`0.0.0.0` listener.
+`bb-app config`, not `bb-app env`, to change `BB_APP_URL` live. After a
+startup-only change, run `bb-app stop && bb-app start` or restart the desktop
+app. Until then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a
+previous `0.0.0.0` listener.
 
 With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
 `http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
 through loopback; this does not narrow the IPv4 wildcard listener. Containers
 must also publish the port to the host.
 
-Server helper completions use `BB_INFERENCE` first, then
-`BB_INFERENCE_FALLBACK` after a transient timeout, rate limit, or
-service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and
-`codex/gpt-5.4-mini`, respectively.
-
-  bb-app config set BB_INFERENCE <provider/model>
-  bb-app config set BB_INFERENCE_FALLBACK <provider/model>
+Thread titles, commit messages, and voice transcripts come from AI services
+that plugins register, chosen per task with `bb settings ai-services` (see
+Server-backed General settings below). `BB_INFERENCE`,
+`BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION` were removed: bb ignores them
+in `~/.bb/config.json` with a warning, and `bb-app config set` refuses them.
 
 Server-backed General settings
 
@@ -137,6 +134,8 @@ branches bb creates after the change.
 
   bb settings show
   bb settings ai-services
+  bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
+  bb settings ai-services test <thread-title|commit-message>
   bb settings general <key> <value>
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
@@ -144,10 +143,15 @@ branches bb creates after the change.
   bb settings version [--force]
   bb settings reload
 
-`bb settings ai-services` shows the helper-inference and voice-transcription
-settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
-`bb-app config`) and the plugin-registered AI services they may name as
-`<service>/<model>`.
+`bb settings ai-services` shows which AI service writes thread titles (and so
+branch names), commit messages, and voice transcripts, plus every service a
+plugin registers and whether it is ready. `set` picks `automatic` (the services
+bb ships, in order: Codex, then bb cloud), `off`, or one service id; a picked
+service is never swapped for another. A service is identified by its plugin
+and its id, so two plugins may use the same id; pass `--plugin <plugin-id>`
+when they do. `test` runs a sample title or commit message through the current
+choice. Settings → AI services has the same controls. Each plugin chooses its
+own model.
 
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
@@ -185,14 +189,7 @@ The default-off `serverMove` experiment enables Move server here in Settings →
 Machines and the server-backed `bb server move` and `bb server export`
 commands. Enable it with `bb settings experiment serverMove true`.
 
-The default-off `timelineWindowing` experiment mounts only nearby rows in long
-timelines and large expanded timeline details. Enable it with
-`bb settings experiment timelineWindowing true`.
-
-The default-off `multiMachinePicker` experiment uses a searchable, target-first
-environment picker for projects with at least three machines and adds search to
-machine-only pickers with more than five machines. Enable it with
-`bb settings experiment multiMachinePicker true`.
+Long timelines and large expanded timeline details mount only nearby rows.
 
 Thread timeline pages select complete conversation groups using
 `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` (default 1500) as a selection budget.
@@ -280,12 +277,12 @@ Host files and voice transcription
   bb file read|write|list|paths|mkdir|move|remove ...
   bb voice transcribe <audio-file> [--prompt <context>]
 
-Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
-`codex/gpt-transcribe`. Override it with
-`bb-app config set BB_TRANSCRIPTION <provider/model>`. Plugin-served audio
-uploads accept up to 20 MB; direct OpenAI uploads accept up to 25 MB. These
-limits apply to the app, SDK, and CLI. If transcription fails in the app,
-the error toast offers a download of the original recording until dismissed.
+Voice transcription uses the Voice input service chosen with
+`bb settings ai-services set voice <automatic|off|service-id>`. bb accepts
+recordings up to 25 MB, and each service may set a lower limit; Codex takes up
+to 20 MB. These limits apply to the app, SDK, and CLI. If transcription fails
+in the app, the error toast offers a download of the original recording until
+dismissed.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file list` and

@@ -56,7 +56,6 @@ function findOwnedWindowKey(
 }
 
 export function TimelineWindowedItems({
-  enabled,
   alwaysMountedKeys = EMPTY_KEY_SET,
   estimateItemHeight,
   gap,
@@ -67,7 +66,7 @@ export function TimelineWindowedItems({
   renderItem,
 }: TimelineWindowedItemsProps) {
   const configured =
-    enabled && itemKeys.length >= minItemCount && getScrollElement !== null;
+    itemKeys.length >= minItemCount && getScrollElement !== null;
   const [scrollRootUsable, setScrollRootUsable] = useState(true);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);

@@ -72,6 +72,7 @@ function checkEnvironment(
     resolveMode: async (): Promise<ServerMoveModeResolution> => ({
       mode: "direct",
     }),
+    serverAppSurface: "web",
     serverTimeZone: "UTC",
     targetServerPort: () => 39_101,
     ...overrides,
@@ -220,6 +221,40 @@ describe("server move checks", () => {
       );
       expect(result.sourceServerHost).toBeNull();
       expect(result.response.canMove).toBe(false);
+    }));
+
+  it("says the desktop app keeps its computer connected as a background machine", () =>
+    withTestHarness(async (harness) => {
+      seedHost(harness.deps, { id: OLD, name: "Laptop" });
+      seedPrimaryHost(harness.deps, OLD);
+      seedHost(harness.deps, { id: NEW, name: "Desktop" });
+      registerInspectingDaemon(harness, OLD, inspectResult());
+      registerInspectingDaemon(harness, NEW, inspectResult());
+
+      const desktop = await runServerMoveCheck(
+        checkEnvironment(harness, { serverAppSurface: "desktop" }),
+        { moveInProgress: false, request: request() },
+      );
+      const web = await runServerMoveCheck(checkEnvironment(harness), {
+        moveInProgress: false,
+        request: request(),
+      });
+
+      expect(
+        desktop.response.items.find(
+          (item) => item.id === "desktop-app-machine",
+        ),
+      ).toEqual({
+        id: "desktop-app-machine",
+        severity: "info",
+        title: "Laptop will keep running as a machine in the background",
+        detail:
+          "This server runs in the bb desktop app. After the move, the app installs a background service that keeps this computer connected to the new server and updates it with the server, even while the app is closed. The service needs Node.js 22.19 or newer on this computer; without it, the computer stays connected only while the app is open.",
+      });
+      expect(desktop.response.canMove).toBe(web.response.canMove);
+      expect(itemIds(web.response.items)).not.toContain(
+        "info:desktop-app-machine",
+      );
     }));
 
   it("names the old server copy when moving back to the machine the server left", () =>

@@ -9,11 +9,13 @@ import type { SidebarThread } from "./sidebar-thread.js";
 
 interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
+  rootItems: ProjectThreadItem[];
   rootNodes: ProjectThreadNode[];
 }
 
 interface BuildPinnedSidebarStateArgs {
   draftThreadIds?: ReadonlySet<string>;
+  groupEnvironmentThreads?: boolean;
   threads: readonly SidebarThread[];
 }
 
@@ -87,8 +89,20 @@ function collectRootNodes(
   });
 }
 
+function getPinnedItemThread(item: ProjectThreadItem): SidebarThread {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread;
+    case "environment":
+      return item.group.nodes[0].thread;
+    case "section":
+      return getPinnedItemThread(item.group.items[0]);
+  }
+}
+
 export function buildPinnedSidebarState({
   draftThreadIds = new Set(),
+  groupEnvironmentThreads = false,
   threads,
 }: BuildPinnedSidebarStateArgs): PinnedSidebarState {
   const explicitlyPinnedThreads = threads.filter(
@@ -122,18 +136,30 @@ export function buildPinnedSidebarState({
   const effectivePinnedThreads = threads.filter((thread) =>
     effectivePinnedThreadIds.has(thread.id),
   );
-  const projectItems = buildProjectThreadGroups(
+  const rootItems = buildProjectThreadGroups(
     effectivePinnedThreads,
     compareStandardThreads,
     draftThreadIds,
+    groupEnvironmentThreads,
   );
-  const rootNodes = collectRootNodes(projectItems);
+  for (const item of rootItems) {
+    if (item.kind === "environment") {
+      item.group.nodes.sort((left, right) =>
+        comparePinnedRoots(left.thread, right.thread),
+      );
+    }
+  }
+  rootItems.sort((left, right) =>
+    comparePinnedRoots(getPinnedItemThread(left), getPinnedItemThread(right)),
+  );
+  const rootNodes = collectRootNodes(rootItems);
   rootNodes.sort((left, right) =>
     comparePinnedRoots(left.thread, right.thread),
   );
 
   return {
     effectivePinnedThreadIds,
+    rootItems,
     rootNodes,
   };
 }

@@ -1,17 +1,22 @@
 // @vitest-environment jsdom
 
+import { resolve } from "node:path";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
-import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  collectPluginAppRegistrations,
+  isPluginAppDefinition,
+} from "@/lib/plugin-app-definition";
+import { installPluginRuntime } from "@/lib/plugin-frontend";
 import {
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
@@ -51,9 +56,23 @@ vi.mock("@/views/thread-detail/PaneContext", () => ({
   useOptionalPaneContext: () => pane,
 }));
 
-const piApp = await loadPluginApp(() =>
-  import("../../../../../plugins/provider-pi/app"),
+const PI_APP_MODULE = resolve(
+  __dirname,
+  "../../../../../plugins/provider-pi/app.tsx",
 );
+
+async function loadPiPendingInteractions(): Promise<
+  NonNullable<PluginRegistrationSet["pendingInteractions"]>
+> {
+  installPluginRuntime();
+  const module: { default?: unknown } = await import(
+    /* @vite-ignore */ PI_APP_MODULE
+  );
+  if (!isPluginAppDefinition(module.default)) {
+    throw new Error("provider-pi's app.tsx exports no plugin app definition");
+  }
+  return collectPluginAppRegistrations(module.default).pendingInteractions;
+}
 
 function renderComposer(ui: React.ReactElement) {
   return render(
@@ -253,10 +272,10 @@ describe("PluginPendingInteractionComposer", () => {
     ).toBe("true");
   });
 
-  it("selects a pi option with its displayed number key", () => {
+  it("selects a pi option with its displayed number key", async () => {
     setPluginSlotRegistrations(
       "provider-pi",
-      registrations(piApp.pendingInteractions),
+      registrations(await loadPiPendingInteractions()),
     );
     const data = {
       requestId: "ui-1",
@@ -285,8 +304,7 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.getByText("2", { selector: "kbd" })).toBeDefined();
     fireEvent.keyDown(window, { key: "2" });
     expect(
-      (screen.getByRole("radio", { name: "Deny" }) as HTMLInputElement)
-        .checked,
+      (screen.getByRole("radio", { name: "Deny" }) as HTMLInputElement).checked,
     ).toBe(true);
   });
 

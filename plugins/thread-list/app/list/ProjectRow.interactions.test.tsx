@@ -601,6 +601,40 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
+  it.each([
+    { isCollapsed: true, expectedHoverReveal: false },
+    { isCollapsed: false, expectedHoverReveal: true },
+  ])(
+    "sets environment disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
+    ({ expectedHoverReveal, isCollapsed }) => {
+      const environment = makeSidebarEnvironment({
+        id: "env_disclosure",
+        name: "Disclosure workspace",
+        providerId: "git-worktree",
+        isWorktree: true,
+      });
+      renderProjectRow(
+        vi.fn(),
+        {
+          status: "ready",
+          threads: [
+            makeThread({ id: "thr_disclosure_one", environment }),
+            makeThread({ id: "thr_disclosure_two", environment }),
+          ],
+        },
+        false,
+        new Set(isCollapsed ? ["env_disclosure"] : []),
+      );
+
+      const toggle = screen.getByRole("button", {
+        name: `${isCollapsed ? "Expand" : "Collapse"} Disclosure workspace threads`,
+      });
+      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
+        expectedHoverReveal,
+      );
+    },
+  );
+
   it("shows a working draft before named work for a collapsed environment", () => {
     renderProjectRow(
       vi.fn(),
@@ -684,6 +718,12 @@ describe("ProjectRow interactions", () => {
         screen.queryByRole("textbox", { name: "Section name" }),
       ).toBeNull(),
     );
+    expect(
+      screen.getByRole("button", { name: "New section section actions" }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Building section actions" }),
+    ).toBeNull();
   });
 
   it("uses shared runtime precedence when a top-level section is collapsed", () => {

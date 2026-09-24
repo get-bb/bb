@@ -64,6 +64,7 @@ import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
+import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
@@ -1046,11 +1047,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Pair the bb mobile app over bb connect: shows Add mobile device under Remote access and enables bb connect machine-code.",
   },
-  multiMachinePicker: {
-    label: "Multi-machine picker",
-    description:
-      "Use searchable, target-first environment and machine pickers when many machines are available.",
-  },
   serverMove: {
     label: "Server move",
     description:
@@ -1060,11 +1056,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     label: "Sidebar progressive disclosure",
     description:
       "In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged.",
-  },
-  timelineWindowing: {
-    label: "Timeline windowing",
-    description:
-      "Mount only nearby rows in long timelines and expanded timeline details.",
   },
 };
 export function ExperimentsSettingsSection({
@@ -1170,6 +1161,8 @@ export function SettingsView() {
         }
       />
     );
+  } else if (activeSection === "ai-services") {
+    content = <AiServicesSettingsSection />;
   } else if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection

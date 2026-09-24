@@ -646,6 +646,7 @@ describe("manual import completion", () => {
       });
       const app = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: true,
           pending: null,
@@ -684,6 +685,7 @@ describe("pending server mode", () => {
       upsertHost(harness.db, harness.hub, { id: "host-new", name: "Desktop" });
       const pendingApp = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: false,
           pending: {
@@ -793,6 +795,7 @@ describe("pending server mode", () => {
     withTestHarness(async (harness) => {
       const pendingApp = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: false,
           pending: {

@@ -68,6 +68,15 @@ export type HostEnrollmentCommandResponse = z.infer<
   typeof hostEnrollmentCommandResponseSchema
 >;
 
+export const hostReconnectResponseSchema = z
+  .object({
+    command: z.string().min(1),
+    expiresAt: z.number().int().positive(),
+    hostId: z.string().min(1),
+  })
+  .strict();
+export type HostReconnectResponse = z.infer<typeof hostReconnectResponseSchema>;
+
 export const createHostJoinCodeResponseSchema = z.object({
   joinCode: z.string().min(1),
   hostId: z.string().min(1),

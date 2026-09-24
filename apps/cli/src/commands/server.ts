@@ -25,6 +25,11 @@ import {
   unlockServerCopy,
 } from "./server-local.js";
 import {
+  findLocalMachineServiceFile,
+  formatMachineServiceRemoval,
+  installMachineService,
+} from "./server-machine-service.js";
+import {
   blockedStartItems,
   callServerMoveRoute,
   existingDataGuidance,
@@ -269,7 +274,7 @@ export function registerServerCommands(
 
   const move = server
     .command("move")
-    .description("Move the bb server to another machine")
+    .description("Move the bb server to another machine (experimental)")
     .option("--to <machine>", "Machine ID or name that should run the server")
     .option(
       "--address <url>",
@@ -457,6 +462,12 @@ export function registerServerCommands(
             `The old server copy in ${dataDir} was deleted, so there is nothing to unlock. Unlocking would start an empty bb server.`,
           );
         }
+        const serviceFile = await findLocalMachineServiceFile(dataDir);
+        if (serviceFile !== null) {
+          throw new Error(
+            `A background service (${serviceFile}) runs this computer as a machine from ${dataDir}. Unlocking would start a second host daemon on the same data. Remove the service first: ${formatMachineServiceRemoval(serviceFile)}`,
+          );
+        }
         if (!opts.force) {
           const probe = await probeMovedServer({ dataDir, lock });
           if (probe.kind === "running") {
@@ -497,6 +508,36 @@ export function registerServerCommands(
         }
         console.log(
           `Unlocked ${dataDir}. bb on this computer starts the old server again within a few seconds; if bb isn't running, start it with ${startServerHint(dataDir)}.`,
+        );
+      }),
+    );
+
+  server
+    .command("install-machine-service")
+    .description(
+      "Keep this computer connected as a machine with a background service after its server moved away",
+    )
+    .option(
+      "--data-dir <dir>",
+      "Data directory the server moved away from (default: BB_DATA_DIR or ~/.bb)",
+    )
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: LocalServerCommandOptions) => {
+        const result = await installMachineService({
+          confirm: (message) =>
+            opts.yes
+              ? Promise.resolve(true)
+              : confirmDestructiveAction(message),
+          dataDir: resolveLocalDataDir(opts.dataDir),
+          installerOutput: opts.json ? "stderr" : "stdout",
+          report: (line) => console.error(line),
+        });
+        if (result === null) return;
+        if (outputJson(opts, result)) return;
+        console.log(
+          `This computer now stays connected to ${result.toHostName} as a machine, even when bb is closed. The service updates bb whenever the server does.`,
         );
       }),
     );

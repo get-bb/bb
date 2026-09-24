@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import type { ThreadEvent } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   ITEM_ID_PATTERN,
   TURN_1,
@@ -8,6 +7,8 @@ import {
   createClaudeDeltaHarness,
   loadFixture,
   spawningToolUseFor,
+  threadScope,
+  turnScope,
 } from "./delta-test-harness.js";
 
 const THREAD_ID = "thr_claude_rate_limits";

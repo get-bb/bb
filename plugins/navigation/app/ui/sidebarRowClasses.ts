@@ -1,11 +1,11 @@
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   COARSE_POINTER_DOT_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/coarse-pointer-sizing";
+import { cn } from "@/lib/utils";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "./context-selection.js";
 import { SIDEBAR_HOVER_ACTIONS_GAP_CLASS } from "./sidebar-hover-actions.js";
 

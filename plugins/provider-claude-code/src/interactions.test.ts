@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { providerInteractionOutcomeSchema } from "@bb/domain";
-import type {
-  PendingInteractionResolution,
-  UserQuestionPendingInteractionPayload,
-  UserQuestionPendingInteractionResolution,
-} from "@bb/domain";
+import {
+  providerInteractionOutcomeSchema,
+  type PendingInteractionResolution,
+  type UserQuestionPendingInteractionPayload,
+  type UserQuestionPendingInteractionResolution,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   buildClaudeApprovalInteractionPayload,
   buildClaudeInteractiveResponse,

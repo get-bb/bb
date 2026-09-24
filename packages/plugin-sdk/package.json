@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.5.16",
+  "version": "0.5.23",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -25,12 +25,6 @@
       "types": "./bundled-types/bb-plugin-sdk.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./ai-services": {
-      "source": "./src/ai-services.ts",
-      "types": "./bundled-types/bb-plugin-sdk-ai-services.d.ts",
-      "import": "./dist/ai-services.js",
-      "default": "./dist/ai-services.js"
     },
     "./provider-bridge": {
       "source": "./src/provider-bridge.ts",
@@ -134,6 +128,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {

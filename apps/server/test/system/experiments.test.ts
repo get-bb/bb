@@ -14,10 +14,8 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         changelogPreview: false,
         mobileApp: false,
-        multiMachinePicker: false,
         serverMove: false,
         sidebarProgressiveDisclosure: false,
-        timelineWindowing: false,
       });
     });
   });
@@ -30,28 +28,22 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           changelogPreview: true,
           mobileApp: true,
-          multiMachinePicker: true,
           serverMove: true,
           sidebarProgressiveDisclosure: true,
-          timelineWindowing: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
         mobileApp: true,
-        multiMachinePicker: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
-        timelineWindowing: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         mobileApp: true,
-        multiMachinePicker: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
-        timelineWindowing: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -60,10 +52,8 @@ describe("experiments settings", () => {
       ).toEqual({
         changelogPreview: true,
         mobileApp: true,
-        multiMachinePicker: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
-        timelineWindowing: true,
       });
     });
   });
@@ -79,10 +69,8 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           changelogPreview: false,
           mobileApp: false,
-          multiMachinePicker: false,
           serverMove: false,
           sidebarProgressiveDisclosure: false,
-          timelineWindowing: false,
         }),
       });
       expect(put.status).toBe(200);

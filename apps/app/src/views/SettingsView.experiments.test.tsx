@@ -15,10 +15,8 @@ function renderSection(
       experiments={{
         changelogPreview: false,
         mobileApp: false,
-        multiMachinePicker: false,
         serverMove: false,
         sidebarProgressiveDisclosure: false,
-        timelineWindowing: false,
       }}
       onExperimentChange={onExperimentChange}
     />,
@@ -40,24 +38,10 @@ describe("ExperimentsSettingsSection", () => {
     expect(onChange).toHaveBeenCalledWith("mobileApp", true);
   });
 
-  it("reports multi-machine picker changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Multi-machine picker"));
-    expect(onChange).toHaveBeenCalledWith("multiMachinePicker", true);
-  });
-
   it("reports sidebar progressive disclosure changes", () => {
     const onChange = vi.fn();
     renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Sidebar progressive disclosure"));
     expect(onChange).toHaveBeenCalledWith("sidebarProgressiveDisclosure", true);
-  });
-
-  it("reports timeline windowing changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Timeline windowing"));
-    expect(onChange).toHaveBeenCalledWith("timelineWindowing", true);
   });
 });

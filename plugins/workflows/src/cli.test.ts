@@ -4,6 +4,7 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import plugin from "./server.js";
 
@@ -228,8 +229,8 @@ describe("workflows CLI argument validation", () => {
     expect(author.skills).toEqual(["workflows"]);
   });
 
-  it("keeps the removed workflow-specific catalog command out of project documentation", () => {
-    const root = resolve(process.cwd(), "../..");
+  it("keeps the removed workflow-specific catalog command out of the plugin's documentation", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
     const removedCommand = ["bb workflows", "catalog"].join(" ");
     const matches = documentationFiles(root)
       .filter((path) => readIfPresent(path).includes(removedCommand))

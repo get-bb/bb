@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "coarse-pointer-visibility",
+  "type": "registry:ui",
+  "title": "coarse-pointer-visibility",
+  "description": "BB ui \"coarse-pointer-visibility\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/coarse-pointer-visibility.ts",
+      "content": "export const COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS =\n  \"pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100\";\n",
+      "type": "registry:ui",
+      "target": "components/ui/coarse-pointer-visibility.ts"
+    }
+  ]
+}

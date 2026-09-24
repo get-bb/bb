@@ -472,6 +472,28 @@ describe("MessageActionBar", () => {
     expect(onAddToChat).toHaveBeenCalledWith("An answer.");
   });
 
+  it("marks the action row while its overflow menu is open", () => {
+    const resizeObserver = installControlledResizeObserver();
+    render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="end"
+        mobileActionDisplay="overflow"
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+    resizeObserver.reportWidth(44);
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    const row = trigger.parentElement;
+
+    expect(row?.hasAttribute("data-menu-open")).toBe(false);
+    fireEvent.pointerDown(trigger);
+    expect(row?.hasAttribute("data-menu-open")).toBe(true);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(row?.hasAttribute("data-menu-open")).toBe(false);
+  });
+
   it("keeps every desktop action in the overflow menu when nothing fits inline", () => {
     const resizeObserver = installControlledResizeObserver();
     render(

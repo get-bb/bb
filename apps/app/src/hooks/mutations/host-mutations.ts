@@ -106,3 +106,13 @@ export function useRetryHostCleanup() {
     sdk.hosts.experimental_retryCleanup({ hostId }),
   );
 }
+
+export function useReconnectHost() {
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: (hostId: string) =>
+      sdk.hosts.experimental_reconnect({ hostId }),
+  });
+}

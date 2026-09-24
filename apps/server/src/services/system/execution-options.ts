@@ -28,6 +28,7 @@ import {
 } from "../providers/native-roots.js";
 import {
   toProviderModelCatalogFailureCode,
+  toProviderModelCatalogFailureDetail,
   type ProviderModelCatalogAccess,
 } from "../providers/provider-model-catalog-store.js";
 import type {
@@ -61,7 +62,7 @@ function unavailableProviderModelResult(providerId: string): ModelListResult {
   return {
     models: [],
     selectedOnlyModels: [],
-    modelLoadError: { providerId, code: "provider_unavailable" },
+    modelLoadError: { providerId, code: "provider_unavailable", detail: null },
   };
 }
 
@@ -576,7 +577,11 @@ async function loadSystemProviderModels(
       providerId: args.provider.id,
     }),
     selectedOnlyModels: [],
-    modelLoadError: { providerId: args.provider.id, code: result.code },
+    modelLoadError: {
+      providerId: args.provider.id,
+      code: result.code,
+      detail: result.detail,
+    },
   };
 }
 
@@ -609,5 +614,6 @@ function buildModelLoadError({
   return {
     providerId: provider.id,
     code: toProviderModelCatalogFailureCode(error),
+    detail: toProviderModelCatalogFailureDetail(error),
   };
 }

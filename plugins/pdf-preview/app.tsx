@@ -15,6 +15,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   const [state, setState] = useState<PreviewState>({ status: "loading" });
   const target = useMemo(
     () => resolvePdfReadTarget(path, source),
+    // oxlint-disable-next-line react/exhaustive-deps
     [
       path,
       source.environmentId,

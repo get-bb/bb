@@ -108,6 +108,7 @@ import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
+  promptEditorCopiedSlice,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
   promptEditorValueFromSlice,
@@ -244,7 +245,6 @@ export interface PromptBoxSubmissionConfig {
 
 interface PromptSubmitButtonProps {
   canSubmit: boolean;
-  hasInput: boolean;
   className: string;
   disabledReason: string | undefined;
   icon: IconName | undefined;
@@ -259,7 +259,6 @@ interface PromptSubmitButtonProps {
 
 function PromptSubmitButton({
   canSubmit,
-  hasInput,
   className,
   disabledReason,
   icon,
@@ -280,7 +279,7 @@ function PromptSubmitButton({
       data-promptbox-submit-action=""
       type="submit"
       size={isCompact ? "icon" : "sm"}
-      variant={hasInput ? "default" : "ghost"}
+      variant="default"
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
@@ -335,8 +334,6 @@ function PromptSubmitButton({
       }}
       className={cn(
         className,
-        !hasInput &&
-          "ring-1 ring-inset ring-border text-muted-foreground/50 disabled:opacity-100",
         label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
@@ -1743,6 +1740,8 @@ export function PromptBoxInternal({
           ...(id ? { id } : {}),
           role: "textbox",
         },
+        transformCopied: (slice, view) =>
+          promptEditorCopiedSlice(slice, view.state.selection),
         clipboardTextSerializer: (slice, view) =>
           promptEditorClipboardTextFromSlice(slice, view.state.schema),
         handleDOMEvents: {
@@ -3478,7 +3477,6 @@ export function PromptBoxInternal({
                       >
                         <PromptSubmitButton
                           canSubmit={canSubmit}
-                          hasInput={hasSubmittableInput}
                           icon={submitIcon}
                           label={submitLabel}
                           className={cn(

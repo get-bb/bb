@@ -10,11 +10,13 @@ Hooks:
   `sdk.threads.update({ id, sectionId })`, `sdk.threads.pin({ id })`,
   `sdk.threads.spawn(request)`. `spawn` and `fork` stamp your plugin as the
   origin and the plugin-metadata calls default `pluginId`, exactly like the
-  backend client. bb's own surfaces refresh over realtime after a write, so
-  nothing else is needed; the writes are not optimistic there, which is what
-  `experimental_useSidebarThreadActions()` is for. The client is stable, so
-  it is safe in dependency lists. Test with `renderSlot({ sdk: { threads:
-  { update: async () => ({ … }) } } })` and read `inspection.sdkCalls`.
+  backend client. Thread title, section, and parent updates are optimistic in
+  bb's own surfaces, and synchronous calls are applied in one cache transaction;
+  other writes refresh over realtime. Use
+  `experimental_useSidebarThreadActions()` for optimistic pin, read state,
+  rename, and archive actions. The client is stable, so it is safe in dependency
+  lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
+  } } })` and read `inspection.sdkCalls`.
 - `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
   input, and result inference from a type-only backend contract import.
   Reach for it when the work needs your server: secrets, host files, or your
@@ -33,6 +35,11 @@ Hooks:
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
+- `experimental_useQuestionFormHost()` → `{ shortcuts, registerChoiceHandler }`
+  inside a `pendingInteraction` component: the host-owned answer shortcuts by
+  zero-based option index, and a way to act when the person presses one. The
+  registry's `question-form` item uses it. Empty outside a pending interaction
+  and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),

@@ -374,7 +374,7 @@ describe("startup reconciliation", () => {
 
   function thread(
     threadId: string,
-    status: "idle" | "active" | "starting" | "stopping" | "error",
+    status: "idle" | "pending" | "active" | "starting" | "stopping" | "error",
     extra: { deletedAt?: number | null; archivedAt?: number | null } = {},
   ) {
     return {
@@ -439,6 +439,11 @@ describe("startup reconciliation", () => {
       {
         id: "auto_starting",
         thread: thread("thr_starting", "starting"),
+        status: "running",
+      },
+      {
+        id: "auto_pending",
+        thread: thread("thr_pending", "pending"),
         status: "running",
       },
       {

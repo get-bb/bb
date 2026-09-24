@@ -365,6 +365,7 @@ function ThreadRowComponent({
   const childActivity =
     parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
   const hasChildren = childCount > 0;
+  const reserveActionSpace = crossProjectLabel !== null || (isParentRow && hasChildren);
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const trailingIndicatorState: ThreadListIndicatorState = {
     hasPendingInteraction:
@@ -475,48 +476,12 @@ function ThreadRowComponent({
           style={{ left: parentGuideLeft }}
         />
       ) : null}
-      {crossProjectLabel !== null ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              data-sidebar-thread-cross-project=""
-              role="img"
-              aria-label={crossProjectLabel}
-              className={cn(
-                "z-[31] flex size-5 shrink-0 items-center justify-center rounded-sm bg-sidebar text-muted-foreground",
-                parentGuideLeft === null
-                  ? "relative"
-                  : "absolute top-1/2 -translate-x-1/2 -translate-y-1/2",
-                !showActive && "group-hover/thread-row:bg-sidebar-accent",
-                !showActive && isActionsOpen && "bg-sidebar-accent",
-                !showActive &&
-                  isOpenInSplit &&
-                  SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
-              )}
-              style={{
-                left: parentGuideLeft ?? undefined,
-                backgroundImage: showActive
-                  ? "linear-gradient(var(--state-active), var(--state-active))"
-                  : undefined,
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                rowLinkRef.current?.click();
-              }}
-            >
-              <Icon name="FolderExport" className="size-3.5" aria-hidden />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
-        </Tooltip>
-      ) : null}
       <span
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           !shortcut &&
             !isEditing &&
-            (parentOptions && hasChildren
+            (reserveActionSpace
               ? "pr-7.5 max-md:pointer-coarse:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
@@ -554,7 +519,9 @@ function ThreadRowComponent({
         <span
           className={cn(
             "pointer-events-none relative flex min-w-0 items-center self-stretch",
-            (!parentOptions || !hasChildren || isEditing) && "flex-1",
+            ((crossProjectLabel === null && (!parentOptions || !hasChildren)) ||
+              isEditing) &&
+              "flex-1",
           )}
         >
           {isEditing ? (
@@ -563,7 +530,10 @@ function ThreadRowComponent({
             </span>
           ) : (
             <span
-              className="bb-thread-title"
+              className={cn(
+                "bb-thread-title",
+                crossProjectLabel !== null && "min-w-0 truncate",
+              )}
               title={labelTitle}
               onDoubleClick={startTitleEditing}
             >
@@ -571,6 +541,26 @@ function ThreadRowComponent({
             </span>
           )}
         </span>
+        {crossProjectLabel !== null ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-sidebar-thread-cross-project=""
+                role="img"
+                aria-label={crossProjectLabel}
+                className="relative z-[31] flex size-5 shrink-0 items-center justify-center text-muted-foreground"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  rowLinkRef.current?.click();
+                }}
+              >
+                <Icon name="FolderExport" className="size-3.5" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
+          </Tooltip>
+        ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             disabled={isEditing}

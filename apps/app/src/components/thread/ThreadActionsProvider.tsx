@@ -79,7 +79,7 @@ interface ThreadActionsProviderProps {
 }
 
 interface ArchiveThreadActionRequest {
-  closeDialog: () => void;
+  closeDialog?: () => void;
   thread: Thread;
 }
 
@@ -317,7 +317,7 @@ export function ThreadActionsProvider({
     ({ closeDialog, thread }: ArchiveThreadActionRequest) => {
       archiveThreadAndChildrenMutateAsync({ id: thread.id }).then(
         (response) => {
-          closeDialog();
+          closeDialog?.();
           const viewedThreadId = viewedThreadIdRef.current;
           const archiveDisplacedThread = viewedThreadId === thread.id;
           const closeResult = closePanesForThreads(
@@ -387,7 +387,7 @@ export function ThreadActionsProvider({
           });
         },
         (error: unknown) => {
-          closeDialog();
+          closeDialog?.();
           showMutationErrorToast({
             error,
             fallbackMessage: "Failed to archive thread and children",
@@ -413,12 +413,17 @@ export function ThreadActionsProvider({
       if (threadActionContextAbortRef.current === controller) {
         threadActionContextAbortRef.current = null;
       }
-      openArchiveDialog(buildDialogTargetFromContext({ thread }, context));
+      if (context.childThreadCount === 0) {
+        performArchive({ thread });
+        return;
+      }
+      openArchiveDialog({ thread, childThreadCount: context.childThreadCount });
     },
     [
       claimThreadActionContextAbortController,
       loadThreadActionContext,
       openArchiveDialog,
+      performArchive,
     ],
   );
 

@@ -45,7 +45,6 @@ export interface TimelineWindowedItemRenderState {
 }
 
 export interface TimelineWindowedItemsProps {
-  enabled: boolean;
   alwaysMountedKeys?: ReadonlySet<string>;
   estimateItemHeight: (index: number) => number;
   gap: number;
@@ -90,7 +89,6 @@ function TimelineWindowedItemsControl({
 
 export function TimelineWindowedItemsLoader(props: TimelineWindowedItemsProps) {
   const configured =
-    props.enabled &&
     props.getScrollElement !== null &&
     props.itemKeys.length >=
       (props.minItemCount ?? DEFAULT_WINDOWING_MIN_ITEM_COUNT);

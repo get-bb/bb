@@ -24,6 +24,7 @@ import {
   APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
+import { findMachineServiceFile } from "@bb/config/machine-service";
 import type { ConnectCredential } from "@bb/connect-client";
 import {
   appCommandIdSchema,
@@ -45,8 +46,15 @@ import {
   assertPathExists,
   resolveDesktopBridgePath,
   resolveDesktopIconPath,
+  resolveDesktopMachineInstallerPath,
   type DesktopPathContext,
 } from "./app-paths.js";
+import {
+  keepMovedMachineConnected,
+  MACHINE_SERVICE_INSTALL_LOG_FILE_NAME,
+  MACHINE_SERVICE_NOTICE_FILE_NAME,
+  runMachineInstaller,
+} from "./moved-machine-service.js";
 import {
   resolveBbAppProcessRuntime,
   type BbAppProcess,
@@ -394,6 +402,8 @@ let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let builtinDataDir: string | null = null;
 let serverMoveNoticeStore: ServerMoveNoticeStore | null = null;
+let machineServiceNoticeStore: ServerMoveNoticeStore | null = null;
+let movedMachineConnection: Promise<void> | null = null;
 let localServerMove: DesktopServerMove | null = null;
 let serverMovedWatcher: ServerMovedWatcher | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
@@ -1242,8 +1252,10 @@ async function activateLocalServerMove(move: DesktopServerMove): Promise<void> {
   if (
     serverTargetStore === null ||
     serverMoveNoticeStore === null ||
+    machineServiceNoticeStore === null ||
     desktopBridgePath === null ||
-    desktopUserDataPath === null
+    desktopUserDataPath === null ||
+    builtinDataDir === null
   ) {
     return;
   }
@@ -1260,28 +1272,89 @@ async function activateLocalServerMove(move: DesktopServerMove): Promise<void> {
     showNotice: showServerMovedNotice,
     targetStore: serverTargetStore,
   });
-  await ensureServerMovedRuntime({
-    hasLocalRuntime: () => currentRuntime !== null,
-    async isLocalAddressFree() {
-      const probe = await probeBbServer({
-        serverUrl: builtinServerUrl,
-        timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
-      });
-      return probe.kind === "unavailable";
-    },
-    localServerUrl: builtinServerUrl,
-    logInfo: (message) => {
-      desktopLogger.info(message);
-    },
-    async startLocalRuntime() {
-      await spawnOwnedRuntime({
-        bridgePath,
-        serverUrl: builtinServerUrl,
-        userDataPath,
-      });
-    },
-  });
   refreshApplicationMenu();
+  connectMovedMachine({
+    bridgePath,
+    dataDir: builtinDataDir,
+    move,
+    noticeStore: machineServiceNoticeStore,
+    userDataPath,
+  });
+}
+
+function connectMovedMachine(args: {
+  bridgePath: string;
+  dataDir: string;
+  move: DesktopServerMove;
+  noticeStore: ServerMoveNoticeStore;
+  userDataPath: string;
+}): void {
+  if (movedMachineConnection !== null) {
+    return;
+  }
+  const logPath = join(
+    args.dataDir,
+    "logs",
+    MACHINE_SERVICE_INSTALL_LOG_FILE_NAME,
+  );
+  movedMachineConnection = (async () => {
+    await keepMovedMachineConnected({
+      findService: () =>
+        findMachineServiceFile({
+          dataDir: args.dataDir,
+          homeDir: homedir(),
+          platform: process.platform,
+        }),
+      install: () =>
+        runMachineInstaller({
+          dataDir: args.dataDir,
+          env: process.env,
+          installerPath: resolveDesktopMachineInstallerPath(args.bridgePath),
+          logPath,
+        }),
+      logInfo: (message) => {
+        desktopLogger.info(message);
+      },
+      logPath,
+      move: args.move,
+      noticeStore: args.noticeStore,
+      showNotice: showServerMovedNotice,
+      stopLocalRuntime: stopOwnedRuntime,
+    });
+    if (quitting) {
+      return;
+    }
+    await ensureServerMovedRuntime({
+      hasLocalRuntime: () => currentRuntime !== null,
+      async isLocalAddressFree() {
+        const probe = await probeBbServer({
+          serverUrl: builtinServerUrl,
+          timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
+        });
+        return probe.kind === "unavailable";
+      },
+      localServerUrl: builtinServerUrl,
+      logInfo: (message) => {
+        desktopLogger.info(message);
+      },
+      async startLocalRuntime() {
+        await spawnOwnedRuntime({
+          bridgePath: args.bridgePath,
+          serverUrl: builtinServerUrl,
+          userDataPath: args.userDataPath,
+        });
+      },
+    });
+    refreshApplicationMenu();
+  })()
+    .catch((error: unknown) => {
+      desktopLogger.warn(
+        `[desktop] could not keep this computer connected as a machine: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    })
+    .finally(() => {
+      movedMachineConnection = null;
+    });
 }
 
 async function confirmLocalServerMove(
@@ -2496,6 +2569,9 @@ async function runDesktopApp(): Promise<void> {
   builtinDataDir = dataDir;
   serverMoveNoticeStore = createServerMoveNoticeStore({
     storagePath: join(userDataPath, SERVER_MOVE_NOTICE_FILE_NAME),
+  });
+  machineServiceNoticeStore = createServerMoveNoticeStore({
+    storagePath: join(userDataPath, MACHINE_SERVICE_NOTICE_FILE_NAME),
   });
   connectCredentialCache = createConnectCredentialCache({
     encryption: safeStorage,

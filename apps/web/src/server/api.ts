@@ -703,7 +703,7 @@ export async function redeemConnectCode(
     .from(connectCode)
     .where(eq(connectCode.code, normalized))
     .get();
-  if (!row || row.serverId == null)
+  if (!row || row.serverId == null || row.purpose === "server-link")
     return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now())
@@ -765,7 +765,8 @@ export async function lookupMachineCodeForServerCredential(
       ),
     )
     .get();
-  if (!row) return { error: "invalid-code", status: 404 };
+  if (!row || row.userId === null)
+    return { error: "invalid-code", status: 404 };
   const device = await deps.db
     .select({ id: machine.id })
     .from(machine)
@@ -800,7 +801,7 @@ export async function redeemMachineCode(
     .from(connectCode)
     .where(eq(connectCode.code, normalized))
     .get();
-  if (!row || row.purpose !== "machine-pair")
+  if (!row || row.purpose !== "machine-pair" || row.userId === null)
     return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now())

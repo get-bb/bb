@@ -1,4 +1,4 @@
-import { PluginCardAuthor } from "@/components/plugin/management/PluginCard";
+import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
 import { useSyncExternalStore } from "react";
 import {
   ResourceActionButton,
@@ -36,7 +36,7 @@ import {
 import {
   PluginDetailMetadata,
   PluginDetailMetadataItem,
-  PluginMarketplaceCategoryPill,
+  PluginMarketplaceByline,
   PluginMarketplaceDetailMetadata,
   PluginMarketplaceListingSections,
   PluginMarketplaceOverview,
@@ -140,6 +140,12 @@ function PluginLocalSource({
   );
 }
 
+const OFFICIAL_BYLINE_ENTRY = {
+  author: null,
+  marketplace: "bb-official",
+  publisherLabel: "BB Official",
+} as const;
+
 export function CatalogPluginDetail({
   entry,
   onInstall,
@@ -158,8 +164,8 @@ export function CatalogPluginDetail({
       leading={<CatalogEntryIconChip entry={entry} compact />}
       leadingClassName="size-6"
       title={entry.displayName}
-      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
-      metadata={<PluginCardAuthor entry={entry} />}
+      metadataLeading={<PluginCardAuthorAvatar entry={entry} />}
+      metadata={<PluginMarketplaceByline entry={entry} />}
       actions={
         <PluginCatalogInstallControl
           displayName={entry.displayName}
@@ -354,29 +360,26 @@ export function PluginDetail({
       onSelect: () => onDelete(plugin),
     },
   ];
+  const bylineEntry =
+    catalogEntry ??
+    (plugin.provenance === "builtin" ||
+    plugin.catalogMarketplaceName === "bb-official"
+      ? OFFICIAL_BYLINE_ENTRY
+      : undefined);
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
-      titleMeta={
-        catalogEntry === undefined ? null : (
-          <PluginMarketplaceCategoryPill entry={catalogEntry} />
+      metadataLeading={
+        bylineEntry === undefined ? undefined : (
+          <PluginCardAuthorAvatar entry={bylineEntry} />
         )
       }
       metadata={
-        catalogEntry !== undefined ? (
-          <PluginCardAuthor entry={catalogEntry} />
-        ) : plugin.provenance === "builtin" ||
-          plugin.catalogMarketplaceName === "bb-official" ? (
-          <PluginCardAuthor
-            entry={{
-              author: null,
-              marketplace: "bb-official",
-              publisherLabel: "BB Official",
-            }}
-          />
-        ) : undefined
+        bylineEntry === undefined ? undefined : (
+          <PluginMarketplaceByline entry={bylineEntry} />
+        )
       }
       actions={
         hasConfiguration ? (
@@ -411,7 +414,7 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <section data-resource-detail-section="overview">
+          <section className="max-w-prose" data-resource-detail-section="overview">
             <PluginOverviewLead
               description={
                 plugin.description ?? "This plugin does not describe itself."

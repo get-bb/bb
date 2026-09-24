@@ -2,17 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   getBuiltinModels,
   getBuiltinProviders,
 } from "@earendil-works/pi-ai/providers/all";
 import {
-  createDeltaAssembler,
+  experimental_createDeltaAssembler as createDeltaAssembler,
   type DeltaAssembler,
-} from "@bb/provider-bridge-protocol/assembler";
+  type ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   createPiDeltaTranslator,
   createPiModelContextWindowResolverFrom,
@@ -25,6 +24,14 @@ const builtinCatalogResolver = createPiModelContextWindowResolverFrom(
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "./__fixtures__/pi");
+
+function threadScope(): ThreadEvent["scope"] {
+  return { kind: "thread" };
+}
+
+function turnScope(turnId: string): ThreadEvent["scope"] {
+  return { kind: "turn", turnId };
+}
 
 const THREAD_ID = "bb-thread-1";
 const ENTROPY = "pi-test";
