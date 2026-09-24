@@ -111,6 +111,7 @@ interface ThreadTimelineSourceSeqRange {
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   completedTurnDisplay: CompletedTurnDisplay;
   includeDiagnosticOperations: boolean;
+  turnStartedSeq?: number;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
   threadName: string;
@@ -1242,12 +1243,18 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     options.completedTurnDisplay,
     options.rowIdPrefix,
   );
-  const matchingSummary = plan.find(
-    (item) =>
-      item.kind === "summary" &&
-      item.row.sourceSeqStart === args.options.sourceSeqStart &&
-      item.row.sourceSeqEnd === args.options.sourceSeqEnd,
-  );
+  const summaries = plan.filter((item) => item.kind === "summary");
+  const matchingSummary =
+    summaries.find(
+      (item) =>
+        item.row.sourceSeqStart === args.options.sourceSeqStart &&
+        item.row.sourceSeqEnd === args.options.sourceSeqEnd,
+    ) ??
+    summaries.find(
+      (item) =>
+        item.row.sourceSeqStart === args.options.turnStartedSeq &&
+        item.row.sourceSeqEnd === args.options.sourceSeqEnd,
+    );
   if (matchingSummary?.kind === "summary") {
     return {
       kind: "matched",

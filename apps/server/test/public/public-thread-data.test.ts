@@ -1234,6 +1234,92 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("hydrates a summary whose range reaches turn completion", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const base = {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+      };
+      seedEvent(harness.deps, {
+        ...base,
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        ...base,
+        sequence: 2,
+        type: "item/started",
+        data: {
+          item: { type: "reasoning", id: "orphan", summary: [], content: [] },
+        },
+      });
+      seedEvent(harness.deps, {
+        ...base,
+        sequence: 3,
+        type: "item/reasoning/textDelta",
+        data: { itemId: "orphan", delta: "Thinking" },
+      });
+      seedEvent(harness.deps, {
+        ...base,
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: { type: "agentMessage", id: "intermediate", text: "Checking." },
+        },
+      });
+      seedEvent(harness.deps, {
+        ...base,
+        sequence: 5,
+        type: "item/completed",
+        data: { item: { type: "agentMessage", id: "final", text: "Done." } },
+      });
+      seedEvent(harness.deps, {
+        ...base,
+        sequence: 6,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const turnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow => row.kind === "turn",
+      );
+      expect(turnRow).toMatchObject({
+        sourceSeqStart: 2,
+        sourceSeqEnd: 6,
+      });
+      if (!turnRow) throw new Error("Expected a turn row");
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+      expect(details.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "system",
+            operationKind: "reasoning",
+            sourceSeqStart: 2,
+            sourceSeqEnd: 6,
+          }),
+        ]),
+      );
+    });
+  });
+
   it("returns active background task state when the task started outside the latest window", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
