@@ -801,6 +801,7 @@ describe("public host management", () => {
         "revokeMachine",
         revokeRecord,
         { machineId: "machine-cloud-remove" },
+        { kind: "client" },
       );
     });
   }, 30_000);

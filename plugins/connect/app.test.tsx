@@ -28,6 +28,7 @@ function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
   return {
     state: "disconnected",
     paired: false,
+    enabled: true,
     handle: null,
     url: null,
     dashboardUrl: "https://getbb.app/dashboard",
@@ -38,6 +39,55 @@ function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
     lastRemoteActivityAt: null,
     shares: [],
     ...overrides,
+  };
+}
+
+interface AccountRpcCall {
+  pluginId: string;
+  method: string;
+  input?: unknown;
+  outputSchema: { parse(value: unknown): unknown };
+}
+
+function fakeAccountSdk(handlers: Record<string, (input: unknown) => unknown>) {
+  const calls: Array<{ pluginId: string; method: string; input: unknown }> = [];
+  const callRpc = vi.fn(async (args: AccountRpcCall) => {
+    calls.push({
+      pluginId: args.pluginId,
+      method: args.method,
+      input: args.input,
+    });
+    const handler = handlers[args.method];
+    if (handler === undefined) throw new Error(`no handler ${args.method}`);
+    return args.outputSchema.parse(await handler(args.input));
+  });
+  return { calls, sdk: { plugins: { callRpc: callRpc as never } } };
+}
+
+const signedInAccount = {
+  state: "signed-in",
+  revision: 2,
+  account: {
+    userId: "usr_1",
+    githubLogin: "sawyerhood",
+    name: "Sawyer Hood",
+    avatarUrl: null,
+    handle: "sawyer",
+    serverId: "srv_1",
+    serverLabel: "workstation",
+    serverUrl: "https://workstation.getbb.app",
+    baseUrl: "https://getbb.app",
+  },
+};
+
+function pendingLogin(state = "pending", message: string | null = null) {
+  return {
+    id: "login-1",
+    state,
+    userCode: "K7QP-2M4X",
+    verificationUrl: "https://getbb.app/link?code=K7QP-2M4X",
+    expiresAt: Date.now() + 600_000,
+    message,
   };
 }
 
@@ -56,7 +106,7 @@ describe("connect settings section", () => {
     expect(app.settingsSections[0]?.title).toBeUndefined();
   });
 
-  it("uses the local Cloud dashboard supplied by the server as a native new-tab link", async () => {
+  it("asks to sign in to the bb account and names the local Cloud host", async () => {
     const dashboardUrl = "http://bb.localhost:42745/dashboard";
     const slot = renderSlot(
       app.settingsSections[0]!,
@@ -67,39 +117,134 @@ describe("connect settings section", () => {
       },
     );
 
-    const link = (await slot.findByRole("link", {
-      name: "Get a connect code",
-    })) as HTMLAnchorElement;
-    expect(link.href).toBe(dashboardUrl);
-    expect(link.target).toBe("_blank");
-    fireEvent.click(link);
-    expect(slot.navigateCalls).toEqual([]);
+    await slot.findByRole("button", { name: "Sign in to your bb account" });
     slot.getByText("you.bb.localhost:42745");
-    slot.getByText(/your bb\.localhost:42745 dashboard/);
+    slot.getByText(/your bb\.localhost:42745 account gets full control/);
   });
 
-  it("auto-submits a normalized 4-4 code and applies live paired status", async () => {
+  it("signs in through bb account, shows the code, and waits for approval", async () => {
+    let polls = 0;
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => {
+        polls += 1;
+        return {
+          login: pendingLogin(polls > 1 ? "signed-in" : "pending"),
+          status: signedInAccount,
+        };
+      },
+    });
     let currentStatus = status();
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
-        rpc: {
-          status: () => currentStatus,
-          pair: () => null,
-        },
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => currentStatus },
       },
     );
 
-    await slot.findByText("Get a connect code");
-    fireEvent.change(slot.getByLabelText("Connect code"), {
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to your bb account" }),
+    );
+    await slot.findByText("K7QP-2M4X");
+    expect(account.calls[0]).toEqual({
+      pluginId: "bb-account",
+      method: "login.start",
+      input: { baseUrl: null },
+    });
+    const link = slot.getByRole("link", {
+      name: /Open getbb\.app/,
+    }) as HTMLAnchorElement;
+    expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
+    expect(link.target).toBe("_blank");
+
+    await waitFor(
+      () =>
+        expect(
+          account.calls.filter((call) => call.method === "login.poll"),
+        ).toHaveLength(2),
+      { timeout: 6_000 },
+    );
+    currentStatus = connected();
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
+    await slot.findByText("Connected");
+  });
+
+  it("backs off the sign-in poll while bb account can't be reached", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => {
+        throw Object.assign(new Error("HTTP 503: tunnel offline"), {
+          status: 503,
+        });
+      },
+    });
+    const polls = () =>
+      account.calls.filter((call) => call.method === "login.poll").length;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to your bb account" }),
+    );
+    await slot.findByText("K7QP-2M4X");
+    await waitFor(() => expect(polls()).toBe(1), { timeout: 4_000 });
+
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect(polls()).toBe(1);
+  });
+
+  it("explains when the bb account plugin is off", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => {
+        throw Object.assign(new Error("HTTP 503: not running"), {
+          status: 503,
+        });
+      },
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { sdk: account.sdk, rpc: { status: () => status() } },
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to your bb account" }),
+    );
+    await slot.findByText(/The bb account plugin is off/);
+  });
+
+  it("auto-submits a normalized 4-4 pairing code through bb account and applies live paired status", async () => {
+    const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
+    let currentStatus = status();
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        sdk: account.sdk,
+        rpc: { status: () => currentStatus },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
       target: { value: "  k7qp-2m4x  " },
     });
 
     await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "pair",
-        input: { code: "K7QP-2M4X" },
+      expect(account.calls).toContainEqual({
+        pluginId: "bb-account",
+        method: "redeemCode",
+        input: { code: "K7QP-2M4X", baseUrl: null },
       }),
     );
     expect(slot.queryByText("https://workstation.getbb.app")).toBeNull();
@@ -113,44 +258,71 @@ describe("connect settings section", () => {
   });
 
   it("does not auto-submit an incomplete code", async () => {
+    const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
-      { rpc: { status: () => status(), pair: () => null } },
+      { sdk: account.sdk, rpc: { status: () => status() } },
     );
-    await slot.findByText("Get a connect code");
-    fireEvent.change(slot.getByLabelText("Connect code"), {
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
       target: { value: "K7QP-2M4" },
     });
     expect(
-      (slot.getByRole("button", { name: "Connect" }) as HTMLButtonElement)
+      (slot.getByRole("button", { name: "Pair" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    expect(slot.rpcCalls.some((call) => call.method === "pair")).toBe(false);
+    expect(account.calls).toEqual([]);
   });
 
   it("maps a typed pair error code to human copy, never wire text", async () => {
+    const account = fakeAccountSdk({
+      redeemCode: () => {
+        throw new Error("HTTP 500: expired_code");
+      },
+    });
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
-      {
-        rpc: {
-          status: () => status(),
-          pair: () => {
-            throw new Error("expired_code");
-          },
-        },
-      },
+      { sdk: account.sdk, rpc: { status: () => status() } },
     );
 
-    await slot.findByText("Get a connect code");
-    fireEvent.change(slot.getByLabelText("Connect code"), {
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
       target: { value: "K7QP-2M4X" },
     });
 
     await slot.findByText(/That code has expired\./);
     slot.getByRole("link", { name: "Get a new code" });
     expect(slot.queryByText(/expired_code/)).toBeNull();
+  });
+
+  it("explains a saved pairing whose account hasn't loaded instead of calling the code invalid", async () => {
+    const account = fakeAccountSdk({
+      redeemCode: () => {
+        throw new Error("HTTP 500: profile_unavailable");
+      },
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { sdk: account.sdk, rpc: { status: () => status() } },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
+      target: { value: "K7QP-2M4X" },
+    });
+
+    await slot.findByText(/hasn't returned your account yet/);
+    expect(slot.queryByText(/invalid or has expired/)).toBeNull();
+    expect(slot.queryByText(/profile_unavailable/)).toBeNull();
   });
 
   it("shows a remote-viewer count on the connected status line", async () => {
@@ -375,7 +547,7 @@ describe("connect settings section", () => {
     expect(
       slot.queryByRole("button", { name: "Add mobile device" }),
     ).toBeNull();
-    slot.getByRole("button", { name: "Re-pair" });
+    expect(slot.queryByRole("button", { name: "Re-pair" })).toBeNull();
   });
 
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
@@ -485,7 +657,7 @@ describe("connect settings section", () => {
     slot.getByRole("button", { name: "Add mobile device" });
   });
 
-  it("disconnect confirms, then lands on the unpaired card with a receipt", async () => {
+  it("turn off confirms, keeps the account, and shows the off card with a receipt", async () => {
     let currentStatus = connected();
     const slot = renderSlot(
       app.settingsSections[0]!,
@@ -493,8 +665,12 @@ describe("connect settings section", () => {
       {
         rpc: {
           status: () => currentStatus,
-          disconnect: () => {
-            currentStatus = status();
+          setRemoteAccess: (input: unknown) => {
+            const enabled = (input as { enabled: boolean }).enabled;
+            currentStatus = connected({
+              enabled,
+              state: enabled ? "reconnecting" : "disconnected",
+            });
             return currentStatus;
           },
         },
@@ -502,20 +678,28 @@ describe("connect settings section", () => {
     );
 
     await slot.findByText("Connected");
-    fireEvent.click(slot.getByRole("button", { name: "Disconnect" }));
+    fireEvent.click(slot.getByRole("button", { name: "Turn off" }));
 
-    await slot.findByText("Disconnect remote access?");
-    await slot.findByText(/will stop working on all devices/);
-    fireEvent.click(slot.getByRole("button", { name: "Disconnect" }));
+    await slot.findByText("Turn off remote access?");
+    await slot.findByText(/stays signed in to your bb account/);
+    fireEvent.click(slot.getAllByRole("button", { name: "Turn off" }).at(-1)!);
 
     await waitFor(() =>
-      expect(slot.rpcCalls.some((call) => call.method === "disconnect")).toBe(
-        true,
-      ),
+      expect(slot.rpcCalls).toContainEqual({
+        method: "setRemoteAccess",
+        input: { enabled: false },
+      }),
     );
     await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
 
-    await slot.findByText("Get a connect code");
-    await slot.findByText("Remote access disconnected");
+    await slot.findByText("Remote access is off");
+    await slot.findByText("Remote access turned off");
+    fireEvent.click(slot.getByRole("button", { name: "Turn on" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "setRemoteAccess",
+        input: { enabled: true },
+      }),
+    );
   });
 });

@@ -57,6 +57,9 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalOpenFixedTabOptions`
 - `ExperimentalPermissionModePickerProps`
 - `ExperimentalPluginFixedTabReference`
+- `ExperimentalPluginRpcCaller`
+- `ExperimentalPluginRpcHandlerContext`
+- `ExperimentalPluginRpcHandlersWithContext`
 - `ExperimentalPluginWebSocket`
 - `ExperimentalPluginWebSocketContext`
 - `ExperimentalPluginWebSocketHandler`

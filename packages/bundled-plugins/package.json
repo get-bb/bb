@@ -11,6 +11,7 @@
     "bb-plugin-agent-annotations": "workspace:*",
     "bb-plugin-ask-user-question": "workspace:*",
     "bb-plugin-automations": "workspace:*",
+    "bb-plugin-bb-account": "workspace:*",
     "bb-plugin-bb-guide": "workspace:*",
     "bb-plugin-browser-automation": "workspace:*",
     "bb-plugin-concurrency-limit": "workspace:*",

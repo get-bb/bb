@@ -4,7 +4,7 @@ Status: **2026-09-05: 5 passed, 2 partial/blocked**. See [the audit](../MAINTENA
 
 ## Setup and entry points
 
-Settings → Remote access; use `bb connect` for command help. Use the local cloud stack and a fresh synthetic store/account. Never pair an imported store or use the owner’s live tunnel as a fixture.
+Settings → Remote access; use `bb connect` for command help. bb account holds the credential: sign in with the bb account plugin (plugin-bb-account.md) first. Use the local cloud stack and a fresh synthetic store/account. Never pair an imported store or use the owner’s live tunnel as a fixture.
 
 Use the main skill’s isolated targets and evidence rules. A plugin can be present
 in this checkout but disabled in an installation. Enable it only in the test
@@ -16,18 +16,20 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 - `plugins/connect/package.json`
 - `plugins/connect/src/server.ts`
+- `plugins/connect/src/tunnel.ts`
 - `plugins/connect/app.tsx`
 
 ## Feature recipes
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Account pairing | Create a dashboard pairing code, redeem it on the disposable server, then try expired/reused codes. | Only the intended test server pairs; invalid codes cannot claim another account or tunnel. |
+| Account pairing | Create a dashboard pairing code and redeem it with `connect --code` (signs in like `account login --code` and turns remote access back on), then try expired/reused codes; separately upgrade a store that still holds a legacy Connect credential. | Only the intended test server signs in; the tunnel dials with the server credential (`tunnel connected` in the server log); a legacy credential is copied into bb account and stays in Connect's `credential` KV key for older builds; invalid codes cannot claim another account or tunnel. |
+| Revoked credential and downgrade | Disconnect the test server from the local dashboard while its tunnel is up, and let it reconnect; separately downgrade a signed-in store to a build from before bb account. | Server log shows `the gate refused this bb's server credential` and then bb account's `signed out`, and remote access shows signed out; the older build starts paired from Connect's `credential` KV key. |
 | Remote app and status | Open the returned test tunnel URL, inspect connect status, and perform a read-only project lookup. | Remote browser and CLI address the same synthetic server and authenticated account. |
 | Reconnect | Interrupt only the test tunnel, observe disconnected status, and restore its connection. | The same authorized test server recovers; stale credentials cannot take ownership. |
 | Port shares | Start a harmless HTTP fixture, expose its port, inspect shares, request the returned URL, then unexpose it. | Shared response is the fixture’s; removal makes that share unavailable without stopping unrelated shares. |
 | Mobile machine code and QR | With the mobile experiment enabled, pair a test phone/profile using the supported QR and machine-code flow. | Correct machine label/origin is stored; consumed/revoked codes fail. |
-| Disable and forget | Turn Connect off for the test store, re-enable it, then forget its pairing. | Disabling closes the tunnel; forgetting removes test authorization and requires a fresh pairing. |
+| Disable and forget | Run `connect off` and `connect on`, then `account logout`. | `off` closes the tunnel and keeps the account signed in; `on` reopens it; signing out closes it and requires a fresh sign-in. |
 | Authentication isolation | Open a test tunnel as another synthetic account and test revoked sessions. | Unauthorized requests cannot access another account’s machine; evidence excludes session credentials. |
 
 ## Evidence and cleanup

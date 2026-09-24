@@ -24,6 +24,7 @@ import type {
   PluginWebSocketRouteRecord,
 } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import { PLUGIN_RPC_CALLER_HEADER } from "../services/plugins/plugin-rpc-caller.js";
 import {
   createAppAssetCompressionCache,
   type AppAssetCompressionCache,
@@ -850,6 +851,18 @@ export function registerPluginRoutes(
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
     }
+    const callerResolution = plugins.resolveRpcCaller(
+      context.req.header(PLUGIN_RPC_CALLER_HEADER),
+    );
+    if (!callerResolution.ok) {
+      return context.json(
+        {
+          ok: false,
+          error: `the ${PLUGIN_RPC_CALLER_HEADER} token isn't a running plugin's caller token`,
+        },
+        403,
+      );
+    }
     const rawBody = await context.req.text();
     let input: unknown;
     if (rawBody.length > 0) {
@@ -895,6 +908,7 @@ export function registerPluginRoutes(
       method,
       lookup.value,
       input,
+      callerResolution.caller,
     );
     if (!outcome.ok) {
       return context.json(
