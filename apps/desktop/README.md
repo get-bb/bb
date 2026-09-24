@@ -416,7 +416,7 @@ Startup error screens list their actions as buttons. Any screen where
 retrying can help shows **Try again**. **Choose server…** opens the Server menu,
 where the user can select the built-in server if needed. A bb Connect
 `unauthorized` error has no **Try again**, because the same credential fails
-the same way. **Reconnect bb Connect** opens account sign-in in a desktop
+the same way. **Reconnect** opens account sign-in in a desktop
 window. The app clears its old account sign-in, waits for a new session, then
 retries the selected server. A valid account session can mint and renew the
 desktop session when a machine credential is rejected. Closing the sign-in

@@ -1819,7 +1819,7 @@ async function applyServerTarget(): Promise<void> {
             ? [
                 {
                   id: "reconnect-connect" as const,
-                  label: "Reconnect bb Connect",
+                  label: "Reconnect",
                 },
               ]
             : [{ id: "retry" as const, label: "Try again" }]),
