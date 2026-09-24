@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
@@ -15,7 +15,16 @@ export function DesktopZoomIndicator() {
   const zoom = desktop?.zoom;
   const [zoomFactor, setZoomFactor] = useState<number | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const interaction = useRef({ focused: false, hovered: false });
+  const hovered = useRef(false);
+
+  const restartHideTimer = useCallback(() => {
+    if (hideTimer.current !== null) {
+      clearTimeout(hideTimer.current);
+    }
+    if (!hovered.current) {
+      hideTimer.current = setTimeout(() => setZoomFactor(null), HIDE_DELAY_MS);
+    }
+  }, []);
 
   useEffect(() => {
     if (onZoomChange === undefined) {
@@ -23,14 +32,9 @@ export function DesktopZoomIndicator() {
     }
     return onZoomChange((factor) => {
       setZoomFactor(factor);
-      if (hideTimer.current !== null) {
-        clearTimeout(hideTimer.current);
-      }
-      if (!interaction.current.focused && !interaction.current.hovered) {
-        hideTimer.current = setTimeout(() => setZoomFactor(null), HIDE_DELAY_MS);
-      }
+      restartHideTimer();
     });
-  }, [onZoomChange]);
+  }, [onZoomChange, restartHideTimer]);
 
   useEffect(
     () => () => {
@@ -45,13 +49,6 @@ export function DesktopZoomIndicator() {
     return null;
   }
 
-  const scheduleHide = () => {
-    if (hideTimer.current !== null) {
-      clearTimeout(hideTimer.current);
-    }
-    hideTimer.current = setTimeout(() => setZoomFactor(null), HIDE_DELAY_MS);
-  };
-
   return (
     <div
       className={`fixed right-0 top-(--bb-app-chrome-row-height) ${MACOS_APP_REGION_NO_DRAG_CLASS}`}
@@ -63,32 +60,15 @@ export function DesktopZoomIndicator() {
         className="mt-2 mr-3 flex origin-top-right items-center gap-1 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
         style={{ zoom: 1 / zoomFactor }}
         onPointerEnter={() => {
-          interaction.current.hovered = true;
+          hovered.current = true;
           if (hideTimer.current !== null) {
             clearTimeout(hideTimer.current);
             hideTimer.current = null;
           }
         }}
         onPointerLeave={() => {
-          interaction.current.hovered = false;
-          if (!interaction.current.focused) {
-            scheduleHide();
-          }
-        }}
-        onFocus={() => {
-          interaction.current.focused = true;
-          if (hideTimer.current !== null) {
-            clearTimeout(hideTimer.current);
-            hideTimer.current = null;
-          }
-        }}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            interaction.current.focused = false;
-            if (!interaction.current.hovered) {
-              scheduleHide();
-            }
-          }
+          hovered.current = false;
+          restartHideTimer();
         }}
       >
         <span aria-live="polite" className="min-w-12 text-center text-sm font-medium tabular-nums">
