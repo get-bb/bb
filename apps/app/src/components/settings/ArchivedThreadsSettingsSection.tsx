@@ -25,6 +25,7 @@ import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 
 const ALL_PROJECTS = "all";
 const ARCHIVED_THREAD_SEARCH_LIMIT = 50;
@@ -263,8 +264,10 @@ export function ArchivedThreadsSettingsSection() {
                       })}
                     >
                       <span className="flex min-w-0 items-center gap-2 text-sm">
-                        <span className="truncate">
-                          {getThreadDisplayTitle(thread)}
+                        <span className="bb-thread-title">
+                          <ThreadTitleMentions
+                            title={getThreadDisplayTitle(thread)}
+                          />
                         </span>
                         {thread.parentThreadId !== null ? (
                           <Pill variant="outline" className="shrink-0">

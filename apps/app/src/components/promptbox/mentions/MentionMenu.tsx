@@ -21,6 +21,10 @@ import { Pill } from "@bb/shared-ui/pill";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  ThreadTitleMentions,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   EMPTY_ORDERED_MENTION_SUGGESTIONS,
   type OrderedMentionSuggestions,
   type PromptMentionSuggestion,
@@ -256,7 +260,7 @@ interface SuggestionRowProps {
   index: number;
   selectedIndex: number;
   icon: ReactNode;
-  primary: string;
+  primary: ReactNode;
   trailing: ReactNode;
   badge?: ReactNode;
   title: string;
@@ -294,13 +298,43 @@ function SuggestionRow({
     >
       <div className="flex min-w-0 items-center gap-1.5">
         {icon}
-        <span className="truncate text-foreground">{primary}</span>
+        {typeof primary === "string" ? (
+          <span className="truncate text-foreground">{primary}</span>
+        ) : (
+          primary
+        )}
         {trailing}
         {badge === undefined ? null : (
           <span className="ml-auto shrink-0">{badge}</span>
         )}
       </div>
     </button>
+  );
+}
+
+type ThreadMentionSuggestion = Extract<
+  PromptMentionSuggestion,
+  { kind: "thread" }
+>;
+
+function ThreadSuggestionRow({
+  item,
+  ...rowProps
+}: Omit<SuggestionRowProps, "primary" | "title"> & {
+  item: ThreadMentionSuggestion;
+}) {
+  const threadTitle = item.title || "Untitled thread";
+  const displayTitle = useThreadTitleDisplayText(threadTitle);
+  return (
+    <SuggestionRow
+      {...rowProps}
+      primary={
+        <span className="bb-thread-title text-foreground">
+          <ThreadTitleMentions title={threadTitle} />
+        </span>
+      }
+      title={getMentionTitle({ ...item, title: displayTitle })}
+    />
   );
 }
 
@@ -416,34 +450,43 @@ function MentionResults({
                 secondaryContextKind = directory ? "path" : null;
               }
 
-              return (
-                <SuggestionRow
+              const rowProps = {
+                index,
+                selectedIndex,
+                icon: (
+                  <PromptMentionIcon
+                    resource={promptMentionResourceFromSuggestion(item)}
+                    className={ROW_ICON_CLASS}
+                  />
+                ),
+                trailing:
+                  secondaryContext === null ? null : secondaryContextKind ===
+                    "path" ? (
+                    <MutedTrailingPath>{secondaryContext}</MutedTrailingPath>
+                  ) : (
+                    <MutedTrailing>{secondaryContext}</MutedTrailing>
+                  ),
+                onApply: () => onApply(item),
+                itemRefs,
+              };
+
+              return item.kind === "thread" ? (
+                <ThreadSuggestionRow
                   key={getMentionKey(item)}
-                  index={index}
-                  selectedIndex={selectedIndex}
-                  icon={
-                    <PromptMentionIcon
-                      resource={promptMentionResourceFromSuggestion(item)}
-                      className={ROW_ICON_CLASS}
-                    />
-                  }
-                  primary={primary}
-                  trailing={
-                    secondaryContext === null ? null : secondaryContextKind ===
-                      "path" ? (
-                      <MutedTrailingPath>{secondaryContext}</MutedTrailingPath>
-                    ) : (
-                      <MutedTrailing>{secondaryContext}</MutedTrailing>
+                  {...rowProps}
+                  item={item}
+                  badge={
+                    item.relation === null ? undefined : (
+                      <ThreadRelationPill relation={item.relation} />
                     )
                   }
-                  badge={
-                    item.kind === "thread" && item.relation !== null ? (
-                      <ThreadRelationPill relation={item.relation} />
-                    ) : undefined
-                  }
+                />
+              ) : (
+                <SuggestionRow
+                  key={getMentionKey(item)}
+                  {...rowProps}
+                  primary={primary}
                   title={getMentionTitle(item)}
-                  onApply={() => onApply(item)}
-                  itemRefs={itemRefs}
                 />
               );
             })}

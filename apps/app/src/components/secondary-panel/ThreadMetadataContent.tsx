@@ -69,6 +69,10 @@ import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSe
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
+  ThreadTitleMentions,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   PULL_REQUEST_STATE_DISPLAY,
   getPullRequestAttentionDisplay,
   getPullRequestChecksDisplay,
@@ -191,6 +195,26 @@ export function ParentSelectorRow({
   );
 }
 
+function ForkLink({
+  fork,
+  projectId,
+}: {
+  fork: ThreadListEntry;
+  projectId: string;
+}) {
+  const threadTitle = getThreadDisplayTitle(fork);
+  const displayTitle = useThreadTitleDisplayText(threadTitle);
+  return (
+    <Link
+      to={getThreadRoutePath({ projectId, threadId: fork.id })}
+      className="bb-thread-title text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+      title={displayTitle}
+    >
+      <ThreadTitleMentions title={threadTitle} />
+    </Link>
+  );
+}
+
 interface ForksRowProps {
   thread: Thread;
   projectId: string;
@@ -214,13 +238,7 @@ function ForksRow({ thread, projectId }: ForksRowProps) {
         items={forks}
         getKey={(fork) => fork.id}
         renderItem={(fork) => (
-          <Link
-            to={getThreadRoutePath({ projectId, threadId: fork.id })}
-            className="block min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
-            title={getThreadDisplayTitle(fork)}
-          >
-            {getThreadDisplayTitle(fork)}
-          </Link>
+          <ForkLink projectId={projectId} fork={fork} />
         )}
       />
     </DetailRow>

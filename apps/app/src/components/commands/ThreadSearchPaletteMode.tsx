@@ -19,6 +19,10 @@ import { threadListIndicatorStateForThread } from "@bb/client-core";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
+  ThreadTitleMentions,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   ThreadStatusGlyph,
   resolveThreadStatus,
 } from "@/components/thread/ThreadStatusGlyph";
@@ -440,14 +444,33 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
     }
   }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
 
-  const metadata = [row.secondaryTitle, row.projectName, row.relativeTime]
+  const secondaryTitle = useThreadTitleDisplayText(row.secondaryTitle ?? "");
+  const primaryIsPlainTitle =
+    row.secondaryTitle === null && row.highlightRanges.length === 0;
+  const metadata = [
+    row.secondaryTitle === null ? null : secondaryTitle,
+    row.projectName,
+    row.relativeTime,
+  ]
     .filter(Boolean)
     .join(" · ");
   return (
     <span className="min-w-0 flex-1">
-      <span ref={primaryRef} className="block min-w-0 truncate text-foreground">
-        <HighlightedText text={primary.text} ranges={primary.highlightRanges} />
-      </span>
+      {primaryIsPlainTitle ? (
+        <span className="bb-thread-title text-foreground">
+          <ThreadTitleMentions title={row.primaryText} />
+        </span>
+      ) : (
+        <span
+          ref={primaryRef}
+          className="block min-w-0 truncate text-foreground"
+        >
+          <HighlightedText
+            text={primary.text}
+            ranges={primary.highlightRanges}
+          />
+        </span>
+      )}
       <span
         className="flex min-h-4 items-center gap-1.5"
         data-palette-thread-details
@@ -458,7 +481,7 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
             data-palette-thread-metadata
             title={metadata}
           >
-            {row.secondaryTitle === null ? null : `${row.secondaryTitle} · `}
+            {row.secondaryTitle === null ? null : `${secondaryTitle} · `}
             {row.projectName === null ? null : (
               <>
                 <Icon

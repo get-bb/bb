@@ -97,6 +97,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { appToast } from "@/components/ui/app-toast";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
@@ -1304,8 +1305,8 @@ export function DropPreviewRow({
       )}
     >
       {thread && visible ? (
-        <span className="min-w-0 flex-1 truncate">
-          {getThreadDisplayTitle(thread)}
+        <span className="bb-thread-title flex-1">
+          <ThreadTitleMentions title={getThreadDisplayTitle(thread)} />
         </span>
       ) : null}
     </div>
@@ -1342,8 +1343,8 @@ export function SectionThreadDragOverlay({
       style={SIDEBAR_THREAD_DRAG_CHIP_STYLE}
       className={SIDEBAR_THREAD_DRAG_CHIP_CLASS}
     >
-      <span className="min-w-0 flex-1 truncate">
-        {getThreadDisplayTitle(thread)}
+      <span className="bb-thread-title flex-1">
+        <ThreadTitleMentions title={getThreadDisplayTitle(thread)} />
       </span>
     </div>
   );
