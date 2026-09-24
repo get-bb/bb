@@ -52,6 +52,28 @@ binaries work with Electron without an ABI-specific rebuild. The packaging
 hook opens an in-memory database with Electron before accepting the packaged
 SQLite module; older ABI-specific modules still use the prebuild fallback.
 
+macOS notifications require a signed application. Unsigned local and CI artifact
+builds cannot display macOS notifications. Published releases use the existing
+signing and notarization workflow.
+
+The shipped Linux x64 SQLite prebuild requires glibc 2.34 or newer and
+libstdc++ with `GLIBCXX_3.4.29` support (GCC 11 or newer).
+
+The AppImage packaging patch exposes its bundled legacy `libnotify` only as
+`libnotify.so`. Electron first tries the system's versioned library names, so
+libnotify 0.7.10 or newer can supply notification activation tokens on Wayland.
+If no versioned system library loads, Electron can still use the bundled
+unversioned fallback for notifications. Older libraries keep their existing
+notification behavior but cannot forward activation tokens.
+
+Electron downloads its development runtime lazily; the desktop test command
+installs it before starting parallel workers.
+
+The macOS bundle declares macOS 13 as its minimum. The release feed generator
+writes the corresponding Darwin kernel minimum, 22.0.0, into both JSON and YAML
+update feeds. Run it before publishing release artifacts so older Macs reject
+incompatible updates.
+
 ## Validation
 
 ```bash
