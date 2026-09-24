@@ -65,12 +65,20 @@ describe("DesktopZoomIndicator", () => {
     ).toBe(true);
   });
 
-  it("auto-hides after two seconds", () => {
+  it("appears without an animation and fades out after two seconds", () => {
     vi.useFakeTimers();
     const { emitZoomChange } = setup();
     act(() => emitZoomChange(1.25));
-    act(() => vi.advanceTimersByTime(2000));
+    const toolbar = screen.getByRole("toolbar", { name: "Zoom" });
+    expect(toolbar.className).not.toMatch(/animate-in|opacity-0/);
 
+    act(() => vi.advanceTimersByTime(2000));
+    expect(toolbar.className).toContain("opacity-0");
+
+    act(() => emitZoomChange(1.5));
+    expect(toolbar.className).not.toContain("opacity-0");
+
+    act(() => vi.advanceTimersByTime(2150));
     expect(screen.queryByRole("toolbar", { name: "Zoom" })).toBeNull();
   });
 

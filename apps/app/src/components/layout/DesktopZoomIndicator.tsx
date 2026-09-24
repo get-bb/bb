@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
   getBbDesktopInfo,
@@ -8,19 +9,25 @@ import {
 } from "@/lib/bb-desktop";
 
 const HIDE_DELAY_MS = 2000;
+const FADE_OUT_MS = 150;
 
 export function DesktopZoomIndicator() {
   const desktop = getBbDesktopInfo();
   const onZoomChange = desktop?.onZoomChange;
   const zoom = desktop?.zoom;
   const [zoomFactor, setZoomFactor] = useState<number | null>(null);
+  const [fading, setFading] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const hovered = useRef(false);
 
   const restartHideTimer = useCallback(() => {
     clearTimeout(hideTimer.current);
+    setFading(false);
     if (!hovered.current) {
-      hideTimer.current = setTimeout(() => setZoomFactor(null), HIDE_DELAY_MS);
+      hideTimer.current = setTimeout(() => {
+        setFading(true);
+        hideTimer.current = setTimeout(() => setZoomFactor(null), FADE_OUT_MS);
+      }, HIDE_DELAY_MS);
     }
   }, []);
 
@@ -47,11 +54,16 @@ export function DesktopZoomIndicator() {
       <div
         role="toolbar"
         aria-label="Zoom"
-        className="mt-2 mr-3 flex origin-top-right items-center gap-1 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
+        className={cn(
+          "mt-2 mr-3 flex items-center gap-1 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
+          fading &&
+            "opacity-0 motion-safe:transition-opacity motion-safe:duration-150",
+        )}
         style={{ zoom: 1 / zoomFactor }}
         onPointerEnter={() => {
           hovered.current = true;
           clearTimeout(hideTimer.current);
+          setFading(false);
         }}
         onPointerLeave={() => {
           hovered.current = false;
