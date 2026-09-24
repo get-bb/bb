@@ -65,7 +65,37 @@ import {
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useClipboardCopy } from "@/lib/clipboard";
+import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
+
+export function pluginMarketplaceUrl({
+  marketplace,
+  entryId,
+}: {
+  marketplace: string | null;
+  entryId: string | null;
+}): string | null {
+  if (marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME || entryId === null) {
+    return null;
+  }
+  return `https://getbb.app/marketplace/${encodeURIComponent(entryId)}`;
+}
+
+function copyMarketplaceLinkItems(
+  url: string | null,
+): ResourceOverflowMenuItem[] {
+  if (url === null) return [];
+  return [
+    {
+      label: "Copy marketplace link",
+      icon: "Copy",
+      onSelect: () =>
+        void copyToClipboardWithToast(url, {
+          successMessage: "Marketplace link copied",
+          errorMessage: "Failed to copy marketplace link.",
+        }),
+    },
+  ];
+}
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
@@ -158,6 +188,7 @@ export function CatalogPluginDetail({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
+  const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
@@ -176,6 +207,14 @@ export function CatalogPluginDetail({
           count={count}
           onInstall={() => onInstall(entry)}
         />
+      }
+      overflowMenu={
+        overflowItems.length === 0 ? undefined : (
+          <ResourceOverflowMenu
+            label={`${entry.displayName} actions`}
+            items={overflowItems}
+          />
+        )
       }
     >
       <ResourceDetailStack>
@@ -337,7 +376,14 @@ export function PluginDetail({
     settingsSections.some((section) => section.pluginId === plugin.id);
 
   const pluginName = plugin.name ?? plugin.id;
+  const marketplaceUrl = pluginMarketplaceUrl(
+    catalogEntry ?? {
+      marketplace: plugin.catalogMarketplaceName,
+      entryId: plugin.catalogEntryId,
+    },
+  );
   const overflowItems: ResourceOverflowMenuItem[] = [
+    ...copyMarketplaceLinkItems(marketplaceUrl),
     ...(canEditSource
       ? [
           {
