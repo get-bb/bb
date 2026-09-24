@@ -52,6 +52,7 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
+  BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
@@ -436,13 +437,7 @@ const bbDesktopApi: BbDesktopApi = {
     if (!parsed.success) {
       return;
     }
-    if (parsed.data === "reset") {
-      webFrame.setZoomLevel(0);
-      return;
-    }
-    webFrame.setZoomLevel(
-      webFrame.getZoomLevel() + (parsed.data === "in" ? 0.5 : -0.5),
-    );
+    ipcRenderer.send(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, parsed.data);
   },
   onOpenNewTab(listener): BbDesktopInfoUnsubscribe {
     return addListener(openNewTabListeners, listener);

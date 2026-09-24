@@ -184,6 +184,7 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
+  BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
@@ -217,6 +218,7 @@ import {
 import { createDesktopBrowserBrokerClient } from "./desktop-browser-broker-client.js";
 import {
   bbDesktopBrowserTabRefSchema,
+  bbDesktopZoomCommandSchema,
   bbDesktopWindowFindRequestSchema,
 } from "@bb/desktop-contract";
 import {
@@ -1973,6 +1975,17 @@ async function finishQuit(): Promise<void> {
 }
 
 function registerDesktopUpdateIpc(): void {
+  ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
+    const parsed = bbDesktopZoomCommandSchema.safeParse(payload);
+    const webContents = resolveApplicationWindow(event.sender)?.webContents;
+    if (!parsed.success || webContents === undefined) {
+      return;
+    }
+    webContents.zoomLevel =
+      parsed.data === "reset"
+        ? 0
+        : webContents.zoomLevel + (parsed.data === "in" ? 0.5 : -0.5);
+  });
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();
   });
