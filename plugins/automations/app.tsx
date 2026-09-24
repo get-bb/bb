@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { buildAutomationEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import {
   definePluginApp,
   useBbNavigate,
@@ -18,7 +17,7 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
-} from "@/src/rpc-types";
+} from "./src/rpc-types";
 import { AutomationDetailView } from "./detail-view";
 import {
   AutomationOverviewView,
@@ -27,8 +26,9 @@ import {
   type AutomationCollectionMode,
 } from "./overview-view";
 import { PERSONAL_PROJECT_ID } from "./lib/format-schedule";
-import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { buildAutomationEditThreadPrompt } from "./lib/edit-prompt";
+import { Button } from "@/components/ui/button";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
   Dialog,
   DialogContent,
@@ -36,9 +36,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@bb/shared-ui/dialog";
-import { ResourceListState } from "@bb/shared-ui/resource-list";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/dialog";
+import { ResourceListState } from "@/components/ui/resource-list";
+import { cn } from "@/lib/utils";
 
 const PANEL_PATH = "automations";
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];

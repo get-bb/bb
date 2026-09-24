@@ -32,6 +32,7 @@ import {
   settleArchiveThreadsTransaction,
   settleDeleteThreadTransaction,
   settleThreadListMembershipMutation,
+  settleThreadReadStateTransaction,
   type ArchiveThreadsTransaction,
   type DeleteThreadTransaction,
   type PinnedThreadOrderTransaction,
@@ -402,6 +403,9 @@ export function useMarkThreadRead() {
     onSuccess: (thread) => {
       applyThreadReadStateResult({ queryClient, thread });
     },
+    onSettled: (_data, _error, _input, transaction) => {
+      settleThreadReadStateTransaction({ queryClient, transaction });
+    },
   });
 }
 
@@ -415,7 +419,7 @@ export function useMarkThreadUnread() {
     },
     mutationFn: (input: ThreadReadMutationInput) =>
       sdk.threads.markUnread(input),
-    onMutate: (input): Promise<ThreadListMutationTransaction> =>
+    onMutate: (input): Promise<ThreadReadStateTransaction> =>
       beginThreadReadStateTransaction({
         lastReadAt: null,
         queryClient,
@@ -430,6 +434,9 @@ export function useMarkThreadUnread() {
     },
     onSuccess: (thread) => {
       applyThreadReadStateResult({ queryClient, thread });
+    },
+    onSettled: (_data, _error, _input, transaction) => {
+      settleThreadReadStateTransaction({ queryClient, transaction });
     },
   });
 }

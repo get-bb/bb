@@ -1,76 +1,67 @@
-import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
-import {
-  copyPluginSurfaceAgentReference,
-  firstPartyPluginId,
-  ProductMap,
-} from "@bb/plugin-api-map";
+import { PluginBrandIcon } from "@/components/ui/plugin-icon";
 import { useCallback, useEffect, useState } from "react";
-import { definePluginApp, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import {
+  definePluginApp,
+  useBbNavigate,
+  useSdk,
+  type PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk/app";
+import { copyPluginSurfaceAgentReference } from "./src/agent-reference";
+import { firstPartyPluginId } from "./src/plugin-icons";
+import { ProductMap } from "./src/product-map";
 
-interface PluginReference {
+export interface PluginReference {
   id: string;
   icon: string | null;
   iconUrl: string | null;
   iconTinted: boolean;
 }
 
+export async function loadPluginReferences(
+  sdk: Pick<PluginBrowserBbSdk, "plugins">,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, PluginReference>> {
+  const [installed, catalog] = await Promise.all([
+    sdk.plugins
+      .list({ signal })
+      .then((response) =>
+        response.plugins.map((plugin): PluginReference => ({
+          id: plugin.id,
+          icon: plugin.icon,
+          iconUrl: plugin.iconUrl,
+          iconTinted: true,
+        })),
+      )
+      .catch((): PluginReference[] => []),
+    sdk.plugins.catalog
+      .search({ query: "", signal })
+      .then((response) =>
+        response.results.map((result): PluginReference => ({
+          id: result.pluginId,
+          icon: result.icon,
+          iconUrl: result.iconUrl,
+          iconTinted: result.iconTinted,
+        })),
+      )
+      .catch((): PluginReference[] => []),
+  ]);
+  return new Map(
+    [...catalog, ...installed].map((plugin) => [plugin.id, plugin]),
+  );
+}
+
 function usePluginReferences(): ReadonlyMap<string, PluginReference> {
+  const sdk = useSdk();
   const [plugins, setPlugins] = useState<ReadonlyMap<string, PluginReference>>(
     () => new Map(),
   );
   useEffect(() => {
     const controller = new AbortController();
-    const read = async (url: string): Promise<PluginReference[]> => {
-      try {
-        const response = await fetch(url, { signal: controller.signal });
-        if (!response.ok) return [];
-        const body: unknown = await response.json();
-        const rows = Array.isArray(body)
-          ? body
-          : body !== null && typeof body === "object"
-            ? "plugins" in body
-              ? body.plugins
-              : "results" in body
-                ? body.results
-                : []
-            : [];
-        if (!Array.isArray(rows)) return [];
-        return rows.flatMap((row: unknown) => {
-          if (row === null || typeof row !== "object") return [];
-          const id =
-            "pluginId" in row ? row.pluginId : "id" in row ? row.id : null;
-          if (typeof id !== "string" || !id) return [];
-          return [
-            {
-              id,
-              icon:
-                "icon" in row && typeof row.icon === "string" ? row.icon : null,
-              iconUrl:
-                "iconUrl" in row && typeof row.iconUrl === "string"
-                  ? row.iconUrl
-                  : null,
-              iconTinted: !("iconTinted" in row) || row.iconTinted === true,
-            },
-          ];
-        });
-      } catch {
-        return [];
-      }
-    };
-    void Promise.all([
-      read("/api/v1/plugins"),
-      read("/api/v1/plugin-catalog/search?q="),
-    ]).then(([installed, catalog]) => {
-      if (!controller.signal.aborted) {
-        setPlugins(
-          new Map(
-            [...catalog, ...installed].map((plugin) => [plugin.id, plugin]),
-          ),
-        );
-      }
+    void loadPluginReferences(sdk, controller.signal).then((references) => {
+      if (!controller.signal.aborted) setPlugins(references);
     });
     return () => controller.abort();
-  }, []);
+  }, [sdk]);
   return plugins;
 }
 
@@ -113,7 +104,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
   return (
     <div
       data-guide-stage-viewport
-      className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5 [container-type:size] [--guide-stage-gap:3cqh] lg:pb-0 lg:pt-4"
+      className="h-full min-h-0 w-full flex-1 overflow-y-auto px-3 pb-6 pt-5 sm:px-6 [container-type:size] [--guide-stage-gap:3cqh] lg:pb-0 lg:pt-4"
     >
       <ProductMap
         pluginPageHref={pluginPageHref}

@@ -363,6 +363,7 @@ describe("useThreadCreationOptions", () => {
         modelLoadError: {
           providerId: "codex",
           code: "provider_unavailable",
+          detail: null,
         },
       });
     });
@@ -372,6 +373,7 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.modelLoadError).toEqual({
         providerId: "codex",
         code: "provider_unavailable",
+        detail: null,
       });
       expect(
         result.current.providerOptions.map((option) => option.value),
@@ -1124,7 +1126,11 @@ describe("useThreadCreationOptions", () => {
   it("keeps an existing model when provider discovery fails temporarily", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValueOnce({
       ...executionOptionsResponse(),
-      modelLoadError: { providerId: GLOBAL_PROVIDER_ID, code: "failed" },
+      modelLoadError: {
+        providerId: GLOBAL_PROVIDER_ID,
+        code: "failed",
+        detail: null,
+      },
     });
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(

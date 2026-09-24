@@ -30,29 +30,43 @@ import {
   PLUGIN_SDK_APP_SPECIFIER,
   RUNTIME_SLOT_BY_SPECIFIER,
   SHARED_UI_ICON_SPECIFIER,
+  SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
 } from "./runtime-shims.mjs";
 import {
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
+import {
+  ZOD_LOCALE_STUB_NAMESPACE,
+  zodLocaleStubPlugin,
+} from "./zod-locale-stub.mjs";
 
 export {
   RUNTIME_SLOT_BY_SPECIFIER,
   SHIMMED_TYPE_PACKAGES,
 } from "./runtime-shims.mjs";
 
-const SHARED_UI_ICON_MODULE_SUFFIX = "/shared-ui/src/components/ui/icon";
 const SHARED_UI_SOURCE_IMPORTER = /[\\/]shared-ui[\\/]src[\\/]/;
+const SHARED_UI_RUNTIME_MODULES: ReadonlyMap<string, string> = new Map([
+  ["/shared-ui/src/components/ui/icon", SHARED_UI_ICON_SPECIFIER],
+  [
+    "/shared-ui/src/components/ui/question-form-host",
+    SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
+  ],
+]);
 
-export function isSharedUiIconRelativeImport(
+export function sharedUiRuntimeModuleFor(
   importPath: string,
   importer: string,
-): boolean {
-  if (!SHARED_UI_SOURCE_IMPORTER.test(importer)) return false;
+): string | null {
+  if (!SHARED_UI_SOURCE_IMPORTER.test(importer)) return null;
   const resolved = resolve(dirname(importer), importPath)
     .replace(/\\/g, "/")
     .replace(/\.(?:tsx?|jsx?)$/, "");
-  return resolved.endsWith(SHARED_UI_ICON_MODULE_SUFFIX);
+  for (const [suffix, specifier] of SHARED_UI_RUNTIME_MODULES) {
+    if (resolved.endsWith(suffix)) return specifier;
+  }
+  return null;
 }
 
 let freshFacadeImportSequence = 0;
@@ -135,16 +149,18 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
         path: args.path,
         namespace: SHIM_NAMESPACE,
       }));
-      build.onResolve({ filter: /(^|\/)icon(\.[jt]sx?)?$/ }, (args) => {
-        if (
-          args.namespace !== "file" ||
-          !args.path.startsWith(".") ||
-          !isSharedUiIconRelativeImport(args.path, args.importer)
-        ) {
-          return undefined;
-        }
-        return { path: SHARED_UI_ICON_SPECIFIER, namespace: SHIM_NAMESPACE };
-      });
+      build.onResolve(
+        { filter: /(^|\/)(icon|question-form-host)(\.[jt]sx?)?$/ },
+        (args) => {
+          if (args.namespace !== "file" || !args.path.startsWith(".")) {
+            return undefined;
+          }
+          const specifier = sharedUiRuntimeModuleFor(args.path, args.importer);
+          return specifier === null
+            ? undefined
+            : { path: specifier, namespace: SHIM_NAMESPACE };
+        },
+      );
       build.onLoad(
         { filter: /.*/, namespace: SHIM_NAMESPACE },
         async (args) => ({
@@ -363,7 +379,11 @@ async function bundledInputPaths(
   const paths = new Set<string>();
   await Promise.all(
     Object.keys(metafile.inputs).map(async (input) => {
-      if (input.startsWith(`${SHIM_NAMESPACE}:`) || input.startsWith("(")) {
+      if (
+        input.startsWith(`${SHIM_NAMESPACE}:`) ||
+        input.startsWith(`${ZOD_LOCALE_STUB_NAMESPACE}:`) ||
+        input.startsWith("(")
+      ) {
         return;
       }
       paths.add(await realpath(resolve(absWorkingDir, input)));
@@ -425,7 +445,7 @@ export async function buildPluginApp(
         __BB_PLUGIN_ID__: JSON.stringify(pluginId),
       },
       logLevel: "error",
-      plugins: [runtimeShimPlugin()],
+      plugins: [zodLocaleStubPlugin(), runtimeShimPlugin()],
     });
 
     let authoredCss = "";

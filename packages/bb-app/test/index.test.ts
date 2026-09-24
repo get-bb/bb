@@ -38,6 +38,7 @@ import {
   resolveServerListenerUrl,
   resolveWorktreeRuntimePolicy,
   runBbApp,
+  shouldRunSourceAppUpdateShim,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
@@ -126,21 +127,13 @@ interface FakeSupervisor {
 }
 
 const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
-  {
-    expectedError: /BB_INFERENCE must use provider\/model format/u,
-    key: "BB_INFERENCE",
-    value: "gpt-4o-mini",
-  },
-  {
-    expectedError: /BB_INFERENCE_FALLBACK must use provider\/model format/u,
-    key: "BB_INFERENCE_FALLBACK",
-    value: "gpt-5.4-mini",
-  },
-  {
-    expectedError: /BB_TRANSCRIPTION must use provider\/model format/u,
-    key: "BB_TRANSCRIPTION",
-    value: "gpt-4o-mini-transcribe",
-  },
+  ...["BB_INFERENCE", "BB_INFERENCE_FALLBACK", "BB_TRANSCRIPTION"].map(
+    (key) => ({
+      expectedError: /were removed\. Choose AI services in Settings/u,
+      key,
+      value: "codex/gpt-5.6-luna",
+    }),
+  ),
   {
     expectedError: /BB_APP_URL must be a valid URL/u,
     key: "BB_APP_URL",
@@ -167,11 +160,6 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_FF_PLACEHOLDER", value: "true" },
   { key: "BB_FF_TIMELINE_WINDOW_EVENT_BUDGET", value: "2000" },
   { key: "BB_HOST_DAEMON_PORT", value: "48887" },
-  { key: "BB_INFERENCE", value: "codex/test-inference" },
-  {
-    key: "BB_INFERENCE_FALLBACK",
-    value: "codex/test-inference-fallback",
-  },
   { key: "BB_INHERITED_SKILLS_ROOTS", value: "/tmp/bb-skills" },
   { key: "BB_LOG_LEVEL", value: "debug" },
   { key: "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD", value: "1" },
@@ -179,7 +167,6 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_SERVER_BIND_HOST", value: "127.0.0.1" },
   { key: "BB_SERVER_PORT", value: "48886" },
   { key: "BB_TELEMETRY", value: "false" },
-  { key: "BB_TRANSCRIPTION", value: "codex/test-transcription" },
 ];
 
 const packageMetadataSchema = z.object({
@@ -770,6 +757,17 @@ describe("bb-app launcher", () => {
     });
   });
 
+  it("runs the source update shim only for a start with --in-app-updates", () => {
+    expect(shouldRunSourceAppUpdateShim(["--in-app-updates"])).toBe(true);
+    expect(shouldRunSourceAppUpdateShim(["start", "--in-app-updates"])).toBe(
+      true,
+    );
+    expect(shouldRunSourceAppUpdateShim(["start"])).toBe(false);
+    expect(shouldRunSourceAppUpdateShim(["stop", "--in-app-updates"])).toBe(
+      false,
+    );
+  });
+
   it("reports the server bind host separately from the loopback connection URL", async () => {
     const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
@@ -850,6 +848,26 @@ describe("bb-app launcher", () => {
     await expect(
       runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
     ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+  });
+
+  it("tells the bundled CLI where the server's machine installer is", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-installer-"));
+    const outputPath = join(dataDir, "installer-path.txt");
+
+    const exitCode = await runBundledCliCommand({
+      args: [
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], process.env.BB_MACHINE_INSTALLER ?? 'missing')",
+        outputPath,
+      ],
+      context: { ...createTestStartContext(), dataDir },
+      env: { BB_CLI: process.execPath },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe(
+      "/tmp/bb-app-test/server/dist/assets/install-machine.sh",
+    );
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -1108,16 +1126,8 @@ describe("bb-app launcher", () => {
       dataDir,
       "config",
       "set",
-      "BB_INFERENCE",
-      "anthropic/claude-sonnet-4-5",
-    ]);
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_INFERENCE_FALLBACK",
-      "codex/gpt-5.4-mini",
+      "BB_LOG_LEVEL",
+      "debug",
     ]);
     await runBbApp([
       "--data-dir",
@@ -1133,8 +1143,7 @@ describe("bb-app launcher", () => {
     ).toEqual({
       config: {
         BB_APP_URL: "https://bb.example.test",
-        BB_INFERENCE: "anthropic/claude-sonnet-4-5",
-        BB_INFERENCE_FALLBACK: "codex/gpt-5.4-mini",
+        BB_LOG_LEVEL: "debug",
       },
     });
     expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(

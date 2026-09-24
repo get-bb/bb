@@ -2,10 +2,10 @@
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 import { LIST_PREFERENCE_STORAGE_KEY } from "./list-preference.js";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -89,17 +89,14 @@ const tasksB = [task(PROJECT_B, 1, "todo"), task(PROJECT_B, 2, "in_progress")];
 
 function applyListFilters(
   tasks: Task[],
-  input: {
-    statuses?: readonly string[];
-    priorities?: readonly string[];
-  },
+  input: Record<string, unknown>,
 ): Task[] {
   let next = tasks;
-  if (input.statuses !== undefined && input.statuses.length > 0) {
+  if (Array.isArray(input.statuses) && input.statuses.length > 0) {
     const allowed = new Set(input.statuses);
     next = next.filter((item) => allowed.has(item.status));
   }
-  if (input.priorities !== undefined && input.priorities.length > 0) {
+  if (Array.isArray(input.priorities) && input.priorities.length > 0) {
     const allowed = new Set(input.priorities);
     next = next.filter((item) => allowed.has(item.priority));
   }
@@ -124,23 +121,20 @@ const labelsA = [
   },
 ];
 
-function baseRpc(overrides: Record<string, unknown> = {}) {
-  const listTasksCalls: unknown[] = [];
-  const rpc = {
+function baseRpc(
+  overrides: Record<string, unknown> = {},
+  listTasksCalls: Record<string, unknown>[] = [],
+) {
+  return {
     listProjects: () => ({ projects: [projectA, projectB] }),
     listFolders: () => ({ folders: [] }),
     listPresets: () => ({ presets: [] }),
     sidebarSummary: () => ({ projects: [] }),
-    listLabels: (input: { projectId: string }) => ({
-      labels: input.projectId === PROJECT_A ? labelsA : [],
+    listLabels: (input: unknown) => ({
+      labels: rpcInput(input).projectId === PROJECT_A ? labelsA : [],
     }),
-    listTasks: (input: {
-      projectId?: string | null;
-      activeOnly?: boolean;
-      statuses?: readonly string[];
-      priorities?: readonly string[];
-      labelIds?: readonly string[];
-    }) => {
+    listTasks: (raw: unknown) => {
+      const input = rpcInput(raw);
       listTasksCalls.push(input);
       let tasks: Task[];
       if (input.activeOnly) {
@@ -162,10 +156,11 @@ function baseRpc(overrides: Record<string, unknown> = {}) {
         tasks = [...tasksA, ...tasksB];
       }
       let next = applyListFilters(tasks, input);
-      if (input.labelIds !== undefined) {
-        if (input.labelIds.length === 0) next = [];
+      const labelIds = input.labelIds;
+      if (Array.isArray(labelIds)) {
+        if (labelIds.length === 0) next = [];
         else {
-          const allowed = new Set(input.labelIds);
+          const allowed = new Set(labelIds);
           next = next.filter((item) =>
             item.labelIds.some((id) => allowed.has(id)),
           );
@@ -178,7 +173,6 @@ function baseRpc(overrides: Record<string, unknown> = {}) {
     listAttachments: () => ({ attachments: [] }),
     ...overrides,
   };
-  return Object.assign(rpc, { listTasksCalls });
 }
 
 function renderProject(projectId: string) {
@@ -385,7 +379,8 @@ describe("list filter/sort preference persistence", () => {
 
   it("persists priority and label filters and sends resolved label ids", async () => {
     const registration = app.navPanels[0]!;
-    const rpc = baseRpc();
+    const listTasksCalls: Record<string, unknown>[] = [];
+    const rpc = baseRpc({}, listTasksCalls);
     const slot = renderSlot(registration, { subPath: PROJECT_A }, { rpc });
     await slot.findByText("ALP-1");
 
@@ -412,12 +407,8 @@ describe("list filter/sort preference persistence", () => {
     });
 
     await waitFor(() => {
-      const withLabels = rpc.listTasksCalls.filter(
-        (call): call is { labelIds?: string[]; priorities?: string[] } =>
-          typeof call === "object" && call !== null,
-      );
       expect(
-        withLabels.some(
+        listTasksCalls.some(
           (call) =>
             Array.isArray(call.labelIds) &&
             call.labelIds.includes(LABEL_BUG) &&
@@ -459,7 +450,8 @@ describe("list filter/sort preference persistence", () => {
         },
       }),
     );
-    const rpc = baseRpc();
+    const listTasksCalls: Record<string, unknown>[] = [];
+    const rpc = baseRpc({}, listTasksCalls);
     const slot = renderSlot(app.navPanels[0]!, { subPath: PROJECT_A }, { rpc });
     await slot.findByRole("button", { name: /^Label/ });
     expect(slot.getByRole("button", { name: /^Label/ }).textContent).toContain(
@@ -467,12 +459,8 @@ describe("list filter/sort preference persistence", () => {
     );
     await waitFor(() => {
       expect(
-        rpc.listTasksCalls.some(
-          (call) =>
-            typeof call === "object" &&
-            call !== null &&
-            Array.isArray((call as { labelIds?: unknown }).labelIds) &&
-            (call as { labelIds: unknown[] }).labelIds.length === 0,
+        listTasksCalls.some(
+          (call) => Array.isArray(call.labelIds) && call.labelIds.length === 0,
         ),
       ).toBe(true);
     });

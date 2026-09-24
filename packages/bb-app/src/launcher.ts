@@ -25,12 +25,17 @@ import {
 } from "@bb/config/app-runtime-file";
 import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import {
+  findMachineServiceFile,
+  MACHINE_INSTALLER_ENV_NAME,
+} from "@bb/config/machine-service";
+import {
   hasProcessExited,
   waitForProcessExit,
   waitForProcessExitWithTimeout,
   type ChildProcessExitResult,
 } from "@bb/config/child-process-exit";
 import {
+  APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
   APP_SURFACE_WEB,
   parseAppSurface,
@@ -43,6 +48,8 @@ import {
   formatBbAppEnvPath,
   formatCustomAcpAgentProviderId,
   parseBbAppManagedConfig,
+  REMOVED_AI_SERVICE_CONFIG_KEYS,
+  REMOVED_AI_SERVICE_CONFIG_MESSAGE,
   type BbAppManagedConfig,
   type BbAppManagedConfigKey,
   type BbAppManagedConfigValues,
@@ -55,11 +62,6 @@ import {
   parseClientConfig,
   type ClientConfig,
 } from "@bb/config/client-config";
-import {
-  validateInferenceFallbackModel,
-  validateInferenceModel,
-  validateTranscriptionModel,
-} from "@bb/config/inference-model";
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
 import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
@@ -81,7 +83,29 @@ import {
   readServerMovedFile,
   type ServerMovedFile,
 } from "@bb/server-archive";
+import {
+  APP_UPDATE_MODE_ENV_NAME,
+  APP_UPDATE_SHIM_PROTOCOL_ENV_NAME,
+  APP_UPDATE_SHIM_PROTOCOL_VERSION,
+  appUpdateModeSchema,
+  type AppRevision,
+  type AppUpdateMode,
+} from "@bb/config/app-update";
 import { z } from "zod";
+import {
+  createLauncherAppUpdateController,
+  type LauncherAppUpdateController,
+} from "./app-update/launcher-controller.js";
+import { runNpmShim, spawnNpmLauncher } from "./app-update/npm-shim.js";
+import { runCheckedCommand, runCommand } from "./app-update/run-command.js";
+import { readSourceRevision } from "./app-update/source-checkout.js";
+import { runSourceShim } from "./app-update/source-shim.js";
+import {
+  createLauncherEnv,
+  readLiveShimLock,
+  spawnLauncherProcess,
+  type ShimOutput,
+} from "./app-update/shim-support.js";
 import {
   bold,
   cyan,
@@ -135,8 +159,6 @@ const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "BB_DEV_APP_PORT",
   "BB_EXTERNAL_URL",
   "BB_HOST_DAEMON_PORT",
-  "BB_INFERENCE",
-  "BB_INFERENCE_FALLBACK",
   "BB_INHERITED_SKILLS_ROOTS",
   "BB_LOG_LEVEL",
   "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD",
@@ -144,7 +166,6 @@ const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "BB_SERVER_BIND_HOST",
   "BB_SERVER_PORT",
   "BB_TELEMETRY",
-  "BB_TRANSCRIPTION",
 ]);
 const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const SECRET_SHAPED_ENV_NAME_PATTERN =
@@ -314,9 +335,11 @@ interface InvalidCommand {
 
 interface LauncherCliOptions {
   autoUpdate?: boolean;
+  bundled?: boolean;
   dataDir?: string;
   enrollKey?: string;
   help: boolean;
+  inAppUpdates?: boolean;
   hostDaemonPort?: string;
   hostId?: string;
   joinCode?: string;
@@ -380,6 +403,7 @@ export interface ManagedFullStackProcesses {
 }
 
 interface SpawnNamedManagedProcessArgs {
+  ipc?: boolean;
   logDir: string;
   args: string[];
   command: string;
@@ -391,6 +415,7 @@ interface StartFullStackServerProcessArgs {
   beforeStart?: () => Promise<void> | void;
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
+  onSpawned?: (childProcess: ChildProcess) => void;
   processes: ManagedFullStackProcesses;
 }
 
@@ -458,6 +483,7 @@ interface RunMovedModeArgs {
   bindHost: ServerBindHost;
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  findMachineService: () => Promise<string | null>;
   isShutdownRequested: () => boolean;
   movedFile: ServerMovedFile;
   processes: ManagedFullStackProcesses;
@@ -477,7 +503,9 @@ interface FullStackStarters {
 interface SuperviseBbAppStartArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  findMachineService: () => Promise<string | null>;
   isShutdownRequested: () => boolean;
+  onFullStackReady?: () => Promise<void>;
   prepareFullStack: (entry: FullStackEntry) => Promise<FullStackStarters>;
   processes: ManagedFullStackProcesses;
   readServerMoveMarkers: ReadServerMoveMarkersFn;
@@ -773,9 +801,11 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     args,
     options: {
       "auto-update": { type: "boolean" },
+      bundled: { type: "boolean" },
       "data-dir": { type: "string" },
       "enroll-key": { type: "string" },
       "host-daemon-port": { type: "string" },
+      "in-app-updates": { type: "boolean" },
       "host-id": { type: "string" },
       "join-code": { type: "string" },
       "server-bind-host": { type: "string" },
@@ -792,6 +822,12 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   };
   if (readBooleanOption(parsed.values["auto-update"])) {
     options.autoUpdate = true;
+  }
+  if (readBooleanOption(parsed.values.bundled)) {
+    options.bundled = true;
+  }
+  if (readBooleanOption(parsed.values["in-app-updates"])) {
+    options.inAppUpdates = true;
   }
   const dataDir = readStringOption(parsed.values["data-dir"]);
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
@@ -1218,15 +1254,6 @@ function validateManagedConfigForWrite(config: ManagedConfigForWrite): void {
   if (configValues.BB_APP_URL !== undefined) {
     validateOptionalUrl("BB_APP_URL", configValues.BB_APP_URL);
   }
-  if (configValues.BB_INFERENCE !== undefined) {
-    validateInferenceModel(configValues.BB_INFERENCE);
-  }
-  if (configValues.BB_INFERENCE_FALLBACK !== undefined) {
-    validateInferenceFallbackModel(configValues.BB_INFERENCE_FALLBACK);
-  }
-  if (configValues.BB_TRANSCRIPTION !== undefined) {
-    validateTranscriptionModel(configValues.BB_TRANSCRIPTION);
-  }
   if (configValues.BB_LOG_LEVEL !== undefined) {
     validateLogLevel(configValues.BB_LOG_LEVEL);
   }
@@ -1251,13 +1278,18 @@ export function readBbAppPackageVersion(packageRoot: string): string {
   }
 }
 
+function runsFromSourceCheckout(entrypointUrl: string): boolean {
+  const entrypointDir = dirname(fileURLToPath(entrypointUrl));
+  return entrypointDir === resolve(entrypointDir, "..", "src");
+}
+
 export function resolveBbAppStartContext(
   args: ResolveBbAppStartContextArgs,
 ): BbAppStartContext {
   const entrypointDir = dirname(fileURLToPath(args.entrypointUrl));
   const packageRoot = resolve(entrypointDir, "..");
   const workspaceRoot = resolve(packageRoot, "..", "..");
-  const runsFromSourceCheckout = entrypointDir === resolve(packageRoot, "src");
+  const fromSourceCheckout = runsFromSourceCheckout(args.entrypointUrl);
   const dataDir = resolveDataDir({ env: args.env, homeDir: args.homeDir });
   const serverPort = resolvePortFromEnv({
     defaultPort: BB_PROD_SERVER_PORT,
@@ -1269,13 +1301,13 @@ export function resolveBbAppStartContext(
     env: args.env,
     name: "BB_HOST_DAEMON_PORT",
   });
-  const appDistDir = runsFromSourceCheckout
+  const appDistDir = fromSourceCheckout
     ? resolve(workspaceRoot, "apps", "app", "dist")
     : resolve(packageRoot, "app", "dist");
-  const daemonBundleDir = runsFromSourceCheckout
+  const daemonBundleDir = fromSourceCheckout
     ? resolve(workspaceRoot, "apps", "host-daemon", "dist")
     : resolve(packageRoot, "host-daemon", "dist");
-  const serverEntry = runsFromSourceCheckout
+  const serverEntry = fromSourceCheckout
     ? resolve(workspaceRoot, "apps", "server", "dist", "index.js")
     : resolve(packageRoot, "server", "dist", "index.js");
 
@@ -1485,15 +1517,13 @@ Usage:
 
 Startup-only server and launcher keys:
   BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_PORT,
-  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE, BB_INFERENCE_FALLBACK,
-  BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
-  BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
-  BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, BB_TRANSCRIPTION,
-  and BB_FF_* feature flags.
+  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INHERITED_SKILLS_ROOTS,
+  BB_LOG_LEVEL, BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
+  BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, and BB_FF_* feature
+  flags.
   Changes require a full bb-app restart with bb-app stop && bb-app start,
-  or a desktop app restart. BB_APP_URL, BB_INFERENCE,
-  BB_INFERENCE_FALLBACK, and BB_TRANSCRIPTION can instead be changed live
-  with bb-app config.
+  or a desktop app restart. BB_APP_URL can instead be changed live with
+  bb-app config.
 
 Env file:
   ${formatBbAppEnvPath(dataDir)}
@@ -1520,6 +1550,9 @@ function resolveManagedConfigKey(rawKey: string): ManagedConfigKey {
   }
   if (isManagedConfigValueKey(key)) {
     return key;
+  }
+  if (REMOVED_AI_SERVICE_CONFIG_KEYS.includes(key)) {
+    throw new Error(REMOVED_AI_SERVICE_CONFIG_MESSAGE);
   }
   if (SECRET_SHAPED_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
@@ -2455,6 +2488,11 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
+    [MACHINE_INSTALLER_ENV_NAME]: join(
+      dirname(args.context.serverEntry),
+      "assets",
+      "install-machine.sh",
+    ),
     NODE_ENV: "production",
   };
 
@@ -2856,8 +2894,13 @@ function printBbAppHelp(): void {
   process.stdout.write(`bb-app
 
 Usage:
-  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>]
+  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>] [--in-app-updates] [--bundled]
   bb-app start
+
+  --in-app-updates lets Settings → Updates and bb updates app update and
+  restart bb. bb-app then runs the newest of this package and any version
+  installed by an in-app update; --bundled runs this package regardless.
+
   bb-app stop
   bb-app config set <key> <value>
   bb-app config refresh
@@ -2893,10 +2936,12 @@ export async function startFullStackServerProcess(
     args: [args.context.serverEntry],
     command: process.execPath,
     env: { ...args.env, BB_SERVER_LAUNCH_ID: launchId },
+    ipc: args.onSpawned !== undefined,
     logDir: args.context.logDir,
     processName: "server",
   });
   args.processes.serverRun = serverRun;
+  args.onSpawned?.(serverRun.childProcess);
 
   try {
     await waitForServerHealth({
@@ -3222,6 +3267,12 @@ function printMovedModeReadyOutput(args: PrintMovedModeReadyOutputArgs): void {
   log(" ", formatReadyOutputRow("logs", `${args.context.logDir}/`));
   log(" ", formatReadyOutputRow("lock", args.context.daemonLockFile));
   process.stdout.write("\n");
+  log(
+    " ",
+    dim(
+      "This computer stays connected only while bb-app runs. Run `bb server install-machine-service` to keep it connected with a background service.",
+    ),
+  );
   log(" ", dim("Press Ctrl+C to stop"));
 }
 
@@ -3345,7 +3396,20 @@ export async function runMovedMode(
   await syncResponder();
   const watcher = watchMarkers();
   try {
-    if (!isMovedModeOver()) {
+    const machineService = isMovedModeOver()
+      ? null
+      : await args.findMachineService();
+    if (machineService !== null) {
+      log(
+        green("●"),
+        `A background service runs this computer as a machine (${machineService}); not starting another host daemon`,
+      );
+      while (!isMovedModeOver()) {
+        await args.delayMilliseconds({
+          ms: MOVED_MODE_MARKER_POLL_INTERVAL_MS,
+        });
+      }
+    } else if (!isMovedModeOver()) {
       beginStep("Starting host daemon");
       try {
         await args.startDaemon();
@@ -3447,6 +3511,7 @@ export async function superviseBbAppStart(
     log(" ", formatReadyOutputRow("lock", args.context.daemonLockFile));
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
+    await args.onFullStackReady?.();
 
     return superviseFullStackProcesses({
       context: args.context,
@@ -3467,6 +3532,7 @@ export async function superviseBbAppStart(
       bindHost: args.serverBindHost,
       context: args.context,
       delayMilliseconds: args.delayMilliseconds,
+      findMachineService: args.findMachineService,
       isShutdownRequested: args.isShutdownRequested,
       movedFile,
       processes: args.processes,
@@ -3497,7 +3563,33 @@ export async function completeFullStackSupervision(
   }
 }
 
+async function stopAppUpdateShim(dataDir: string): Promise<boolean> {
+  const shim = await readLiveShimLock(dataDir);
+  if (shim === null) {
+    return false;
+  }
+  const result = await stopVerifiedProcess({
+    killTimeoutMs: STOP_KILL_TIMEOUT_MS,
+    pid: shim.pid,
+    signal: "SIGTERM",
+    startedAt: shim.startedAt,
+    timeoutMs: STOP_TIMEOUT_MS,
+    verifyTokens: bbAppRuntimeVerifyTokens(shim.entryPath),
+  });
+  if (result.kind !== "stopped") {
+    return false;
+  }
+  log(
+    green("✓"),
+    `Stopped bb (pid ${String(shim.pid)})${result.usedKill ? " with SIGKILL" : ""}`,
+  );
+  return true;
+}
+
 async function runStopCommand(args: { dataDir: string }): Promise<void> {
+  if (await stopAppUpdateShim(args.dataDir)) {
+    return;
+  }
   const runtimeFile = await readBbAppRuntimeFile(args.dataDir);
   if (runtimeFile === null) {
     log(dim("●"), `No running bb recorded in ${args.dataDir}`);
@@ -3555,11 +3647,154 @@ async function runStopCommand(args: { dataDir: string }): Promise<void> {
   );
 }
 
+function takeAppUpdateModeFromEnv(
+  env: NodeJS.ProcessEnv,
+): AppUpdateMode | null {
+  const protocol = env[APP_UPDATE_SHIM_PROTOCOL_ENV_NAME];
+  const mode = appUpdateModeSchema.safeParse(env[APP_UPDATE_MODE_ENV_NAME]);
+  delete env[APP_UPDATE_SHIM_PROTOCOL_ENV_NAME];
+  delete env[APP_UPDATE_MODE_ENV_NAME];
+  if (protocol === undefined) {
+    return null;
+  }
+  return Number(protocol) === APP_UPDATE_SHIM_PROTOCOL_VERSION && mode.success
+    ? mode.data
+    : null;
+}
+
+function isRunningUnderAppUpdateShim(env: NodeJS.ProcessEnv): boolean {
+  return env[APP_UPDATE_SHIM_PROTOCOL_ENV_NAME] !== undefined;
+}
+
+function shouldRunNpmAppUpdateShim(args: {
+  options: RunBbAppOptions;
+  requested: boolean;
+  runtime: BbAppRuntimeState;
+  underShim: boolean;
+}): boolean {
+  return (
+    args.requested &&
+    !args.underShim &&
+    args.options.worktreePolicy === null &&
+    !runsFromSourceCheckout(import.meta.url) &&
+    parseAppSurface(args.runtime.env[APP_SURFACE_ENV_NAME]) !==
+      APP_SURFACE_DESKTOP
+  );
+}
+
+async function resolveOwnAppRevision(args: {
+  context: BbAppStartContext;
+  mode: AppUpdateMode;
+}): Promise<AppRevision | null> {
+  if (args.mode === "npm") {
+    return {
+      kind: "npm",
+      packageRoot: args.context.packageRoot,
+      version: args.context.appVersion,
+    };
+  }
+  try {
+    return await readSourceRevision({
+      repoRoot: resolve(args.context.packageRoot, "..", ".."),
+      runner: runCommand,
+    });
+  } catch (error) {
+    log(
+      yellow("!"),
+      `In-app updates are unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
+const shimOutput: ShimOutput = {
+  error: (message) => log(red("✗"), message),
+  info: (message) => log(dim("●"), message),
+  warn: (message) => log(yellow("!"), message),
+};
+
+export function shouldRunSourceAppUpdateShim(cliArgs: string[]): boolean {
+  const parsed = parseLauncherArgs(cliArgs);
+  return (
+    parsed.options.inAppUpdates === true &&
+    !parsed.options.help &&
+    resolveBbAppCommand(parsed.positionals).kind === "start"
+  );
+}
+
+interface RunSourceAppUpdateShimArgs {
+  cliArgs: string[];
+  launcherArgs: string[];
+  prepareRuntime: () => Promise<void>;
+  repoRoot: string;
+}
+
+function resolvePackageManagerCommand(): { args: string[]; command: string } {
+  const execPath = toOptionalString(process.env.npm_execpath);
+  if (execPath === undefined || !/pnpm/u.test(execPath)) {
+    return { args: [], command: "pnpm" };
+  }
+  return /\.[cm]?js$/u.test(execPath)
+    ? { args: [execPath], command: process.execPath }
+    : { args: [], command: execPath };
+}
+
+export async function runSourceAppUpdateShim(
+  args: RunSourceAppUpdateShimArgs,
+): Promise<number> {
+  const parsedArgs = parseLauncherArgs(args.cliArgs);
+  const runtime = await resolveBbAppRuntimeState({
+    entrypointUrl: import.meta.url,
+    env: process.env,
+    homeDir: homedir(),
+    options: parsedArgs.options,
+    serverUrlMode: "local",
+  });
+  const packageManager = resolvePackageManagerCommand();
+  const installEnv: NodeJS.ProcessEnv = { ...process.env };
+  delete installEnv.NODE_ENV;
+  return runSourceShim({
+    dataDir: runtime.context.dataDir,
+    installDependencies: async () => {
+      log(dim("●"), "Installing dependencies");
+      await runCheckedCommand(runCommand, "pnpm install", {
+        args: [...packageManager.args, "install", "--frozen-lockfile"],
+        command: packageManager.command,
+        cwd: args.repoRoot,
+        env: installEnv,
+        onLine: (line) => process.stdout.write(`  ${dim(line)}\n`),
+      });
+    },
+    output: shimOutput,
+    prepareRuntime: async () => {
+      log(dim("●"), "Rebuilding bb");
+      await args.prepareRuntime();
+    },
+    readHead: async () =>
+      (
+        await runCheckedCommand(runCommand, "git rev-parse", {
+          args: ["rev-parse", "HEAD"],
+          command: "git",
+          cwd: args.repoRoot,
+        })
+      ).stdout.trim(),
+    repoRoot: args.repoRoot,
+    runner: runCommand,
+    spawnLauncher: (mode) =>
+      spawnLauncherProcess({
+        args: args.launcherArgs,
+        env: createLauncherEnv(mode),
+      }),
+  });
+}
+
 export async function runBbApp(
   cliArgs: string[] = process.argv.slice(2),
   options: RunBbAppOptions = { worktreePolicy: null },
 ): Promise<void> {
   const parsedArgs = parseLauncherArgs(cliArgs);
+  const underAppUpdateShim = isRunningUnderAppUpdateShim(process.env);
+  const appUpdateMode = takeAppUpdateModeFromEnv(process.env);
 
   if (parsedArgs.options.help) {
     printBbAppHelp();
@@ -3667,6 +3902,30 @@ export async function runBbApp(
 
   assertBbAppArtifacts(runtime.context);
 
+  if (
+    shouldRunNpmAppUpdateShim({
+      options,
+      requested: parsedArgs.options.inAppUpdates === true,
+      runtime,
+      underShim: underAppUpdateShim,
+    })
+  ) {
+    const launcherArgs = cliArgs.filter((arg) => arg !== "--bundled");
+    process.exitCode = await runNpmShim({
+      bundled: {
+        kind: "npm",
+        packageRoot: runtime.context.packageRoot,
+        version: runtime.context.appVersion,
+      },
+      dataDir: runtime.context.dataDir,
+      output: shimOutput,
+      spawnLauncher: (revision, mode) =>
+        spawnNpmLauncher({ cliArgs: launcherArgs, mode, revision }),
+      useBundled: parsedArgs.options.bundled === true,
+    });
+    return;
+  }
+
   const context = runtime.context;
   const serverBindHost = parseServerBindHost(
     runtime.serverEnv.BB_SERVER_BIND_HOST ?? BB_LOOPBACK_HOST,
@@ -3731,14 +3990,17 @@ export async function runBbApp(
   let shutdownPromise: Promise<void> | null = null;
 
   const isShutdownRequested = (): boolean => shuttingDown;
-  const shutdown = (signal: NodeJS.Signals): Promise<void> => {
+  const shutdown = (
+    signal: NodeJS.Signals,
+    message = "Shutting down",
+  ): Promise<void> => {
     if (shutdownPromise !== null) {
       return shutdownPromise;
     }
     shuttingDown = true;
     shutdownPromise = (async () => {
       process.stdout.write("\n");
-      log(dim("●"), "Shutting down");
+      log(dim("●"), message);
       await terminateManagedFullStackProcesses({ processes, signal });
     })();
     return shutdownPromise;
@@ -3748,17 +4010,55 @@ export async function runBbApp(
       void shutdown(signal);
     },
   );
+  const ownAppRevision =
+    appUpdateMode === null
+      ? null
+      : await resolveOwnAppRevision({ context, mode: appUpdateMode });
+  const appUpdateController: LauncherAppUpdateController | null =
+    appUpdateMode === null || ownAppRevision === null
+      ? null
+      : createLauncherAppUpdateController({
+          current: ownAppRevision,
+          dataDir: context.dataDir,
+          log: (message) => log(dim("●"), message),
+          mode: appUpdateMode,
+          repoRoot:
+            appUpdateMode === "source"
+              ? resolve(context.packageRoot, "..", "..")
+              : null,
+          requestShutdown: (message) => {
+            void shutdown("SIGTERM", message);
+          },
+          runner: runCommand,
+        });
 
   try {
     const supervisionResult = await superviseBbAppStart({
       context,
       delayMilliseconds,
+      findMachineService: () =>
+        findMachineServiceFile({
+          dataDir: context.dataDir,
+          homeDir: homedir(),
+          platform: process.platform,
+        }),
       isShutdownRequested,
+      ...(appUpdateController === null
+        ? {}
+        : {
+            onFullStackReady: () => appUpdateController.onFullStackReady(),
+          }),
       prepareFullStack: async (entry) => {
         const fullStackRuntime = await resolveFullStackRuntime(entry);
         const serverEnv = createServerEnv({
           context,
-          env: fullStackRuntime.serverEnv,
+          env:
+            appUpdateController === null || appUpdateMode === null
+              ? fullStackRuntime.serverEnv
+              : {
+                  ...fullStackRuntime.serverEnv,
+                  [APP_UPDATE_MODE_ENV_NAME]: appUpdateMode,
+                },
         });
         const sharedEnv = createSharedEnv({
           context,
@@ -3791,6 +4091,12 @@ export async function runBbApp(
                 : { beforeStart: options.beforeServerStart }),
               context,
               env: serverEnv,
+              ...(appUpdateController === null
+                ? {}
+                : {
+                    onSpawned: (childProcess: ChildProcess) =>
+                      appUpdateController.attachServer(childProcess),
+                  }),
               processes,
             }),
         };
@@ -3823,10 +4129,15 @@ export async function runBbApp(
         delayMilliseconds({ ms: MOVED_MODE_MARKER_POLL_INTERVAL_MS }),
     });
     await completeFullStackSupervision({ shutdownPromise, supervisionResult });
+    const appUpdateExitCode = await appUpdateController?.finalizeExit();
+    if (appUpdateExitCode !== undefined && appUpdateExitCode !== null) {
+      process.exitCode = appUpdateExitCode;
+    }
   } catch (error) {
     await shutdown("SIGTERM");
     throw error;
   } finally {
+    appUpdateController?.dispose();
     removeSignalForwarding();
     if (runtimeRecordOwned) {
       await clearOwnBbAppRuntimeFile({

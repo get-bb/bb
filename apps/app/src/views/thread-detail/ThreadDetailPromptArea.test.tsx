@@ -103,6 +103,15 @@ vi.mock("react-router-dom", async (importOriginal) => {
   };
 });
 
+vi.mock("@/components/ui/app-route-anchor", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/components/ui/app-route-anchor")>();
+  return {
+    ...actual,
+    useImmediateRouteNavigate: () => mocks.navigate,
+  };
+});
+
 vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
   const { ComposerBannersSlot } = await vi.importActual<
     typeof import("@/components/plugin/PluginComposerBanners")
@@ -1115,7 +1124,7 @@ describe("ThreadDetailPromptArea", () => {
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
 
-  it("blocks a staged sent-message edit when the thread becomes ineligible", () => {
+  it("allows a staged sent-message edit while another message is queued", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
       permissionMode: "auto",
@@ -1142,13 +1151,11 @@ describe("ThreadDetailPromptArea", () => {
     });
 
     const inlineEditor = within(hostElement);
-    expect(inlineEditor.getByTestId("submit-mode").textContent).toBe(
-      "blocked:unavailable",
-    );
+    expect(inlineEditor.getByTestId("submit-mode").textContent).toBe("ready:");
     fireEvent.click(
       inlineEditor.getByRole("button", { name: "Submit composer" }),
     );
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the queued drawer adjacent to the bottom composer", () => {

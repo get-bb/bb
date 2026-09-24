@@ -244,6 +244,7 @@ export function EnvironmentRow({
   const createThreadInEnvironment = useCreateThreadInEnvironment({
     projectId: thread.projectId,
     environmentId: environment?.id ?? "",
+    sectionId: thread.sectionId,
   });
   const { providers } = useSystemEnvironmentProviders();
   const { providers: machineProviders } = useSystemMachineProviders();
@@ -267,8 +268,8 @@ export function EnvironmentRow({
   const infoDisplay = getEnvironmentWorkspaceInfoDisplay({
     display,
     providerLookup,
-    environmentName: environment.name,
     hostName: environmentDisplayHost.identity?.name ?? null,
+    locality: environmentDisplayHost.locality,
   });
   const displayHost = environmentHost ?? {
     name:

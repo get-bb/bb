@@ -30,7 +30,7 @@ import { useSidebarRename } from "../sidebar/SidebarInlineRename";
 const moveThreadToSection = vi.hoisted(() => vi.fn());
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
 const threadActions = vi.hoisted(() => ({
-  archiveThreadAndChildren: vi.fn(),
+  requestArchive: vi.fn(),
   requestDelete: vi.fn(),
   requestRename: vi.fn(),
   togglePin: vi.fn(),
@@ -47,10 +47,7 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
 }));
 
 vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    ...threadActions,
-    renameThread: vi.fn(),
-  }),
+  useThreadActions: () => threadActions,
 }));
 
 const destinations = [
@@ -327,7 +324,9 @@ describe("ThreadActionsMenu section moves", () => {
     const moveToSection = await screen.findByRole("menuitem", {
       name: "Move to section",
     });
-    expect(moveToSection.querySelector('[data-icon="MoveTo"]')).not.toBeNull();
+    expect(
+      moveToSection.querySelector('[data-icon="SectionMove"]'),
+    ).not.toBeNull();
     fireEvent.click(moveToSection);
 
     expect(await screen.findByText("Move to section")).not.toBeNull();

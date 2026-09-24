@@ -2,6 +2,11 @@ import { z } from "zod";
 import { delimiter } from "node:path";
 import { defaultFeatureFlags } from "@bb/domain";
 import { DEFAULTS } from "./defaults.js";
+import {
+  APP_UPDATE_MODE_ENV_NAME,
+  appUpdateModeSchema,
+  type AppUpdateMode,
+} from "./app-update.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
@@ -10,11 +15,6 @@ import {
   parseAppSurface,
   type AppSurface,
 } from "./app-surface.js";
-import {
-  validateInferenceFallbackModel,
-  validateInferenceModel,
-  validateTranscriptionModel,
-} from "./inference-model.js";
 import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
 import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
@@ -50,6 +50,16 @@ function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
     return parsed;
   }
   throw new Error(`${args.name} must be one of ${formatAppSurfaceValues()}`);
+}
+
+function parseAppUpdateModeEnvValue(args: EnvVarParseArgs): AppUpdateMode {
+  const parsed = appUpdateModeSchema.safeParse(args.value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error(
+    `${args.name} must be one of ${appUpdateModeSchema.options.join(", ")}`,
+  );
 }
 
 function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
@@ -128,18 +138,6 @@ function parseLogLevelValue(args: EnvVarParseArgs): string {
   return validateLogLevel(args.value);
 }
 
-function parseInferenceModelValue(args: EnvVarParseArgs): string {
-  return validateInferenceModel(args.value);
-}
-
-function parseInferenceFallbackModelValue(args: EnvVarParseArgs): string {
-  return validateInferenceFallbackModel(args.value);
-}
-
-function parseTranscriptionModelValue(args: EnvVarParseArgs): string {
-  return validateTranscriptionModel(args.value);
-}
-
 export const BB_LOG_LEVEL_ENV = defineEnvVar<string>({
   description: "Log level: trace, debug, info, warn, error, fatal",
   name: "BB_LOG_LEVEL",
@@ -184,6 +182,13 @@ export const BB_SERVER_LAUNCH_ID_ENV = defineEnvVar<string>({
   parse: parseNonEmptyStringEnvValue,
 });
 
+export const BB_APP_UPDATE_MODE_ENV = defineEnvVar<AppUpdateMode>({
+  description:
+    "Internal marker the bb-app launcher hands its server child when it runs under the in-app update shim: npm for package installs, source for pnpm start checkouts. The server offers in-app updates only when it is set.",
+  name: APP_UPDATE_MODE_ENV_NAME,
+  parse: parseAppUpdateModeEnvValue,
+});
+
 export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({
   description:
     "Internal launcher marker for telemetry attribution. Set by bb-app and desktop launchers.",
@@ -210,32 +215,6 @@ export const BB_MARKETPLACE_URL_ENV = defineEnvVar<string>({
     "Manifest URL of the reserved bb-community plugin marketplace, which lists as BB Community. Point it at a local file server to test catalog refreshes.",
   name: "BB_MARKETPLACE_URL",
   parse: parseOptionalUrlEnvValue,
-});
-
-export const BB_INFERENCE_ENV = defineEnvVar<string>({
-  description: "Inference model used for server-side completions",
-  name: "BB_INFERENCE",
-  parse: parseInferenceModelValue,
-});
-
-export const BB_INFERENCE_FALLBACK_ENV = defineEnvVar<string>({
-  description:
-    "Fallback inference model used after a transient server-side completion failure",
-  name: "BB_INFERENCE_FALLBACK",
-  parse: parseInferenceFallbackModelValue,
-});
-
-export const BB_TRANSCRIPTION_ENV = defineEnvVar<string>({
-  description: "Speech-to-text model used for voice transcription",
-  name: "BB_TRANSCRIPTION",
-  parse: parseTranscriptionModelValue,
-});
-
-export const OPENAI_API_KEY_ENV = defineEnvVar<string>({
-  description:
-    "OpenAI API key used when an explicit OpenAI provider route is configured",
-  name: "OPENAI_API_KEY",
-  parse: parseStringEnvValue,
 });
 
 export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
@@ -356,16 +335,12 @@ export const DEFAULT_BB_APP_SURFACE = APP_SURFACE_WEB;
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_SERVER_BIND_HOST: ServerBindHost = BB_LOOPBACK_HOST;
 export const DEFAULT_BB_EXTERNAL_URL = "";
-export const DEFAULT_OPENAI_API_KEY = "";
 export const DEFAULT_BB_POSTHOG_API_KEY =
   "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_MARKETPLACE_URL =
   "https://getbb.app/marketplace/v2/marketplace.json";
-export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
-export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
-export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;

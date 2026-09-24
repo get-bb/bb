@@ -88,6 +88,7 @@ const baseExecution = makeExecutionControlsProps({
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail: "model list command_failed: codex exited before responding",
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
@@ -152,7 +153,6 @@ function makeEnvironmentSummary({
   const chrome = getEnvironmentSummaryChrome({
     display,
     providerLookup,
-    environmentName: environment.name,
     hasMultipleMachines,
     host:
       machineName === undefined

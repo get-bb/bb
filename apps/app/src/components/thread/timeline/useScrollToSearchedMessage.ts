@@ -1,4 +1,14 @@
-import { useEffect, useRef } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useLocation } from "react-router-dom";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 
@@ -13,6 +23,20 @@ interface SeqAnchoredRow {
 interface SearchMessageTarget {
   seq: number;
   threadId: string | null;
+}
+
+export interface SearchMessageLocationTarget extends SearchMessageTarget {
+  locationKey: string;
+}
+
+interface SearchMessageLocation {
+  target: SearchMessageLocationTarget | null;
+  readLocationKey: () => string;
+}
+
+interface SearchMessageLocationProviderProps {
+  threadId: string | undefined;
+  children: ReactNode;
 }
 
 interface SearchMessagePaginationOptions {
@@ -177,6 +201,67 @@ export function readSearchMessageTarget(
   return null;
 }
 
+const SearchMessageLocationContext =
+  createContext<SearchMessageLocation | null>(null);
+
+function searchTargetAppliesToThread(
+  target: SearchMessageTarget,
+  threadId: string | undefined,
+): boolean {
+  return (
+    threadId === undefined ||
+    target.threadId === null ||
+    target.threadId === threadId
+  );
+}
+
+export function SearchMessageLocationProvider({
+  threadId,
+  children,
+}: SearchMessageLocationProviderProps) {
+  const location = useLocation();
+  const locationKeyRef = useRef(location.key);
+  useLayoutEffect(() => {
+    locationKeyRef.current = location.key;
+  }, [location.key]);
+  const readLocationKey = useCallback(() => locationKeyRef.current, []);
+  const target = readSearchMessageTarget(location.state);
+  const applies =
+    target !== null && searchTargetAppliesToThread(target, threadId);
+  const targetLocationKey = applies ? location.key : null;
+  const targetSeq = applies ? target.seq : null;
+  const targetThreadId = applies ? target.threadId : null;
+  const value = useMemo<SearchMessageLocation>(
+    () => ({
+      target:
+        targetLocationKey === null || targetSeq === null
+          ? null
+          : {
+              locationKey: targetLocationKey,
+              seq: targetSeq,
+              threadId: targetThreadId,
+            },
+      readLocationKey,
+    }),
+    [readLocationKey, targetLocationKey, targetSeq, targetThreadId],
+  );
+  return createElement(
+    SearchMessageLocationContext.Provider,
+    { value },
+    children,
+  );
+}
+
+export function useSearchMessageLocation(): SearchMessageLocation {
+  const value = useContext(SearchMessageLocationContext);
+  if (value === null) {
+    throw new Error(
+      "useSearchMessageLocation: no <SearchMessageLocationProvider> above the caller",
+    );
+  }
+  return value;
+}
+
 export function useScrollToSearchedMessage(
   rows: readonly SeqAnchoredRow[],
   threadId: string | undefined,
@@ -186,12 +271,10 @@ export function useScrollToSearchedMessage(
     onLoadOlderRows,
   }: SearchMessagePaginationOptions = {},
 ): void {
-  const location = useLocation();
+  const { target, readLocationKey } = useSearchMessageLocation();
   const bottomAnchor = useBottomAnchoredScroll();
   const handledKeyRef = useRef<string | null>(null);
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
-  const locationKeyRef = useRef(location.key);
-  locationKeyRef.current = location.key;
   const pendingRevealTimersRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     const pendingRevealTimers = pendingRevealTimersRef.current;
@@ -203,12 +286,16 @@ export function useScrollToSearchedMessage(
       handledKeyRef.current = null;
     };
   }, []);
-  const target = readSearchMessageTarget(location.state);
+  const targetLocationKey = target?.locationKey ?? null;
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
 
   useEffect(() => {
-    if (targetSeq === null || handledKeyRef.current === location.key) {
+    if (
+      targetLocationKey === null ||
+      targetSeq === null ||
+      handledKeyRef.current === targetLocationKey
+    ) {
       return;
     }
     if (threadId !== undefined && targetThreadId !== null) {
@@ -225,7 +312,7 @@ export function useScrollToSearchedMessage(
         loadedRange === null
           ? null
           : [
-              location.key,
+              targetLocationKey,
               targetThreadId ?? "",
               targetSeq,
               loadedRange.min,
@@ -254,11 +341,11 @@ export function useScrollToSearchedMessage(
     ) {
       return;
     }
-    handledKeyRef.current = location.key;
+    handledKeyRef.current = targetLocationKey;
 
     let flashed = false;
     const revealTarget = () => {
-      if (locationKeyRef.current !== location.key) {
+      if (readLocationKey() !== targetLocationKey) {
         return;
       }
       const element = document.querySelector<HTMLElement>(selector);
@@ -300,9 +387,10 @@ export function useScrollToSearchedMessage(
     bottomAnchor,
     hasOlderRows,
     isLoadingOlderRows,
-    location.key,
     onLoadOlderRows,
+    readLocationKey,
     rows,
+    targetLocationKey,
     targetSeq,
     targetThreadId,
     threadId,

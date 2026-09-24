@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "resource-route-label",
+  "type": "registry:ui",
+  "title": "resource-route-label",
+  "description": "BB ui \"resource-route-label\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/resource-route-label.ts",
+      "content": "import { useEffect } from \"react\";\n\nexport const RESOURCE_ROUTE_LABEL_EVENT = \"bb:resource-route-label\";\n\nexport function useResourceRouteLabel(label: string | null | undefined) {\n  useEffect(() => {\n    if (!label || typeof window === \"undefined\") return;\n\n    let active = true;\n    queueMicrotask(() => {\n      if (!active) return;\n      window.dispatchEvent(\n        new CustomEvent(RESOURCE_ROUTE_LABEL_EVENT, { detail: { label } }),\n      );\n    });\n\n    return () => {\n      active = false;\n      window.dispatchEvent(\n        new CustomEvent(RESOURCE_ROUTE_LABEL_EVENT, {\n          detail: { label: null },\n        }),\n      );\n    };\n  }, [label]);\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/resource-route-label.ts"
+    }
+  ]
+}

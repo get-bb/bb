@@ -93,6 +93,7 @@ interface PluginRegistrationContext {
   syncCliSkill: () => Promise<void>;
   notifyPluginsChanged: () => void;
   list: () => InstalledPlugin[];
+  runInstallHandlers: (id: string) => Promise<void>;
 }
 
 export function createPluginRegistration(context: PluginRegistrationContext) {
@@ -109,6 +110,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     syncCliSkill,
     notifyPluginsChanged,
     list,
+    runInstallHandlers,
   } = context;
   const logger = deps.logger;
 
@@ -334,8 +336,10 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     const manifest = args.validated
       ? initialManifest
       : await validateInstallDir(args);
+    let isFreshInstall = false;
     await withLifecycleLock(manifest.id, async () => {
       const existing = getInstalledPlugin(deps.db, manifest.id);
+      isFreshInstall = existing === undefined;
       assertInstallRegistrationAvailable(existing, args, manifest.id);
       const movedFrom = pathSourceMoveFrom(existing, args);
       await disposeOne(manifest.id);
@@ -387,6 +391,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
     await syncCliSkill();
     notifyPluginsChanged();
+    if (isFreshInstall) await runInstallHandlers(manifest.id);
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
     deps.telemetry.capture(

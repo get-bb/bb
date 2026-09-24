@@ -1,10 +1,11 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, useEffect, type FormEvent } from "react";
 import {
   definePluginApp,
   type PluginPendingInteractionProps,
 } from "@get-bb/plugin-sdk/app";
-import { Button } from "@bb/shared-ui/button";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@/components/ui/button";
+import { useQuestionFormHost } from "@/components/ui/question-form-host";
+import { cn } from "@/lib/utils";
 import {
   PI_EXTENSION_UI_RENDERER_ID,
   piExtensionUiPayloadDataSchema,
@@ -25,16 +26,36 @@ function ExtensionUiInteraction({
   submit,
   cancel,
 }: PluginPendingInteractionProps) {
-  const request = useMemo(() => parseRequest(interaction.payload), [interaction.payload]);
+  const request = useMemo(
+    () => parseRequest(interaction.payload),
+    [interaction.payload],
+  );
+  const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
   const [text, setText] = useState(request?.prefill ?? "");
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (busy || request?.method !== "select") return;
+    const options = request.options ?? [];
+    return registerChoiceHandler((index) => {
+      const option = options[index];
+      if (option === undefined) return false;
+      setSelected(option);
+      return true;
+    });
+  }, [busy, request, registerChoiceHandler]);
 
   if (!request) {
     return (
       <div className="space-y-3 text-xs text-muted-foreground">
         <p>This request could not be displayed.</p>
-        <Button type="button" size="sm" variant="outline" onClick={() => void cancel()}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void cancel()}
+        >
           Cancel
         </Button>
       </div>
@@ -69,27 +90,41 @@ function ExtensionUiInteraction({
       onSubmit={onSubmit}
       className="flex flex-col gap-3 text-xs text-muted-foreground"
     >
-      {request.message ? <p className="text-sm text-foreground">{request.message}</p> : null}
+      {request.message ? (
+        <p className="text-sm text-foreground">{request.message}</p>
+      ) : null}
       {request.method === "select" ? (
         <fieldset className="flex flex-col gap-1.5" disabled={busy}>
-          {(request.options ?? []).map((option) => (
-            <label
-              key={option}
-              className={cn(
-                "flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground",
-                selected === option && "border-ring bg-surface-raised",
-              )}
-            >
-              <input
-                type="radio"
-                name={request.requestId}
-                className="size-3.5"
-                checked={selected === option}
-                onChange={() => setSelected(option)}
-              />
-              <span>{option}</span>
-            </label>
-          ))}
+          {(request.options ?? []).map((option, index) => {
+            const shortcut = shortcuts.get(String(index));
+            return (
+              <label
+                key={option}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground",
+                  selected === option && "border-ring bg-surface-raised",
+                )}
+              >
+                <input
+                  type="radio"
+                  name={request.requestId}
+                  className="size-3.5"
+                  checked={selected === option}
+                  aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+                  onChange={() => setSelected(option)}
+                />
+                <span className="min-w-0 flex-1">{option}</span>
+                {shortcut ? (
+                  <kbd
+                    aria-hidden="true"
+                    className="shrink-0 text-xs font-normal text-subtle-foreground"
+                  >
+                    {shortcut.label}
+                  </kbd>
+                ) : null}
+              </label>
+            );
+          })}
         </fieldset>
       ) : null}
       {request.method === "input" ? (
@@ -122,20 +157,33 @@ function ExtensionUiInteraction({
           >
             No
           </Button>
-          <Button type="button" size="sm" disabled={busy} onClick={() => finish(true)}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            onClick={() => finish(true)}
+          >
             Yes
           </Button>
         </div>
       ) : null}
       {request.method !== "confirm" ? (
         <div className="flex items-center justify-between gap-2">
-          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void cancel()}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void cancel()}
+          >
             Cancel
           </Button>
           <Button
             type="submit"
             size="sm"
-            disabled={busy || (request.method === "select" && selected === null)}
+            disabled={
+              busy || (request.method === "select" && selected === null)
+            }
           >
             Submit
           </Button>

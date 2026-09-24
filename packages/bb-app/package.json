@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.43.3",
+  "version": "0.43.4",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -45,7 +45,6 @@
   "files": [
     "app/dist",
     "dist",
-    "!dist/*.map",
     "host-daemon/dist/bb",
     "host-daemon/dist/bb-chunks",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
@@ -53,8 +52,8 @@
     "host-daemon/dist/bb-provider-bridge-worker.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
     "server/dist",
-    "!server/dist/index.js.map",
-    "README.md"
+    "README.md",
+    "!**/*.map"
   ],
   "publishConfig": {
     "access": "public"
@@ -89,9 +88,11 @@
     "@bb/server-archive": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
     "rimraf": "^6.1.0",
     "rollup": "^4.62.2",
     "rollup-plugin-dts": "^6.4.1",
+    "semver": "^7.7.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

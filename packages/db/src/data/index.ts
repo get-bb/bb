@@ -81,6 +81,7 @@ export {
   lifecycleThreadTreeIdsForProject,
   listLifecycleThreadTree,
   listLifecycleThreadDependents,
+  listArchivedThreadsPendingTeardown,
   listRunningThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
@@ -112,8 +113,10 @@ export type {
 } from "./threads.js";
 
 export {
+  getAiServiceSelections,
   getAppKeybindingOverrides,
   getAppSettings,
+  setAiServiceSelection,
   setAppKeybindingOverrides,
   setAppSettings,
 } from "./app-settings.js";
@@ -418,10 +421,12 @@ export {
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   createQueuedThreadMessageInTransaction,
+  deleteQueuedRetriesForThreadEventSuffixInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
   hasQueuedRetryOfTurnRequest,
+  hasClaimedQueuedThreadMessages,
   hasQueuedThreadMessages,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
@@ -506,4 +511,3 @@ export {
 export * from "./project-attachments.js";
 
 export * from "./project-attachment-backfill.js";
-export * from "./thread-image-metadata.js";

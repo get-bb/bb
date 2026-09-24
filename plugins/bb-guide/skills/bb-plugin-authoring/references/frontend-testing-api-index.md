@@ -7,10 +7,13 @@ Read `testing.md` for examples and fidelity limits.
 ## `@get-bb/plugin-sdk/testing/app`
 
 - `RpcCall`
+- `SdkCall`
+- `PluginSdkTestFakes`
 - `NavigateCall`
 - `ExperimentalFixedTabOpenCall`
 - `ComposerLog`
 - `SidebarActionCall`
+- `SidebarNavigationCall`
 - `installTestPluginRuntime`
 - `CapturedPluginApp`
 - `PluginAppSource`

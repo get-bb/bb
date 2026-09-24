@@ -9,6 +9,8 @@ import {
   noopNotifier,
 } from "../src/index.js";
 
+const SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP = 1790009314673;
+
 it("leaves a fresh migrated database without an installation override", () => {
   const db = createConnection(":memory:");
   try {
@@ -76,9 +78,9 @@ describe.each(["project", "thread", "preference"] as const)(
           const projects = db.$client.prepare("SELECT * FROM projects").all();
           const threads = db.$client.prepare("SELECT * FROM threads").all();
           db.$client.exec("DROP TABLE ui_preference_defaults");
-          db.$client.exec(
-            "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
-          );
+          db.$client
+            .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+            .run(SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP);
           migrate(db);
           expect(
             db.$client.prepare("SELECT * FROM ui_preference_defaults").all(),

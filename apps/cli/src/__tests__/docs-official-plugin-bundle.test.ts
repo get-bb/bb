@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 120_000 });
 import { buildPluginApp, resolvePluginBuildToolchain } from "@bb/plugin-build";
+import { anchorTsconfigPaths } from "./helpers/plugin-copy.js";
 function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
 }
@@ -45,6 +46,7 @@ describe("Docs official plugin frontend bundle", () => {
         return name !== "dist" && name !== "node_modules";
       },
     });
+    await anchorTsconfigPaths(SIMPLE_NOTES_DIR, pluginDir);
     await symlink(
       join(SIMPLE_NOTES_DIR, "node_modules"),
       join(pluginDir, "node_modules"),

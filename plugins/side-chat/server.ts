@@ -76,16 +76,6 @@ export const sideChatRpcContract = defineRpcContract({
       .strict(),
     output: z.object({ threadId: z.string() }).strict(),
   },
-  sendToMain: {
-    input: z
-      .object({
-        sourceThreadId: z.string().trim().min(1),
-        senderThreadId: z.string().trim().min(1),
-        text: z.string().trim().min(1),
-      })
-      .strict(),
-    output: z.object({ ok: z.literal(true) }).strict(),
-  },
 });
 
 export default async function plugin(bb: BbPluginApi) {
@@ -122,14 +112,6 @@ export default async function plugin(bb: BbPluginApi) {
         const fork = await bb.sdk.threads.fork(forkArgs);
         return { threadId: fork.id };
       }
-    },
-    async sendToMain({ sourceThreadId, senderThreadId, text }) {
-      await bb.sdk.threads.queuedMessages.create({
-        threadId: sourceThreadId,
-        input: [{ type: "text", text, mentions: [] }],
-        senderThreadId,
-      });
-      return { ok: true as const };
     },
   });
 

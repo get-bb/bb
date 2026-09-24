@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RuntimePermissionPolicy } from "@bb/domain";
+import type { RuntimePermissionPolicy } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   buildClaudeSessionParams,
   buildClaudeTurnParams,

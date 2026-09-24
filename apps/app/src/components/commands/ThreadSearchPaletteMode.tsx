@@ -8,7 +8,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useAtomValue, useStore } from "jotai";
+import { useAtom, useAtomValue, useStore } from "jotai";
 import { isMacKeyboardPlatform } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
@@ -25,7 +25,17 @@ import {
   resolveThreadStatus,
 } from "@/components/thread/ThreadStatusGlyph";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
+import {
+  ThreadLifecycleFilter,
+  THREAD_LIFECYCLE_OPTIONS,
+} from "@/components/thread/ThreadLifecycleFilter";
+import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
+import {
+  normalizeThreadLifecycleFilter,
+  type ThreadArchiveFilter,
+} from "@/lib/thread-lifecycle-filter";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { usePaletteRecentArchivedThreads } from "@/hooks/queries/palette-thread-queries";
 import {
   hasThreadSearchableQuery,
   useThreadSearch,
@@ -41,15 +51,22 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent, MAX_PANES } from "@/lib/split-layout";
 import {
   buildPaletteThreadSearchRows,
-  type PaletteThreadLifecycle,
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
-import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
+import {
+  PALETTE_SECTION_LABEL_CLASS,
+  PaletteShell,
+  PaletteShortcut,
+} from "./PaletteShell";
 
 interface ThreadSearchOption {
-  lifecycle: PaletteThreadLifecycle;
+  lifecycle: ThreadArchiveFilter;
   row: PaletteThreadSearchRow | null;
+}
+
+function optionKey(option: ThreadSearchOption): string {
+  return option.row?.id ?? `more:${option.lifecycle}`;
 }
 
 export function ThreadSearchPaletteMode({
@@ -67,15 +84,30 @@ export function ThreadSearchPaletteMode({
   const store = useStore();
   const splitLayout = useAtomValue(splitLayoutAtom);
   const isCompact = useIsCompactViewport();
+  const [selectedLifecycles, setLifecycles] = useAtom(
+    paletteThreadLifecyclesAtom,
+  );
+  const lifecycles = useMemo(
+    () => normalizeThreadLifecycleFilter(selectedLifecycles),
+    [selectedLifecycles],
+  );
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [expandedGroups, setExpandedGroups] = useState<
-    PaletteThreadLifecycle[]
-  >([]);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
+  const filterKey = lifecycles.join(",");
+  const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
+  if (previousFilterKey !== filterKey) {
+    setPreviousFilterKey(filterKey);
+    setExpandedGroups([]);
+  }
   const [now] = useState(() => Date.now());
   const navigation = useSidebarNavigation();
   const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
+  const archived = usePaletteRecentArchivedThreads({
+    enabled: trimmedQuery.length === 0 && lifecycles.includes("archived"),
+  });
   const searchable = hasThreadSearchableQuery(trimmedQuery);
   const searchResultsAreCurrent =
     !searchable || threadSearch.debouncedQuery === trimmedQuery;
@@ -91,15 +123,19 @@ export function ThreadSearchPaletteMode({
   }, [navigation.data]);
   const recentThreads = useMemo(
     () => [
-      ...(navigation.data?.projects.flatMap((project) => project.threads) ??
-        []),
-      ...(navigation.data?.personalProject.threads ?? []),
+      ...[
+        ...(navigation.data?.projects.flatMap((project) => project.threads) ??
+          []),
+        ...(navigation.data?.personalProject.threads ?? []),
+      ],
+      ...(lifecycles.includes("archived") ? (archived.data ?? []) : []),
     ],
-    [navigation.data],
+    [archived.data, lifecycles, navigation.data],
   );
   const result = useMemo(
     () =>
       buildPaletteThreadSearchRows({
+        lifecycles,
         now,
         projectNamesById,
         query,
@@ -108,6 +144,7 @@ export function ThreadSearchPaletteMode({
         searchResultsAreCurrent,
       }),
     [
+      lifecycles,
       now,
       projectNamesById,
       query,
@@ -117,18 +154,15 @@ export function ThreadSearchPaletteMode({
     ],
   );
   const options = useMemo(() => {
-    const lifecycles = ["active", "archived"] as const;
-    const limit = lifecycles.every((lifecycle) =>
+    const nonemptyGroups = lifecycles.filter((lifecycle) =>
       result.rows.some((row) => row.lifecycle === lifecycle),
-    )
-      ? 3
-      : 6;
-    return lifecycles.flatMap((lifecycle) => {
+    );
+    const limit = nonemptyGroups.length === 2 ? 3 : 6;
+    return nonemptyGroups.flatMap((lifecycle) => {
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
-      const visible =
-        result.isRecent || expandedGroups.includes(lifecycle)
-          ? rows
-          : rows.slice(0, limit);
+      const visible = expandedGroups.includes(lifecycle)
+        ? rows
+        : rows.slice(0, limit);
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
         lifecycle,
         row,
@@ -137,12 +171,36 @@ export function ThreadSearchPaletteMode({
         groupOptions.push({ row: null, lifecycle });
       return groupOptions;
     });
-  }, [expandedGroups, result]);
+  }, [expandedGroups, lifecycles, result]);
+  const retainedIndex = options.findIndex(
+    (option) => optionKey(option) === highlightedKey,
+  );
   const activeIndex =
-    options.length === 0 ? -1 : Math.min(highlightedIndex, options.length - 1);
-  const isRecentLoading = result.isRecent && navigation.isLoading;
+    retainedIndex >= 0
+      ? retainedIndex
+      : options.length === 0
+        ? -1
+        : Math.min(highlightedIndex, options.length - 1);
+  useLayoutEffect(() => {
+    setHighlightedIndex(Math.max(activeIndex, 0));
+    setHighlightedKey(activeIndex < 0 ? null : optionKey(options[activeIndex]));
+  }, [activeIndex, options]);
+  const highlightOption = useCallback(
+    (index: number) => {
+      setHighlightedIndex(index);
+      setHighlightedKey(
+        options[index] === undefined ? null : optionKey(options[index]),
+      );
+    },
+    [options],
+  );
+  const recentQueries = lifecycles.map((lifecycle) =>
+    lifecycle === "active" ? navigation : archived,
+  );
+  const isRecentLoading =
+    result.isRecent && recentQueries.some((result) => result.isLoading);
   const hasLoadError = result.isRecent
-    ? navigation.isError
+    ? recentQueries.some((result) => result.isError)
     : searchResultsAreCurrent && threadSearch.isError;
   const showThreadListEmptyState =
     result.rows.length === 0 &&
@@ -180,6 +238,7 @@ export function ThreadSearchPaletteMode({
         scrollOnNextHighlightRef.current = true;
         setExpandedGroups((current) => [...current, lifecycle]);
         setHighlightedIndex(index);
+        setHighlightedKey(null);
         inputRef.current?.focus();
         return;
       }
@@ -233,18 +292,19 @@ export function ThreadSearchPaletteMode({
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
-        setHighlightedIndex((current) => {
-          if (event.key === "ArrowDown") {
-            return current + 1 >= options.length ? 0 : current + 1;
-          }
-          return current <= 0 ? options.length - 1 : current - 1;
-        });
+        highlightOption(
+          event.key === "ArrowDown"
+            ? (activeIndex + 1) % options.length
+            : activeIndex <= 0
+              ? options.length - 1
+              : activeIndex - 1,
+        );
         return;
       }
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
-        setHighlightedIndex(event.key === "Home" ? 0 : options.length - 1);
+        highlightOption(event.key === "Home" ? 0 : options.length - 1);
         return;
       }
       if (event.key === "Enter") {
@@ -254,7 +314,7 @@ export function ThreadSearchPaletteMode({
         selectOption(option, activeIndex, event.metaKey || event.ctrlKey);
       }
     },
-    [activeIndex, onExit, options, query.length, selectOption],
+    [activeIndex, highlightOption, onExit, options, query.length, selectOption],
   );
 
   const isLoading =
@@ -287,6 +347,11 @@ export function ThreadSearchPaletteMode({
           : "Use Escape to return to commands."
       }
       inputLabel="Search threads"
+      inputAccessory={
+        <div className="max-w-[45%] shrink-0">
+          <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
+        </div>
+      }
       inputRef={inputRef}
       listId={listId}
       listLabel="Threads"
@@ -296,10 +361,12 @@ export function ThreadSearchPaletteMode({
         label: "Threads",
         clearLabel: "Return to commands",
         onClear: onExit,
+        hideShortcut: isCompact,
       }}
       onInputChange={(value) => {
         setQuery(value);
         setHighlightedIndex(0);
+        setHighlightedKey(null);
         setExpandedGroups([]);
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
@@ -308,7 +375,7 @@ export function ThreadSearchPaletteMode({
       value={query}
     >
       {emptyMessage === null ? (
-        (["active", "archived"] as const).map((lifecycle) => {
+        THREAD_LIFECYCLE_OPTIONS.map(({ value: lifecycle, label }) => {
           if (!result.rows.some((row) => row.lifecycle === lifecycle)) {
             return null;
           }
@@ -321,11 +388,7 @@ export function ThreadSearchPaletteMode({
               className="not-last:mb-2"
             >
               <div id={labelId} className={PALETTE_SECTION_LABEL_CLASS}>
-                {result.isRecent
-                  ? "Recent"
-                  : lifecycle === "archived"
-                    ? "Archived"
-                    : "Threads"}
+                {label}
               </div>
               {options.map((option, index) =>
                 option.lifecycle !== lifecycle ? null : (
@@ -339,7 +402,7 @@ export function ThreadSearchPaletteMode({
                       "flex min-w-0 items-center rounded-md",
                       index === activeIndex && "bg-state-hover text-foreground",
                     )}
-                    onPointerMove={() => setHighlightedIndex(index)}
+                    onPointerMove={() => highlightOption(index)}
                   >
                     <div
                       id={`${optionIdPrefix}-${index}`}
@@ -377,18 +440,11 @@ export function ThreadSearchPaletteMode({
                       <button
                         type="button"
                         aria-label="Open in split"
-                        className="mr-2 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                        className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                         onClick={() => selectOption(option, index, true)}
                       >
                         <span className="mr-1">Open in split</span>
-                        {[splitModifier, "↵"].map((key) => (
-                          <kbd
-                            key={key}
-                            className="min-w-4 rounded-sm bg-state-hover px-1 py-0.5 text-center font-sans font-normal text-muted-foreground"
-                          >
-                            {key}
-                          </kbd>
-                        ))}
+                        <PaletteShortcut>{`${splitModifier} ↵`}</PaletteShortcut>
                       </button>
                     ) : null}
                   </div>

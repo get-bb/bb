@@ -12,6 +12,32 @@ const bundledSkills = readdirSync(new URL("./skills", import.meta.url), {
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
 
+it("introduces bb without user-question guidance", async () => {
+  const { bb, harness } = createFakePluginHost({
+    pluginId: "bb-guide",
+    agentSkillIds: bundledSkills,
+  });
+  try {
+    await plugin(bb);
+    const introduction = harness.registrations.instructionProvider?.({
+      threadId: "thr_test",
+      projectId: "proj_test",
+    });
+    expect(introduction).toContain("You are working inside bb");
+    expect(introduction).toContain("agentic IDE");
+    expect(introduction).toContain(
+      "Reference a BB thread as `@thread:thr_abc123`",
+    );
+    expect(introduction).toContain("Do not construct thread URLs manually");
+    expect(introduction).not.toContain(
+      "Ask the user a blocking question only when",
+    );
+    expect(introduction).toBe(introduction?.trim());
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
 it("keeps the introduction and skill switches independent across reloads", async () => {
   const { bb, harness } = createFakePluginHost({
     pluginId: "bb-guide",

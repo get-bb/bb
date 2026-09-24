@@ -1,7 +1,7 @@
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
-import { translateMissingClaudeCliError } from "./missing-cli-error.js";
+import { translateMissingClaudeCliCatalogError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
 
 function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
@@ -10,9 +10,7 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
     cwd: process.cwd(),
     maxTurns: 0,
     persistSession: false,
-    allowDangerouslySkipPermissions: true,
-    permissionMode: "bypassPermissions",
-    settingSources: [],
+    settingSources: ["user", "project", "local"],
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
   };
 }
@@ -30,14 +28,17 @@ export async function listClaudeCodeBridgeModels(
       options: buildModelProbeOptions(env),
     });
   } catch (error) {
-    throw translateMissingClaudeCliError(error);
+    throw translateMissingClaudeCliCatalogError(error);
   }
 
   try {
     const initialization = await session.initializationResult();
+    if (initialization.models.length === 0) {
+      throw new Error("Claude Code reported no models.");
+    }
     return buildClaudeCodeModels(initialization.models);
   } catch (error) {
-    throw translateMissingClaudeCliError(error);
+    throw translateMissingClaudeCliCatalogError(error);
   } finally {
     session.close();
   }

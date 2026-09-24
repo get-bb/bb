@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@bb/connect-db": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
     "drizzle-orm": "^0.38.0"
   },

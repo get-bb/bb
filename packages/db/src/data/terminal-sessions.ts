@@ -91,7 +91,7 @@ export interface UpdateTerminalSessionsArgs {
   update: TerminalSessionMutation;
 }
 
-const NON_TERMINAL_SESSION_STATUSES: TerminalSessionStatus[] = [
+export const NON_TERMINAL_SESSION_STATUSES: TerminalSessionStatus[] = [
   "starting",
   "running",
   "disconnected",

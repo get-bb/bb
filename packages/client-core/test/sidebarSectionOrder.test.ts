@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildSidebarEntitySectionId,
   normalizeSidebarSectionOrder,
-  reorderSidebarSectionOrder,
 } from "../src/sidebar/sidebarSectionOrder.js";
 
 describe("normalizeSidebarSectionOrder", () => {
@@ -65,27 +64,5 @@ describe("normalizeSidebarSectionOrder", () => {
         hasPinnedSection: true,
       }),
     ).toEqual(["pinned", section, "threads"]);
-  });
-});
-
-describe("reorderSidebarSectionOrder", () => {
-  it("moves any entity or built-in section through the shared order", () => {
-    expect(
-      reorderSidebarSectionOrder({
-        activeId: "threads",
-        overId: "project:a",
-        order: ["pinned", "project:a", "project:b", "threads"],
-      }),
-    ).toEqual(["pinned", "threads", "project:a", "project:b"]);
-  });
-
-  it("rejects ids outside the top-level section contract", () => {
-    expect(
-      reorderSidebarSectionOrder({
-        activeId: "thread:a",
-        overId: "project:a",
-        order: ["project:a", "threads"],
-      }),
-    ).toBeNull();
   });
 });

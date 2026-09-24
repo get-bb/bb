@@ -24,6 +24,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
+  expireArchiveUndoGrace,
   seedEnvironment,
   seedHost,
   seedHostSession,
@@ -32,6 +33,7 @@ import {
   seedSession,
   seedThread,
 } from "../helpers/seed.js";
+import { runThreadLifecycleSweep } from "../../src/services/system/periodic-sweeps.js";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -1799,7 +1801,7 @@ describe("public terminal routes", () => {
     );
   });
 
-  it("closes terminal sessions when the owning thread is archived", async () => {
+  it("closes terminal sessions once the archived thread's undo grace expires", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
     const stored = createTerminalSession(fixture.harness.db, {
@@ -1824,6 +1826,16 @@ describe("public terminal routes", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(
+      getTerminalSession(fixture.harness.db, {
+        kind: "terminal",
+        terminalId: stored.id,
+      }),
+    ).toMatchObject({ closeReason: null, status: "running" });
+
+    expireArchiveUndoGrace(fixture.harness.deps, fixture.thread.id);
+    await runThreadLifecycleSweep(fixture.harness.deps);
+
     const closeMessage = await waitForDaemonMessage(fixture.socket);
     expect(closeMessage).toMatchObject({
       type: "terminal.close",

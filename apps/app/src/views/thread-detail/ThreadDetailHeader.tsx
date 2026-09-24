@@ -28,7 +28,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
+import { useSidebarRename } from "@/components/sidebar/SidebarInlineRename";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
@@ -79,17 +79,17 @@ export function ThreadDetailHeader({
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
-  const { renameThread } = useThreadActions();
+  const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
-    (nextTitle: string) => {
-      renameThread(threadId, nextTitle);
-    },
-    [renameThread, threadId],
+    (nextTitle: string) => renameThreadAsync(threadId, nextTitle),
+    [renameThreadAsync, threadId],
   );
-  const { editor, isEditing, startEditing } = useInlineThreadTitle({
-    onCommit: handleRename,
-    resetKey: threadId,
-    title: threadTitle,
+  const { editor, isEditing, startEditing } = useSidebarRename({
+    kind: "thread",
+    id: threadId,
+    name: threadTitle,
+    label: "Thread name",
+    onSave: handleRename,
   });
   const [desktopInfo] = useState(getBbDesktopInfo);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
@@ -172,12 +172,8 @@ export function ThreadDetailHeader({
               !isFocused &&
               dimsInactiveSplits &&
               CONTEXT_INACTIVE_TEXT_CLASS,
-            beginPaneDrag &&
-              !isEditing &&
-              cn(
-                "cursor-grab touch-none select-none",
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-              ),
+            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            beginPaneDrag && !isEditing && "cursor-grab touch-none select-none",
           )}
           onDoubleClick={handleTitleDoubleClick}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}

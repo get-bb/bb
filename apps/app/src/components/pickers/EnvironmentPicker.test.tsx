@@ -651,9 +651,9 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
 
   function renderMachineMenu(overrides?: {
     hosts?: readonly Host[];
+    host?: Host;
     value?: string;
     selectedProviderHostId?: string | null;
-    multiMachinePickerEnabled?: boolean;
     providers?: readonly SystemEnvironmentProvider[];
     onSelectProvider?: (
       provider: SystemEnvironmentProvider,
@@ -665,7 +665,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       <EnvironmentPickerUI
         value={overrides?.value ?? "provider:project-checkout"}
         sources={machineSources}
-        host={thisMachine}
+        host={overrides?.host ?? thisMachine}
         isLocal
         machines={{
           hosts: overrides?.hosts ?? [thisMachine, studio, devVm],
@@ -678,7 +678,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
             ? thisMachine.id
             : overrides.selectedProviderHostId
         }
-        multiMachinePickerEnabled={overrides?.multiMachinePickerEnabled ?? true}
         onSelectProvider={overrides?.onSelectProvider ?? vi.fn()}
         onSelectHost={overrides?.onSelectHost}
         modal={false}
@@ -703,7 +702,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         }}
         providers={[checkoutProvider]}
         selectedProviderHostId={thisMachine.id}
-        multiMachinePickerEnabled
         onSelectProvider={vi.fn()}
         modal={false}
       />,
@@ -726,7 +724,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         }}
         providers={[checkoutProvider]}
         selectedProviderHostId={thisMachine.id}
-        multiMachinePickerEnabled
         onSelectProvider={vi.fn()}
         modal={false}
       />,
@@ -734,27 +731,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(
       screen.getByRole("combobox", { name: "Search machines" }),
     ).toBeTruthy();
-  });
-
-  it("uses the grouped environment menu when the experiment is off", () => {
-    renderMachineMenu({
-      hosts: manyHosts.slice(0, 3),
-      multiMachinePickerEnabled: false,
-    });
-
-    expect(
-      screen.queryByRole("combobox", { name: "Search machines" }),
-    ).toBeNull();
-    expect(screen.queryByText("Machines")).toBeNull();
-    expect(screen.getByText("this machine")).toBeTruthy();
-    expect(
-      screen
-        .getByText("MacBook Pro")
-        .parentElement?.querySelector('[data-icon="Laptop"]'),
-    ).toBeNull();
-    expect(
-      screen.getAllByRole("option", { name: /Project checkout/u }),
-    ).toHaveLength(3);
   });
 
   it("fuzzy-searches machine names and host ids while keeping hostless targets visible", () => {
@@ -835,6 +811,42 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(screen.getByText("On Mac Studio")).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: /Project checkout/u }));
     expect(onSelectProvider).toHaveBeenCalledWith(checkoutProvider, studio.id);
+  });
+
+  it("initially highlights the selected offline machine", () => {
+    renderMachineMenu({
+      host: devVm,
+      selectedProviderHostId: devVm.id,
+    });
+
+    const localMachine = screen.getByRole("option", {
+      name: "MacBook Pro",
+    });
+    const offlineMachine = screen.getByRole("option", { name: "dev-vm" });
+    expect(localMachine.getAttribute("aria-selected")).toBe("false");
+    expect(offlineMachine.getAttribute("aria-selected")).toBe("true");
+    expect(offlineMachine.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByText("On dev-vm")).toBeTruthy();
+
+    fireEvent.click(localMachine);
+    expect(localMachine.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("On MacBook Pro")).toBeTruthy();
+
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+
+    expect(
+      screen
+        .getByRole("option", { name: "MacBook Pro" })
+        .getAttribute("aria-selected"),
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("option", { name: "dev-vm" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByText("On dev-vm")).toBeTruthy();
   });
 
   it("shows a selected hostless target without a machine environment section", () => {
@@ -1145,7 +1157,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
           primaryHostId: thisMachine.id,
         }}
         onRequestMachineSetup={onRequestMachineSetup}
-        multiMachinePickerEnabled
         modal={false}
       />,
     );
@@ -1216,7 +1227,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
           primaryHostId: thisMachine.id,
         }}
         onRequestMachineSetup={vi.fn()}
-        multiMachinePickerEnabled
         modal={false}
       />,
     );

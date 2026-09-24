@@ -153,6 +153,16 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "thread-list",
+    pluginId: "thread-list",
+    defaultEnabled: true,
+  },
+  {
+    name: "navigation",
+    pluginId: "navigation",
+    defaultEnabled: true,
+  },
+  {
     name: "scheduled-send",
     pluginId: "scheduled-send",
     defaultEnabled: true,
@@ -222,6 +232,11 @@ export const OFFICIAL_PLUGINS = [
   ...plugin,
   autoInstall: false,
 }));
+
+export const AUTOMATIC_AI_SERVICE_PLUGIN_IDS: readonly string[] = [
+  "provider-codex",
+  "bb-ai",
+];
 
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,

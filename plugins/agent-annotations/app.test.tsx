@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalPluginBrowserPage,
   ExperimentalPluginBrowserPageEvaluateOptions,
+  ExperimentalPluginBrowserToolbarActionProps,
   JsonValue,
 } from "@get-bb/plugin-sdk/app";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -170,27 +171,27 @@ describe("AnnotateAction", () => {
     const fake = createFakePage();
     const action = registration();
     const AnnotateAction = action.component;
+    const AnnotateWithSubmit = (
+      props: ExperimentalPluginBrowserToolbarActionProps,
+    ) => {
+      const composer = useComposer();
+      return (
+        <>
+          <AnnotateAction {...props} />
+          <button
+            onClick={() => {
+              void composer.experimental_submit({
+                experimental_data: null,
+              });
+            }}
+          >
+            Submit test
+          </button>
+        </>
+      );
+    };
     const slot = renderSlot(
-      {
-        ...action,
-        component: (props) => {
-          const composer = useComposer();
-          return (
-            <>
-              <AnnotateAction {...props} />
-              <button
-                onClick={() => {
-                  void composer.experimental_submit({
-                    experimental_data: null,
-                  });
-                }}
-              >
-                Submit test
-              </button>
-            </>
-          );
-        },
-      },
+      { ...action, component: AnnotateWithSubmit },
       {
         threadId: "thr_1",
         tabId: "browser:1",

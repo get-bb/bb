@@ -5,8 +5,8 @@ import type {
   Task,
   TaskThread,
 } from "../../shared/contract.js";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import type { TaskRowMeta } from "./data.js";
 import { activeWorkLabel, formatDueDate, partitionLabels } from "./lib.js";
 import type { EditFn } from "./property-menus.js";

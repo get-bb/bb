@@ -45,6 +45,15 @@ function write(rel, content) {
 }
 
 describe("scanTree (pure)", () => {
+  it("excludes temporary packaged CLI builds while still scanning CLI source", () => {
+    write(
+      "apps/cli/.packaged-plugin-build-IZlVup/cli-chunks/server.js",
+      'const id = "codex";\n',
+    );
+    write("apps/cli/src/server.ts", 'const id = "claude-code";\n');
+    expect(scanTree(dir).files).toEqual({ "apps/cli/src/server.ts": 1 });
+  });
+
   it("counts every occurrence, including two ids on one line", () => {
     write(
       "packages/core/a.ts",

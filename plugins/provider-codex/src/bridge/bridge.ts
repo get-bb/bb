@@ -283,6 +283,9 @@ const CHILD_REQUEST_TIMEOUT_MS = 60_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
+const CODEX_ACTIVE_WRITER_ERROR_PATTERN =
+  /\bthread\s+\S+\s+already has an active writer\b/i;
+const CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS = [100, 400, 1_000] as const;
 const CODEX_ALREADY_ARCHIVED_ERROR_PATTERN =
   /\bno rollout found for thread id\b/i;
 const CODEX_NOT_ARCHIVED_ERROR_PATTERN =
@@ -397,8 +400,12 @@ function buildAppServerEnv(
   );
 }
 
+function isCodexSpawnFailure(error: unknown): boolean {
+  return error instanceof CodexAppServerExitedError && error.spawnFailed;
+}
+
 function describeCodexLaunchError(error: unknown): string {
-  if (error instanceof CodexAppServerExitedError && error.spawnFailed) {
+  if (isCodexSpawnFailure(error)) {
     return MISSING_CODEX_CLI_GUIDANCE;
   }
   return error instanceof Error ? error.message : String(error);
@@ -959,6 +966,40 @@ const codexThreadIdentityResultSchema = z
   .object({ thread: z.object({ id: z.string().min(1) }).passthrough() })
   .passthrough();
 
+async function requestThreadConstructionWithWriterRetry(
+  connection: CodexAppServerConnection,
+  method: string,
+  params: BbThreadStartParams | BbThreadResumeParams | BbThreadForkParams,
+): Promise<z.infer<typeof codexThreadIdentityResultSchema>> {
+  const sendOnce = (): Promise<
+    z.infer<typeof codexThreadIdentityResultSchema>
+  > =>
+    connection.request({
+      method,
+      params,
+      resultSchema: codexThreadIdentityResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+  for (const [
+    retryIndex,
+    retryDelayMs,
+  ] of CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS.entries()) {
+    try {
+      return await sendOnce();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)) {
+        throw error;
+      }
+      process.stderr.write(
+        `codex ${method} found an active rollout writer; retrying in ${retryDelayMs}ms (${retryIndex + 1}/${CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS.length}).\n`,
+      );
+      await delay(retryDelayMs);
+    }
+  }
+  return await sendOnce();
+}
+
 type CodexSessionConstructionRequest =
   | { kind: "start" }
   | { kind: "resume"; providerThreadId: string }
@@ -1128,12 +1169,11 @@ async function constructThreadSession(
       }
     }
 
-    const result = await connection.request({
+    const result = await requestThreadConstructionWithWriterRetry(
+      connection,
       method,
       params,
-      resultSchema: codexThreadIdentityResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
+    );
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
     translator.activateThreadGitWritableRoots({
@@ -1365,7 +1405,9 @@ async function handleModelList(id: string | number): Promise<void> {
     }
     sendError(
       id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      isCodexSpawnFailure(error)
+        ? BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE
+        : BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
       describeCodexLaunchError(error),
     );
   }

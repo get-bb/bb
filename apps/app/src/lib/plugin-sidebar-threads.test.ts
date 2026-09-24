@@ -18,6 +18,32 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
 }
 
 describe("toPluginSidebarThread", () => {
+  it("resolves the display title through the same rules bb's row uses", () => {
+    expect(toPluginSidebarThread(makeThread()).displayTitle).toBe("A thread");
+    expect(
+      toPluginSidebarThread(makeThread({ title: null, titleFallback: "Fallback" }))
+        .displayTitle,
+    ).toBe("Fallback");
+    expect(
+      toPluginSidebarThread(
+        makeThread({ id: "thr_abcdefghij", title: null, titleFallback: null }),
+      ).displayTitle,
+    ).toBe("Thread thr_abcd");
+
+    const resources = {
+      sectionNamesById: new Map([["sec_slop", "Slop Cop"]]),
+      projectNamesById: new Map([["proj_1", "bb"]]),
+      threadById: new Map(),
+    };
+    expect(
+      toPluginSidebarThread(
+        makeThread({ title: "Review @section:sec_slop in @project:proj_1" }),
+        new Map(),
+        resources,
+      ).displayTitle,
+    ).toBe("Review Slop Cop in bb");
+  });
+
   it("maps activity counts onto the plugin-facing names", () => {
     const mapped = toPluginSidebarThread(
       makeThread({
@@ -118,24 +144,77 @@ describe("toPluginSidebarThread", () => {
     const mapped = toPluginSidebarThread(
       makeThread({
         pinnedAt: 12,
+        pinSortKey: "a0",
         archivedAt: 13,
         environmentId: "env_1",
         environmentName: "Worktree",
         environmentBranchName: "bb/feature",
+        environmentPath: "/repos/bb/.worktrees/feature",
+        environmentIsWorktree: true,
         environmentProviderId: "git-worktree",
         environmentWorkspaceDisplayKind: "managed-worktree",
         queuedWork: "none",
       }),
     );
     expect(mapped.isPinned).toBe(true);
+    expect(mapped.pinnedAt).toBe(12);
+    expect(mapped.pinSortKey).toBe("a0");
     expect(mapped.isArchived).toBe(true);
+    expect(mapped.archivedAt).toBe(13);
+    expect(mapped.href).toBe("/projects/proj_1/threads/thr_1");
     expect(mapped.environment).toEqual({
       id: "env_1",
       name: "Worktree",
       branchName: "bb/feature",
+      path: "/repos/bb/.worktrees/feature",
+      isWorktree: true,
       providerId: "git-worktree",
       workspaceDisplayKind: "managed-worktree",
     });
+  });
+
+  it("carries status, runtime status, and lineage the list sorts and groups by", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({
+        status: "active",
+        runtime: {
+          displayStatus: "host-reconnecting",
+          hostReconnectGraceExpiresAt: 99,
+        },
+        lifecycleOwnerThreadId: "thr_owner",
+        sourceThreadId: "thr_source",
+        originKind: "fork",
+      }),
+    );
+    expect(mapped.status).toBe("active");
+    expect(mapped.runtimeStatus).toBe("host-reconnecting");
+    expect(mapped.lifecycleOwnerThreadId).toBe("thr_owner");
+    expect(mapped.sourceThreadId).toBe("thr_source");
+  });
+
+  it("exposes hidden threads with a flag instead of dropping them", () => {
+    expect(toPluginSidebarThread(makeThread()).isHidden).toBe(false);
+    expect(
+      toPluginSidebarThread(makeThread({ visibility: "hidden" })).isHidden,
+    ).toBe(true);
+  });
+
+  it("reports queued work as its own indicators", () => {
+    const failed = toPluginSidebarThread(makeThread({ queuedWork: "failed" }));
+    expect(failed.queuedWork).toBe("failed");
+    expect(failed.indicator).toBe("queued-failed");
+    expect(failed.indicatorLabel).toBe("Queued message failed to send");
+
+    const waiting = toPluginSidebarThread(
+      makeThread({ queuedWork: "waiting" }),
+    );
+    expect(waiting.queuedWork).toBe("waiting");
+    expect(waiting.indicator).toBe("queued-waiting");
+
+    const unreadAndFailed = toPluginSidebarThread(
+      makeThread({ queuedWork: "failed", lastReadAt: 1, latestAttentionAt: 9 }),
+    );
+    expect(unreadAndFailed.indicator).toBe("queued-failed");
   });
 
   it("reports no environment when the thread has none", () => {

@@ -1,16 +1,22 @@
 // @vitest-environment jsdom
 
+import { resolve } from "node:path";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginPendingInteraction } from "@bb/domain";
+import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  collectPluginAppRegistrations,
+  isPluginAppDefinition,
+} from "@/lib/plugin-app-definition";
+import { installPluginRuntime } from "@/lib/plugin-frontend";
 import {
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
@@ -22,10 +28,57 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: { ...defaultAppSettings },
+      keybindings: [1, 2, 3].map((digit) => ({
+        command: `question.select.${digit}`,
+        desktopOnly: false,
+        shortcut: {
+          key: String(digit),
+          mod: false,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: false,
+        },
+        when: { all: ["questionOpen"], none: [] },
+      })),
+    },
+  }),
+}));
+vi.mock("@/lib/bb-desktop", () => ({ getBbDesktopInfo: () => null }));
+const pane = vi.hoisted(() => ({ isFocused: true }));
+vi.mock("@/views/thread-detail/PaneContext", () => ({
+  useOptionalPaneContext: () => pane,
+}));
+
+const PI_APP_MODULE = resolve(
+  __dirname,
+  "../../../../../plugins/provider-pi/app.tsx",
+);
+
+async function loadPiPendingInteractions(): Promise<
+  NonNullable<PluginRegistrationSet["pendingInteractions"]>
+> {
+  installPluginRuntime();
+  const module: { default?: unknown } = await import(
+    /* @vite-ignore */ PI_APP_MODULE
+  );
+  if (!isPluginAppDefinition(module.default)) {
+    throw new Error("provider-pi's app.tsx exports no plugin app definition");
+  }
+  return collectPluginAppRegistrations(module.default).pendingInteractions;
+}
 
 function renderComposer(ui: React.ReactElement) {
   return render(
-    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <AppCommandProvider>{ui}</AppCommandProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -217,6 +270,42 @@ describe("PluginPendingInteractionComposer", () => {
         .getByRole("button", { name: "Hide details" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("selects a pi option with its displayed number key", async () => {
+    setPluginSlotRegistrations(
+      "provider-pi",
+      registrations(await loadPiPendingInteractions()),
+    );
+    const data = {
+      requestId: "ui-1",
+      method: "select" as const,
+      options: ["Allow once", "Deny"],
+    };
+    renderComposer(
+      <PluginPendingInteractionComposer
+        interaction={{
+          id: "pint_provider",
+          threadId: "thr_test",
+          createdAt: 1,
+          expiresAt: 2,
+        }}
+        request={{
+          pluginId: "provider-pi",
+          rendererId: "extension-ui",
+          title: "Allow access?",
+          data,
+        }}
+        origin="provider"
+      />,
+    );
+
+    expect(screen.getByText("1", { selector: "kbd" })).toBeDefined();
+    expect(screen.getByText("2", { selector: "kbd" })).toBeDefined();
+    fireEvent.keyDown(window, { key: "2" });
+    expect(
+      (screen.getByRole("radio", { name: "Deny" }) as HTMLInputElement).checked,
+    ).toBe(true);
   });
 
   it("mounts only the renderer registered by the interaction's plugin", () => {

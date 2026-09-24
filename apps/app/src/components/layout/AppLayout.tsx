@@ -85,6 +85,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
+import { useDataDirectoryCommand } from "@/hooks/useDataDirectoryCommand";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
 import {
   getLegacyProjectComposeRoutePath,
@@ -463,6 +464,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return true;
   });
   useServerDaemonLogsCommand();
+  useDataDirectoryCommand();
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;

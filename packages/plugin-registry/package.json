@@ -11,8 +11,7 @@
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@bb/tsconfig": "workspace:*",
-    "@hugeicons/core-free-icons": "^4.3.4",
-    "@hugeicons/react": "^1.1.6",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@radix-ui/react-accordion": "^1.2.16",
     "@radix-ui/react-alert-dialog": "^1.1.19",
     "@radix-ui/react-aspect-ratio": "^1.1.11",

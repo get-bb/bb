@@ -12,6 +12,11 @@ describe("terminal title normalization", () => {
     );
   });
 
+  it("does not split an astral character at the title limit", () => {
+    const prefix = "x".repeat(199);
+    expect(normalizeTerminalTitle({ title: `${prefix}𠮷tail` })).toBe(prefix);
+  });
+
   it("ignores shell path titles without changing the terminal title", () => {
     expect(
       normalizeTerminalTitle({

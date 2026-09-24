@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +10,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { StrictMode } from "react";
+import { appToast } from "@/components/ui/app-toast";
+import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type {
   PluginCatalogSearchData,
   PluginCatalogSearchEntry,
@@ -134,7 +138,14 @@ function cardOrder(): string[] {
     ...document.querySelectorAll<HTMLButtonElement>(
       'button[aria-label^="Open "][aria-label$=" details"]',
     ),
-  ].map((button) => button.getAttribute("aria-label") ?? "");
+  ]
+    .filter((button) => button.closest("[hidden]") === null)
+    .map((button) => button.getAttribute("aria-label") ?? "");
+}
+
+function visibleShelves(): HTMLElement | null {
+  const shelves = screen.queryByTestId("plugin-browse-shelves");
+  return shelves?.hidden === false ? shelves : null;
 }
 
 afterEach(() => {
@@ -224,17 +235,73 @@ describe("BrowsePluginsTab", () => {
       name: "Search plugins",
     });
     expect((search as HTMLInputElement).value).toBe("Mem");
-    expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
+    expect(visibleShelves()).toBeNull();
     fireEvent.change(search, { target: { value: "Memory" } });
+    expect((search as HTMLInputElement).value).toBe("Memory");
 
-    const params = new URLSearchParams(
-      screen.getByTestId("location-search").textContent ?? "",
-    );
-    expect(params.get("query")).toBe("Memory");
-    fireEvent.change(search, { target: { value: "" } });
     await waitFor(() =>
-      expect(screen.getByTestId("plugin-browse-shelves")).toBeTruthy(),
+      expect(
+        new URLSearchParams(
+          screen.getByTestId("location-search").textContent ?? "",
+        ).get("query"),
+      ).toBe("Memory"),
     );
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(visibleShelves()).not.toBeNull());
+  });
+
+  it("keeps the shelves mounted while a search is active", async () => {
+    renderBrowse({ entries: [MEMORY_ENTRY], collections: [] });
+    const shelves = await screen.findByTestId("plugin-browse-shelves");
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
+
+    fireEvent.change(search, { target: { value: "Memory" } });
+    await waitFor(() => expect(visibleShelves()).toBeNull());
+    await waitFor(() => expect(cardOrder()).toEqual(["Open Memory details"]));
+
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(visibleShelves()).toBe(shelves));
+  });
+
+  it("keeps every keystroke while the URL query catches up", async () => {
+    renderBrowse({ entries: [MEMORY_ENTRY], collections: [] });
+    const search = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "Search plugins",
+    });
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (setNativeValue === undefined) throw new Error("No value setter");
+
+    for (const value of ["M", "Me", "Mem", "Memo"]) {
+      setNativeValue.call(search, value);
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(search.value).toBe(value);
+    }
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(
+          screen.getByTestId("location-search").textContent ?? "",
+        ).get("query"),
+      ).toBe("Memo"),
+    );
+    expect(search.value).toBe("Memo");
+  });
+
+  it("renders search results a page at a time", async () => {
+    const entries = Array.from({ length: 30 }, (_, index) => ({
+      ...MEMORY_ENTRY,
+      entryId: `memory-${index}`,
+      pluginId: `memory-${index}`,
+      displayName: `Memory ${index}`,
+    }));
+    renderBrowse({ entries, collections: [] }, "/plugins?query=Memory");
+
+    await waitFor(() => expect(cardOrder()).toHaveLength(12));
+    expect(
+      document.querySelector("[data-resource-infinite-sentinel]"),
+    ).not.toBeNull();
   });
 
   it("routes the card author name and preserves the Browse filters", async () => {
@@ -376,7 +443,7 @@ describe("BrowsePluginsTab", () => {
       "Open Memory details",
       "Open Tasks details",
     ]);
-    expect(screen.getByText("Memory & Context")).toBeTruthy();
+    expect(screen.queryByText("Memory & Context")).toBeNull();
   });
 
   it("puts entries without a published date last in both directions", async () => {
@@ -516,6 +583,7 @@ describe("BrowsePluginsTab", () => {
   });
 
   it("uses the shared error state and retries catalog searches", async () => {
+    const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
     let searchAttempts = 0;
     vi.stubGlobal(
       "fetch",
@@ -547,6 +615,63 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Memory")).toBeTruthy();
     expect(searchAttempts).toBe(2);
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it("notifies once while saved results remain available after failed refreshes", async () => {
+    const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
+    let unavailable = false;
+    let description = MEMORY_ENTRY.description;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/api/v1/plugin-catalog/search")) {
+          return unavailable
+            ? jsonResponse({ error: "unavailable" }, 503)
+            : jsonResponse({ results: [{ ...MEMORY_ENTRY, description }], collections: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={["/plugins?category=memory-and-context"]}>
+          <BrowsePluginsTab
+            onInstall={() => undefined}
+            onOpenPlugin={() => undefined}
+            onInstallFromSource={() => undefined}
+          />
+        </MemoryRouter>
+      </StrictMode>,
+      { wrapper },
+    );
+    await screen.findByRole("button", { name: "Open Memory details" });
+    const refresh = async () => {
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: pluginCatalogSearchQueryKey(""),
+          exact: true,
+        });
+      });
+    };
+    unavailable = true;
+    await refresh();
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(1));
+    expect(warning).toHaveBeenCalledWith("Couldn’t refresh plugins.");
+    expect(
+      screen.getByRole("button", { name: "Open Memory details" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await refresh();
+    expect(warning).toHaveBeenCalledTimes(1);
+    unavailable = false;
+    description = "Refreshed memory catalog";
+    await refresh();
+    await screen.findByText("Refreshed memory catalog");
+    unavailable = true;
+    await refresh();
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(2));
   });
 
   it("marks installed entries instead of offering install", async () => {

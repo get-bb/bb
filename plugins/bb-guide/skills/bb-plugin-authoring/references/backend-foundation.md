@@ -22,13 +22,13 @@ The complete top-level factory API is `pluginId`, `log`, `settings`, `storage`,
 `http`, `rpc`, `realtime`, `background`, `cli`, `agents`, `providers`, `ui`,
 `events`, `experimental_hooks`, `experimental_environments`,
 `experimental_machines`, `experimental_serverAccess`, `status`, `server`, `hosts`,
-`experimental_aiServices`, `sdk`, and `onDispose`.
+`experimental_aiServices`, `sdk`, `onDispose`, and `onInstall`.
 
 Keyed registrations must be unique within one factory execution: duplicate
 settings, routes, rpc methods, services, schedules, CLI registrations, tools,
 instruction providers or mention providers are rejected.
-Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
-are additive, so registering multiple listeners is supported.
+Listeners are different: `bb.events.on`, settings `onChange`, `onDispose`, and
+`onInstall` are additive, so registering multiple listeners is supported.
 
 ### bb.log
 
@@ -299,7 +299,7 @@ entry imports. A host entry that uses only the root helpers
 host builder stubs those helpers and bundles them into the self-contained
 artifact, including for managed Git installs, which run
 `npm install --omit=dev`. A host entry that imports
-`@get-bb/plugin-sdk/provider-bridge`, `@get-bb/plugin-sdk/ai-services`, or a
+`@get-bb/plugin-sdk/provider-bridge` or a
 published `@get-bb/plugin-sdk/host` contract such as
 `experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
 install, so that plugin lists the SDK under `dependencies` (see

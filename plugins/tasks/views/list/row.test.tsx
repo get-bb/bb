@@ -2,9 +2,9 @@
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
 import type { Task, TaskMutationResult } from "../../shared/contract.js";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -58,11 +58,7 @@ function task(overrides: Partial<Task> & Pick<Task, "id" | "number">): Task {
 }
 
 interface Options {
-  updateTask?: (input: {
-    taskId: string;
-    status?: Task["status"];
-    priority?: Task["priority"];
-  }) => TaskMutationResult;
+  updateTask?: (input: Record<string, unknown>) => TaskMutationResult;
 }
 
 function renderList(tasks: Task[], options: Options = {}) {
@@ -80,7 +76,8 @@ function renderList(tasks: Task[], options: Options = {}) {
         listTaskThreads: () => ({ taskThreads: [] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),
-        updateTask: (input) => {
+        updateTask: (raw) => {
+          const input = rpcInput(raw);
           if (options.updateTask) return options.updateTask(input);
           const current = tasks.find((entry) => entry.id === input.taskId)!;
           return { ok: true, task: { ...current, ...input } };

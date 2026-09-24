@@ -1,7 +1,6 @@
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
-  assertAiServiceRegistrable,
   providerWithoutBridgeMessage,
   type NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -38,7 +37,6 @@ import {
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
-import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
 import {
   getInstalledPlugin,
   listInstalledPlugins,
@@ -102,13 +100,13 @@ import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 
-const pluginSdkRuntimePath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "plugin-sdk-runtime.js",
-);
+const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
+const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
+const zodRuntimePath = join(serverRuntimeDir, "zod-runtime.js");
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
 
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+const ZOD_SPECIFIER = "zod";
 
 async function hashFile(
   path: string,
@@ -129,10 +127,29 @@ export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
   };
 }
 
+export function zodAliasFor(args: {
+  runtimePath: string | undefined;
+  sourceKind: InstalledPluginRow["sourceKind"];
+  serverEntry: string;
+}): Record<string, string> | undefined {
+  if (
+    args.runtimePath === undefined ||
+    args.sourceKind !== "builtin" ||
+    !args.serverEntry.endsWith(`${sep}dist${sep}server.js`)
+  ) {
+    return undefined;
+  }
+  return { [ZOD_SPECIFIER]: args.runtimePath };
+}
+
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
   pluginSdkRuntimePath,
 )
   ? pluginSdkAliasFor(pluginSdkRuntimePath)
+  : undefined;
+
+const availableZodRuntimePath = existsSync(zodRuntimePath)
+  ? zodRuntimePath
   : undefined;
 
 interface MutableRoot {
@@ -1528,45 +1545,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           artifact: hostArtifactCandidate,
         });
       },
-      registerAiService: (declaration, binding) => {
-        if (binding.artifact === null) {
-          throw new Error(
-            `AI service "${declaration.id}" cannot go live: its host artifact failed to build: ${binding.problem}`,
-          );
-        }
-        const artifact = binding.artifact;
-        if (!deps.callPluginHost) {
-          throw new Error("host plugin transport is unavailable");
-        }
-        const callPluginHost = deps.callPluginHost;
-        const call = (
-          method: keyof typeof experimental_aiServicesHostContract,
-          input: unknown,
-          options: { hostId: string; timeoutMs: number; signal?: AbortSignal },
-        ): Promise<unknown> =>
-          callPluginHost({
-            pluginId: row.id,
-            contract: experimental_aiServicesHostContract,
-            method,
-            input,
-            hostId: options.hostId,
-            timeoutMs: options.timeoutMs,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-            artifact,
-          });
-        return deps.aiServices.register({
+      registerAiService: (declaration) =>
+        deps.aiServices.register({
           ...declaration,
           pluginId: row.id,
-          completeInference: async (input, options) =>
-            experimental_aiServicesHostContract[
-              "ai.inference.complete"
-            ].output.parse(await call("ai.inference.complete", input, options)),
-          transcribeVoice: async (input, options) =>
-            experimental_aiServicesHostContract[
-              "ai.voice.transcribe"
-            ].output.parse(await call("ai.voice.transcribe", input, options)),
-        });
-      },
+          builtin: row.sourceKind === "builtin",
+        }),
       registerProvider: (declaration) => {
         return registerPluginProvider({
           available: true,
@@ -1584,16 +1568,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         throw new Error(providerWithoutBridgeMessage(providerId));
       },
-      isAiServiceIdTaken: (serviceId) => {
-        const existing = deps.aiServices.get(serviceId);
-        return existing !== null && existing.pluginId !== row.id;
-      },
-      assertAiServiceRegistrable: (serviceId) =>
-        assertAiServiceRegistrable({
-          id: serviceId,
-          hostArtifact: hostArtifactCandidate,
-          hostArtifactProblem,
-        }),
       isProviderIdTaken: (providerId) => {
         if (!deps.providerRegistry) {
           throw new Error("the provider registry is unavailable in this host");
@@ -1609,13 +1583,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       ownedRootUrls.add(mutableRootUrl(mutableRootDir(row.rootDir)));
     }
     try {
+      const serverEntry = await resolveServerEntry(row, manifest);
+      const alias = {
+        ...pluginSdkAlias,
+        ...zodAliasFor({
+          runtimePath: availableZodRuntimePath,
+          sourceKind: row.sourceKind,
+          serverEntry,
+        }),
+      };
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,
-        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
+        ...(Object.keys(alias).length === 0 ? {} : { alias }),
       });
-      const mod = (await jiti.import(
-        await resolveServerEntry(row, manifest),
-      )) as {
+      const mod = (await jiti.import(serverEntry)) as {
         default?: unknown;
       };
       const factory = mod.default;

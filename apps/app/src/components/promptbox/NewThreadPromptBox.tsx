@@ -85,7 +85,6 @@ export interface NewThreadEnvironmentConfig {
   machineProviders?: readonly SystemMachineProvider[];
   selectedProviderHostId?: string | null;
   inputsControlProviderIds?: ReadonlySet<string>;
-  multiMachinePickerEnabled?: boolean;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
   onSelectHost?: EnvironmentPickerUIProps["onSelectHost"];
   onSelectReuse?: EnvironmentPickerUIProps["onSelectReuse"];
@@ -131,7 +130,6 @@ interface NewThreadPromptBoxUIProps {
   disabled: boolean;
   disabledReason?: string;
   autoFocus?: boolean;
-  allowSoftKeyboardAutoFocus?: boolean;
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
   placeholder?: string;
@@ -165,7 +163,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   disabled,
   disabledReason,
   autoFocus,
-  allowSoftKeyboardAutoFocus,
   pluginComposerHost,
   textEffects,
   placeholder: placeholderOverride,
@@ -223,7 +220,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           disabled={disabled}
           disabledReason={disabledReason}
           autoFocus={autoFocus}
-          allowSoftKeyboardAutoFocus={allowSoftKeyboardAutoFocus}
           textEffects={textEffects}
           placeholder={placeholderOverride}
           history={history}
@@ -262,7 +258,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   disabled,
   disabledReason,
   autoFocus,
-  allowSoftKeyboardAutoFocus,
   textEffects,
   placeholder: placeholderOverride,
   history,
@@ -328,7 +323,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
           title: submitTitle,
         }}
         autoFocus={autoFocus}
-        allowSoftKeyboardAutoFocus={allowSoftKeyboardAutoFocus}
         editorLayout="root-compose"
         minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
         placeholder={placeholder}
@@ -437,7 +431,6 @@ export function EnvironmentSlot({
         providersByHostId={environment.providersByHostId}
         selectedProviderHostId={environment.selectedProviderHostId}
         inputsControlProviderIds={environment.inputsControlProviderIds}
-        multiMachinePickerEnabled={environment.multiMachinePickerEnabled}
         onSelectProvider={environment.onSelectProvider}
         onSelectHost={environment.onSelectHost}
         onSelectReuse={environment.onSelectReuse}
@@ -527,14 +520,13 @@ export function ProjectlessMachineSlot({
       className="shrink-0"
       muted
       machineProviders={environment.machineProviders}
-      multiMachinePickerEnabled={environment.multiMachinePickerEnabled}
     />
   );
 }
 
 type NewThreadConnectedEnvironmentConfig = Omit<
   NewThreadEnvironmentConfig,
-  "host" | "isLocal" | "machines" | "multiMachinePickerEnabled"
+  "host" | "isLocal" | "machines"
 >;
 
 type NewThreadConnectedModeConfig = Omit<NewThreadModeConfig, "environment"> & {
@@ -556,8 +548,6 @@ export function NewThreadPromptBox({
   const systemConfigQuery = useSystemConfig();
   const { providers: machineProviders } = useSystemMachineProviders();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
-  const multiMachinePickerEnabled =
-    systemConfigQuery.data?.experiments.multiMachinePicker ?? false;
   const availableHosts = useMemo(
     () => selectHosts(hosts, "persistent"),
     [hosts],
@@ -597,7 +587,6 @@ export function NewThreadPromptBox({
       host: selectedHost,
       isLocal: isLocalHost,
       machines,
-      multiMachinePickerEnabled,
     }),
     [
       threadConfig.environment,
@@ -605,7 +594,6 @@ export function NewThreadPromptBox({
       selectedHost,
       isLocalHost,
       machines,
-      multiMachinePickerEnabled,
     ],
   );
   return (

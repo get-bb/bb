@@ -43,6 +43,7 @@ import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/threa
 import type { QueryClientArg } from "../cache-effect-types";
 import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
+import { invalidateAppUpdateStatus } from "./app-update-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
 import {
   invalidateQueryKeys,
@@ -71,6 +72,7 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
     );
   }
   invalidateSystemVersion({ queryClient });
+  invalidateAppUpdateStatus({ queryClient });
   bumpAllDiffPatchEvictionGenerations();
   queryClient.removeQueries({
     queryKey: allEnvironmentDiffPatchQueryKeyPrefix(),

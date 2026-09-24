@@ -370,7 +370,7 @@ describe("tasks app shell", () => {
     let listTaskCalls = 0;
     let listProjectCalls = 0;
     let holdProjects = false;
-    let releaseProjects: (() => void) | null = null;
+    let releaseProjects: (() => void) | undefined;
     const page = renderSlot(
       app.navPanels[0]!,
       { subPath: "all" },

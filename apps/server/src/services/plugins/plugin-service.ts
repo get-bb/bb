@@ -147,7 +147,11 @@ import {
   forgetMutableRoot,
   type PluginLoadHold,
 } from "./plugin-runtime.js";
-import { nextCronRunAt, raceTimeout } from "./plugin-time-box.js";
+import {
+  nextCronRunAt,
+  raceTimeout,
+  settledWithin,
+} from "./plugin-time-box.js";
 import { createPluginUpdates } from "./plugin-updates.js";
 
 import type {
@@ -535,6 +539,24 @@ function normalizeMentionSearchItems(
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
+  const installHandlerTimeoutMs = deps.installHandlerTimeoutMs ?? 30_000;
+
+  async function runInstallHandlers(id: string): Promise<void> {
+    const plugin = loaded.get(id);
+    if (plugin === undefined) return;
+    const handlers = [...plugin.handle.installHandlers];
+    if (handlers.length === 0) return;
+    const run = (async () => {
+      for (const handler of handlers) {
+        await invokeWrapped(id, "install handler", handler);
+      }
+    })();
+    if (!(await settledWithin(run, installHandlerTimeoutMs))) {
+      logger.warn(
+        `[plugin:${id}] install handlers were still running after ${installHandlerTimeoutMs / 1000}s; the install finished without waiting for them`,
+      );
+    }
+  }
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
   const mentionSearchTimeoutMs =
@@ -635,6 +657,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     restoreRegistration,
     sourceFingerprint,
   } = createPluginRegistration({
+    runInstallHandlers,
     deps,
     bundledPlugins,
     withLifecycleLock,

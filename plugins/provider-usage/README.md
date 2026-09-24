@@ -28,6 +28,11 @@ contract is owned here and copied into each source; no additional adapter plugin
 provider-kit helper, or core runtime convention is required. Other providers must
 explicitly implement the contract to appear in these displays.
 
+OpenCode's host-local source reports OpenCode Go subscription limits when a Go
+Console account or API key is configured on the selected machine. Its five-hour, weekly, and monthly
+windows come from Go's usage API. Other providers used through OpenCode and Zen
+pay-as-you-go spending are not included.
+
 Known provider-issued account identities are deduplicated within the selected
 location. Unknown identities are never merged by email. Structured plan and quota
 window metadata give both displays consistent labels.

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createPortal } from "react-dom";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -41,6 +42,24 @@ function PluginDetailLinkDelegate() {
   return (
     <div onClick={onRouteAnchorClick}>
       <a href="/plugins/secrets">Open Secrets plugin</a>
+    </div>
+  );
+}
+
+function PortaledThreadLinkDelegate({
+  overlayPluginId,
+}: {
+  overlayPluginId: string;
+}) {
+  const onRouteAnchorClick = useRouteAnchorDelegate();
+  return (
+    <div data-bb-plugin="thread-list" onClick={onRouteAnchorClick}>
+      {createPortal(
+        <div data-bb-portaled-overlay="" data-bb-plugin={overlayPluginId}>
+          <a href="/threads/thr-next">Open next thread</a>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -127,6 +146,48 @@ describe("useRouteAnchorDelegate plugin-detail links", () => {
     expect(notPrevented).toBe(false);
     expect(onOpenPluginDetail).toHaveBeenCalledWith("secrets");
     expect(openPaneContentInSplit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/threads/thr-current",
+    );
+  });
+});
+
+describe("useRouteAnchorDelegate portaled overlays", () => {
+  it("navigates in-app for a link in the plugin's own portaled menu", () => {
+    render(
+      <MemoryRouter initialEntries={["/threads/thr-current"]}>
+        <RouteNavigationProvider>
+          <CurrentPath />
+          <PortaledThreadLinkDelegate overlayPluginId="thread-list" />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const notPrevented = fireEvent.click(
+      screen.getByRole("link", { name: "Open next thread" }),
+    );
+
+    expect(notPrevented).toBe(false);
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/threads/thr-next",
+    );
+  });
+
+  it("ignores a link in another plugin's portaled overlay", () => {
+    render(
+      <MemoryRouter initialEntries={["/threads/thr-current"]}>
+        <RouteNavigationProvider>
+          <CurrentPath />
+          <PortaledThreadLinkDelegate overlayPluginId="other-plugin" />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const notPrevented = fireEvent.click(
+      screen.getByRole("link", { name: "Open next thread" }),
+    );
+
+    expect(notPrevented).toBe(true);
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/threads/thr-current",
     );

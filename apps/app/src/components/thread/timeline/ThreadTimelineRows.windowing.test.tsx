@@ -58,7 +58,7 @@ const nestedRows = Array.from({ length: 30 }, (_, index) =>
   }),
 );
 
-function renderDelegation(timelineWindowingEnabled: boolean) {
+function renderDelegation() {
   const queryClient = new QueryClient();
   return render(
     <MemoryRouter>
@@ -74,7 +74,6 @@ function renderDelegation(timelineWindowingEnabled: boolean) {
               sourceSeqStart: 1,
             }),
           ]}
-          timelineWindowingEnabled={timelineWindowingEnabled}
           threadRuntimeDisplayStatus="idle"
           workspaceRootPath={undefined}
         />
@@ -135,20 +134,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ThreadTimelineRows windowing experiment", () => {
-  it("keeps the control timeline fully mounted", () => {
-    const view = renderDelegation(false);
-    const nestedList = view.container.querySelector(
-      '[data-timeline-row-list="nested"]',
-    );
-
-    for (let index = 0; index < 30; index += 1) {
-      expect(nestedList?.textContent).toContain(`Nested message ${index}`);
-    }
-  });
-
+describe("ThreadTimelineRows windowing", () => {
   it("windows the rows inside a large expanded detail", async () => {
-    const view = renderDelegation(true);
+    const view = renderDelegation();
     const detailScroll = view.container.querySelector<HTMLElement>(
       "[data-detail-scroll-area]",
     );
@@ -215,7 +203,6 @@ describe("ThreadTimelineRows windowing experiment", () => {
                 threadId="thr_large_search"
                 timelineRows={rows}
                 timelineNavigationTargetRowId="search-message-40"
-                timelineWindowingEnabled
                 threadRuntimeDisplayStatus="idle"
                 workspaceRootPath={undefined}
               />

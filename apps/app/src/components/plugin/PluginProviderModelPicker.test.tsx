@@ -403,6 +403,7 @@ describe("PluginProviderModelPicker", () => {
         modelLoadError: {
           providerId: "claude-code",
           code: "failed",
+          detail: null,
         },
       }),
     );

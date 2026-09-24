@@ -28,7 +28,10 @@ import {
   type NewThreadComposerState,
   type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
-import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
+import {
+  ProviderCliBanner,
+  providerCliBlockedReason,
+} from "@/components/promptbox/banner/ProviderCliBanner";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -140,7 +143,9 @@ import {
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
 import {
+  useRootComposeForkSeed,
   useRootComposeProjectId,
+  useRootComposeSectionId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import {
@@ -510,9 +515,8 @@ export function RootComposeView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
-  const [rootComposeSectionId, setRootComposeSectionId] = useState<
-    string | null
-  >(() => readSectionIdFromLocationState(location.state));
+  const [rootComposeSectionId, setRootComposeSectionId] =
+    useRootComposeSectionId();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
@@ -521,16 +525,14 @@ export function RootComposeView() {
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
-  const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
-    readForkThreadCreateSeedFromLocationState(location.state),
-  );
+  const [forkSeed, setForkSeed] = useRootComposeForkSeed();
 
   const handleProjectChange = useCallback(
     (projectId: string) => {
       setForkSeed(null);
       setRootComposeProjectId(projectId);
     },
-    [setRootComposeProjectId],
+    [setForkSeed, setRootComposeProjectId],
   );
   const handleSubmit = useCallback(
     async (request: NewThreadComposerSubmission) => {
@@ -587,6 +589,8 @@ export function RootComposeView() {
       navigate,
       navigateToThreadAfterCreate,
       rootComposeSectionId,
+      setForkSeed,
+      setRootComposeSectionId,
     ],
   );
   const composerSeed = useMemo(
@@ -868,23 +872,24 @@ function RootComposeSurface({
     useProviderCliInstallRunner();
   const selectedProviderCliStatus =
     providerCliStatus.data?.[selectedProviderId] ?? null;
-  const isProviderCliVersionBlocked =
-    selectedProviderCliStatus?.versionUnsupported === true;
+  const blockingProviderCliStatus =
+    selectedProviderCliStatus !== null &&
+    (!selectedProviderCliStatus.installed ||
+      selectedProviderCliStatus.versionUnsupported)
+      ? selectedProviderCliStatus
+      : null;
+  const isProviderCliBlocked = blockingProviderCliStatus !== null;
   const selectedProviderCliIssue = useMemo(() => {
-    if (!isProviderCliVersionBlocked || selectedProviderCliStatus === null) {
+    if (blockingProviderCliStatus === null) {
       return null;
     }
     const issue = buildProviderCliIssue({
       provider: selectedProviderId,
-      status: selectedProviderCliStatus,
+      status: blockingProviderCliStatus,
     });
     return issue && hasProviderCliAction(issue) ? issue : null;
-  }, [
-    isProviderCliVersionBlocked,
-    selectedProviderCliStatus,
-    selectedProviderId,
-  ]);
-  const handleUpdateProviderCli = useCallback(() => {
+  }, [blockingProviderCliStatus, selectedProviderId]);
+  const handleRunProviderCliAction = useCallback(() => {
     if (selectedProviderCliIssue === null || rootProjectHostId === null) return;
     startInstall({
       hostId: rootProjectHostId,
@@ -1813,16 +1818,11 @@ function RootComposeSurface({
   );
   useEffect(() => {
     if (!startedComposing) return;
-    if (isProviderCliVersionBlocked) return;
+    if (isProviderCliBlocked) return;
     if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(focusPromptBox);
     return () => window.cancelAnimationFrame(handle);
-  }, [
-    isProviderCliVersionBlocked,
-    isPointerCoarse,
-    focusPromptBox,
-    startedComposing,
-  ]);
+  }, [isProviderCliBlocked, isPointerCoarse, focusPromptBox, startedComposing]);
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
   const currentProjectName = currentProject?.name ?? null;
@@ -1894,18 +1894,19 @@ function RootComposeSurface({
   }, [forkSeed, forkSourceDisplayTitle, handleCancelForkDraft]);
 
   const promptBanner = useMemo(() => {
-    if (!isProviderCliVersionBlocked || selectedProviderCliStatus === null) {
+    if (blockingProviderCliStatus === null) {
       return null;
     }
     return (
-      <ProviderCliVersionBanner
-        displayName={selectedProviderCliStatus.displayName}
-        currentVersion={selectedProviderCliStatus.currentVersion}
+      <ProviderCliBanner
+        displayName={blockingProviderCliStatus.displayName}
+        installed={blockingProviderCliStatus.installed}
+        currentVersion={blockingProviderCliStatus.currentVersion}
         minimumSupportedVersion={
-          selectedProviderCliStatus.minimumSupportedVersion
+          blockingProviderCliStatus.minimumSupportedVersion
         }
-        canUpdate={selectedProviderCliIssue !== null}
-        updating={
+        canRunAction={selectedProviderCliIssue !== null}
+        actionRunning={
           rootProjectHostId !== null &&
           (runningJobKey ===
             providerCliJobKey(rootProjectHostId, selectedProviderId) ||
@@ -1913,17 +1914,16 @@ function RootComposeSurface({
               providerCliJobKey(rootProjectHostId, selectedProviderId),
             ))
         }
-        onUpdate={handleUpdateProviderCli}
+        onAction={handleRunProviderCliAction}
       />
     );
   }, [
+    blockingProviderCliStatus,
     rootProjectHostId,
-    handleUpdateProviderCli,
-    isProviderCliVersionBlocked,
+    handleRunProviderCliAction,
     queuedJobKeys,
     runningJobKey,
     selectedProviderCliIssue,
-    selectedProviderCliStatus,
     selectedProviderId,
   ]);
 
@@ -1951,14 +1951,14 @@ function RootComposeSurface({
 
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
-    autoFocus: !isProviderCliVersionBlocked,
-    allowSoftKeyboardAutoFocus: isCompactViewport,
+    autoFocus: !isProviderCliBlocked,
     mentionMenuPlacement: isCompactHomeLayout ? "top" : "bottom",
     banner: promptBanner,
     header: promptHeader,
-    blockedReason: isProviderCliVersionBlocked
-      ? `Update ${selectedProviderCliStatus?.displayName ?? selectedProviderId} before starting a thread.`
-      : undefined,
+    blockedReason:
+      blockingProviderCliStatus === null
+        ? undefined
+        : providerCliBlockedReason(blockingProviderCliStatus),
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,

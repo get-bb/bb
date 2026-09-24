@@ -92,6 +92,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     installUrl: "https://opencode.ai/docs",
     visibility: "installed",
     dialect: "opencode",
+    providerUsage: true,
     supportsManualCompaction: true,
     fork: "tip",
     launch: {

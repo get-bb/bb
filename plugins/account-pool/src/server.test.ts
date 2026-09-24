@@ -10,7 +10,7 @@ import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   accountSchema,
   accountSecretSchema,
@@ -29,6 +29,7 @@ import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
 } from "./credentials.js";
+import { PARENT_TOKEN_ENV, PARENT_URL_ENV } from "./parent-pool.js";
 import { AccountStore, HubTokenStore } from "./store.js";
 import {
   createAccountPoolPlugin,
@@ -121,7 +122,13 @@ async function resolveCodexToken(
   return { token: token.value, baseUrl: baseUrl.value.serverPath };
 }
 
+beforeEach(() => {
+  vi.stubEnv(PARENT_URL_ENV, undefined);
+  vi.stubEnv(PARENT_TOKEN_ENV, undefined);
+});
+
 afterEach(async () => {
+  vi.unstubAllEnvs();
   while (cleanups.length > 0) await cleanups.pop()?.();
 });
 
@@ -5842,6 +5849,108 @@ describe("sequential pool recovery", () => {
         ?.status,
     ).toBe("exhausted");
   });
+
+  it("refreshes exhausted usage before refusing a request, at most every 30 seconds per account", async () => {
+    let now = Date.now();
+    let usagePercent = 100;
+    const calls: string[] = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "import",
+      options: {
+        now: () => now,
+        usageUrl: "https://upstream.example/usage",
+        importCredentials: async () => importedCredentials(),
+        fetch: async (input) => {
+          const url = new URL(String(input));
+          calls.push(url.pathname);
+          if (url.pathname === "/usage")
+            return Response.json({
+              seven_day: {
+                utilization: usagePercent,
+                resets_at: String(Math.floor(now / 1_000) + 3 * 86_400),
+              },
+            });
+          return Response.json({});
+        },
+      },
+    });
+    const send = async () => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+      return response.status;
+    };
+    expect(calls).toEqual(["/usage"]);
+    expect(await send()).toBe(429);
+    now += 30_000;
+    expect(await send()).toBe(429);
+    expect(await send()).toBe(429);
+    usagePercent = 30;
+    expect(await send()).toBe(429);
+    now += 30_000;
+    expect(await send()).toBe(200);
+    expect(calls).toEqual(["/usage", "/usage", "/usage", "/v1/messages"]);
+  });
+
+  it("lets concurrent requests share an exhausted-usage recheck", async () => {
+    let now = Date.now();
+    let usagePercent = 100;
+    let releaseUsage = () => {};
+    const usageGate = new Promise<void>((resolve) => {
+      releaseUsage = resolve;
+    });
+    const calls: string[] = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "import",
+      options: {
+        now: () => now,
+        usageUrl: "https://upstream.example/usage",
+        importCredentials: async () => importedCredentials(),
+        fetch: async (input) => {
+          const url = new URL(String(input));
+          calls.push(url.pathname);
+          if (url.pathname === "/usage") {
+            if (usagePercent < 100) await usageGate;
+            return Response.json({
+              seven_day: {
+                utilization: usagePercent,
+                resets_at: String(Math.floor(now / 1_000) + 3 * 86_400),
+              },
+            });
+          }
+          return Response.json({});
+        },
+      },
+    });
+    const send = async () => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+      return response.status;
+    };
+    usagePercent = 30;
+    now += 30_000;
+    const statuses = Promise.all([send(), send()]);
+    await vi.waitFor(() => expect(calls).toEqual(["/usage", "/usage"]));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    releaseUsage();
+    expect(await statuses).toEqual([200, 200]);
+    expect(calls).toEqual([
+      "/usage",
+      "/usage",
+      "/v1/messages",
+      "/v1/messages",
+    ]);
+  });
+
   it("applies reordered failover atomically without moving current conversations", async () => {
     const attempts: Array<string | null> = [];
     let rejectFirst = false;

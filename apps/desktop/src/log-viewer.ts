@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
-import { escapeHtmlText } from "@bb/domain";
+import { escapeHtmlText } from "@bb/text-utils";
 import { z } from "zod";
 import {
   LOG_VIEWER_VISIBLE_LINE_LIMIT,

@@ -4,6 +4,7 @@ import { SETTINGS_ROUTE_PATH, getSettingsRoutePath } from "@/lib/route-paths";
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
   { icon: "Bot", id: "providers", label: "Providers" },
+  { icon: "AiBrain01", id: "ai-services", label: "AI services" },
   { icon: "Palette", id: "appearance", label: "Appearance" },
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "Browser", id: "browser", label: "Browser" },
@@ -16,7 +17,7 @@ export const SETTINGS_NAV_SECTIONS = [
     label: "Environment variables",
   },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
-  { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },
+  { icon: "Plug02", id: "plugins", label: "Installed plugins" },
   { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },

@@ -54,6 +54,7 @@ import {
   type ClaudeCodeSkillRoot,
 } from "../session-params.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
+import { MissingClaudeCliError } from "./missing-cli-error.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
   claudeThreadForkParamsSchema,
@@ -1276,13 +1277,13 @@ async function getWritableThreadSession(
     return undefined;
   }
   const replacement: ClaudeSessionRestart | null = threadSession.streamEnded
-      ? {
-          reason: "Thread session replaced after Claude SDK stream ended",
-          showRuntimeNote: false,
-        }
-      : intent === "new-turn"
-        ? threadSession.restartBeforeNextTurn
-        : null;
+    ? {
+        reason: "Thread session replaced after Claude SDK stream ended",
+        showRuntimeNote: false,
+      }
+    : intent === "new-turn"
+      ? threadSession.restartBeforeNextTurn
+      : null;
   if (replacement === null) {
     return threadSession;
   }
@@ -1990,7 +1991,19 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, result);
       break;
     case "model/list":
-      sendResult(request.id, await listModelsMemoized());
+      try {
+        sendResult(request.id, await listModelsMemoized());
+      } catch (error) {
+        if (error instanceof MissingClaudeCliError) {
+          sendError(
+            request.id,
+            BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE,
+            error.message,
+          );
+          break;
+        }
+        throw error;
+      }
       break;
     case "provider/health":
       sendResult(request.id, await getClaudeProviderHealth());

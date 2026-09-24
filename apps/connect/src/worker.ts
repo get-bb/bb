@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
+import { escapeHtmlText } from "@bb/text-utils";
 import {
   RESERVED_HANDLES,
   handleAppLinkAssociationRequest,
@@ -126,14 +127,6 @@ function gatePage(
   );
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 export function relativeTime(date: Date, now: number = Date.now()): string {
   const diffMs = Math.max(0, now - date.getTime());
   const minutes = Math.floor(diffMs / 60_000);
@@ -152,9 +145,9 @@ function signInPage(label: string, appUrl: string, returnTo: string): Response {
   const host = new URL(appUrl).host;
   const signInUrl = dashboardSignInUrl(appUrl, returnTo);
   return gatePage(
-    `<h1>This is <code>${escapeHtml(label)}</code>'s bb</h1>
+    `<h1>This is <code>${escapeHtmlText(label)}</code>'s bb</h1>
      <p>Sign in with the account that owns this server to open it.</p>
-     <a class="btn primary" href="${signInUrl}">Sign in at ${escapeHtml(host)}</a>`,
+     <a class="btn primary" href="${signInUrl}">Sign in at ${escapeHtmlText(host)}</a>`,
     401,
   );
 }
@@ -194,9 +187,9 @@ function machinePage(
   const appHost = new URL(appOrigin).host;
   const baseHost = new URL(runtime.accountAppUrl).host;
   return gatePage(
-    `<h1><code>${escapeHtml(label)}</code> is a machine</h1>
-     <p>This machine is on <code>${escapeHtml(accountHandle)}</code>'s account. Its shares appear at <code>${escapeHtml(label)}--&lt;port&gt;.${escapeHtml(baseHost)}</code>.</p>
-     <a class="btn primary" href="${escapeHtml(appOrigin)}">Open the bb app at ${escapeHtml(appHost)}</a>`,
+    `<h1><code>${escapeHtmlText(label)}</code> is a machine</h1>
+     <p>This machine is on <code>${escapeHtmlText(accountHandle)}</code>'s account. Its shares appear at <code>${escapeHtmlText(label)}--&lt;port&gt;.${escapeHtmlText(baseHost)}</code>.</p>
+     <a class="btn primary" href="${escapeHtmlText(appOrigin)}">Open the bb app at ${escapeHtmlText(appHost)}</a>`,
     200,
   );
 }

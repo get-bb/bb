@@ -1,4 +1,5 @@
 import { statfs } from "node:fs/promises";
+import type { AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import type {
   AppDeps,
@@ -37,6 +38,7 @@ export const SERVER_MOVE_TIMINGS: ServerMoveTimings = {
 };
 
 export interface CreateDefaultServerMoveEnvironmentArgs {
+  appSurface: AppSurface;
   bindHost: ServerBindHost | null;
   deps: AppDeps;
   env: NodeJS.ProcessEnv;
@@ -147,6 +149,7 @@ export function createDefaultServerMoveEnvironment(
     },
     resumeDeferredWork: () => resumeServerMoveDeferredWork(deps),
     retireProcess: args.retireProcess,
+    serverAppSurface: args.appSurface,
     serverTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     stopRunningWork: (stopArgs) => stopRunningServerWork(deps, stopArgs),
     targetServerPort: () => targetPortOverride ?? deps.config.serverPort,

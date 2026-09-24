@@ -47,8 +47,11 @@ describe("bundled plugin SDK declarations", () => {
       new URL("../../bundled-types/bb-plugin-sdk-app.d.ts", import.meta.url),
       "utf8",
     );
-    expect(appDeclarations).not.toContain("PluginCatalogArea");
-    expect(appDeclarations).not.toContain("applyUpdate(args: PluginIdArgs)");
+    expect(appDeclarations).not.toMatch(/from ['"]@bb\//u);
+    expect(appDeclarations).toContain("useSdk(): PluginBrowserBbSdk;");
+    expect(appDeclarations).toContain("interface ThreadSectionsArea");
+    expect(appDeclarations).toContain("threadSections: ThreadSectionsArea;");
+    expect(appDeclarations).toContain("interface PluginCatalogArea");
     expect(declarations).toContain(
       "list(args?: ProviderListArgs): Promise<ProviderListResult>;",
     );

@@ -1,38 +1,47 @@
 import type { ThreadListEntry } from "@bb/domain";
-import type {
-  PluginSidebarThread,
-  PluginSidebarThreadIndicator,
-} from "@get-bb/plugin-sdk";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
 import {
   getThreadListIndicatorLabel,
   resolveThreadListIndicator,
   threadListIndicatorStateForThread,
 } from "@bb/client-core";
 import { isThreadRead } from "@bb/client-core";
+import {
+  EMPTY_TITLE_MENTION_RESOURCES,
+  resolveThreadTitleDisplayText,
+  type ThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
+import { getThreadDisplayTitle } from "./thread-title";
+import { getThreadRoutePath } from "./route-paths";
 
 export function toPluginSidebarThread(
   entry: ThreadListEntry,
   hostNamesById: ReadonlyMap<string, string> = new Map(),
+  titleResources: ThreadTitleMentionResources = EMPTY_TITLE_MENTION_RESOURCES,
 ): PluginSidebarThread {
-  const resolvedIndicator = resolveThreadListIndicator(
+  const indicator = resolveThreadListIndicator(
     threadListIndicatorStateForThread(entry, false),
   );
-  const indicator: PluginSidebarThreadIndicator =
-    resolvedIndicator === "queued-waiting" ||
-    resolvedIndicator === "queued-failed"
-      ? "none"
-      : resolvedIndicator;
 
   return {
     id: entry.id,
     projectId: entry.projectId,
     title: entry.title,
     titleFallback: entry.titleFallback,
+    displayTitle: resolveThreadTitleDisplayText(
+      getThreadDisplayTitle(entry),
+      titleResources,
+    ),
     parentThreadId: entry.parentThreadId,
+    lifecycleOwnerThreadId: entry.lifecycleOwnerThreadId,
+    sourceThreadId: entry.sourceThreadId,
     sectionId: entry.sectionId,
     originKind: entry.originKind,
     originPluginId: entry.originPluginId,
     providerId: entry.providerId,
+    status: entry.status,
+    runtimeStatus: entry.runtime.displayStatus,
+    queuedWork: entry.queuedWork,
     hasPendingInteraction: entry.hasPendingInteraction,
     activity: {
       workflows: entry.activity.activeWorkflowCount,
@@ -45,7 +54,12 @@ export function toPluginSidebarThread(
     indicatorLabel: getThreadListIndicatorLabel(indicator),
     isUnread: !isThreadRead(entry),
     isPinned: entry.pinnedAt !== null,
+    pinnedAt: entry.pinnedAt,
+    pinSortKey: entry.pinSortKey,
     isArchived: entry.archivedAt !== null,
+    archivedAt: entry.archivedAt,
+    href: getThreadRoutePath({ projectId: entry.projectId, threadId: entry.id }),
+    isHidden: entry.visibility === "hidden",
     environment:
       entry.environmentId === null
         ? null
@@ -53,6 +67,8 @@ export function toPluginSidebarThread(
             id: entry.environmentId,
             name: entry.environmentName,
             branchName: entry.environmentBranchName,
+            path: entry.environmentPath,
+            isWorktree: entry.environmentIsWorktree,
             providerId: entry.environmentProviderId,
             workspaceDisplayKind: entry.environmentWorkspaceDisplayKind,
           },

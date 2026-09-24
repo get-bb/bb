@@ -93,6 +93,32 @@ it("accepts the environment provider string icon shape", () => {
   );
 });
 
+it("renders the caller's fallback glyph when the provider declares none", () => {
+  const view = render(
+    <ProviderIcon
+      providerKind="environment"
+      provider={{ id: "personal" }}
+      fallback="Folder"
+    />,
+  );
+  expect(view.container.querySelector('[data-icon="Folder"]')).not.toBeNull();
+  expect(view.container.querySelector('[data-icon="Code"]')).toBeNull();
+  register((app) =>
+    app.slots.experimental_providerIcon({
+      providerKind: "environment",
+      providerId: "personal",
+      icon: () => <svg data-override="personal" />,
+    }),
+  );
+  expect(
+    view.container.querySelector('[data-override="personal"]'),
+  ).not.toBeNull();
+  expect(view.container.querySelector('[data-icon="Folder"]')).toBeNull();
+  act(() => resetPluginSlotStoreForTest());
+  expect(view.container.querySelector('[data-icon="Folder"]')).not.toBeNull();
+  expect(view.container.querySelector("[data-override]")).toBeNull();
+});
+
 it("remounts the same provider component on reload and restores fallback on unload", () => {
   let mounts = 0;
   function Mark() {

@@ -11,9 +11,7 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
-import { TimelineImageMetadata } from "./TimelineImageMetadata";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
@@ -180,9 +178,6 @@ export function ThreadTimelineSurface({
   unreadDividerPlacement,
   workspaceRootPath,
 }: ThreadTimelineSurfaceProps) {
-  const systemConfigQuery = useSystemConfig();
-  const timelineWindowingEnabled =
-    systemConfigQuery.data?.experiments.timelineWindowing ?? false;
   const showActiveThinking =
     activeThinking !== null && ongoingIndicatorLabel === undefined;
   const activeThinkingText = activeThinking?.text.trim() ?? "";
@@ -226,38 +221,35 @@ export function ThreadTimelineSurface({
             className={timelineErrorClassName}
           />
         ) : timelineRowsWithPendingStop.length > 0 ? (
-          <TimelineImageMetadata key={threadId} threadId={threadId}>
-            <ThreadTimelineRows
-              canSpawnChild={canSpawnChild}
-              threadOriginKind={threadOriginKind}
-              onForkMessage={onForkMessage}
-              onEditMessage={onEditMessage}
-              inlineMessageEditor={inlineMessageEditor}
-              onMessageAddToChat={onMessageAddToChat}
-              onSendToMainMessage={onSendToMainMessage}
-              onSelectionAddToChat={onSelectionAddToChat}
-              consumerMessageActions={consumerMessageActions}
-              includePluginMessageActions={includePluginMessageActions}
-              onOpenLink={onOpenLink}
-              onOpenLocalFileLink={onOpenLocalFileLink}
-              onOpenPluginPanel={onOpenPluginPanel}
-              onTitleAction={onTitleAction}
-              projectId={projectId}
-              resolveMentionLink={resolveMentionLink}
-              resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
-              hasOlderTimelineRows={hasOlderTimelineRows}
-              isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
-              onLoadOlderRows={onLoadOlderRows}
-              timelineRows={timelineRowsWithPendingStop}
-              timelineNavigationTargetRowId={timelineNavigationTargetRowId}
-              timelineWindowingEnabled={timelineWindowingEnabled}
-              threadId={threadId}
-              threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
-              unreadDividerAutoScroll={unreadDividerAutoScroll}
-              unreadDividerPlacement={unreadDividerPlacement}
-              workspaceRootPath={workspaceRootPath}
-            />
-          </TimelineImageMetadata>
+          <ThreadTimelineRows
+            canSpawnChild={canSpawnChild}
+            threadOriginKind={threadOriginKind}
+            onForkMessage={onForkMessage}
+            onEditMessage={onEditMessage}
+            inlineMessageEditor={inlineMessageEditor}
+            onMessageAddToChat={onMessageAddToChat}
+            onSendToMainMessage={onSendToMainMessage}
+            onSelectionAddToChat={onSelectionAddToChat}
+            consumerMessageActions={consumerMessageActions}
+            includePluginMessageActions={includePluginMessageActions}
+            onOpenLink={onOpenLink}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            onOpenPluginPanel={onOpenPluginPanel}
+            onTitleAction={onTitleAction}
+            projectId={projectId}
+            resolveMentionLink={resolveMentionLink}
+            resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+            hasOlderTimelineRows={hasOlderTimelineRows}
+            isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
+            onLoadOlderRows={onLoadOlderRows}
+            timelineRows={timelineRowsWithPendingStop}
+            timelineNavigationTargetRowId={timelineNavigationTargetRowId}
+            threadId={threadId}
+            threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
+            unreadDividerAutoScroll={unreadDividerAutoScroll}
+            unreadDividerPlacement={unreadDividerPlacement}
+            workspaceRootPath={workspaceRootPath}
+          />
         ) : null}
         {hostConnectionNotice ? (
           <TimelineStatusIndicator

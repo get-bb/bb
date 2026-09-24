@@ -65,7 +65,7 @@ Spawning:
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
-  Subagents inherit the parent's permission mode by default, and the parent's mode is a hard ceiling: a child's requested mode can lower it but never exceed it, so a sandboxed parent cannot spawn a full-access child.
+  Subagents inherit the parent's permission mode by default, adapted to the child provider's supported modes. Explicit requests and a thread's recorded mode take precedence; nesting a thread does not cap its permissions. The host permission ceiling still applies.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization and unread/pending favicon
@@ -141,8 +141,11 @@ Editing a sent message:
   Failed and incomplete turns are eligible. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
   replaces the selected turn and every later turn while retaining workspace
-  changes. From an agent thread, the command carries `BB_THREAD_ID` so the
-  replacement runs under agent permission policy.
+  changes. Unsent queued messages remain in the queue and dispatch after the
+  replacement turn when their waits clear. An already-sending queued message
+  must finish before the edit can start. Retries of turns replaced by the edit
+  are removed from the queue. From an agent thread, the command
+  carries `BB_THREAD_ID` so the replacement runs under agent permission policy.
   An edit is refused if removing its history would erase ownership evidence
   shared with another thread. Use bb thread clear <id> to start a new session
   while keeping the history and its ownership evidence.
@@ -190,7 +193,6 @@ Sections:
 
 Inspecting:
 
-  bb thread image-metadata [id]            Read or record learned image dimensions (--self, --source, --width, --height, --etag, --json)
   bb thread context [id]                   Show recorded context usage and available breakdown (--self, --json)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
@@ -443,12 +445,6 @@ starting a provider request. Use `--self` for the current thread and `--json` fo
 breakdown after turns and compaction when its SDK supports context inspection.
 A later aggregate-only measurement replaces any older breakdown. Other providers
 continue to expose their available totals.
-
-`bb thread image-metadata [id]` returns persisted source, width, height, and ETag
-records. Set one with `--source <url> --width <pixels> --height <pixels>` and
-optional `--etag <etag>`. Dimensions belong to the thread and are returned with
-timeline responses; recording metadata does not fetch the image. The web client
-learns unknown Markdown image dimensions after their first successful load.
 
 Lifecycle ownership:
   spawn and fork accept --lifecycle-owner-thread <id>. SDK arguments use

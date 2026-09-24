@@ -123,10 +123,24 @@ bb updates apply Run every available provider CLI
 install/update, one at a time
 --machine <id-or-name> Limit to one machine
 --json Print per-target results as JSON
+bb updates app [status] Show whether bb can update itself,
+the available version, and the last result
+--json Print the status as JSON
+bb updates app apply Download the update and restart bb into it
+--yes Interrupt running threads without asking
+--no-wait Return once the update starts
+--json Print the final status as JSON
+bb updates app dismiss Mark the last update result as seen
 
-`bb updates apply` covers provider CLIs only. Update bb-app itself with the
-printed upgrade command (`npx bb-app@latest`) or the desktop app's relaunch;
-connected daemons then follow the server version automatically.
+`bb updates apply` covers provider CLIs only. `bb updates app apply` updates
+bb itself when it was started with `--in-app-updates` from `npx bb-app` (or a
+global `bb-app`) or with `pnpm start` from a `main` checkout: it installs the new version next to the
+running one and restarts into it. It does not roll back if the new version
+fails to start. Source checkouts update only from a clean `main` that
+fast-forwards to `origin/main`.
+Desktop users update through the desktop app's relaunch; development servers
+and `bb-server` cannot update themselves. Connected daemons follow the server
+version automatically.
 
 Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.
@@ -192,6 +206,11 @@ experiment in Settings → Experiments or with
 Move server here, and `bb server move`, `bb server export`, and deleting an old
 server copy from the server are refused.
 
+Agents must not move a server, abandon a move, or unlock an old copy without
+the user's explicit confirmation in the conversation. Run `--check`, show the
+user the checklist, and wait for their confirmation; don't pass `--yes` to skip
+the confirmation on their behalf.
+
 A move copies the server's data (database, settings, plugin data, attachments)
 to another persistent machine, points every machine and app at it, and keeps the
 old computer running as a regular machine. Worktrees, thread storage, and
@@ -213,6 +232,7 @@ checkouts stay on the machines that own them.
     --force                               Skip the new-server health check
   bb server allow-connect                 Turn bb connect on for an imported copy
   bb server delete-old-copy               Delete the old copy a move left here
+  bb server install-machine-service       Keep this computer connected after a move
 
 When the target never confirms that it took over, the move waits in
 `recovery_required`: the old server stays up and read-only, and bb finishes the
@@ -253,7 +273,18 @@ once the original server is stopped (`--json` prints `dataDir` and
 After a move, the old computer's data directory keeps `server-moved.json`, so
 bb there refuses to start the old server and runs as a regular machine.
 `bb server delete-old-copy` deletes the server files left behind and keeps that
-lock. `bb server unlock` removes the lock as a last resort: everything since
+lock. The desktop app installs the persistent, self-updating service a
+CLI-installed machine gets as soon as its server moves, and on later launches
+if the service is missing; until that succeeds (it needs Node.js 22.19 or newer
+on the PATH), the app keeps that machine connected only while it is open and
+explains why once. After a move from `bb-app`, or to retry by hand,
+`bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` installs
+the same service: it needs
+Node.js 22.19 or newer on the PATH, stops bb running from that directory, and
+runs `install-machine.sh --adopt --data-dir <dir>`, which keeps the machine ID,
+downloads the new server's bb-app package, and installs the launchd or systemd
+service (`--json` prints `dataDir`, `serverUrl`, `toHostName`, and
+`serviceFile`). `bb server unlock` refuses while that service exists. `bb server unlock` removes the lock as a last resort: everything since
 the move is lost on that copy, and the new server must be stopped first. It
 refuses while the new server still answers (`<serverUrl>/health`, or
 `/api/v1/system/version` with this computer's machine grant for bb connect)
@@ -266,6 +297,31 @@ calls a server. The SDK equivalents are `sdk.experimental_server.checkMove`,
 `startMove`, `moveStatus`, `cancelMove`, and `export`.
 
 ## Local daemon lifecycle
+
+`install-machine.sh --adopt --data-dir <path>` installs the service for a data
+directory that is already enrolled, reading its machine ID from `auth.json` and
+its server address and headers from `config.json`; `bb server
+install-machine-service` runs it for the directory a server move left behind.
+
+Reconnect a disconnected machine whose server access or host key was revoked
+or became stale, without changing its BB host ID:
+
+  bb machine reconnect <id-or-name>       Print a short-lived reconnect command and wait for reconnection
+    --json                                Print the command and expiry without waiting
+
+Run the printed command on the affected machine. It is a one-time enrollment
+command for the existing host ID. Fetching the installer releases the machine's
+access grant and acquires a new one from the same provider; if that fails, run
+the command again. The machine then re-enrolls: it replaces `auth.json` with a
+new host key, replaces the server-access headers, and restarts the owned daemon
+service. Environments, workspaces, and thread associations are kept.
+
+The command reuses the data directory the machine's daemon last reported, so it
+works unchanged for a custom `BB_DATA_DIR` and for `~/.bb` on a computer that a
+server moved away from; an explicit `BB_DATA_DIR` still takes precedence. Before
+downloading anything, the installer refuses a directory that does not hold this
+machine, which is what happens when the command runs on another computer.
+The server's own machine cannot be reconnected this way.
 
 `install-machine.sh --start|--stop|--uninstall --host-id <id>` starts, stops or removes an
 owned local installation. Optional `--server-url <url>` and `--data-dir <path>`
@@ -283,7 +339,7 @@ is paused. `bb machine resume` likewise waits for provider restore and bootstrap
 
 `bb machine enroll --bootstrap-file <path>` or `bb machine enroll --bootstrap-env <NAME>` consumes a versioned private enrollment bundle prepared by core. Supply exactly one source. The environment source is removed from the CLI process environment after reading it; files remain under the caller's ownership. Neither command prints the bundle or credentials.
 
-The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory.
+The CLI refuses another host or server identity in the selected machine directory. Repeating enrollment with the same persisted identity succeeds without exchanging the credential again, including when the original bundle expired. Machine data defaults to `~/.bb-machines/<server-host>`; `BB_DATA_DIR` can select another isolated machine directory, but enrollment refuses the default `~/.bb` directory unless its `host-id` already names this machine.
 
 The manual copy command fetches `/install.sh` using a short-lived `X-BB-Enrollment` header. The server supplies the bootstrap only for a pending, unexpired, uncancelled manual enrollment whose credential has not been consumed; downloaded responses are not cached. The command contains no bootstrap JSON or access-provider credentials.
 

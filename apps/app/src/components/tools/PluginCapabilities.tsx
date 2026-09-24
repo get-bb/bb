@@ -7,6 +7,7 @@ import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability, SkillListResponse } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
+  ResourceActionButton,
   ResourceDetailIncludesSection,
   ResourceStatus,
   type ResourceStatusTone,
@@ -178,6 +179,7 @@ function namedSlotItems<
 function pluginAppSurfaceItems(
   plugin: PluginListItem,
   slots: PluginSlotSnapshot,
+  configurationPath: string | undefined,
 ): PluginCapabilityItem[] {
   const pluginId = plugin.id;
   const settingsSections = slots.settingsSections.filter(
@@ -191,7 +193,7 @@ function pluginAppSurfaceItems(
             "settings",
             "Settings",
             "Opens this plugin's configuration.",
-            getPluginConfigurationRoutePath({ pluginId }),
+            configurationPath ?? getPluginConfigurationRoutePath({ pluginId }),
           ),
         ]
       : []),
@@ -232,6 +234,13 @@ function pluginAppSurfaceItems(
       slots.experimentalSidebarNavigations,
       "sidebar-navigation",
       "Can replace the sidebar navigation controls; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.experimentalSidebarHeaders,
+      "sidebar-header",
+      "Can add controls beside the sidebar toggle; configured in Appearance.",
       () => getSettingsRoutePath("appearance"),
     ),
     ...namedSlotItems(
@@ -360,13 +369,19 @@ function pluginAppSurfaceItems(
   ];
 }
 
-export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
+export function PluginIncludes({
+  plugin,
+  configurationPath,
+}: {
+  plugin: PluginListItem;
+  configurationPath?: string;
+}) {
   const slots = usePluginSlots();
   const queryClient = useQueryClient();
   const cachedSkills = queryClient.getQueryData<SkillListResponse>(
     projectSkillsQueryKey(PERSONAL_PROJECT_ID),
   );
-  const appItems = pluginAppSurfaceItems(plugin, slots);
+  const appItems = pluginAppSurfaceItems(plugin, slots, configurationPath);
 
   const skillDestination = (capabilityId: string): string => {
     const installedSkill = cachedSkills?.skills.find((skill) => {
@@ -498,11 +513,13 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
 function PluginRuntimeStatusAlert({
   plugin,
   runtimeStatus,
+  configurationPath,
   onReload,
   reloadPending,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation;
+  configurationPath: string | undefined;
   onReload: () => void;
   reloadPending: boolean;
 }) {
@@ -515,12 +532,9 @@ function PluginRuntimeStatusAlert({
   const canReload =
     plugin.status === "error" ||
     plugin.status === "degraded" ||
+    (plugin.status === "missing" && plugin.source.startsWith("path:")) ||
     (plugin.status === "needs-configuration" && !plugin.hasSettings);
-  const condition =
-    plugin.status === "needs-configuration" && plugin.statusDetail?.trim()
-      ? plugin.statusDetail
-      : runtimeStatus.condition;
-  const detail = [condition, runtimeStatus.recovery]
+  const detail = [runtimeStatus.condition, runtimeStatus.recovery]
     .filter((part): part is string => part !== null && part.length > 0)
     .map((part) => {
       const capitalized = `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
@@ -533,15 +547,23 @@ function PluginRuntimeStatusAlert({
       tone={runtimeStatus.tone === "error" ? "destructive" : runtimeStatus.tone}
       icon={runtimeStatus.icon}
       title={runtimeStatus.label}
-      detail={detail}
+      detail={canOpenSettings ? undefined : detail}
       separator={plugin.status !== "degraded"}
       action={
         canOpenSettings || canReload ? (
           <span className="flex items-center gap-2">
             {canOpenSettings ? (
-              <Button asChild size="sm" className="h-7 gap-0.5 px-2.5 text-xs">
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-0.5 px-2.5 text-xs font-normal text-muted-foreground hover:text-foreground [&_[data-icon-root]]:size-3"
+              >
                 <Link
-                  to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
+                  to={
+                    configurationPath ??
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id })
+                  }
                 >
                   Open settings
                   <Icon name="ChevronRight" className="size-3.5" aria-hidden />
@@ -549,23 +571,14 @@ function PluginRuntimeStatusAlert({
               </Button>
             ) : null}
             {canReload ? (
-              <Button
-                type="button"
-                size="sm"
-                variant={canOpenSettings ? "outline" : "default"}
+              <ResourceActionButton
+                icon="RotateCcw"
+                className="[&_[data-icon-root]]:size-3.5"
+                label={reloadPending ? "Reloading…" : "Reload"}
+                loading={reloadPending}
                 disabled={reloadPending}
-                className="h-7 px-2.5 text-xs"
                 onClick={onReload}
-              >
-                {reloadPending ? (
-                  <Icon
-                    name="Loading"
-                    className="size-3.5 animate-spin"
-                    aria-hidden
-                  />
-                ) : null}
-                {reloadPending ? "Reloading\u2026" : "Reload"}
-              </Button>
+              />
             ) : null}
           </span>
         ) : undefined
@@ -577,9 +590,11 @@ function PluginRuntimeStatusAlert({
 export function PluginHealthBanner({
   plugin,
   runtimeStatus,
+  configurationPath,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
+  configurationPath?: string;
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
@@ -598,6 +613,7 @@ export function PluginHealthBanner({
     <PluginRuntimeStatusAlert
       plugin={plugin}
       runtimeStatus={runtimeStatus}
+      configurationPath={configurationPath}
       reloadPending={reload.isPending}
       onReload={() => reload.mutate()}
     />

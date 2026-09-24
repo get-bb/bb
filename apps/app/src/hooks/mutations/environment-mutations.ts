@@ -14,7 +14,12 @@ import type {
 import { sdk } from "@/lib/sdk";
 import type { RequestEnvironmentActionMutationRequest } from "./mutation-request-types";
 import { invalidateEnvironmentActionQueries } from "../cache-owners/environment-cache-effects";
-import { applyEnvironmentUpdateResult } from "../cache-owners/environment-workspace-cache-owner";
+import {
+  beginEnvironmentNameUpdateTransaction,
+  completeEnvironmentNameUpdateTransaction,
+  rollbackEnvironmentNameUpdateTransaction,
+  type EnvironmentNameUpdateTransaction,
+} from "../cache-owners/environment-workspace-cache-owner";
 type UpdateEnvironmentMutationRequest = {
   id: string;
 } & UpdateEnvironmentRequest;
@@ -120,8 +125,26 @@ export function useUpdateEnvironment() {
       }
       throw new Error("Environment update requires at least one field");
     },
-    onSuccess: (environment: Environment) => {
-      applyEnvironmentUpdateResult({ environment, queryClient });
+    onMutate: ({
+      id,
+      name,
+    }): Promise<EnvironmentNameUpdateTransaction> | undefined =>
+      name === undefined
+        ? undefined
+        : beginEnvironmentNameUpdateTransaction({
+            environmentId: id,
+            name,
+            queryClient,
+          }),
+    onError: (_error, _variables, transaction) => {
+      rollbackEnvironmentNameUpdateTransaction({ queryClient, transaction });
+    },
+    onSuccess: (environment: Environment, _variables, transaction) => {
+      completeEnvironmentNameUpdateTransaction({
+        environment,
+        queryClient,
+        transaction,
+      });
     },
   });
 }

@@ -277,6 +277,7 @@ type ExpectedHostsKey =
   | "cloneDefaultPath"
   | "experimental_create"
   | "experimental_getEnrollmentCommand"
+  | "experimental_reconnect"
   | "createJoinCode"
   | "delete"
   | "experimental_deleteOldServerCopy"
@@ -348,16 +349,22 @@ type ExpectedProvidersKey = "list" | "models";
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
+  | "acknowledgeAppUpdate"
+  | "appUpdate"
+  | "applyAppUpdate"
   | "setMachineEnvironmentVariable"
   | "deleteMachineEnvironmentVariable"
   | "machineEnvironment"
   | "replaceMachineEnvironment"
+  | "aiServices"
   | "attention"
   | "cliSkillsStatus"
   | "config"
   | "executionOptions"
   | "installCliSkills"
   | "reloadConfig"
+  | "setAiServiceSelection"
+  | "testAiService"
   | "transcribeVoice"
   | "uiPreferences"
   | "updateExperiments"
@@ -374,7 +381,6 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
-  | "saveImageMetadata"
   | "getPluginMetadata"
   | "updatePluginMetadata"
   | "context"

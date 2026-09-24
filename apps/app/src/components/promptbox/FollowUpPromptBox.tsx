@@ -167,6 +167,7 @@ export interface FollowUpPromptBoxProps {
   pluginComposerScope?: PluginComposerScope | null;
   textEffects?: readonly ComposerTextEffectSource[];
   collapseResetKey: string | number;
+  preferExpanded?: boolean;
   focusEndKey?: string | number;
   isPrimaryComposer?: boolean;
   showScrollToBottomButton?: boolean;
@@ -238,6 +239,7 @@ function FollowUpPromptBoxWithComposer({
   pluginComposerScope,
   textEffects,
   collapseResetKey,
+  preferExpanded = false,
   focusEndKey,
   isPrimaryComposer = true,
   showScrollToBottomButton = true,
@@ -296,8 +298,10 @@ function FollowUpPromptBoxWithComposer({
   >(null);
   const isWidePromptBoxCollapsed =
     widePromptBoxCollapsedFor === collapseResetKey;
+  const isEditorExpanded =
+    isInteractionExpanded || (preferExpanded && !isWidePromptBoxCollapsed);
   const isPromptBoxCompact =
-    isWidePromptBoxCollapsed || (isCompactViewport && !isInteractionExpanded);
+    isWidePromptBoxCollapsed || (isCompactViewport && !isEditorExpanded);
   const compactConfig = useMemo(
     () =>
       isCompactViewport || isWidePromptBoxCollapsed
@@ -685,7 +689,7 @@ function FollowUpPromptBoxWithComposer({
       ref={composerInteractionRef}
       className="relative z-20"
       data-follow-up-composer=""
-      data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
+      data-follow-up-composer-expanded={isEditorExpanded ? "" : undefined}
       hidden={hasPendingInteraction}
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
@@ -709,7 +713,7 @@ function FollowUpPromptBoxWithComposer({
         focusEndKey={focusEndKey}
         placeholder={composer.promptPlaceholder}
         containerCompactPlaceholder={composer.compactPromptPlaceholder}
-        heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
+        heightAnimationKey={isEditorExpanded ? "expanded" : "compact"}
         mentionMenuPlacement="top"
         submission={{
           label: composer.submitLabel,

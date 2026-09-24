@@ -8,12 +8,11 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  PendingInteractionResolution,
-  PromptInput,
-  ThreadEvent,
-} from "@bb/domain";
-import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
+import {
+  BRIDGE_INBOUND_REQUEST_METHODS,
+  type PendingInteractionResolution,
+  type PromptInput,
+} from "@get-bb/plugin-sdk/provider-bridge";
 
 const { forkSessionMock, queryMock } = vi.hoisted(() => ({
   forkSessionMock: vi.fn(),
@@ -34,7 +33,10 @@ import {
   experimental_describeCalibrationEvents as describeCalibrationEvents,
   experimental_normalizeCalibrationEvents as normalizeCalibrationEvents,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  BridgeJsonRpcTestHarness,
+  ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 const THREAD_ID = "thr_calibration_1";
 const TOOL_USE_ID = "toolu_01AbCdEfGhIjKlMnOpQrStUv";

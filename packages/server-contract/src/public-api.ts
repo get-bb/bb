@@ -8,7 +8,13 @@ import {
 } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
+  setAiServiceSelectionRequestSchema,
+  testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
+  type SetAiServiceSelectionRequest,
+  type SystemAiServicesResponse,
+  type TestAiServiceRequest,
+  type TestAiServiceResponse,
 } from "./api/system.js";
 import {
   desktopBrowserHostRequestSchema,
@@ -120,6 +126,7 @@ import type {
   HostDirectoryListing,
   HostDirectoryQuery,
   HostEnrollmentCommandResponse,
+  HostReconnectResponse,
   HostListQuery,
   HostActionResponse,
   HostCloneDefaultPathQuery,
@@ -201,6 +208,10 @@ import type {
   SystemProvidersQuery,
   SystemProviderStatesResponse,
   SystemUsageLimitsQuery,
+  SystemAppUpdateAcknowledgeRequest,
+  SystemAppUpdateApplyRequest,
+  SystemAppUpdateQuery,
+  SystemAppUpdateStatus,
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -248,7 +259,6 @@ import type {
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
   ThreadTimelineResponse,
-  ThreadImageMetadata,
   ThreadContextResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
@@ -350,6 +360,9 @@ import {
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
+  systemAppUpdateAcknowledgeRequestSchema,
+  systemAppUpdateApplyRequestSchema,
+  systemAppUpdateQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
@@ -368,7 +381,6 @@ import {
   terminalOutputQuerySchema,
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
-  threadImageMetadataSchema,
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
@@ -839,6 +851,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<HostEnrollmentCommandResponse>(),
+    }),
+    reconnect: defineRoute({
+      path: "/hosts/:id/reconnect-commands",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostReconnectResponse>({ status: 201 }),
     }),
     update: defineRoute({
       path: "/hosts/:id",
@@ -1557,14 +1575,6 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
     }),
-    saveImageMetadata: defineRoute({
-      path: "/threads/:id/timeline/image-metadata",
-      method: "put",
-      request: jsonRequest<PathId, ThreadImageMetadata>(
-        threadImageMetadataSchema,
-      ),
-      response: jsonResponse<{ ok: true }>(),
-    }),
     timeline: defineRoute({
       path: "/threads/:id/timeline",
       method: "get",
@@ -1743,6 +1753,28 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<SystemConfigResponse>(),
     }),
+    aiServices: defineRoute({
+      path: "/system/ai-services",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemAiServicesResponse>(),
+    }),
+    setAiServiceSelection: defineRoute({
+      path: "/system/ai-services/selection",
+      method: "put",
+      request: jsonRequest<EmptyInput, SetAiServiceSelectionRequest>(
+        setAiServiceSelectionRequestSchema,
+      ),
+      response: jsonResponse<SystemAiServicesResponse>(),
+    }),
+    testAiService: defineRoute({
+      path: "/system/ai-services/test",
+      method: "post",
+      request: jsonRequest<EmptyInput, TestAiServiceRequest>(
+        testAiServiceRequestSchema,
+      ),
+      response: jsonResponse<TestAiServiceResponse>(),
+    }),
     generalSettings: defineRoute({
       path: "/settings/general",
       method: "put",
@@ -1908,6 +1940,30 @@ export const publicApiRoutes = {
         systemVersionQuerySchema,
       ),
       response: jsonResponse<SystemVersionResponse>(),
+    }),
+    appUpdate: defineRoute({
+      path: "/system/app-update",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, SystemAppUpdateQuery>(
+        systemAppUpdateQuerySchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    applyAppUpdate: defineRoute({
+      path: "/system/app-update/apply",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemAppUpdateApplyRequest>(
+        systemAppUpdateApplyRequestSchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    acknowledgeAppUpdate: defineRoute({
+      path: "/system/app-update/acknowledge",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemAppUpdateAcknowledgeRequest>(
+        systemAppUpdateAcknowledgeRequestSchema,
+      ),
+      response: jsonResponse<SystemAppUpdateStatus>(),
     }),
   },
 };

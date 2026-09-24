@@ -1,16 +1,21 @@
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type {
   ThreadSearchMatch,
   ThreadSearchResponse,
 } from "@bb/server-contract";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-
-export type PaletteThreadLifecycle = "active" | "archived";
+import {
+  normalizeThreadLifecycleFilter,
+  type ThreadArchiveFilter,
+} from "@/lib/thread-lifecycle-filter";
 
 export interface PaletteThreadSearchRow {
   id: string;
-  lifecycle: PaletteThreadLifecycle;
+  lifecycle: ThreadArchiveFilter;
   primaryText: string;
   highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   secondaryTitle: string | null;
@@ -23,6 +28,7 @@ export interface PaletteThreadSearchRow {
 }
 
 interface BuildPaletteThreadSearchRowsArgs {
+  lifecycles: readonly ThreadArchiveFilter[];
   now: number;
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
@@ -54,7 +60,7 @@ function projectMetadata(
 function serverRow(
   thread: ThreadListEntry,
   matches: readonly ThreadSearchMatch[],
-  lifecycle: "active" | "archived",
+  lifecycle: ThreadArchiveFilter,
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
 ): PaletteThreadSearchRow {
@@ -80,6 +86,7 @@ function serverRow(
 }
 
 export function buildPaletteThreadSearchRows({
+  lifecycles,
   now,
   projectNamesById,
   query,
@@ -90,38 +97,36 @@ export function buildPaletteThreadSearchRows({
   const trimmedQuery = query.trim();
   const isRecent = trimmedQuery.length === 0;
   const isSearchable = trimmedQuery.length >= 2;
-  const activeRows = isRecent
-    ? [...recentThreads]
-        .sort((left, right) => right.updatedAt - left.updatedAt)
-        .slice(0, RECENT_THREAD_LIMIT)
-        .map((thread) => serverRow(thread, [], "active", projectNamesById, now))
-    : isSearchable && searchResultsAreCurrent
-      ? (searchResponse?.active.results ?? []).map((result) =>
-          serverRow(
-            result.thread,
-            result.matches,
-            "active",
-            projectNamesById,
-            now,
-          ),
-        )
-      : [];
-
-  const archivedRows =
-    isSearchable && searchResultsAreCurrent
-      ? (searchResponse?.archived.results ?? []).map((result) =>
-          serverRow(
-            result.thread,
-            result.matches,
-            "archived",
-            projectNamesById,
-            now,
-          ),
-        )
-      : [];
-
   return {
     isRecent,
-    rows: [...activeRows, ...archivedRows],
+    rows: normalizeThreadLifecycleFilter(lifecycles).flatMap((lifecycle) =>
+      isRecent
+        ? recentThreads
+            .filter((thread) =>
+              lifecycle === "archived"
+                ? thread.archivedAt !== null
+                : thread.archivedAt === null,
+            )
+            .sort((left, right) =>
+              lifecycle === "archived"
+                ? (right.archivedAt ?? 0) - (left.archivedAt ?? 0)
+                : right.updatedAt - left.updatedAt,
+            )
+            .slice(0, RECENT_THREAD_LIMIT)
+            .map((thread) =>
+              serverRow(thread, [], lifecycle, projectNamesById, now),
+            )
+        : isSearchable && searchResultsAreCurrent
+          ? (searchResponse?.[lifecycle]?.results ?? []).map((result) =>
+              serverRow(
+                result.thread,
+                result.matches,
+                lifecycle,
+                projectNamesById,
+                now,
+              ),
+            )
+          : [],
+    ),
   };
 }

@@ -80,8 +80,10 @@ type SidebarNavigationProject = SidebarBootstrapResponse["projects"][number];
 export type CachedThreadListsAndSidebarNavigationMapper = (
   threads: ThreadListEntry[],
 ) => ThreadListEntry[];
-type SidebarNavigationThreadMapper =
-  CachedThreadListsAndSidebarNavigationMapper;
+type SidebarNavigationThreadMapper = (
+  threads: ThreadListEntry[],
+  projectId: string,
+) => ThreadListEntry[];
 
 interface ApplyToCachedSidebarNavigationThreadsArgs {
   mapper: SidebarNavigationThreadMapper;
@@ -303,7 +305,7 @@ function mapSidebarNavigationProjectThreads(
 ): SidebarNavigationProject {
   return {
     ...project,
-    threads: mapper(project.threads),
+    threads: mapper(project.threads, project.id),
   };
 }
 

@@ -164,14 +164,10 @@ export function PluginsOverview({
     return filtered
       .map((entry) => entry.plugin)
       .sort((left, right) => {
-        const enabledResult = Number(!left.enabled) - Number(!right.enabled);
-        if (enabledResult !== 0) return enabledResult;
-        if (left.enabled) {
-          const publisherResult =
-            Number(left.publisherLabel === null) -
-            Number(right.publisherLabel === null);
-          if (publisherResult !== 0) return publisherResult;
-        }
+        const publisherResult =
+          Number(left.publisherLabel === null) -
+          Number(right.publisherLabel === null);
+        if (publisherResult !== 0) return publisherResult;
         return (
           (left.name ?? left.id).localeCompare(right.name ?? right.id) ||
           left.id.localeCompare(right.id)
@@ -300,6 +296,7 @@ export function PluginsOverview({
                 onOpenPlugin={openPlugin}
               />
               <ResourceInfiniteScrollSentinel
+                itemCount={installedList.items.length}
                 hasMore={installedList.hasMore}
                 onLoadMore={installedList.loadMore}
               />
@@ -329,14 +326,6 @@ export function PluginsOverview({
         initial={addDialog.initial}
         onOpenChange={(open) =>
           setAddDialog((current) => ({ ...current, open }))
-        }
-        onInstalled={(plugin) =>
-          navigate(
-            getPluginDetailRoutePath({
-              pluginId: plugin.id,
-              view: "installed",
-            }),
-          )
         }
       />
     </>

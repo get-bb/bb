@@ -50,18 +50,6 @@ describe("@bb/templates", () => {
     );
   });
 
-  it("renders standardAgentAppendInstructions without user-question guidance", () => {
-    const rendered = renderTemplate("standardAgentAppendInstructions", {});
-
-    expect(rendered).toContain("You are working inside bb");
-    expect(rendered).toContain("agentic IDE");
-    expect(rendered).toContain("Reference a BB thread as `@thread:thr_abc123`");
-    expect(rendered).toContain("Do not construct thread URLs manually");
-    expect(rendered).not.toContain(
-      "Ask the user a blocking question only when",
-    );
-  });
-
   it("renders child thread needs-attention messages with blocker summaries", () => {
     const rendered = renderTemplate("systemMessageChildThreadNeedsAttention", {
       blockerSummary: [

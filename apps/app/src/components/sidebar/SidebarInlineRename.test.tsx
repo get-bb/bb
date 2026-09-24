@@ -10,10 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError } from "@bb/sdk/browser";
-import {
-  SidebarRenameProvider,
-  useSidebarRename,
-} from "./SidebarInlineRename";
+import { SidebarRenameProvider, useSidebarRename } from "./SidebarInlineRename";
 
 afterEach(cleanup);
 
@@ -257,22 +254,26 @@ describe("sidebar inline rename", () => {
     const { rerender } = render(row());
     await start("Keep my draft");
     rerender(row("Changed elsewhere"));
-    expect(screen.getByRole("textbox")).toHaveProperty("value", "Keep my draft");
+    expect(screen.getByRole("textbox")).toHaveProperty(
+      "value",
+      "Keep my draft",
+    );
     rerender(<SidebarRenameProvider>{null}</SidebarRenameProvider>);
     rerender(row("Changed elsewhere"));
-    expect(screen.getByRole("textbox")).toHaveProperty("value", "Keep my draft");
+    expect(screen.getByRole("textbox")).toHaveProperty(
+      "value",
+      "Keep my draft",
+    );
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(screen.getByText("Changed elsewhere")).not.toBeNull();
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("clears environment names only through the explicit clear action", async () => {
+  it("clears environment names when the submitted value is empty", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClear = vi.fn().mockResolvedValue(undefined);
     render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
     fireEvent.keyDown(await start(" "), { key: "Enter" });
-    expect(onClear).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Clear custom name" }));
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
     expect(onSave).not.toHaveBeenCalled();
     expect(onClear).toHaveBeenCalledOnce();

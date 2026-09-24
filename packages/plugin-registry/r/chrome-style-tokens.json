@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "chrome-style-tokens",
+  "type": "registry:ui",
+  "title": "chrome-style-tokens",
+  "description": "BB ui \"chrome-style-tokens\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/chrome-style-tokens.ts",
+      "content": "export const CHROME_SECTION_LABEL_CLASS =\n  \"text-xs font-normal leading-5 text-subtle-foreground/75\";\n\nexport const SIDEBAR_DISCLOSURE_ACTION_CLASS =\n  \"text-sm leading-5 text-subtle-foreground [&>[data-icon-root]]:size-3.5\";\n\nexport const CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS =\n  \"text-subtle-foreground/75 hover:text-muted-foreground data-[state=open]:text-subtle-foreground/75\";\n",
+      "type": "registry:ui",
+      "target": "components/ui/chrome-style-tokens.ts"
+    }
+  ]
+}

@@ -598,7 +598,7 @@ describe("@bb/sdk", () => {
           jsonResponse({
             body: {
               code: "invalid_request",
-              message: "Attachment exceeds 10MB limit",
+              message: "huge.png is 36MB, over the 35MB attachment limit",
             },
             status: 400,
           }),
@@ -615,7 +615,7 @@ describe("@bb/sdk", () => {
       }),
     ).rejects.toMatchObject({
       code: "invalid_request",
-      message: "HTTP 400: Attachment exceeds 10MB limit",
+      message: "HTTP 400: huge.png is 36MB, over the 35MB attachment limit",
       status: 400,
     });
   });

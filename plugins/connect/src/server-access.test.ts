@@ -116,6 +116,35 @@ describe("Connect server-owned machine access", () => {
     expect(api.active()).toBe(false);
     expect(await restarted.bb.storage.kv.get(key)).toBeUndefined();
   });
+  it("reacquires fresh access for the same host after release", async () => {
+    const api = cloud();
+    const host = await setup();
+    await provider(host).acquire(request);
+    await provider(host).release({ ...request, grantId: request.hostId });
+    api.fetchMock
+      .mockResolvedValueOnce(
+        Response.json({
+          code: "NEW-CODE",
+          expiresInMs: 600000,
+          serverUrl: credential.serverUrl,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          credential: "bbcm_new",
+          machineId: "new-cloud-id",
+          serverUrl: credential.serverUrl,
+        }),
+      );
+    await expect(provider(host).acquire(request)).resolves.toMatchObject({
+      id: request.hostId,
+      headers: { "x-bb-connect-machine": "bbcm_new" },
+    });
+    expect(await host.bb.storage.kv.get(key)).toMatchObject({
+      result: { connectMachineId: "new-cloud-id" },
+    });
+    expect(api.fetchMock).toHaveBeenCalledTimes(5);
+  });
   it("retains the device ID on revoke failure and retries after restart", async () => {
     const api = cloud();
     const original = await setup();

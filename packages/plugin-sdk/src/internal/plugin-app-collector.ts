@@ -26,6 +26,7 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
+  ExperimentalSidebarHeaderRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -347,6 +348,7 @@ export interface CollectedPluginAppRegistrations {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
+  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -472,6 +474,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions: [],
     experimentalSidebarFooterItems: [],
     experimentalSidebarNavigations: [],
+    experimentalSidebarHeaders: [],
     threadLists: [],
     threadHeaderActions: [],
     browserToolbarActions: [],
@@ -500,6 +503,7 @@ export function collectPluginAppRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
     sidebarNavigation: new Set<string>(),
+    sidebarHeader: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
@@ -741,6 +745,15 @@ export function collectPluginAppRegistrations(
           collectTitledComponent(
             "slots.experimental_sidebarNavigation",
             seenIds.sidebarNavigation,
+            registration,
+          ),
+        );
+      },
+      experimental_sidebarHeader(registration) {
+        collected.experimentalSidebarHeaders.push(
+          collectTitledComponent(
+            "slots.experimental_sidebarHeader",
+            seenIds.sidebarHeader,
             registration,
           ),
         );

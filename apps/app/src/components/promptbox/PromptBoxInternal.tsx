@@ -108,6 +108,7 @@ import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
+  promptEditorCopiedSlice,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
   promptEditorValueFromSlice,
@@ -244,7 +245,6 @@ export interface PromptBoxSubmissionConfig {
 
 interface PromptSubmitButtonProps {
   canSubmit: boolean;
-  hasInput: boolean;
   className: string;
   disabledReason: string | undefined;
   icon: IconName | undefined;
@@ -259,7 +259,6 @@ interface PromptSubmitButtonProps {
 
 function PromptSubmitButton({
   canSubmit,
-  hasInput,
   className,
   disabledReason,
   icon,
@@ -280,7 +279,7 @@ function PromptSubmitButton({
       data-promptbox-submit-action=""
       type="submit"
       size={isCompact ? "icon" : "sm"}
-      variant={hasInput ? "default" : "ghost"}
+      variant="default"
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
@@ -335,8 +334,6 @@ function PromptSubmitButton({
       }}
       className={cn(
         className,
-        !hasInput &&
-          "border border-border text-muted-foreground/50 disabled:opacity-100",
         label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
@@ -471,7 +468,6 @@ interface PromptBoxInternalProps {
   blurOnPointerSubmit?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
-  allowSoftKeyboardAutoFocus?: boolean;
   textEffects?: readonly ComposerTextEffectSource[];
   onComposerLayoutChange?: (layout: ComposerView["layout"]) => void;
   header?: ReactNode;
@@ -1211,7 +1207,6 @@ export function PromptBoxInternal({
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
-  allowSoftKeyboardAutoFocus = false,
   textEffects,
   onComposerLayoutChange,
   header,
@@ -1290,8 +1285,6 @@ export function PromptBoxInternal({
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
-  const shouldAvoidSoftKeyboardAutofocus =
-    isPointerCoarse && !allowSoftKeyboardAutoFocus;
   const formRef = useRef<HTMLFormElement>(null);
   const typeaheadMenuRef = useRef<HTMLDivElement>(null);
   const reportQueuedEditorTypeaheadLayout = useContext(
@@ -1743,6 +1736,8 @@ export function PromptBoxInternal({
           ...(id ? { id } : {}),
           role: "textbox",
         },
+        transformCopied: (slice, view) =>
+          promptEditorCopiedSlice(slice, view.state.selection),
         clipboardTextSerializer: (slice, view) =>
           promptEditorClipboardTextFromSlice(slice, view.state.schema),
         handleDOMEvents: {
@@ -1973,7 +1968,7 @@ export function PromptBoxInternal({
       }
       return;
     }
-    if (shouldAvoidSoftKeyboardAutofocus) return;
+    if (isPointerCoarse) return;
 
     const focusEditor = () => {
       if (editor.isDestroyed) return;
@@ -1995,7 +1990,7 @@ export function PromptBoxInternal({
     editor,
     focusScopeKey,
     scheduleRevealEditorSelection,
-    shouldAvoidSoftKeyboardAutofocus,
+    isPointerCoarse,
   ]);
 
   useEffect(() => {
@@ -3315,7 +3310,7 @@ export function PromptBoxInternal({
             <div
               data-promptbox-action-row=""
               className={cn(
-                "relative flex shrink-0 select-none flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                "relative flex shrink-0 select-none flex-row items-center gap-3 pb-2 pl-3.5 pr-[13px] pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
               )}
             >
@@ -3478,7 +3473,6 @@ export function PromptBoxInternal({
                       >
                         <PromptSubmitButton
                           canSubmit={canSubmit}
-                          hasInput={hasSubmittableInput}
                           icon={submitIcon}
                           label={submitLabel}
                           className={cn(

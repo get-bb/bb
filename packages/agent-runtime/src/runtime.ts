@@ -1876,6 +1876,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             providerId,
           });
+          if (providerThreadId !== undefined) {
+            const ownerThreadId =
+              threadIdentityRegistry.resolveBbThreadIdForProviderThread({
+                providerState: proc.identity,
+                providerThreadId,
+              });
+            if (ownerThreadId !== undefined && ownerThreadId !== threadId) {
+              throw new Error(
+                `Cannot resume thread "${threadId}" on "${providerId}": provider thread "${providerThreadId}" is already hosted by thread "${ownerThreadId}"`,
+              );
+            }
+          }
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv,
             environmentId,

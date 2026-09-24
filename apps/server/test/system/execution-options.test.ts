@@ -26,6 +26,7 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { advanceUntilSettled } from "../helpers/fake-timers.js";
+import { requireRegistration } from "../helpers/provider-model-catalogs.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import {
   createTestProviderRegistry,
@@ -313,6 +314,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "codex",
           code: "provider_unavailable",
+          detail: null,
         });
       },
     );
@@ -599,6 +601,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(response.modelLoadError).toEqual({
         providerId: "codex",
         code: "failed",
+        detail: "Host is suspended",
       });
       expect(request).not.toHaveBeenCalled();
       expect(warn).not.toHaveBeenCalled();
@@ -903,6 +906,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "codex",
           code: "failed",
+          detail: "Local host daemon is not initialized",
         });
         const hostLookupWarning = warn.mock.calls.find(
           ([, message]) =>
@@ -953,13 +957,9 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "claude-code",
           code: "failed",
+          detail: "Provider failed",
         });
         expect(response.models.map((model) => model.model)).toEqual([
-          "claude-fable-5-1",
-          "claude-opus-5[1m]",
-          "claude-opus-4-8[1m]",
-          "claude-opus-4-7[1m]",
-          "claude-sonnet-5",
           "claude-example-preview",
         ]);
         expect(response.selectedOnlyModels).toEqual([]);
@@ -1061,16 +1061,25 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
-  it("serves the curated Claude catalog when the model probe fails transiently", async () => {
+  it("serves a provider's declared fallback models when the model probe fails transiently", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-execution-options-claude-provisional",
+        id: "host-execution-options-provisional",
+      });
+      const base = requireRegistration(harness, "claude-code");
+      harness.deps.providerRegistry.register({
+        ...base,
+        info: { ...base.info, id: "fallback-probe" },
+        fallbackModels: [
+          availableModelFixture({ model: "fallback-a", isDefault: true }),
+          availableModelFixture({ model: "fallback-b" }),
+        ],
       });
       registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         modelErrorsByProviderId: {
-          "claude-code": {
+          "fallback-probe": {
             errorCode: "command_timeout",
             errorMessage: "Model probe timed out",
           },
@@ -1079,25 +1088,18 @@ describe("resolveSystemExecutionOptions", () => {
 
       const response = await resolveSystemExecutionOptions(harness.deps, {
         hostId: host.id,
-        providerId: "claude-code",
+        providerId: "fallback-probe",
       });
 
       expect(response.modelLoadError).toEqual({
-        providerId: "claude-code",
+        providerId: "fallback-probe",
         code: "timeout",
+        detail: "Model probe timed out",
       });
       expect(response.models.map((model) => model.model)).toEqual([
-        "claude-fable-5-1",
-        "claude-opus-5[1m]",
-        "claude-opus-4-8[1m]",
-        "claude-opus-4-7[1m]",
-        "claude-sonnet-5",
+        "fallback-a",
+        "fallback-b",
       ]);
-      expect(
-        response.models
-          .filter((model) => model.isDefault)
-          .map((model) => model.model),
-      ).toEqual(["claude-opus-5[1m]"]);
     });
   });
 
@@ -1130,6 +1132,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.modelLoadError).toEqual({
           providerId: "claude-code",
           code: errorCode,
+          detail: "Claude Code is not usable",
         });
         expect(response.models).toEqual([]);
       });
@@ -1338,6 +1341,31 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
+  it("returns no models for an unknown provider instead of the first provider's catalog", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-unknown-provider",
+      });
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "totally-not-a-provider",
+      });
+
+      expect(response.models).toEqual([]);
+      expect(response.selectedOnlyModels).toEqual([]);
+      expect(
+        responder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("surfaces provider auth-required model load failures", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1362,6 +1390,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(response.modelLoadError).toEqual({
         providerId: "acp-cursor",
         code: "auth_required",
+        detail: "Cursor agent is not authenticated.",
       });
       expect(
         responder.requests.filter(
@@ -1420,6 +1449,7 @@ describe("resolveSystemExecutionOptions", () => {
           expect(response.modelLoadError).toEqual({
             providerId: "acp-broken-agent",
             code: expectedCode,
+            detail: "model list failed",
           });
           expect(response.providers).toEqual(
             expect.arrayContaining([

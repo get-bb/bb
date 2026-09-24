@@ -198,20 +198,6 @@ export interface CollapsedChildActivity {
   unreadError: boolean;
 }
 
-export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
-  pending: false,
-  working: false,
-  hasUnsubmittedDraft: false,
-  runtimeWorking: false,
-  workflow: false,
-  backgroundAgent: false,
-  backgroundCommand: false,
-  planMode: false,
-  goal: false,
-  unread: false,
-  unreadError: false,
-};
-
 type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
   Pick<ThreadListEntry, "id" | "activity" | "hasPendingInteraction">;

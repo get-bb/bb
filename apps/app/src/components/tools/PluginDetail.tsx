@@ -1,8 +1,10 @@
-import { PluginCardAuthor } from "@/components/plugin/management/PluginCard";
+import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
+import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
 import { useSyncExternalStore } from "react";
 import {
+  ResourceActionButton,
   ResourceActivitySection,
-  ResourceDetailConfigurationSection,
+  ResourceDefinitionSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
@@ -19,7 +21,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import {
   PluginDetailReleaseControl,
@@ -33,8 +35,13 @@ import {
   pluginInstallCountPresentation,
 } from "@/components/plugin/management/plugin-ui";
 import {
-  PluginMarketplaceCategoryPill,
+  PluginDetailMetadata,
+  PluginDetailMetadataItem,
+  PluginMarketplaceByline,
+  PluginMarketplaceDetailMetadata,
   PluginMarketplaceListingSections,
+  PluginMarketplaceOverview,
+  PluginMarketplaceSource,
   PluginMoreFromAuthorSection,
   PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
@@ -46,10 +53,6 @@ import {
   PluginSchedules,
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
-import {
-  PluginDetailFieldRow,
-  PluginDetailTable,
-} from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import {
   usePluginSource,
@@ -63,7 +66,37 @@ import {
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useClipboardCopy } from "@/lib/clipboard";
+import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
+
+function pluginMarketplaceUrl({
+  marketplace,
+  entryId,
+}: {
+  marketplace: string | null;
+  entryId: string | null;
+}): string | null {
+  if (marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME || entryId === null) {
+    return null;
+  }
+  return `https://getbb.app/marketplace/${encodeURIComponent(entryId)}`;
+}
+
+function copyMarketplaceLinkItems(
+  url: string | null,
+): ResourceOverflowMenuItem[] {
+  if (url === null) return [];
+  return [
+    {
+      label: "Copy marketplace link",
+      icon: "Copy",
+      onSelect: () =>
+        void copyToClipboardWithToast(url, {
+          successMessage: "Marketplace link copied",
+          errorMessage: "Failed to copy marketplace link.",
+        }),
+    },
+  ];
+}
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
@@ -79,37 +112,70 @@ export function pluginRemovalDescription(plugin: PluginListItem): string {
     : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
 }
 
-function PluginPath({ path }: { path: string }) {
+function PluginLocalSource({
+  path,
+  openDisabled,
+  onOpen,
+}: {
+  path: string;
+  openDisabled: boolean;
+  onOpen: () => void;
+}) {
   const { copied, copy } = useClipboardCopy({
     text: path,
     errorMessage: "Failed to copy path.",
   });
 
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Copy plugin path: ${path}`}
+    <ResourceDefinitionSection label="Source">
+      <div className="flex min-w-0 items-center gap-3">
+        <Icon
+          name="Folder"
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  className="block truncate rounded-sm font-mono text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {formatHomePathForDisplay(path)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm break-all">
+                {path}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <ResourceActionButton
+            label="Open source"
+            icon="ExternalLink"
+            disabled={openDisabled}
+            disabledReason={openDisabled ? "No editor configured" : undefined}
+            onClick={onOpen}
+          />
+          <ResourceActionButton
+            label={`Copy plugin path: ${path}`}
+            tooltipLabel={copied ? "Copied" : "Copy path"}
+            icon={copied ? "Check" : "Copy"}
             onClick={() => void copy()}
-            className="group -ml-1.5 mt-0.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <span className="min-w-0 truncate text-left font-mono">
-              {formatHomePathForDisplay(path)}
-            </span>
-            <Icon
-              name={copied ? "Check" : "Copy"}
-              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              aria-hidden
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          />
+        </div>
+      </div>
+    </ResourceDefinitionSection>
   );
 }
+
+const OFFICIAL_BYLINE_ENTRY = {
+  author: null,
+  marketplace: "bb-official",
+  publisherLabel: "BB Official",
+} as const;
 
 export function CatalogPluginDetail({
   entry,
@@ -123,23 +189,33 @@ export function CatalogPluginDetail({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
+  const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={<CatalogEntryIconChip entry={entry} />}
-      leadingClassName="size-10"
+      leading={<CatalogEntryIconChip entry={entry} compact />}
+      leadingClassName="size-6"
       title={entry.displayName}
-      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
-      metadata={<PluginCardAuthor entry={entry} />}
+      metadataLeading={<PluginCardAuthorAvatar entry={entry} />}
+      metadata={<PluginMarketplaceByline entry={entry} />}
       actions={
         <PluginCatalogInstallControl
           displayName={entry.displayName}
           installed={false}
           showLabel
           disabled={!entry.compatible}
+          unavailableReason={entry.incompatibleReason}
           count={count}
           onInstall={() => onInstall(entry)}
         />
+      }
+      overflowMenu={
+        overflowItems.length === 0 ? undefined : (
+          <ResourceOverflowMenu
+            label={`${entry.displayName} actions`}
+            items={overflowItems}
+          />
+        )
       }
     >
       <ResourceDetailStack>
@@ -195,7 +271,13 @@ export function pluginFrontendDiagnosticRequiresFailureBanner(
   return diagnostic?.status === "failed";
 }
 
-export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
+export function PluginDetailBanners({
+  plugin,
+  configurationPath,
+}: {
+  plugin: PluginListItem;
+  configurationPath?: string;
+}) {
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
@@ -207,6 +289,7 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
   return (
     <PluginHealthBanner
       plugin={banner.plugin}
+      configurationPath={configurationPath}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
     />
   );
@@ -224,6 +307,8 @@ export function PluginDetail({
   catalogEntry,
   catalogEntries,
   onOpenPlugin,
+  onConfigure,
+  configurationPath,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -236,10 +321,13 @@ export function PluginDetail({
   catalogEntry?: PluginCatalogSearchEntry;
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
+  onConfigure?: () => void;
+  configurationPath?: string;
 }) {
+  const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
-    enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
+    enabled: plugin !== null && !plugin.source.startsWith("builtin:"),
   });
   usePluginUpdateCheck(plugin?.id ?? null, {
     enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
@@ -289,7 +377,14 @@ export function PluginDetail({
     settingsSections.some((section) => section.pluginId === plugin.id);
 
   const pluginName = plugin.name ?? plugin.id;
+  const marketplaceUrl = pluginMarketplaceUrl(
+    catalogEntry ?? {
+      marketplace: plugin.catalogMarketplaceName,
+      entryId: plugin.catalogEntryId,
+    },
+  );
   const overflowItems: ResourceOverflowMenuItem[] = [
+    ...copyMarketplaceLinkItems(marketplaceUrl),
     ...(canEditSource
       ? [
           {
@@ -297,15 +392,6 @@ export function PluginDetail({
             icon: "Edit" as const,
             disabled: pending,
             onSelect: () => onEdit(plugin),
-          },
-          {
-            label: "Open source",
-            icon: "ExternalLink" as const,
-            disabled: pending || openSourceDisabled,
-            disabledReason: openSourceDisabled
-              ? "No editor configured"
-              : undefined,
-            onSelect: () => onOpenSource(plugin),
           },
         ]
       : []),
@@ -321,32 +407,42 @@ export function PluginDetail({
       onSelect: () => onDelete(plugin),
     },
   ];
+  const bylineEntry =
+    catalogEntry ??
+    (plugin.provenance === "builtin" ||
+    plugin.catalogMarketplaceName === "bb-official"
+      ? OFFICIAL_BYLINE_ENTRY
+      : undefined);
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
-      titleMeta={
-        catalogEntry === undefined ? null : (
-          <PluginMarketplaceCategoryPill entry={catalogEntry} />
+      metadataLeading={
+        bylineEntry === undefined ? undefined : (
+          <PluginCardAuthorAvatar entry={bylineEntry} />
         )
       }
       metadata={
-        <div className="space-y-1">
-          {catalogEntry !== undefined ? (
-            <PluginCardAuthor entry={catalogEntry} />
-          ) : plugin.provenance === "builtin" ||
-            plugin.catalogMarketplaceName === "bb-official" ? (
-            <PluginCardAuthor
-              entry={{
-                author: null,
-                marketplace: "bb-official",
-                publisherLabel: "BB Official",
-              }}
-            />
-          ) : null}
-          <PluginPath path={plugin.rootDir} />
-        </div>
+        bylineEntry === undefined ? undefined : (
+          <PluginMarketplaceByline entry={bylineEntry} />
+        )
+      }
+      actions={
+        hasConfiguration ? (
+          <ResourceActionButton
+            label={`${pluginName} settings`}
+            tooltipLabel="Settings"
+            icon="Settings"
+            onClick={() =>
+              onConfigure
+                ? onConfigure()
+                : navigate(
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
+                  )
+            }
+          />
+        ) : undefined
       }
       lifecycleControl={
         <Switch
@@ -365,7 +461,7 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <section data-resource-detail-section="overview">
+          <section className="max-w-prose" data-resource-detail-section="overview">
             <PluginOverviewLead
               description={
                 plugin.description ?? "This plugin does not describe itself."
@@ -373,63 +469,48 @@ export function PluginDetail({
             />
           </section>
         ) : (
-          <>
-            <PluginMarketplaceListingSections entry={catalogEntry} />
-            <PluginMoreFromAuthorSection
-              entry={catalogEntry}
-              catalogEntries={catalogEntries}
-              onOpenPlugin={onOpenPlugin}
-            />
-          </>
+          <PluginMarketplaceOverview entry={catalogEntry} />
         )}
-        {hasConfiguration ? (
-          <ResourceDetailConfigurationSection
-            id="configuration"
-            className="scroll-mt-4"
-            label="Configuration"
-          >
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              This plugin is configured from{" "}
-              <Link
-                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
-                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                its Settings page
-                <Icon
-                  name="ChevronRight"
-                  className="size-3.5 no-underline"
-                  aria-hidden
-                />
-              </Link>
-            </p>
-          </ResourceDetailConfigurationSection>
+        {canEditSource ? (
+          <PluginLocalSource
+            path={plugin.rootDir}
+            openDisabled={pending || openSourceDisabled}
+            onOpen={() => onOpenSource(plugin)}
+          />
+        ) : catalogEntry !== undefined ? (
+          <PluginMarketplaceSource entry={catalogEntry} />
         ) : null}
         <ResourceDetailReleaseSection
-          label="Release"
+          label="Details"
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
             ) : undefined
           }
         >
-          <PluginDetailTable>
-            <PluginDetailFieldRow
+          <PluginDetailMetadata>
+            {catalogEntry === undefined ? null : (
+              <PluginMarketplaceDetailMetadata entry={catalogEntry} />
+            )}
+            <PluginDetailMetadataItem
               label={updatesWithBb ? "Delivery" : "Installed"}
-              labelClassName="font-medium"
             >
               {installedValue}
-            </PluginDetailFieldRow>
-            <PluginDetailFieldRow label="Version" labelClassName="font-medium">
-              <span className="font-mono text-xs">{plugin.version}</span>
-            </PluginDetailFieldRow>
-            {hasReleaseUpdate ? (
-              <PluginDetailFieldRow label="Update" stackOnNarrow>
-                <PluginDetailReleaseStatus plugin={plugin} />
-              </PluginDetailFieldRow>
-            ) : null}
-          </PluginDetailTable>
+            </PluginDetailMetadataItem>
+            <PluginDetailMetadataItem label="Version">
+              <span className="font-mono">{plugin.version}</span>
+            </PluginDetailMetadataItem>
+          </PluginDetailMetadata>
+          {hasReleaseUpdate ? (
+            <div className="space-y-1">
+              <p className="text-2xs font-medium text-subtle-foreground">
+                Update
+              </p>
+              <PluginDetailReleaseStatus plugin={plugin} />
+            </div>
+          ) : null}
         </ResourceDetailReleaseSection>
-        <PluginIncludes plugin={plugin} />
+        <PluginIncludes plugin={plugin} configurationPath={configurationPath} />
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">
             <PluginServices plugin={plugin} />
@@ -440,6 +521,13 @@ export function PluginDetail({
             <PluginSchedules plugin={plugin} />
           </ResourceActivitySection>
         ) : null}
+        {catalogEntry === undefined ? null : (
+          <PluginMoreFromAuthorSection
+            entry={catalogEntry}
+            catalogEntries={catalogEntries}
+            onOpenPlugin={onOpenPlugin}
+          />
+        )}
       </ResourceDetailStack>
     </ResourceDetailPage>
   );

@@ -378,7 +378,11 @@ export function BottomAnchoredScrollBody({
       shouldStickToBottomRef.current = false;
       setIsAtBottom(false);
       cancelQueuedRestore();
+      const previousScrollTop = scrollArea?.scrollTop;
       element.scrollIntoView(options);
+      if (scrollArea && scrollArea.scrollTop !== previousScrollTop) {
+        scrollArea.dispatchEvent(new Event("scroll"));
+      }
     },
     [cancelQueuedRestore],
   );

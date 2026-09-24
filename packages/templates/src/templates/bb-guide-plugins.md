@@ -633,7 +633,7 @@ Keep the SDK in exact devDependencies: the builder supplies and bundles its
 small host runtime, so managed installs and remote workers do not resolve an
 SDK package at runtime. That covers the bare `@get-bb/plugin-sdk` import. An
 SDK subpath (`@get-bb/plugin-sdk/host`, `/provider-bridge`,
-`/provider-bridge/acp`, `/ai-services`) imported from server or host code is
+`/provider-bridge/acp`) imported from server or host code is
 bundled from the plugin's own installed SDK, so a plugin that imports one
 needs the SDK as a real dependency; the build names the missing install
 rather than shipping an import bb cannot serve.
@@ -751,6 +751,9 @@ release packages with their declared production dependencies). A crashing slot c
 touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) appear under both Settings → Installed plugins
 and Plugins → Installed plugins. Both locations manage the same installed plugins.
+On a plugin's detail page, the settings button beside the enable switch opens
+its settings in place; Plugin details returns to the page. A local plugin's
+Source section opens or copies its path.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed

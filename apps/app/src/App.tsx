@@ -65,8 +65,10 @@ import {
   getSettingsProjectRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
+import { WindowFindHost } from "./components/layout/WindowFindHost";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
+import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
 const SettingsView = lazy(() =>
@@ -440,8 +442,10 @@ export function App() {
                 />
                 <Route path="*" element={<AppRoutes />} />
               </Routes>
+              <WindowFindHost />
               <ProviderCliInstallLogDialogHost />
               <ServerMoveOverlay />
+              <AppUpdateHost />
             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>

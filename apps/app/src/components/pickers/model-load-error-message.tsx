@@ -13,27 +13,43 @@ interface FormatModelLoadErrorTextArgs {
   providerLabel: string;
 }
 
-export function formatModelLoadErrorText({
-  error,
+export function formatModelLoadErrorSummary({
   providerLabel,
-}: FormatModelLoadErrorTextArgs): string {
-  if (error.code === "provider_unavailable") {
-    return `${providerLabel} is unavailable because its provider plugin failed to load.`;
-  }
-
-  if (error.code === "timeout") {
-    return `Timed out loading models for ${providerLabel}.`;
-  }
-
-  if (error.code === "missing_executable") {
-    return `Could not load models for ${providerLabel}. Please make sure the ${providerLabel} CLI is installed.`;
-  }
-
-  if (error.code === "auth_required") {
-    return `Could not load models for ${providerLabel}. Authentication is required.`;
-  }
-
+}: Pick<FormatModelLoadErrorTextArgs, "providerLabel">): string {
   return `Could not load models for ${providerLabel}.`;
+}
+
+export function formatModelLoadErrorReason({
+  error,
+}: Pick<FormatModelLoadErrorTextArgs, "error">): string | null {
+  switch (error.code) {
+    case "provider_unavailable":
+      return "Provider plugin failed to load";
+    case "missing_executable":
+      return "CLI not found";
+    case "auth_required":
+      return "Not signed in";
+    case "timeout":
+      return "Timed out";
+    case "failed":
+      return error.detail;
+  }
+}
+
+export function formatModelLoadErrorText(
+  args: FormatModelLoadErrorTextArgs,
+): string {
+  const summary = formatModelLoadErrorSummary(args);
+  const reason = formatModelLoadErrorReason(args);
+  return reason === null ? summary : `${summary} ${reason}.`;
+}
+
+export function formatModelLoadErrorTitle(
+  args: FormatModelLoadErrorTextArgs,
+): string {
+  const summary = formatModelLoadErrorSummary(args);
+  const detail = args.error.detail ?? formatModelLoadErrorReason(args);
+  return detail === null ? summary : `${summary}\n${detail}`;
 }
 
 export function ModelLoadErrorMessage({
@@ -43,27 +59,30 @@ export function ModelLoadErrorMessage({
 }: ModelLoadErrorMessageProps): ReactNode {
   const helpUrl = error.code === "missing_executable" ? installUrl : undefined;
   const handleHelpLinkClick = useUrlAnchorClickHandler(helpUrl);
+  const reason = formatModelLoadErrorReason({ error });
 
-  if (error.code === "missing_executable") {
-    if (helpUrl === undefined) {
-      return formatModelLoadErrorText({ error, providerLabel });
-    }
-    return (
-      <>
-        Could not load models for {providerLabel}. Please make sure the{" "}
-        <a
-          href={helpUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={handleHelpLinkClick}
-          className="underline underline-offset-2 hover:text-foreground"
-        >
-          {providerLabel} CLI
-        </a>{" "}
-        is installed.
-      </>
-    );
-  }
-
-  return formatModelLoadErrorText({ error, providerLabel });
+  return (
+    <>
+      <span className="block">
+        {formatModelLoadErrorSummary({ providerLabel })}
+      </span>
+      {reason === null ? null : (
+        <span className="mt-1 line-clamp-3 block break-words opacity-80 [overflow-wrap:anywhere]">
+          {helpUrl === undefined ? (
+            reason
+          ) : (
+            <a
+              href={helpUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={handleHelpLinkClick}
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              {reason}
+            </a>
+          )}
+        </span>
+      )}
+    </>
+  );
 }

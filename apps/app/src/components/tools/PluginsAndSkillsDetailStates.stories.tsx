@@ -1,11 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SkillProvider } from "@bb/server-contract";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import {
-  ResourceActionButton,
-  ResourceCreateButton,
   ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
@@ -13,8 +9,6 @@ import {
 import { Switch } from "@bb/shared-ui/switch";
 import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import { PluginDetailReleaseControl } from "@/components/plugin/management/PluginUpdatesCard";
-import { AutomationLifecycleControl } from "bb-plugin-automations/detail-view";
-import { AUTOMATION_CREATE_TEMPLATES } from "bb-plugin-automations/overview-view";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import {
@@ -500,7 +494,19 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   icon: "Github",
   iconUrl: null,
   iconTinted: false,
-  category: "Developer tools",
+  categoryId: "code-and-reviews",
+  category: "Code & Reviews",
+  overview: `Review pull requests and triage issues from the thread you are working in.
+
+## What you get
+
+- A pull request panel with checks, reviews, and the diff for the current branch.
+- Issue search that attaches an issue to the thread as context.
+- A \`bb github\` command for agents to open, update, and comment on pull requests.
+
+## How it works
+
+Sign in once with \`gh auth login\`. The plugin reuses your GitHub CLI session and never stores a token of its own.`,
   screenshots: [],
   collections: [],
   source: "builtin:github",
@@ -1081,17 +1087,6 @@ const skillLocalItems = [
   },
 ];
 
-const automationMenuItems = [
-  { label: "Run now", icon: "Play" as const, onSelect: noop },
-  { kind: "separator" as const },
-  {
-    label: "Delete",
-    icon: "Trash2" as const,
-    tone: "destructive" as const,
-    onSelect: noop,
-  },
-];
-
 export function ResourceControlStates() {
   return (
     <PluginStoryQueryBoundary>
@@ -1101,9 +1096,9 @@ export function ResourceControlStates() {
             Resource badge and button states
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            The real controls used by Automations, Plugins, and Skills, grouped
-            by the meaning they carry. Cells are deliberately left-aligned so
-            shape, weight, and vocabulary can be compared directly.
+            The real controls used by Plugins and Skills, grouped by the meaning
+            they carry. Cells are deliberately left-aligned so shape, weight,
+            and vocabulary can be compared directly.
           </p>
         </header>
 
@@ -1332,162 +1327,6 @@ export function ResourceControlStates() {
             state="Read-only actions"
             control={<NoControl>No ownership menu</NoControl>}
             meaning="BB Official, Included, and Imported skills expose provenance without pretending they are mutable."
-          />
-        </ControlTable>
-
-        <ControlTable
-          title="Automations"
-          description="Lifecycle is the primary control. Creation, editing, run status, and ownership actions remain visually distinct."
-        >
-          <ControlRow
-            state="Active"
-            control={
-              <AutomationLifecycleControl
-                checked
-                label="Pause automation"
-                onCheckedChange={noop}
-              />
-            }
-            meaning="A recurring or future one-time automation is enabled."
-          />
-          <ControlRow
-            state="Paused"
-            control={
-              <AutomationLifecycleControl
-                checked={false}
-                label="Resume automation"
-                onCheckedChange={noop}
-              />
-            }
-            meaning="The automation is retained but will not run."
-          />
-          <ControlRow
-            state="Lifecycle pending"
-            control={
-              <AutomationLifecycleControl
-                checked
-                disabled
-                label="Pause automation"
-                onCheckedChange={noop}
-              />
-            }
-            meaning="An automation mutation is in flight."
-          />
-          <ControlRow
-            state="Completed one-time"
-            control={
-              <AutomationLifecycleControl
-                checked={false}
-                disabled
-                disabledReason="This one-time automation has completed. Edit it to schedule another run."
-                label="Completed automation"
-                onCheckedChange={noop}
-              />
-            }
-            meaning="The schedule is terminal; focus or hover the disabled switch for the reason."
-          />
-          <ControlRow
-            state="Expired one-time"
-            control={
-              <AutomationLifecycleControl
-                checked={false}
-                disabled
-                disabledReason="This one-time automation expired. Edit it to schedule another run."
-                label="Expired automation"
-                onCheckedChange={noop}
-              />
-            }
-            meaning="The scheduled time passed without a completed run."
-          />
-          <ControlRow
-            state="Create"
-            control={
-              <ResourceCreateButton
-                label="New automation"
-                templates={AUTOMATION_CREATE_TEMPLATES}
-                onCreate={noop}
-              />
-            }
-            meaning="Starts a blank chat-authored automation or opens the example menu."
-          />
-          <ControlRow
-            state="Edit"
-            control={
-              <ResourceActionButton
-                label="Edit with chat"
-                tooltipLabel="Edit with chat"
-                icon="Edit"
-                onClick={noop}
-              />
-            }
-            meaning="Contextual action attached to the Prompt or Script section."
-          />
-          <ControlRow
-            state="Edit loading"
-            control={
-              <ResourceActionButton
-                label="Editing with chat"
-                tooltipLabel="Editing with chat"
-                icon="Edit"
-                loading
-                onClick={noop}
-              />
-            }
-            meaning="The section action is in flight."
-          />
-          <ControlRow
-            state="Edit unavailable"
-            control={
-              <ResourceActionButton
-                label="Edit with chat"
-                icon="Edit"
-                disabled
-                disabledReason="No writable automation source"
-                onClick={noop}
-              />
-            }
-            meaning="The action remains discoverable and explains why it cannot run."
-          />
-          <ControlRow
-            state="Actions"
-            control={
-              <ResourceOverflowMenu
-                label="Automation actions"
-                items={automationMenuItems}
-              />
-            }
-            meaning="Run now and Delete live in the automation ownership menu."
-          />
-          <ControlRow
-            state="Actions pending"
-            control={
-              <ResourceOverflowMenu
-                label="Automation actions pending"
-                disabled
-                items={automationMenuItems}
-              />
-            }
-            meaning="The menu is disabled while another automation action is pending."
-          />
-          <ControlRow
-            state="Run now"
-            control={
-              <Button type="button" variant="outline" size="sm" onClick={noop}>
-                <Icon name="Play" className="size-3.5" aria-hidden />
-                Run now
-              </Button>
-            }
-            meaning="The empty Runs state offers the manual action inline."
-          />
-          <ControlRow
-            state="Run now pending"
-            control={
-              <Button type="button" variant="outline" size="sm" disabled>
-                <Icon name="Play" className="size-3.5" aria-hidden />
-                Run now
-              </Button>
-            }
-            meaning="Manual execution is unavailable while another action is pending."
           />
         </ControlTable>
       </main>

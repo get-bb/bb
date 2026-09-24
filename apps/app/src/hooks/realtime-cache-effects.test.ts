@@ -27,6 +27,7 @@ import {
   projectSourceBranchesQueryKey,
   projectsQueryKey,
   serverMoveStatusQueryKey,
+  systemAppUpdateQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -281,6 +282,24 @@ describe("createRealtimeCacheEffects", () => {
       type: "changed",
       entity: "system",
       changes: ["server-move-changed"],
+    });
+
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+    effects.dispose();
+  });
+
+  it("refreshes only the app update status when the launcher reports progress", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const statusKey = systemAppUpdateQueryKey();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(statusKey, {});
+    queryClient.setQueryData(configKey, {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["app-update-changed"],
     });
 
     expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
@@ -2306,6 +2325,7 @@ describe("createRealtimeCacheEffects", () => {
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     const idleRow = {
       activity: NO_THREAD_ACTIVITY,
+      archivedAt: null,
       id: "thr_1",
       latestAttentionAt: 100,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
@@ -2371,11 +2391,11 @@ describe("createRealtimeCacheEffects", () => {
     const sidebarThreads = queryClient.getQueryData<{
       projects: { threads: (typeof idleRow)[] }[];
     }>(sidebarNavigationKey)?.projects[0]?.threads;
-    expect(sidebarThreads?.[0]).toEqual({ id: "thr_1", ...statusChange });
+    expect(sidebarThreads?.[0]).toEqual({ ...idleRow, ...statusChange });
     expect(sidebarThreads?.[1]).toBe(otherRow);
     expect(
       queryClient.getQueryData<(typeof idleRow)[]>(threadListKey)?.[0],
-    ).toEqual({ id: "thr_1", ...statusChange });
+    ).toEqual({ ...idleRow, ...statusChange });
 
     for (const unsubscribe of unsubscribers) {
       unsubscribe();

@@ -69,12 +69,6 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
       },
     ],
   },
-  aiServices: {
-    inference: "codex/gpt-5.5",
-    inferenceFallback: "codex/gpt-5.5",
-    transcription: "openai/gpt-4o-transcribe",
-    services: [],
-  },
 });
 
 export const REPLY_DELAY_MS = 1_800;

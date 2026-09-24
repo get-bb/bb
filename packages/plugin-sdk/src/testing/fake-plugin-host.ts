@@ -15,7 +15,6 @@ import {
   adoptHttpRouteResponse,
   aiServiceAlreadyRegisteredMessage,
   pluginHookAlreadyRegisteredMessage,
-  assertAiServiceRegistrable,
   coerceStoredPluginSettingValue,
   enforcePluginCliOutputLimit,
   isStandardSchema,
@@ -471,6 +470,12 @@ export interface FakePluginLifecycleControls {
    * PluginContextStaleError). Idempotent.
    */
   dispose(): Promise<void>;
+  /**
+   * Run every handler registered with `bb.onInstall`, in
+   * registration order, as bb does right after a fresh install. A handler
+   * that throws is logged at warn level and the rest still run.
+   */
+  install(): Promise<void>;
 }
 
 /**
@@ -521,10 +526,8 @@ export interface CreateFakePluginHostOptions {
   sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
   /**
    * Whether the plugin's manifest declares a `bb.host` entry. Production
-   * refuses `bb.providers.register` (the provider would have no bridge to
-   * run on) and `experimental_aiServices.register` (the service would have
-   * nothing to run on) without one; the fake applies the same rules.
-   * Defaults to true.
+   * refuses `bb.providers.register` without one (the provider would have no
+   * bridge to run on); the fake applies the same rule. Defaults to true.
    */
   experimental_hostEntry?: boolean;
   /**
@@ -975,25 +978,28 @@ function createFakePluginHostInternal(
     register(declaration) {
       assertLive();
       const normalized = validatePluginAiServiceDeclaration(declaration);
-      // The same refusals production makes at the register call. The fake
-      // host builds no artifact; the declared entry stands in for it.
-      assertAiServiceRegistrable({
-        id: normalized.id,
-        hostArtifact:
-          options.experimental_hostEntry === false ? null : "declared",
-        hostArtifactProblem: null,
-      });
       if (
         aiServiceRegistrations.some((existing) => existing.id === normalized.id)
       ) {
         throw new Error(aiServiceAlreadyRegisteredMessage(normalized.id));
       }
-      aiServiceRegistrations.push(normalized);
+      const registration: PluginAiServiceDeclaration = Object.freeze({
+        id: normalized.id,
+        displayName: normalized.displayName,
+        ...(normalized.complete === null
+          ? {}
+          : { complete: normalized.complete }),
+        ...(normalized.transcribe === null
+          ? {}
+          : { transcribe: normalized.transcribe }),
+        ...(normalized.status === null ? {} : { status: normalized.status }),
+      });
+      aiServiceRegistrations.push(registration);
       let disposed = false;
       const dispose = (): void => {
         if (disposed) return;
         disposed = true;
-        const index = aiServiceRegistrations.indexOf(normalized);
+        const index = aiServiceRegistrations.indexOf(registration);
         if (index !== -1) aiServiceRegistrations.splice(index, 1);
       };
       disposeHooks.push(dispose);
@@ -1142,6 +1148,7 @@ function createFakePluginHostInternal(
     import("../backend-contract.js").ServerAccessProviderDeclaration
   >();
   const disposeHooks: Array<() => void | Promise<void>> = [];
+  const installHandlers: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
   const pendingInteractions = new Map<
@@ -1519,6 +1526,13 @@ function createFakePluginHostInternal(
     onDispose(hook) {
       assertLive();
       disposeHooks.push(hook);
+    },
+    onInstall(handler) {
+      assertLive();
+      if (typeof handler !== "function") {
+        throw new Error("onInstall expects a function");
+      }
+      installHandlers.push(handler);
     },
   };
 
@@ -2109,6 +2123,17 @@ function createFakePluginHostInternal(
 
     async dispose() {
       await disposeHost(true);
+    },
+
+    async install() {
+      assertLive();
+      for (const handler of [...installHandlers]) {
+        try {
+          await handler();
+        } catch (error) {
+          emitLog("warn", `install handler failed: ${errorMessage(error)}`);
+        }
+      }
     },
   };
 

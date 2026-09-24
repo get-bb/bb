@@ -31,7 +31,7 @@ import {
   serializeSplitLayout,
   SPLIT_LAYOUT_STORAGE_KEY,
 } from "@/lib/split-layout";
-import type { PaneContent, SplitLayout } from "@/lib/split-layout";
+import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
@@ -43,7 +43,12 @@ import {
   usePluginComposerHost,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
+import {
+  PaneContext,
+  usePaneSecondaryPanelRegistration,
+  type PaneContextValue,
+} from "./PaneContext";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -66,6 +71,9 @@ const panelCallbacks = vi.hoisted(
     >(),
 );
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
+const paneContextRenders = vi.hoisted(
+  () => new Map<string, Array<PaneContextValue | null>>(),
+);
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
   label: string;
@@ -288,6 +296,10 @@ vi.mock("./ThreadDetailView", () => ({
     threadId: string;
   }) => {
     const pane = useContext(PaneContext);
+    paneContextRenders.set(threadId, [
+      ...(paneContextRenders.get(threadId) ?? []),
+      pane,
+    ]);
     const [isPanelOpen, setIsPanelOpen] = useState(threadId === "thr-a");
     const composerHost = useMemo<PluginComposerHost>(() => {
       const draft = { attachments: [], mentions: [], text: "" };
@@ -414,6 +426,33 @@ function twoPaneLayout(
       ],
     },
     focusedPaneId,
+  };
+}
+
+function fourPaneThreadLayout(): SplitLayout {
+  const row = (
+    first: [string, string],
+    second: [string, string],
+  ): LayoutNode => ({
+    type: "split",
+    dir: "row",
+    sizes: [0.5, 0.5],
+    children: [
+      { type: "pane", paneId: first[0], content: threadContent(first[1]) },
+      { type: "pane", paneId: second[0], content: threadContent(second[1]) },
+    ],
+  });
+  return {
+    root: {
+      type: "split",
+      dir: "col",
+      sizes: [0.5, 0.5],
+      children: [
+        row(["pane-1", "thr-a"], ["pane-2", "thr-b"]),
+        row(["pane-3", "thr-c"], ["pane-4", "thr-d"]),
+      ],
+    },
+    focusedPaneId: "pane-1",
   };
 }
 
@@ -617,17 +656,19 @@ function renderSplitArea(options: {
       <JotaiProvider store={store}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={[options.path]}>
-            {options.pluginPanelLifecycle ? (
-              <PluginPanelLifecycleHarness />
-            ) : options.routeAwareContent ? (
-              <RouteAwareSplitArea />
-            ) : (
-              <SplitThreadArea routeContent={options.routeContent} />
-            )}
-            <LocationProbe />
-            {options.externalTo !== undefined ? (
-              <ExternalNav to={options.externalTo} />
-            ) : null}
+            <RouteNavigationProvider>
+              {options.pluginPanelLifecycle ? (
+                <PluginPanelLifecycleHarness />
+              ) : options.routeAwareContent ? (
+                <RouteAwareSplitArea />
+              ) : (
+                <SplitThreadArea routeContent={options.routeContent} />
+              )}
+              <LocationProbe />
+              {options.externalTo !== undefined ? (
+                <ExternalNav to={options.externalTo} />
+              ) : null}
+            </RouteNavigationProvider>
           </MemoryRouter>
         </QueryClientProvider>
       </JotaiProvider>
@@ -642,6 +683,7 @@ beforeEach(() => {
   panelFullScreenState.isMainCollapsed = false;
   panelGroupLayoutState.layout = [100, 0];
   commandHandlers.clear();
+  paneContextRenders.clear();
   commandPresentationState.isModifierHeld = false;
   commandPresentationState.shortcut = null;
   threadStore.set("thr-a", { archivedAt: null, deletedAt: null });
@@ -1816,6 +1858,88 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+  });
+
+  it("leaves uninvolved panes unrendered and pane callbacks stable when focus moves in a four-pane split", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: fourPaneThreadLayout(),
+    });
+    for (const suffix of ["a", "b", "c", "d"]) {
+      expect(await screen.findByTestId(`pane-thr-${suffix}`)).toBeTruthy();
+    }
+    await act(async () => {});
+    const latestPane = (threadId: string) => {
+      const pane = paneContextRenders.get(threadId)?.at(-1);
+      if (pane === undefined || pane === null) {
+        throw new Error(`Expected pane context for ${threadId}`);
+      }
+      return pane;
+    };
+    const threadIds = ["thr-a", "thr-b", "thr-c", "thr-d"];
+    const before = new Map(
+      threadIds.map((threadId) => [threadId, latestPane(threadId)]),
+    );
+    const rendersBefore = new Map(
+      threadIds.map((threadId) => [
+        threadId,
+        paneContextRenders.get(threadId)?.length ?? 0,
+      ]),
+    );
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-b"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("true");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2");
+    expect(screen.getByTestId("pane-thr-a").dataset.focused).toBe("false");
+
+    for (const threadId of ["thr-c", "thr-d"]) {
+      expect(paneContextRenders.get(threadId)?.length).toBe(
+        rendersBefore.get(threadId),
+      );
+      expect(latestPane(threadId)).toBe(before.get(threadId));
+    }
+    for (const threadId of threadIds) {
+      const previous = before.get(threadId);
+      const next = latestPane(threadId);
+      expect(next.onRequestClose).toBe(previous?.onRequestClose);
+      expect(next.onToggleMaximize).toBe(previous?.onToggleMaximize);
+      expect(next.onMoveToSide).toBe(previous?.onMoveToSide);
+      expect(next.navigateInPane).toBe(previous?.navigateInPane);
+      expect(next.beginPaneDrag).toBe(previous?.beginPaneDrag);
+    }
+  });
+
+  it("moves maximization to the newly focused pane in a four-pane split", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: fourPaneThreadLayout(),
+    });
+    await screen.findByTestId("pane-thr-d");
+    const latestPane = (threadId: string) =>
+      paneContextRenders.get(threadId)?.at(-1) ?? null;
+
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    await waitFor(() => expect(latestPane("thr-a")?.isMaximized).toBe(true));
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+
+    act(() => {
+      expect(commandHandlers.get("pane.focus.next")?.()).toBe(true);
+    });
+    await waitFor(() => {
+      expect(latestPane("thr-b")?.isMaximized).toBe(true);
+      expect(latestPane("thr-b")?.isFocused).toBe(true);
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
+    expect(latestPane("thr-a")?.isMaximized).toBe(false);
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-2");
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2");
   });
 
   it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {

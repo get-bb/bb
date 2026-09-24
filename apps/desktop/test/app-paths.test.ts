@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDesktopBridgePath,
   resolveDesktopIconPath,
+  resolveDesktopMachineInstallerPath,
   type DesktopPathContext,
 } from "../src/app-paths.js";
 
@@ -27,6 +28,16 @@ describe("desktop app paths", () => {
 
     expect(resolveDesktopBridgePath({ paths })).toBe(
       "/Applications/bb.app/Contents/Resources/app-arm64.asar.unpacked/dist/bb-app-bridge.mjs",
+    );
+  });
+
+  it("resolves the machine installer inside the bb-app package beside the bridge", () => {
+    expect(
+      resolveDesktopMachineInstallerPath(
+        "/Applications/bb.app/Contents/Resources/app.asar.unpacked/dist/bb-app-bridge.mjs",
+      ),
+    ).toBe(
+      "/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/server/dist/assets/install-machine.sh",
     );
   });
 
