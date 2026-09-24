@@ -44,6 +44,7 @@ export type BbDesktopInfoUnsubscribe = () => void;
 export type BbDesktopWindowStateChangeHandler = (
   state: BbDesktopWindowState,
 ) => void;
+export type BbDesktopZoomChangeHandler = (zoomFactor: number) => void;
 export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
@@ -58,9 +59,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   onWindowStateChange?(
     listener: BbDesktopWindowStateChangeHandler,
   ): BbDesktopInfoUnsubscribe;
-  onZoomChange?(
-    listener: (zoomFactor: number) => void,
-  ): BbDesktopInfoUnsubscribe;
+  onZoomChange?(listener: BbDesktopZoomChangeHandler): BbDesktopInfoUnsubscribe;
   zoom?(command: BbDesktopZoomCommand): void;
   onOpenNewTab?(listener: BbDesktopOpenNewTabHandler): BbDesktopInfoUnsubscribe;
   onAppCommand?(listener: BbDesktopAppCommandHandler): BbDesktopInfoUnsubscribe;

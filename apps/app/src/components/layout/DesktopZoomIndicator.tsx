@@ -62,8 +62,7 @@ export function DesktopZoomIndicator() {
         style={{ zoom: 1 / zoomFactor }}
         onPointerEnter={() => {
           hovered.current = true;
-          clearTimeout(hideTimer.current);
-          setFading(false);
+          restartHideTimer();
         }}
         onPointerLeave={() => {
           hovered.current = false;

@@ -42,6 +42,7 @@ import {
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
+  type BbDesktopZoomChangeHandler,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -206,7 +207,7 @@ const browserFindResultListeners = new Set<BbDesktopBrowserFindResultHandler>();
 const closeWindowRequestListeners =
   new Set<BbDesktopCloseWindowRequestHandler>();
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
-const zoomListeners = new Set<(zoomFactor: number) => void>();
+const zoomListeners = new Set<BbDesktopZoomChangeHandler>();
 let lastZoomFactor = webFrame.getZoomFactor();
 
 function notifyZoomChangeIfChanged(): void {
