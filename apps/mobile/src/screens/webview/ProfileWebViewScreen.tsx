@@ -313,6 +313,23 @@ export function ProfileWebViewScreen() {
         }}
         onContentProcessDidTerminate={retry}
       />
+      {screen.serverErrorStatus !== null ? (
+        <View
+          pointerEvents="box-none"
+          className="absolute inset-x-0 bottom-0 items-center"
+          style={{ paddingBottom: insets.bottom + 16 }}
+          testID="shell-server-error"
+        >
+          <Button
+            variant="outline"
+            icon="Settings"
+            testID="shell-server-error-device-settings"
+            onPress={openDeviceSettings}
+          >
+            Device settings
+          </Button>
+        </View>
+      ) : null}
     </View>
   );
 }

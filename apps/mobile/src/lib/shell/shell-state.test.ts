@@ -48,7 +48,7 @@ describe("resolveShellScreenState", () => {
         session: IDLE,
         load: READY,
       }),
-    ).toEqual({ kind: "webview" });
+    ).toEqual({ kind: "webview", serverErrorStatus: null });
   });
 
   it("asks for re-pairing when the gate rejected the credential", () => {
@@ -93,16 +93,15 @@ describe("resolveShellScreenState", () => {
     });
   });
 
-  it("reports an error status from the server", () => {
-    const state = resolveShellScreenState({
-      ...BASE,
-      hasProfile: true,
-      session: AUTHENTICATED,
-      load: { kind: "http-error", status: 502 },
-    });
-    expect(state.kind).toBe("error");
-    if (state.kind !== "error") throw new Error("unreachable");
-    expect(state.detail).toBe("HTTP 502");
+  it("shows the server's own error page instead of replacing it", () => {
+    expect(
+      resolveShellScreenState({
+        ...BASE,
+        hasProfile: true,
+        session: AUTHENTICATED,
+        load: { kind: "http-error", status: 503 },
+      }),
+    ).toEqual({ kind: "webview", serverErrorStatus: 503 });
   });
 
   it("keeps the WebView mounted while a load is in flight", () => {
@@ -113,7 +112,7 @@ describe("resolveShellScreenState", () => {
         session: AUTHENTICATED,
         load: { kind: "loading" },
       }),
-    ).toEqual({ kind: "webview" });
+    ).toEqual({ kind: "webview", serverErrorStatus: null });
   });
 
   it("waits for the profile and for the first session mint", () => {
