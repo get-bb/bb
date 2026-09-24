@@ -99,7 +99,7 @@ describe("bb thread list command output", () => {
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "ID                 Title  Project  Status         \n-----------------  -----  -------  ---------------\nthread-archived-1  -      Alpha    idle (archived)",
+      "ID                 Title  Project  Status           Model\n-----------------  -----  -------  ---------------  -----\nthread-archived-1  -      Alpha    idle (archived)  -    ",
       "",
     ]);
   });
@@ -152,7 +152,7 @@ describe("bb thread list command output", () => {
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "ID                 Title  Project  Status      \n-----------------  -----  -------  ------------\nthread-personal-1  -      -        idle        ",
+      "ID                 Title  Project  Status        Model\n-----------------  -----  -------  ------------  -----\nthread-personal-1  -      -        idle          -    ",
       "",
     ]);
   });

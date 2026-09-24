@@ -33,6 +33,7 @@ import {
   getLatestCompletedThreadContextClearSequence,
   getLatestStoredConversationOutlineSequence,
   getLastStoredTurnRequestEvent,
+  listLastStoredTurnRequestEvents,
   getLatestThreadOutputEventRow,
   getLatestThreadSequence,
   insertEvents,
@@ -2790,6 +2791,71 @@ describe("events", () => {
       },
     });
     expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
+  });
+
+  it("lists each thread's last turn request and omits threads without one", () => {
+    const { db, project, thread } = setup();
+    const other = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const untouched = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const requestIds = [
+      "creq_23456789a1",
+      "creq_23456789a2",
+      "creq_23456789a3",
+    ] as const;
+    const appendRequest = (
+      threadId: string,
+      requestId: string,
+      model: string,
+    ) =>
+      appendStoredThreadEvent(db, noopNotifier, {
+        threadId,
+        scope: threadScope(),
+        type: "client/turn/requested",
+        data: {
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          senderThreadId: null,
+          requestId,
+          input: textInput("hello"),
+          target: { kind: "new-turn" },
+          request: { method: "turn/start", params: {} },
+          execution: {
+            model,
+            reasoningLevel: "medium",
+            permissionMode: "workspace-write",
+            source: "client/turn/requested",
+            serviceTier: "default",
+          },
+        },
+      });
+
+    appendRequest(thread.id, requestIds[0], "gpt-5");
+    appendRequest(thread.id, requestIds[1], "gpt-5-mini");
+    appendRequest(other.id, requestIds[2], "claude-sonnet-4-5");
+
+    const rows = listLastStoredTurnRequestEvents(db, {
+      threadIds: [thread.id, other.id, untouched.id],
+    });
+    const rowByThreadId = new Map(rows.map((row) => [row.threadId, row]));
+
+    expect(rows).toHaveLength(2);
+    expect(rowByThreadId.get(thread.id)?.data).toContain(
+      '"model":"gpt-5-mini"',
+    );
+    expect(rowByThreadId.get(thread.id)?.data).not.toContain(
+      '"model":"gpt-5"',
+    );
+    expect(rowByThreadId.get(other.id)?.data).toContain(
+      '"model":"claude-sonnet-4-5"',
+    );
+    expect(rowByThreadId.has(untouched.id)).toBe(false);
   });
 
   it("preserves the latest provider thread id after an environment directory update", () => {

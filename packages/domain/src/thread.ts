@@ -441,6 +441,13 @@ export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   activity: threadActivityStateSchema,
   queuedWork: threadQueuedWorkSchema,
   pinSortKey: z.string().nullable(),
+  /**
+   * The model the thread's next turn would run on, resolved the way the next
+   * turn resolves it: the thread's override, else the model of its last turn,
+   * else the project's default when that default names the same provider.
+   * Null when none of those has ever been set.
+   */
+  model: z.string().nullable(),
   hasPendingInteraction: z.boolean(),
   environmentHostId: z.string().nullable(),
   environmentName: z.string().nullable(),

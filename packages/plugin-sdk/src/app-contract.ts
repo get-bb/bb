@@ -1066,6 +1066,17 @@ export interface PluginSidebarThread {
   /** The agent provider this thread runs on; resolve it through
    * {@link PluginSdkApp.experimental_useProviders} for a name and icon. */
   providerId: string;
+  /**
+   * The model the thread's next turn would run on, resolved exactly as the
+   * next turn resolves it: the thread's own override, else the model of its
+   * last turn, else the project default when that default names the same
+   * provider. Null when none of those has ever been set.
+   *
+   * This is the provider's own model id (`gpt-5.6-sol`, or a routed id like
+   * `openai-codex/gpt-5.6-sol`), not a display name: the provider model
+   * catalog is the only place that maps an id to a name.
+   */
+  model: string | null;
 
   /**
    * The thread's execution status. bb's list sorts busy threads ("starting",

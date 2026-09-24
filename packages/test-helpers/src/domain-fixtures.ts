@@ -178,6 +178,7 @@ export function makeThreadListEntry(
       activeGoalCount: 0,
     },
     hasPendingInteraction: false,
+    model: "gpt-5.5",
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,

@@ -1,5 +1,9 @@
 import { Command } from "commander";
-import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type Thread,
+  type ThreadListEntry,
+} from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
@@ -84,7 +88,7 @@ export function registerListCommand(
 const MAX_TITLE_WIDTH = 60;
 
 function printThreadTable(
-  threads: Thread[],
+  threads: ThreadListEntry[],
   projectNames: ReadonlyMap<string, string>,
 ): void {
   const rows = threads.map((thread) => [
@@ -92,11 +96,12 @@ function printThreadTable(
     truncateCell(formatThreadListTitle(thread), MAX_TITLE_WIDTH),
     formatThreadListProject(thread, projectNames),
     formatThreadListStatus(thread),
+    formatThreadListModel(thread),
   ]);
   printBorderlessTable(
     {
-      head: ["ID", "Title", "Project", "Status"],
-      colWidths: columnWidths(rows, [4, 5, 7, 12]),
+      head: ["ID", "Title", "Project", "Status", "Model"],
+      colWidths: columnWidths(rows, [4, 5, 7, 12, 5]),
     },
     rows,
   );
@@ -116,6 +121,10 @@ function formatThreadListProject(
 ): string {
   if (thread.projectId === PERSONAL_PROJECT_ID) return "-";
   return projectNames.get(thread.projectId) ?? thread.projectId;
+}
+
+function formatThreadListModel(thread: ThreadListEntry): string {
+  return thread.model ?? "-";
 }
 
 function formatThreadListStatus(thread: Thread): string {

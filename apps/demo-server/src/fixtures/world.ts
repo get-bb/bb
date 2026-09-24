@@ -46,6 +46,7 @@ export function threadListEntry(
     projectId: DEMO_PROJECT_ID,
     environmentId: null,
     providerId: "codex",
+    model: DEFAULT_MODEL,
     title: seed.title,
     titleFallback: seed.title,
     sectionId: null,

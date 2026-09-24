@@ -3939,6 +3939,52 @@ export function getLastStoredTurnRequestEvent(
   );
 }
 
+export interface ListLastStoredTurnRequestEventsArgs {
+  threadIds: readonly string[];
+}
+
+export function listLastStoredTurnRequestEvents(
+  db: DbQueryConnection,
+  args: ListLastStoredTurnRequestEventsArgs,
+): StoredTurnRequestEventRow[] {
+  return queryInSqliteVariableBatches({
+    dedupeKey: (threadId) => threadId,
+    fixedVariableCount: 0,
+    queryBatch: (threadIds) => {
+      const threadIdList = sql.join(
+        threadIds.map((threadId) => sql`${threadId}`),
+        sql`, `,
+      );
+      return db.all<StoredTurnRequestEventRow>(sql`
+        SELECT data, sequence, thread_id AS threadId, type
+        FROM (
+          SELECT
+            data,
+            sequence,
+            thread_id,
+            type,
+            ROW_NUMBER() OVER (
+              PARTITION BY thread_id
+              ORDER BY sequence DESC
+            ) AS turnRequestRank
+          FROM events
+          WHERE thread_id IN (${threadIdList})
+            AND (
+              type = 'client/turn/requested'
+              OR (
+                type IN ('client/thread/start', 'client/turn/start')
+                AND json_type(data, '$.input') IS NOT NULL
+              )
+            )
+        )
+        WHERE turnRequestRank = 1
+      `);
+    },
+    values: args.threadIds,
+    variableCountPerValue: 1,
+  });
+}
+
 export function pruneThreadEventsBeforeSequenceInTransaction(
   db: DbQueryConnection,
   args: PruneThreadEventsBeforeSequenceArgs,

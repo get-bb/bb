@@ -4,8 +4,10 @@ import {
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
+  listLastStoredTurnRequestEvents,
   listLatestSessionsForHosts,
   listOpenTurnInputAcceptedRowsByThreadIds,
+  listProjectExecutionDefaultsByProjectIds,
   listStoredClientTurnRequestRowsByKeys,
   type DbConnection,
   type HostDaemonSessionRow,
@@ -37,6 +39,7 @@ import type { ProviderRegistryService } from "../providers/provider-registry.js"
 import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
 import { resolveEnvironmentWorkspaceDisplayKind } from "../environments/environment-response.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
+import { parseStoredTurnRequestEvent } from "./thread-events.js";
 import { toThreadEventWithMeta } from "./timeline.js";
 
 type ThreadRuntimeDisplayHub = Pick<
@@ -85,6 +88,7 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   activity: ThreadActivityState;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
+  model: string | null;
   now?: number;
   queuedWork: ThreadQueuedWork;
   thread: ThreadWithPendingInteractionState;
@@ -536,6 +540,46 @@ function buildThreadQueuedWorkByThreadId(
   return result;
 }
 
+function buildThreadModelByThreadId(
+  deps: ThreadRuntimeDisplayDeps,
+  threads: readonly ThreadWithPendingInteractionState[],
+): Map<string, string> {
+  const modelByThreadId = new Map<string, string>();
+  if (threads.length === 0) {
+    return modelByThreadId;
+  }
+  const defaultsByProjectId = listProjectExecutionDefaultsByProjectIds(
+    deps.db,
+    { projectIds: [...new Set(threads.map((thread) => thread.projectId))] },
+  );
+  const lastModelByThreadId = new Map<string, string>();
+  for (const row of listLastStoredTurnRequestEvents(deps.db, {
+    threadIds: threads.map((thread) => thread.id),
+  })) {
+    try {
+      lastModelByThreadId.set(
+        row.threadId,
+        parseStoredTurnRequestEvent(row).execution.model,
+      );
+    } catch {
+      continue;
+    }
+  }
+  for (const thread of threads) {
+    const projectDefault = defaultsByProjectId.get(thread.projectId);
+    const model =
+      thread.modelOverride ??
+      lastModelByThreadId.get(thread.id) ??
+      (projectDefault?.providerId === thread.providerId
+        ? projectDefault.model
+        : undefined);
+    if (model !== undefined) {
+      modelByThreadId.set(thread.id, model);
+    }
+  }
+  return modelByThreadId;
+}
+
 export function toThreadListEntryResponses(
   deps: ThreadPromptBannerDeps,
   args: ToThreadListEntryResponsesArgs,
@@ -567,9 +611,11 @@ export function toThreadListEntryResponses(
     deps,
     args.threads,
   );
+  const modelByThreadId = buildThreadModelByThreadId(deps, args.threads);
   return args.threads.map((thread) => {
     return toThreadListEntryResponseFromLatestSession({
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
+      model: modelByThreadId.get(thread.id) ?? null,
       queuedWork: queuedWorkByThreadId.get(thread.id) ?? "none",
       hostConnected:
         thread.environmentHostId !== null &&
@@ -591,6 +637,7 @@ function toThreadListEntryResponseFromLatestSession(
   return {
     ...thread,
     activity: args.activity,
+    model: args.model,
     queuedWork: args.queuedWork,
     pinSortKey: args.thread.pinSortKey,
     environmentBranchName: args.thread.environmentBranchName,

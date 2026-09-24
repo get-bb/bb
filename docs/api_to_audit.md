@@ -2619,6 +2619,12 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    `pinSortKey`, `isHidden`, `lifecycleOwnerThreadId`, `sourceThreadId`, and
    `environment.path` / `environment.isWorktree`; `indicator` now reports
    `queued-failed` and `queued-waiting` instead of coercing them to `none`.
+   **Model (Sep 2026)** added `model`, the id the thread's next turn would run
+   on, resolved host-side (thread override, else its last turn's request, else
+   the project default for the same provider). Confirm the resolution belongs
+   in the DTO rather than in a per-thread provider call, and that shipping an
+   id rather than a display name is right: the model catalog is per provider
+   and workspace, so the host cannot name the model without a catalog read.
    `status` and `runtimeStatus` freeze the domain enums into the contract the
    way `indicator` already does; the same treat-unknown-as-fallback rule
    applies. `host` is resolved host-side to `{ id, name }` because a plugin

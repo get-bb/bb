@@ -53,6 +53,12 @@ import {
 } from "../ui/sidebar-hover-actions.js";
 import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
+import {
+  SIDEBAR_MODEL_ROW_HEIGHT_CLASS,
+  ThreadModelLabel,
+  ThreadProviderMark,
+  useThreadProvider,
+} from "./ThreadProviderMark.fork.js"; // bb-fork(windows): provider mark and model line beside the thread title.
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
 import {
@@ -314,6 +320,7 @@ function ThreadRowComponent({
   const actions = experimental_useSidebarThreadActions();
   const shortcut = useSidebarThreadShortcut(thread.id);
   const pluginThreadRowStatus = useSidebarThreadRowStatus(thread.id);
+  const threadProvider = useThreadProvider(thread.providerId);
   const { hasUnsubmittedDraft: hasComposerDraft } = useSidebarThreadDraft(
     thread.id,
   );
@@ -426,9 +433,11 @@ function ThreadRowComponent({
     SIDEBAR_ROW_BASE_CLASS,
     LIST_HOVER_TRANSITION,
     parentOptions?.stickyLevel === undefined && "relative",
-    options.isCompact
-      ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
-      : COARSE_POINTER_ROW_HEIGHT_CLASS,
+    thread.model != null
+      ? SIDEBAR_MODEL_ROW_HEIGHT_CLASS
+      : options.isCompact
+        ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
+        : COARSE_POINTER_ROW_HEIGHT_CLASS,
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -455,6 +464,9 @@ function ThreadRowComponent({
   );
 
   const rowLinkRef = useRef<HTMLAnchorElement>(null);
+  const openRowFromIndicator = useCallback(() => {
+    rowLinkRef.current?.click();
+  }, []);
   const handleRowClick = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
       if (event.target !== event.currentTarget) {
@@ -513,7 +525,7 @@ function ThreadRowComponent({
       ) : null}
       <span
         className={cn(
-          "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
+          "relative flex min-w-0 flex-1 flex-wrap content-center items-center gap-x-1.5 self-stretch",
           !shortcut &&
             !isEditing &&
             (parentOptions && hasChildren
@@ -551,6 +563,10 @@ function ThreadRowComponent({
           aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
           className="absolute inset-0 rounded-md outline-none"
         />
+        <ThreadProviderMark
+          provider={threadProvider}
+          onActivate={openRowFromIndicator}
+        />
         <span
           className={cn(
             "pointer-events-none relative flex min-w-0 items-center self-stretch",
@@ -581,6 +597,16 @@ function ThreadRowComponent({
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
             revealOnHover={!isParentCollapsed}
           />
+        ) : null}
+        {thread.model != null ? (
+          <span
+            className={cn(
+              "pointer-events-none flex w-full min-w-0 items-center pb-1.5",
+              threadProvider !== null && "pl-5",
+            )}
+          >
+            <ThreadModelLabel model={thread.model} />
+          </span>
         ) : null}
       </span>
       <span

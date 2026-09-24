@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type {
+  PluginProvidersState,
   PluginSidebarProject,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
@@ -105,7 +106,34 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   pluginStatus?: PluginSidebarThreadRowStatus;
   splitLayout?: PluginSidebarSplitLayout;
   projects?: PluginSidebarProject[];
+  providers?: Partial<PluginProvidersState>;
   sdk?: PluginSdkTestFakes;
+}
+
+function makeProvider(
+  id: string,
+  displayName: string,
+): PluginProvidersState["providers"][number] {
+  return {
+    id,
+    pluginId: `provider-${id}`,
+    displayName,
+    logoUrl: `/api/v1/system/providers/${id}/logo`,
+    available: true,
+    maintenance: { health: false, usage: false, installation: false },
+    composerActions: [],
+    completedTurnDisplay: "collapse",
+    capabilities: {
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
+      supportsServiceTier: false,
+      supportsNativeUserQuestion: false,
+      supportsFork: true,
+      supportsSessionRewind: false,
+      modelCatalogScope: "workspace",
+      permissionModes: ["accept-edits", "auto", "full"],
+    },
+  };
 }
 
 function renderThreadRow({
@@ -115,6 +143,7 @@ function renderThreadRow({
   pluginStatus,
   splitLayout,
   projects = [],
+  providers,
   sdk,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
@@ -124,6 +153,7 @@ function renderThreadRow({
     { component: ThreadRowHarness },
     { thread, ...harness },
     {
+      providers,
       sidebarThreads: { threads: [thread], projects },
       sidebarDraftThreadIds: hasComposerDraft ? [thread.id] : [],
       sidebarRowStatuses: pluginStatus ? { [thread.id]: pluginStatus } : {},
@@ -853,6 +883,103 @@ describe("ThreadRow", () => {
     ).toBeNull();
   });
 
+  it("shows the provider mark and the thread's model under the title", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        providerId: "codex",
+        model: "openai-codex/gpt-5.6-sol",
+      }),
+      providers: {
+        providers: [
+          makeProvider("codex", "Codex"),
+          makeProvider("claude-code", "Claude Code"),
+        ],
+      },
+    });
+
+    const mark = container.querySelector("[data-sidebar-thread-provider]");
+    expect(mark).not.toBeNull();
+    expect(
+      mark
+        ?.querySelector("[data-provider-id]")
+        ?.getAttribute("data-provider-id"),
+    ).toBe("codex");
+    expect(
+      container.querySelector("[data-sidebar-thread-model]")?.textContent,
+    ).toBe("gpt-5.6-sol");
+  });
+
+  it("shows the provider mark alone when the thread has no model yet", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ providerId: "codex", model: null }),
+      providers: { providers: [makeProvider("codex", "Codex")] },
+    });
+
+    const mark = container.querySelector("[data-sidebar-thread-provider]");
+    expect(mark?.querySelector('[aria-label="Codex"]')).not.toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-thread-model]"),
+    ).toBeNull();
+  });
+
+  it("treats a missing model as absent instead of crashing the row", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ providerId: "codex", model: undefined }),
+      providers: { providers: [makeProvider("codex", "Codex")] },
+    });
+
+    const mark = container.querySelector("[data-sidebar-thread-provider]");
+    expect(mark?.querySelector('[aria-label="Codex"]')).not.toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-thread-model]"),
+    ).toBeNull();
+  });
+
+  it("shows only the model when the thread's provider is unknown", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        providerId: "codex",
+        model: "openai-codex/gpt-5.6-sol",
+      }),
+      providers: { providers: [makeProvider("claude-code", "Claude Code")] },
+    });
+
+    expect(
+      container.querySelector("[data-sidebar-thread-provider]"),
+    ).toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-thread-model]")?.textContent,
+    ).toBe("gpt-5.6-sol");
+  });
+
+  it("omits the mark when the thread has neither a known provider nor a model", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ providerId: "codex", model: null }),
+      providers: { providers: [makeProvider("claude-code", "Claude Code")] },
+    });
+
+    expect(
+      container.querySelector("[data-sidebar-thread-provider]"),
+    ).toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-thread-model]"),
+    ).toBeNull();
+  });
+
+  it("opens the thread when the provider mark is clicked", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ providerId: "codex" }),
+      providers: { providers: [makeProvider("codex", "Codex")] },
+    });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const onLinkClick = vi.fn();
+    link.addEventListener("click", onLinkClick);
+
+    fireEvent.click(container.querySelector("[data-sidebar-thread-provider]")!);
+
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the circle-question glyph when the thread needs user input", () => {
     renderThreadRow({
       thread: createThread({ hasPendingInteraction: true }),
@@ -983,6 +1110,35 @@ describe("ThreadRow", () => {
       expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
     },
   );
+
+  it("gives a parent thread's model line the full row width", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        providerId: "codex",
+        model: "openai-codex/gpt-5.6-sol",
+        title: "Parent thread",
+        displayTitle: "Parent thread",
+      }),
+      providers: { providers: [makeProvider("codex", "Codex")] },
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 1,
+        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    const line = container.querySelector("[data-sidebar-thread-model]")
+      ?.parentElement;
+    const link = screen.getByRole("link", { name: "Open Parent thread" });
+    expect(line?.classList.contains("w-full")).toBe(true);
+    expect(line?.classList.contains("pb-1.5")).toBe(true);
+    expect(line?.classList.contains("pl-5")).toBe(true);
+    expect(line?.parentElement).toBe(link.parentElement);
+  });
 
   it("routes a tap on the bare row through its navigation link", () => {
     renderThreadRow();

@@ -14,6 +14,7 @@ function makeThread(
     projectId: "project-1",
     environmentId: null,
     providerId: "codex",
+    model: "gpt-5.5",
     title: `Title ${id}`,
     titleFallback: `Fallback ${id}`,
     sectionId: null,

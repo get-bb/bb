@@ -17,6 +17,7 @@ import {
   openSession,
   setQueuedThreadMessageFailureReason,
   upsertHost,
+  upsertProjectExecutionDefaults,
   type DbConnection,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
@@ -385,6 +386,95 @@ describe("thread runtime display", () => {
 
     expect(providerIdByThreadId.get(provided.thread.id)).toBe("git-worktree");
     expect(providerIdByThreadId.get(checkout.thread.id)).toBeNull();
+  });
+
+  it("resolves each list entry's model like its next turn would", () => {
+    const { db, hostId, hub } = setup();
+    const fromTurn = createThreadWithEnvironment({
+      db,
+      hostId,
+      providerId: "codex",
+    });
+    const overridden = createThreadWithEnvironment({
+      db,
+      hostId,
+      providerId: "codex",
+    });
+    const fromDefault = createThreadWithEnvironment({
+      db,
+      hostId,
+      providerId: "codex",
+    });
+    const mismatched = createThreadWithEnvironment({
+      db,
+      hostId,
+      providerId: "claude-code",
+    });
+    const bare = createThreadWithEnvironment({
+      db,
+      hostId,
+      providerId: "claude-code",
+    });
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: fromTurn.thread.id,
+      scope: threadScope(),
+      type: "client/turn/requested",
+      data: turnRequestData({
+        input: [{ type: "text", text: "go", mentions: [] }],
+        requestId: formatClientTurnRequestIdSuffix({ suffix: "23456789bb" }),
+      }),
+    });
+    for (const project of [fromDefault.project, mismatched.project]) {
+      upsertProjectExecutionDefaults(db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5-default",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+    }
+
+    const entries = toThreadListEntryResponses(
+      { db, hub, providerRegistry },
+      {
+        now: 1_000,
+        threads: [
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: fromTurn.thread,
+          }),
+          {
+            ...createThreadListEntry({
+              environmentHostId: hostId,
+              thread: overridden.thread,
+            }),
+            modelOverride: "gpt-5-override",
+          },
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: fromDefault.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: mismatched.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: bare.thread,
+          }),
+        ],
+      },
+    );
+
+    expect(entries.map((entry) => entry.model)).toEqual([
+      "gpt-5",
+      "gpt-5-override",
+      "gpt-5-default",
+      null,
+      null,
+    ]);
   });
 
   it("resolves list entry runtime from daemon registration per host", () => {
