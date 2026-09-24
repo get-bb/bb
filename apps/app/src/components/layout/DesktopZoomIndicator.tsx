@@ -14,38 +14,28 @@ export function DesktopZoomIndicator() {
   const onZoomChange = desktop?.onZoomChange;
   const zoom = desktop?.zoom;
   const [zoomFactor, setZoomFactor] = useState<number | null>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const hovered = useRef(false);
 
   const restartHideTimer = useCallback(() => {
-    if (hideTimer.current !== null) {
-      clearTimeout(hideTimer.current);
-    }
+    clearTimeout(hideTimer.current);
     if (!hovered.current) {
       hideTimer.current = setTimeout(() => setZoomFactor(null), HIDE_DELAY_MS);
     }
   }, []);
 
   useEffect(() => {
-    if (onZoomChange === undefined) {
-      return;
-    }
-    return onZoomChange((factor) => {
+    const unsubscribe = onZoomChange?.((factor) => {
       setZoomFactor(factor);
       restartHideTimer();
     });
+    return () => {
+      unsubscribe?.();
+      clearTimeout(hideTimer.current);
+    };
   }, [onZoomChange, restartHideTimer]);
 
-  useEffect(
-    () => () => {
-      if (hideTimer.current !== null) {
-        clearTimeout(hideTimer.current);
-      }
-    },
-    [],
-  );
-
-  if (zoomFactor === null || onZoomChange === undefined) {
+  if (zoomFactor === null) {
     return null;
   }
 
@@ -61,10 +51,7 @@ export function DesktopZoomIndicator() {
         style={{ zoom: 1 / zoomFactor }}
         onPointerEnter={() => {
           hovered.current = true;
-          if (hideTimer.current !== null) {
-            clearTimeout(hideTimer.current);
-            hideTimer.current = null;
-          }
+          clearTimeout(hideTimer.current);
         }}
         onPointerLeave={() => {
           hovered.current = false;

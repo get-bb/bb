@@ -20,7 +20,6 @@ import {
   type BbDesktopBrowserControlState,
   type BbDesktopBrowserRevealRequest,
   bbDesktopInfoSchema,
-  bbDesktopZoomCommandSchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
@@ -43,7 +42,6 @@ import {
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
-  type BbDesktopZoomCommand,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -432,12 +430,8 @@ const bbDesktopApi: BbDesktopApi = {
   onZoomChange(listener): BbDesktopInfoUnsubscribe {
     return addListener(zoomListeners, listener);
   },
-  zoom(command: BbDesktopZoomCommand): void {
-    const parsed = bbDesktopZoomCommandSchema.safeParse(command);
-    if (!parsed.success) {
-      return;
-    }
-    ipcRenderer.send(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, parsed.data);
+  zoom(command): void {
+    ipcRenderer.send(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, command);
   },
   onOpenNewTab(listener): BbDesktopInfoUnsubscribe {
     return addListener(openNewTabListeners, listener);
