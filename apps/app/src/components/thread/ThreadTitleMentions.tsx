@@ -981,10 +981,7 @@ export function ThreadTitle({
   return (
     <span
       {...spanProps}
-      className={cn(
-        inline ? "bb-thread-title-inline" : "bb-thread-title",
-        className,
-      )}
+      className={cn(!inline && "bb-thread-title", className)}
       title={tooltip ? displayTitle : undefined}
     >
       <ThreadTitleMentions title={title} highlightRanges={highlightRanges} />
