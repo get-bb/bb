@@ -25,6 +25,12 @@ describe("ChangelogInline", () => {
     );
   });
 
+  it("renders italic and bold italic article text without visible markers", () => {
+    expect(render("***bb*** is a *software factory.*")).toBe(
+      "<strong><em>bb</em></strong> is a <em>software factory.</em>",
+    );
+  });
+
   it("preserves unmatched Markdown delimiters as text", () => {
     expect(render("Keep **this and `that readable")).toBe(
       "Keep **this and `that readable",
