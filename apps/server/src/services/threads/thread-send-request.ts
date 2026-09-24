@@ -7,6 +7,7 @@ import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { sendThreadMessage } from "./thread-send.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -17,6 +18,7 @@ export async function acceptThreadSendRequest(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
+  assertThreadHostAcceptsWork(deps.db, args.thread);
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,

@@ -96,6 +96,7 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
   ThreadContextClearInProgressError,
   withThreadSendGuard,
@@ -203,20 +204,7 @@ function admitQueuedMessage(
     return { hasProviderSession };
   }
   const environment = getEnvironment(db, thread.environmentId);
-  const host = environment === null ? null : getHost(db, environment.hostId);
-  if (host?.phase === "removing") {
-    throw new ApiError(
-      409,
-      "machine_removing",
-      "Machine removal has begun; this thread is read-only",
-    );
-  }
-  if (
-    host !== null &&
-    (host.destroyedAt !== null || host.phase === "destroyed")
-  ) {
-    throw new ApiError(404, "host_not_found", "Host not found");
-  }
+  assertThreadHostAcceptsWork(db, thread);
   const goneDetails = environment
     ? goneThreadEnvironmentDetails(environment)
     : null;

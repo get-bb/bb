@@ -81,6 +81,22 @@ describe("queued message into a thread whose environment is gone (#1789)", () =>
         });
         updateHost(harness.db, harness.hub, host.id, { phase, destroyedAt });
 
+        const sendResponse = await harness.app.request(
+          `/api/v1/threads/${thread.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "auto",
+              input: [{ type: "text", text: "direct send" }],
+            }),
+          },
+        );
+        expect(sendResponse.status).toBe(phase === "removing" ? 409 : 404);
+        expect(await readJson(sendResponse)).toMatchObject({ code });
+        expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+
         const response = await postQueuedMessage(
           harness,
           thread.id,
