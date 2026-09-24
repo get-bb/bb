@@ -265,8 +265,8 @@ export function EnvironmentRow({
   const infoDisplay = getEnvironmentWorkspaceInfoDisplay({
     display,
     providerLookup,
-    environmentName: environment.name,
     hostName: environmentDisplayHost.identity?.name ?? null,
+    locality: environmentDisplayHost.locality,
   });
   const displayHost = environmentHost ?? {
     name:

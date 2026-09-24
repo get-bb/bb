@@ -2388,7 +2388,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     ? getEnvironmentSummaryChrome({
         display: threadEnvironmentDisplay,
         providerLookup: threadEnvironmentProviderLookup,
-        environmentName: environment?.name ?? null,
         hasMultipleMachines,
         host: resolvedThreadEnvironmentHost,
         machineProviders: registeredMachineProviders,
