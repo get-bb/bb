@@ -1204,8 +1204,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   async function removeUnbundledBuiltins(): Promise<void> {
     for (const row of listInstalledPlugins(deps.db)) {
       if (!isOrphanedBuiltinRow(row)) continue;
-      deleteInstalledPlugin(deps.db, row.id);
       await deleteRemovedPluginData(row);
+      deleteInstalledPlugin(deps.db, row.id);
       logger.info(
         `plugin ${row.id} removed because bb no longer bundles ${row.source}; its settings, secrets, and schedules were deleted`,
       );
