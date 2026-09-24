@@ -16,7 +16,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
 });
 
-it("keeps appearance choices first and groups sidebar controls in Interface", () => {
+it("keeps appearance choices first and groups provider controls in Interface", () => {
   setPluginSlotRegistrations(
     "fixture",
     makePluginRegistrationSet({
@@ -76,13 +76,13 @@ it("keeps appearance choices first and groups sidebar controls in Interface", ()
   expect(labels(appearance!)).toEqual([
     "Theme",
     "Palette",
-    "Header",
-    "Source code",
-    "Diffs",
     "Favicon color",
     "Fade inactive splits",
   ]);
   expect(labels(interfaceSection!)).toEqual([
+    "Header",
+    "Source code",
+    "Diffs",
     "Sidebar",
     "Navigation",
     "Sidebar footer",

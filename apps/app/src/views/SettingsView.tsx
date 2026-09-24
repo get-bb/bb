@@ -826,8 +826,6 @@ export function AppearanceSettingsSection({
             </DropdownMenu>
           </SettingsWithControl>
 
-          <SidebarHeaderSetting />
-          <CodeRendererSettings />
           <FaviconColorSettingsControl
             disabled={appearanceDisabled}
             faviconColor={faviconColor}
@@ -838,6 +836,8 @@ export function AppearanceSettingsSection({
       </SettingsSection>
       <SettingsSection title="Interface">
         <div className="space-y-5">
+          <SidebarHeaderSetting />
+          <CodeRendererSettings />
           <SidebarThreadListSetting />
           <SidebarNavigationSetting />
           <SidebarFooterSettings />
