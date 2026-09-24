@@ -1445,6 +1445,7 @@ vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 
 type MockState = {
   addSocket: (ws: WebSocket, tags: string[]) => void;
+  setLastPong: (ws: WebSocket, at: number) => void;
   storage: Map<string, unknown>;
   durable: Map<string, unknown>;
   restore: Promise<void>;
@@ -1455,8 +1456,10 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
   const durable = new Map<string, unknown>(storage);
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
+  const pongs = new Map<WebSocket, Date>();
   let restore = Promise.resolve();
   const api = {
+    getWebSocketAutoResponseTimestamp: (ws: WebSocket) => pongs.get(ws) ?? null,
     getWebSockets: (tag?: string) =>
       entries
         .filter((entry) => tag === undefined || entry.tags.includes(tag))
@@ -1493,6 +1496,9 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
     addSocket: (ws: WebSocket, tags: string[]) => {
       entries.push({ ws, tags });
     },
+    setLastPong: (ws: WebSocket, at: number) => {
+      pongs.set(ws, new Date(at));
+    },
     storage,
     durable,
     get restore() {
@@ -1514,11 +1520,16 @@ function makeDoEnv() {
 function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
   readyState = 1,
+  attachment: { acceptedAt: number } | null = null,
 ) {
+  let stored: unknown = attachment;
   return {
     send: send ?? vi.fn(),
     close: vi.fn(),
-    deserializeAttachment: () => null,
+    serializeAttachment: (value: unknown) => {
+      stored = value;
+    },
+    deserializeAttachment: () => stored,
     readyState,
   } as unknown as WebSocket;
 }
@@ -1986,9 +1997,9 @@ describe("TunnelDO restarts after its tunnel socket vanishes", () => {
   it("restarts an object from before the open and close records that still lists its server, once", async () => {
     const { state, dob } = await loaded({ serverId: "srv" });
 
-    await expect(dob.fetch(new Request("https://do.internal/"))).rejects.toThrow(
-      "tunnel socket disappeared",
-    );
+    await expect(
+      dob.fetch(new Request("https://do.internal/")),
+    ).rejects.toThrow("tunnel socket disappeared");
     expect(state.api.abort).toHaveBeenCalledTimes(1);
 
     const restarted = mockDoState(Object.fromEntries(state.durable));
@@ -2061,5 +2072,104 @@ describe("TunnelDO restarts after its tunnel socket vanishes", () => {
     );
     await dob.alarm();
     expect(state.api.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe("TunnelDO restarts when its tunnel socket stops answering heartbeats", () => {
+  const LONG_AGO = () => Date.now() - 120_000;
+
+  async function withSocket(options: {
+    acceptedAt: number | null;
+    lastPong?: number;
+  }) {
+    const state = mockDoState({
+      protocolVersion: 1,
+      serverId: "srv",
+      tunnelOpenedAt: options.acceptedAt ?? LONG_AGO(),
+    });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const send = vi.fn();
+    const socket = fakeTunnelSocket(
+      send,
+      1,
+      options.acceptedAt === null ? null : { acceptedAt: options.acceptedAt },
+    );
+    state.addSocket(socket, ["tunnel"]);
+    if (options.lastPong !== undefined)
+      state.setLastPong(socket, options.lastPong);
+    return { state, dob, socket, send };
+  }
+
+  it("restarts on a visitor request instead of sending into a socket that still reads open but stopped answering", async () => {
+    const { state, dob, send } = await withSocket({
+      acceptedAt: LONG_AGO(),
+      lastPong: Date.now() - 90_000,
+    });
+
+    await expect(
+      dob.fetch(new Request("https://do.internal/install/version")),
+    ).rejects.toThrow("tunnel socket disappeared without a close");
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    expect(state.durable.get("tunnelClosedAt")).toEqual(expect.any(Number));
+  });
+
+  it("restarts when a socket accepted long ago never answered a heartbeat", async () => {
+    const { state, dob } = await withSocket({ acceptedAt: LONG_AGO() });
+
+    await expect(dob.alarm()).rejects.toThrow("tunnel socket disappeared");
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it("restarts before accepting a new dial while the previous socket is stale", async () => {
+    const { state, dob } = await withSocket({
+      acceptedAt: LONG_AGO(),
+      lastPong: Date.now() - 70_000,
+    });
+
+    await expect(
+      dob.fetch(
+        new Request("https://do.internal/__tunnel?v=1&serverId=srv", {
+          headers: { upgrade: "websocket" },
+        }),
+      ),
+    ).rejects.toThrow("tunnel socket disappeared");
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a socket that answered a heartbeat recently", async () => {
+    const { state, dob } = await withSocket({
+      acceptedAt: LONG_AGO(),
+      lastPong: Date.now() - 15_000,
+    });
+
+    await dob.alarm();
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("gives a socket accepted moments ago time for its first heartbeat", async () => {
+    const { state, dob } = await withSocket({
+      acceptedAt: Date.now() - 10_000,
+    });
+
+    await dob.alarm();
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("keeps a socket with no heartbeat record at all", async () => {
+    const { state, dob } = await withSocket({ acceptedAt: null });
+
+    await dob.alarm();
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("closes the tunnel socket when it reports a close", async () => {
+    const { dob, socket } = await withSocket({
+      acceptedAt: Date.now() - 10_000,
+    });
+
+    dob.webSocketClose(socket, 1006, "");
+    expect(socket.close).toHaveBeenCalledTimes(1);
   });
 });

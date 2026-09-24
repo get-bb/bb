@@ -27,6 +27,7 @@ const TUNNEL_TAG = "tunnel";
 const TUNNEL_OPENED_AT_KEY = "tunnelOpenedAt";
 const TUNNEL_CLOSED_AT_KEY = "tunnelClosedAt";
 const VANISHED_TUNNEL_GRACE_MS = 5_000;
+const DEAD_TUNNEL_AFTER_MS = 50_000;
 const RESP_HEAD_TIMEOUT_MS = 30_000;
 const PRESENCE_INTERVAL_MS = 50_000;
 
@@ -159,10 +160,27 @@ export class TunnelDO {
 
   private tunnelSocket(): WebSocket | null {
     const sockets = this.state.getWebSockets(TUNNEL_TAG);
+    const now = Date.now();
     for (let i = sockets.length - 1; i >= 0; i--) {
-      if (sockets[i].readyState === WS_READY_STATE_OPEN) return sockets[i];
+      if (
+        sockets[i].readyState === WS_READY_STATE_OPEN &&
+        !this.tunnelHeartbeatStale(sockets[i], now)
+      ) {
+        return sockets[i];
+      }
     }
     return null;
+  }
+
+  private tunnelHeartbeatStale(ws: WebSocket, now: number): boolean {
+    const attachment = ws.deserializeAttachment() as {
+      acceptedAt?: number;
+    } | null;
+    const lastPong = this.state
+      .getWebSocketAutoResponseTimestamp(ws)
+      ?.getTime();
+    const lastSign = Math.max(attachment?.acceptedAt ?? 0, lastPong ?? 0);
+    return lastSign > 0 && now - lastSign > DEAD_TUNNEL_AFTER_MS;
   }
 
   private trySend(
@@ -276,6 +294,7 @@ export class TunnelDO {
     void this.state.storage.put(TUNNEL_OPENED_AT_KEY, Date.now());
     const pair = new WebSocketPair();
     this.state.acceptWebSocket(pair[1], [TUNNEL_TAG]);
+    pair[1].serializeAttachment({ acceptedAt: Date.now() });
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -598,6 +617,9 @@ export class TunnelDO {
   webSocketClose(ws: WebSocket, code: number, reason: string): void {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
+      try {
+        ws.close(safeCloseCode(code), reason);
+      } catch {}
       if (this.tunnelSocket() !== null) return;
       void this.state.storage.put(TUNNEL_CLOSED_AT_KEY, Date.now());
       this.abandonStreams(
