@@ -20,6 +20,7 @@ import {
   type BbDesktopBrowserControlState,
   type BbDesktopBrowserRevealRequest,
   bbDesktopInfoSchema,
+  bbDesktopZoomCommandSchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
@@ -42,6 +43,7 @@ import {
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
+  type BbDesktopZoomCommand,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -205,6 +207,25 @@ const browserFindResultListeners = new Set<BbDesktopBrowserFindResultHandler>();
 const closeWindowRequestListeners =
   new Set<BbDesktopCloseWindowRequestHandler>();
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
+const zoomListeners = new Set<(zoomFactor: number) => void>();
+let lastZoomFactor = webFrame.getZoomFactor();
+
+function notifyZoomChangeIfChanged(): void {
+  const zoomFactor = webFrame.getZoomFactor();
+  if (zoomFactor === lastZoomFactor) {
+    return;
+  }
+  lastZoomFactor = zoomFactor;
+  for (const listener of zoomListeners) {
+    listener(zoomFactor);
+  }
+}
+
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  window.addEventListener("resize", notifyZoomChangeIfChanged, {
+    passive: true,
+  });
+}
 
 function addListener<T>(listeners: Set<T>, listener: T): () => void {
   listeners.add(listener);
@@ -406,6 +427,22 @@ const bbDesktopApi: BbDesktopApi = {
     listener: BbDesktopWindowStateChangeHandler,
   ): BbDesktopInfoUnsubscribe {
     return addListener(windowStateListeners, listener);
+  },
+  onZoomChange(listener): BbDesktopInfoUnsubscribe {
+    return addListener(zoomListeners, listener);
+  },
+  zoom(command: BbDesktopZoomCommand): void {
+    const parsed = bbDesktopZoomCommandSchema.safeParse(command);
+    if (!parsed.success) {
+      return;
+    }
+    if (parsed.data === "reset") {
+      webFrame.setZoomLevel(0);
+      return;
+    }
+    webFrame.setZoomLevel(
+      webFrame.getZoomLevel() + (parsed.data === "in" ? 0.5 : -0.5),
+    );
   },
   onOpenNewTab(listener): BbDesktopInfoUnsubscribe {
     return addListener(openNewTabListeners, listener);
