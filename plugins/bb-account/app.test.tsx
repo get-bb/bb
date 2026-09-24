@@ -73,7 +73,7 @@ describe("bb account settings section", () => {
           "login.poll": () => ({ login: null, status: current }),
           signOut: () => {
             current = { ...signedOut, revision: 5 };
-            return current;
+            return { revocation: "revoked", status: current };
           },
         },
       },
@@ -96,6 +96,58 @@ describe("bb account settings section", () => {
       ),
     );
     await slot.findByRole("button", { name: "Sign in" });
+    expect(slot.queryByText(/didn't confirm/)).toBeNull();
+  });
+
+  it("says so when getbb.app didn't confirm the sign-out", async () => {
+    let current: AccountStatus = signedIn;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          "login.poll": () => ({ login: null, status: current }),
+          signOut: () => {
+            current = { ...signedOut, revision: 5 };
+            return {
+              revocation: "failed",
+              status: current,
+              message: "couldn't reach sawyer-desktop.getbb.app",
+              dashboardUrl: "https://getbb.app/dashboard",
+            };
+          },
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Sign out" }));
+    await slot.findByText("Sign out of your bb account?");
+    fireEvent.click(slot.getAllByRole("button", { name: "Sign out" }).at(-1)!);
+
+    await slot.findByText(/didn't confirm it revoked this server/);
+    expect(
+      slot.getByRole("link", { name: "your dashboard" }).getAttribute("href"),
+    ).toBe("https://getbb.app/dashboard");
+    slot.getByRole("button", { name: "Sign in" });
+  });
+
+  it("shows a paired bb whose account hasn't loaded as pending, not signed out", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          "login.poll": () => ({
+            login: null,
+            status: { state: "profile-pending", revision: 6, account: null },
+          }),
+        },
+      },
+    );
+
+    await slot.findByText(/hasn't loaded your account yet/);
+    slot.getByRole("button", { name: "Sign out" });
+    expect(slot.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
 
   it("starts a browser sign-in, shows the code, and closes once approved", async () => {

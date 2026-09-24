@@ -37,6 +37,22 @@ export function resolveDefaultBaseUrl(env: NodeJS.ProcessEnv): string {
   return url.origin;
 }
 
+export type BaseUrlAllowed = (origin: string) => boolean;
+
+export function isAllowedBaseUrl(
+  origin: string,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  if (origin === DEFAULT_BASE_URL || origin === STAGING_BASE_URL) return true;
+  if (env.NODE_ENV !== "development") return false;
+  const url = new URL(origin);
+  return (
+    url.protocol === "http:" &&
+    url.hostname === "bb.localhost" &&
+    url.port.length > 0
+  );
+}
+
 export function normalizeOrigin(value: string, label: string): string {
   let url: URL;
   try {

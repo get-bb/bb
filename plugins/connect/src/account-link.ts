@@ -54,7 +54,7 @@ export class AccountLink {
             : await this.options.account.waitForStatusChange(revision, signal);
         if (signal.aborted) return;
         failures = 0;
-        if (await this.migrateLegacyCredential(status)) {
+        if (await this.migrateLegacyCredential()) {
           revision = null;
           continue;
         }
@@ -77,21 +77,11 @@ export class AccountLink {
     }
   }
 
-  private async migrateLegacyCredential(
-    status: AccountStatus,
-  ): Promise<boolean> {
+  private async migrateLegacyCredential(): Promise<boolean> {
     if (this.legacyChecked) return false;
     const legacy = await this.options.legacy.read();
     if (legacy === null) {
       this.legacyChecked = true;
-      return false;
-    }
-    if (status.state === "signed-in") {
-      await this.options.legacy.clear();
-      this.legacyChecked = true;
-      this.options.log.info(
-        "bb account is signed in, so connect removed its old pairing",
-      );
       return false;
     }
     const now = Date.now();
@@ -106,8 +96,6 @@ export class AccountLink {
     try {
       ({ adopted } = await this.options.account.adoptConnectCredential({
         credential: legacy.credential,
-        serverUrl: legacy.serverUrl,
-        handle: legacy.handle,
         baseUrl: deriveConnectBaseUrl(legacy.serverUrl),
       }));
     } catch (error) {
@@ -121,7 +109,7 @@ export class AccountLink {
     this.options.log.info(
       adopted
         ? "moved connect's pairing into bb account"
-        : "bb account didn't take connect's old pairing, so connect removed it",
+        : "bb account kept its own sign-in and revoked connect's old pairing if it was still valid, so connect removed it",
     );
     return true;
   }

@@ -1,4 +1,7 @@
-import type { PluginLogger } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalPluginRpcCaller,
+  PluginLogger,
+} from "@get-bb/plugin-sdk";
 import { serverUrlForHandle } from "@bb/connect-client";
 import { normalizeOrigin } from "./base-url.js";
 import {
@@ -7,6 +10,7 @@ import {
   type AccountFetchInput,
   type AccountFetchResult,
   type AccountStatus,
+  type SignOutResult,
 } from "./contract.js";
 import { assertAllowedFetchPath } from "./fetch-path.js";
 import {
@@ -25,7 +29,8 @@ const PROFILE_RETRY_MAX_MS = 15 * 60 * 1000;
 export type AccountErrorCode =
   | "network"
   | "unauthorized"
-  | "profile_unavailable";
+  | "profile_unavailable"
+  | "superseded";
 
 export class AccountError extends Error {
   constructor(
@@ -35,6 +40,11 @@ export class AccountError extends Error {
     super(message);
     this.name = "AccountError";
   }
+}
+
+export interface SignInAttempt {
+  readonly epoch: number;
+  committed: boolean;
 }
 
 export interface CompleteSignInArgs {
@@ -69,6 +79,7 @@ export class AccountService {
   private revisionWrites: Promise<unknown> = Promise.resolve();
   private wakeProfileRefresh: (() => void) | null = null;
   private disposed = false;
+  private signInEpoch = 0;
 
   constructor(private readonly options: AccountServiceOptions) {}
 
@@ -87,8 +98,15 @@ export class AccountService {
   status(): AccountStatus {
     const credential = this.credential;
     const profile = this.profile;
-    if (credential === null || profile === null) {
+    if (credential === null) {
       return { state: "signed-out", revision: this.revision, account: null };
+    }
+    if (profile === null) {
+      return {
+        state: "profile-pending",
+        revision: this.revision,
+        account: null,
+      };
     }
     return {
       state: "signed-in",
@@ -107,10 +125,6 @@ export class AccountService {
     };
   }
 
-  hasCredential(): boolean {
-    return this.credential !== null;
-  }
-
   waitForStatusChange(afterRevision: number): Promise<AccountStatus> {
     if (this.revision > afterRevision || this.disposed) {
       return Promise.resolve(this.status());
@@ -127,8 +141,11 @@ export class AccountService {
     });
   }
 
-  async fetch(input: AccountFetchInput): Promise<AccountFetchResult> {
-    const path = assertAllowedFetchPath(input.path);
+  async fetch(
+    input: AccountFetchInput,
+    caller: ExperimentalPluginRpcCaller,
+  ): Promise<AccountFetchResult> {
+    const path = assertAllowedFetchPath(input.path, caller);
     if (input.method === "GET" && input.body !== null) {
       throw new Error("bb-account.v1.fetch: a GET request cannot carry a body");
     }
@@ -139,25 +156,20 @@ export class AccountService {
     ) {
       throw new Error("bb-account.v1.fetch: the request body exceeds 1 MB");
     }
-    const status = this.status();
     const credential = this.credential;
-    if (status.state !== "signed-in" || credential === null) {
-      return signedOutResponse();
-    }
-    const origin =
-      input.target === "api"
-        ? status.account.baseUrl
-        : status.account.serverUrl;
+    if (credential === null) return signedOutResponse();
     const result = await authenticatedFetch({
-      origin,
+      origin:
+        input.target === "api" ? credential.baseUrl : credential.serverUrl,
       method: input.method,
       path,
       bodyText,
       credential: credential.credential,
+      timeoutMs: input.timeoutMs,
     });
     if (result.status === 401) {
-      await this.rejectCredential(
-        credential.credential,
+      await this.confirmRejected(
+        credential,
         `${input.method} ${input.target} ${path}`,
       );
     }
@@ -168,7 +180,9 @@ export class AccountService {
     credential: string;
     baseUrl: string;
   }): Promise<{ adopted: boolean }> {
-    if (this.credential !== null) return { adopted: false };
+    if (this.credential?.credential === input.credential) {
+      return { adopted: true };
+    }
     const baseUrl = normalizeOrigin(input.baseUrl, "baseUrl");
     const me = await fetchProfile(baseUrl, input.credential);
     if (me.kind === "unauthorized") {
@@ -177,48 +191,84 @@ export class AccountService {
       );
       return { adopted: false };
     }
-    return this.serialize(async () => {
-      if (this.credential !== null) return { adopted: false };
-      await this.storeAccount(
-        {
-          baseUrl,
-          serverUrl: me.profile.serverUrl,
-          serverId: me.profile.serverId,
-          credential: input.credential,
-        },
-        me.profile,
-      );
+    const legacy: StoredCredential = {
+      baseUrl,
+      serverUrl: me.profile.serverUrl,
+      serverId: me.profile.serverId,
+      credential: input.credential,
+    };
+    const adopted = await this.serialize(async () => {
+      if (this.credential?.credential === input.credential) return true;
+      if (this.credential !== null) return false;
+      await this.storeAccount(legacy, me.profile);
+      return true;
+    });
+    if (adopted) {
       this.options.log.info("adopted the legacy connect pairing");
       return { adopted: true };
-    });
+    }
+    if (this.credential?.serverId !== legacy.serverId) {
+      await disconnectServer(legacy.serverUrl, legacy.credential);
+      this.options.log.info(
+        "revoked the legacy connect pairing because bb account holds a different one",
+      );
+    }
+    return { adopted: false };
+  }
+
+  supersedeSignIns(): SignInAttempt {
+    this.signInEpoch += 1;
+    return { epoch: this.signInEpoch, committed: false };
+  }
+
+  isSignInCurrent(attempt: SignInAttempt): boolean {
+    return attempt.epoch === this.signInEpoch;
+  }
+
+  abandonSignIn(attempt: SignInAttempt): boolean {
+    if (attempt.committed) return false;
+    if (attempt.epoch === this.signInEpoch) this.signInEpoch += 1;
+    return true;
   }
 
   async redeemCode(code: string, baseUrl: string): Promise<AccountStatus> {
+    const attempt: SignInAttempt = {
+      epoch: this.signInEpoch,
+      committed: false,
+    };
     const redeemed = await redeemHostedCode(baseUrl, code);
-    return this.completeSignIn({
-      baseUrl,
-      credential: redeemed.credential,
-      serverId: redeemed.serverId,
-      serverUrl:
-        redeemed.handle === null
-          ? null
-          : serverUrlForHandle(baseUrl, redeemed.handle),
-    });
+    return this.completeSignIn(
+      {
+        baseUrl,
+        credential: redeemed.credential,
+        serverId: redeemed.serverId,
+        serverUrl:
+          redeemed.handle === null
+            ? null
+            : serverUrlForHandle(baseUrl, redeemed.handle),
+      },
+      attempt,
+    );
   }
 
-  async completeSignIn(args: CompleteSignInArgs): Promise<AccountStatus> {
+  async completeSignIn(
+    args: CompleteSignInArgs,
+    attempt: SignInAttempt,
+  ): Promise<AccountStatus> {
     let me: Awaited<ReturnType<typeof fetchProfile>>;
     try {
       me = await fetchProfile(args.baseUrl, args.credential);
     } catch (error) {
       if (args.serverId !== null && args.serverUrl !== null) {
-        const fallback: StoredCredential = {
-          baseUrl: args.baseUrl,
-          serverUrl: args.serverUrl,
-          serverId: args.serverId,
-          credential: args.credential,
-        };
-        await this.serialize(() => this.storeAccount(fallback, null));
+        await this.commitSignIn(attempt, {
+          credential: {
+            baseUrl: args.baseUrl,
+            serverUrl: args.serverUrl,
+            serverId: args.serverId,
+            credential: args.credential,
+          },
+          profile: null,
+        });
         this.wakeProfileRefresh?.();
         throw new AccountError(
           "profile_unavailable",
@@ -233,29 +283,31 @@ export class AccountService {
         "getbb.app rejected the new server credential",
       );
     }
-    const profile = me.profile;
-    await this.serialize(() =>
-      this.storeAccount(
-        {
-          baseUrl: args.baseUrl,
-          serverUrl: profile.serverUrl,
-          serverId: profile.serverId,
-          credential: args.credential,
-        },
-        profile,
-      ),
-    );
+    await this.commitSignIn(attempt, {
+      credential: {
+        baseUrl: args.baseUrl,
+        serverUrl: me.profile.serverUrl,
+        serverId: me.profile.serverId,
+        credential: args.credential,
+      },
+      profile: me.profile,
+    });
     return this.status();
   }
 
-  async signOut(): Promise<AccountStatus> {
-    const credential = this.credential;
-    if (credential === null) return this.status();
+  async signOut(): Promise<SignOutResult> {
+    this.signInEpoch += 1;
+    const credential = await this.serialize(async () => this.credential);
+    if (credential === null) {
+      return { revocation: "not-signed-in", status: this.status() };
+    }
+    let failure: string | null = null;
     try {
       await disconnectServer(credential.serverUrl, credential.credential);
     } catch (error) {
+      failure = errorMessage(error);
       this.options.log.warn(
-        `getbb.app did not confirm the sign-out: ${errorMessage(error)}`,
+        `getbb.app did not confirm the sign-out: ${failure}`,
       );
     }
     await this.serialize(async () => {
@@ -265,7 +317,15 @@ export class AccountService {
       this.profile = null;
       this.changed();
     });
-    return this.status();
+    const status = this.status();
+    return failure === null
+      ? { revocation: "revoked", status }
+      : {
+          revocation: "failed",
+          status,
+          message: failure,
+          dashboardUrl: `${credential.baseUrl}/dashboard`,
+        };
   }
 
   async refreshProfile(): Promise<ProfileRefreshOutcome> {
@@ -343,6 +403,68 @@ export class AccountService {
       this.wakeProfileRefresh = finish;
       if (signal.aborted || this.disposed) finish();
     });
+  }
+
+  private async commitSignIn(
+    attempt: SignInAttempt,
+    next: { credential: StoredCredential; profile: AccountProfile | null },
+  ): Promise<void> {
+    const outcome = await this.serialize(async () => {
+      if (attempt.epoch !== this.signInEpoch) return null;
+      attempt.committed = true;
+      this.signInEpoch += 1;
+      const previous = this.credential;
+      await this.storeAccount(next.credential, next.profile);
+      return { previous };
+    });
+    if (outcome === null) {
+      await this.revokeUnused(next.credential, "superseded");
+      throw new AccountError(
+        "superseded",
+        "This sign-in was cancelled, or a newer sign-in or sign-out replaced it.",
+      );
+    }
+    const previous = outcome.previous;
+    if (previous !== null && previous.serverId !== next.credential.serverId) {
+      await this.revokeUnused(previous, "replaced");
+    }
+  }
+
+  private async revokeUnused(
+    credential: StoredCredential,
+    reason: "superseded" | "replaced",
+  ): Promise<void> {
+    if (this.credential?.serverId === credential.serverId) return;
+    try {
+      await disconnectServer(credential.serverUrl, credential.credential);
+      this.options.log.info(
+        reason === "replaced"
+          ? `revoked the server ${credential.serverId} this bb was signed in to before`
+          : `revoked the server credential from a sign-in that didn't finish`,
+      );
+    } catch (error) {
+      this.options.log.warn(
+        `couldn't revoke the ${reason === "replaced" ? "previous" : "unused"} server ${credential.serverId} on getbb.app; remove it from ${credential.baseUrl}/dashboard (${errorMessage(error)})`,
+      );
+    }
+  }
+
+  private async confirmRejected(
+    credential: StoredCredential,
+    context: string,
+  ): Promise<void> {
+    let me: Awaited<ReturnType<typeof fetchProfile>>;
+    try {
+      me = await fetchProfile(credential.baseUrl, credential.credential);
+    } catch (error) {
+      this.options.log.warn(
+        `getbb.app answered HTTP 401 on ${context}, and bb couldn't check the credential: ${errorMessage(error)}`,
+      );
+      return;
+    }
+    if (me.kind === "unauthorized") {
+      await this.rejectCredential(credential.credential, context);
+    }
   }
 
   private async rejectCredential(

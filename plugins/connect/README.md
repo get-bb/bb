@@ -1,17 +1,19 @@
 # Connect
 
 Connect holds no getbb.app credential. Every hosted request goes through the
-bb account plugin's `bb-account.v1.fetch` RPC, and connect follows sign-in
-changes with `bb-account.v1.waitForStatusChange`. While bb account is signed
-out, stopped, or held, connect treats this bb as signed out.
+bb account plugin's `bb-account.v1.fetch` RPC, which serves `/api/connect/`
+paths only to the connect plugin, and connect follows sign-in changes with
+`bb-account.v1.waitForStatusChange`. While bb account reports any state other
+than `signed-in`, or is stopped or held, connect treats this bb as signed out.
 
 ## Tunnel
 
 Before each dial, connect asks for `POST /api/connect/tunnel-ticket` through
 bb account and dials the returned `tunnelUrl` with
 `authorization: Bearer <ticket>`. Every reconnect gets a new ticket. A gate
-rejection retries with a new ticket; a rejected credential signs bb account
-out, which tears the tunnel down.
+rejection, or bb account being briefly unavailable during the ticket request,
+retries with backoff; a rejected credential signs bb account out, which tears
+the tunnel down.
 
 The `remoteAccess` setting (`bb connect off` and `bb connect on`) closes and
 reopens the tunnel and machine shares without signing out.
@@ -19,10 +21,12 @@ reopens the tunnel and machine shares without signing out.
 ## Legacy pairing
 
 Older connect versions kept `{serverUrl, handle, credential}` under the KV key
-`credential`. On start, connect hands it to
-`bb-account.v1.adoptConnectCredential`. It deletes its copy once bb account
-adopts it, reports a signed-in account, or refuses it. While bb account is
-unavailable, connect keeps the copy and tries again later.
+`credential`. On start, connect hands the credential and its apex origin to
+`bb-account.v1.adoptConnectCredential`. bb account adopts it while signed out;
+while it holds another server's credential it revokes the legacy one on
+getbb.app instead. Connect deletes its copy once bb account answers. While bb
+account is unavailable or can't reach getbb.app, connect keeps the copy and
+tries again later.
 
 ## Server access
 

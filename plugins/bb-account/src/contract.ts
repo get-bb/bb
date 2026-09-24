@@ -4,6 +4,7 @@ import {
   accountStatusSchema,
   loginPollOutputSchema,
   loginViewSchema,
+  signOutResultSchema,
 } from "./schemas.js";
 
 export {
@@ -12,9 +13,11 @@ export {
   type AccountStatus,
   type LoginState,
   type LoginView,
+  type SignOutResult,
 } from "./schemas.js";
 
 export const ACCOUNT_PLUGIN_ID = "bb-account";
+export const CONNECT_PLUGIN_ID = "connect";
 
 export const STATUS_METHOD = "bb-account.v1.status";
 export const WAIT_FOR_STATUS_CHANGE_METHOD =
@@ -25,6 +28,8 @@ export const ADOPT_CONNECT_CREDENTIAL_METHOD =
 
 export const LONG_POLL_TIMEOUT_MS = 25_000;
 export const FETCH_BODY_MAX_BYTES = 1024 * 1024;
+export const FETCH_TIMEOUT_MIN_MS = 1_000;
+export const FETCH_TIMEOUT_MAX_MS = 15_000;
 
 const emptyInputSchema = z.object({}).strict().nullable();
 
@@ -38,8 +43,17 @@ export const fetchInputSchema = z
       .string()
       .min(1)
       .max(2048)
-      .describe('Starts with "/api/"; no query, fragment, "..", or "//"'),
+      .describe(
+        'Starts with "/api/ai/" ("/api/connect/" is reserved for the connect plugin); no query, fragment, "..", or "//"',
+      ),
     body: z.json().nullable().default(null),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(FETCH_TIMEOUT_MIN_MS)
+      .max(FETCH_TIMEOUT_MAX_MS)
+      .default(FETCH_TIMEOUT_MAX_MS)
+      .describe("Give up on getbb.app after this many milliseconds"),
   })
   .strict();
 
@@ -57,8 +71,6 @@ export type AccountFetchResult = z.infer<typeof fetchOutputSchema>;
 export const adoptInputSchema = z
   .object({
     credential: z.string().min(1).max(4096),
-    serverUrl: z.string().url(),
-    handle: z.string().nullable(),
     baseUrl: z.string().url(),
   })
   .strict();
@@ -78,7 +90,7 @@ export const accountRpcContract = defineRpcContract({
   },
   [FETCH_METHOD]: {
     experimental_description:
-      "Authenticated JSON request to getbb.app as this server. The credential is attached but never returned. A 401 signs the account out.",
+      'Authenticated JSON request to getbb.app as this server, for paths under "/api/ai/". The credential is attached but never returned. A 401 signs the account out once getbb.app confirms it no longer accepts the credential.',
     input: fetchInputSchema,
     output: fetchOutputSchema,
   },
@@ -116,7 +128,7 @@ export const accountPrivateRpcContract = defineRpcContract({
   },
   signOut: {
     input: emptyInputSchema,
-    output: accountStatusSchema,
+    output: signOutResultSchema,
   },
 });
 

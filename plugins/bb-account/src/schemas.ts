@@ -30,6 +30,17 @@ export const accountStatusSchema = z.discriminatedUnion("state", [
     .strict(),
   z
     .object({
+      state: z
+        .literal("profile-pending")
+        .describe(
+          "bb holds a server credential but hasn't loaded its account yet; it keeps retrying",
+        ),
+      revision: z.number().int().nonnegative(),
+      account: z.null(),
+    })
+    .strict(),
+  z
+    .object({
       state: z.literal("signed-in"),
       revision: z.number().int().nonnegative(),
       account: accountSchema,
@@ -38,6 +49,28 @@ export const accountStatusSchema = z.discriminatedUnion("state", [
 ]);
 
 export type AccountStatus = z.infer<typeof accountStatusSchema>;
+
+export const signOutResultSchema = z.discriminatedUnion("revocation", [
+  z
+    .object({
+      revocation: z.literal("not-signed-in"),
+      status: accountStatusSchema,
+    })
+    .strict(),
+  z
+    .object({ revocation: z.literal("revoked"), status: accountStatusSchema })
+    .strict(),
+  z
+    .object({
+      revocation: z.literal("failed"),
+      status: accountStatusSchema,
+      message: z.string(),
+      dashboardUrl: z.string(),
+    })
+    .strict(),
+]);
+
+export type SignOutResult = z.infer<typeof signOutResultSchema>;
 
 export const loginStateSchema = z.enum([
   "pending",

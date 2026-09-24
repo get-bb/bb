@@ -3,7 +3,7 @@ import {
   createFakePluginHost,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
-import { resolveDefaultBaseUrl } from "./base-url.js";
+import { isAllowedBaseUrl, resolveDefaultBaseUrl } from "./base-url.js";
 import {
   ADOPT_CONNECT_CREDENTIAL_METHOD,
   FETCH_METHOD,
@@ -22,6 +22,15 @@ const FAST_TIMING = {
   slowDownStepMs: 150,
   marginMs: 0,
 };
+
+const TEST_OPTIONS = {
+  timing: FAST_TIMING,
+  allowedBaseUrl: (origin: string) => origin.startsWith("http://127.0.0.1:"),
+};
+
+const AS_CONNECT = {
+  experimental_caller: { kind: "plugin", pluginId: "connect" },
+} as const;
 
 let stub: StubGetbb;
 const hosts: FakePluginHost[] = [];
@@ -43,7 +52,7 @@ async function loadAccount(
   const host = createFakePluginHost({ pluginId: "bb-account" });
   hosts.push(host);
   await seed?.(host);
-  await createBbAccountPlugin(FAST_TIMING)(host.bb);
+  await createBbAccountPlugin(TEST_OPTIONS)(host.bb);
   return host;
 }
 
@@ -353,12 +362,16 @@ describe("bb-account.v1.fetch", () => {
       body: { echoed: request.body },
     }));
 
-    const gate = await host.harness.callRpc(FETCH_METHOD, {
-      target: "gate",
-      method: "GET",
-      path: "/api/connect/servers",
-      body: null,
-    });
+    const gate = await host.harness.callRpc(
+      FETCH_METHOD,
+      {
+        target: "gate",
+        method: "GET",
+        path: "/api/connect/servers",
+        body: null,
+      },
+      AS_CONNECT,
+    );
     const api = await host.harness.callRpc(FETCH_METHOD, {
       target: "api",
       method: "POST",
@@ -397,6 +410,8 @@ describe("bb-account.v1.fetch", () => {
     "/api/x?next=https://evil.test",
     "/api/x#frag",
     "/other/path",
+    "/api/account/me",
+    "/api/auth/list-sessions",
     "/api/%2e%2e/admin",
     "/api/x\\y",
     "https://evil.test/api/x",
@@ -405,12 +420,11 @@ describe("bb-account.v1.fetch", () => {
     await signInWithCode(host);
     const requestsBefore = stub.requests.length;
     await expect(
-      host.harness.callRpc(FETCH_METHOD, {
-        target: "api",
-        method: "GET",
-        path,
-        body: null,
-      }),
+      host.harness.callRpc(
+        FETCH_METHOD,
+        { target: "api", method: "GET", path, body: null },
+        AS_CONNECT,
+      ),
     ).rejects.toThrow();
     expect(stub.requests.length).toBe(requestsBefore);
   });
@@ -418,26 +432,26 @@ describe("bb-account.v1.fetch", () => {
   it("caps request and response bodies at 1 MB and never follows redirects", async () => {
     const host = await loadAccount();
     await signInWithCode(host);
-    stub.route("GET", "/api/huge", () => ({
+    stub.route("GET", "/api/ai/huge", () => ({
       status: 200,
       body: { blob: "x".repeat(1024 * 1024) },
     }));
-    stub.route("GET", "/api/redirect", () => ({ status: 302 }));
+    stub.route("GET", "/api/ai/redirect", () => ({ status: 302 }));
 
     await expect(
       host.harness.callRpc(FETCH_METHOD, {
         target: "api",
         method: "POST",
-        path: "/api/echo",
+        path: "/api/ai/echo",
         body: { blob: "x".repeat(1024 * 1024) },
       }),
     ).rejects.toThrow("1 MB");
-    expect(stub.requestsTo("/api/echo")).toEqual([]);
+    expect(stub.requestsTo("/api/ai/echo")).toEqual([]);
     await expect(
       host.harness.callRpc(FETCH_METHOD, {
         target: "api",
         method: "GET",
-        path: "/api/huge",
+        path: "/api/ai/huge",
         body: null,
       }),
     ).rejects.toThrow("1 MB");
@@ -445,7 +459,7 @@ describe("bb-account.v1.fetch", () => {
       host.harness.callRpc(FETCH_METHOD, {
         target: "api",
         method: "GET",
-        path: "/api/redirect",
+        path: "/api/ai/redirect",
         body: null,
       }),
     ).resolves.toEqual({ status: 302, body: null });
@@ -464,12 +478,16 @@ describe("bb-account.v1.fetch", () => {
     const waiting = host.harness.callRpc(WAIT_FOR_STATUS_CHANGE_METHOD, {
       afterRevision: signedIn.revision,
     });
-    const result = await host.harness.callRpc(FETCH_METHOD, {
-      target: "api",
-      method: "POST",
-      path: "/api/connect/tunnel-ticket",
-      body: null,
-    });
+    const result = await host.harness.callRpc(
+      FETCH_METHOD,
+      {
+        target: "api",
+        method: "POST",
+        path: "/api/connect/tunnel-ticket",
+        body: null,
+      },
+      AS_CONNECT,
+    );
 
     expect(result).toEqual({ status: 401, body: { error: "unauthorized" } });
     const woke = (await waiting) as AccountStatus;
@@ -479,12 +497,16 @@ describe("bb-account.v1.fetch", () => {
     expect(await host.bb.storage.kv.get(PROFILE_KV_KEY)).toBeUndefined();
     const requests = stub.requests.length;
     await expect(
-      host.harness.callRpc(FETCH_METHOD, {
-        target: "api",
-        method: "POST",
-        path: "/api/connect/tunnel-ticket",
-        body: null,
-      }),
+      host.harness.callRpc(
+        FETCH_METHOD,
+        {
+          target: "api",
+          method: "POST",
+          path: "/api/connect/tunnel-ticket",
+          body: null,
+        },
+        AS_CONNECT,
+      ),
     ).resolves.toEqual({ status: 401, body: { error: "signed-out" } });
     expect(stub.requests.length).toBe(requests);
   });
@@ -535,7 +557,7 @@ describe("bb-account.v1.waitForStatusChange", () => {
     const host = await loadAccount();
     const first = await status(host);
     const reloaded = await host.harness.reload(
-      createBbAccountPlugin(FAST_TIMING),
+      createBbAccountPlugin(TEST_OPTIONS),
     );
     hosts.push(reloaded);
     const second = (await reloaded.harness.callRpc(
@@ -559,12 +581,15 @@ describe("sign-out, profile refresh, and adoption", () => {
       }
     ).credential;
 
-    const after = (await host.harness.callRpc(
-      "signOut",
-      null,
-    )) as AccountStatus;
+    const after = (await host.harness.callRpc("signOut", null)) as {
+      revocation: string;
+      status: AccountStatus;
+    };
 
-    expect(after.state).toBe("signed-out");
+    expect(after).toMatchObject({
+      revocation: "revoked",
+      status: { state: "signed-out" },
+    });
     expect(stub.requestsTo("/api/connect/disconnect")[0]).toMatchObject({
       site: "gate",
       method: "POST",
@@ -575,15 +600,23 @@ describe("sign-out, profile refresh, and adoption", () => {
     expect(await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
   });
 
-  it("still signs out locally when getbb.app is unreachable", async () => {
+  it("still signs out locally when getbb.app is unreachable, and says it wasn't revoked", async () => {
     const host = await loadAccount();
     await signInWithCode(host);
+    const apexUrl = stub.apexUrl;
     await stub.close();
-    const after = (await host.harness.callRpc(
-      "signOut",
-      null,
-    )) as AccountStatus;
-    expect(after.state).toBe("signed-out");
+    const after = (await host.harness.callRpc("signOut", null)) as {
+      revocation: string;
+      status: AccountStatus;
+      dashboardUrl: string;
+      message: string;
+    };
+    expect(after).toMatchObject({
+      revocation: "failed",
+      status: { state: "signed-out" },
+      dashboardUrl: `${apexUrl}/dashboard`,
+      message: expect.stringContaining("couldn't reach"),
+    });
     expect(await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
     expect(
       host.harness.logEntries.some((entry) =>
@@ -622,42 +655,49 @@ describe("sign-out, profile refresh, and adoption", () => {
     await again.done;
   });
 
-  it("adopts a legacy connect credential only while signed out", async () => {
+  it("adopts a legacy connect credential only while signed out, and revokes one it doesn't adopt", async () => {
     const host = await loadAccount();
     const legacy = stub.issueCredential();
 
     await expect(
-      host.harness.callRpc(ADOPT_CONNECT_CREDENTIAL_METHOD, {
-        credential: "bbcred_revoked",
-        serverUrl: stub.gateUrl,
-        handle: "sawyer-desktop",
-        baseUrl: stub.apexUrl,
-      }),
+      host.harness.callRpc(
+        ADOPT_CONNECT_CREDENTIAL_METHOD,
+        { credential: "bbcred_revoked", baseUrl: stub.apexUrl },
+        AS_CONNECT,
+      ),
     ).resolves.toEqual({ adopted: false });
     expect((await status(host)).state).toBe("signed-out");
 
     await expect(
-      host.harness.callRpc(ADOPT_CONNECT_CREDENTIAL_METHOD, {
-        credential: legacy,
-        serverUrl: stub.gateUrl,
-        handle: "sawyer-desktop",
-        baseUrl: stub.apexUrl,
-      }),
+      host.harness.callRpc(
+        ADOPT_CONNECT_CREDENTIAL_METHOD,
+        { credential: legacy, baseUrl: stub.apexUrl },
+        AS_CONNECT,
+      ),
     ).resolves.toEqual({ adopted: true });
     expect(await status(host)).toMatchObject({
       state: "signed-in",
       account: { serverLabel: "sawyer-desktop", baseUrl: stub.apexUrl },
     });
+    await expect(
+      host.harness.callRpc(
+        ADOPT_CONNECT_CREDENTIAL_METHOD,
+        { credential: legacy, baseUrl: stub.apexUrl },
+        AS_CONNECT,
+      ),
+    ).resolves.toEqual({ adopted: true });
+    expect(stub.isValid(legacy)).toBe(true);
 
     const other = stub.issueCredential({ serverId: "srv_2" });
     await expect(
-      host.harness.callRpc(ADOPT_CONNECT_CREDENTIAL_METHOD, {
-        credential: other,
-        serverUrl: stub.gateUrl,
-        handle: "other",
-        baseUrl: stub.apexUrl,
-      }),
+      host.harness.callRpc(
+        ADOPT_CONNECT_CREDENTIAL_METHOD,
+        { credential: other, baseUrl: stub.apexUrl },
+        AS_CONNECT,
+      ),
     ).resolves.toEqual({ adopted: false });
+    expect(stub.isValid(other)).toBe(false);
+    expect(stub.isValid(legacy)).toBe(true);
     expect(
       (
         (await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)) as {
@@ -674,12 +714,11 @@ describe("sign-out, profile refresh, and adoption", () => {
       body: { error: "not-found" },
     }));
     await expect(
-      host.harness.callRpc(ADOPT_CONNECT_CREDENTIAL_METHOD, {
-        credential: stub.issueCredential(),
-        serverUrl: stub.gateUrl,
-        handle: "sawyer-desktop",
-        baseUrl: stub.apexUrl,
-      }),
+      host.harness.callRpc(
+        ADOPT_CONNECT_CREDENTIAL_METHOD,
+        { credential: stub.issueCredential(), baseUrl: stub.apexUrl },
+        AS_CONNECT,
+      ),
     ).rejects.toThrow("HTTP 404");
     expect((await status(host)).state).toBe("signed-out");
   });
@@ -807,5 +846,399 @@ describe("bb account CLI", () => {
     ]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("invalid or has expired");
+  });
+});
+
+describe("who may use bb account", () => {
+  it("lets any caller reach /api/ai/ and only connect reach /api/connect/", async () => {
+    const host = await loadAccount();
+    await signInWithCode(host);
+    stub.route("POST", "/api/ai/v1/complete", () => ({
+      status: 200,
+      body: { ok: true },
+    }));
+    const request = {
+      target: "api",
+      method: "POST",
+      path: "/api/connect/tunnel-ticket",
+      body: null,
+    };
+
+    for (const caller of [
+      undefined,
+      { experimental_caller: { kind: "client" } } as const,
+      {
+        experimental_caller: { kind: "plugin", pluginId: "bb-ai" },
+      } as const,
+    ]) {
+      await expect(
+        host.harness.callRpc(FETCH_METHOD, request, caller),
+      ).rejects.toThrow("only the connect plugin");
+      await expect(
+        host.harness.callRpc(
+          FETCH_METHOD,
+          { ...request, path: "/api/ai/v1/complete" },
+          caller,
+        ),
+      ).resolves.toEqual({ status: 200, body: { ok: true } });
+    }
+    expect(stub.requestsTo("/api/connect/tunnel-ticket")).toEqual([]);
+
+    await expect(
+      host.harness.callRpc(FETCH_METHOD, request, AS_CONNECT),
+    ).resolves.toMatchObject({ status: 200 });
+    expect(stub.requestsTo("/api/connect/tunnel-ticket")).toHaveLength(1);
+  });
+
+  it("refuses credential adoption from anyone but connect", async () => {
+    const host = await loadAccount();
+    const legacy = stub.issueCredential();
+    for (const caller of [
+      undefined,
+      {
+        experimental_caller: { kind: "plugin", pluginId: "bb-ai" },
+      } as const,
+    ]) {
+      await expect(
+        host.harness.callRpc(
+          ADOPT_CONNECT_CREDENTIAL_METHOD,
+          { credential: legacy, baseUrl: stub.apexUrl },
+          caller,
+        ),
+      ).rejects.toThrow("only the connect plugin");
+    }
+    expect(stub.requests).toEqual([]);
+    expect((await status(host)).state).toBe("signed-out");
+  });
+
+  it("gives up on getbb.app after the caller's timeout and bounds it", async () => {
+    const host = await loadAccount();
+    await signInWithCode(host);
+    const release = stub.hold("GET", "/api/ai/v1/slow");
+    const started = Date.now();
+    await expect(
+      host.harness.callRpc(FETCH_METHOD, {
+        target: "api",
+        method: "GET",
+        path: "/api/ai/v1/slow",
+        body: null,
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(5_000);
+    release();
+    for (const timeoutMs of [999, 15_001, 1_500.5]) {
+      await expect(
+        host.harness.callRpc(FETCH_METHOD, {
+          target: "api",
+          method: "GET",
+          path: "/api/ai/v1/usage",
+          body: null,
+          timeoutMs,
+        }),
+      ).rejects.toThrow("rpc input validation failed");
+    }
+    expect((await status(host)).state).toBe("signed-in");
+  });
+
+  it("keeps the credential when a 401 comes from something other than the credential", async () => {
+    const host = await loadAccount();
+    const signedIn = await signInWithCode(host);
+    stub.route("GET", "/api/ai/v1/typo", () => ({
+      status: 401,
+      body: { error: "sign in" },
+    }));
+    const meBefore = stub.requestsTo("/api/account/me").length;
+
+    await expect(
+      host.harness.callRpc(FETCH_METHOD, {
+        target: "api",
+        method: "GET",
+        path: "/api/ai/v1/typo",
+        body: null,
+      }),
+    ).resolves.toEqual({ status: 401, body: { error: "sign in" } });
+
+    expect(stub.requestsTo("/api/account/me").length).toBe(meBefore + 1);
+    expect(await status(host)).toMatchObject({
+      state: "signed-in",
+      revision: signedIn.revision,
+    });
+    expect(await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeDefined();
+  });
+});
+
+describe("base URL overrides", () => {
+  it("allows only getbb.app and staging, plus bb.localhost in development", () => {
+    for (const env of [{}, { NODE_ENV: "production" }, { NODE_ENV: "test" }]) {
+      expect(isAllowedBaseUrl("https://getbb.app", env)).toBe(true);
+      expect(isAllowedBaseUrl("https://vibecodethis.site", env)).toBe(true);
+      expect(isAllowedBaseUrl("http://bb.localhost:59329", env)).toBe(false);
+    }
+    const development = { NODE_ENV: "development" };
+    expect(isAllowedBaseUrl("http://bb.localhost:59329", development)).toBe(
+      true,
+    );
+    for (const origin of [
+      "https://evil.test",
+      "http://getbb.app",
+      "https://sawyer.getbb.app",
+      "https://getbb.app.evil.test",
+      "http://127.0.0.1:59329",
+      "https://bb.localhost:59329",
+      "http://bb.localhost",
+    ]) {
+      expect(isAllowedBaseUrl(origin, development), origin).toBe(false);
+    }
+  });
+
+  it("refuses to sign in to another origin before any request", async () => {
+    const host = createFakePluginHost({ pluginId: "bb-account" });
+    hosts.push(host);
+    await createBbAccountPlugin()(host.bb);
+
+    const cli = await host.harness.runCli([
+      "login",
+      "--code",
+      "ABCD-EFGH",
+      "--base-url",
+      stub.apexUrl,
+    ]);
+    expect(cli.exitCode).toBe(1);
+    expect(cli.stderr).toContain(
+      "https://getbb.app or https://vibecodethis.site",
+    );
+    await expect(
+      host.harness.callRpc("login.start", { baseUrl: "https://evil.test" }),
+    ).rejects.toThrow("https://getbb.app or https://vibecodethis.site");
+    expect(stub.requests).toEqual([]);
+  });
+});
+
+describe("sign-in races", () => {
+  async function approvedLoginWaitingOnProfile(host: FakePluginHost): Promise<{
+    view: LoginView;
+    release: () => void;
+  }> {
+    const view = (await host.harness.callRpc("login.start", {
+      baseUrl: stub.apexUrl,
+    })) as LoginView;
+    const release = stub.hold("GET", "/api/account/me");
+    stub.approveLink(view.userCode);
+    await vi.waitFor(() =>
+      expect(stub.requestsTo("/api/account/me").length).toBeGreaterThan(0),
+    );
+    return { view, release };
+  }
+
+  function mintedLinkCredential(): string {
+    const [me] = stub.requestsTo("/api/account/me");
+    return me!.authorization!.slice("Bearer ".length);
+  }
+
+  it("does not sign in when the sign-in is cancelled while it finishes", async () => {
+    const host = await loadAccount();
+    const { view, release } = await approvedLoginWaitingOnProfile(host);
+    const minted = mintedLinkCredential();
+
+    const cancelled = (await host.harness.callRpc("login.cancel", {
+      loginId: view.id,
+    })) as { login: LoginView };
+    expect(cancelled.login.state).toBe("cancelled");
+    release();
+
+    await vi.waitFor(() => expect(stub.isValid(minted)).toBe(false));
+    expect((await status(host)).state).toBe("signed-out");
+    expect(await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    const poll = (await host.harness.callRpc("login.poll", {
+      loginId: view.id,
+    })) as { login: LoginView };
+    expect(poll.login.state).toBe("cancelled");
+  });
+
+  it("does not sign back in when the user signs out while a sign-in finishes", async () => {
+    const host = await loadAccount();
+    const { view, release } = await approvedLoginWaitingOnProfile(host);
+
+    await expect(host.harness.callRpc("signOut", null)).resolves.toMatchObject({
+      revocation: "not-signed-in",
+    });
+    release();
+
+    await waitForLogin(host, view.id, "cancelled");
+    await vi.waitFor(() =>
+      expect(stub.isValid(mintedLinkCredential())).toBe(false),
+    );
+    expect((await status(host)).state).toBe("signed-out");
+  });
+
+  it("cancels a pending link on sign-out so approving it later does nothing", async () => {
+    const host = await loadAccount();
+    await signInWithCode(host);
+    const view = (await host.harness.callRpc("login.start", {
+      baseUrl: stub.apexUrl,
+    })) as LoginView;
+
+    await host.harness.callRpc("signOut", null);
+    await waitForLogin(host, view.id, "cancelled");
+    const polls = stub.linkPolls(view.userCode);
+    stub.approveLink(view.userCode);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(stub.linkPolls(view.userCode)).toBe(polls);
+    expect((await status(host)).state).toBe("signed-out");
+  });
+
+  it("keeps a newer code sign-in when an older link sign-in finishes after it", async () => {
+    const host = await loadAccount();
+    const view = (await host.harness.callRpc("login.start", {
+      baseUrl: stub.apexUrl,
+    })) as LoginView;
+    let profileRequests = 0;
+    const release = stub.hold(
+      "GET",
+      "/api/account/me",
+      () => profileRequests++ === 0,
+    );
+    stub.approveLink(view.userCode, { serverId: "srv_2" });
+    await vi.waitFor(() =>
+      expect(stub.requestsTo("/api/account/me")).toHaveLength(1),
+    );
+    const staleCredential = mintedLinkCredential();
+
+    stub.issueRedeemCode("NEWR-CODE", { server: { serverId: "srv_3" } });
+    await expect(
+      host.harness.callRpc("redeemCode", {
+        code: "NEWR-CODE",
+        baseUrl: stub.apexUrl,
+      }),
+    ).resolves.toMatchObject({
+      state: "signed-in",
+      account: { serverId: "srv_3" },
+    });
+    await waitForLogin(host, view.id, "cancelled");
+    release();
+
+    await vi.waitFor(() => expect(stub.isValid(staleCredential)).toBe(false));
+    expect(await status(host)).toMatchObject({
+      state: "signed-in",
+      account: { serverId: "srv_3" },
+    });
+  });
+
+  it("serializes concurrent starts into one link and one poll loop", async () => {
+    const host = await loadAccount();
+    const [first, second] = (await Promise.all([
+      host.harness.callRpc("login.start", { baseUrl: stub.apexUrl }),
+      host.harness.callRpc("login.start", { baseUrl: stub.apexUrl }),
+    ])) as [LoginView, LoginView];
+
+    expect(second.id).toBe(first.id);
+    expect(stub.requestsTo("/api/account/link/start")).toHaveLength(1);
+    await host.harness.callRpc("login.cancel", { loginId: first.id });
+  });
+
+  it("stops the replaced poll loop when concurrent starts target different sites", async () => {
+    const host = await loadAccount();
+    const other = await StubGetbb.start();
+    try {
+      const [first, second] = (await Promise.all([
+        host.harness.callRpc("login.start", { baseUrl: stub.apexUrl }),
+        host.harness.callRpc("login.start", { baseUrl: other.apexUrl }),
+      ])) as [LoginView, LoginView];
+      expect(second.id).not.toBe(first.id);
+
+      await vi.waitFor(() =>
+        expect(other.linkPolls(second.userCode)).toBeGreaterThan(0),
+      );
+      const firstPolls = stub.linkPolls(first.userCode);
+      stub.approveLink(first.userCode);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(stub.linkPolls(first.userCode)).toBe(firstPolls);
+      expect((await status(host)).state).toBe("signed-out");
+
+      other.approveLink(second.userCode);
+      await waitForLogin(host, second.id, "signed-in");
+    } finally {
+      await other.close();
+    }
+  });
+});
+
+describe("pairings without a profile, and replaced servers", () => {
+  it("reports a stored pairing whose account hasn't loaded as profile-pending", async () => {
+    const host = await loadAccount();
+    stub.route("GET", "/api/account/me", () => ({
+      status: 503,
+      body: { error: "unavailable" },
+    }));
+    stub.issueRedeemCode("PEND-CODE");
+    const cli = await host.harness.runCli([
+      "login",
+      "--code",
+      "PEND-CODE",
+      "--base-url",
+      stub.apexUrl,
+    ]);
+    expect(cli.exitCode).toBe(1);
+    expect(cli.stderr).toContain("bb saved the new pairing");
+
+    expect(await status(host)).toMatchObject({
+      state: "profile-pending",
+      account: null,
+    });
+    const text = await host.harness.runCli(["status"]);
+    expect(text.stdout).toContain("hasn't loaded the account yet");
+    expect(text.stdout).not.toContain("Not signed in");
+
+    stub.route("GET", "/api/account/me", (request) => {
+      stub.route("GET", "/api/account/me", () => ({ status: 500 }));
+      return {
+        status: 200,
+        body: {
+          userId: "usr_1",
+          githubLogin: "sawyerhood",
+          name: "Sawyer Hood",
+          avatarUrl: null,
+          handle: "sawyer",
+          serverId: "srv_1",
+          serverLabel: "sawyer-desktop",
+          serverUrl: stub.gateUrl,
+          authorization: request.authorization,
+        },
+      };
+    });
+    const { controller, done } = host.harness.runService("profile-refresh");
+    await vi.waitFor(async () =>
+      expect((await status(host)).state).toBe("signed-in"),
+    );
+    controller.abort();
+    await done;
+  });
+
+  it("revokes the previous server when signing in to a different one", async () => {
+    const host = await loadAccount();
+    await signInWithCode(host);
+    const first = (
+      (await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)) as {
+        credential: string;
+      }
+    ).credential;
+
+    stub.issueRedeemCode("SRV2-CODE", { server: { serverId: "srv_2" } });
+    await expect(
+      host.harness.callRpc("redeemCode", {
+        code: "SRV2-CODE",
+        baseUrl: stub.apexUrl,
+      }),
+    ).resolves.toMatchObject({ account: { serverId: "srv_2" } });
+
+    expect(stub.isValid(first)).toBe(false);
+    const second = (
+      (await host.bb.storage.kv.get(CREDENTIAL_KV_KEY)) as {
+        credential: string;
+      }
+    ).credential;
+    expect(stub.isValid(second)).toBe(true);
   });
 });

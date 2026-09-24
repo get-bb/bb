@@ -47,6 +47,9 @@ type ConnectPairErrorCode =
   | "expired_code"
   | "already_used"
   | "network"
+  | "unauthorized"
+  | "profile_unavailable"
+  | "superseded"
   | "account_unavailable";
 
 interface PairErrorCopy {
@@ -78,6 +81,21 @@ const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
     linkLabel: "Open the dashboard",
     tail: " — check your connection, then try again.",
   },
+  unauthorized: {
+    lead: "getbb.app rejected the new pairing.",
+    linkLabel: "Get a new code",
+    tail: " and try again.",
+  },
+  profile_unavailable: {
+    lead: "This bb saved the pairing, but getbb.app hasn't returned your account yet.",
+    linkLabel: "Open the dashboard",
+    tail: " — bb keeps retrying, and remote access starts once it does.",
+  },
+  superseded: {
+    lead: "Another sign-in or a sign-out replaced this one.",
+    linkLabel: "Open the dashboard",
+    tail: " — check which account this bb uses under bb account.",
+  },
   account_unavailable: {
     lead: "The bb account plugin is off.",
     linkLabel: "Open the dashboard",
@@ -101,7 +119,10 @@ function toPairErrorCode(error: unknown): ConnectPairErrorCode {
     code === "invalid_code" ||
     code === "expired_code" ||
     code === "already_used" ||
-    code === "network"
+    code === "network" ||
+    code === "unauthorized" ||
+    code === "profile_unavailable" ||
+    code === "superseded"
   ) {
     return code;
   }

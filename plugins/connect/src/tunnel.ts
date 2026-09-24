@@ -11,7 +11,7 @@ import {
 } from "@bb/tunnel-client";
 import type { PluginLogger } from "@get-bb/plugin-sdk";
 import { deriveConnectBaseUrl } from "@bb/connect-client";
-import type { Account } from "./account-client.js";
+import { AccountUnavailableError, type Account } from "./account-client.js";
 import { NotSignedInError, type TunnelTicket } from "./hosted.js";
 import {
   ShareRegistry,
@@ -352,9 +352,12 @@ export class ConnectTunnel {
         this.publish();
         return;
       }
-      this.lastError = `can't get a tunnel ticket from ${connectApexHost(identity)} — ${
-        error instanceof Error ? error.message : String(error)
-      }`;
+      this.lastError =
+        error instanceof AccountUnavailableError
+          ? `can't get a tunnel ticket — ${error.message}`
+          : `can't get a tunnel ticket from ${connectApexHost(identity)} — ${
+              error instanceof Error ? error.message : String(error)
+            }`;
       this.scheduleRetry(epoch, this.lastError, 0);
       return;
     }

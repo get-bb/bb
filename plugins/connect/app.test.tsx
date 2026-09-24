@@ -271,6 +271,30 @@ describe("connect settings section", () => {
     expect(slot.queryByText(/expired_code/)).toBeNull();
   });
 
+  it("explains a saved pairing whose account hasn't loaded instead of calling the code invalid", async () => {
+    const account = fakeAccountSdk({
+      redeemCode: () => {
+        throw new Error("HTTP 500: profile_unavailable");
+      },
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { sdk: account.sdk, rpc: { status: () => status() } },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
+      target: { value: "K7QP-2M4X" },
+    });
+
+    await slot.findByText(/hasn't returned your account yet/);
+    expect(slot.queryByText(/invalid or has expired/)).toBeNull();
+    expect(slot.queryByText(/profile_unavailable/)).toBeNull();
+  });
+
   it("shows a remote-viewer count on the connected status line", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,

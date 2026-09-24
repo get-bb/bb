@@ -30,6 +30,7 @@ import {
   type Account,
   type AccountStatus,
   type LoginView,
+  type SignOutResult,
 } from "./src/schemas.js";
 
 const LOGIN_POLL_MS = 2_000;
@@ -48,6 +49,8 @@ const ERROR_COPY: Record<string, string> = {
   unauthorized: "getbb.app rejected the new pairing. Try again.",
   profile_unavailable:
     "bb saved the pairing, but getbb.app didn't return your account yet. bb keeps retrying.",
+  superseded:
+    "Another sign-in or a sign-out replaced this one. Check the account above.",
 };
 
 function errorText(error: unknown): string {
@@ -212,14 +215,12 @@ function SignOutDialog({
   );
 }
 
-function SignedInContent({
-  account,
+function SignOutControl({
   rpc,
-  onChanged,
+  onSignedOut,
 }: {
-  account: Account;
   rpc: AccountRpc;
-  onChanged: () => void;
+  onSignedOut: (result: SignOutResult) => void;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -229,18 +230,51 @@ function SignedInContent({
     setPending(true);
     setError(null);
     rpc.call("signOut", null).then(
-      () => {
+      (result) => {
         setPending(false);
         setConfirmOpen(false);
-        onChanged();
+        onSignedOut(result);
       },
       (rpcError: unknown) => {
         setPending(false);
         setError(errorText(rpcError));
       },
     );
-  }, [onChanged, rpc]);
+  }, [onSignedOut, rpc]);
 
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={DANGER_QUIET_CLASS}
+        onClick={() => setConfirmOpen(true)}
+      >
+        Sign out
+      </Button>
+      {error !== null ? (
+        <p className="text-xs text-destructive-text">{error}</p>
+      ) : null}
+      <SignOutDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        pending={pending}
+        onConfirm={signOut}
+      />
+    </>
+  );
+}
+
+function SignedInContent({
+  account,
+  rpc,
+  onSignedOut,
+}: {
+  account: Account;
+  rpc: AccountRpc;
+  onSignedOut: (result: SignOutResult) => void;
+}) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -266,31 +300,53 @@ function SignedInContent({
           </span>
         </DetailRow>
       </dl>
-      <div className="-mx-4 flex items-center gap-3 border-t border-border-seam px-4 pt-3">
+      <div className="-mx-4 flex flex-wrap items-center gap-3 border-t border-border-seam px-4 pt-3">
         <span className="min-w-0 text-xs text-muted-foreground">
           Remote access and hosted services use this account.
         </span>
         <span className="flex-1" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={DANGER_QUIET_CLASS}
-          onClick={() => setConfirmOpen(true)}
-        >
-          Sign out
-        </Button>
+        <SignOutControl rpc={rpc} onSignedOut={onSignedOut} />
       </div>
-      {error !== null ? (
-        <p className="text-xs text-destructive-text">{error}</p>
-      ) : null}
-      <SignOutDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        pending={pending}
-        onConfirm={signOut}
-      />
     </div>
+  );
+}
+
+function ProfilePendingContent({
+  rpc,
+  onSignedOut,
+}: {
+  rpc: AccountRpc;
+  onSignedOut: (result: SignOutResult) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Icon name="Spinner" className="size-4 animate-spin" />
+        This bb is paired with getbb.app, but hasn't loaded your account yet. It
+        keeps retrying.
+      </p>
+      <div className="-mx-4 flex flex-wrap items-center gap-3 border-t border-border-seam px-4 pt-3">
+        <span className="min-w-0 text-xs text-muted-foreground">
+          Remote access and hosted services start once it does.
+        </span>
+        <span className="flex-1" />
+        <SignOutControl rpc={rpc} onSignedOut={onSignedOut} />
+      </div>
+    </div>
+  );
+}
+
+function signOutNotice(result: SignOutResult): ReactNode {
+  if (result.revocation !== "failed") return null;
+  return (
+    <p className="text-xs text-destructive-text">
+      Signed out here, but getbb.app didn't confirm it revoked this server (
+      {result.message}). Remove it from{" "}
+      <UrlLink href={result.dashboardUrl} target="_blank" rel="noreferrer">
+        your dashboard
+      </UrlLink>
+      .
+    </p>
   );
 }
 
@@ -597,6 +653,14 @@ function SignedOutContent({
 function AccountSettingsSection() {
   const rpc = useRpc<typeof accountPrivateRpcContract>();
   const { state, loadError, apply, refetch } = useAccountState();
+  const [notice, setNotice] = useState<ReactNode>(null);
+  const onSignedOut = useCallback(
+    (result: SignOutResult) => {
+      setNotice(signOutNotice(result));
+      refetch();
+    },
+    [refetch],
+  );
 
   if (loadError !== null && state === null) {
     return (
@@ -608,19 +672,31 @@ function AccountSettingsSection() {
   if (state === null) {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
-  return state.status.account !== null ? (
-    <SignedInContent
-      account={state.status.account}
-      rpc={rpc}
-      onChanged={refetch}
-    />
-  ) : (
-    <SignedOutContent
-      rpc={rpc}
-      login={state.login}
-      onLogin={apply}
-      onChanged={refetch}
-    />
+  if (state.status.state === "signed-in") {
+    return (
+      <SignedInContent
+        account={state.status.account}
+        rpc={rpc}
+        onSignedOut={onSignedOut}
+      />
+    );
+  }
+  if (state.status.state === "profile-pending") {
+    return <ProfilePendingContent rpc={rpc} onSignedOut={onSignedOut} />;
+  }
+  return (
+    <div className="space-y-3">
+      {notice}
+      <SignedOutContent
+        rpc={rpc}
+        login={state.login}
+        onLogin={apply}
+        onChanged={() => {
+          setNotice(null);
+          refetch();
+        }}
+      />
+    </div>
   );
 }
 

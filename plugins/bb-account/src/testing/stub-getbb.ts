@@ -110,6 +110,10 @@ export class StubGetbb {
     { server: StubServerRecord; used: boolean; expired: boolean }
   >();
   private readonly routes = new Map<string, StubRoute>();
+  private readonly holds = new Map<
+    string,
+    { matches: (request: StubRequest) => boolean; released: Promise<void> }
+  >();
   private readonly apex = createServer((request, response) => {
     void this.handle("apex", request, response);
   });
@@ -199,6 +203,23 @@ export class StubGetbb {
     this.routes.set(`${method} ${path}`, handler);
   }
 
+  hold(
+    method: string,
+    path: string,
+    matches: (request: StubRequest) => boolean = () => true,
+  ): () => void {
+    const key = `${method} ${path}`;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.holds.set(key, { matches, released });
+    return () => {
+      if (this.holds.get(key)?.released === released) this.holds.delete(key);
+      release();
+    };
+  }
+
   requestsTo(path: string): StubRequest[] {
     return this.requests.filter((request) => request.path === path);
   }
@@ -251,6 +272,8 @@ export class StubGetbb {
       body: await readBody(request),
     };
     this.requests.push(record);
+    const hold = this.holds.get(`${record.method} ${record.path}`);
+    if (hold !== undefined && hold.matches(record)) await hold.released;
     const custom = this.routes.get(`${record.method} ${record.path}`);
     if (custom !== undefined) {
       send(response, await custom(record));

@@ -45,8 +45,10 @@ signed in; `bb connect on` turns it back on. Both set the connect
 `remoteAccess` setting (`bb plugin config connect set remoteAccess false`).
 `bb account logout` forgets the
 pairing, and `bb account status` shows which account is signed in.
-`bb connect --code <code>` still pairs with a dashboard code as an alias of
-`bb account login --code <code>`.
+`bb connect --code <code>` still pairs with a dashboard code like
+`bb account login --code <code>`, and also turns remote access back on if it
+was off. `--server` takes the dashboard's `https://<handle>.getbb.app` (or
+`https://<handle>.vibecodethis.site`) URL; other origins are refused.
 
 ## Agent instructions setting
 

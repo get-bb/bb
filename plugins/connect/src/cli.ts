@@ -29,11 +29,12 @@ const DESCRIPTION = [
   "",
   "  1. Sign this bb in to your bb account:",
   "       bb account login",
-  "     (or paste a dashboard code: bb connect --code <code>)",
+  "     (or paste a dashboard code: bb connect --code <code>, which also turns",
+  "     remote access back on)",
   "  2. Remote access starts on its own and stays up while bb is running.",
   "",
   "`bb connect off` turns remote access off and keeps the account signed in;",
-  "`bb account logout` forgets the pairing.",
+  "`bb connect on` turns it back on; `bb account logout` forgets the pairing.",
 ].join("\n");
 
 const HOST_OPTION = {
@@ -55,11 +56,17 @@ const PAIR_ERROR_TEXT: Record<string, string> = {
   already_used:
     "that code was already used — get a new one from the getbb.app dashboard",
   network: "couldn't reach getbb.app — check the connection and try again",
+  unauthorized:
+    "getbb.app rejected the new pairing — get a new code from the getbb.app dashboard and try again",
+  profile_unavailable:
+    "this bb saved the pairing, but getbb.app didn't return your account yet — bb keeps retrying, and remote access starts once it does (see `bb account status`)",
+  superseded:
+    "another sign-in or a sign-out replaced this one — run `bb account status` to see which account this bb uses",
 };
 
 function formatStatus(status: ConnectStatus): string {
   if (!status.paired) {
-    return "Not signed in to a bb account\nRun `bb account login` to sign in; remote access starts once you do.";
+    return "Not signed in to a bb account\nRun `bb account status` to see why, or `bb account login` to sign in; remote access starts once the account is ready.";
   }
   if (!status.enabled) {
     return `${status.handle}  ${status.url}  off\nRemote access is off. Run \`bb connect on\` to turn it back on.`;
@@ -179,7 +186,7 @@ export function registerConnectCli(args: {
       description: DESCRIPTION,
       root: cliCommand({
         summary:
-          "Sign in with a dashboard code (alias of bb account login --code)",
+          "Sign in with a dashboard code (bb account login --code) and turn remote access on",
         options: {
           code: {
             type: "string",
@@ -191,12 +198,13 @@ export function registerConnectCli(args: {
             type: "string",
             placeholder: "url",
             description:
-              "Server URL the dashboard printed; only its getbb.app origin is used",
+              "Server URL the dashboard printed, https://<handle>.getbb.app or https://<handle>.vibecodethis.site; only its apex origin is used",
           },
           "base-url": {
             type: "string",
             placeholder: "url",
-            description: "getbb.app base URL; only for local testing",
+            description:
+              "getbb.app origin: https://getbb.app or https://vibecodethis.site (development builds also accept http://bb.localhost:<port>)",
           },
           json: JSON_OPTION,
         },
@@ -222,7 +230,11 @@ export function registerConnectCli(args: {
                     .account,
               );
             } catch (error) {
-              throw pairError(error);
+              const failure = pairError(error);
+              if (failure.code === "profile_unavailable") {
+                await remoteAccess.set(true);
+              }
+              throw failure;
             }
             if (!status.enabled) status = await remoteAccess.set(true);
             if (input.options.json) {

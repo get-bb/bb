@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { PluginLogger } from "@get-bb/plugin-sdk";
 import { serverUrlForHandle } from "@bb/connect-client";
-import { AccountError, type AccountService } from "./account.js";
-import type { LoginState, LoginView } from "./contract.js";
+import {
+  AccountError,
+  type AccountService,
+  type SignInAttempt,
+} from "./account.js";
+import type {
+  AccountStatus,
+  LoginState,
+  LoginView,
+  SignOutResult,
+} from "./contract.js";
 import { pollLink, startLink } from "./hosted.js";
 
 const REUSE_MIN_REMAINING_MS = 60_000;
@@ -26,6 +35,7 @@ interface PendingLogin {
   baseUrl: string;
   deviceCode: string;
   intervalMs: number;
+  attempt: SignInAttempt;
   controller: AbortController;
   settled: Promise<LoginView>;
   settle(view: LoginView): void;
@@ -58,10 +68,34 @@ function errorMessage(error: unknown): string {
 
 export class LinkLogins {
   private current: PendingLogin | null = null;
+  private starts: Promise<unknown> = Promise.resolve();
+  private disposed = false;
 
   constructor(private readonly options: LinkLoginsOptions) {}
 
-  async start(baseUrl: string): Promise<LoginView> {
+  start(baseUrl: string): Promise<LoginView> {
+    const next = this.starts.then(
+      () => this.startNow(baseUrl),
+      () => this.startNow(baseUrl),
+    );
+    this.starts = next.catch(() => undefined);
+    return next;
+  }
+
+  async redeemCode(code: string, baseUrl: string): Promise<AccountStatus> {
+    try {
+      return await this.options.account.redeemCode(code, baseUrl);
+    } finally {
+      this.cancelSuperseded("A pairing code signed this bb in instead.");
+    }
+  }
+
+  signOut(): Promise<SignOutResult> {
+    this.cancelPending("You signed out, so this sign-in was cancelled.");
+    return this.options.account.signOut();
+  }
+
+  private async startNow(baseUrl: string): Promise<LoginView> {
     const existing = this.current;
     if (
       existing !== null &&
@@ -72,9 +106,9 @@ export class LinkLogins {
       return existing.view;
     }
     const started = await startLink(baseUrl, this.options.clientName);
-    if (existing !== null && existing.view.state === "pending") {
-      this.finish(existing, "cancelled", "A newer sign-in replaced this one.");
-    }
+    if (this.disposed) throw new Error("bb account stopped");
+    this.cancelPending("A newer sign-in replaced this one.");
+    const attempt = this.options.account.supersedeSignIns();
     let settle!: (view: LoginView) => void;
     const settled = new Promise<LoginView>((resolve) => {
       settle = resolve;
@@ -94,6 +128,7 @@ export class LinkLogins {
         started.intervalMs,
         this.options.timing.minIntervalMs,
       ),
+      attempt,
       controller: new AbortController(),
       settled,
       settle,
@@ -114,9 +149,7 @@ export class LinkLogins {
   cancel(loginId: string): LoginView | null {
     const current = this.current;
     if (current === null || current.view.id !== loginId) return null;
-    if (current.view.state === "pending") {
-      this.finish(current, "cancelled", "Sign-in was cancelled.");
-    }
+    this.cancelLogin(current, "Sign-in was cancelled.");
     return current.view;
   }
 
@@ -137,10 +170,29 @@ export class LinkLogins {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.cancelPending("bb account stopped.");
+  }
+
+  private cancelPending(message: string): void {
     const current = this.current;
-    if (current !== null && current.view.state === "pending") {
-      this.finish(current, "cancelled", "bb account stopped.");
+    if (current !== null) this.cancelLogin(current, message);
+  }
+
+  private cancelSuperseded(message: string): void {
+    const current = this.current;
+    if (
+      current !== null &&
+      !this.options.account.isSignInCurrent(current.attempt)
+    ) {
+      this.cancelLogin(current, message);
     }
+  }
+
+  private cancelLogin(login: PendingLogin, message: string): void {
+    if (login.view.state !== "pending") return;
+    if (!this.options.account.abandonSignIn(login.attempt)) return;
+    this.finish(login, "cancelled", message);
   }
 
   private finish(
@@ -218,16 +270,19 @@ export class LinkLogins {
     },
   ): Promise<void> {
     try {
-      await this.options.account.completeSignIn({
-        baseUrl: login.baseUrl,
-        credential: approved.credential,
-        serverId: approved.serverId,
-        serverUrl:
-          approved.serverUrl ??
-          (approved.handle === null
-            ? null
-            : serverUrlForHandle(login.baseUrl, approved.handle)),
-      });
+      await this.options.account.completeSignIn(
+        {
+          baseUrl: login.baseUrl,
+          credential: approved.credential,
+          serverId: approved.serverId,
+          serverUrl:
+            approved.serverUrl ??
+            (approved.handle === null
+              ? null
+              : serverUrlForHandle(login.baseUrl, approved.handle)),
+        },
+        login.attempt,
+      );
       this.finish(login, "signed-in", null);
     } catch (error) {
       const message =

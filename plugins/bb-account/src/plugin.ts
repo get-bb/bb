@@ -1,7 +1,11 @@
 import { hostname } from "node:os";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { AccountService } from "./account.js";
-import { resolveDefaultBaseUrl } from "./base-url.js";
+import {
+  isAllowedBaseUrl,
+  resolveDefaultBaseUrl,
+  type BaseUrlAllowed,
+} from "./base-url.js";
 import { registerAccountCli } from "./cli.js";
 import { ACCOUNT_REALTIME_CHANNEL } from "./contract.js";
 import {
@@ -19,11 +23,22 @@ function clientName(): string {
   return name.length > 0 ? name : "bb";
 }
 
+export interface BbAccountPluginOptions {
+  timing: LinkPollTiming;
+  allowedBaseUrl: BaseUrlAllowed;
+}
+
 export function createBbAccountPlugin(
-  timing: LinkPollTiming = DEFAULT_LINK_POLL_TIMING,
+  options: BbAccountPluginOptions = {
+    timing: DEFAULT_LINK_POLL_TIMING,
+    allowedBaseUrl: (origin) => isAllowedBaseUrl(origin, process.env),
+  },
 ) {
   return async function plugin(bb: BbPluginApi): Promise<void> {
-    const defaultBaseUrl = resolveDefaultBaseUrl(process.env);
+    const baseUrls = {
+      defaultBaseUrl: resolveDefaultBaseUrl(process.env),
+      allowed: options.allowedBaseUrl,
+    };
     let logins!: LinkLogins;
     const publish = () => {
       bb.realtime.publish(ACCOUNT_REALTIME_CHANNEL, {
@@ -41,12 +56,12 @@ export function createBbAccountPlugin(
       account,
       clientName: clientName(),
       log: bb.log,
-      timing,
+      timing: options.timing,
       onChange: publish,
     });
 
-    registerAccountRpc({ bb, account, logins, defaultBaseUrl });
-    registerAccountCli({ bb, account, logins, defaultBaseUrl });
+    registerAccountRpc({ bb, account, logins, baseUrls });
+    registerAccountCli({ bb, account, logins, baseUrls });
 
     bb.background.service("profile-refresh", {
       start: (signal) => account.runProfileRefresh(signal),

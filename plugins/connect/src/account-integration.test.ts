@@ -3,17 +3,21 @@ import {
   createFakePluginHost,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
+import { isAllowedBaseUrl } from "bb-plugin-bb-account/src/base-url";
 import { createBbAccountPlugin } from "bb-plugin-bb-account/src/plugin";
 import { StubGetbb } from "bb-plugin-bb-account/src/testing/stub-getbb";
 import { LEGACY_CREDENTIAL_KV_KEY } from "./legacy-credential.js";
 import { createConnectPlugin } from "./plugin.js";
 import type { ConnectStatus } from "./types.js";
 
-const FAST_LINK_TIMING = {
-  minIntervalMs: 0,
-  maxIntervalMs: 1_000,
-  slowDownStepMs: 50,
-  marginMs: 0,
+const ACCOUNT_OPTIONS = {
+  timing: {
+    minIntervalMs: 0,
+    maxIntervalMs: 1_000,
+    slowDownStepMs: 50,
+    marginMs: 0,
+  },
+  allowedBaseUrl: (origin: string) => origin.startsWith("http://127.0.0.1:"),
 };
 
 interface RpcArgs {
@@ -28,11 +32,14 @@ let stub: StubGetbb;
 let accountHost: FakePluginHost;
 let connectHost: FakePluginHost;
 let accountRunning = true;
+let failedFetches = 0;
 let tunnelService: { controller: AbortController; done: Promise<void> } | null =
   null;
 
 function callAccountRpc(args: RpcArgs): Promise<unknown> {
-  if (args.pluginId !== "bb-account" || !accountRunning) {
+  const failFetch = args.method === "bb-account.v1.fetch" && failedFetches > 0;
+  if (failFetch) failedFetches -= 1;
+  if (args.pluginId !== "bb-account" || !accountRunning || failFetch) {
     return Promise.reject(
       Object.assign(new Error(`HTTP 503: ${args.pluginId} is not running`), {
         status: 503,
@@ -40,7 +47,9 @@ function callAccountRpc(args: RpcArgs): Promise<unknown> {
     );
   }
   const call = accountHost.harness
-    .callRpc(args.method, args.input ?? null)
+    .callRpc(args.method, args.input ?? null, {
+      experimental_caller: { kind: "plugin", pluginId: "connect" },
+    })
     .then((result) => args.outputSchema.parse(result));
   const signal = args.signal;
   if (signal === undefined) return call;
@@ -58,9 +67,10 @@ function callAccountRpc(args: RpcArgs): Promise<unknown> {
 
 async function loadBoth(
   seedConnect?: (host: FakePluginHost) => Promise<void>,
+  accountOptions: Parameters<typeof createBbAccountPlugin>[0] = ACCOUNT_OPTIONS,
 ): Promise<void> {
   accountHost = createFakePluginHost({ pluginId: "bb-account" });
-  await createBbAccountPlugin(FAST_LINK_TIMING)(accountHost.bb);
+  await createBbAccountPlugin(accountOptions)(accountHost.bb);
   connectHost = createFakePluginHost({
     pluginId: "connect",
     sdk: {
@@ -128,6 +138,7 @@ async function storedCredential(): Promise<string> {
 beforeEach(async () => {
   stub = await StubGetbb.start();
   accountRunning = true;
+  failedFetches = 0;
 });
 
 afterEach(async () => {
@@ -298,7 +309,7 @@ describe("connect on top of bb account", () => {
 
     accountRunning = false;
     accountHost = await accountHost.harness.reload(
-      createBbAccountPlugin(FAST_LINK_TIMING),
+      createBbAccountPlugin(ACCOUNT_OPTIONS),
     );
     await vi.waitFor(
       async () => {
@@ -309,5 +320,75 @@ describe("connect on top of bb account", () => {
 
     accountRunning = true;
     await waitForConnected(2);
+  });
+  it("retries the ticket when bb account is briefly unavailable during the fetch", async () => {
+    await loadBoth();
+    await signInAccount();
+    failedFetches = 1;
+    startTunnel();
+
+    await vi.waitFor(async () => {
+      expect(await connectStatus()).toMatchObject({
+        state: "reconnecting",
+        nextRetryAt: expect.any(Number),
+        lastError: expect.stringContaining("bb account isn't running"),
+      });
+    });
+    await waitForConnected(1);
+    expect(stub.mintedTickets).toHaveLength(1);
+  });
+
+  it("revokes a legacy pairing bb account doesn't adopt before forgetting it", async () => {
+    const legacy = stub.issueCredential({
+      serverId: "srv_old",
+      serverLabel: "old-desktop",
+    });
+    await loadBoth(async (seeded) => {
+      stub.issueRedeemCode("ABCD-EFGH");
+      await accountHost.harness.callRpc("redeemCode", {
+        code: "ABCD-EFGH",
+        baseUrl: stub.apexUrl,
+      });
+      const apexPort = new URL(stub.apexUrl).port;
+      await seeded.bb.storage.kv.set(LEGACY_CREDENTIAL_KV_KEY, {
+        serverUrl: `http://old-desktop.localhost:${apexPort}`,
+        handle: "old-desktop",
+        credential: legacy,
+      });
+    });
+    const current = await storedCredential();
+    startTunnel();
+
+    await vi.waitFor(async () => {
+      expect(
+        await connectHost.bb.storage.kv.get(LEGACY_CREDENTIAL_KV_KEY),
+      ).toBeUndefined();
+    });
+    expect(stub.isValid(legacy)).toBe(false);
+    expect(await storedCredential()).toBe(current);
+    expect(stub.isValid(current)).toBe(true);
+    await waitForConnected(1);
+  });
+
+  it("refuses a dashboard --server outside getbb.app before any request", async () => {
+    await loadBoth(undefined, {
+      timing: ACCOUNT_OPTIONS.timing,
+      allowedBaseUrl: (origin) => isAllowedBaseUrl(origin, process.env),
+    });
+    stub.issueRedeemCode("WXYZ-2345");
+
+    const result = await connectHost.harness.runCli([
+      "--code",
+      "WXYZ-2345",
+      "--server",
+      "https://sawyer.evil.test",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "https://getbb.app or https://vibecodethis.site",
+    );
+    expect(stub.requests).toEqual([]);
+    expect(await accountState()).toBe("signed-out");
   });
 });

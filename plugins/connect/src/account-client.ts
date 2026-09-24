@@ -17,16 +17,16 @@ const accountSchema = z.object({
 
 export type Account = z.infer<typeof accountSchema>;
 
-export const accountStatusSchema = z.discriminatedUnion("state", [
-  z.object({
-    state: z.literal("signed-out"),
-    revision: z.number().int(),
-    account: z.null(),
-  }),
+export const accountStatusSchema = z.union([
   z.object({
     state: z.literal("signed-in"),
     revision: z.number().int(),
     account: accountSchema,
+  }),
+  z.object({
+    state: z.string().refine((state) => state !== "signed-in"),
+    revision: z.number().int(),
+    account: z.null(),
   }),
 ]);
 
@@ -99,8 +99,6 @@ export interface AccountClient {
   fetch(request: AccountFetchRequest): Promise<AccountFetchResult>;
   adoptConnectCredential(input: {
     credential: string;
-    serverUrl: string;
-    handle: string | null;
     baseUrl: string;
   }): Promise<{ adopted: boolean }>;
   redeemCode(input: {

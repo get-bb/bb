@@ -352,6 +352,7 @@ export async function authenticatedFetch(args: {
   path: string;
   bodyText: string | null;
   credential: string;
+  timeoutMs: number;
 }): Promise<AccountFetchResult> {
   const url = endpoint(args.origin, args.path);
   if (url.origin !== args.origin || url.pathname !== args.path) {
@@ -365,6 +366,7 @@ export async function authenticatedFetch(args: {
       ...credentialHeaders(args.credential),
     },
     ...(args.bodyText === null ? {} : { body: args.bodyText }),
+    signal: AbortSignal.timeout(args.timeoutMs),
   });
   return { status: response.status, body: await readJson(response) };
 }

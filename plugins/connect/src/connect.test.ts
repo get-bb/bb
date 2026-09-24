@@ -1531,19 +1531,14 @@ describe("connect plugin", () => {
       expect((await status(current)).paired).toBe(true);
     });
     expect(account.adoptions).toEqual([
-      {
-        credential: "bbcred_legacy",
-        serverUrl: "https://sawyer.getbb.app",
-        handle: "sawyer",
-        baseUrl: "https://getbb.app",
-      },
+      { credential: "bbcred_legacy", baseUrl: "https://getbb.app" },
     ]);
     expect(
       await current.bb.storage.kv.get(LEGACY_CREDENTIAL_KV_KEY),
     ).toBeUndefined();
   });
 
-  it("keeps the legacy credential until bb account runs, then drops it when bb account is already signed in", async () => {
+  it("keeps the legacy credential until bb account runs, then hands it over even when bb account is already signed in", async () => {
     const current = await loadPlugin({
       beforeLoad: (loading) =>
         loading.bb.storage.kv.set(LEGACY_CREDENTIAL_KV_KEY, {
@@ -1566,7 +1561,9 @@ describe("connect plugin", () => {
         await current.bb.storage.kv.get(LEGACY_CREDENTIAL_KV_KEY),
       ).toBeUndefined();
     });
-    expect(account.adoptions).toEqual([]);
+    expect(account.adoptions).toEqual([
+      { credential: "bbcred_legacy", baseUrl: "https://getbb.app" },
+    ]);
     await vi.waitFor(async () => {
       expect((await status(current)).paired).toBe(true);
     });
@@ -2244,6 +2241,22 @@ describe("connect CLI", () => {
     ]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("that code has expired");
+  });
+
+  it("explains a saved pairing without a profile and still turns remote access on", async () => {
+    const { harness } = await loadCli();
+    await harness.runCli(["off"]);
+    account.redeem = () => {
+      throw new Error("HTTP 500: profile_unavailable");
+    };
+    const result = await harness.runCli(["--code", "ABCD"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "saved the pairing, but getbb.app didn't return your account yet",
+    );
+    expect(result.stderr).not.toContain("profile_unavailable\n");
+    const status = await harness.runCli(["status", "--json"]);
+    expect(JSON.parse(status.stdout ?? "")).toMatchObject({ enabled: true });
   });
 
   it("says so when the bb account plugin isn't running", async () => {

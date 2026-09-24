@@ -6,10 +6,10 @@ import {
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import { AccountError, type AccountService } from "./account.js";
-import type { AccountStatus, LoginView } from "./contract.js";
+import type { AccountStatus, LoginView, SignOutResult } from "./contract.js";
 import { HostedRequestError, RedeemError } from "./hosted.js";
 import type { LinkLogins } from "./login.js";
-import { resolveBaseUrl } from "./rpc.js";
+import { resolveBaseUrl, type BaseUrlPolicy } from "./rpc.js";
 
 const DESCRIPTION = [
   "Sign this bb in to your getbb.app account. bb account holds the server",
@@ -41,6 +41,13 @@ function asJson(value: unknown): string {
 }
 
 function formatAccount(status: AccountStatus): string {
+  if (status.state === "profile-pending") {
+    return [
+      "Paired with getbb.app, but bb hasn't loaded the account yet; it keeps retrying.",
+      "Remote access and hosted services start once it does. Check this machine's",
+      "connection, or run `bb account logout` to sign out and start over.",
+    ].join("\n");
+  }
   if (status.account === null) {
     return "Not signed in. Run `bb account login` to sign in.";
   }
@@ -68,6 +75,20 @@ function formatPendingLogin(view: LoginView): string {
     "result, run:",
     "  bb account login --wait",
   ].join("\n");
+}
+
+function formatSignOut(result: SignOutResult): string {
+  switch (result.revocation) {
+    case "not-signed-in":
+      return "Not signed in.";
+    case "revoked":
+      return "Signed out. Remote access and hosted services stop until you sign in again.";
+    case "failed":
+      return [
+        "Signed out on this bb, but getbb.app didn't confirm it revoked this server",
+        `(${result.message}). Remove the server at ${result.dashboardUrl}.`,
+      ].join("\n");
+  }
 }
 
 function loginFailure(view: LoginView): PluginCliError {
@@ -111,9 +132,9 @@ export function registerAccountCli(args: {
   bb: Pick<BbPluginApi, "cli">;
   account: AccountService;
   logins: LinkLogins;
-  defaultBaseUrl: string;
+  baseUrls: BaseUrlPolicy;
 }): void {
-  const { bb, account, logins, defaultBaseUrl } = args;
+  const { bb, account, logins, baseUrls } = args;
   bb.cli.register(
     defineCli({
       name: "account",
@@ -161,7 +182,8 @@ export function registerAccountCli(args: {
             "base-url": {
               type: "string",
               placeholder: "url",
-              description: "getbb.app base URL; only for local testing",
+              description:
+                "getbb.app origin: https://getbb.app or https://vibecodethis.site (development builds also accept http://bb.localhost:<port>)",
             },
             json: JSON_OPTION,
           },
@@ -173,10 +195,10 @@ export function registerAccountCli(args: {
             attempt(async () => {
               const baseUrl = resolveBaseUrl(
                 input.options["base-url"] ?? null,
-                defaultBaseUrl,
+                baseUrls,
               );
               if (input.options.code !== undefined) {
-                const status = await account.redeemCode(
+                const status = await logins.redeemCode(
                   input.options.code.trim(),
                   baseUrl,
                 );
@@ -222,19 +244,16 @@ export function registerAccountCli(args: {
         logout: cliCommand({
           summary: "Sign out and forget this bb's getbb.app pairing",
           description:
-            "Revokes the server credential on getbb.app. Remote access and hosted services stop until you sign in again.",
+            "Revokes the server credential on getbb.app and forgets it here, and cancels a sign-in that is waiting for approval. Remote access and hosted services stop until you sign in again. If getbb.app can't be reached, bb still signs out here and says so; remove the server from the getbb.app dashboard.",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              const wasSignedIn = account.hasCredential();
-              const status = await account.signOut();
+              const result = await logins.signOut();
               return {
                 exitCode: 0,
                 stdout: input.options.json
-                  ? asJson(status)
-                  : wasSignedIn
-                    ? "Signed out. Remote access and hosted services stop until you sign in again.\n"
-                    : "Not signed in.\n",
+                  ? asJson(result)
+                  : `${formatSignOut(result)}\n`,
               };
             }),
         }),

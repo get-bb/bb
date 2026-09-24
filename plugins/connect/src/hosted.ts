@@ -191,7 +191,10 @@ export class HostedConnectApi {
       );
     } catch (error) {
       signal?.throwIfAborted();
-      if (error instanceof NotSignedInError) {
+      if (
+        error instanceof NotSignedInError ||
+        error instanceof AccountUnavailableError
+      ) {
         throw new MachineCodeError("not_paired");
       }
       throw new MachineCodeError("network");
@@ -251,7 +254,10 @@ export class HostedConnectApi {
     try {
       return await this.send(request);
     } catch (error) {
-      if (error instanceof NotSignedInError) {
+      if (
+        error instanceof NotSignedInError ||
+        error instanceof AccountUnavailableError
+      ) {
         throw new ConnectListError(
           "not_paired",
           "this bb isn't signed in to a bb account — run `bb account login`",
@@ -268,14 +274,7 @@ export class HostedConnectApi {
     request: AccountFetchRequest,
     signal?: AbortSignal,
   ): Promise<AccountFetchResult> {
-    let result: AccountFetchResult;
-    try {
-      result = await abortable(this.account.fetch(request), signal);
-    } catch (error) {
-      if (error instanceof AccountUnavailableError)
-        throw new NotSignedInError();
-      throw error;
-    }
+    const result = await abortable(this.account.fetch(request), signal);
     if (
       result.status === 401 &&
       signedOutBodySchema.safeParse(result.body).success
