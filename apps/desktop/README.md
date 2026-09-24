@@ -61,6 +61,10 @@ pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force
 pnpm exec turbo run dev --filter=@bb/desktop
 ```
 
+The desktop tests include an Electron startup smoke that opens a real window.
+On Linux it runs only when `DISPLAY` is set; on a headless host, wrap the test
+command in `xvfb-run -a`, as CI does.
+
 ## Packaging
 
 ```bash

@@ -7,6 +7,7 @@ const { app, ipcMain } = require("electron");
 app.setName("bb-dev");
 
 const desktopRoot = process.env.BB_STARTUP_SMOKE_APP_PATH;
+app.setVersion(require(join(desktopRoot, "package.json")).version);
 const scenario = process.env.BB_STARTUP_SMOKE_SCENARIO ?? "custom";
 const channel = "bb-desktop:startup-action";
 const loads = [];

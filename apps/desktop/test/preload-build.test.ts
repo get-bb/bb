@@ -14,7 +14,8 @@ import { join, resolve } from "node:path";
 import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { createPackagedAppLaunchArguments } from "../scripts/packaged-app-launch.mjs";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(__filename);
@@ -23,6 +24,9 @@ const desktopPackageRoot = process.cwd();
 const ELECTRON_STARTUP_TIMEOUT_MS = 15_000;
 const ELECTRON_EXIT_TIMEOUT_MS = 5_000;
 const ELECTRON_POST_READY_SETTLE_MS = 300;
+const ELECTRON_DISPLAY_AVAILABLE =
+  process.platform === "darwin" ||
+  (process.platform === "linux" && process.env.DISPLAY !== undefined);
 
 const desktopPackageJsonSchema = z.object({
   version: z.string().min(1),
@@ -315,13 +319,16 @@ async function readDesktopPackageVersion(): Promise<string> {
 }
 
 describe("desktop build", () => {
-  it("emits package-compatible Electron entries", async () => {
-    const desktopVersion = await readDesktopPackageVersion();
+  let desktopVersion = "";
 
+  beforeAll(async () => {
+    desktopVersion = await readDesktopPackageVersion();
     await execFileAsync(process.execPath, ["scripts/build.mjs"], {
       cwd: desktopPackageRoot,
     });
+  }, 60_000);
 
+  it("emits package-compatible Electron entries", async () => {
     const mainSource = await readFile(
       resolve(desktopPackageRoot, "dist", "main.js"),
       "utf8",
@@ -354,122 +361,135 @@ describe("desktop build", () => {
         access(resolve(desktopPackageRoot, "dist", mapPath)),
       ).resolves.toBeUndefined();
     }
+  });
 
-    if (process.platform !== "darwin") {
-      return;
-    }
-
-    const smokeRoot = await mkdtemp(join(tmpdir(), "bb-desktop-smoke-"));
-    const smokeServer = await startDesktopSmokeServer({
-      dataDir: join(smokeRoot, "data"),
-      expectedDesktopVersion: desktopVersion,
-    });
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-    const childEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      BB_DATA_DIR: join(smokeRoot, "data"),
-      BB_DESKTOP_AUTO_UPDATE: "0",
-      BB_DESKTOP_OPEN_DEVTOOLS: "0",
-      BB_DESKTOP_VERSION_CHECK: "0",
-      BB_SERVER_PORT: String(smokeServer.port),
-    };
-    delete childEnv.BB_DESKTOP_APP_URL;
-    delete childEnv.BB_DESKTOP_NODE_EXEC_PATH;
-    delete childEnv.ELECTRON_RUN_AS_NODE;
-
-    const child = spawn(
-      electronBinary,
-      [`--user-data-dir=${join(smokeRoot, "user-data")}`, "."],
-      {
-        cwd: desktopPackageRoot,
-        env: childEnv,
-      },
-    );
-    child.stdout.on("data", (chunk) => {
-      stdout.push(String(chunk));
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr.push(String(chunk));
-    });
-
-    try {
-      const preloadReady = await waitForPreloadReady({
-        child,
-        preloadReady: smokeServer.preloadReady,
-        stderr,
-        stdout,
-        timeoutMs: ELECTRON_STARTUP_TIMEOUT_MS,
+  it.runIf(ELECTRON_DISPLAY_AVAILABLE)(
+    "starts Electron with a working preload bridge",
+    async () => {
+      const smokeRoot = await mkdtemp(join(tmpdir(), "bb-desktop-smoke-"));
+      const smokeServer = await startDesktopSmokeServer({
+        dataDir: join(smokeRoot, "data"),
+        expectedDesktopVersion: desktopVersion,
       });
-      expect(preloadReady).toEqual({ ok: true, reason: "" });
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const childEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        BB_DATA_DIR: join(smokeRoot, "data"),
+        BB_DESKTOP_AUTO_UPDATE: "0",
+        BB_DESKTOP_OPEN_DEVTOOLS: "0",
+        BB_DESKTOP_VERSION_CHECK: "0",
+        BB_SERVER_PORT: String(smokeServer.port),
+      };
+      delete childEnv.BB_DESKTOP_APP_URL;
+      delete childEnv.BB_DESKTOP_NODE_EXEC_PATH;
+      delete childEnv.ELECTRON_RUN_AS_NODE;
 
-      await sleep(ELECTRON_POST_READY_SETTLE_MS);
-      expect(
-        child.exitCode,
-        `Electron exited after startup.\n${formatProcessOutput({
+      const child = spawn(
+        electronBinary,
+        [
+          ...createPackagedAppLaunchArguments({
+            platform: process.platform,
+            userDataDir: join(smokeRoot, "user-data"),
+          }),
+          ".",
+        ],
+        {
+          cwd: desktopPackageRoot,
+          env: childEnv,
+        },
+      );
+      child.stdout.on("data", (chunk) => {
+        stdout.push(String(chunk));
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr.push(String(chunk));
+      });
+
+      try {
+        const preloadReady = await waitForPreloadReady({
+          child,
+          preloadReady: smokeServer.preloadReady,
           stderr,
           stdout,
-        })}`,
-      ).toBeNull();
-      expect(
-        child.signalCode,
-        `Electron exited after startup.\n${formatProcessOutput({
-          stderr,
-          stdout,
-        })}`,
-      ).toBeNull();
-
-      for (const scenario of ["custom", "connect", "fatal"]) {
-        const retryProfile = join(smokeRoot, `retry-${scenario}`);
-        await mkdir(retryProfile);
-        let reportReady: (result: PreloadReadyResult) => void = () => {};
-        const retryReady = new Promise<PreloadReadyResult>((resolvePromise) => {
-          reportReady = resolvePromise;
+          timeoutMs: ELECTRON_STARTUP_TIMEOUT_MS,
         });
-        const retry = spawn(
-          electronBinary,
-          [
-            `--user-data-dir=${retryProfile}`,
-            resolve(
-              desktopPackageRoot,
-              "test/fixtures/startup-retry-smoke.cjs",
-            ),
-          ],
-          {
-            cwd: desktopPackageRoot,
-            env: {
-              ...childEnv,
-              BB_STARTUP_SMOKE_APP_PATH: desktopPackageRoot,
-              BB_STARTUP_SMOKE_SCENARIO: scenario,
+        expect(preloadReady).toEqual({ ok: true, reason: "" });
+
+        await sleep(ELECTRON_POST_READY_SETTLE_MS);
+        expect(
+          child.exitCode,
+          `Electron exited after startup.\n${formatProcessOutput({
+            stderr,
+            stdout,
+          })}`,
+        ).toBeNull();
+        expect(
+          child.signalCode,
+          `Electron exited after startup.\n${formatProcessOutput({
+            stderr,
+            stdout,
+          })}`,
+        ).toBeNull();
+
+        for (const scenario of ["custom", "connect", "fatal"]) {
+          const retryProfile = join(smokeRoot, `retry-${scenario}`);
+          await mkdir(retryProfile);
+          let reportReady: (result: PreloadReadyResult) => void = () => {};
+          const retryReady = new Promise<PreloadReadyResult>(
+            (resolvePromise) => {
+              reportReady = resolvePromise;
             },
-          },
-        );
-        const retryStdout: string[] = [];
-        const retryStderr: string[] = [];
-        retry.stdout.on("data", (chunk) => {
-          retryStdout.push(String(chunk));
-          if (retryStdout.join("").includes("STARTUP_RETRY_SMOKE_OK")) {
-            reportReady({ ok: true, reason: "" });
-          }
-        });
-        retry.stderr.on("data", (chunk) => retryStderr.push(String(chunk)));
-        try {
-          const result = await waitForPreloadReady({
-            child: retry,
-            preloadReady: retryReady,
-            stdout: retryStdout,
-            stderr: retryStderr,
-            timeoutMs: ELECTRON_STARTUP_TIMEOUT_MS,
+          );
+          const retry = spawn(
+            electronBinary,
+            [
+              ...createPackagedAppLaunchArguments({
+                platform: process.platform,
+                userDataDir: retryProfile,
+              }),
+              resolve(
+                desktopPackageRoot,
+                "test/fixtures/startup-retry-smoke.cjs",
+              ),
+            ],
+            {
+              cwd: desktopPackageRoot,
+              env: {
+                ...childEnv,
+                BB_STARTUP_SMOKE_APP_PATH: desktopPackageRoot,
+                BB_STARTUP_SMOKE_SCENARIO: scenario,
+              },
+            },
+          );
+          const retryStdout: string[] = [];
+          const retryStderr: string[] = [];
+          retry.stdout.on("data", (chunk) => {
+            retryStdout.push(String(chunk));
+            if (retryStdout.join("").includes("STARTUP_RETRY_SMOKE_OK")) {
+              reportReady({ ok: true, reason: "" });
+            }
           });
-          expect(result).toEqual({ ok: true, reason: "" });
-        } finally {
-          await stopElectron(retry);
+          retry.stderr.on("data", (chunk) => retryStderr.push(String(chunk)));
+          try {
+            const result = await waitForPreloadReady({
+              child: retry,
+              preloadReady: retryReady,
+              stdout: retryStdout,
+              stderr: retryStderr,
+              timeoutMs: ELECTRON_STARTUP_TIMEOUT_MS,
+            });
+            expect(result).toEqual({ ok: true, reason: "" });
+          } finally {
+            await stopElectron(retry);
+          }
         }
+      } finally {
+        await stopElectron(child);
+        await smokeServer.close();
+        await rm(smokeRoot, { force: true, recursive: true });
       }
-    } finally {
-      await stopElectron(child);
-      await smokeServer.close();
-      await rm(smokeRoot, { force: true, recursive: true });
-    }
-  }, 90_000);
+    },
+    90_000,
+  );
 });
