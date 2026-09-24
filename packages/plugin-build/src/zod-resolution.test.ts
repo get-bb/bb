@@ -1,3 +1,4 @@
+import { accessSync } from "node:fs";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -8,6 +9,25 @@ import { buildPluginHost } from "./build-plugin-host.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 const tempDirs: string[] = [];
+
+// bb-fork(windows): a `%USERPROFILE%\node_modules` would leak into esbuild's
+// walk-up resolution and hide the missing-zod failures these tests assert.
+function resolveFixtureRoot(): string {
+  if (process.platform === "win32") {
+    for (const candidate of [
+      join(process.env.SystemRoot ?? "C:\\Windows", "Temp"),
+      process.env.PUBLIC ?? "C:\\Users\\Public",
+    ]) {
+      try {
+        accessSync(candidate);
+        return candidate;
+      } catch {}
+    }
+  }
+  return tmpdir();
+}
+
+const FIXTURE_ROOT = resolveFixtureRoot();
 
 afterEach(async () => {
   await Promise.all(
@@ -35,7 +55,7 @@ async function installSdk(
 }
 
 it("bundles SDK-owned Zod without requiring the plugin to declare it", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "bb-host-zod-"));
+  const dir = await mkdtemp(join(FIXTURE_ROOT, "bb-host-zod-"));
   tempDirs.push(dir);
   await writeFile(
     join(dir, "package.json"),
@@ -84,7 +104,7 @@ it("bundles SDK-owned Zod without requiring the plugin to declare it", async () 
 });
 
 it("reports a broken SDK installation separately from plugin dependencies", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "bb-host-sdk-zodless-"));
+  const dir = await mkdtemp(join(FIXTURE_ROOT, "bb-host-sdk-zodless-"));
   tempDirs.push(dir);
   await writeFile(
     join(dir, "package.json"),
@@ -115,7 +135,7 @@ it("reports a broken SDK installation separately from plugin dependencies", asyn
 });
 
 it("requires Zod when the plugin imports it directly", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "bb-host-direct-zod-"));
+  const dir = await mkdtemp(join(FIXTURE_ROOT, "bb-host-direct-zod-"));
   tempDirs.push(dir);
   await writeFile(
     join(dir, "package.json"),
