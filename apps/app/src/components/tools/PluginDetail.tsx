@@ -68,7 +68,7 @@ import {
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
 
-export function pluginMarketplaceUrl({
+function pluginMarketplaceUrl({
   marketplace,
   entryId,
 }: {
