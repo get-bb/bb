@@ -91,8 +91,11 @@ Still to do: deploying the migration and the gateway; phase 2 voice.
   and `bb.sdk.plugins.callRpc` already carry calls between plugins.
   `provider-usage` reads usage sources from account-pool, codex and
   claude-code this way. Limits of the mechanism:
-  - Handlers see no caller identity. Any local process can call any method,
-    including an agent running `bb plugin rpc call`.
+  - Handlers saw no caller identity, so any local process could call any
+    method, including an agent running `bb plugin rpc call`. The stack adds
+    `context.experimental_caller`: a call made through another plugin's
+    `bb.sdk.plugins.callRpc` carries a per-load token the server verifies, and
+    every other call is a `client` call.
   - Plugins cannot declare dependencies. They load alphabetically, so callers
     must make these calls lazily.
 
@@ -158,8 +161,9 @@ refreshes from `GET /api/account/me` at start and every 6 hours.
 - clears the KV entry
 - bumps the status revision
 
-A 401 from any `fetch` marks the account `revoked` and clears the credential,
-the same way connect's `credentialRejected` behaves today.
+A 401 from `fetch` is confirmed with `GET /api/account/me` first; only a 401
+there marks the account `revoked` and clears the credential, so a 401 from a
+path that never accepted the credential does not sign the server out.
 
 **RPC contract.** Method names carry a version, like `provider-usage.v1.*`.
 Discoverable methods publish their JSON Schema so third-party plugins can use
@@ -169,8 +173,8 @@ them.
 | -------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bb-account.v1.status`                 | yes          | Returns `{state: "signed-out" \| "signed-in" \| "revoked" \| "held", revision, account?}`.                                                                                                                                  |
 | `bb-account.v1.waitForStatusChange`    | yes          | Long-poll. Resolves when `revision` passes `afterRevision`, or after 25 s. Connect uses it to start the tunnel the moment the user signs in, with no event bus.                                                             |
-| `bb-account.v1.fetch`                  | yes          | `{target: "api" \| "gate", method, path, body?}` → `{status, body}`. The origin is fixed to the getbb.app apex or this account's gate host. The path must start with `/api/`. JSON only, 1 MB cap. Attaches the credential. |
-| `bb-account.v1.adoptConnectCredential` | no           | One-time migration from connect's KV. Validates against `/api/account/me` and stores the credential only when signed out. Removed after two releases.                                                                       |
+| `bb-account.v1.fetch`                  | yes          | `{target: "api" \| "gate", method, path, body?}` → `{status, body}`. The origin is fixed to the getbb.app apex or this account's gate host. Paths under `/api/ai/` for any caller; `/api/connect/` only for the connect plugin. Optional `timeoutMs` (1–15 s). JSON only, 1 MB cap. Attaches the credential. |
+| `bb-account.v1.adoptConnectCredential` | no           | Connect plugin only. One-time migration from connect's KV. Validates against `/api/account/me` and stores the credential only when signed out. Removed after two releases.                                                                       |
 
 The plugin also has private methods for its own UI: `login.start`,
 `login.poll`, `login.cancel`, `redeemCode` and `signOut`.
@@ -179,10 +183,11 @@ How much `fetch` protects:
 
 - A caller can use getbb.app APIs as this server but cannot copy the
   credential off the machine.
-- It is not an access-control boundary. Any local caller can still call
-  `fetch`, and the same OS user can read `bb.db`.
+- The path policy keys off the verified caller: an agent or another plugin
+  reaches only `/api/ai/`, so it cannot mint tunnel tickets, machine codes, or
+  desktop-session cookies. The same OS user can still read `bb.db`.
 - What it does remove is the one-command path for an agent to exfiltrate the
-  credential.
+  credential or act as the server.
 
 **CLI.** `bb account status | login [--code <code>] [--no-open] | logout`. Every
 command accepts `--json`.
@@ -645,7 +650,7 @@ chain. Phase 2 adds:
   - on upgrade, the legacy connect credential is adopted and the tunnel
     reconnects with a ticket
   - signing in wakes the tunnel through the long-poll
-  - a 401 from `fetch` signs out everywhere
+  - a 401 from `fetch` signs out only when `/api/account/me` confirms it
 - **End to end** (`verify-bb` against staging):
   1. Sign in with the browser link.
   2. In a project that uses Claude Code and no Codex, create a thread. It gets
