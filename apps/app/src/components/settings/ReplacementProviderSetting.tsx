@@ -40,7 +40,11 @@ export function ReplacementProviderSetting({
   const automaticOption = {
     key: AUTOMATIC_REPLACEMENT_PROVIDER,
     title: "Automatic",
-    description: `Currently using ${automaticProvider.title} from ${automaticProvider.pluginId}.`,
+    description: `Chooses ${automaticProvider.title} (${
+      replacementProviderKey(automaticProvider) === bundledProvider
+        ? "built-in"
+        : automaticProvider.pluginId
+    }).`,
   };
   const builtInOption =
     builtInDescription === undefined
@@ -50,14 +54,23 @@ export function ReplacementProviderSetting({
           title: "bb (built-in)",
           description: builtInDescription,
         };
+  const pluginOptions = slots.map((slot) => {
+    const bundled = replacementProviderKey(slot) === bundledProvider;
+    return {
+      key: replacementProviderKey(slot),
+      title: bundled ? `${slot.title} (built-in)` : slot.title,
+      description: bundled
+        ? `BB default. ${slot.description ?? ""}`.trim()
+        : slot.description === undefined
+          ? `From the ${slot.pluginId} plugin.`
+          : `${slot.pluginId} plugin. ${slot.description}`,
+    };
+  });
   const options = [
     ...(allowAutomatic ? [automaticOption] : []),
+    ...pluginOptions.filter((option) => option.key !== bundledProvider),
+    ...pluginOptions.filter((option) => option.key === bundledProvider),
     ...(builtInOption === null ? [] : [builtInOption]),
-    ...slots.map((slot) => ({
-      key: replacementProviderKey(slot),
-      title: slot.title,
-      description: slot.description ?? `From the ${slot.pluginId} plugin.`,
-    })),
   ];
   const selected =
     options.find((option) => option.key === preference) ??

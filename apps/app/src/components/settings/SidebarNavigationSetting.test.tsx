@@ -28,8 +28,8 @@ function registerNavigation(pluginId: string, id: string, title: string) {
 
 describe("SidebarNavigationSetting", () => {
   it("defaults to Automatic, which prefers an installed plugin over the bundled Navigation", async () => {
-    registerNavigation("navbar", "grid", "Navigation grid");
     registerNavigation("navigation", "navigation", "Navigation");
+    registerNavigation("navbar", "grid", "Navigation grid");
     const store = createStore();
     render(
       <Provider store={store}>
@@ -47,10 +47,12 @@ describe("SidebarNavigationSetting", () => {
     );
     expect(
       options.find((option) => option.startsWith("Automatic")),
-    ).toContain("Currently using Navigation grid from navbar.");
-    expect(options.some((option) => option.includes("built-in"))).toBe(false);
+    ).toContain("Chooses Navigation grid (navbar).");
+    expect(options).toHaveLength(3);
+    expect(options[1]).toContain("Navigation gridFrom the navbar plugin.");
+    expect(options[2]).toContain("Navigation (built-in)BB default.");
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Navigation(?! grid)/u }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Navigation \(built-in\)/u }));
     expect(store.get(sidebarNavigationProviderAtom)).toBe(
       "navigation/navigation",
     );

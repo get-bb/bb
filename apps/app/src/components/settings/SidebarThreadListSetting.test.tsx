@@ -60,9 +60,13 @@ describe("SidebarThreadListSetting", () => {
     expect(
       (await screen.findByRole("menuitem", { name: /Automatic/u }))
         .textContent,
-    ).toContain("Currently using Inbox from zen.");
-    expect(screen.queryByRole("menuitem", { name: /built-in/u })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Thread list/u }));
+    ).toContain("Chooses Inbox (zen).");
+    const options = screen
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent ?? "");
+    expect(options[1]).toContain("InboxFrom the zen plugin.");
+    expect(options[2]).toContain("Thread list (built-in)BB default.");
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Thread list \(built-in\)/u }));
 
     expect(store.get(threadListProviderAtom)).toBe("thread-list/thread-list");
   });
