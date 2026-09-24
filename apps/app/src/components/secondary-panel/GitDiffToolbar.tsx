@@ -153,46 +153,44 @@ function GitDiffFileFilterInput({
   }, [isPointerCoarse]);
 
   return (
-    <div className="mt-2 flex h-8 items-center gap-1 max-md:pointer-coarse:h-10">
-      <div className="relative min-w-0 flex-1">
-        <Icon
-          name="Search"
-          className={cn(
-            "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
-            COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-          )}
-        />
-        <Input
-          ref={inputRef}
-          aria-label="Filter changed files by path"
-          className={cn(
-            "h-8 pl-8 pr-2 focus-visible:ring-0 max-md:pointer-coarse:h-10",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-          placeholder="Filter files by path, !term to exclude"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onChange(null);
-            }
-          }}
-        />
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
+    <div className="relative mt-2">
+      <Icon
+        name="Search"
         className={cn(
-          COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-          "shrink-0 text-muted-foreground",
+          "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
+          COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
         )}
-        aria-label="Clear file filter"
-        onClick={() => onChange(null)}
-      >
-        <Icon name="X" />
-      </Button>
+      />
+      <Input
+        ref={inputRef}
+        aria-label="Filter changed files by path"
+        className={cn(
+          "h-8 rounded-lg border-border pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
+          COARSE_POINTER_TEXT_SM_CLASS,
+        )}
+        placeholder="Filter files by path, !term to exclude"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onChange(null);
+          }
+        }}
+      />
+      {value ? (
+        <button
+          type="button"
+          className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground hover:text-foreground"
+          aria-label="Clear file filter"
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+        >
+          <Icon name="X" className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -270,7 +268,7 @@ export function GitDiffToolbar({
           />
         </div>
         <div
-          className="flex min-w-0 flex-1 basis-auto items-center"
+          className="flex min-w-0 flex-1 basis-auto items-center gap-2"
           data-testid="git-diff-toolbar-details"
         >
           <span
