@@ -300,6 +300,7 @@ describe("builtin plugin reconciliation", () => {
       ["account-pool", "Layers"],
       ["ask-user-question", "MessageQuestion"],
       ["automations", "Repeat"],
+      ["bb-ai", "AiBrain01"],
       ["concurrency-limit", "Limitation"],
       ["bb-account", "UserRound"],
       ["connect", "Smartphone"],
