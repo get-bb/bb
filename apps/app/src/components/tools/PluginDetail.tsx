@@ -1,4 +1,5 @@
 import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
+import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
 import { useSyncExternalStore } from "react";
 import {
   ResourceActionButton,
