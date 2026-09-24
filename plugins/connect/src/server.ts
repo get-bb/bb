@@ -55,6 +55,10 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
+  bb.events.on("experimental_host.deleted", async ({ host }) => {
+    await shares.pruneHost(host.id);
+  });
+
   const recheckServerAccess = createServerAccessRecheck(bb);
   tunnel = new ConnectTunnel({
     store,

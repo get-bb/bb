@@ -522,7 +522,7 @@ describe("ShareRegistry", () => {
     await fakeHost.harness.dispose();
   });
 
-  it("skips removed hosts at activation but still fails on live-host declaration errors", async () => {
+  it("prunes shares of removed hosts at activation but still fails on live-host declaration errors", async () => {
     const kv = new Map<string, unknown>([
       [
         SHARES_KV_KEY,
@@ -583,6 +583,16 @@ describe("ShareRegistry", () => {
       undefined,
     );
     expect(declared).toEqual([{ hostId: REMOTE_HOST_ID, ports: [4000] }]);
+    expect(kv.get(SHARES_KV_KEY)).toEqual({
+      [`${REMOTE_HOST_ID}:4000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 4000,
+        createdAt: 2,
+      },
+    });
+    expect(registry.snapshot()).toEqual([
+      expect.objectContaining({ hostId: REMOTE_HOST_ID, port: 4000 }),
+    ]);
     expect(fakeHost.harness.logEntries).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1916,6 +1926,60 @@ describe("connect plugin", () => {
     });
     expect(harness.sharedPortDeclarations).toEqual([
       { hostId: "host-deleted", ports: [] },
+    ]);
+  });
+
+  it("prunes every share of a machine when it is deleted", async () => {
+    const { bb, harness } = await loadPlugin();
+    await bb.storage.kv.set(SHARES_KV_KEY, {
+      [`${SERVER_HOST_ID}:8000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 8000,
+        createdAt: 1,
+      },
+      [`${REMOTE_HOST_ID}:3000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 3000,
+        createdAt: 2,
+      },
+      [`${REMOTE_HOST_ID}:4000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 4000,
+        createdAt: 3,
+      },
+    });
+
+    await harness.emitThreadEvent("experimental_host.deleted", {
+      host: {
+        id: REMOTE_HOST_ID,
+        name: REMOTE_HOST_NAME,
+        type: "ephemeral",
+        status: "disconnected",
+        machineProviderId: "modal",
+        lifecycle: {
+          phase: "destroyed",
+          suspendedAt: null,
+          message: null,
+          pendingLog: "",
+          teardown: { status: "removed", attempt: 0 },
+        },
+        maxPermissionMode: "full",
+        lastSeenAt: null,
+        lastRejectedProtocolVersion: null,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    });
+
+    expect(await bb.storage.kv.get(SHARES_KV_KEY)).toEqual({
+      [`${SERVER_HOST_ID}:8000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 8000,
+        createdAt: 1,
+      },
+    });
+    expect(await harness.callRpc("listShares")).toEqual([
+      expect.objectContaining({ hostId: SERVER_HOST_ID, port: 8000 }),
     ]);
   });
 

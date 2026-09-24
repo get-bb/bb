@@ -3184,6 +3184,18 @@ After callback invocation, core completes pause and resumes for queued work. Rec
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
 
+## Host deletion notifications
+
+`PluginEvents.on("experimental_host.deleted", handler)` delivers `{host}` once after a
+machine is removed: from `DELETE /hosts/:id` for manually added machines, and after a
+machine provider finishes removal for provider machines. `host` is the public host DTO
+at removal time (status `disconnected`); `bb.sdk.hosts.get` returns 404 for it afterwards.
+Delivery is fire-and-forget like every other event: a plugin that is not loaded at
+removal time never sees it, so per-host state must also be reconciled against a 404
+from `bb.sdk.hosts.get`. Connect does both to prune shared ports of removed machines.
+Stabilization requires deciding whether hosts deserve their own event map instead of
+`PluginThreadEventPayloads`, covering removal paths added later, and a second consumer.
+
 ## `bb.experimental_machines.getResource`
 
 Returns core’s current persisted host resource as JSON, or null when the host or

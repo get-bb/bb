@@ -374,7 +374,10 @@ export class ShareRegistry {
       try {
         this.declare(hostId);
       } catch (error) {
-        if (await this.isRemovedHost(hostId)) continue;
+        if (await this.isRemovedHost(hostId)) {
+          await this.pruneHost(hostId);
+          continue;
+        }
         firstError ??= error;
         this.options.log.warn(
           `failed to declare shared ports for host ${hostId}: ${errorMessage(error)}`,
@@ -382,6 +385,21 @@ export class ShareRegistry {
       }
     }
     if (firstError !== undefined) throw firstError;
+  }
+
+  async pruneHost(hostId: string): Promise<void> {
+    await this.load();
+    const keys = [...this.shares]
+      .filter(([, share]) => share.hostId === hostId)
+      .map(([key]) => key);
+    if (keys.length === 0) return;
+    for (const key of keys) this.shares.delete(key);
+    this.declaredMachineHostIds.delete(hostId);
+    this.lastListings = this.lastListings.filter(
+      (entry) => entry.hostId !== hostId,
+    );
+    await this.persist();
+    this.options.onChange?.();
   }
 
   private async isRemovedHost(hostId: string): Promise<boolean> {

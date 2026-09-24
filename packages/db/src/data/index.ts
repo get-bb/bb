@@ -255,6 +255,7 @@ export {
   listPublicHosts,
   updateHost,
 } from "./hosts.js";
+export type { HostRow } from "./hosts.js";
 
 export {
   deleteStoredProviderModelCatalogsForHost,

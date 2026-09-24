@@ -635,6 +635,29 @@ describe("public host management", () => {
     });
   });
 
+  it("announces a removed host to plugins", async () => {
+    await withTestHarness(async (harness) => {
+      const primary = seedHost(harness.deps, { id: "host_primary" });
+      seedPrimaryHost(harness.deps, primary.id);
+      const host = seedHost(harness.deps, { id: "host_remove_announced" });
+      const announced = vi.spyOn(
+        harness.pluginService.events,
+        "emitHostDeleted",
+      );
+
+      const response = await harness.app.request(`${API}/hosts/${host.id}`, {
+        method: "DELETE",
+      });
+
+      expect(response.status).toBe(200);
+      expect(announced).toHaveBeenCalledOnce();
+      expect(announced.mock.calls[0]?.[0]).toMatchObject({
+        id: host.id,
+        destroyedAt: expect.any(Number),
+      });
+    });
+  });
+
   it("refuses to remove the primary host", async () => {
     await withTestHarness(async (harness) => {
       const primary = seedHost(harness.deps, { id: "host_primary" });
