@@ -741,9 +741,11 @@ describe("bb-app launcher", () => {
         "--host-daemon-port",
         "48887",
         "--auto-update",
+        "--allow-insecure-server-url",
       ]),
     ).toEqual({
       options: {
+        allowInsecureServerUrl: true,
         autoUpdate: true,
         dataDir: "~/bb-data",
         help: false,

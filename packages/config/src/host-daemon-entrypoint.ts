@@ -9,6 +9,7 @@ import {
   BB_CLI_DIR_ENV,
   BB_CONNECT_MACHINE_CREDENTIAL_ENV,
   BB_HOST_ENROLL_KEY_ENV,
+  BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL_ENV,
   BB_HOST_DAEMON_AUTO_UPDATE_ENV,
   BB_HOST_ID_ENV,
   BB_HOST_NAME_ENV,
@@ -20,6 +21,7 @@ export interface HostDaemonEntrypointConfig {
   BB_CLI_DIR?: string;
   BB_SERVER_HEADERS?: Record<string, string>;
   BB_HOST_ENROLL_KEY?: string;
+  BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL?: boolean;
   BB_HOST_DAEMON_AUTO_UPDATE?: boolean;
   BB_HOST_ID?: string;
   BB_HOST_NAME?: string;
@@ -50,6 +52,11 @@ export function loadHostDaemonEntrypointConfig(
   const autoUpdate = readOptionalEnvVar({
     context: loader.context,
     definition: BB_HOST_DAEMON_AUTO_UPDATE_ENV,
+    env: loader.env,
+  });
+  const allowInsecureServerUrl = readOptionalEnvVar({
+    context: loader.context,
+    definition: BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL_ENV,
     env: loader.env,
   });
   const machineCredential = readOptionalEnvVar({
@@ -91,6 +98,11 @@ export function loadHostDaemonEntrypointConfig(
     key: "BB_SERVER_HEADERS",
     target: config,
     value: serverHeaders,
+  });
+  assignIfDefined({
+    key: "BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL",
+    target: config,
+    value: allowInsecureServerUrl,
   });
   assignIfDefined({
     key: "BB_HOST_DAEMON_AUTO_UPDATE",

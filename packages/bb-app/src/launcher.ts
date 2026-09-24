@@ -334,6 +334,7 @@ interface InvalidCommand {
 }
 
 interface LauncherCliOptions {
+  allowInsecureServerUrl?: boolean;
   autoUpdate?: boolean;
   bundled?: boolean;
   dataDir?: string;
@@ -800,6 +801,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     allowPositionals: true,
     args,
     options: {
+      "allow-insecure-server-url": { type: "boolean" },
       "auto-update": { type: "boolean" },
       bundled: { type: "boolean" },
       "data-dir": { type: "string" },
@@ -820,6 +822,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     help: readBooleanOption(parsed.values.help),
     json: readBooleanOption(parsed.values.json),
   };
+  if (readBooleanOption(parsed.values["allow-insecure-server-url"])) {
+    options.allowInsecureServerUrl = true;
+  }
   if (readBooleanOption(parsed.values["auto-update"])) {
     options.autoUpdate = true;
   }
@@ -952,6 +957,9 @@ function createEnvFromOptions(
   }
   if (args.options.autoUpdate === true) {
     env.BB_HOST_DAEMON_AUTO_UPDATE = "1";
+  }
+  if (args.options.allowInsecureServerUrl === true) {
+    env.BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL = "1";
   }
   if (args.options.hostDaemonPort !== undefined) {
     env.BB_HOST_DAEMON_PORT = args.options.hostDaemonPort;
@@ -2855,8 +2863,8 @@ export async function runBbHostDaemon(
     process.stdout.write(`bb-host-daemon
 
 Usage:
-  bb-host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update]
-  bb-host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
+  bb-host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update] [--allow-insecure-server-url]
+  bb-host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update] [--allow-insecure-server-url]
 `);
     return;
   }
@@ -2906,8 +2914,8 @@ Usage:
   bb-app config refresh
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]
-  bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update]
-  bb-app host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
+  bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update] [--allow-insecure-server-url]
+  bb-app host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update] [--allow-insecure-server-url]
 
 CLI:
   npx --package bb-app bb <command>
