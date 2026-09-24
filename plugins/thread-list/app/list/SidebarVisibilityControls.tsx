@@ -272,7 +272,7 @@ export function SidebarOverflowItem({
           OVERFLOW_ROW_BUTTON_CLASS,
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
           "shrink-0",
-          !empty && "mt-1 border-t",
+          !empty && "mt-1",
         )}
         onClick={() => {
           close();
