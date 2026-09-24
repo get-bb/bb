@@ -262,7 +262,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -282,7 +281,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -303,7 +301,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -325,7 +322,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -347,7 +343,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -368,7 +363,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -386,7 +380,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -404,7 +397,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -512,15 +504,12 @@ describe("thread runtime display", () => {
     expect(entries.map((entry) => entry.runtime)).toEqual([
       {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
       {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
       {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
     ] satisfies ThreadRuntimeState[]);
   });

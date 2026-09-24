@@ -194,7 +194,6 @@ describe("buildChronologicalThreadList", () => {
         status: "active",
         runtime: {
           displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
         },
       }),
       createThread({

@@ -124,7 +124,6 @@ export interface ThreadPromptEnvironmentGoneSection {
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
   new Set([
     "active",
-    "host-reconnecting",
     "provisioning",
     "starting",
     "waiting-for-host",

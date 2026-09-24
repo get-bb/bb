@@ -79,7 +79,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     },
     runtime: {
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     },
     ...overrides,
   });
@@ -100,7 +99,6 @@ function makeIdleThread(
     status: "idle",
     runtime: {
       displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
     },
     activity: IDLE_ACTIVITY,
     ...overrides,
@@ -662,7 +660,6 @@ describe("mobile recent thread rows", () => {
               latestAttentionAt: 5,
               runtime: {
                 displayStatus: "idle",
-                hostReconnectGraceExpiresAt: null,
               },
               activity: {
                 activeWorkflowCount: 0,
@@ -781,7 +778,6 @@ describe("RootComposeMobileRecents", () => {
               },
               runtime: {
                 displayStatus: "idle",
-                hostReconnectGraceExpiresAt: null,
               },
             }),
           ]}

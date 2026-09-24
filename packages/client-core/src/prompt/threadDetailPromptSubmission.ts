@@ -124,7 +124,6 @@ export function shouldQueueFollowUpMessage(
 ): boolean {
   return (
     displayStatus === "active" ||
-    displayStatus === "host-reconnecting" ||
     displayStatus === "provisioning" ||
     displayStatus === "starting" ||
     displayStatus === "stopping" ||

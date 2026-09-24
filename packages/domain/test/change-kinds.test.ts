@@ -40,7 +40,7 @@ const maximalThreadMetadata: ThreadChangeMetadata = {
   projectId: "proj_1",
   statusChange: {
     status: "active",
-    runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+    runtime: { displayStatus: "active" },
     activity: {
       activeBackgroundAgentCount: 1,
       activeBackgroundCommandCount: 1,
@@ -124,7 +124,6 @@ describe("lenient changed-message schema parity", () => {
           status: "active",
           runtime: {
             displayStatus: "teleporting",
-            hostReconnectGraceExpiresAt: null,
           },
           activity: {
             activeBackgroundAgentCount: 0,

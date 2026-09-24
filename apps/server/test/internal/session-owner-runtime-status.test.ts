@@ -172,7 +172,6 @@ describe("host thread runtime status notifications", () => {
           status: "active",
           runtime: {
             displayStatus: "waiting-for-host",
-            hostReconnectGraceExpiresAt: null,
           },
         });
         expect(

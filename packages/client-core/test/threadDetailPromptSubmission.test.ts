@@ -292,7 +292,6 @@ describe("threadDetailPromptSubmission", () => {
 
     const queueableStatuses: ThreadRuntimeDisplayStatus[] = [
       "active",
-      "host-reconnecting",
       "provisioning",
       "starting",
       "waiting-for-host",

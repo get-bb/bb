@@ -37,7 +37,6 @@ export type { ThreadOriginKind } from "./thread-origin-kind.js";
 const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
   "provisioning",
-  "host-reconnecting",
   "waiting-for-host",
 ] as const;
 const threadRuntimeDisplayStatusSchema = z.enum(
@@ -49,7 +48,6 @@ export type ThreadRuntimeDisplayStatus = z.infer<
 
 export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
-  hostReconnectGraceExpiresAt: z.number().nullable(),
 });
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 

@@ -1099,9 +1099,9 @@ export interface PluginSidebarThread {
    */
   status: ThreadStatus;
   /**
-   * `status` refined by host and environment state: adds "provisioning",
-   * "host-reconnecting", and "waiting-for-host" for a thread whose machine is
-   * not ready. Treat an unknown value as `status`.
+   * `status` refined by host and environment state: adds "provisioning" and
+   * "waiting-for-host" for a thread whose machine is not ready. Treat an
+   * unknown value as `status`.
    */
   runtimeStatus: ThreadRuntimeDisplayStatus;
   /**

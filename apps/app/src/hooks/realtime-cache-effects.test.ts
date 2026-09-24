@@ -877,7 +877,6 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           status: "active",
           updatedAt: 200,
@@ -2328,7 +2327,7 @@ describe("createRealtimeCacheEffects", () => {
       archivedAt: null,
       id: "thr_1",
       latestAttentionAt: 100,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
@@ -2336,7 +2335,7 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_2",
       latestAttentionAt: 50,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 50,
     };
@@ -2369,7 +2368,6 @@ describe("createRealtimeCacheEffects", () => {
       latestAttentionAt: 100,
       runtime: {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
       status: "active",
       updatedAt: 200,
@@ -2544,7 +2542,7 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
@@ -2574,7 +2572,6 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           status: "active",
           updatedAt: 200,
@@ -2618,13 +2615,13 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
     const activeRow = {
       ...idleRow,
-      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "active" },
       status: "active",
       updatedAt: 200,
     };
@@ -2680,7 +2677,6 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           status: "active",
           updatedAt: 200,
@@ -2982,7 +2978,7 @@ describe("createRealtimeCacheEffects", () => {
         activity: NO_THREAD_ACTIVITY,
         id: "thr_1",
         latestAttentionAt: 100,
-        runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "idle" },
         status: "idle",
         updatedAt: 100,
       };
@@ -3003,7 +2999,6 @@ describe("createRealtimeCacheEffects", () => {
             latestAttentionAt: 100,
             runtime: {
               displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
             },
             status: "active",
             updatedAt: 200,
@@ -3046,7 +3041,6 @@ describe("createRealtimeCacheEffects", () => {
                 latestAttentionAt: 100,
                 runtime: {
                   displayStatus: "idle",
-                  hostReconnectGraceExpiresAt: null,
                 },
                 status: "idle",
                 updatedAt: 100,
@@ -3072,7 +3066,6 @@ describe("createRealtimeCacheEffects", () => {
             latestAttentionAt: 200,
             runtime: {
               displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
             },
             status: "active",
             updatedAt: 200,
