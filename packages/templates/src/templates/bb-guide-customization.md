@@ -307,10 +307,12 @@ an upgrade uploads the old browser-stored layout once.
   bb settings ui set <key> <value> [--json]
   bb settings ui reset <key> [--json]
 
-The sidebar thread list uses an explicit plugin selection and defaults to the bundled
-Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
-`__builtin__` selections resolve to that default; other plugin selections are preserved.
-Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+The sidebar thread list defaults to `__automatic__`: the first installed thread list
+plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
+bundled plugin when there is none. Installing a thread list plugin therefore switches
+to it. Legacy `__builtin__` selections resolve to the bundled plugin; other plugin
+selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 

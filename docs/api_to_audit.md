@@ -2291,9 +2291,10 @@ its customize editor in the region and keeps the provider mounted but hidden.
 
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
-bb's own rows ship as the bundled Navigation plugin, the default provider
-(`sidebar.navigationProvider` is `navigation/navigation`; legacy
-`__automatic__` and `__builtin__` resolve to it). A picked provider that is
+bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
+defaults to `__automatic__`, which uses the first other registered navigation
+plugin in slot snapshot order and falls back to the bundled plugin; legacy
+`__builtin__` resolves to the bundled plugin. A picked provider that is
 disabled or removed falls back to the bundled plugin once plugin frontends
 have loaded. The host keeps a placeholder for loading (skeleton rows at the
 provider's remembered height), missing (the bundled plugin is also off), and
@@ -2309,8 +2310,9 @@ mounted.
    `experimental_Original` never recurse or remount the thread list and
    footer. Remove `experimental_Original` once released plugins (Compact Nav
    0.1.x) no longer render it.
-3. **Arbitration.** Confirm an explicit provider choice with no Automatic
-   option is right when several navigation replacements exist.
+3. **Arbitration.** Confirm Automatic preferring installed navigation over
+   the bundled plugin, in plugin-id order, is right when several navigation
+   replacements exist.
 4. **Customize handoff.** Confirm providers accept the host editor replacing
    their region, and that focus returns to the control that opened it from a
    button, a dropdown item, and a context-menu item.
@@ -2400,12 +2402,14 @@ and navigation from `bb.onInstall`; later choices are the user's.
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
 one list at a time fills the scroll area. Automatic activation is the default.
-If several are registered, the first in the slot snapshot wins (plugin ids are
-sorted, then each plugin's registration order is preserved); removing the
-automatic winner reveals the next. The user can override that behavior under
-Settings → Appearance by pinning a specific provider; the choice is stored per
-client. bb ships its own list as the bundled `thread-list` plugin and has no
-separate built-in list, so there is no `Original` prop on this slot.
+bb ships its own list as the bundled `thread-list` plugin, and Automatic prefers
+any other registered list: the first in the slot snapshot wins (plugin ids are
+sorted, then each plugin's registration order is preserved), falling back to
+the bundled plugin; removing the automatic winner reveals the next. The user can
+override that behavior under Settings → Appearance by pinning a specific
+provider, including the bundled one; the choice is the synced
+`sidebar.threadListProvider` preference. bb has no separate built-in list, so
+there is no `Original` prop on this slot.
 
 Placeholders keep the sidebar usable: while plugin frontends boot the region
 shows skeleton rows; with no provider it shows "No thread list plugin is
@@ -2416,9 +2420,10 @@ place of a whole sidebar would strand the user) plus one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm automatic/pinned is the right long-term
-   selection model and alphabetical plugin-id order is an acceptable default
-   tie-breaker when multiple replacements are enabled.
+1. **Arbitration.** Confirm automatic/pinned, with installed lists preferred
+   over the bundled one, is the right long-term selection model and
+   alphabetical plugin-id order is an acceptable default tie-breaker when
+   multiple replacements are enabled.
 2. **Fallback discoverability.** Confirm one toast plus the placeholder's
    Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:

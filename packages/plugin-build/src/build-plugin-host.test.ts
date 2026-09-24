@@ -6,6 +6,7 @@ import {
   realpath,
   readdir,
   rm,
+  symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -410,6 +411,134 @@ describe("plugin host build", () => {
     await expect(
       buildPluginHost(dir, "0.9.0-test", await testToolchain()),
     ).rejects.toThrow(/@bb\/private-fixture/u);
+  });
+
+  it.each([
+    [
+      "dead dynamic import",
+      'if (false) import("../private-package/index.js"); export default 1;',
+    ],
+    [
+      "dead require",
+      'if (false) require("../private-package/index.js"); export default 1;',
+    ],
+    [
+      "relative value",
+      'import { value } from "../private-package/index.js"; export default value;',
+    ],
+    [
+      "erased value",
+      'import { value } from "../private-package/index.js"; export default 1;',
+    ],
+    [
+      "relative re-export",
+      'export { value as default } from "../private-package/index.js";',
+    ],
+    [
+      "dynamic import",
+      'export default () => import("../private-package/index.js");',
+    ],
+    ["require", 'export default require("../private-package/index.js");'],
+    [
+      "JSON",
+      'import value from "../private-package/value.json"; export default value;',
+    ],
+    [
+      "symlink",
+      'import { value } from "./linked/index.js"; export default value;',
+    ],
+    [
+      "erased symlink",
+      'import type { Value } from "./linked/index.js"; export default 1;',
+    ],
+    ["alias", 'import { value } from "private-alias"; export default value;'],
+    ["transitive", 'export { default } from "./helper.js";'],
+  ])("rejects private packages reached by %s", async (_name, source) => {
+    const parent = await mkdtemp(join(tmpdir(), "bb-host-private-graph-"));
+    tempDirs.push(parent);
+    const dir = join(parent, "plugin");
+    const privatePackage = join(parent, "private-package");
+    await mkdir(dir);
+    await mkdir(privatePackage);
+    await writeFile(
+      join(privatePackage, "package.json"),
+      JSON.stringify({ name: "@bb/private-fixture", type: "module" }),
+    );
+    await writeFile(
+      join(privatePackage, "index.ts"),
+      "export const value = 1; export type Value = number;",
+    );
+    await writeFile(join(privatePackage, "value.json"), '{"value":1}');
+    await symlink(privatePackage, join(dir, "linked"), "dir");
+    await writeFile(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          paths: { "private-alias": ["../private-package/index.ts"] },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-private-graph",
+        version: "1.0.0",
+        engines: { bb: ">=0.0" },
+        bb: {
+          name: "Private graph",
+          description: "Private graph fixture",
+          branding: { icon: "Cpu" },
+          server: "./server.ts",
+          host: "./host.ts",
+        },
+      }),
+    );
+    await writeFile(join(dir, "server.ts"), "export default () => {};");
+    await writeFile(join(dir, "host.ts"), source);
+    await mkdir(join(dir, "dist"));
+    await writeFile(
+      join(dir, "dist", "host.js"),
+      "previous validated artifact",
+    );
+    await writeFile(
+      join(dir, "helper.ts"),
+      'import { value } from "../private-package/index.js"; export default value;',
+    );
+    await expect(
+      buildPluginHost(dir, "0.9.0-test", await testToolchain()),
+    ).rejects.toThrow(/@bb\/private-fixture/u);
+    expect(await readFile(join(dir, "dist", "host.js"), "utf8")).toBe(
+      "previous validated artifact",
+    );
+    expect(await readdir(join(dir, "dist"))).toEqual(["host.js"]);
+  });
+
+  it("allows unresolved relative type imports without replacing runtime validation", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-host-erased-missing-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-erased-missing",
+        version: "1.0.0",
+        engines: { bb: ">=0.0" },
+        bb: {
+          name: "Erased missing",
+          description: "Erased missing fixture",
+          branding: { icon: "Cpu" },
+          server: "./server.ts",
+          host: "./host.ts",
+        },
+      }),
+    );
+    await writeFile(join(dir, "server.ts"), "export default () => {};");
+    await writeFile(
+      join(dir, "host.ts"),
+      'import type { Missing } from "./missing.js"; export default 1;',
+    );
+    await expect(
+      buildPluginHost(dir, "0.9.0-test", await testToolchain()),
+    ).resolves.toMatchObject({ artifactDigest: expect.any(String) });
   });
 
   it("allows private package names in comments and diagnostic strings", async () => {

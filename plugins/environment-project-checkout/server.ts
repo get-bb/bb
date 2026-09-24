@@ -146,6 +146,8 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     requires: { projectCheckout: true },
     inputs: checkoutInputsSchema,
     policy: { retireGraceMs: null },
+    experimental_existingPath: (inputs) =>
+      inputs.branch === undefined ? (inputs.path ?? null) : null,
     async validate(context) {
       const branch = context.inputs.branch;
       const path = context.inputs.path ?? context.projectCheckout.path;

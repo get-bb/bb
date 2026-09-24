@@ -383,3 +383,27 @@ it.each(["branch", "timeout", "abort"] as const)(
     }
   },
 );
+
+describe("checkout provider existing path", () => {
+  it.each([
+    [{ path: CHECKOUT_PATH }, CHECKOUT_PATH],
+    [{}, null],
+    [
+      { path: CHECKOUT_PATH, branch: { kind: "new", baseBranch: "main" } },
+      null,
+    ],
+    [{ path: CHECKOUT_PATH, branch: { kind: "existing", name: "main" } }, null],
+  ] as const)(
+    "reuses the recorded environment for %j: %s",
+    async (inputs, expected) => {
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+      });
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      expect(provider?.experimental_existingPath?.(inputs)).toBe(expected);
+    },
+  );
+});
