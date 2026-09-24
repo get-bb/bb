@@ -2805,6 +2805,7 @@ describe("a provider-produced environment over its life", () => {
       setPluginThreadEventEmitter({
         emitThreadEvents: () => {},
         emitTerminalInput: () => {},
+        emitHostDeleted: () => {},
         emitThreadCreated: () => {},
         emitThreadActive: () => {},
         emitThreadIdle: () => {},

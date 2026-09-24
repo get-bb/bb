@@ -217,6 +217,7 @@ void _assertAllAuthModesListed;
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_thread.events": ["thread", "sequence"],
   "experimental_terminal.input": ["terminal"],
+  "experimental_host.deleted": ["host"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],

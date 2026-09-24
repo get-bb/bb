@@ -55,6 +55,7 @@ import { hasPendingProjectSourceSetupOnHost } from "../projects/project-source-s
 import { machineProviderUnavailableReason } from "./provider-availability.js";
 import { errorMessage } from "../lib/error-log-fields.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
+import { emitPluginHostDeleted } from "../plugins/plugin-thread-events.js";
 
 type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
@@ -1258,7 +1259,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         const latest = getHost(deps.db, hostId);
         if (!lifecycleOwns(latest, record.provider.id, operationId, "removing"))
           return;
-        updateHost(deps.db, deps.hub, hostId, {
+        const destroyed = updateHost(deps.db, deps.hub, hostId, {
           destroyedAt: Date.now(),
           phase: "destroyed",
           resource: null,
@@ -1269,6 +1270,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         });
         deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
+        if (destroyed !== null) emitPluginHostDeleted(destroyed);
       } catch (error) {
         const current = getHost(deps.db, hostId);
         if (

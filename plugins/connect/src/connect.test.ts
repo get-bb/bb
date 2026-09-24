@@ -522,6 +522,168 @@ describe("ShareRegistry", () => {
     await fakeHost.harness.dispose();
   });
 
+  it("prunes shares of removed hosts at activation but still fails on live-host declaration errors", async () => {
+    const kv = new Map<string, unknown>([
+      [
+        SHARES_KV_KEY,
+        {
+          "host-deleted:3000": {
+            hostId: "host-deleted",
+            port: 3000,
+            createdAt: 1,
+          },
+          [`${REMOTE_HOST_ID}:4000`]: {
+            hostId: REMOTE_HOST_ID,
+            port: 4000,
+            createdAt: 2,
+          },
+        },
+      ],
+    ]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const declared: Array<{ hostId: string; ports: readonly number[] }> = [];
+    let remoteFailure: Error | null = null;
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: {
+        declareSharedPorts(hostId, ports) {
+          if (hostId === "host-deleted") {
+            throw new Error(
+              `cannot declare shared ports for unknown host ${hostId}`,
+            );
+          }
+          if (remoteFailure !== null) throw remoteFailure;
+          declared.push({ hostId, ports });
+        },
+        ensureSharedPortTunnel: pluginBb.hosts.ensureSharedPortTunnel,
+      },
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    await expect(registry.declareMachineShares(() => true)).resolves.toBe(
+      undefined,
+    );
+    expect(declared).toEqual([{ hostId: REMOTE_HOST_ID, ports: [4000] }]);
+    expect(kv.get(SHARES_KV_KEY)).toEqual({
+      [`${REMOTE_HOST_ID}:4000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 4000,
+        createdAt: 2,
+      },
+    });
+    expect(registry.snapshot()).toEqual([
+      expect.objectContaining({ hostId: REMOTE_HOST_ID, port: 4000 }),
+    ]);
+    expect(fakeHost.harness.logEntries).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: expect.stringContaining("host-deleted"),
+        }),
+      ]),
+    );
+
+    remoteFailure = new Error("temporary declaration failure");
+    await expect(registry.declareMachineShares(() => true)).rejects.toBe(
+      remoteFailure,
+    );
+    await fakeHost.harness.dispose();
+  });
+
+  it("retries pruning a removed host after storage fails", async () => {
+    const savedShares = {
+      "host-deleted:3000": {
+        hostId: "host-deleted",
+        port: 3000,
+        createdAt: 1,
+      },
+      [`${REMOTE_HOST_ID}:4000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 4000,
+        createdAt: 2,
+      },
+    };
+    const kv = new Map<string, unknown>([[SHARES_KV_KEY, savedShares]]);
+    const fakeHost = createConnectFakeHost();
+    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    let failWrite = true;
+    const registry = new ShareRegistry({
+      kv: {
+        async get<T>(key: string) {
+          return kv.get(key) as T | undefined;
+        },
+        async set(key: string, value: unknown) {
+          if (failWrite) throw new Error("storage unavailable");
+          kv.set(key, value);
+        },
+        async delete(key: string) {
+          kv.delete(key);
+        },
+      },
+      hosts: {
+        declareSharedPorts(hostId) {
+          if (hostId === "host-deleted") {
+            throw new Error(
+              `cannot declare shared ports for unknown host ${hostId}`,
+            );
+          }
+        },
+        ensureSharedPortTunnel: pluginBb.hosts.ensureSharedPortTunnel,
+      },
+      hostResolver: new ShareHostResolver(() => pluginBb.sdk),
+      getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+      getCredential: () => ({
+        serverUrl: "https://sawyer.getbb.app",
+        handle: "sawyer",
+        credential: "bbcred_x",
+      }),
+      log: pluginBb.log,
+    });
+
+    await registry.load();
+    await expect(registry.declareMachineShares(() => true)).rejects.toThrow(
+      "storage unavailable",
+    );
+    expect(kv.get(SHARES_KV_KEY)).toEqual(savedShares);
+    expect(registry.snapshot()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ hostId: "host-deleted", port: 3000 }),
+        expect.objectContaining({ hostId: REMOTE_HOST_ID, port: 4000 }),
+      ]),
+    );
+    expect(registry.snapshot()).toHaveLength(2);
+
+    failWrite = false;
+    await expect(registry.declareMachineShares(() => true)).resolves.toBe(
+      undefined,
+    );
+    expect(kv.get(SHARES_KV_KEY)).toEqual({
+      [`${REMOTE_HOST_ID}:4000`]: savedShares[`${REMOTE_HOST_ID}:4000`],
+    });
+    expect(registry.snapshot()).toEqual([
+      expect.objectContaining({ hostId: REMOTE_HOST_ID, port: 4000 }),
+    ]);
+    await fakeHost.harness.dispose();
+  });
+
   it("loads valid entries when another kv entry is malformed", async () => {
     const kv = new Map<string, unknown>([
       [
@@ -1840,6 +2002,60 @@ describe("connect plugin", () => {
     });
     expect(harness.sharedPortDeclarations).toEqual([
       { hostId: "host-deleted", ports: [] },
+    ]);
+  });
+
+  it("prunes every share of a machine when it is deleted", async () => {
+    const { bb, harness } = await loadPlugin();
+    await bb.storage.kv.set(SHARES_KV_KEY, {
+      [`${SERVER_HOST_ID}:8000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 8000,
+        createdAt: 1,
+      },
+      [`${REMOTE_HOST_ID}:3000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 3000,
+        createdAt: 2,
+      },
+      [`${REMOTE_HOST_ID}:4000`]: {
+        hostId: REMOTE_HOST_ID,
+        port: 4000,
+        createdAt: 3,
+      },
+    });
+
+    await harness.emitThreadEvent("experimental_host.deleted", {
+      host: {
+        id: REMOTE_HOST_ID,
+        name: REMOTE_HOST_NAME,
+        type: "ephemeral",
+        status: "disconnected",
+        machineProviderId: "modal",
+        lifecycle: {
+          phase: "destroyed",
+          suspendedAt: null,
+          message: null,
+          pendingLog: "",
+          teardown: { status: "removed", attempt: 0 },
+        },
+        maxPermissionMode: "full",
+        lastSeenAt: null,
+        lastRejectedProtocolVersion: null,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    });
+
+    expect(await bb.storage.kv.get(SHARES_KV_KEY)).toEqual({
+      [`${SERVER_HOST_ID}:8000`]: {
+        hostId: SERVER_HOST_ID,
+        port: 8000,
+        createdAt: 1,
+      },
+    });
+    expect(await harness.callRpc("listShares")).toEqual([
+      expect.objectContaining({ hostId: SERVER_HOST_ID, port: 8000 }),
     ]);
   });
 

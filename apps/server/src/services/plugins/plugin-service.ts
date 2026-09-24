@@ -79,6 +79,7 @@ import {
   type InstalledPluginRow,
   type PluginMarketplaceRow,
 } from "@bb/db";
+import { toHostRecord } from "../lib/entity-lookup.js";
 import {
   catalogEntryMetadata,
   isBundledMarketplaceEntry,
@@ -1235,6 +1236,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       },
       emitTerminalInput(terminal) {
         emitThreadEvent("experimental_terminal.input", () => ({ terminal }));
+      },
+      emitHostDeleted(host) {
+        emitThreadEvent("experimental_host.deleted", () => ({
+          host: toHostRecord(host, "disconnected"),
+        }));
       },
       emitThreadCreated(thread) {
         emitThreadEvent("thread.created", () => ({

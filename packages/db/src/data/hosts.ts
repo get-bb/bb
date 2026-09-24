@@ -10,6 +10,8 @@ import type { DbNotifier } from "../notifier.js";
 import { environments, hosts } from "../schema.js";
 import { createHostId } from "../ids.js";
 
+export type HostRow = typeof hosts.$inferSelect;
+
 type HostWriteConnection = DbConnection | DbTransaction;
 
 export interface UpsertHostInput {

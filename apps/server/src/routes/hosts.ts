@@ -51,6 +51,7 @@ import {
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
 import { manualHostCommand } from "../services/machines/manual-provider.js";
 import { prepareReconnect } from "../services/machines/reconnect.js";
+import { emitPluginHostDeleted } from "../services/plugins/plugin-thread-events.js";
 
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -300,8 +301,11 @@ export function registerHostRoutes(
       handleHostRemoved(deps, { hostId, sessionId });
     }
     settleRemovedHostWork(deps, { hostId });
-    updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
+    const destroyed = updateHost(deps.db, deps.hub, hostId, {
+      destroyedAt: Date.now(),
+    });
     deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
+    if (destroyed !== null) emitPluginHostDeleted(destroyed);
     if (host.connectMachineId !== null) {
       await revokeConnectMachineCredential(
         deps,

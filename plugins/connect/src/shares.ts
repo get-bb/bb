@@ -374,6 +374,10 @@ export class ShareRegistry {
       try {
         this.declare(hostId);
       } catch (error) {
+        if (await this.isRemovedHost(hostId)) {
+          await this.pruneHost(hostId);
+          continue;
+        }
         firstError ??= error;
         this.options.log.warn(
           `failed to declare shared ports for host ${hostId}: ${errorMessage(error)}`,
@@ -381,6 +385,37 @@ export class ShareRegistry {
       }
     }
     if (firstError !== undefined) throw firstError;
+  }
+
+  async pruneHost(hostId: string): Promise<void> {
+    await this.load();
+    const removedShares = [...this.shares].filter(
+      ([, share]) => share.hostId === hostId,
+    );
+    if (removedShares.length === 0) return;
+    for (const [key] of removedShares) this.shares.delete(key);
+    try {
+      await this.persist();
+    } catch (error) {
+      for (const [key, share] of removedShares) {
+        if (!this.shares.has(key)) this.shares.set(key, share);
+      }
+      throw error;
+    }
+    this.declaredMachineHostIds.delete(hostId);
+    this.lastListings = this.lastListings.filter(
+      (entry) => entry.hostId !== hostId,
+    );
+    this.options.onChange?.();
+  }
+
+  private async isRemovedHost(hostId: string): Promise<boolean> {
+    try {
+      await this.options.hostResolver.byId(hostId);
+      return false;
+    } catch (error) {
+      return error instanceof ShareHostNotFoundError;
+    }
   }
 
   private async normalizeLegacyShares(serverHostId: string): Promise<void> {

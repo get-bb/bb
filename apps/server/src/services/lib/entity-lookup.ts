@@ -8,7 +8,7 @@ import {
   listPublicHosts,
   type HostDaemonSessionRow,
 } from "@bb/db";
-import type { EnvironmentRow } from "@bb/db";
+import type { EnvironmentRow, HostRow } from "@bb/db";
 import type { Host } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -24,7 +24,6 @@ import {
   threadEnvironmentUnavailableDetails,
 } from "./lifecycle-api-errors.js";
 
-type HostRow = NonNullable<ReturnType<typeof getHost>>;
 type ProjectRow = NonNullable<ReturnType<typeof getProject>>;
 type ThreadRow = NonNullable<ReturnType<typeof getThread>>;
 type StandardProject = ProjectRow & { kind: "standard" };
@@ -74,7 +73,7 @@ function toHostStatus(deps: HostLookupDeps, hostId: string): Host["status"] {
     : "disconnected";
 }
 
-function toHostRecord(row: HostRow, status: Host["status"]): Host {
+export function toHostRecord(row: HostRow, status: Host["status"]): Host {
   return {
     id: row.id,
     name: row.name,

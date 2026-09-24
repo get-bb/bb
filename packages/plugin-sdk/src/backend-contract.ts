@@ -269,6 +269,13 @@ export interface PluginThreadEventPayloads {
   "experimental_thread.events": { thread: ThreadResponse; sequence: number };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
+  /**
+   * Fired once after a machine is removed, whether a user removed it or its
+   * machine provider finished tearing it down. `host` is the record as it was
+   * when it was removed; `bb.sdk.hosts.get` answers 404 for it from now on, so
+   * this is the moment to drop anything the plugin keeps per host.
+   */
+  "experimental_host.deleted": { host: Host };
   /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
   /** Fired when a thread transitions into `active`. */

@@ -852,6 +852,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Subscribe to messages being queued behind a wait, dispatching when it clears, or being cancelled before dispatch",
           "Subscribe when a thread receives a pending interaction",
           "Observe debounced experimental_thread.events notifications with the latest sequence and current thread, or experimental_terminal.input without keystroke contents",
+          "Observe experimental_host.deleted when a machine is removed, to drop state kept for that machine",
           "Subscribe to a turn failing, with the provider's error and rate-limit windows attached",
           "Respond by sending a notification, asking for a retry, or writing to its own storage",
         ],
