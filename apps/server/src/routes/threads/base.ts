@@ -453,6 +453,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       payload.parentThreadId !== thread.parentThreadId
     ) {
       await handleThreadOwnershipChange(deps, {
+        // bb-fork(quiet-reparent): ownershipNotice === false asks for a quiet reparent
+        notifyParents: payload.ownershipNotice !== false,
         previousThread: thread,
         updatedThread: updated,
       });

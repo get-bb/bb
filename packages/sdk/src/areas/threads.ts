@@ -668,6 +668,8 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
     model: args.model,
     reasoningLevel: args.reasoningLevel,
     visibility: args.visibility,
+    // bb-fork(quiet-reparent): pass through the quiet-reparent switch
+    ownershipNotice: args.ownershipNotice,
   };
 }
 

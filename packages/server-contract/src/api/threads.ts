@@ -624,6 +624,9 @@ export const updateThreadRequestSchema = z
     model: z.string().min(1).nullable(),
     reasoningLevel: reasoningLevelSchema.nullable(),
     visibility: threadVisibilitySchema,
+    // bb-fork(quiet-reparent): false suppresses the ownership-assigned/removed
+    // system turns on the old and new parent during a reparent.
+    ownershipNotice: z.boolean(),
   })
   .partial()
   .refine(

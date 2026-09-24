@@ -443,6 +443,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread PATCH requests omit fields that should be left unchanged; null explicitly clears nullable values.",
     fields: [
       "updateThreadRequestSchema.model",
+      // bb-fork(quiet-reparent): omitted keeps the default parent notification
+      "updateThreadRequestSchema.ownershipNotice",
       "updateThreadRequestSchema.sectionId",
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",

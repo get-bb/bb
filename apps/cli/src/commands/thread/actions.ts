@@ -45,6 +45,8 @@ interface ThreadUpdateCommandOptions {
   model?: string;
   reasoningLevel?: string;
   visibility?: string;
+  // bb-fork(quiet-reparent): commander --no- flag, defaults to true
+  ownershipNotice?: boolean;
 }
 
 interface ThreadArchiveCommandOptions {
@@ -136,6 +138,8 @@ interface ThreadUpdateBody {
   model?: string;
   reasoningLevel?: ReasoningLevel;
   visibility?: ThreadVisibility;
+  // bb-fork(quiet-reparent): false suppresses the parent ownership turns
+  ownershipNotice?: boolean;
 }
 
 export function registerActionsCommands(
@@ -150,6 +154,10 @@ export function registerActionsCommands(
     .option("--title <title>", "Set the thread title")
     .option("--parent-thread <id>", "Set the parent thread id")
     .option("--clear-parent-thread", "Clear the parent thread id")
+    .option(
+      "--no-ownership-notice",
+      "Reparent without a system turn on the old or new parent thread",
+    )
     .option("--section <id>", "Move the thread into a section")
     .option("--clear-section", "Remove the thread from its section")
     .option(
@@ -167,6 +175,16 @@ export function registerActionsCommands(
           if (opts.parentThread && opts.clearParentThread) {
             throw new Error(
               "Cannot combine --parent-thread with --clear-parent-thread.",
+            );
+          }
+          // bb-fork(quiet-reparent): the switch only makes sense with a reparent
+          if (
+            opts.ownershipNotice === false &&
+            !opts.parentThread &&
+            !opts.clearParentThread
+          ) {
+            throw new Error(
+              "--no-ownership-notice requires --parent-thread or --clear-parent-thread.",
             );
           }
           if (opts.section && opts.clearSection) {
@@ -205,6 +223,10 @@ export function registerActionsCommands(
             body.parentThreadId = parentThreadId;
           } else if (opts.clearParentThread) {
             body.parentThreadId = null;
+          }
+          // bb-fork(quiet-reparent): send only the explicit quiet request
+          if (opts.ownershipNotice === false) {
+            body.ownershipNotice = false;
           }
           if (opts.section) {
             body.sectionId = resolveExplicitIdFlag({

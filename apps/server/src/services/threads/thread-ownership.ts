@@ -41,6 +41,9 @@ interface QueueParentSystemMessageBestEffortArgs {
 }
 
 interface HandleThreadOwnershipChangeArgs {
+  // bb-fork(quiet-reparent): false skips the parent system messages while
+  // keeping the ownership_change audit event on the child.
+  notifyParents?: boolean;
   previousThread: Thread;
   updatedThread: Thread;
 }
@@ -122,7 +125,10 @@ export async function handleThreadOwnershipChange(
     nextParentThreadId: args.updatedThread.parentThreadId,
   });
 
-  if (args.updatedThread.parentThreadId) {
+  // bb-fork(quiet-reparent): quiet reparenting ends after the audit event
+  const notifyParents = args.notifyParents ?? true;
+
+  if (notifyParents && args.updatedThread.parentThreadId) {
     await queueParentSystemMessageBestEffort(deps, {
       childThreadId: args.updatedThread.id,
       parentThreadId: args.updatedThread.parentThreadId,
@@ -135,7 +141,7 @@ export async function handleThreadOwnershipChange(
       threadName: parentSystemThreadLabel(args.updatedThread),
     });
   }
-  if (args.previousThread.parentThreadId) {
+  if (notifyParents && args.previousThread.parentThreadId) {
     await queueParentSystemMessageBestEffort(deps, {
       childThreadId: args.updatedThread.id,
       parentThreadId: args.previousThread.parentThreadId,
