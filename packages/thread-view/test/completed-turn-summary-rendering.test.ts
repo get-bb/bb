@@ -845,10 +845,10 @@ describe("flat completed turn display", () => {
     const events = fromRows(finishedEvents);
     const detailOptions = {
       includeDiagnosticOperations: false,
-      sourceSeqEnd: 5,
       sourceSeqStart: 4,
       threadName: "",
       threadStatus: "idle" as const,
+      turnId: "turn-1",
       workspaceRoot: null,
     };
 
