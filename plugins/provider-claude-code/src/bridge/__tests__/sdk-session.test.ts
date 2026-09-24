@@ -87,6 +87,7 @@ describe("SdkSession", () => {
     vi.clearAllMocks();
     queryMock.mockImplementation(() => mockQueryInstance);
     mockQueryInstance.applyFlagSettings.mockResolvedValue(undefined);
+    mockQueryInstance.interrupt.mockResolvedValue(undefined);
     mockQueryInstance.setModel.mockResolvedValue(undefined);
     mockQueryInstance.setPermissionMode.mockResolvedValue(undefined);
     mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
@@ -205,6 +206,64 @@ describe("SdkSession", () => {
     await closePromise;
 
     expect(mockQueryInstance.close).not.toHaveBeenCalled();
+  });
+
+  it("interrupts the running turn before ending SDK input during graceful close", async () => {
+    let finishStream:
+      | ((result: IteratorResult<SDKMessage>) => void)
+      | undefined;
+    const next = vi.fn(
+      () =>
+        new Promise<IteratorResult<SDKMessage>>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
+      next,
+      return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
+    });
+    let finishInterrupt: (() => void) | undefined;
+    mockQueryInstance.interrupt.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishInterrupt = resolve;
+      }),
+    );
+    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+
+    session.start();
+    const pendingInput = getLatestPrompt()[Symbol.asyncIterator]().next();
+    let inputResolved = false;
+    void pendingInput.then(() => {
+      inputResolved = true;
+    });
+    const closePromise = session.closeGracefully(1_000);
+    await waitForAsyncWork();
+
+    expect(mockQueryInstance.interrupt).toHaveBeenCalledOnce();
+    expect(inputResolved).toBe(false);
+    if (!finishInterrupt) {
+      throw new Error("Expected Claude SDK interrupt to be pending");
+    }
+    finishInterrupt();
+    await expect(pendingInput).resolves.toEqual({ value: undefined, done: true });
+    if (!finishStream) {
+      throw new Error("Expected Claude SDK stream to be pending");
+    }
+    finishStream({ value: undefined, done: true });
+    await closePromise;
+    expect(mockQueryInstance.close).not.toHaveBeenCalled();
+  });
+
+  it("force-stops the session when the interrupt request fails during graceful close", async () => {
+    keepSdkStreamOpen();
+    mockQueryInstance.interrupt.mockRejectedValue(
+      new Error("Claude CLI transport closed"),
+    );
+    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+
+    session.start();
+    await session.closeGracefully(60_000);
+    expect(mockQueryInstance.close).toHaveBeenCalledOnce();
   });
 
   it("forwards local plugins to the SDK without a skills allowlist", () => {
