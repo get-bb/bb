@@ -14,6 +14,11 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import {
+  resolveThreadTitleDisplayText,
+  ThreadTitle,
+  useThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
@@ -48,15 +53,19 @@ export function ParentThreadPicker({
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const titleMentionResources = useThreadTitleMentionResources();
   const filteredOptions = useMemo(
     () =>
       searchPickerOptions({
         options,
         query: searchQuery,
         getLabel: (option) => option.label,
-        getAliases: (option) => [option.value],
+        getAliases: (option) => [
+          option.value,
+          resolveThreadTitleDisplayText(option.label, titleMentionResources),
+        ],
       }),
-    [options, searchQuery],
+    [options, searchQuery, titleMentionResources],
   );
   const selectedLabel =
     options.find((option) => option.value === value)?.label ?? "None";
@@ -82,14 +91,10 @@ export function ParentThreadPicker({
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
         >
-          <span
-            className={cn(
-              "min-w-0 truncate text-foreground",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-          >
-            {selectedLabel}
-          </span>
+          <ThreadTitle
+            title={selectedLabel}
+            className={cn("text-foreground", COARSE_POINTER_TEXT_SM_CLASS)}
+          />
           <Icon
             name="ChevronDown"
             className={cn(
@@ -150,9 +155,7 @@ export function ParentThreadPicker({
                         }}
                         className="flex items-center justify-between gap-3"
                       >
-                        <span className="truncate" title={option.label}>
-                          {option.label}
-                        </span>
+                        <ThreadTitle title={option.label} tooltip />
                         <Icon
                           name="Check"
                           aria-hidden

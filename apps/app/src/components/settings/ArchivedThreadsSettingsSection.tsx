@@ -25,7 +25,12 @@ import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
+import {
+  resolveThreadTitleDisplayText,
+  ThreadTitle,
+  useThreadTitleMentionResources,
+  type ThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
 
 const ALL_PROJECTS = "all";
 const ARCHIVED_THREAD_SEARCH_LIMIT = 50;
@@ -89,14 +94,16 @@ function ArchiveFilterMenu<T extends string>({
 function filterArchivedThreadsBySearch(
   threads: ThreadListEntry[],
   search: string,
+  resources: ThreadTitleMentionResources,
 ): ThreadListEntry[] {
   const normalizedSearch = search.trim().toLocaleLowerCase();
   if (normalizedSearch.length === 0) return threads;
-  return threads.filter((thread) =>
-    getThreadDisplayTitle(thread)
-      .toLocaleLowerCase()
-      .includes(normalizedSearch),
-  );
+  return threads.filter((thread) => {
+    const title = getThreadDisplayTitle(thread);
+    return [title, resolveThreadTitleDisplayText(title, resources)].some(
+      (text) => text.toLocaleLowerCase().includes(normalizedSearch),
+    );
+  });
 }
 
 export function ArchivedThreadsSettingsSection() {
@@ -118,6 +125,7 @@ export function ArchivedThreadsSettingsSection() {
     query: search,
   });
   const unarchiveThread = useUnarchiveThread();
+  const titleMentionResources = useThreadTitleMentionResources();
 
   const projects = useMemo(() => {
     if (!sidebarNavigation.data) return [];
@@ -155,7 +163,11 @@ export function ArchivedThreadsSettingsSection() {
     );
     return searchIsActive
       ? filteredThreads
-      : filterArchivedThreadsBySearch(filteredThreads, search);
+      : filterArchivedThreadsBySearch(
+          filteredThreads,
+          search,
+          titleMentionResources,
+        );
   }, [
     archivedThreadsQuery.data,
     kind,
@@ -163,6 +175,7 @@ export function ArchivedThreadsSettingsSection() {
     search,
     searchIsActive,
     threadSearch.data,
+    titleMentionResources,
   ]);
 
   const groupedThreads = useMemo(() => {
@@ -264,11 +277,7 @@ export function ArchivedThreadsSettingsSection() {
                       })}
                     >
                       <span className="flex min-w-0 items-center gap-2 text-sm">
-                        <span className="bb-thread-title">
-                          <ThreadTitleMentions
-                            title={getThreadDisplayTitle(thread)}
-                          />
-                        </span>
+                        <ThreadTitle title={getThreadDisplayTitle(thread)} />
                         {thread.parentThreadId !== null ? (
                           <Pill variant="outline" className="shrink-0">
                             child

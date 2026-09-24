@@ -15,6 +15,10 @@ import { useSidebarNavigation } from "./queries/sidebar-navigation-query";
 import { useThreadMentionCandidates } from "./queries/thread-queries";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
 import {
+  resolveThreadTitleDisplayText,
+  useThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
 } from "./usePathSuggestions";
@@ -188,6 +192,7 @@ export function usePromptMentions(
   );
 
   const currentThreadId = options.currentThreadId;
+  const titleMentionResources = useThreadTitleMentionResources();
   const pathSuggestions = useMemo(
     () =>
       includeBuiltInSources
@@ -207,6 +212,8 @@ export function usePromptMentions(
       currentEnvironmentId: options.environmentId,
       projectNamesById,
       limit: PROMPT_MENTION_SOURCE_LIMIT,
+      resolveTitle: (title) =>
+        resolveThreadTitleDisplayText(title, titleMentionResources),
     });
   }, [
     currentThreadId,
@@ -215,6 +222,7 @@ export function usePromptMentions(
     projectId,
     projectNamesById,
     threadsQuery.data,
+    titleMentionResources,
     trimmedQuery,
   ]);
   const projectSuggestions = useMemo(() => {

@@ -72,7 +72,7 @@ import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import {
-  ThreadTitleMentions,
+  ThreadTitle,
   useSidebarProjectName,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
@@ -412,9 +412,7 @@ function ThreadRowComponent({
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const parentGuideLeft =
-    options.depth > 0
-      ? getSidebarThreadGroupLineLeft(options.depth - 1)
-      : null;
+    options.depth > 0 ? getSidebarThreadGroupLineLeft(options.depth - 1) : null;
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
@@ -449,8 +447,7 @@ function ThreadRowComponent({
                 parentGuideLeft === null
                   ? "relative"
                   : "absolute top-1/2 -translate-x-1/2 -translate-y-1/2",
-                !showActive &&
-                  "group-hover/thread-row:bg-sidebar-accent",
+                !showActive && "group-hover/thread-row:bg-sidebar-accent",
                 !showActive && isActionsOpen && "bg-sidebar-accent",
                 !showActive &&
                   splitIndicator.isOpenInSplit &&
@@ -526,13 +523,11 @@ function ThreadRowComponent({
               {editor}
             </span>
           ) : (
-            <span
-              className="bb-thread-title"
-              title={labelTitle}
+            <ThreadTitle
+              title={threadTitle}
+              tooltip
               onDoubleClick={startTitleEditing}
-            >
-              <ThreadTitleMentions title={threadTitle} />
-            </span>
+            />
           )}
         </span>
         {parentOptions && hasChildren ? (

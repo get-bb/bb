@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
 } from "react";
 import { useAtomValue, useStore } from "jotai";
 import { isMacKeyboardPlatform } from "@bb/domain";
@@ -16,10 +15,9 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { threadListIndicatorStateForThread } from "@bb/client-core";
-import type { ThreadSearchMatch } from "@bb/server-contract";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
-  ThreadTitleMentions,
+  ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import {
@@ -445,8 +443,6 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
   }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
 
   const secondaryTitle = useThreadTitleDisplayText(row.secondaryTitle ?? "");
-  const primaryIsPlainTitle =
-    row.secondaryTitle === null && row.highlightRanges.length === 0;
   const metadata = [
     row.secondaryTitle === null ? null : secondaryTitle,
     row.projectName,
@@ -456,21 +452,12 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
     .join(" · ");
   return (
     <span className="min-w-0 flex-1">
-      {primaryIsPlainTitle ? (
-        <span className="bb-thread-title text-foreground">
-          <ThreadTitleMentions title={row.primaryText} />
-        </span>
-      ) : (
-        <span
-          ref={primaryRef}
-          className="block min-w-0 truncate text-foreground"
-        >
-          <HighlightedText
-            text={primary.text}
-            ranges={primary.highlightRanges}
-          />
-        </span>
-      )}
+      <ThreadTitle
+        ref={primaryRef}
+        title={primary.text}
+        highlightRanges={primary.highlightRanges}
+        className="text-foreground"
+      />
       <span
         className="flex min-h-4 items-center gap-1.5"
         data-palette-thread-details
@@ -542,33 +529,4 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
       </Tooltip>
     </>
   );
-}
-
-function HighlightedText({
-  ranges,
-  text,
-}: {
-  ranges: readonly ThreadSearchMatch["highlightRanges"][number][];
-  text: string;
-}) {
-  if (ranges.length === 0) return <>{text}</>;
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  for (const range of ranges) {
-    const start = Math.max(cursor, Math.min(range.start, text.length));
-    const end = Math.max(start, Math.min(range.end, text.length));
-    if (end <= start) continue;
-    if (start > cursor) nodes.push(text.slice(cursor, start));
-    nodes.push(
-      <mark
-        key={`${start}:${end}`}
-        className="rounded-sm bg-[var(--sidebar-search-match)] px-0.5 py-px text-foreground"
-      >
-        {text.slice(start, end)}
-      </mark>,
-    );
-    cursor = end;
-  }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
-  return nodes;
 }

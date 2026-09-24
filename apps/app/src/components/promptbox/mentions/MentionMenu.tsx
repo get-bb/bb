@@ -21,7 +21,7 @@ import { Pill } from "@bb/shared-ui/pill";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
-  ThreadTitleMentions,
+  ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import {
@@ -328,11 +328,7 @@ function ThreadSuggestionRow({
   return (
     <SuggestionRow
       {...rowProps}
-      primary={
-        <span className="bb-thread-title text-foreground">
-          <ThreadTitleMentions title={threadTitle} />
-        </span>
-      }
+      primary={<ThreadTitle title={threadTitle} className="text-foreground" />}
       title={getMentionTitle({ ...item, title: displayTitle })}
     />
   );

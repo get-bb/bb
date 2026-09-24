@@ -97,7 +97,11 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
+import {
+  resolveThreadTitleDisplayText,
+  ThreadTitle,
+  useThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
 import { appToast } from "@/components/ui/app-toast";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
@@ -426,11 +430,13 @@ interface UseArchiveEnvironmentThreadGroupActionResult {
 interface FormatArchivedEnvironmentThreadsToastTitleArgs {
   archivedThreadIds: readonly string[];
   threads: readonly Pick<ThreadListEntry, "id" | "title" | "titleFallback">[];
+  resolveTitle: (title: string) => string;
 }
 
 export function formatArchivedEnvironmentThreadsToastTitle({
   archivedThreadIds,
   threads,
+  resolveTitle,
 }: FormatArchivedEnvironmentThreadsToastTitleArgs): string {
   if (archivedThreadIds.length !== 1) {
     return `Archived ${archivedThreadIds.length} threads`;
@@ -442,7 +448,7 @@ export function formatArchivedEnvironmentThreadsToastTitle({
   if (!archivedThread) {
     return "Archived 1 thread";
   }
-  return `Archived ${getThreadDisplayTitle(archivedThread)}`;
+  return `Archived ${resolveTitle(getThreadDisplayTitle(archivedThread))}`;
 }
 
 function getProjectThreadTreeEmptyStateClassName(
@@ -726,6 +732,7 @@ function useArchiveEnvironmentThreadGroupAction({
   threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
   const navigate = useRouteNavigate();
+  const titleMentionResources = useThreadTitleMentionResources();
   const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const {
     isPending: archiveThreadsIsPending,
@@ -741,6 +748,8 @@ function useArchiveEnvironmentThreadGroupAction({
           formatArchivedEnvironmentThreadsToastTitle({
             archivedThreadIds: response.archivedThreadIds,
             threads,
+            resolveTitle: (title) =>
+              resolveThreadTitleDisplayText(title, titleMentionResources),
           }),
         );
         if (
@@ -758,6 +767,7 @@ function useArchiveEnvironmentThreadGroupAction({
     projectId,
     selectedThreadId,
     threads,
+    titleMentionResources,
   ]);
 
   return {
@@ -1305,9 +1315,7 @@ export function DropPreviewRow({
       )}
     >
       {thread && visible ? (
-        <span className="bb-thread-title flex-1">
-          <ThreadTitleMentions title={getThreadDisplayTitle(thread)} />
-        </span>
+        <ThreadTitle title={getThreadDisplayTitle(thread)} className="flex-1" />
       ) : null}
     </div>
   );
@@ -1343,9 +1351,7 @@ export function SectionThreadDragOverlay({
       style={SIDEBAR_THREAD_DRAG_CHIP_STYLE}
       className={SIDEBAR_THREAD_DRAG_CHIP_CLASS}
     >
-      <span className="bb-thread-title flex-1">
-        <ThreadTitleMentions title={getThreadDisplayTitle(thread)} />
-      </span>
+      <ThreadTitle title={getThreadDisplayTitle(thread)} className="flex-1" />
     </div>
   );
 }

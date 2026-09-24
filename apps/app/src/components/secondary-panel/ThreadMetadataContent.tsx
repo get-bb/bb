@@ -68,10 +68,7 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import {
-  ThreadTitleMentions,
-  useThreadTitleDisplayText,
-} from "@/components/thread/ThreadTitleMentions";
+import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
   PULL_REQUEST_STATE_DISPLAY,
   getPullRequestAttentionDisplay,
@@ -156,11 +153,14 @@ export function ParentSelectorRow({
               threadId: parentThreadId,
             })}
             className={cn(
-              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              "block min-w-0 text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           >
-            {selectedParentOptionLabel ?? "Parent thread"}
+            <ThreadTitle
+              title={selectedParentOptionLabel ?? "Parent thread"}
+              tooltip
+            />
           </Link>
           <Button
             type="button"
@@ -195,26 +195,6 @@ export function ParentSelectorRow({
   );
 }
 
-function ForkLink({
-  fork,
-  projectId,
-}: {
-  fork: ThreadListEntry;
-  projectId: string;
-}) {
-  const threadTitle = getThreadDisplayTitle(fork);
-  const displayTitle = useThreadTitleDisplayText(threadTitle);
-  return (
-    <Link
-      to={getThreadRoutePath({ projectId, threadId: fork.id })}
-      className="bb-thread-title text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
-      title={displayTitle}
-    >
-      <ThreadTitleMentions title={threadTitle} />
-    </Link>
-  );
-}
-
 interface ForksRowProps {
   thread: Thread;
   projectId: string;
@@ -238,7 +218,12 @@ function ForksRow({ thread, projectId }: ForksRowProps) {
         items={forks}
         getKey={(fork) => fork.id}
         renderItem={(fork) => (
-          <ForkLink projectId={projectId} fork={fork} />
+          <Link
+            to={getThreadRoutePath({ projectId, threadId: fork.id })}
+            className="block min-w-0 text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+          >
+            <ThreadTitle title={getThreadDisplayTitle(fork)} tooltip />
+          </Link>
         )}
       />
     </DetailRow>

@@ -25,7 +25,7 @@ import {
 } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
-  ThreadTitleMentions,
+  ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import { formatRelativeTime } from "@/lib/relative-time";
@@ -380,14 +380,10 @@ function MobileRecentThreadRow({
       >
         <span className="min-w-0 flex-1 space-y-0.5">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span
-              className={cn(
-                "bb-thread-title font-medium",
-                COARSE_POINTER_TEXT_BASE_CLASS,
-              )}
-            >
-              <ThreadTitleMentions title={getThreadDisplayTitle(thread)} />
-            </span>
+            <ThreadTitle
+              title={getThreadDisplayTitle(thread)}
+              className={cn("font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}
+            />
           </span>
           <span
             className={cn(

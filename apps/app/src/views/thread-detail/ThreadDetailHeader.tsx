@@ -30,7 +30,7 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
-import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
+import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -167,7 +167,7 @@ export function ThreadDetailHeader({
         <p
           className={cn(
             "relative min-w-0 text-sm font-normal transition-colors",
-            isEditing ? "overflow-visible" : "bb-thread-title",
+            isEditing && "overflow-visible",
             isSplitPaneHeader &&
               !isFocused &&
               dimsInactiveSplits &&
@@ -182,7 +182,7 @@ export function ThreadDetailHeader({
           onDoubleClick={handleTitleDoubleClick}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
-          {isEditing ? editor : <ThreadTitleMentions title={threadTitle} />}
+          {isEditing ? editor : <ThreadTitle title={threadTitle} />}
         </p>
       </div>
       {childPillLabel ? (

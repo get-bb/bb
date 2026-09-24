@@ -15,6 +15,7 @@ describe("formatArchivedEnvironmentThreadsToastTitle", () => {
             titleFallback: null,
           },
         ],
+        resolveTitle: (title) => title,
       }),
     ).toBe("Archived Investigate checkout warnings");
   });
@@ -24,6 +25,7 @@ describe("formatArchivedEnvironmentThreadsToastTitle", () => {
       formatArchivedEnvironmentThreadsToastTitle({
         archivedThreadIds: ["thr_one", "thr_two"],
         threads: [],
+        resolveTitle: (title) => title,
       }),
     ).toBe("Archived 2 threads");
   });

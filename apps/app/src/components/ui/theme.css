@@ -941,6 +941,10 @@ body.sidebar-resizing [data-sidebar="panel"] {
     @apply flex min-w-0 items-baseline;
   }
 
+  .bb-thread-title-inline {
+    @apply inline;
+  }
+
   .bb-thread-title .prompt-mention-pill {
     @apply min-w-10;
     flex: 1 1 0%;
