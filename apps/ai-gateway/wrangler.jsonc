@@ -1,0 +1,66 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bb-ai-gateway",
+  "main": "./src/worker.ts",
+  "account_id": "7bb84c630057dafa53e2aacbe6bd094f",
+  "compatibility_date": "2026-06-11",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "AI_DAILY_BUDGET_MICROS": "500000",
+    "AI_MODELS": "inception/mercury-2.5,google/gemini-2.5-flash-lite,nvidia/nemotron-3.5-lightning",
+    "AI_UPSTREAM_BASE_URL": "https://openrouter.ai/api/v1",
+  },
+  "secrets": { "required": ["OPENROUTER_API_KEY"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bb-connect-prod",
+      "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b",
+      "migrations_dir": "../../packages/connect-db/migrations",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "AI_RATE_LIMITER",
+      "namespace_id": "4201",
+      "simple": { "limit": 60, "period": 60 },
+    },
+  ],
+  "triggers": { "crons": ["17 3 * * *"] },
+  "routes": [{ "pattern": "getbb.app/api/ai/*", "zone_name": "getbb.app" }],
+  "env": {
+    "staging": {
+      "workers_dev": false,
+      "vars": {
+        "AI_DAILY_BUDGET_MICROS": "500000",
+        "AI_MODELS": "inception/mercury-2.5,google/gemini-2.5-flash-lite,nvidia/nemotron-3.5-lightning",
+        "AI_UPSTREAM_BASE_URL": "https://openrouter.ai/api/v1",
+      },
+      "secrets": { "required": ["OPENROUTER_API_KEY"] },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "bb-connect-staging",
+          "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
+          "migrations_dir": "../../packages/connect-db/migrations",
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "AI_RATE_LIMITER",
+          "namespace_id": "4202",
+          "simple": { "limit": 60, "period": 60 },
+        },
+      ],
+      "triggers": { "crons": ["17 3 * * *"] },
+      "routes": [
+        {
+          "pattern": "vibecodethis.site/api/ai/*",
+          "zone_name": "vibecodethis.site",
+        },
+      ],
+    },
+  },
+}
