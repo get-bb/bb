@@ -1163,6 +1163,52 @@ describe("claude streaming", () => {
       }),
     );
   });
+
+  it("finalizes each thinking block of a response on its own assistant message", () => {
+    const harness = createClaudeDeltaHarness();
+    const streamThinking = (index: number, thinking: string) =>
+      harness.translate({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index,
+          delta: { type: "thinking_delta", thinking },
+        },
+        session_id: "sess-1",
+      });
+    const finalizeThinking = (thinking: string) =>
+      harness.translate({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: [{ type: "thinking", thinking }],
+        },
+        session_id: "sess-1",
+      });
+
+    const events = [
+      ...streamThinking(0, "First thought."),
+      ...finalizeThinking("First thought."),
+      ...streamThinking(1, "Second thought."),
+      ...finalizeThinking("Second thought."),
+    ];
+
+    const reasoningLifecycle = events.flatMap((event) =>
+      (event.type === "item/started" || event.type === "item/completed") &&
+      event.item.type === "reasoning"
+        ? [{ type: event.type, id: event.item.id }]
+        : [],
+    );
+    const [firstStart, , secondStart] = reasoningLifecycle;
+    expect(reasoningLifecycle).toEqual([
+      { type: "item/started", id: firstStart?.id },
+      { type: "item/completed", id: firstStart?.id },
+      { type: "item/started", id: secondStart?.id },
+      { type: "item/completed", id: secondStart?.id },
+    ]);
+    expect(secondStart?.id).not.toBe(firstStart?.id);
+  });
 });
 
 describe("claude unhandled and ignored events", () => {
