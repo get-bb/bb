@@ -74,7 +74,7 @@ describe("plugin browse shelves", () => {
     expect(shelves[2]?.entries).toEqual([official, notable]);
   });
 
-  it("orders collections, built-in categories, unknown categories, and More plugins", () => {
+  it("orders collections, built-in categories, and unknown categories without an uncategorized shelf", () => {
     const data: PluginCatalogSearchData = {
       entries: [
         entry("unknown-first", {
@@ -120,7 +120,6 @@ describe("plugin browse shelves", () => {
       ["Thread Management", ["thread"]],
       ["Observability", ["unknown-first"]],
       ["Data Tools", ["unknown-second"]],
-      ["More plugins", ["uncategorized"]],
     ]);
   });
 

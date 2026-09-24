@@ -16,7 +16,7 @@ export interface PluginBrowseShelf {
   label: string;
   description?: string;
   entries: PluginCatalogSearchEntry[];
-  kind: "collection" | "category" | "uncategorized";
+  kind: "collection" | "category";
 }
 
 export interface PluginBrowseCategoryOption {
@@ -146,16 +146,6 @@ export function pluginBrowseShelves({
         : { description: builtInCategory.description }),
       entries: shelfEntries,
       kind: "category",
-    });
-  }
-  const uncategorizedEntries = entries.filter((entry) => !isCategorized(entry));
-  if (uncategorizedEntries.length > 0) {
-    shelves.push({
-      key: "category:uncategorized",
-      categoryId: UNCATEGORIZED_PLUGIN_CATEGORY_ID,
-      label: "More plugins",
-      entries: uncategorizedEntries,
-      kind: "uncategorized",
     });
   }
   return shelves;
