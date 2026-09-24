@@ -23,7 +23,12 @@ export default defineWorkspaceTestConfig({
         extends: true,
         test: {
           name: "@bb/integration-tests",
-          fileParallelism: true,
+          // bb-fork(windows): full-stack files in parallel starve each other, so
+          // run them sequentially with a distinct group order.
+          fileParallelism: process.platform !== "win32",
+          ...(process.platform === "win32"
+            ? { sequence: { groupOrder: 1 } }
+            : {}),
           isolate: false,
           globalSetup: ["./global-setup.ts"],
           include: ["fake/**/*.test.ts"],

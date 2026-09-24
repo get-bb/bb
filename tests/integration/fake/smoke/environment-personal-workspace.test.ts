@@ -38,7 +38,7 @@ describe.sequential("personal workspace plugin integration", () => {
 
         expect(second.environment.id).not.toBe(first.environment.id);
         expect(second.thread.environmentId).toBe(second.environment.id);
-        expect(second.environment.path).toContain(
+        expect(String(second.environment.path).replaceAll("\\", "/")).toContain(
           `plugins/environment-personal-workspace/host-data/workspaces/${second.thread.id}`,
         );
         expect(second.environment.path).not.toBe(workspacePath);
