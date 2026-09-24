@@ -559,6 +559,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
+  function isOrphanedBuiltinRow(row: InstalledPluginRow): boolean {
+    return (
+      row.sourceKind === "builtin" &&
+      !bundledPlugins.some((bundled) => bundled.name === row.sourceBuiltinName)
+    );
+  }
   const mentionSearchTimeoutMs =
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
@@ -1006,11 +1012,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             catalogMarketplaceName: row.catalogMarketplaceName,
             labels: catalogData.publisherLabels,
           }),
-          isOrphanedBuiltin:
-            row.sourceKind === "builtin" &&
-            !bundledPlugins.some(
-              (bundled) => bundled.name === row.sourceBuiltinName,
-            ),
+          isOrphanedBuiltin: isOrphanedBuiltinRow(row),
           sourceDisplay: sourceDisplayForRow(row),
           updateState: updateStateForRow(row),
           enabled: row.enabled,
@@ -1184,6 +1186,32 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return { metadataByPluginId, publisherLabels };
   }
 
+  async function deleteRemovedPluginData(
+    row: InstalledPluginRow,
+  ): Promise<void> {
+    deps.onPluginUnregistered?.(row.id);
+    // The uninstalled tree is no longer reloadable, so stop the module
+    // resolve hook from scanning it on every later import.
+    forgetMutableRoot(row.rootDir);
+    deletePluginSchedules(deps.db, row.id);
+    deleteAllPluginSettings(deps.db, row.id);
+    await rm(pluginSecretsDir(deps.dataDir, row.id), {
+      recursive: true,
+      force: true,
+    });
+  }
+
+  async function removeUnbundledBuiltins(): Promise<void> {
+    for (const row of listInstalledPlugins(deps.db)) {
+      if (!isOrphanedBuiltinRow(row)) continue;
+      deleteInstalledPlugin(deps.db, row.id);
+      await deleteRemovedPluginData(row);
+      logger.info(
+        `plugin ${row.id} removed because bb no longer bundles ${row.source}; its settings, secrets, and schedules were deleted`,
+      );
+    }
+  }
+
   return {
     isBuiltin: isBuiltinPluginId,
 
@@ -1338,6 +1366,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           await recoverIncompletePluginRollbacks();
         });
         await reconcileBundled();
+        await removeUnbundledBuiltins();
         await loadAll();
       } finally {
         loadPassActive = false;
@@ -1549,16 +1578,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : deleteInstalledPlugin(deps.db, id)
           : false;
         if (removed && row) {
-          deps.onPluginUnregistered?.(id);
-          // The uninstalled tree is no longer reloadable, so stop the module
-          // resolve hook from scanning it on every later import.
-          forgetMutableRoot(row.rootDir);
-          deletePluginSchedules(deps.db, id);
-          deleteAllPluginSettings(deps.db, id);
-          await rm(pluginSecretsDir(deps.dataDir, id), {
-            recursive: true,
-            force: true,
-          });
+          await deleteRemovedPluginData(row);
           logger.info(
             `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
           );
