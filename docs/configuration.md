@@ -465,6 +465,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
+| Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
 | Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
 | Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients              |

@@ -87,6 +87,7 @@ export const APP_COMMAND_IDS = [
   "browser.find",
   "workspace.openPreferred",
   "logs.openServerDaemon",
+  "dataDirectory.open",
   "notifications.open",
   ...QUESTION_SELECT_APP_COMMAND_IDS,
 ] as const;
