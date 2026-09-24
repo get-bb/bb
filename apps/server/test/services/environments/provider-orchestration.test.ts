@@ -2058,12 +2058,16 @@ describe("existing-path provider selection", () => {
         environmentProviderPluginId: "test",
         environmentProviderInstanceKey: "original-key",
       });
-      harness.db.update(environments).set({
-        environmentProviderSelection: {
-          machine: fixture.context.machine,
-          inputs: { branch: { kind: "new", baseBranch: "main" } },
-        },
-      }).where(eq(environments.id, existing.id)).run();
+      harness.db
+        .update(environments)
+        .set({
+          environmentProviderSelection: {
+            machine: fixture.context.machine,
+            inputs: { branch: { kind: "new", baseBranch: "main" } },
+          },
+        })
+        .where(eq(environments.id, existing.id))
+        .run();
       fixture.ask();
       await fixture.settled();
       expect(fixture.row().id).toBe(existing.id);
@@ -2072,6 +2076,139 @@ describe("existing-path provider selection", () => {
       expect(getEnvironment(harness.db, existing.id)?.status).toBe("ready");
       expect(next.action).toBe("ready");
       expect(remove).not.toHaveBeenCalled();
+    }));
+
+  it.each([null, 60_000])(
+    "hands a taken-over environment to retirement policy %s when its thread cancels",
+    async (retireGraceMs) =>
+      withTestHarness(async (harness) => {
+        const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+          async () => ({ status: "removed" }),
+        );
+        const fixture = setup(harness, {
+          create: async () => ({
+            status: "created",
+            path: "/tmp/taken-over",
+            ownsPath: false,
+          }),
+          remove,
+          policy: { retireGraceMs },
+        });
+        const existing = seedEnvironment(harness.deps, {
+          projectId: fixture.context.project.id,
+          hostId: fixture.host.id,
+          path: "/tmp/taken-over",
+          status: "ready",
+          providerOwnsPath: false,
+          environmentProviderId: fixture.record.provider.id,
+          environmentProviderPluginId: "test",
+          environmentProviderInstanceKey: "original-key",
+        });
+        fixture.ask();
+        await fixture.settled();
+        expect(fixture.row().id).toBe(existing.id);
+        await cancelProviderEnvironmentCreation(
+          harness.deps,
+          fixture.thread.id,
+        );
+        await sweepProviderEnvironment(harness.deps, existing.id);
+        const current = getEnvironment(harness.db, existing.id);
+        expect(current).toMatchObject({
+          status: "ready",
+          ownerThreadId: null,
+          claimPath: null,
+          teardownStatus: null,
+        });
+        if (retireGraceMs === null) expect(current?.retireAt).toBeNull();
+        else expect(current?.retireAt).toBeGreaterThan(Date.now());
+        expect(remove).not.toHaveBeenCalled();
+      }),
+  );
+
+  it("keeps a taken-over environment when creation finishes during cancellation", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        async () => ({ status: "removed" }),
+      );
+      let finishCreate: () => void = () => undefined;
+      const created = new Promise<void>((resolve) => {
+        finishCreate = resolve;
+      });
+      const create = vi.fn<PluginEnvironmentProviderDeclaration["create"]>(
+        async () => {
+          await created;
+          return {
+            status: "created",
+            path: "/tmp/cancelled-takeover",
+            ownsPath: false,
+          };
+        },
+      );
+      const fixture = setup(harness, {
+        create,
+        remove,
+        policy: { retireGraceMs: null },
+      });
+      const existing = seedEnvironment(harness.deps, {
+        projectId: fixture.context.project.id,
+        hostId: fixture.host.id,
+        path: "/tmp/cancelled-takeover",
+        status: "ready",
+        providerOwnsPath: false,
+        environmentProviderId: fixture.record.provider.id,
+        environmentProviderPluginId: "test",
+        environmentProviderInstanceKey: "original-key",
+      });
+      fixture.ask();
+      await expect.poll(() => create.mock.calls.length).toBe(1);
+      const cancelled = cancelProviderEnvironmentCreation(
+        harness.deps,
+        fixture.thread.id,
+      );
+      finishCreate();
+      await cancelled;
+      expect(getEnvironment(harness.db, existing.id)).toMatchObject({
+        status: "ready",
+        ownerThreadId: null,
+        teardownStatus: null,
+      });
+      expect(remove).not.toHaveBeenCalled();
+    }));
+
+  it("retires a cancelled thread's own ready environment after the grace period", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        async () => ({ status: "removed" }),
+      );
+      const fixture = setup(harness, {
+        remove,
+        policy: { retireGraceMs: 60_000 },
+      });
+      fixture.ask();
+      await fixture.settled();
+      const own = fixture.row();
+      harness.db
+        .update(environments)
+        .set({ status: "ready" })
+        .where(eq(environments.id, own.id))
+        .run();
+      await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
+      const released = getEnvironment(harness.db, own.id);
+      expect(released).toMatchObject({
+        status: "ready",
+        ownerThreadId: null,
+        teardownStatus: null,
+      });
+      expect(released?.retireAt).toBeGreaterThan(Date.now());
+      expect(remove).not.toHaveBeenCalled();
+      harness.db
+        .update(environments)
+        .set({ retireAt: Date.now() - 1 })
+        .where(eq(environments.id, own.id))
+        .run();
+      await sweepProviderEnvironment(harness.deps, own.id);
+      expect(getEnvironment(harness.db, own.id)?.status).toBe("destroyed");
+      expect(remove).toHaveBeenCalledTimes(1);
     }));
 
   it("keeps the existing cleanup metadata when creation races with another attachment", async () =>
