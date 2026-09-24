@@ -98,7 +98,7 @@ import {
   getDesktopVersion,
   resolveBbDesktopPlatform,
 } from "./desktop-platform.js";
-import { STARTUP_RETRY_CHANNEL } from "./local-view.js";
+import { STARTUP_ACTION_CHANNEL } from "./local-view.js";
 
 function createInitialDesktopInfo(): BbDesktopInfo {
   return {
@@ -539,11 +539,13 @@ forwardParsed(
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   window.addEventListener("DOMContentLoaded", () => {
-    document
-      .querySelector('[data-testid="bb-startup-retry"]')
-      ?.addEventListener("click", () => {
-        ipcRenderer.send(STARTUP_RETRY_CHANNEL);
+    for (const button of document.querySelectorAll<HTMLElement>(
+      "[data-startup-action]",
+    )) {
+      button.addEventListener("click", () => {
+        ipcRenderer.send(STARTUP_ACTION_CHANNEL, button.dataset.startupAction);
       });
+    }
   });
 }
 

@@ -7,9 +7,11 @@ import type { Command } from "commander";
 import { formatServerDataSize } from "@bb/domain";
 import {
   deleteOldServerCopy,
+  probeMovedServer,
   readServerMovedFile,
   removeServerConnectHoldFile,
   SERVER_CONNECT_HOLD_FILE_NAME,
+  unlockServerCopy,
 } from "@bb/server-archive";
 import type { ServerMoveStatus } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
@@ -20,9 +22,7 @@ import { resolveMachineHostId } from "./machine.js";
 import {
   importServerArchive,
   isDefaultDataDir,
-  probeMovedServer,
   resolveLocalDataDir,
-  unlockServerCopy,
 } from "./server-local.js";
 import {
   findLocalMachineServiceFile,

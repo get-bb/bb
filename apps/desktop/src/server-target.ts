@@ -3,7 +3,11 @@ import { dirname } from "node:path";
 import { z } from "zod";
 
 export const SERVER_TARGET_FILE_NAME = "server-target.json";
-export const BUILTIN_SERVER_NAME = "This Mac";
+export function builtinServerName(platform: NodeJS.Platform): string {
+  return platform === "darwin" ? "This Mac" : "This Computer";
+}
+
+export const BUILTIN_SERVER_NAME = builtinServerName(process.platform);
 
 export interface ConnectServerRef {
   handle: string;

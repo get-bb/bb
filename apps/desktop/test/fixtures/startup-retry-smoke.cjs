@@ -8,7 +8,7 @@ app.setName("bb-dev");
 
 const desktopRoot = process.env.BB_STARTUP_SMOKE_APP_PATH;
 const scenario = process.env.BB_STARTUP_SMOKE_SCENARIO ?? "custom";
-const channel = "bb-desktop:retry-startup";
+const channel = "bb-desktop:startup-action";
 const loads = [];
 let contents;
 let recovered = false;
@@ -105,8 +105,8 @@ async function run() {
     scenario === "fatal"
       ? "Port conflict"
       : scenario === "connect"
-        ? "Could not authenticate with bb Connect"
-        : "Could not reach this bb server";
+        ? "Could not open Retry fixture"
+        : "Could not open server";
   const hasError = () =>
     contents?.getURL().startsWith("data:") &&
     contents.executeJavaScript(
@@ -121,10 +121,11 @@ async function run() {
       0,
     );
     const before = loads.length;
-    ipcMain.emit(channel, {
-      sender: contents,
-      senderFrame: contents.mainFrame,
-    });
+    ipcMain.emit(
+      channel,
+      { sender: contents, senderFrame: contents.mainFrame },
+      "retry",
+    );
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(loads.length, before, "A fatal startup error cannot retry");
     server.close();
@@ -136,11 +137,11 @@ async function run() {
     await contents.executeJavaScript("typeof window.bbDesktop"),
     "object",
   );
-  assert.equal(
+  assert.deepEqual(
     await contents.executeJavaScript(
-      'document.querySelectorAll("[data-testid=bb-startup-retry]").length',
+      'Array.from(document.querySelectorAll("[data-startup-action]"), (button) => button.dataset.startupAction)',
     ),
-    1,
+    ["retry", "choose-server"],
   );
   const rejected = loads.length;
   ipcMain.emit(
@@ -151,29 +152,37 @@ async function run() {
   ipcMain.emit(
     channel,
     { sender: contents, senderFrame: contents.mainFrame },
-    undefined,
+    "retry",
     "unexpected",
   );
-  ipcMain.emit(channel, {
-    sender: { id: -1 },
-    senderFrame: contents.mainFrame,
-  });
-  ipcMain.emit(channel, {
-    sender: contents,
-    senderFrame: { url: contents.getURL() },
-  });
+  ipcMain.emit(channel, { sender: contents, senderFrame: contents.mainFrame });
+  ipcMain.emit(channel, { sender: contents, senderFrame: contents.mainFrame });
+  ipcMain.emit(
+    channel,
+    { sender: { id: -1 }, senderFrame: contents.mainFrame },
+    "retry",
+  );
+  ipcMain.emit(
+    channel,
+    { sender: contents, senderFrame: { url: contents.getURL() } },
+    "retry",
+  );
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(
     loads.length,
     rejected,
-    "Invalid payloads, unregistered senders and subframes must be rejected",
+    "Invalid payloads, actions missing from the page, unregistered senders and subframes must be rejected",
   );
   const errorUrl = contents.getURL();
   await contents.loadURL(
     "data:text/html;charset=utf-8,<h1>Unrelated local page</h1>",
   );
   const unrelated = loads.length;
-  ipcMain.emit(channel, { sender: contents, senderFrame: contents.mainFrame });
+  ipcMain.emit(
+    channel,
+    { sender: contents, senderFrame: contents.mainFrame },
+    "retry",
+  );
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(
     loads.length,
@@ -192,7 +201,7 @@ async function run() {
   const before = loads.length;
   const previousMints = mintCount;
   await contents.executeJavaScript(
-    'const button = document.querySelector("[data-testid=bb-startup-retry]"); for (let i = 0; i < 10; i++) button.click();',
+    'const button = document.querySelector("[data-startup-action=retry]"); for (let i = 0; i < 10; i++) button.click();',
   );
   await until(() => contents.getURL() === `${serverUrl}/`);
   await until(() =>
@@ -222,7 +231,11 @@ async function run() {
     "Concurrent renderer clicks must apply the target once",
   );
   const after = loads.length;
-  ipcMain.emit(channel, { sender: contents, senderFrame: contents.mainFrame });
+  ipcMain.emit(
+    channel,
+    { sender: contents, senderFrame: contents.mainFrame },
+    "retry",
+  );
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(loads.length, after, "Loaded remote pages cannot retry startup");
   server.close();

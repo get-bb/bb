@@ -364,30 +364,32 @@ recovery path for those cases.
 ### Saved servers
 
 Use **bb → Desktop Settings → Server → Add Server…** to save and switch to
-another machine's HTTP(S) bb server URL. **Window → Server** opens the same menu. Saved URLs remain in the menu across restarts; adding an
-existing URL selects it without creating a duplicate. **This Mac** switches back
-to the built-in server without removing saved entries.
+another machine's HTTP(S) bb server URL. **Window → Server** opens the same
+menu. Saved URLs remain in the menu across restarts; adding an existing URL
+selects it without creating a duplicate. **This Mac** on macOS or **This
+Computer** on Linux switches back to the built-in server without removing
+saved entries.
 
 **Set Server URL…** edits the last selected custom server. Clearing its URL removes
-that entry and switches an active custom target to This Mac. Other saved servers
-and Connect discovery remain available. Existing single-server preferences are
+that entry and switches an active custom target to the built-in server. Other
+saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
 
 ### Server moves
 
 After `bb server move`, the old computer's data dir (`~/.bb` or
 `$BB_DATA_DIR`) contains `server-moved.json`. The desktop app reads it at
-startup, whenever the "This Mac" target loads, and while that target is active.
+startup, whenever the built-in server target loads, and while that target is active.
 While the target is active, the app watches the data dir. If `fs.watch` fails,
 for example with `ENOSPC`, the app checks the file every 2 seconds instead
 (`src/server-moved.ts`). The server writes the lock before the new machine
 takes over and removes it if the move is rolled back, so the app acts only on a
 committed move. A move is committed when the local server address answers
 `/health` with 410 `code: "server_moved"`, or when nothing listens there and no
-launcher process is alive. The app checks once when it starts or loads "This
-Mac". When a move finishes while the app is open, the app checks every second
-for up to 120 seconds. It stops if the lock disappears. A committed lock
-switches the server target:
+launcher process is alive. The app checks once when it starts or loads the
+built-in server. When a move finishes while the app is open, the app checks every
+second for up to 120 seconds. It stops if the lock disappears. The first time the app
+sees a committed lock for a `moveId`, it switches the server target once:
 
 - `mode: "connect"` selects `connectHandle` with `serverUrl`.
 - `mode: "direct"` sets the custom server URL. When a move finishes while
@@ -401,3 +403,28 @@ runs this computer as a regular machine, and quitting the app stops it. If the
 app has no stored bb Connect credential, it signs in to a connect target with
 the `x-bb-connect-machine` header that the move wrote to the data dir's
 `config.json`. The app logs a warning and ignores an invalid lock.
+
+On startup, a saved built-in server choice also switches to the moved server;
+it never starts the old copy automatically. A different saved remote server
+choice remains selected. Explicitly picking the built-in
+server while the lock exists and an old copy remains runs the local-copy safety
+check and confirmation. It refuses while the new server still answers.
+Cancelling leaves the current server selected. If a launchd or systemd machine
+service runs this data dir, confirmation removes it with `launchctl bootout` or
+`systemctl --user disable --now`. The app then removes the lock and the
+moved-server keys from `config.json`, and opens the local server again
+(`src/restore-local-server.ts`). If the old copy was deleted, explicitly picking
+the built-in server shows "bb moved to <toHostName>" with **Open <toHostName>**
+and **Choose server…**.
+
+Startup error screens list their actions as buttons. Any screen where
+retrying can help shows **Try again**. **Choose server…** opens the Server menu,
+where the user can select the built-in server if needed. A bb Connect
+`unauthorized` error has no **Try again**, because the same credential fails
+the same way. **Reconnect bb Connect** opens account sign-in in a desktop
+window. The app clears its old account sign-in, waits for a new session, then
+retries the selected server. A valid account session can mint and renew the
+desktop session when a machine credential is rejected. Closing the sign-in
+window leaves the error screen available. Fatal errors have no buttons. The renderer sends the chosen
+action on `bb-desktop:startup-action`. The main process accepts only actions
+from the error page that is currently loaded in an app window's main frame.

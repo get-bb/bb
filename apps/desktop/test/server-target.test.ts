@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  builtinServerName,
+  BUILTIN_SERVER_NAME,
   createServerTargetStore,
   normalizeCustomServerUrl,
   type ServerTargetFs,
 } from "../src/server-target.js";
+
+describe("builtinServerName", () => {
+  it("uses the operating system's local server label", () => {
+    expect(builtinServerName("darwin")).toBe("This Mac");
+    expect(builtinServerName("linux")).toBe("This Computer");
+    expect(BUILTIN_SERVER_NAME).toBe(builtinServerName(process.platform));
+  });
+});
 
 function createMemoryFs(initial: Record<string, string> = {}): {
   files: Map<string, string>;

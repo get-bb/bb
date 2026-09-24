@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ConnectListError,
+  deriveConnectBaseUrl,
   fetchDesktopSession,
   type ConnectCredential,
 } from "@bb/connect-client";
@@ -136,6 +137,87 @@ export function createCredentialCookieSource(args: {
       }
       return failure("network", errorMessage(error));
     }
+  };
+}
+
+export function createAccountCookieSource(args: {
+  accountCookie: { name: string; value: string };
+  fetchImpl?: typeof fetch;
+  remoteServerUrl: string;
+}): DesktopSessionCookieSource {
+  return async () => {
+    const accountUrl = deriveConnectBaseUrl(args.remoteServerUrl);
+    const headers = {
+      cookie: `${args.accountCookie.name}=${args.accountCookie.value}`,
+    };
+    const fetchImpl = args.fetchImpl ?? globalThis.fetch;
+    const targetHandle = new URL(args.remoteServerUrl).hostname.split(".")[0];
+    let serversResponse: Response;
+    try {
+      serversResponse = await fetchImpl(`${accountUrl}/api/connect/servers`, {
+        headers,
+      });
+    } catch (error) {
+      return failure("network", errorMessage(error));
+    }
+    if (serversResponse.status === 401 || serversResponse.status === 403) {
+      return failure("unauthorized", "bb Connect sign-in is no longer valid");
+    }
+    if (!serversResponse.ok) {
+      return failure("request_rejected", `HTTP ${serversResponse.status}`);
+    }
+    let serversBody: unknown;
+    try {
+      serversBody = await serversResponse.json();
+    } catch (error) {
+      return failure("invalid_response", errorMessage(error));
+    }
+    const servers = z
+      .object({ servers: z.array(z.object({ handle: z.string() })) })
+      .safeParse(serversBody);
+    if (!servers.success) {
+      return failure(
+        "invalid_response",
+        "server list did not match the contract",
+      );
+    }
+    if (
+      !servers.data.servers.some((server) => server.handle === targetHandle)
+    ) {
+      return failure(
+        "unauthorized",
+        "this account does not own the selected server",
+      );
+    }
+    const url = `${accountUrl}/api/connect/desktop-session`;
+    let response: Response;
+    try {
+      response = await fetchImpl(url, {
+        method: "POST",
+        headers,
+      });
+    } catch (error) {
+      return failure("network", errorMessage(error));
+    }
+    if (response.status === 401 || response.status === 403) {
+      return failure("unauthorized", "bb Connect sign-in is no longer valid");
+    }
+    if (!response.ok) {
+      return failure("request_rejected", `HTTP ${response.status}`);
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (error) {
+      return failure("invalid_response", errorMessage(error));
+    }
+    const parsed = z
+      .object({ cookie: rpcSuccessSchema.shape.result.shape.cookie })
+      .safeParse(body);
+    if (!parsed.success) {
+      return failure("invalid_response", "response did not match the contract");
+    }
+    return { cookie: parsed.data.cookie, ok: true };
   };
 }
 
