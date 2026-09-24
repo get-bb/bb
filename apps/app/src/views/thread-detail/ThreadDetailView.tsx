@@ -1880,6 +1880,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const threadEnvironmentIsLocal = environment
     ? isLocalDaemonHost(environment.hostId)
     : false;
+  const removedEnvironmentHostName =
+    environment !== undefined && environment.hostLifecycle !== "active"
+      ? (threadDetailBootstrapQuery.data?.environmentHostName ?? null)
+      : null;
   const environmentDisplayHostContext = useMemo<EnvironmentDisplayHostContext>(
     () => ({
       locality: threadEnvironmentIsLocal ? "local" : "remote",
@@ -1888,18 +1892,15 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             name: threadEnvironmentHost.name,
             connected: threadEnvironmentHost.status === "connected",
           }
-        : environment !== undefined &&
-            environment.hostLifecycle !== "active" &&
-            threadDetailBootstrapQuery.data?.environmentHostName
+        : removedEnvironmentHostName
           ? {
-              name: threadDetailBootstrapQuery.data.environmentHostName,
+              name: removedEnvironmentHostName,
               connected: false,
             }
           : null,
     }),
     [
-      environment?.hostLifecycle,
-      threadDetailBootstrapQuery.data?.environmentHostName,
+      removedEnvironmentHostName,
       threadEnvironmentIsLocal,
       threadEnvironmentHost,
     ],
