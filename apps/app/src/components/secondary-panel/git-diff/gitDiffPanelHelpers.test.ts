@@ -134,33 +134,48 @@ describe("gitDiffPanelHelpers", () => {
       makeDiffFile("apps/app/src/Panel.tsx"),
       makeDiffFile("apps/app/src/Panel.test.tsx"),
       makeDiffFile("apps/server/src/routes/diff.ts"),
-      makeDiffFile("docs/new-name.md", "docs/Old-Name.md"),
+      makeDiffFile("README.md"),
+      makeDiffFile("docs/new-name.md", "docs/Old-Name.mdx"),
     ];
     const paths = (query: string) =>
       filterDiffFilesByPath(files, query).map((file) => file.path);
 
     it("returns every file for a blank query", () => {
-      expect(filterDiffFilesByPath(files, "  ")).toBe(files);
+      expect(filterDiffFilesByPath(files, " , ")).toBe(files);
     });
 
-    it("requires every term to match case-insensitively", () => {
-      expect(paths("APP panel")).toEqual([
+    it("matches plain text as a case-insensitive path substring", () => {
+      expect(paths("PANEL")).toEqual([
         "apps/app/src/Panel.tsx",
         "apps/app/src/Panel.test.tsx",
       ]);
     });
 
-    it("drops files matching a negated term", () => {
-      expect(paths("panel !.test.")).toEqual(["apps/app/src/Panel.tsx"]);
-      expect(paths("!apps/")).toEqual(["docs/new-name.md"]);
+    it("matches a slashless glob against the file name at any depth", () => {
+      expect(paths("*.md")).toEqual(["README.md", "docs/new-name.md"]);
+    });
+
+    it("matches a glob containing a slash against the full path", () => {
+      expect(paths("apps/*/src/**")).toEqual([
+        "apps/app/src/Panel.tsx",
+        "apps/app/src/Panel.test.tsx",
+        "apps/server/src/routes/diff.ts",
+      ]);
+      expect(paths("src/*.tsx")).toEqual([]);
+    });
+
+    it("unions comma-separated patterns and removes negated ones", () => {
+      expect(paths("*.md, routes")).toEqual([
+        "apps/server/src/routes/diff.ts",
+        "README.md",
+        "docs/new-name.md",
+      ]);
+      expect(paths("*.tsx, !*.test.tsx")).toEqual(["apps/app/src/Panel.tsx"]);
+      expect(paths("!apps/**")).toEqual(["README.md", "docs/new-name.md"]);
     });
 
     it("matches a renamed file by its previous path", () => {
-      expect(paths("old-name")).toEqual(["docs/new-name.md"]);
-    });
-
-    it("ignores a bare negation marker", () => {
-      expect(paths("!")).toHaveLength(files.length);
+      expect(paths("*.mdx")).toEqual(["docs/new-name.md"]);
     });
   });
 });

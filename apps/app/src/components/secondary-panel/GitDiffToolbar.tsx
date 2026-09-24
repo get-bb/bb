@@ -168,7 +168,7 @@ function GitDiffFileFilterInput({
           "h-8 rounded-lg border-border pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
           COARSE_POINTER_TEXT_SM_CLASS,
         )}
-        placeholder="Filter files by path, !term to exclude"
+        placeholder="Filter files, e.g. *.md, docs/**, !*.test.ts"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {

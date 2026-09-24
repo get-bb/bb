@@ -1,5 +1,6 @@
 import type { WorkspaceCommitSummary, WorkspaceDiffTarget } from "@bb/domain";
 import type { DiffFileEntry } from "@bb/server-contract";
+import picomatch from "picomatch/posix";
 import type { GitDiffSelectionOption } from "../GitDiffToolbar";
 
 interface GitDiffIdentityParams {
@@ -142,23 +143,43 @@ export function shouldResetSelectedGitDiffSelection(
   return !diffCommits.some((commit) => commit.sha === selectedGitDiffSelection);
 }
 
+function compileDiffFilePattern(pattern: string): (path: string) => boolean {
+  if (!picomatch.scan(pattern).isGlob) {
+    const needle = pattern.toLowerCase();
+    return (path) => path.toLowerCase().includes(needle);
+  }
+  return picomatch(pattern, {
+    basename: !pattern.includes("/"),
+    dot: true,
+    nocase: true,
+  });
+}
+
 export function filterDiffFilesByPath<
   T extends Pick<DiffFileEntry, "path" | "previousPath">,
 >(files: readonly T[], query: string): readonly T[] {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const included = terms.filter((term) => !term.startsWith("!"));
-  const excluded = terms
-    .filter((term) => term.startsWith("!"))
-    .map((term) => term.slice(1))
-    .filter(Boolean);
-  if (included.length === 0 && excluded.length === 0) {
+  const patterns = query
+    .split(",")
+    .map((pattern) => pattern.trim())
+    .filter((pattern) => pattern !== "" && pattern !== "!");
+  if (patterns.length === 0) {
     return files;
   }
+  const included = patterns
+    .filter((pattern) => !pattern.startsWith("!"))
+    .map(compileDiffFilePattern);
+  const excluded = patterns
+    .filter((pattern) => pattern.startsWith("!"))
+    .map((pattern) => compileDiffFilePattern(pattern.slice(1)));
   return files.filter((file) => {
-    const paths = [file.path, file.previousPath]
-      .filter((path) => path !== null)
-      .map((path) => path.toLowerCase());
-    const matches = (term: string) => paths.some((path) => path.includes(term));
-    return included.every(matches) && !excluded.some(matches);
+    const paths = [file.path, file.previousPath].filter(
+      (path) => path !== null,
+    );
+    const matches = (isMatch: (path: string) => boolean) =>
+      paths.some((path) => isMatch(path));
+    return (
+      (included.length === 0 || included.some(matches)) &&
+      !excluded.some(matches)
+    );
   });
 }
