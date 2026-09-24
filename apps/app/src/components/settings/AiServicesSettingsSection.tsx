@@ -18,6 +18,8 @@ import {
   type ChoiceDropdownOption,
 } from "./ChoiceDropdownSetting";
 
+type AiTaskTestResult = TestAiServiceResponse | { ok: false; message: string };
+
 const AUTOMATIC_KEY = "automatic";
 const OFF_KEY = "off";
 
@@ -128,7 +130,7 @@ function selectionFromKey(
 function rowDescription(
   view: SystemAiServicesResponse,
   row: AiTaskRow,
-  testResult: TestAiServiceResponse | undefined,
+  testResult: AiTaskTestResult | undefined,
 ): string {
   const selection = view.selections[row.task];
   let current = "";
@@ -164,7 +166,7 @@ export function AiServicesSettingsSection() {
   const queryClient = useQueryClient();
   const aiServicesQuery = useSystemAiServices();
   const [testResults, setTestResults] = useState<
-    Partial<Record<AiTextTask, TestAiServiceResponse>>
+    Partial<Record<AiTextTask, AiTaskTestResult>>
   >({});
   const select = useMutation({
     meta: { showErrorToast: false },
@@ -184,6 +186,16 @@ export function AiServicesSettingsSection() {
     mutationFn: (task: AiTextTask) => sdk.system.testAiService({ task }),
     onSuccess: (result, task) => {
       setTestResults((current) => ({ ...current, [task]: result }));
+    },
+    onError: (error, task) => {
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "The request failed";
+      setTestResults((current) => ({
+        ...current,
+        [task]: { ok: false, message },
+      }));
     },
   });
 

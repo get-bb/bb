@@ -53,14 +53,26 @@ interface RecordedRequest {
   body: string;
 }
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 }
 
-function stubFetch(): RecordedRequest[] {
+const TEST_SUCCESS = (): Response =>
+  jsonResponse({
+    ok: true,
+    pluginId: "bb-ai",
+    serviceId: "bb",
+    displayName: "bb cloud",
+    text: "Add a dark mode toggle",
+    durationMs: 412,
+  });
+
+function stubFetch(
+  testResponse: () => Response = TEST_SUCCESS,
+): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
   vi.stubGlobal(
     "fetch",
@@ -80,13 +92,7 @@ function stubFetch(): RecordedRequest[] {
         });
       }
       if (url === "/api/v1/system/ai-services/test") {
-        return jsonResponse({
-          ok: true,
-          serviceId: "bb",
-          displayName: "bb cloud",
-          text: "Add a dark mode toggle",
-          durationMs: 412,
-        });
+        return testResponse();
       }
       return jsonResponse(VIEW);
     }),
@@ -164,5 +170,47 @@ describe("AiServicesSettingsSection", () => {
         /Test: “Add a dark mode toggle” from bb cloud in 412 ms\./u,
       ),
     ).toBeTruthy();
+  });
+
+  it("shows why a test failed when the service could not answer", async () => {
+    stubFetch(() =>
+      jsonResponse({
+        ok: false,
+        message: "Codex: Run `codex login` to sign in",
+        durationMs: 3,
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(<AiServicesSettingsSection />, { wrapper });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Test commit messages" }),
+    );
+    expect(
+      await screen.findByText(
+        /Test failed: Codex: Run `codex login` to sign in/u,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows the error when the test request itself fails", async () => {
+    stubFetch(() =>
+      jsonResponse(
+        { code: "internal_error", message: "The sample prompt is empty" },
+        500,
+      ),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(<AiServicesSettingsSection />, { wrapper });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Test thread titles" }),
+    );
+    expect(
+      await screen.findByText(/Test failed: .*The sample prompt is empty/u),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Test thread titles" }).textContent,
+    ).toBe("Test");
   });
 });
