@@ -1446,12 +1446,14 @@ vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 type MockState = {
   addSocket: (ws: WebSocket, tags: string[]) => void;
   storage: Map<string, unknown>;
+  durable: Map<string, unknown>;
   restore: Promise<void>;
   api: DurableObjectState;
 };
 
 function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
+  const durable = new Map<string, unknown>(storage);
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
   let restore = Promise.resolve();
   const api = {
@@ -1465,6 +1467,9 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
       entries.push({ ws, tags });
     },
     setWebSocketAutoResponse: vi.fn(),
+    abort: vi.fn((reason?: string) => {
+      throw new Error(reason);
+    }),
     blockConcurrencyWhile: (fn: () => Promise<void>) => {
       restore = fn();
       return restore;
@@ -1478,6 +1483,10 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
         storage.delete(key);
       },
       setAlarm: async () => {},
+      sync: async () => {
+        durable.clear();
+        for (const [key, value] of storage) durable.set(key, value);
+      },
     },
   } as unknown as DurableObjectState;
   return {
@@ -1485,6 +1494,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
       entries.push({ ws, tags });
     },
     storage,
+    durable,
     get restore() {
       return restore;
     },
@@ -1917,5 +1927,139 @@ describe("TunnelDO dead tunnel sockets", () => {
     const res = await dob.fetch(new Request("https://do.internal/"));
     expect(res.status).toBe(503);
     expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+  });
+});
+
+describe("TunnelDO restarts after its tunnel socket vanishes", () => {
+  const OPENED_LONG_AGO = () => Date.now() - 60_000;
+
+  async function loaded(storage: Record<string, unknown>) {
+    const state = mockDoState({ protocolVersion: 1, ...storage });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    return { state, dob };
+  }
+
+  it("restarts on a visitor request when the tunnel it accepted is gone without a close", async () => {
+    const { state, dob } = await loaded({
+      serverId: "srv",
+      tunnelOpenedAt: OPENED_LONG_AGO(),
+    });
+
+    await expect(
+      dob.fetch(new Request("https://do.internal/install/version")),
+    ).rejects.toThrow("tunnel socket disappeared without a close");
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+    expect(state.durable.get("tunnelClosedAt")).toEqual(expect.any(Number));
+
+    const next = await dob.fetch(
+      new Request("https://do.internal/install/version"),
+    );
+    expect(next.status).toBe(503);
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers 503 without restarting after a recorded close", async () => {
+    const openedAt = OPENED_LONG_AGO();
+    const { state, dob } = await loaded({
+      serverId: "srv",
+      tunnelOpenedAt: openedAt,
+      tunnelClosedAt: openedAt + 1_000,
+    });
+
+    const res = await dob.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("gives a tunnel that just opened a few seconds to register", async () => {
+    const { state, dob } = await loaded({
+      serverId: "srv",
+      tunnelOpenedAt: Date.now() - 1_000,
+    });
+
+    const res = await dob.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("restarts an object from before the open and close records that still lists its server, once", async () => {
+    const { state, dob } = await loaded({ serverId: "srv" });
+
+    await expect(dob.fetch(new Request("https://do.internal/"))).rejects.toThrow(
+      "tunnel socket disappeared",
+    );
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+
+    const restarted = mockDoState(Object.fromEntries(state.durable));
+    const fresh = new TunnelDO(restarted.api, makeDoEnv());
+    await restarted.restore;
+    const res = await fresh.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(restarted.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("leaves an object that never had a tunnel alone", async () => {
+    const { state, dob } = await loaded({});
+
+    const res = await dob.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("restarts from the presence alarm, so a server with no visitors heals too", async () => {
+    const { state, dob } = await loaded({
+      machineId: "machine-air",
+      tunnelOpenedAt: OPENED_LONG_AGO(),
+    });
+
+    await expect(dob.alarm()).rejects.toThrow("tunnel socket disappeared");
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it("restarts before accepting a new tunnel dial into such an object", async () => {
+    const { state, dob } = await loaded({
+      serverId: "srv",
+      tunnelOpenedAt: OPENED_LONG_AGO(),
+    });
+
+    await expect(
+      dob.fetch(
+        new Request("https://do.internal/__tunnel?v=1&serverId=srv", {
+          headers: { upgrade: "websocket" },
+        }),
+      ),
+    ).rejects.toThrow("tunnel socket disappeared");
+    expect(state.api.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart while a live tunnel socket is connected", async () => {
+    const { state, dob } = await loaded({
+      serverId: "srv",
+      tunnelOpenedAt: OPENED_LONG_AGO(),
+    });
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+
+    await dob.alarm();
+    expect(state.api.abort).not.toHaveBeenCalled();
+  });
+
+  it("records the close of the last tunnel socket", async () => {
+    const openedAt = OPENED_LONG_AGO();
+    const { state, dob } = await loaded({
+      serverId: "srv",
+      tunnelOpenedAt: openedAt,
+    });
+    const socket = fakeTunnelSocket(undefined, 3);
+    state.addSocket(socket, ["tunnel"]);
+
+    dob.webSocketClose(socket, 1006, "");
+    await Promise.resolve();
+
+    expect(state.storage.get("tunnelClosedAt")).toBeGreaterThanOrEqual(
+      openedAt,
+    );
+    await dob.alarm();
+    expect(state.api.abort).not.toHaveBeenCalled();
   });
 });

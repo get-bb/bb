@@ -27,9 +27,9 @@ function registerNavigation(pluginId: string, id: string, title: string) {
 }
 
 describe("SidebarNavigationSetting", () => {
-  it("defaults to the bundled Navigation plugin and offers no Automatic or built-in choice", async () => {
-    registerNavigation("navigation", "navigation", "Navigation");
+  it("defaults to Automatic, which prefers an installed plugin over the bundled Navigation", async () => {
     registerNavigation("navbar", "grid", "Navigation grid");
+    registerNavigation("navigation", "navigation", "Navigation");
     const store = createStore();
     render(
       <Provider store={store}>
@@ -37,9 +37,7 @@ describe("SidebarNavigationSetting", () => {
       </Provider>,
     );
 
-    expect(store.get(sidebarNavigationProviderAtom)).toBe(
-      "navigation/navigation",
-    );
+    expect(store.get(sidebarNavigationProviderAtom)).toBe("__automatic__");
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Sidebar navigation" }),
       { button: 0 },
@@ -47,12 +45,14 @@ describe("SidebarNavigationSetting", () => {
     const options = (await screen.findAllByRole("menuitem")).map(
       (item) => item.textContent ?? "",
     );
-    expect(options.some((option) => option.startsWith("Automatic"))).toBe(
-      false,
-    );
+    expect(
+      options.find((option) => option.startsWith("Automatic")),
+    ).toContain("Currently using Navigation grid from navbar.");
     expect(options.some((option) => option.includes("built-in"))).toBe(false);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /Navigation grid/u }));
-    expect(store.get(sidebarNavigationProviderAtom)).toBe("navbar/grid");
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Navigation(?! grid)/u }));
+    expect(store.get(sidebarNavigationProviderAtom)).toBe(
+      "navigation/navigation",
+    );
   });
 });

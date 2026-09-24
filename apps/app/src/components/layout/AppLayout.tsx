@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import {
+  resolveThreadTitleDisplayText,
   ThreadTitleMentionResourcesProvider,
   useSidebarThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
@@ -560,7 +561,10 @@ export function AppLayout({ children }: AppLayoutProps) {
         : "always",
   });
   const threadDisplayTitle = thread
-    ? getThreadDisplayTitle(thread)
+    ? resolveThreadTitleDisplayText(
+        getThreadDisplayTitle(thread),
+        titleMentionResources,
+      )
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";

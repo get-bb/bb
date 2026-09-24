@@ -57,6 +57,21 @@ function findServerSubmenu(
   return serverMenu?.submenu as MenuItemConstructorOptions[];
 }
 
+function findDesktopSettingsServerSubmenu(
+  template: MenuItemConstructorOptions[],
+): MenuItemConstructorOptions[] {
+  const appSubmenu = template[0]?.submenu as MenuItemConstructorOptions[];
+  const desktopSettingsMenu = appSubmenu.find(
+    (item) => item.label === "Desktop Settings",
+  );
+  const desktopSettingsSubmenu =
+    desktopSettingsMenu?.submenu as MenuItemConstructorOptions[];
+  const serverMenu = desktopSettingsSubmenu.find(
+    (item) => item.label === "Server",
+  );
+  return serverMenu?.submenu as MenuItemConstructorOptions[];
+}
+
 describe("application menu", () => {
   it("reopens the last closed tab from the File menu", () => {
     const reopenClosedTab = vi.fn();
@@ -186,6 +201,52 @@ describe("application menu", () => {
     expect(addServer).toHaveBeenCalledTimes(1);
     serverSubmenu[5]?.click?.({} as never, undefined, {} as never);
     expect(setServerUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the Server menu under Desktop Settings with Window → Server as an alias", () => {
+    const selectServer = vi.fn();
+    const addServer = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        addServer,
+        selectServer,
+        servers: [
+          { checked: true, id: "builtin", name: "This Mac" },
+          {
+            checked: false,
+            id: "custom:https://first.example",
+            name: "first.example",
+          },
+        ],
+      }),
+    );
+    const desktopSettingsServerSubmenu =
+      findDesktopSettingsServerSubmenu(template);
+    const labels = (items: MenuItemConstructorOptions[]) =>
+      items.map((item) => item.label ?? `<${item.type}>`);
+
+    expect(labels(desktopSettingsServerSubmenu)).toEqual([
+      "This Mac",
+      "first.example",
+      "<separator>",
+      "Add Server…",
+      SET_SERVER_URL_MENU_LABEL,
+    ]);
+    expect(labels(findServerSubmenu(template))).toEqual(
+      labels(desktopSettingsServerSubmenu),
+    );
+    desktopSettingsServerSubmenu[1]?.click?.(
+      {} as never,
+      undefined,
+      {} as never,
+    );
+    desktopSettingsServerSubmenu[3]?.click?.(
+      {} as never,
+      undefined,
+      {} as never,
+    );
+    expect(selectServer).toHaveBeenCalledWith("custom:https://first.example");
+    expect(addServer).toHaveBeenCalledTimes(1);
   });
 
   it("explains an empty Connect list with a disabled row when the sync was skipped", () => {

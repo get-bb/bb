@@ -84,15 +84,15 @@ interface PluginThreadListProps {
 Every other `app.slots.*` member is additive. This one is not: two thread
 lists cannot share one scroll area. The rules:
 
-1. Automatic is the default. It activates the first registered provider in
-   deterministic slot order; disabling or removing it reveals the next.
-2. The user can choose Automatic or pin a provider in
-   **Settings → Appearance → Sidebar**. bb ships its own list as the bundled
-   `thread-list` plugin; there is no separate built-in list, and a stored
-   `__builtin__` preference is read as Automatic.
-3. The choice is client-local, in `localStorage` under
-   `bb.sidebar.threadListProvider`, next to the other sidebar layout
-   preferences. A device with a plugin disabled falls back cleanly.
+1. Automatic is the default. bb ships its own list as the bundled
+   `thread-list` plugin, and Automatic activates the first other registered
+   provider in deterministic slot order, falling back to the bundled plugin.
+   Disabling or removing the active provider reveals the next.
+2. The user can choose Automatic or pin a provider, including the bundled
+   one, in **Settings → Appearance → Sidebar**. There is no separate built-in
+   list; a stored `__builtin__` preference selects the bundled plugin.
+3. The choice is the synced `sidebar.threadListProvider` UI preference,
+   shared by every client.
 4. If an explicitly chosen provider disappears — the plugin is uninstalled,
    disabled, or fails to interpret — the host shows the "No thread list
    plugin is enabled" placeholder (with a link to Plugins) and keeps the
@@ -659,9 +659,9 @@ Add these when the API lands.
 ### `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
-component. Exclusive: Automatic activates the first available provider, while
-the user can pin one provider in client-local Settings. bb ships its own list
-as the bundled `thread-list` plugin. A missing explicitly selected plugin shows
+component. Exclusive: Automatic activates the first available provider other
+than the bundled `thread-list` plugin, falling back to it, while the user can
+pin one provider in the synced sidebar setting. A missing explicitly selected plugin shows
 the "No thread list plugin is enabled" placeholder; a crash shows a "stopped
 working" placeholder with a Reload button.
 

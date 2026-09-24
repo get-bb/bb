@@ -24,6 +24,10 @@ import {
   type ThreadListIndicatorState,
 } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import {
+  ThreadTitle,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   findEnvironmentDisplayProvider,
@@ -238,7 +242,7 @@ function MobileRecentThreadRow({
   } = row;
   const touchStartedBeforeLink = useRef(false);
   const { providers: environmentProviders } = useSystemEnvironmentProviders();
-  const threadTitle = getThreadDisplayTitle(thread);
+  const threadTitle = useThreadTitleDisplayText(getThreadDisplayTitle(thread));
   const indicatorState: ThreadListIndicatorState =
     threadListIndicatorStateForThread(thread, hasUnsubmittedDraft);
   const hasHiddenChildren = hasChildren && isCollapsed;
@@ -376,14 +380,10 @@ function MobileRecentThreadRow({
       >
         <span className="min-w-0 flex-1 space-y-0.5">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span
-              className={cn(
-                "min-w-0 truncate font-medium",
-                COARSE_POINTER_TEXT_BASE_CLASS,
-              )}
-            >
-              {threadTitle}
-            </span>
+            <ThreadTitle
+              title={getThreadDisplayTitle(thread)}
+              className={cn("font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}
+            />
           </span>
           <span
             className={cn(

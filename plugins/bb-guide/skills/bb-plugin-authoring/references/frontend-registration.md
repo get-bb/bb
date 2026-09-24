@@ -270,8 +270,9 @@ after a short movement and the menu closes as it starts.
 
 bb ships its own rows as the bundled Navigation plugin, which uses only this
 API; read `plugins/navigation/app/Navigation.tsx` for a complete provider.
-Users pick one provider under Settings → Appearance → Navigation; it defaults
-to Navigation (`navigation/navigation`), and there is no Automatic choice. While
+Users pick one provider under Settings → Appearance → Navigation. The default,
+Automatic, uses the first installed navigation plugin other than the bundled
+Navigation (`navigation/navigation`), or Navigation when there is none. While
 plugins load, bb shows skeleton rows at the height your component last had
 (nothing if it rendered nothing). If the picked provider is disabled or
 removed, bb uses Navigation until the user picks again; if it crashes, a

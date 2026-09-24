@@ -363,8 +363,8 @@ recovery path for those cases.
 
 ### Saved servers
 
-Use **Window → Server → Add Server…** to save and switch to another machine's
-HTTP(S) bb server URL. Saved URLs remain in the menu across restarts; adding an
+Use **bb → Desktop Settings → Server → Add Server…** to save and switch to
+another machine's HTTP(S) bb server URL. **Window → Server** opens the same menu. Saved URLs remain in the menu across restarts; adding an
 existing URL selects it without creating a duplicate. **This Mac** switches back
 to the built-in server without removing saved entries.
 

@@ -1,4 +1,8 @@
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
+import {
+  ThreadTitle,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1858,6 +1862,9 @@ function RootComposeSurface({
     window.requestAnimationFrame(focusPromptBox);
   }, [focusPromptBox, setForkSeed]);
 
+  const forkSourceDisplayTitle = useThreadTitleDisplayText(
+    forkSeed?.sourceThreadTitle ?? "",
+  );
   const promptHeader = useMemo(() => {
     if (forkSeed === null) {
       return null;
@@ -1865,12 +1872,13 @@ function RootComposeSurface({
     return (
       <div className="flex">
         <div
-          aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
+          aria-label={`Forking ${forkSourceDisplayTitle}`}
           className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
         >
           <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0 truncate">
-            Forking {forkSeed.sourceThreadTitle}
+          <span className="flex min-w-0 items-baseline gap-1">
+            <span className="shrink-0">Forking</span>
+            <ThreadTitle title={forkSeed.sourceThreadTitle} />
           </span>
           <button
             type="button"
@@ -1883,7 +1891,7 @@ function RootComposeSurface({
         </div>
       </div>
     );
-  }, [forkSeed, handleCancelForkDraft]);
+  }, [forkSeed, forkSourceDisplayTitle, handleCancelForkDraft]);
 
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {

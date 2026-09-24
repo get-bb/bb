@@ -68,6 +68,7 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
   PULL_REQUEST_STATE_DISPLAY,
   getPullRequestAttentionDisplay,
@@ -152,11 +153,14 @@ export function ParentSelectorRow({
               threadId: parentThreadId,
             })}
             className={cn(
-              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              "block min-w-0 text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           >
-            {selectedParentOptionLabel ?? "Parent thread"}
+            <ThreadTitle
+              title={selectedParentOptionLabel ?? "Parent thread"}
+              tooltip
+            />
           </Link>
           <Button
             type="button"
@@ -216,10 +220,9 @@ function ForksRow({ thread, projectId }: ForksRowProps) {
         renderItem={(fork) => (
           <Link
             to={getThreadRoutePath({ projectId, threadId: fork.id })}
-            className="block min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
-            title={getThreadDisplayTitle(fork)}
+            className="block min-w-0 text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
           >
-            {getThreadDisplayTitle(fork)}
+            <ThreadTitle title={getThreadDisplayTitle(fork)} tooltip />
           </Link>
         )}
       />
