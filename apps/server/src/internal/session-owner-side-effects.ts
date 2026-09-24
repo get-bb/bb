@@ -6,10 +6,14 @@ import {
   listHostThreadIds,
   type HostDaemonSessionRow,
 } from "@bb/db";
-import type { HostDaemonActiveThread } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonActiveThread,
+  HostDaemonSessionCloseReason,
+} from "@bb/host-daemon-contract";
 import {
   DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
   DAEMON_DISCONNECT_GRACE_MS,
+  LEASE_TIMEOUT_MS,
 } from "../constants.js";
 import type {
   AppDeps,
@@ -45,6 +49,14 @@ interface HandleHostSessionOpenedArgs {
 }
 
 interface HandleDaemonSocketClosedArgs {
+  sessionId: string;
+}
+
+interface HandleDaemonSessionLostArgs {
+  reason: Extract<
+    HostDaemonSessionCloseReason,
+    "daemon-disconnect" | "expired"
+  >;
   sessionId: string;
 }
 
@@ -123,6 +135,31 @@ export function handleDaemonSocketClosed(
   args: HandleDaemonSocketClosedArgs,
 ): void {
   deps.logger.info({ sessionId: args.sessionId }, "Daemon WebSocket closed");
+  handleDaemonSessionLost(deps, {
+    reason: "daemon-disconnect",
+    sessionId: args.sessionId,
+  });
+}
+
+export function handleDaemonSessionSilent(
+  deps: DaemonSocketClosedDeps,
+  args: HandleDaemonSocketClosedArgs,
+): void {
+  deps.logger.warn(
+    { leaseTimeoutMs: LEASE_TIMEOUT_MS, sessionId: args.sessionId },
+    "Daemon sent nothing within its lease; closing its socket",
+  );
+  deps.hub.closeDaemonSession(args.sessionId, "expired");
+  handleDaemonSessionLost(deps, {
+    reason: "expired",
+    sessionId: args.sessionId,
+  });
+}
+
+function handleDaemonSessionLost(
+  deps: DaemonSocketClosedDeps,
+  args: HandleDaemonSessionLostArgs,
+): void {
   deps.hub.unregisterDaemon(args.sessionId);
   deps.sharedPorts.clearHostConnectCapability(args.sessionId);
 
@@ -138,7 +175,7 @@ export function handleDaemonSocketClosed(
     sessionId: args.sessionId,
   });
 
-  closeSession(deps.db, deps.hub, args.sessionId, "daemon-disconnect");
+  closeSession(deps.db, deps.hub, args.sessionId, args.reason);
 
   notifyHostThreadRuntimeStatusChanged(deps, session.hostId);
   deps.hub.scheduleDaemonDisconnect(
