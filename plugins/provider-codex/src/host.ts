@@ -38,8 +38,10 @@ export default experimental_defineHostEntry({
   handlers: {
     resolveNativeRoots: (): Promise<ExperimentalNativeRootsResolveAnswer> =>
       resolveCodexNativeRoots({ homeDir: os.homedir(), env: process.env }),
-    "codex.ai.complete": (input) => textResult(completeCodexInference(input)),
-    "codex.ai.transcribe": (input) => textResult(transcribeCodexVoice(input)),
+    "codex.ai.complete": (input, context) =>
+      textResult(completeCodexInference(input, context.signal)),
+    "codex.ai.transcribe": (input, context) =>
+      textResult(transcribeCodexVoice(input, context.signal)),
     "codex.ai.status": async (): Promise<CodexAiStatus> => {
       try {
         await readCodexAuthCredentials();

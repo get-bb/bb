@@ -248,11 +248,14 @@ describe("Codex ChatGPT client", () => {
       ]),
     );
 
-    const result = await completeCodexInference({
-      model: "gpt-5.6-luna",
-      prompt: "Return a title",
-      timeoutMs: 10000,
-    });
+    const result = await completeCodexInference(
+      {
+        model: "gpt-5.6-luna",
+        prompt: "Return a title",
+        timeoutMs: 10000,
+      },
+      new AbortController().signal,
+    );
 
     expect(result).toBe("Short title");
     const [, init] = requiredFetchCall(fetchMock, 0);
@@ -287,11 +290,14 @@ describe("Codex ChatGPT client", () => {
       ]),
     );
 
-    const result = await completeCodexInference({
-      model: "gpt-5.6-luna",
-      prompt: "Return a title",
-      timeoutMs: 10000,
-    });
+    const result = await completeCodexInference(
+      {
+        model: "gpt-5.6-luna",
+        prompt: "Return a title",
+        timeoutMs: 10000,
+      },
+      new AbortController().signal,
+    );
 
     expect(result).toBe("OpenAI title");
     const [url, init] = requiredFetchCall(fetchMock, 0);
@@ -332,11 +338,14 @@ describe("Codex ChatGPT client", () => {
     );
 
     await expect(
-      completeCodexInference({
-        model: "gpt-5.6-luna",
-        prompt: "Return a title",
-        timeoutMs: 10_000,
-      }),
+      completeCodexInference(
+        {
+          model: "gpt-5.6-luna",
+          prompt: "Return a title",
+          timeoutMs: 10_000,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_service_unavailable",
     });
@@ -364,11 +373,14 @@ describe("Codex ChatGPT client", () => {
     );
 
     await expect(
-      completeCodexInference({
-        model: "gpt-5.6-luna",
-        prompt: "Return a title",
-        timeoutMs: 10_000,
-      }),
+      completeCodexInference(
+        {
+          model: "gpt-5.6-luna",
+          prompt: "Return a title",
+          timeoutMs: 10_000,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_service_unavailable",
       message: "An unexpected provider error occurred.",
@@ -396,11 +408,14 @@ describe("Codex ChatGPT client", () => {
     fetchMock.mockResolvedValueOnce(failedResponse.response);
 
     await expect(
-      completeCodexInference({
-        model: "gpt-5.6-luna",
-        prompt: "Return a title",
-        timeoutMs: 100,
-      }),
+      completeCodexInference(
+        {
+          model: "gpt-5.6-luna",
+          prompt: "Return a title",
+          timeoutMs: 100,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_service_unavailable",
     });
@@ -429,11 +444,14 @@ describe("Codex ChatGPT client", () => {
       ]),
     );
 
-    await completeCodexInference({
-      model: "gpt-5.4-mini",
-      prompt: "Return a title",
-      timeoutMs: 10000,
-    });
+    await completeCodexInference(
+      {
+        model: "gpt-5.4-mini",
+        prompt: "Return a title",
+        timeoutMs: 10000,
+      },
+      new AbortController().signal,
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = requiredFetchCall(fetchMock, 0);
@@ -461,11 +479,14 @@ describe("Codex ChatGPT client", () => {
     );
 
     await expect(
-      completeCodexInference({
-        model: "gpt-5.4-mini",
-        prompt: "Return a title",
-        timeoutMs: 10000,
-      }),
+      completeCodexInference(
+        {
+          model: "gpt-5.4-mini",
+          prompt: "Return a title",
+          timeoutMs: 10000,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_response_too_large",
     });
@@ -481,14 +502,79 @@ describe("Codex ChatGPT client", () => {
     fetchMock.mockResolvedValueOnce(stalledSseResponse());
 
     await expect(
-      completeCodexInference({
-        model: "gpt-5.4-mini",
-        prompt: "Return a title",
-        timeoutMs: 20,
-      }),
+      completeCodexInference(
+        {
+          model: "gpt-5.4-mini",
+          prompt: "Return a title",
+          timeoutMs: 20,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_request_timeout",
     });
+  });
+
+  it("stops reading the stream when bb cancels the host call", async () => {
+    const homeDir = await makeTempHome();
+    await writeCodexApiKeyAuth({
+      homeDir,
+      apiKey: "sk-codex-api-key",
+    });
+    const fetchMock = setupFetchMock();
+    fetchMock.mockResolvedValueOnce(stalledSseResponse());
+    const controller = new AbortController();
+
+    const pending = completeCodexInference(
+      {
+        model: "gpt-5.6-luna",
+        prompt: "Return a title",
+        timeoutMs: 10_000,
+      },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      detailCode: "codex_request_cancelled",
+    });
+  });
+
+  it("aborts the fetch when bb cancels before the response arrives", async () => {
+    const homeDir = await makeTempHome();
+    await writeCodexApiKeyAuth({
+      homeDir,
+      apiKey: "sk-codex-api-key",
+    });
+    const fetchMock = setupFetchMock();
+    let fetchSignal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          fetchSignal = init?.signal ?? undefined;
+          fetchSignal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    const controller = new AbortController();
+
+    const pending = completeCodexInference(
+      {
+        model: "gpt-5.6-luna",
+        prompt: "Return a title",
+        timeoutMs: 10_000,
+      },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      detailCode: "codex_request_cancelled",
+    });
+    expect(fetchSignal?.aborted).toBe(true);
   });
 
   it("uses one deadline across response headers and SSE body reads", async () => {
@@ -509,11 +595,14 @@ describe("Codex ChatGPT client", () => {
     });
 
     await expect(
-      completeCodexInference({
-        model: "gpt-5.6-luna",
-        prompt: "Return a title",
-        timeoutMs: 60,
-      }),
+      completeCodexInference(
+        {
+          model: "gpt-5.6-luna",
+          prompt: "Return a title",
+          timeoutMs: 60,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_request_timeout",
     });
@@ -534,11 +623,14 @@ describe("Codex ChatGPT client", () => {
 
     let thrown: Error | null = null;
     try {
-      await completeCodexInference({
-        model: "gpt-5.4-mini",
-        prompt: "Return a title",
-        timeoutMs: 10000,
-      });
+      await completeCodexInference(
+        {
+          model: "gpt-5.4-mini",
+          prompt: "Return a title",
+          timeoutMs: 10000,
+        },
+        new AbortController().signal,
+      );
     } catch (error) {
       if (!(error instanceof Error)) {
         throw new Error("Expected Error from oversized Codex error response");
@@ -580,14 +672,17 @@ describe("Codex ChatGPT client", () => {
         }),
       );
 
-    const result = await transcribeCodexVoice({
-      model: "gpt-4o-mini-transcribe",
-      audioBase64: Buffer.from("audio").toString("base64"),
-      mimeType: "audio/webm",
-      filename: "prompt.webm",
-      hint: null,
-      timeoutMs: 30000,
-    });
+    const result = await transcribeCodexVoice(
+      {
+        model: "gpt-4o-mini-transcribe",
+        audioBase64: Buffer.from("audio").toString("base64"),
+        mimeType: "audio/webm",
+        filename: "prompt.webm",
+        hint: null,
+        timeoutMs: 30000,
+      },
+      new AbortController().signal,
+    );
 
     expect(result).toBe("hello world");
     const [, retryInit] = requiredFetchCall(fetchMock, 1);
@@ -627,14 +722,17 @@ describe("Codex ChatGPT client", () => {
 
     let thrown: Error | null = null;
     try {
-      await transcribeCodexVoice({
-        model: "gpt-4o-mini-transcribe",
-        audioBase64: Buffer.from("audio").toString("base64"),
-        mimeType: "audio/webm",
-        filename: "prompt.webm",
-        hint: null,
-        timeoutMs: 30000,
-      });
+      await transcribeCodexVoice(
+        {
+          model: "gpt-4o-mini-transcribe",
+          audioBase64: Buffer.from("audio").toString("base64"),
+          mimeType: "audio/webm",
+          filename: "prompt.webm",
+          hint: null,
+          timeoutMs: 30000,
+        },
+        new AbortController().signal,
+      );
     } catch (error) {
       if (!(error instanceof Error)) {
         throw new Error("Expected Error from challenged transcription");
@@ -670,14 +768,17 @@ describe("Codex ChatGPT client", () => {
     );
 
     await expect(
-      transcribeCodexVoice({
-        model: "gpt-4o-mini-transcribe",
-        audioBase64: Buffer.from("audio").toString("base64"),
-        mimeType: "audio/webm",
-        filename: "prompt.webm",
-        hint: null,
-        timeoutMs: 30000,
-      }),
+      transcribeCodexVoice(
+        {
+          model: "gpt-4o-mini-transcribe",
+          audioBase64: Buffer.from("audio").toString("base64"),
+          mimeType: "audio/webm",
+          filename: "prompt.webm",
+          hint: null,
+          timeoutMs: 30000,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_request_failed",
       message: "Codex transcription request failed with HTTP 403",
@@ -698,14 +799,17 @@ describe("Codex ChatGPT client", () => {
       }),
     );
 
-    const result = await transcribeCodexVoice({
-      model: "gpt-4o-mini-transcribe",
-      audioBase64: Buffer.from("audio").toString("base64"),
-      mimeType: "audio/webm",
-      filename: "prompt.webm",
-      hint: "context",
-      timeoutMs: 30000,
-    });
+    const result = await transcribeCodexVoice(
+      {
+        model: "gpt-4o-mini-transcribe",
+        audioBase64: Buffer.from("audio").toString("base64"),
+        mimeType: "audio/webm",
+        filename: "prompt.webm",
+        hint: "context",
+        timeoutMs: 30000,
+      },
+      new AbortController().signal,
+    );
 
     expect(result).toBe("hello openai");
     const [url, init] = requiredFetchCall(fetchMock, 0);
@@ -745,14 +849,17 @@ describe("Codex ChatGPT client", () => {
     );
 
     await expect(
-      transcribeCodexVoice({
-        model: "gpt-4o-mini-transcribe",
-        audioBase64: Buffer.from("audio").toString("base64"),
-        mimeType: "audio/webm",
-        filename: "prompt.webm",
-        hint: null,
-        timeoutMs: 30000,
-      }),
+      transcribeCodexVoice(
+        {
+          model: "gpt-4o-mini-transcribe",
+          audioBase64: Buffer.from("audio").toString("base64"),
+          mimeType: "audio/webm",
+          filename: "prompt.webm",
+          hint: null,
+          timeoutMs: 30000,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_rate_limited",
       message:
@@ -779,14 +886,17 @@ describe("Codex ChatGPT client", () => {
     );
 
     await expect(
-      transcribeCodexVoice({
-        model: "gpt-4o-mini-transcribe",
-        audioBase64: Buffer.from("audio").toString("base64"),
-        mimeType: "audio/webm",
-        filename: "prompt.webm",
-        hint: null,
-        timeoutMs: 30000,
-      }),
+      transcribeCodexVoice(
+        {
+          model: "gpt-4o-mini-transcribe",
+          audioBase64: Buffer.from("audio").toString("base64"),
+          mimeType: "audio/webm",
+          filename: "prompt.webm",
+          hint: null,
+          timeoutMs: 30000,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       detailCode: "codex_response_too_large",
     });

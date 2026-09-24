@@ -39,6 +39,7 @@ interface TimeoutFetchArgs {
 interface CodexRequestDeadline {
   expiresAt: number;
   timeoutMs: number;
+  signal: AbortSignal;
 }
 
 interface ReadChunkWithTimeoutArgs {
@@ -170,16 +171,23 @@ function createOpenAiResponsesHeaders(
   return headers;
 }
 
-function createCodexRequestDeadline(timeoutMs: number): CodexRequestDeadline {
+function createCodexRequestDeadline(
+  timeoutMs: number,
+  signal: AbortSignal,
+): CodexRequestDeadline {
   return {
     expiresAt: performance.now() + timeoutMs,
     timeoutMs,
+    signal,
   };
 }
 
 function remainingCodexRequestTimeoutMs(
   deadline: CodexRequestDeadline,
 ): number {
+  if (deadline.signal.aborted) {
+    throw codexRequestCancelledError();
+  }
   const remainingMs = Math.ceil(deadline.expiresAt - performance.now());
   if (remainingMs <= 0) {
     throw codexRequestTimeoutError(deadline.timeoutMs);
@@ -194,16 +202,30 @@ async function runWithTimeout(args: TimeoutFetchArgs): Promise<Response> {
     abortController.abort();
   }, timeoutMs);
   timeout.unref();
+  const cancel = (): void => abortController.abort();
+  args.deadline.signal.addEventListener("abort", cancel, { once: true });
   try {
     return await args.work(abortController.signal);
   } catch (error) {
+    if (args.deadline.signal.aborted) {
+      throw codexRequestCancelledError();
+    }
     if (abortController.signal.aborted) {
       throw codexRequestTimeoutError(args.deadline.timeoutMs);
     }
     throw error;
   } finally {
     clearTimeout(timeout);
+    args.deadline.signal.removeEventListener("abort", cancel);
   }
+}
+
+function codexRequestCancelledError(): AiServiceFailure {
+  return new AiServiceFailure(
+    "request_failed",
+    "codex_request_cancelled",
+    "Codex request was cancelled",
+  );
 }
 
 function codexRequestTimeoutError(timeoutMs: number): AiServiceFailure {
@@ -229,6 +251,7 @@ async function readChunkWithTimeout({
   ReadableStreamDefaultReader<Uint8Array>["read"]
 > {
   let timeout: ReturnType<typeof setTimeout> | null = null;
+  let cancel: (() => void) | null = null;
   const timeoutMs = remainingCodexRequestTimeoutMs(deadline);
   try {
     return await Promise.race([
@@ -238,11 +261,16 @@ async function readChunkWithTimeout({
           reject(codexRequestTimeoutError(deadline.timeoutMs));
         }, timeoutMs);
         timeout.unref();
+        cancel = () => reject(codexRequestCancelledError());
+        deadline.signal.addEventListener("abort", cancel, { once: true });
       }),
     ]);
   } finally {
     if (timeout) {
       clearTimeout(timeout);
+    }
+    if (cancel) {
+      deadline.signal.removeEventListener("abort", cancel);
     }
   }
 }
@@ -729,8 +757,9 @@ async function fetchResponses(args: ResponsesFetchArgs): Promise<Response> {
 
 export async function completeCodexInference(
   command: InferenceCompleteCommand,
+  signal: AbortSignal,
 ): Promise<string> {
-  const deadline = createCodexRequestDeadline(command.timeoutMs);
+  const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
   const auth = await readCodexAuthCredentials();
   const request = buildCodexResponsesRequest(command);
   const response = await fetchResponses({ auth, command, deadline, request });
@@ -843,8 +872,9 @@ async function fetchTranscription(
 
 export async function transcribeCodexVoice(
   command: VoiceTranscribeCommand,
+  signal: AbortSignal,
 ): Promise<string> {
-  const deadline = createCodexRequestDeadline(command.timeoutMs);
+  const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
   const auth = await readCodexAuthCredentials();
   const response = await fetchTranscription({ auth, command, deadline });
 

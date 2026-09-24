@@ -8,7 +8,9 @@ import {
 
 const CODEX_TEXT_MODELS = ["gpt-5.6-luna", "gpt-5.4-mini"] as const;
 const CODEX_TRANSCRIPTION_MODEL = "gpt-transcribe";
-const HOST_REQUEST_TIMEOUT_MS = 30_000;
+const COMPLETE_TIMEOUT_MS = 5_000;
+const TRANSCRIBE_TIMEOUT_MS = 10_000;
+const TRANSCRIBE_MAX_BYTES = 20 * 1024 * 1024;
 const HOST_CALL_GRACE_MS = 1_000;
 const RETRY_WITH_NEXT_MODEL: ReadonlySet<CodexAiFailureCode> = new Set([
   "rate_limited",
@@ -45,11 +47,11 @@ export function registerCodexAiService(bb: BbPluginApi): void {
       for (const model of CODEX_TEXT_MODELS) {
         last = await host.call(
           "codex.ai.complete",
-          { model, prompt, timeoutMs: HOST_REQUEST_TIMEOUT_MS },
+          { model, prompt, timeoutMs: COMPLETE_TIMEOUT_MS },
           {
             hostId,
             signal,
-            timeoutMs: HOST_REQUEST_TIMEOUT_MS + HOST_CALL_GRACE_MS,
+            timeoutMs: COMPLETE_TIMEOUT_MS + HOST_CALL_GRACE_MS,
           },
         );
         if (last.ok || !RETRY_WITH_NEXT_MODEL.has(last.code)) break;
@@ -59,6 +61,11 @@ export function registerCodexAiService(bb: BbPluginApi): void {
       return textOrThrow(last);
     },
     async transcribe(audio, { signal, hint }) {
+      if (audio.size > TRANSCRIBE_MAX_BYTES) {
+        throw new Error(
+          `Recordings over ${TRANSCRIBE_MAX_BYTES / (1024 * 1024)} MB are too large to transcribe`,
+        );
+      }
       const hostId = await requirePrimaryHostId();
       return textOrThrow(
         await host.call(
@@ -71,12 +78,12 @@ export function registerCodexAiService(bb: BbPluginApi): void {
             mimeType: audio.type || "application/octet-stream",
             filename: audio.name || "voice-input",
             hint,
-            timeoutMs: HOST_REQUEST_TIMEOUT_MS,
+            timeoutMs: TRANSCRIBE_TIMEOUT_MS,
           },
           {
             hostId,
             signal,
-            timeoutMs: HOST_REQUEST_TIMEOUT_MS + HOST_CALL_GRACE_MS,
+            timeoutMs: TRANSCRIBE_TIMEOUT_MS + HOST_CALL_GRACE_MS,
           },
         ),
       );
