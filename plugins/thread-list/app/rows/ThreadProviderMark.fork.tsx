@@ -14,7 +14,7 @@ import {
 export type ThreadProvider = PluginProvidersState["providers"][number];
 
 export const SIDEBAR_MODEL_ROW_HEIGHT_CLASS =
-  "min-h-[var(--bb-sidebar-row-height)] max-md:pointer-coarse:min-h-[var(--bb-sidebar-row-height-coarse)]";
+  "min-h-9 max-md:pointer-coarse:min-h-10 [--bb-sidebar-sticky-tier-height:auto]! [--bb-sidebar-sticky-parent-stride:2.5rem] max-md:pointer-coarse:[--bb-sidebar-sticky-parent-stride:2.75rem]";
 
 const providerByIdCache = new WeakMap<
   PluginProvidersState["providers"],
