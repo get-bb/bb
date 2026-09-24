@@ -14,6 +14,7 @@ import {
   safeStorage,
   session,
   shell,
+  type BaseWindow,
   type Event,
   type IpcMainInvokeEvent,
   type MessageBoxOptions,
@@ -220,7 +221,9 @@ import {
   bbDesktopBrowserTabRefSchema,
   bbDesktopZoomCommandSchema,
   bbDesktopWindowFindRequestSchema,
+  type BbDesktopZoomCommand,
 } from "@bb/desktop-contract";
+import { nextZoomFactor } from "./desktop-zoom.js";
 import {
   BB_DESKTOP_BROWSER_TARGET_CHANNEL,
   BB_DESKTOP_BROWSER_GET_CONTROL_CHANNEL,
@@ -522,6 +525,19 @@ function resolveApplicationWindow(
   webContents: WebContents,
 ): BrowserWindow | null {
   return BrowserWindow.fromWebContents(webContents);
+}
+
+function zoomApplicationWindow(
+  browserWindow: BaseWindow | null | undefined,
+  command: BbDesktopZoomCommand,
+): void {
+  if (!(browserWindow instanceof BrowserWindow)) {
+    return;
+  }
+  const { webContents } = browserWindow;
+  webContents.setZoomFactor(
+    nextZoomFactor(webContents.getZoomFactor(), command),
+  );
 }
 
 function sendToApplicationRenderer(
@@ -830,6 +846,7 @@ function refreshApplicationMenu(): void {
         );
       }
     },
+    zoomWindow: zoomApplicationWindow,
     reloadWindow(browserWindow, ignoreCache) {
       if (!(browserWindow instanceof BrowserWindow)) {
         return;
@@ -1977,14 +1994,12 @@ async function finishQuit(): Promise<void> {
 function registerDesktopUpdateIpc(): void {
   ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopZoomCommandSchema.safeParse(payload);
-    const webContents = resolveApplicationWindow(event.sender)?.webContents;
-    if (!parsed.success || webContents === undefined) {
-      return;
+    if (parsed.success) {
+      zoomApplicationWindow(
+        resolveApplicationWindow(event.sender),
+        parsed.data,
+      );
     }
-    webContents.zoomLevel =
-      parsed.data === "reset"
-        ? 0
-        : webContents.zoomLevel + (parsed.data === "in" ? 0.5 : -0.5);
   });
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();

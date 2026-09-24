@@ -39,6 +39,7 @@ function menuArgs(
     openSettings: () => {},
     reopenClosedTab: () => {},
     reloadWindow,
+    zoomWindow: () => {},
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: "This Mac" }],
@@ -129,6 +130,31 @@ describe("application menu", () => {
 
     expect(closeWindowOrSideTab).toHaveBeenCalledWith(undefined);
     expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
+  });
+
+  it("routes zoom shortcuts through the clamped zoom handler", () => {
+    const zoomWindow = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(vi.fn(), { zoomWindow }),
+    );
+    const viewMenu = template.find((item) => item.label === "View");
+    const submenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const focusedWindow = {} as BaseWindow;
+
+    for (const [label, accelerator] of [
+      ["Actual Size", "CommandOrControl+0"],
+      ["Zoom In", "CommandOrControl+Plus"],
+      ["Zoom Out", "CommandOrControl+-"],
+    ]) {
+      const item = submenu.find((entry) => entry.label === label);
+      expect(item?.accelerator).toBe(accelerator);
+      item?.click?.({} as never, focusedWindow, {} as never);
+    }
+    expect(zoomWindow.mock.calls).toEqual([
+      [focusedWindow, "reset"],
+      [focusedWindow, "in"],
+      [focusedWindow, "out"],
+    ]);
   });
 
   it("shows reload shortcuts without globally stealing browser commands", () => {

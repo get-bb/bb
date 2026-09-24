@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  BB_DESKTOP_MAX_ZOOM_PERCENT,
+  BB_DESKTOP_MIN_ZOOM_PERCENT,
+} from "@bb/desktop-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -45,6 +49,7 @@ export function DesktopZoomIndicator() {
   if (zoomFactor === null) {
     return null;
   }
+  const zoomPercent = Math.round(zoomFactor * 100);
 
   return (
     <div
@@ -73,7 +78,7 @@ export function DesktopZoomIndicator() {
           aria-live="polite"
           className="min-w-12 text-center text-sm font-medium tabular-nums"
         >
-          {Math.round(zoomFactor * 100)}%
+          {zoomPercent}%
         </span>
         <Button
           type="button"
@@ -81,6 +86,7 @@ export function DesktopZoomIndicator() {
           size="icon"
           className="size-7"
           aria-label="Zoom out"
+          disabled={zoomPercent <= BB_DESKTOP_MIN_ZOOM_PERCENT}
           onClick={() => zoom?.("out")}
         >
           <Icon name="Minus" />
@@ -91,6 +97,7 @@ export function DesktopZoomIndicator() {
           size="icon"
           className="size-7"
           aria-label="Zoom in"
+          disabled={zoomPercent >= BB_DESKTOP_MAX_ZOOM_PERCENT}
           onClick={() => zoom?.("in")}
         >
           <Icon name="Plus" />
@@ -102,7 +109,7 @@ export function DesktopZoomIndicator() {
           size="sm"
           className="h-7 px-2"
           aria-label="Reset zoom"
-          disabled={zoomFactor === 1}
+          disabled={zoomPercent === 100}
           onClick={() => zoom?.("reset")}
         >
           Reset

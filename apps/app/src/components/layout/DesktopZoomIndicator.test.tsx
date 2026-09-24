@@ -54,6 +54,23 @@ describe("DesktopZoomIndicator", () => {
     expect(zoom.mock.calls).toEqual([["out"], ["in"], ["reset"]]);
   });
 
+  it("disables zoom out at 50 percent and zoom in at 300 percent", () => {
+    const { emitZoomChange } = setup();
+    const isDisabled = (name: string) =>
+      screen.getByRole("button", { name }).hasAttribute("disabled");
+
+    act(() => emitZoomChange(0.5));
+    expect([isDisabled("Zoom out"), isDisabled("Zoom in")]).toEqual([
+      true,
+      false,
+    ]);
+    act(() => emitZoomChange(3));
+    expect([isDisabled("Zoom out"), isDisabled("Zoom in")]).toEqual([
+      false,
+      true,
+    ]);
+  });
+
   it("disables Reset at 100 percent", () => {
     const { emitZoomChange } = setup();
     act(() => emitZoomChange(1));
