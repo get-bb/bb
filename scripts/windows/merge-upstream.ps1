@@ -111,3 +111,4 @@ if ($conflicts) {
 }
 
 Write-Host "Merge complete. Next: pnpm exec turbo run typecheck, then regenerate the marketplace if plugin lists changed."
+Write-Host "Restart any running dev instance (pnpm dev:restart-server) so newly bundled upstream plugins are installed."

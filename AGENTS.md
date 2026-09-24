@@ -115,5 +115,12 @@ the fork delta small and merges cheap with these rules.
   resolutions are replayed automatically.
 - After resolving conflicts: `pnpm exec turbo run typecheck`, run the affected
   package tests, and regenerate the marketplace when plugin lists changed.
+- Restart any running dev instance after the merge
+  (`pnpm dev:restart-server`; it escalates to `pnpm dev:restart` when
+  `HOST_DAEMON_PROTOCOL_VERSION` changed). The dev server reads
+  `BUNDLED_PLUGINS` and reconciles bundled plugins only at startup, so a
+  bundled plugin that upstream added in the merge stays uninstalled until the
+  restart, and the app shows the `No thread list plugin is enabled.`
+  placeholder even though the threads are intact.
 - Track the fork surface with `git diff upstream/main --stat`; the number of
   patched upstream files should shrink over time.

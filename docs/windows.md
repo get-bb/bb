@@ -149,6 +149,12 @@ their dev supervisors, so iterating needs no production build.
   restores the answers already chosen from a per-tab draft keyed by interaction
   id, so a long multi-question form resumes where it was left off.
 
+- After an upstream merge, restart the dev server (`pnpm dev:restart-server`)
+  before judging the UI. A bundled plugin that upstream added is reconciled
+  only at server startup, so until the restart it stays uninstalled and the app
+  shows placeholders such as `No thread list plugin is enabled.` even though the
+  threads themselves are intact.
+
 The dev flow stays a maintainer surface rather than a shipped product path:
 native Windows ships through the supervisor ([README.windows.md](../README.windows.md))
 and the `npx bb-app` package, and the repository's remaining development commands
