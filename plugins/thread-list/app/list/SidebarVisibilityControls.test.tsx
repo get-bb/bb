@@ -152,11 +152,16 @@ describe("thread overflow submenus", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     fireEvent.click(screen.getByRole("button", { name: "Review thread" }));
 
+    const trigger = screen.getByRole("button", { name: "More sections" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(
-      screen
-        .getByRole("button", { name: "More sections" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
+      screen.getByRole("button", { name: "Review thread" }),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Planning" })).toBeNull();
+
+    fireEvent.click(trigger);
+    act(() => vi.advanceTimersByTime(120));
+    expect(screen.getByRole("button", { name: "Planning" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
   });
 });

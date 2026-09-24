@@ -109,7 +109,7 @@ export function SidebarMore({
   const compact = useIsCompactViewport();
   const changeOpen = useCallback((open: boolean) => {
     setIsMenuOpen(open);
-    if (!open) setPage(null);
+    if (open) setPage(null);
   }, []);
   const close = useCallback(() => changeOpen(false), [changeOpen]);
 
@@ -168,11 +168,17 @@ export function SidebarMore({
           <div
             role="group"
             aria-label={listLabel}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            className={cn(
+              "min-h-0 flex-1 overscroll-contain",
+              compact && page
+                ? "flex flex-col overflow-hidden"
+                : "overflow-y-auto",
+            )}
           >
             {compact && page ? (
               <>
                 <DropdownMenuItem
+                  className="shrink-0"
                   onSelect={(event) => {
                     event.preventDefault();
                     setPage(null);
@@ -181,7 +187,10 @@ export function SidebarMore({
                   <Icon name="ChevronLeft" aria-hidden="true" />
                   Back
                 </DropdownMenuItem>
-                <div role="separator" className="my-1 h-px bg-border" />
+                <div
+                  role="separator"
+                  className="my-1 h-px shrink-0 bg-border"
+                />
               </>
             ) : null}
             <CompactOverflowContext.Provider value={{ page, setPage }}>
