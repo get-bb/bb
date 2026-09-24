@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   ConnectListError,
-  deriveConnectBaseUrl,
   fetchDesktopSession,
   type ConnectCredential,
 } from "@bb/connect-client";
@@ -146,7 +145,7 @@ export function createAccountCookieSource(args: {
   remoteServerUrl: string;
 }): DesktopSessionCookieSource {
   return async () => {
-    const accountUrl = deriveConnectBaseUrl(args.remoteServerUrl);
+    const connectApiOrigin = new URL(args.remoteServerUrl).origin;
     const headers = {
       cookie: `${args.accountCookie.name}=${args.accountCookie.value}`,
     };
@@ -154,9 +153,10 @@ export function createAccountCookieSource(args: {
     const targetHandle = new URL(args.remoteServerUrl).hostname.split(".")[0];
     let serversResponse: Response;
     try {
-      serversResponse = await fetchImpl(`${accountUrl}/api/connect/servers`, {
-        headers,
-      });
+      serversResponse = await fetchImpl(
+        `${connectApiOrigin}/api/connect/servers`,
+        { headers },
+      );
     } catch (error) {
       return failure("network", errorMessage(error));
     }
@@ -189,7 +189,7 @@ export function createAccountCookieSource(args: {
         "this account does not own the selected server",
       );
     }
-    const url = `${accountUrl}/api/connect/desktop-session`;
+    const url = `${connectApiOrigin}/api/connect/desktop-session`;
     let response: Response;
     try {
       response = await fetchImpl(url, {

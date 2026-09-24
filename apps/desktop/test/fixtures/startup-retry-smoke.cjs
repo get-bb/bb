@@ -105,8 +105,8 @@ async function run() {
     scenario === "fatal"
       ? "Port conflict"
       : scenario === "connect"
-        ? "Could not open Retry fixture"
-        : "Could not open server";
+        ? "Could not authenticate with bb Connect"
+        : "Could not reach this bb server";
   const hasError = () =>
     contents?.getURL().startsWith("data:") &&
     contents.executeJavaScript(

@@ -62,17 +62,49 @@ describe("createAccountCookieSource", () => {
     expect(result).toEqual({ expiresAt: 1_800_000, ok: true });
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
-      "https://getbb.app/api/connect/servers",
+      "https://laptop.getbb.app/api/connect/servers",
       {
         headers: { cookie: "__Secure-better-auth.session_token=account-token" },
       },
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
-      "https://getbb.app/api/connect/desktop-session",
+      "https://laptop.getbb.app/api/connect/desktop-session",
       {
         method: "POST",
         headers: { cookie: "__Secure-better-auth.session_token=account-token" },
+      },
+    );
+  });
+
+  it("uses the server origin including its protocol and port for local Connect", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ servers: [{ handle: "laptop" }] }),
+      )
+      .mockResolvedValueOnce(gateResponse());
+    const source = createAccountCookieSource({
+      accountCookie: {
+        name: "better-auth.session_token",
+        value: "account-token",
+      },
+      fetchImpl,
+      remoteServerUrl: "http://laptop.bb.localhost:8787/threads?view=full",
+    });
+
+    await expect(source()).resolves.toEqual({ cookie: COOKIE, ok: true });
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://laptop.bb.localhost:8787/api/connect/servers",
+      { headers: { cookie: "better-auth.session_token=account-token" } },
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://laptop.bb.localhost:8787/api/connect/desktop-session",
+      {
+        method: "POST",
+        headers: { cookie: "better-auth.session_token=account-token" },
       },
     );
   });
