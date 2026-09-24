@@ -164,6 +164,9 @@ function GitDiffFileFilterInput({
       <Input
         ref={inputRef}
         aria-label="Filter changed files by path"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         className={cn(
           "h-8 rounded-lg border-border pl-8 pr-8 text-xs focus-visible:ring-0 max-md:pointer-coarse:h-10 max-md:pointer-coarse:text-base",
         )}
