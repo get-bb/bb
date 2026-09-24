@@ -288,7 +288,14 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
 
   bb.rpc.register(bbAiRpcContract, {
     overview,
-    setEnabled: ({ enabled: next }) => setEnabled(next),
+    setEnabled: ({ enabled: next }, context) => {
+      if (context.experimental_caller.kind !== "client") {
+        throw new Error(
+          "only you can turn bb cloud on or off, from Settings or `bb ai on|off`",
+        );
+      }
+      return setEnabled(next);
+    },
   });
 
   bb.cli.register(

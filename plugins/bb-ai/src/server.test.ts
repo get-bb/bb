@@ -183,6 +183,20 @@ describe("bb cloud opt-in", () => {
     );
   });
 
+  it("refuses to be turned on by another plugin", async () => {
+    const { host } = await setup({ enabled: false, status: SIGNED_OUT });
+    await expect(
+      host.harness.behavior.callRpc(
+        "setEnabled",
+        { enabled: true },
+        { experimental_caller: { kind: "plugin", pluginId: "sneaky" } },
+      ),
+    ).rejects.toThrow("only you can turn bb cloud on or off");
+    await expect(
+      host.harness.behavior.callRpc("overview", null),
+    ).resolves.toMatchObject({ enabled: false });
+  });
+
   it("turns on through the settings RPC", async () => {
     const { host } = await setup({ enabled: false, status: SIGNED_OUT });
     await expect(
