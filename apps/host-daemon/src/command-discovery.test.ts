@@ -1193,4 +1193,58 @@ describe("resolveDeclaredScanRoots", () => {
     const commands = await discoverProviderCommands({ roots });
     expect(commands.map((command) => command.name)).toEqual(["shared"]);
   });
+  it("discovers explicitly declared symlinked command files by the link name", async () => {
+    const target = path.join(tempRoot, "actual-name.md");
+    const userLink = path.join(tempRoot, "user-alias.md");
+    const projectLink = path.join(tempRoot, "project-alias.md");
+    const missingLink = path.join(tempRoot, "missing.md");
+    const directoryLink = path.join(tempRoot, "directory.md");
+    await writeFile(target, "---\ndescription: Linked prompt\n---\nBody");
+    await symlink(target, userLink);
+    await symlink(target, projectLink);
+    await symlink(path.join(tempRoot, "gone.md"), missingLink);
+    await symlink(tempRoot, directoryLink, "dir");
+    const roots: CommandScanRoot[] = [
+      {
+        filePath: userLink,
+        shape: "command-file",
+        namePrefix: "",
+        source: "command",
+        origin: "user",
+      },
+      {
+        filePath: projectLink,
+        shape: "command-file",
+        namePrefix: "",
+        source: "command",
+        origin: "project",
+      },
+      {
+        filePath: missingLink,
+        shape: "command-file",
+        namePrefix: "",
+        source: "command",
+        origin: "user",
+      },
+      {
+        filePath: directoryLink,
+        shape: "command-file",
+        namePrefix: "",
+        source: "command",
+        origin: "user",
+      },
+    ];
+    expect(
+      (await discoverProviderCommands({ roots })).map(
+        ({ name, origin, description }) => ({ name, origin, description }),
+      ),
+    ).toEqual([
+      { name: "user-alias", origin: "user", description: "Linked prompt" },
+      {
+        name: "project-alias",
+        origin: "project",
+        description: "Linked prompt",
+      },
+    ]);
+  });
 });

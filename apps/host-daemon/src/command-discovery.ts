@@ -451,7 +451,7 @@ async function scanCommandFileRoot(
     throw new Error("scanCommandFileRoot requires a command-file root");
   }
   try {
-    const stat = await fs.lstat(args.root.filePath);
+    const stat = await fs.stat(args.root.filePath);
     if (!stat.isFile()) {
       return [];
     }

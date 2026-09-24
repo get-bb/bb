@@ -57,6 +57,26 @@ Not listed, by design:
   the git root): the declared `project` roots resolve against the workspace
   only.
 
+## Prompt templates
+
+bb lists Pi prompt templates as slash commands, not skills. The host entry reads
+direct `.md` files in the host user's `<agentDir>/prompts` and the workspace's
+`.pi/prompts`. It also reads local prompt files and flat directories from
+`<agentDir>/settings.json` and a trusted project's `.pi/settings.json`. It applies
+Pi's `!`, `+`, and `-` overrides and `.gitignore`, `.ignore`, and `.fdignore`
+rules; symlinked files keep their command name. Project prompts appear only
+when Pi's saved trust decision or `defaultProjectTrust: "always"` allows them.
+`PI_CODING_AGENT_DIR` moves the user prompt directory along with the skill
+directory. Selecting `/pr` or `/rebase` leaves the command intact for Pi's RPC
+`prompt` command to expand. `bb project commands <id> --provider pi` shows
+what the picker sees.
+
+Pi extension commands registered with `pi.registerCommand`, templates supplied
+by Pi packages, recursive files inside configured directories, glob paths
+from settings, and Pi's built-in TUI commands are not listed. Session-only
+trust decisions from Pi extensions cannot be determined from settings and the
+trust store.
+
 ## Environment
 
 `BB_PI_BRIDGE_COMMAND` and `BB_PI_BRIDGE_ARGS` point the bridge (and its
