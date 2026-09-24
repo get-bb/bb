@@ -2,6 +2,7 @@ import { useAtom, type WritableAtom } from "jotai";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
+  findAutomaticReplacement,
   replacementProviderKey,
 } from "@/lib/plugin-replacement-preference";
 import { ChoiceDropdownSetting } from "./ChoiceDropdownSetting";
@@ -19,6 +20,7 @@ export function ReplacementProviderSetting({
   triggerAriaLabel,
   builtInDescription,
   allowAutomatic = true,
+  bundledProvider,
   preferenceAtom,
   slots,
 }: {
@@ -27,12 +29,13 @@ export function ReplacementProviderSetting({
   triggerAriaLabel: string;
   builtInDescription?: string;
   allowAutomatic?: boolean;
+  bundledProvider?: string;
   preferenceAtom: WritableAtom<string, [string], void>;
   slots: readonly ReplacementProviderSlot[];
 }) {
   const [preference, setPreference] = useAtom(preferenceAtom);
 
-  const automaticProvider = slots[0];
+  const automaticProvider = findAutomaticReplacement(slots, bundledProvider);
   if (automaticProvider === undefined) return null;
   const automaticOption = {
     key: AUTOMATIC_REPLACEMENT_PROVIDER,

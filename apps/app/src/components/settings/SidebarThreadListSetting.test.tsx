@@ -18,19 +18,7 @@ afterEach(() => {
 });
 
 describe("SidebarThreadListSetting", () => {
-  it("defaults to Thread list and offers only explicit plugin choices", async () => {
-    setPluginSlotRegistrations(
-      "inbox",
-      makePluginRegistrationSet({
-        threadLists: [
-          {
-            id: "inbox",
-            title: "Inbox",
-            component: () => null,
-          },
-        ],
-      }),
-    );
+  it("defaults to Automatic, which prefers an installed plugin over the bundled Thread list", async () => {
     setPluginSlotRegistrations(
       "thread-list",
       makePluginRegistrationSet({
@@ -43,6 +31,18 @@ describe("SidebarThreadListSetting", () => {
         ],
       }),
     );
+    setPluginSlotRegistrations(
+      "zen",
+      makePluginRegistrationSet({
+        threadLists: [
+          {
+            id: "inbox",
+            title: "Inbox",
+            component: () => null,
+          },
+        ],
+      }),
+    );
     const store = createStore();
     render(
       <JotaiProvider store={store}>
@@ -50,19 +50,20 @@ describe("SidebarThreadListSetting", () => {
       </JotaiProvider>,
     );
 
-    expect(store.get(threadListProviderAtom)).toBe(
-      "thread-list/thread-list",
-    );
+    expect(store.get(threadListProviderAtom)).toBe("__automatic__");
     const trigger = screen.getByRole("button", {
       name: "Sidebar thread list",
     });
-    expect(trigger.textContent).toContain("Thread list");
+    expect(trigger.textContent).toContain("Automatic");
 
     fireEvent.pointerDown(trigger, { button: 0 });
+    expect(
+      (await screen.findByRole("menuitem", { name: /Automatic/u }))
+        .textContent,
+    ).toContain("Currently using Inbox from zen.");
     expect(screen.queryByRole("menuitem", { name: /built-in/u })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: /Automatic/u })).toBeNull();
-    fireEvent.click(await screen.findByRole("menuitem", { name: /^Inbox/u }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Thread list/u }));
 
-    expect(store.get(threadListProviderAtom)).toBe("inbox/inbox");
+    expect(store.get(threadListProviderAtom)).toBe("thread-list/thread-list");
   });
 });

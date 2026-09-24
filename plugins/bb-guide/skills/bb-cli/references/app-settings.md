@@ -13,16 +13,19 @@ every window and client sees the same value.
 
 ## Sidebar preferences
 
-The sidebar thread list uses an explicit plugin selection and defaults to the bundled
-Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
-`__builtin__` selections resolve to that default; other plugin selections are preserved.
-Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+The sidebar thread list defaults to `__automatic__`: the first installed thread list
+plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
+bundled plugin when there is none. Installing a thread list plugin therefore switches
+to it. Legacy `__builtin__` selections resolve to the bundled plugin; other plugin
+selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
 The sidebar navigation works the same way: `sidebar.navigationProvider` defaults
-to the bundled Navigation plugin (`navigation/navigation`), and legacy
-`__automatic__` and `__builtin__` selections resolve to it. Navigation order and
+to `__automatic__`, which prefers an installed navigation plugin over the bundled
+Navigation plugin (`navigation/navigation`), and legacy `__builtin__` selections
+resolve to the bundled plugin. Navigation order and
 visibility stay in `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`,
 so they carry over between navigation plugins.
 
