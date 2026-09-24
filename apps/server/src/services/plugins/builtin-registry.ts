@@ -53,6 +53,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "bb-account",
+    pluginId: "bb-account",
+    defaultEnabled: true,
+  },
+  {
     name: "connect",
     pluginId: "connect",
     defaultEnabled: true,

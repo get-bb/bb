@@ -39,8 +39,8 @@ import {
 const PLUGIN_SNAPSHOTS_RELATIVE_PATH = ["plugins", "snapshots"] as const;
 const PREVIOUS_REGISTRATION_FILE_NAME = "previous-registration.json";
 const REGISTRATION_PATH_KEYS = ["rootDir", "sourcePath"] as const;
-const CONNECT_PLUGIN_ID = "connect";
 const CONNECT_CREDENTIAL_KEY = "credential";
+const CONNECT_CREDENTIAL_PLUGIN_IDS = ["bb-account", "connect"] as const;
 
 const connectCredentialUrlSchema = z
   .object({ serverUrl: z.string().min(1) })
@@ -213,21 +213,28 @@ function normalizeUrl(value: string): string {
   return value.replace(/\/+$/u, "");
 }
 
-function isConnectServerUrl(db: DbConnection, serverUrl: string): boolean {
-  const raw = getPluginKvValue(db, CONNECT_PLUGIN_ID, CONNECT_CREDENTIAL_KEY);
+function storedConnectServerUrl(
+  db: DbConnection,
+  pluginId: (typeof CONNECT_CREDENTIAL_PLUGIN_IDS)[number],
+): string | null {
+  const raw = getPluginKvValue(db, pluginId, CONNECT_CREDENTIAL_KEY);
   if (raw === undefined) {
-    return false;
+    return null;
   }
   let credential: unknown;
   try {
     credential = JSON.parse(raw);
   } catch {
-    return false;
+    return null;
   }
   const parsed = connectCredentialUrlSchema.safeParse(credential);
-  return (
-    parsed.success &&
-    normalizeUrl(parsed.data.serverUrl) === normalizeUrl(serverUrl)
+  return parsed.success ? normalizeUrl(parsed.data.serverUrl) : null;
+}
+
+function isConnectServerUrl(db: DbConnection, serverUrl: string): boolean {
+  const target = normalizeUrl(serverUrl);
+  return CONNECT_CREDENTIAL_PLUGIN_IDS.some(
+    (pluginId) => storedConnectServerUrl(db, pluginId) === target,
   );
 }
 

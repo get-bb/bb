@@ -1,4 +1,4 @@
-Open your bb from a phone or another computer. After you pair, this bb answers at `https://<handle>.getbb.app` for anyone signed in to your getbb.app account.
+Open your bb from a phone or another computer. Once this bb is signed in to your bb account, it answers at `https://<handle>.getbb.app` for anyone signed in to your getbb.app account.
 
 ## What you get
 
@@ -9,7 +9,9 @@ Open your bb from a phone or another computer. After you pair, this bb answers a
 
 ## How it works
 
-Get a pairing code from the getbb.app dashboard and enter it in Settings. You can also run `bb connect --code <code> --server <url>`. The plugin keeps the tunnel open in the background and reconnects after a drop. Disable the plugin to cut all remote access at once. `bb connect off` also disconnects and forgets the pairing.
+Remote access uses the bb account plugin. Sign in from Settings → Remote access, Settings → bb account, or `bb account login`. A pairing code from the getbb.app dashboard also works: paste it in Settings or run `bb connect --code <code>`. Remote access starts as soon as the account is signed in, and connects with the server credential bb account holds. The plugin reconnects after a drop, and signs out if getbb.app no longer accepts the credential.
+
+`bb connect off`, or the Remote access switch in the plugin settings, turns remote access off and keeps this bb signed in; `bb connect on` turns it back on. `bb account logout` forgets the pairing. Disable the plugin to cut all remote access at once.
 
 ## For agents
 
@@ -17,4 +19,4 @@ When you view bb remotely, agents are told to share servers with `bb connect exp
 
 ## Requirements
 
-A getbb.app account. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing needs the "Mobile app" experiment.
+A getbb.app account and the bb account plugin. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing needs the "Mobile app" experiment.
