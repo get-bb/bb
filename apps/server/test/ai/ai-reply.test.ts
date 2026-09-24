@@ -21,11 +21,15 @@ describe("cleanGeneratedLine", () => {
       "refactor: simplify plugin sorting",
     ],
     ["<title>Fix title generation</title>", "Fix title generation"],
+    ["Title:\nFix login bug", "Fix login bug"],
+    ["Here is a title:\n\nFix login bug", "Fix login bug"],
+    ['Commit message:\n\n"fix: retry login"', "fix: retry login"],
+    ['""\nFix login bug', "Fix login bug"],
   ])("cleans %j", (raw, expected) => {
     expect(cleanGeneratedLine(raw)).toBe(expected);
   });
 
-  it.each(["", "   ", "<think>never closed", '""', "```\n```"])(
+  it.each(["", "   ", "<think>never closed", '""', "```\n```", "Title:\n\n"])(
     "returns null for %j",
     (raw) => {
       expect(cleanGeneratedLine(raw)).toBeNull();
