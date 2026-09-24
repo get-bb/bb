@@ -76,6 +76,7 @@ describe("GitDiffTabContent panel gating", () => {
             overflow: "scroll",
             showLineNumbers: true,
           }}
+          fileFilter=""
         />
       </Wrapper>
     );

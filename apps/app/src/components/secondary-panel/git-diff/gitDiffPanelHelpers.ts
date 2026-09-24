@@ -1,4 +1,5 @@
 import type { WorkspaceCommitSummary, WorkspaceDiffTarget } from "@bb/domain";
+import type { DiffFileEntry } from "@bb/server-contract";
 import type { GitDiffSelectionOption } from "../GitDiffToolbar";
 
 interface GitDiffIdentityParams {
@@ -139,4 +140,25 @@ export function shouldResetSelectedGitDiffSelection(
     return !options.hasUncommittedChanges;
   }
   return !diffCommits.some((commit) => commit.sha === selectedGitDiffSelection);
+}
+
+export function filterDiffFilesByPath<
+  T extends Pick<DiffFileEntry, "path" | "previousPath">,
+>(files: readonly T[], query: string): readonly T[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const included = terms.filter((term) => !term.startsWith("!"));
+  const excluded = terms
+    .filter((term) => term.startsWith("!"))
+    .map((term) => term.slice(1))
+    .filter(Boolean);
+  if (included.length === 0 && excluded.length === 0) {
+    return files;
+  }
+  return files.filter((file) => {
+    const paths = [file.path, file.previousPath]
+      .filter((path) => path !== null)
+      .map((path) => path.toLowerCase());
+    const matches = (term: string) => paths.some((path) => path.includes(term));
+    return included.every(matches) && !excluded.some(matches);
+  });
 }

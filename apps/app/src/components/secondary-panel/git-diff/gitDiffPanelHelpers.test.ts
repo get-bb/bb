@@ -1,9 +1,11 @@
 import type { WorkspaceCommitSummary } from "@bb/domain";
+import type { DiffFileEntry } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildGitDiffSelectionOptions,
   buildGitDiffTarget,
   COMMITTED_GIT_DIFF_SELECTION,
+  filterDiffFilesByPath,
   shouldResetSelectedGitDiffSelection,
   UNCOMMITTED_GIT_DIFF_SELECTION,
 } from "./gitDiffPanelHelpers";
@@ -18,6 +20,22 @@ function makeCommit(
     shortSha: "abc123",
     subject: "Initial change",
     ...overrides,
+  };
+}
+
+function makeDiffFile(
+  path: string,
+  previousPath: string | null = null,
+): DiffFileEntry {
+  return {
+    path,
+    previousPath,
+    changeKind: previousPath ? "renamed" : "modified",
+    additions: 1,
+    deletions: 0,
+    binary: false,
+    origin: "tracked",
+    loadMode: "auto",
   };
 }
 
@@ -109,5 +127,40 @@ describe("gitDiffPanelHelpers", () => {
         hasUncommittedChanges: false,
       }),
     ).toBe(true);
+  });
+
+  describe("filterDiffFilesByPath", () => {
+    const files = [
+      makeDiffFile("apps/app/src/Panel.tsx"),
+      makeDiffFile("apps/app/src/Panel.test.tsx"),
+      makeDiffFile("apps/server/src/routes/diff.ts"),
+      makeDiffFile("docs/new-name.md", "docs/Old-Name.md"),
+    ];
+    const paths = (query: string) =>
+      filterDiffFilesByPath(files, query).map((file) => file.path);
+
+    it("returns every file for a blank query", () => {
+      expect(filterDiffFilesByPath(files, "  ")).toBe(files);
+    });
+
+    it("requires every term to match case-insensitively", () => {
+      expect(paths("APP panel")).toEqual([
+        "apps/app/src/Panel.tsx",
+        "apps/app/src/Panel.test.tsx",
+      ]);
+    });
+
+    it("drops files matching a negated term", () => {
+      expect(paths("panel !.test.")).toEqual(["apps/app/src/Panel.tsx"]);
+      expect(paths("!apps/")).toEqual(["docs/new-name.md"]);
+    });
+
+    it("matches a renamed file by its previous path", () => {
+      expect(paths("old-name")).toEqual(["docs/new-name.md"]);
+    });
+
+    it("ignores a bare negation marker", () => {
+      expect(paths("!")).toHaveLength(files.length);
+    });
   });
 });
