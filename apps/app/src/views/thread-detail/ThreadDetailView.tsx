@@ -1888,9 +1888,21 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             name: threadEnvironmentHost.name,
             connected: threadEnvironmentHost.status === "connected",
           }
-        : null,
+        : environment !== undefined &&
+            environment.hostLifecycle !== "active" &&
+            threadDetailBootstrapQuery.data?.environmentHostName
+          ? {
+              name: threadDetailBootstrapQuery.data.environmentHostName,
+              connected: false,
+            }
+          : null,
     }),
-    [threadEnvironmentIsLocal, threadEnvironmentHost],
+    [
+      environment?.hostLifecycle,
+      threadDetailBootstrapQuery.data?.environmentHostName,
+      threadEnvironmentIsLocal,
+      threadEnvironmentHost,
+    ],
   );
   const workspacePreviewRootPath = environment?.path ?? null;
   const threadOpenContext = executionUnavailable

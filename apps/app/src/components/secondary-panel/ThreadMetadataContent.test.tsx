@@ -257,6 +257,7 @@ describe("EnvironmentRow", () => {
       },
     );
     expect(markup).toContain("Unavailable — machine removed");
+    expect(markup).toContain("Old laptop");
     expect(markup).not.toContain("(offline)");
     expect(markup).not.toContain('aria-label="New thread in this environment"');
   });

@@ -38,7 +38,7 @@ export function registerListCommand(
     .option("--environment <id>", "Filter by environment ID")
     .option(
       "--machine <id-or-name>",
-      "Filter by the machine the thread's environment is on",
+      "Filter by machine ID or active machine name",
     )
     .option("--host <id-or-name>", "Alias for --machine")
     .option("--parent-thread <id>", "Filter by parent thread ID")
@@ -66,10 +66,15 @@ export function registerListCommand(
         const hostId =
           machineTarget === undefined
             ? undefined
-            : await resolveMachineHostId({
-                serverUrl: getUrl(),
-                target: machineTarget,
-              });
+            : machineTarget.trim().startsWith("host_")
+              ? resolveExplicitIdFlag({
+                  flagName: "--machine",
+                  value: machineTarget,
+                })
+              : await resolveMachineHostId({
+                  serverUrl: getUrl(),
+                  target: machineTarget,
+                });
         if (opts.section && opts.unsectioned) {
           throw new Error("Cannot combine --section with --unsectioned.");
         }

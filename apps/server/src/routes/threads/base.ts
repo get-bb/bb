@@ -5,6 +5,7 @@ import {
   countNonDeletedAssignedChildThreads,
   countThreads,
   getEnvironment,
+  getHost,
   getThread,
   getThreadSectionById,
   listThreadMentionRowsByIds,
@@ -123,6 +124,9 @@ function buildThreadResponse(
   if (args.includes.has("host")) {
     response.host = environment
       ? getNonDestroyedHostWithStatus(deps, environment.hostId)
+      : null;
+    response.environmentHostName = environment
+      ? (getHost(deps.db, environment.hostId)?.name ?? null)
       : null;
   }
   return response;

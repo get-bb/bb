@@ -439,6 +439,7 @@ describe("public thread data routes", () => {
       const leanThread = await readJson(leanResponse);
       expect(leanThread).not.toHaveProperty("environment");
       expect(leanThread).not.toHaveProperty("host");
+      expect(leanThread).not.toHaveProperty("environmentHostName");
 
       const includeResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}?include=environment,host`,
@@ -451,6 +452,32 @@ describe("public thread data routes", () => {
       expect(includedThread.environment?.id).toBe(environment.id);
       expect(includedThread.host?.id).toBe(host.id);
       expect(includedThread.host?.status).toBe("connected");
+      expect(includedThread.environmentHostName).toBe(host.name);
+    });
+  });
+
+  it("retains a removed machine name for thread history without exposing an active host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-thread-removed-name" },
+      });
+      harness.deps.db
+        .update(hosts)
+        .set({ destroyedAt: Date.now() })
+        .where(eq(hosts.id, host.id))
+        .run();
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}?include=environment,host`,
+      );
+      expect(response.status).toBe(200);
+      const includedThread = threadWithIncludesResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(includedThread.environment?.id).toBe(environment.id);
+      expect(includedThread.environment?.hostLifecycle).toBe("removed");
+      expect(includedThread.host).toBeNull();
+      expect(includedThread.environmentHostName).toBe(host.name);
     });
   });
 
@@ -485,6 +512,7 @@ describe("public thread data routes", () => {
       );
       expect(noEnvironmentThread.environment).toBeNull();
       expect(noEnvironmentThread.host).toBeNull();
+      expect(noEnvironmentThread.environmentHostName).toBeNull();
 
       const missingHostResponse = await harness.app.request(
         `/api/v1/threads/${threadWithMissingHost.id}?include=host`,
@@ -495,6 +523,7 @@ describe("public thread data routes", () => {
       );
       expect(missingHostThread).not.toHaveProperty("environment");
       expect(missingHostThread.host).toBeNull();
+      expect(missingHostThread.environmentHostName).toBeNull();
     });
   });
 

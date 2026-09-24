@@ -26,6 +26,10 @@ history for both persistent and disposable machines. Threads need not be archive
 Environment reads and lists expose `hostLifecycle`: `active`, or `removing`,
 `cleanup-failed`, or `removed` while and after the environment's machine is
 removed.
+`bb thread list --machine host_ID` includes preserved threads after removal;
+machine names resolve while the machine remains active. Thread detail reads
+with `include=host` return `environmentHostName` for history display even when
+the active `host` response is null.
 `bb machine retry-cleanup` retries failed environment cleanup before removing
 the machine.
 
