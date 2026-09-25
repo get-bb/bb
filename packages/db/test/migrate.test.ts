@@ -782,7 +782,17 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
     );
 }
 
+function dropThreadDraftColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((column) => column.name === "draft")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN draft").run();
+  }
+}
+
 function dropQueuedMessageAttemptColumns(db: DbConnection): void {
+  dropThreadDraftColumn(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();

@@ -111,6 +111,7 @@ export function threadResponse(
     canRestoreEnvironment: false,
     canSpawnChild: true,
     queuedMessageCount: 0,
+    draft: null,
   };
 }
 

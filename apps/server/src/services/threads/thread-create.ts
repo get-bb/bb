@@ -5,6 +5,7 @@ import {
   getEnvironment,
   getProjectSourceByHost,
   getThread,
+  setThreadExecutionOverride,
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
@@ -426,30 +427,38 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
-    await attemptDispatch(deps, {
-      thread,
-      payload: {
-        input: args.request.input,
-        mode: "start",
-        model: execution.model,
-        reasoningLevel: execution.reasoningLevel,
-        serviceTier: execution.serviceTier,
-        permissionMode: execution.permissionMode,
-        ...(args.request.executionInputSources !== undefined
-          ? { executionInputSources: args.request.executionInputSources }
-          : {}),
-        ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
-      },
-      source: { kind: "inline" },
-      queuePayload: { kind: "inline" },
-      pluginSubmission: args.request.pluginSubmission ?? null,
-      startContext,
-      executionDefaults: executionPlanArgs,
-      origin: args.request.origin,
-      originPluginId: args.request.originPluginId ?? null,
-      startedOnBehalfOf: args.request.startedOnBehalfOf,
-      trigger: "user",
-    });
+    if (args.request.draft === true) {
+      setThreadExecutionOverride(deps.db, {
+        threadId: thread.id,
+        modelOverride: execution.model,
+        reasoningLevelOverride: execution.reasoningLevel,
+      });
+    } else {
+      await attemptDispatch(deps, {
+        thread,
+        payload: {
+          input: args.request.input,
+          mode: "start",
+          model: execution.model,
+          reasoningLevel: execution.reasoningLevel,
+          serviceTier: execution.serviceTier,
+          permissionMode: execution.permissionMode,
+          ...(args.request.executionInputSources !== undefined
+            ? { executionInputSources: args.request.executionInputSources }
+            : {}),
+          ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+        },
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        pluginSubmission: args.request.pluginSubmission ?? null,
+        startContext,
+        executionDefaults: executionPlanArgs,
+        origin: args.request.origin,
+        originPluginId: args.request.originPluginId ?? null,
+        startedOnBehalfOf: args.request.startedOnBehalfOf,
+        trigger: "user",
+      });
+    }
   } catch (error) {
     emitPluginThreadDeleted({
       ...thread,
@@ -541,9 +550,11 @@ export async function createThreadFromRequest(
   }
   const pluginMetadata = resolveCreateThreadPluginMetadata(rawRequestInput);
   const requestInput = { ...rawRequestInput };
-  requestInput.input = (
-    await appendPluginMentionContext({ input: requestInput.input })
-  ).input;
+  if (requestInput.draft !== true) {
+    requestInput.input = (
+      await appendPluginMentionContext({ input: requestInput.input })
+    ).input;
+  }
   assertProjectWorkspaceCompatibility(project, requestInput);
   const originKind = requestInput.originKind ?? null;
   const sourceThreadId =
@@ -705,7 +716,7 @@ export async function createThreadFromRequest(
     originKind: request.originKind ?? null,
     sourceThread,
   });
-  if (childHostId !== null) {
+  if (childHostId !== null && request.draft !== true) {
     await ensureHostSessionReadyForWork(deps, { hostId: childHostId });
   }
   const modelCatalogCwd =
@@ -790,7 +801,11 @@ export async function createThreadFromRequest(
     senderThreadId: null,
     startedOnBehalfOf: request.startedOnBehalfOf,
   });
-  if (initiator === "user" && request.input.length > 0) {
+  if (
+    initiator === "user" &&
+    request.draft !== true &&
+    request.input.length > 0
+  ) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: parentThread !== null,
       messageSource: "thread_create",

@@ -121,8 +121,38 @@ export const createThreadRequestSchema = z
     pluginSubmission: z
       .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
       .optional(),
+    /**
+     * `true` ⇒ the thread is created as a draft: it stays `pending`, nothing
+     * is dispatched or provisioned, and `input` becomes the thread's draft
+     * instead of its first message. Sending a message to the thread later
+     * starts it and clears the draft.
+     */
+    draft: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.draft === true) {
+      for (const field of [
+        "sendAt",
+        "pluginSubmission",
+        "sourceThreadId",
+        "sourceSeqEnd",
+      ] as const) {
+        if (value[field] !== undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${field} cannot be combined with draft`,
+            path: [field],
+          });
+        }
+      }
+      if (value.originKind !== null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "originKind cannot be combined with draft",
+          path: ["originKind"],
+        });
+      }
+    }
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
         code: "custom",
@@ -373,6 +403,15 @@ export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
 >;
 
+export const updateThreadDraftRequestSchema = z
+  .object({
+    input: z.array(promptInputSchema),
+  })
+  .strict();
+export type UpdateThreadDraftRequest = z.infer<
+  typeof updateThreadDraftRequestSchema
+>;
+
 export const updateQueuedMessageRequestSchema = z.object({
   expectedUpdatedAt: z.number().int().nonnegative(),
   input: z.array(promptInputSchema).min(1),
@@ -499,6 +538,10 @@ export const threadResponseSchema = threadWithRuntimeSchema.extend({
   // `GET /threads/:id/queued-messages` supplies the reasons once a surface
   // actually renders them.
   queuedMessageCount: z.number().int().nonnegative(),
+  // The thread's saved, unsent composer message, or null when it has none. A
+  // draft thread is a `pending` thread whose first message lives here until it
+  // is sent; sending any message to the thread clears it.
+  draft: z.array(promptInputSchema).nullable(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
