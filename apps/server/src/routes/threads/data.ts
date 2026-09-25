@@ -255,6 +255,7 @@ function createRawFilePreviewResponse(
   result: DaemonFileReadResult,
   relativePath: string,
   ifNoneMatch: string | undefined,
+  rangeRequest?: Request,
 ): Response {
   assertHtmlPreviewSize(relativePath, result.sizeBytes);
   const headers = new Headers({
@@ -269,6 +270,7 @@ function createRawFilePreviewResponse(
   return createDaemonFileContentResponse(result, {
     headers,
     ifNoneMatch: isHtml ? undefined : ifNoneMatch,
+    rangeRequest,
   });
 }
 
@@ -276,8 +278,9 @@ async function serveThreadStorageRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
-  ifNoneMatch: string | undefined,
+  request: Request,
 ): Promise<Response> {
+  const ifNoneMatch = request.headers.get("if-none-match") ?? undefined;
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
 
@@ -290,7 +293,12 @@ async function serveThreadStorageRawFile(
       rootPath: target.storagePath,
     },
     (result) =>
-      createRawFilePreviewResponse(result, filePath.relativePath, ifNoneMatch),
+      createRawFilePreviewResponse(
+        result,
+        filePath.relativePath,
+        ifNoneMatch,
+        request,
+      ),
   );
 }
 
@@ -730,7 +738,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       context.req.param("id"),
       context.req.param("filePath"),
-      context.req.header("if-none-match"),
+      context.req.raw,
     ),
   );
 

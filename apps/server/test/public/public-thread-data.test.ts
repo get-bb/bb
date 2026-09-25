@@ -4718,6 +4718,43 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("serves a byte range from a thread storage video", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedThreadFixture(harness);
+      const bytes = Buffer.from([0, 1, 2, 3, 4, 5]);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          expect(request.command.type).toBe("host.read_file");
+          return {
+            ok: true,
+            result: {
+              path: "/tmp/clip.mp4",
+              content: bytes.toString("base64"),
+              contentEncoding: "base64",
+              mimeType: "video/mp4",
+              sizeBytes: bytes.length,
+              sha256: "0".repeat(64),
+            },
+          };
+        },
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/files/clip.mp4`,
+        { headers: { Range: "bytes=0-1" } },
+      );
+      expect(response.status).toBe(206);
+      expect(response.headers.get("accept-ranges")).toBe("bytes");
+      expect(response.headers.get("content-range")).toBe("bytes 0-1/6");
+      expect(response.headers.get("content-length")).toBe("2");
+      expect(response.headers.get("content-type")).toBe("video/mp4");
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(
+        bytes.subarray(0, 2),
+      );
+    });
+  });
+
   it("serves thread storage HTML preview content as raw text/html without app bridge injection", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

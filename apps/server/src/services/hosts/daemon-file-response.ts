@@ -18,6 +18,7 @@ export type DaemonFileReadResult =
 
 interface CreateDaemonFileContentResponseOptions {
   headers?: HeadersInit;
+  rangeRequest?: Request | undefined;
   ifNoneMatch?: string | undefined;
 }
 
@@ -126,11 +127,47 @@ function decodeDaemonFileContent(result: DaemonFileReadResult): ArrayBuffer {
   return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
 }
 
+function parseSingleByteRange(
+  value: string,
+  size: number,
+): { start: number; end: number } | "unsatisfiable" | undefined {
+  const match = /^bytes=(\d*)-(\d*)$/iu.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) {
+    return undefined;
+  }
+  const sizeBigInt = BigInt(size);
+  if (!match[1]) {
+    const suffix = BigInt(match[2]!);
+    if (suffix === 0n || size === 0) {
+      return "unsatisfiable";
+    }
+    return {
+      start: suffix >= sizeBigInt ? 0 : size - Number(suffix),
+      end: size - 1,
+    };
+  }
+  const start = BigInt(match[1]);
+  const end = match[2] ? BigInt(match[2]) : undefined;
+  if (end !== undefined && end < start) {
+    return undefined;
+  }
+  if (start >= sizeBigInt) {
+    return "unsatisfiable";
+  }
+  return {
+    start: Number(start),
+    end: end === undefined || end >= sizeBigInt ? size - 1 : Number(end),
+  };
+}
+
 export function createDaemonFileContentResponse(
   result: DaemonFileReadResult,
   options: CreateDaemonFileContentResponseOptions = {},
 ): Response {
   const headers = buildFileContentHeaders(result, options);
+  if (options.rangeRequest) {
+    headers.set("accept-ranges", "bytes");
+  }
   if (
     "notModified" in result ||
     requestMatchesEntityTag(options.ifNoneMatch, daemonFileEntityTag(result))
@@ -138,6 +175,31 @@ export function createDaemonFileContentResponse(
     return new Response(null, { status: 304, headers });
   }
   const content = decodeDaemonFileContent(result);
+  const rangeHeader = options.rangeRequest?.headers.get("range");
+  const ifRange = options.rangeRequest?.headers.get("if-range");
+  if (
+    options.rangeRequest?.method === "GET" &&
+    rangeHeader &&
+    (ifRange == null || ifRange === daemonFileEntityTag(result))
+  ) {
+    const range = parseSingleByteRange(rangeHeader, content.byteLength);
+    if (range === "unsatisfiable") {
+      headers.set("content-range", `bytes */${content.byteLength}`);
+      headers.set("content-length", "0");
+      return new Response(null, { status: 416, headers });
+    }
+    if (range) {
+      headers.set(
+        "content-range",
+        `bytes ${range.start}-${range.end}/${content.byteLength}`,
+      );
+      headers.set("content-length", String(range.end - range.start + 1));
+      return new Response(content.slice(range.start, range.end + 1), {
+        status: 206,
+        headers,
+      });
+    }
+  }
   headers.set("content-length", String(content.byteLength));
   return new Response(content, {
     status: 200,

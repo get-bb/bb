@@ -12,6 +12,26 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## Thread Storage Media Responses
+
+`GET /api/v1/threads/:id/thread-storage/files/:filePath` supports a single
+HTTP byte range for media playback and seeking. Responses advertise
+`Accept-Ranges: bytes`; bounded, open-ended, and suffix ranges return `206`
+with `Content-Range` and the selected bytes. Unsatisfiable ranges return `416`
+with `Content-Range: bytes */<size>`. Malformed ranges, unsupported units, and
+multipart ranges fall back to the full `200` response. HEAD ignores Range.
+
+`If-None-Match` revalidation takes precedence over Range. `If-Range` permits a
+partial response only when it matches the current strong ETag; weak tags,
+stale tags, and dates fall back to `200`. File modification times are not
+treated as strong validators because files can change within one second.
+HTML previews retain their sandbox CSP, no-store policy, and size limit.
+
+The server selects bytes after reading the complete file from the host daemon.
+The existing daemon read-size limit still applies, and each request still
+transfers the whole file from the host. This endpoint does not provide
+streaming reads for files beyond that limit.
+
 ## Stale Workspace Claims
 
 Failed thread provisioning immediately requests environment cleanup. If a previous
