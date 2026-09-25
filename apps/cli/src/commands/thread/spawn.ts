@@ -73,6 +73,7 @@ interface ThreadSpawnCommandOptions {
   sourceSeqEnd?: string;
   visibility?: string;
   sendAt?: string;
+  draft?: boolean;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -392,6 +393,10 @@ export function registerSpawnCommand(
       "JSON value for an --environment-provider that declares inputs (`bb environment providers --json` shows the schema)",
     )
     .option("--send-at <when>", SEND_AT_HELP)
+    .option(
+      "--draft",
+      "Save the prompt as the thread's draft instead of sending it; the thread stays pending until a message is sent",
+    )
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -596,6 +601,7 @@ export function registerSpawnCommand(
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
             ...(sendAt !== undefined ? { sendAt } : {}),
+            ...(opts.draft ? { draft: true } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
@@ -606,6 +612,11 @@ export function registerSpawnCommand(
         if (sendAt !== undefined) {
           console.log(
             `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
+          );
+        }
+        if (opts.draft) {
+          console.log(
+            `Saved as a draft; the thread stays pending until you send a message with \`bb thread tell ${thread.id}\`.`,
           );
         }
         // A hidden child reports to its parent too, so the promise follows the

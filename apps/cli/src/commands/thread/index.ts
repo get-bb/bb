@@ -2,6 +2,7 @@ import { registerContextCommand } from "./context.js";
 import { Command } from "commander";
 import { registerActionsCommands } from "./actions.js";
 import { registerCountCommand } from "./count.js";
+import { registerDraftCommands } from "./draft.js";
 import { registerInteractionCommands } from "./interactions.js";
 import { registerListCommand } from "./list.js";
 import { registerOpenCommand } from "./open.js";
@@ -28,5 +29,6 @@ export function registerThreadCommands(
   registerPaneCommand(thread, getUrl);
   registerOrganizationCommands(thread, getUrl);
   registerActionsCommands(thread, getUrl);
+  registerDraftCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
 }

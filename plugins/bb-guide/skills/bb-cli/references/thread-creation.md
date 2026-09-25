@@ -37,6 +37,10 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   Both flags upload absolute paths and `file:` URLs from the CLI machine
   before sending and pass relative server-upload tokens through unchanged.
   Use an absolute path (for example, `--file "$PWD/report.pdf"`) for local files.
+- `--draft` saves the prompt as a draft thread instead of sending it: the
+  thread stays `pending` with nothing provisioned. Read or change the draft
+  with `bb thread draft show|set|clear <thread-id>`; start the thread with
+  `bb thread tell <thread-id> "..."`. Sending does not clear the draft.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Handoff can target any model, including one from the source provider. In
   the follow-up picker, choose **Handoff to new thread**; **Exit handoff** in
