@@ -108,6 +108,19 @@ const testState = vi.hoisted(() => {
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     },
     {
+      command: "app.back",
+      desktopOnly: false,
+      shortcut: {
+        key: "Escape",
+        mod: false,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: { all: ["mainSurface"], none: ["modalOpen"] },
+    },
+    {
       command: "question.select.1",
       desktopOnly: false,
       shortcut: {
@@ -257,6 +270,37 @@ describe("KeyboardSettingsSection", () => {
       "Record shortcut for Open navigation",
       "Record shortcut for Previous thread",
     ]);
+  });
+
+  it("finds commands by their shortcut keys and modifiers", () => {
+    render(<KeyboardSettingsSection />);
+    const search = screen.getByRole("textbox", {
+      name: "Search keyboard shortcuts",
+    });
+
+    fireEvent.change(search, { target: { value: "escape" } });
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for Back to app, current shortcut Escape",
+      }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", {
+        name: /^Record shortcut for New thread,/,
+      }),
+    ).toBeNull();
+
+    fireEvent.change(search, { target: { value: "ctrl+shift+o" } });
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
+      }),
+    ).toBeDefined();
+
+    fireEvent.change(search, { target: { value: "ctrl+shift+u" } });
+    expect(
+      screen.getByText("No shortcuts match “ctrl+shift+u”."),
+    ).toBeDefined();
   });
 
   it("restores category and command order when the search is cleared", () => {

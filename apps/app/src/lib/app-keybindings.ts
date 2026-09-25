@@ -101,3 +101,35 @@ export function presentAppShortcut(
     label: formatAppShortcut(shortcut, platform),
   };
 }
+
+export function appShortcutMatchesQuery(
+  shortcut: AppShortcut,
+  platform: string,
+  query: string,
+): boolean {
+  const tokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) return false;
+  const useMetaForMod = isMacKeyboardPlatform(platform);
+  const modifiers = new Set<string>();
+  if (shortcut.mod) modifiers.add("mod");
+  if (shortcut.meta || (shortcut.mod && useMetaForMod)) {
+    modifiers.add("cmd");
+    modifiers.add("command");
+    modifiers.add("meta");
+  }
+  if (shortcut.control || (shortcut.mod && !useMetaForMod)) {
+    modifiers.add("ctrl");
+    modifiers.add("control");
+  }
+  if (shortcut.alt) {
+    modifiers.add("alt");
+    modifiers.add("opt");
+    modifiers.add("option");
+  }
+  if (shortcut.shift) modifiers.add("shift");
+  const key = shortcut.key.toLowerCase();
+  return tokens.every((token) => modifiers.has(token) || key.includes(token));
+}
