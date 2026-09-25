@@ -2098,13 +2098,9 @@ export const ChronologicalSectionThreadSections = memo(
         groupThreadsByEnvironment,
       ],
     );
-    const persistedSectionItems = rootItems.filter(
-      (item) => item.kind === "section",
-    );
     const sectionDnd = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
-      enabled:
-        topLevelSectionOrder.length > 1 || persistedSectionItems.length > 0,
+      enabled: true,
       rootItems,
       topLevelSectionOrder,
       onTopLevelSectionOrderChange,
