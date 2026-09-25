@@ -109,6 +109,10 @@ function RowMenuItems({
         <SidebarVisibilityActionContent visible />
       </Item>
       <Separator />
+      <Item onSelect={() => actions.openCustomize()}>
+        <SidebarCustomizeActionContent label="Customize sidebar" />
+      </Item>
+      <Separator />
       <Item disabled={disablePending} onSelect={onDisable}>
         <Icon name="Unavailable" aria-hidden="true" />
         Disable
@@ -171,7 +175,9 @@ function NavigationRowChrome({
 }) {
   const { activeItemId, actions } = experimental_useSidebarNavigation();
   const split = experimental_useSidebarNavigationSplit(item.id);
-  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
+  const isActionsOpen = isDropdownOpen || isContextMenuOpen;
   const [disablePending, setDisablePending] = useState(false);
   const isActive =
     item.id === activeItemId && item.action.kind !== "new-thread";
@@ -194,10 +200,13 @@ function NavigationRowChrome({
       onDisable={onDisable}
     />
   );
-  const hasOptionsButton = item.pluginId !== null;
+  const optionsLabel =
+    item.pluginId === null
+      ? `${item.label} options`
+      : `${item.label} panel options`;
 
   return (
-    <ContextMenu onOpenChange={setIsActionsOpen}>
+    <ContextMenu onOpenChange={setIsContextMenuOpen}>
       <ContextMenuTrigger asChild>
         <div
           ref={rowRef}
@@ -217,9 +226,10 @@ function NavigationRowChrome({
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
               "group/nav-row w-full",
-              hasOptionsButton && "pr-7",
+              "pr-7",
               Accessory && "pr-18",
-              isActive && "bg-sidebar-accent text-sidebar-foreground",
+              (isActive || isContextMenuOpen) &&
+                "bg-sidebar-accent text-sidebar-foreground",
               item.isLoading &&
                 "text-sidebar-foreground/55 dark:text-sidebar-foreground/55 [&_[data-icon-root]]:opacity-60",
             )}
@@ -268,53 +278,44 @@ function NavigationRowChrome({
               <Accessory />
             </span>
           ) : null}
-          {hasOptionsButton ? (
-            <div
-              data-sidebar-hover-actions-open={
-                isActionsOpen ? "true" : undefined
-              }
-              data-sidebar-hover-actions-mobile={
-                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-              }
-              className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "absolute inset-y-0 right-0 flex items-center",
-              )}
-            >
-              <DropdownMenu onOpenChange={setIsActionsOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`${item.label} panel options`}
-                    className={cn(
-                      "rounded-md p-0",
-                      SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                      SIDEBAR_CONTROL_STATE_CLASS,
-                    )}
-                  >
-                    <Icon
-                      name="MoreHorizontal"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {menuItems("dropdown")}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ) : null}
+          <div
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            data-sidebar-hover-actions-mobile={
+              SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+            }
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "absolute inset-y-0 right-0 flex items-center",
+            )}
+          >
+            <DropdownMenu onOpenChange={setIsDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={optionsLabel}
+                  className={cn(
+                    "rounded-md p-0",
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    SIDEBAR_CONTROL_STATE_CLASS,
+                    isContextMenuOpen && "bg-state-active",
+                  )}
+                >
+                  <Icon
+                    name="MoreHorizontal"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {menuItems("dropdown")}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={
-          hasOptionsButton
-            ? `${item.label} panel options`
-            : `${item.label} options`
-        }
-      >
+      <ContextMenuContent aria-label={optionsLabel}>
         {menuItems("context")}
       </ContextMenuContent>
     </ContextMenu>

@@ -413,7 +413,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     ["Plugins", "Plug02", "/plugins"],
     ["Skills", "Zap", "/skills"],
   ] as const)(
-    "renders the static %s row without plugin-panel options and routes to it",
+    "renders the static %s row with sidebar options and routes to it",
     (title, icon, routePath) => {
       renderNavigation();
 
@@ -422,6 +422,9 @@ describe("Navigation plugin in the sidebar navigation region", () => {
       expect(
         screen.queryByRole("button", { name: `${title} panel options` }),
       ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: `${title} options` }),
+      ).not.toBeNull();
       fireEvent.click(row);
       expect(screen.getByTestId("location-path").textContent).toBe(routePath);
       expect(
@@ -513,6 +516,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
         ...(compactViewport ? [] : [["Open in split", "Columns2"]]),
         ["View details", "Info"],
         ["Hide from sidebar", "EyeOff"],
+        ["Customize sidebar", "FilterHorizontal"],
         ["Disable", "Unavailable"],
       ] as const;
       const expectFocusedMenu = (menu: HTMLElement) => {
@@ -521,7 +525,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
             .getAllByRole("menuitem")
             .map((item) => item.textContent?.trim()),
         ).toEqual(expected.map(([label]) => label));
-        expect(within(menu).getAllByRole("separator")).toHaveLength(1);
+        expect(within(menu).getAllByRole("separator")).toHaveLength(2);
         for (const [label, icon] of expected) {
           const iconElement = within(menu)
             .getByRole("menuitem", { name: label })

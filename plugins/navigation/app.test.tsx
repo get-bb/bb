@@ -179,6 +179,56 @@ describe("navigation plugin", () => {
     ]);
   });
 
+  it("gives every visible row an options button with sidebar actions", async () => {
+    const view = renderNavigation();
+
+    for (const name of [
+      "New thread options",
+      "Docs panel options",
+      "Tasks panel options",
+      "Skills options",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeDefined();
+    }
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Skills options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Customize sidebar" }),
+    );
+
+    expect(view.inspection.sidebarNavigationCalls).toEqual([
+      { method: "setVisible", itemId: "__bb__/skills", isVisible: false },
+      { method: "openCustomize" },
+    ]);
+  });
+
+  it("marks the right-clicked row and its options button while the menu is open", async () => {
+    renderNavigation();
+    const row = screen.getByRole("button", { name: "Skills" });
+    const options = screen.getByRole("button", { name: "Skills options" });
+    expect(row.classList.contains("bg-sidebar-accent")).toBe(false);
+
+    fireEvent.contextMenu(row);
+    await screen.findByRole("menuitem", { name: "Hide from sidebar" });
+
+    expect(row.classList.contains("bg-sidebar-accent")).toBe(true);
+    expect(options.classList.contains("bg-state-active")).toBe(true);
+    expect(
+      options
+        .closest("[data-sidebar-hover-actions-open]")
+        ?.getAttribute("data-sidebar-hover-actions-open"),
+    ).toBe("true");
+  });
+
   it("reveals the New thread shortcut only while the modifier is held", () => {
     renderNavigation(ITEMS, false);
     expect(screen.queryByText("⌘N")).toBeNull();
