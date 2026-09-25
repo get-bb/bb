@@ -218,6 +218,10 @@ function AutomationRowMetadata({
           runCount: automation.runCount,
           lastRunStatus: automation.lastRunStatus,
         });
+  const isRetry =
+    automation !== null &&
+    automation.retryAt !== null &&
+    automation.retryAt === automation.nextRunAt;
   return (
     <ResourceMeta
       items={[
@@ -238,13 +242,13 @@ function AutomationRowMetadata({
             icon={scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined}
             iconLabel={
               scheduleMetadata.isNextRun
-                ? automation.lastError === null
-                  ? "Next run"
-                  : "Next retry"
+                ? isRetry
+                  ? "Next retry"
+                  : "Next run"
                 : undefined
             }
           >
-            {scheduleMetadata.isNextRun && automation.lastError !== null
+            {scheduleMetadata.isNextRun && isRetry
               ? `Retry ${scheduleMetadata.text}`
               : scheduleMetadata.text}
           </AutomationMetadataItem>
@@ -254,13 +258,17 @@ function AutomationRowMetadata({
             icon="AlertCircle"
             iconLabel={
               automation.enabled
-                ? "Retrying after failure"
+                ? isRetry
+                  ? "Retrying after failure"
+                  : "Last run failed"
                 : "Paused after failure"
             }
             title={automation.lastError}
           >
             {automation.enabled
-              ? `Retrying: ${automation.lastError}`
+              ? isRetry
+                ? `Retrying: ${automation.lastError}`
+                : `Last run failed: ${automation.lastError}`
               : `Paused: ${automation.lastError}. Resume after resolving the error.`}
           </AutomationMetadataItem>
         ) : null,

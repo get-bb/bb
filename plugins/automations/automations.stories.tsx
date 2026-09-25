@@ -94,6 +94,7 @@ function automation(
     origin: "human",
     createdByThreadId: null,
     nextRunAt: now + 86_400_000,
+    retryAt: null,
     lastRunAt: now - 3_600_000,
     runCount: 12,
     lastRunStatus: "succeeded",

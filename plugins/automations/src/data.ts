@@ -23,7 +23,7 @@ const AUTOMATION_COLUMNS = `id, project_id AS projectId, target_thread_id AS tar
   name, enabled, trigger_type AS triggerType,
   trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
   created_by_thread_id AS createdByThreadId,
-  next_run_at AS nextRunAt, last_run_at AS lastRunAt,
+  next_run_at AS nextRunAt, retry_at AS retryAt, last_run_at AS lastRunAt,
   run_count AS runCount, consecutive_failures AS consecutiveFailures,
   last_run_status AS lastRunStatus,
   last_run_thread_id AS lastRunThreadId, last_error AS lastError,
@@ -54,6 +54,7 @@ export interface AutomationRow {
   origin: AutomationOrigin;
   createdByThreadId: string | null;
   nextRunAt: number | null;
+  retryAt: number | null;
   lastRunAt: number | null;
   runCount: number;
   consecutiveFailures: number;
@@ -218,6 +219,7 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `ALTER TABLE automations ADD COLUMN retry_at INTEGER;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -313,6 +315,7 @@ function automationResponseValue(
     origin: row.origin,
     createdByThreadId: row.createdByThreadId,
     nextRunAt: row.nextRunAt,
+    retryAt: row.retryAt,
     lastRunAt: row.lastRunAt,
     runCount: row.runCount,
     lastRunStatus: row.lastRunStatus,
@@ -522,6 +525,10 @@ export function updateAutomation(
     execution: serializeExecution(next.execution),
     targetThreadId: next.targetThreadId,
     nextRunAt: next.nextRunAt,
+    retryAt:
+      args.patch.trigger === undefined && next.nextRunAt === existing.nextRunAt
+        ? existing.retryAt
+        : null,
     updatedAt: now,
   };
   toAutomationResponse(updated);
@@ -534,6 +541,7 @@ export function updateAutomation(
        execution = @execution,
        target_thread_id = @targetThreadId,
        next_run_at = @nextRunAt,
+       retry_at = @retryAt,
        updated_at = @now
      WHERE id = @automationId AND project_id = @projectId`,
   ).run({
@@ -546,6 +554,7 @@ export function updateAutomation(
     execution: updated.execution,
     targetThreadId: updated.targetThreadId,
     nextRunAt: updated.nextRunAt,
+    retryAt: updated.retryAt,
     now: updated.updatedAt,
   });
   return updated;
@@ -566,6 +575,7 @@ export function setAutomationEnabled(
     `UPDATE automations SET
        enabled = @enabled,
        next_run_at = @nextRunAt,
+       retry_at = NULL,
        last_error = CASE WHEN @hasLastError THEN @lastError ELSE last_error END,
        consecutive_failures = CASE
          WHEN @resetConsecutiveFailures = 1 THEN 0
@@ -690,6 +700,7 @@ export function claimAutomationScheduledRun(
         `UPDATE automations SET
            enabled = @enabled,
            next_run_at = @newNextRunAt,
+           retry_at = NULL,
            last_run_at = @now,
            run_count = run_count + 1,
            consecutive_failures = CASE
@@ -772,6 +783,7 @@ function recordAutomationFailure(
          WHEN @retryAt IS NOT NULL THEN @retryAt
          ELSE next_run_at
        END,
+       retry_at = @retryAt,
        consecutive_failures = @consecutiveFailures,
        last_run_status = 'failed',
        last_error = @lastError,
@@ -858,6 +870,7 @@ export function closeAutomationRun(
              ELSE last_run_thread_id
            END,
            last_error = NULL,
+           retry_at = NULL,
            updated_at = @now
          WHERE id = @automationId`,
       ).run({
@@ -1047,6 +1060,7 @@ export function disableAutomationsForUnavailableThread(
     `UPDATE automations SET
        enabled = 0,
        next_run_at = NULL,
+       retry_at = NULL,
        last_error = @lastError,
        updated_at = @now
      WHERE target_thread_id = @threadId AND enabled = 1`,

@@ -211,7 +211,9 @@ const storedAutomationScriptExecutionSchema = z
   .strict()
   .transform((execution) => ({
     ...execution,
-    workingDirectory: execution.workingDirectory ?? { type: "automation-storage" as const },
+    workingDirectory: execution.workingDirectory ?? {
+      type: "automation-storage" as const,
+    },
   }));
 
 const automationScriptExecutionRequestSchema = z
@@ -340,6 +342,7 @@ export const automationResponseSchema = z
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).nullable(),
     nextRunAt: z.number().nullable(),
+    retryAt: z.number().nullable(),
     lastRunAt: z.number().nullable(),
     runCount: z.number().int().min(0),
     lastRunStatus: automationRunStatusSchema.nullable(),

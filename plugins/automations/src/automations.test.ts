@@ -604,6 +604,9 @@ describe("automation data access", () => {
     expect(getAutomation(db, automation.id)?.nextRunAt).toBe(
       1001 + AUTOMATION_RETRY_BASE_MS,
     );
+    expect(getAutomation(db, automation.id)?.retryAt).toBe(
+      1001 + AUTOMATION_RETRY_BASE_MS,
+    );
     expect(first?.run.error).toBe("first failure");
   });
 
@@ -633,6 +636,27 @@ describe("automation data access", () => {
 
     expect(getAutomation(db, automation.id)?.enabled).toBe(false);
     expect(getAutomation(db, automation.id)?.nextRunAt).toBeNull();
+  });
+
+  it("keeps an ordinary schedule after a manual run fails", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const manual = createManualRun(db, {
+      automationId: automation.id,
+      runMode: automation.runMode,
+      now: 500,
+    });
+    closeAutomationRun(db, {
+      runId: manual.run.id,
+      status: "failed",
+      error: "manual run failed",
+      now: 501,
+    });
+    expect(getAutomation(db, automation.id)).toMatchObject({
+      nextRunAt: 1000,
+      retryAt: null,
+      lastError: "manual run failed",
+    });
   });
 
   it("does not re-enable a manually paused automation after a transient failure", () => {
@@ -693,9 +717,11 @@ describe("automation data access", () => {
           failedAt + AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1);
         expect(current?.enabled).toBe(true);
         expect(current?.nextRunAt).toBe(expectedNextRunAt);
+        expect(current?.retryAt).toBe(expectedNextRunAt);
       } else {
         expect(current?.enabled).toBe(false);
         expect(current?.nextRunAt).toBeNull();
+        expect(current?.retryAt).toBeNull();
         expect(current?.lastError).toContain(
           "paused after 3 consecutive failures",
         );

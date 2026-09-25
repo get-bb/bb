@@ -88,7 +88,10 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
 - Classified provider transport, overload, rate-limit, HTTP 5xx, and accepted
   but unstarted failures keep retrying with exponential backoff capped at
   30 minutes. Each retry is a new automation run with its own run ID. The
-  automation shows the failure reason and next run time until it succeeds.
+  automation shows the failure reason and next retry time until it succeeds.
+- `bb automation show --json` reports `retryAt` when the next scheduled run is
+  a retry; otherwise it is `null`. A failed manual run retains its error but
+  leaves the ordinary schedule intact, so its next run is not labeled a retry.
 - A successful or skipped run clears the failure count. A resume command also
   clears the count.
 - An unavailable target thread disables every enabled automation that targets

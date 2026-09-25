@@ -54,6 +54,7 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
       origin: "human",
       createdByThreadId: null,
       nextRunAt: 1_800_000_000_000,
+      retryAt: null,
       lastRunAt: null,
       runCount: 0,
       lastRunStatus: null,
@@ -86,6 +87,7 @@ describe("AutomationOverviewView", () => {
           ...entry.automation,
           lastRunStatus: "failed",
           lastError: "Provider connection failed",
+          retryAt: entry.automation.nextRunAt,
         }}
       />,
     );
@@ -96,6 +98,21 @@ describe("AutomationOverviewView", () => {
     expect(
       screen.getByRole("img", { name: "Retrying after failure" }),
     ).toBeTruthy();
+
+    view.rerender(
+      <OverviewRow
+        {...props}
+        automation={{
+          ...entry.automation,
+          lastRunStatus: "failed",
+          lastError: "manual run failed",
+          retryAt: null,
+        }}
+      />,
+    );
+    expect(screen.getByText("Last run failed: manual run failed")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Next run" })).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Next retry" })).toBeNull();
 
     view.rerender(
       <OverviewRow

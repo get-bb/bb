@@ -869,7 +869,7 @@ function printAutomation(
     `  Enabled:   ${automation.enabled ? "yes" : "no"}`,
     `  Mode:      ${automation.execution.mode}`,
     `  Schedule:  ${formatAutomationTrigger(automation)}`,
-    `  ${automation.enabled && automation.lastError ? "Next retry:" : "Next run:  "} ${formatTimestamp(automation.nextRunAt)}`,
+    `  ${automation.enabled && automation.retryAt !== null && automation.retryAt === automation.nextRunAt ? "Next retry:" : "Next run:  "} ${formatTimestamp(automation.nextRunAt)}`,
     `  Last run:  ${formatTimestamp(automation.lastRunAt)}`,
     `  Runs:      ${automation.runCount}`,
     `  Origin:    ${automation.origin}`,
