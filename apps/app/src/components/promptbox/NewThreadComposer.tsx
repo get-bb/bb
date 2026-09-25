@@ -14,6 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
@@ -110,6 +111,7 @@ import {
   getThreadRoutePath,
   isProjectlessProjectId,
 } from "@/lib/route-paths";
+import type { EnvironmentAutoPlacement } from "@/components/pickers/EnvironmentPicker";
 import { sdk } from "@/lib/sdk";
 import {
   buildReuseThreadOptions,
@@ -231,16 +233,6 @@ export interface NewThreadComposerState {
   setPermissionMode: (value: PermissionMode) => void;
   setServiceTier: (value: ServiceTier | undefined) => void;
   renderPromptBox: (options: NewThreadComposerPromptOptions) => ReactNode;
-}
-
-export function resolveSubmittedExecutionSources(
-  environment: NewThreadRequest["environment"],
-  sources: CreateExecutionInputSources,
-): CreateExecutionInputSources {
-  return environment.type === "provider" &&
-    environment.machine?.type !== "existing"
-    ? { ...sources, model: "explicit" }
-    : sources;
 }
 
 export interface NewThreadComposerSubmission extends NewThreadRequest {
@@ -677,6 +669,7 @@ export function NewThreadComposer({
     usePromptBoxMachinePreference(projectId);
   const [activeSeedSignature, setActiveSeedSignature] = useState(seedSignature);
   const [seedOverridden, setBranchSeedOverridden] = useState(false);
+  const [placementAvailable, setPlacementAvailable] = useState(false);
   const [pickedProviderMachine, setPickedProviderMachine] = useState<{
     selectionValue: string;
     machine: EnvironmentMachineSelection;
@@ -735,12 +728,13 @@ export function NewThreadComposer({
       return {
         provider,
         machine:
-          primaryHostId !== null && usable(primaryHostId)
-            ? { type: "existing", hostId: primaryHostId }
-            : null,
+          placementAvailable || primaryHostId === null || !usable(primaryHostId)
+            ? null
+            : { type: "existing", hostId: primaryHostId },
       };
     },
     [
+      placementAvailable,
       seedOverridden,
       environmentSeed,
       environmentProviders,
@@ -756,6 +750,7 @@ export function NewThreadComposer({
   const resolveProviderRouting = useCallback(
     (environmentSelectionValue: string) => {
       const effectiveValue = resolveRootComposeEffectiveEnvironmentValue({
+        connectedHostIds,
         environmentSelectionValue,
         environmentProviders,
         isProjectless,
@@ -778,6 +773,7 @@ export function NewThreadComposer({
         : {};
     },
     [
+      connectedHostIds,
       environmentProviders,
       isProjectless,
       knownHostIds,
@@ -871,6 +867,48 @@ export function NewThreadComposer({
     () => providerOptions.map((option) => option.value),
     [providerOptions],
   );
+  const placementPreviewQuery = useQuery({
+    queryKey: ["thread-placement-preview", projectId, selectedProviderId],
+    enabled: selectionScope === "new-thread" && selectedProviderId !== "",
+    placeholderData: keepPreviousData,
+    staleTime: 10_000,
+    queryFn: ({ signal }) =>
+      sdk.threads.placementPreview({
+        projectId,
+        providerId: selectedProviderId,
+        signal,
+      }),
+  });
+  const placementPreview = placementPreviewQuery.data;
+  const previewedPlacementAvailable =
+    placementPreview !== undefined && placementPreview.kind !== "unavailable";
+  if (
+    placementPreview !== undefined &&
+    previewedPlacementAvailable !== placementAvailable
+  ) {
+    setPlacementAvailable(previewedPlacementAvailable);
+  }
+  const autoPlacement: EnvironmentAutoPlacement | undefined =
+    placementPreview === undefined || placementPreview.kind === "unavailable"
+      ? undefined
+      : placementPreviewQuery.isPlaceholderData
+        ? { status: "pending" }
+        : placementPreview.kind === "host"
+          ? {
+              status: "chosen",
+              hostName: placementPreview.hostName,
+              skipped: placementPreview.skipped.map((skip) => ({
+                hostName: skip.hostName,
+                label: skip.reason,
+              })),
+            }
+          : {
+              status: "server-default",
+              skipped: placementPreview.skipped.map((skip) => ({
+                hostName: skip.hostName,
+                label: skip.reason,
+              })),
+            };
 
   const promptDraft = usePromptDraftStorage(draftStorage);
   const textEffects = useComposerTextEffects(promptDraft.storageKey);
@@ -941,6 +979,7 @@ export function NewThreadComposer({
   const effectiveEnvironmentValue = useMemo(
     () =>
       resolveRootComposeEffectiveEnvironmentValue({
+        connectedHostIds,
         environmentSelectionValue,
         environmentProviders,
         isProjectless,
@@ -954,6 +993,7 @@ export function NewThreadComposer({
     [
       environmentSelectionValue,
       environmentProviders,
+      connectedHostIds,
       isProjectless,
       knownHostIds,
       primaryHostId,
@@ -1584,10 +1624,11 @@ export function NewThreadComposer({
         reasoningLevel,
         permissionMode,
         ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-        executionInputSources: resolveSubmittedExecutionSources(
-          submissionEnvironment,
-          sources,
-        ),
+        executionInputSources:
+          submissionEnvironment.type === "provider" &&
+          submissionEnvironment.machine?.type === "new"
+            ? { ...sources, model: "explicit" }
+            : sources,
         environment: submissionEnvironment,
         input,
         ...(submitOptions?.sendAt === undefined
@@ -1884,6 +1925,7 @@ export function NewThreadComposer({
               providers: environmentProviders ?? [],
               providersByHostId: environmentProvidersByHostId,
               selectedProviderHostId: providerHostId,
+              autoPlacement,
               inputsControlProviderIds,
               onSelectProvider: handleSelectProvider,
               onSelectHost: handleSelectHost,

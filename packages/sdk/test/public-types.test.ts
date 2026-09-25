@@ -410,6 +410,7 @@ type ExpectedThreadsKey =
   | "output"
   | "paneAction"
   | "pin"
+  | "placementPreview"
   | "promptHistory"
   | "queue"
   | "queuedMessages"

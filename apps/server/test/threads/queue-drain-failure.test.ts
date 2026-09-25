@@ -135,7 +135,7 @@ describe("recordQueuedMessageDrainFailure", () => {
   it("hides a failed row from the wakes that are not its booked retry", async () => {
     await withTestHarness(async (harness) => {
       let attempts = 0;
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = { "experimental_thread.place": [], "message.dispatch": [] };
       registry["message.dispatch"].push({
         pluginId: "rejector",
         handler: () => {
@@ -189,7 +189,7 @@ describe("recordQueuedMessageDrainFailure", () => {
 
   it("records a terminal failure from the turn-started wake", async () => {
     await withTestHarness(async (harness) => {
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = { "experimental_thread.place": [], "message.dispatch": [] };
       registry["message.dispatch"].push({
         pluginId: "rejector",
         handler: () =>
@@ -374,7 +374,7 @@ describe("a failed row's booked retry", () => {
    */
   function installRejector(): { attempts: () => number; dispose(): void } {
     let attempts = 0;
-    const registry: HookRegistry = { "message.dispatch": [] };
+    const registry: HookRegistry = { "experimental_thread.place": [], "message.dispatch": [] };
     registry["message.dispatch"].push({
       pluginId: "rejector",
       handler: () => {

@@ -1370,6 +1370,7 @@ export async function mountPluginContentScripts(
 export type PluginRpcTestHandlers<Contract extends PluginRpcContract> = {
   [Method in keyof Contract]: (
     input: StandardSchemaV1InferInput<Contract[Method]["input"]>,
+    options?: { signal?: AbortSignal },
   ) =>
     | PluginRpcResult<Contract[Method]>
     | Promise<PluginRpcResult<Contract[Method]>>;
@@ -1597,10 +1598,10 @@ export function renderSlot<
   const rpcCalls: RpcCall[] = [];
   const rpcHandlers = (options.rpc ?? {}) as Record<
     string,
-    (input: unknown) => unknown
+    (input: unknown, options?: { signal?: AbortSignal }) => unknown
   >;
   const rpcClient: PluginRpcClient = {
-    async call(method, input) {
+    async call(method, input, options) {
       const normalizedInput =
         input === undefined
           ? null
@@ -1612,7 +1613,27 @@ export function renderSlot<
           `no rpc handler for "${method}" — add it to renderSlot options.rpc`,
         );
       }
-      const result = await handler(normalizedInput);
+      const result = await (options?.signal === undefined
+        ? handler(normalizedInput, options)
+        : new Promise<unknown>((resolve, reject) => {
+            const signal = options.signal!;
+            const abort = () => {
+              signal.removeEventListener("abort", abort);
+              reject(signal.reason);
+            };
+            if (signal.aborted) return abort();
+            signal.addEventListener("abort", abort, { once: true });
+            Promise.resolve(handler(normalizedInput, options)).then(
+              (value) => {
+                signal.removeEventListener("abort", abort);
+                resolve(value);
+              },
+              (error) => {
+                signal.removeEventListener("abort", abort);
+                reject(error);
+              },
+            );
+          }));
       return strictJsonRoundTrip(result, `rpc "${method}" result`);
     },
   };

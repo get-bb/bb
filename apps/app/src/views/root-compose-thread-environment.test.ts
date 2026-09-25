@@ -100,7 +100,7 @@ describe("resolveRootComposeThreadEnvironment", () => {
     ).toBeNull();
   });
 
-  it("resolves nothing for a host provider without a machine", () => {
+  it("leaves an omitted machine open for pre-start placement", () => {
     expect(
       resolveRootComposeThreadEnvironment({
         environmentValue: "provider:hosted",
@@ -108,7 +108,11 @@ describe("resolveRootComposeThreadEnvironment", () => {
         environmentProviders,
         providerHostId: null,
       }),
-    ).toBeNull();
+    ).toEqual({
+      type: "provider",
+      environmentProviderId: "hosted",
+      inputs: null,
+    });
   });
 
   it("sends null inputs for a provider that declares none, even when a stale value lingers", () => {

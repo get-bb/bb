@@ -1,5 +1,30 @@
 # APIs To Audit
 
+## `bb.experimental_hooks.on("experimental_thread.place", handler)`
+
+Core asks registered handlers in plugin install order when an independent new
+thread has an implicit machine. The hook receives the project ID, the initially
+resolved provider ID, and an abort signal. It may choose an existing host with
+the server-clock timestamp of its load request, or return a default reason.
+Core accepts a choice only if it is well formed, at most 30 seconds old, persistent,
+active, connected, and has a registered local project source. Errors, cancellation,
+timeout, unload, or no usable choice use the primary host when it has a project
+source, and otherwise report the existing source/host error. The hook runs once
+before environment inspection and provisioning. A valid choice keeps the
+selected provider; ordinary server defaults retain catalog provider fallback.
+It does not move a running thread or affect an explicit host or reused environment.
+An implicit model is resolved from the selected host's catalog, and an explicit
+model must be available there.
+`GET /threads/placement-preview` (`sdk.threads.placementPreview`,
+`bb thread placement`, and the app's Auto machine option) runs the same hooks
+and validation without creating a thread, so handlers must be side-effect free
+and may be asked repeatedly while a user composes a thread.
+
+Before stabilization, audit whether a future hook needs to expose a complete
+execution tuple after model catalog fallback, whether a source health token
+should be part of the decision, and whether multiple placement plugins need a
+conflict policy beyond first valid choice in install order.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard
@@ -27,9 +52,15 @@ model or default binding policy.
 
 ## Discoverable RPC
 
+RPC handlers receive a context with `experimental_signal`. The signal aborts
+when the calling HTTP request is cancelled; long-running handlers should pass
+it to their downstream work. The client abort signal still cancels its fetch.
+Before stabilization, audit request-disconnect behavior across server adapters
+and the error reported when a handler observes cancellation.
+
 `bb.rpc.register` accepts optional `experimental_discoverable` and `experimental_description` options. Method definitions accept `experimental_description`. Discoverable registration exports wire schemas through Standard JSON Schema; validation-only schemas remain usable without publication. Descriptions are published separately and absent descriptions become null. Discovery advertises methods without changing RPC authorization or dispatch.
 
-`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method? })` lists published methods from loaded plugins. Methods disappear on unload; callers handle the race between discovery and invocation. The SDK RPC caller accepts an optional abort signal. The fake host exposes `experimental_publishedRpcMethods` on its registration inspection surface.
+`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method? })` lists published methods from loaded plugins. Methods disappear on unload; callers handle the race between discovery and invocation. The SDK and frontend `useRpc` callers accept an optional abort signal; the latter cancels its HTTP request when a component exits or changes selection. The fake host exposes `experimental_publishedRpcMethods` on its registration inspection surface.
 
 Before stabilization, audit schema export fidelity (especially refinements and transforms), descriptor size and reference limits, lifecycle races, and cross-plugin copied-schema compatibility. Verify `bb plugin rpc list|inspect` is sufficient to implement a consumer without a shared contract package. Method names carry optional versions; there is no negotiation.
 

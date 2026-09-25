@@ -825,6 +825,7 @@ describe("public host management", () => {
         "revokeMachine",
         revokeRecord,
         { machineId: "machine-cloud-remove" },
+        expect.any(AbortSignal),
       );
     });
   }, 30_000);

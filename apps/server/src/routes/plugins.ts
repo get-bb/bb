@@ -951,6 +951,7 @@ export function registerPluginRoutes(
       method,
       lookup.value,
       input,
+      context.req.raw.signal,
     );
     if (!outcome.ok) {
       return context.json(

@@ -62,6 +62,20 @@ export interface EnvironmentPickerMachines {
   primaryHostId: string | null;
 }
 
+export interface EnvironmentAutoPlacementSkip {
+  hostName: string;
+  label: string;
+}
+
+export type EnvironmentAutoPlacement =
+  | { status: "pending" }
+  | {
+      status: "chosen";
+      hostName: string;
+      skipped: readonly EnvironmentAutoPlacementSkip[];
+    }
+  | { status: "server-default"; skipped: readonly EnvironmentAutoPlacementSkip[] };
+
 export interface EnvironmentPickerUIProps {
   value: string;
   sources: readonly ProjectSource[];
@@ -84,6 +98,7 @@ export interface EnvironmentPickerUIProps {
     readonly SystemEnvironmentProvider[] | undefined
   >;
   selectedProviderHostId?: string | null;
+  autoPlacement?: EnvironmentAutoPlacement;
   inputsControlProviderIds?: ReadonlySet<string>;
   onSelectProvider?: (
     provider: SystemEnvironmentProvider,
@@ -209,6 +224,7 @@ export function EnvironmentPickerUI({
   projectless = false,
   providersByHostId,
   selectedProviderHostId = null,
+  autoPlacement,
   inputsControlProviderIds = NO_INPUTS_CONTROL_PROVIDER_IDS,
   onSelectProvider,
   onSelectHost,
@@ -252,6 +268,7 @@ export function EnvironmentPickerUI({
     [projectless, providers],
   );
   const isMachineMenu = hasMultipleMachines;
+  const offersAutoPlacement = isMachineMenu && autoPlacement !== undefined;
   const hostConnected = availableHost?.status === "connected";
   const hostUnavailableReason = !availableHost
     ? "No host connected"
@@ -291,8 +308,13 @@ export function EnvironmentPickerUI({
   );
   const contextualSelectedHostId =
     parsed?.type === "provider" ? selectedProviderHostId : hostId;
+  const autoPlacementSelected =
+    offersAutoPlacement &&
+    selectedProvider !== undefined &&
+    !selectedProvider.machineProviderId &&
+    selectedProviderHostId === null;
   const contextualHost =
-    showSearch && availableMachines
+    showSearch && availableMachines && !autoPlacementSelected
       ? contextualActiveHost({
           machines: availableMachines,
           previewHostId,
@@ -300,16 +322,25 @@ export function EnvironmentPickerUI({
           hasSelectedHostlessProvider: selectedHostlessProvider !== undefined,
         })
       : undefined;
-  const selectedCommandValue = contextualHost
-    ? `machine:${contextualHost.id}`
-    : selectedHostlessProvider
-      ? `provider:any:${selectedHostlessProvider.id}`
-      : parsed?.type === "reuse"
-        ? "reuse"
-        : selectedProvider !== undefined && selectedProviderHostId !== null
-          ? `provider:${selectedProviderHostId}:${selectedProvider.id}`
-          : "";
+  const selectedCommandValue = autoPlacementSelected
+    ? `provider:auto:${selectedProvider.id}`
+    : contextualHost
+      ? `machine:${contextualHost.id}`
+      : selectedHostlessProvider
+        ? `provider:any:${selectedHostlessProvider.id}`
+        : parsed?.type === "reuse"
+          ? "reuse"
+          : selectedProvider !== undefined && selectedProviderHostId !== null
+            ? `provider:${selectedProviderHostId}:${selectedProvider.id}`
+            : "";
   const selected = useMemo((): SelectedEnvironment => {
+    if (autoPlacementSelected && autoPlacement !== undefined) {
+      return {
+        modeLabel: `${autoPlacementTriggerLabel(autoPlacement)} · ${selectedProvider.displayName}`,
+        compactModeLabel: "Auto",
+        icon: AUTO_PLACEMENT_ICON_NAME,
+      };
+    }
     if (
       selectedProvider !== undefined &&
       (selectedProvider.machineProviderId || hostUnavailableReason === null)
@@ -346,6 +377,8 @@ export function EnvironmentPickerUI({
       icon: "Laptop" as const,
     };
   }, [
+    autoPlacement,
+    autoPlacementSelected,
     parsed,
     hostUnavailableReason,
     availableHost,
@@ -399,7 +432,7 @@ export function EnvironmentPickerUI({
           )}
         >
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-            {selectedProvider === undefined ? (
+            {selectedProvider === undefined || autoPlacementSelected ? (
               <Icon
                 name={isLoading ? "Spinner" : selected.icon}
                 className={cn(
@@ -488,6 +521,19 @@ export function EnvironmentPickerUI({
                 showSearch && "flex flex-col overflow-hidden",
               )}
             >
+              {offersAutoPlacement && autoPlacement !== undefined ? (
+                <AutoPlacementOptions
+                  autoPlacement={autoPlacement}
+                  environmentProviders={environmentProviders}
+                  selectedProviderId={
+                    autoPlacementSelected ? selectedProvider.id : null
+                  }
+                  inputsControlProviderIds={inputsControlProviderIds}
+                  onSelectProvider={
+                    onSelectProvider ? selectProvider : undefined
+                  }
+                />
+              ) : null}
               {isMachineMenu && availableMachines ? (
                 showSearch ? (
                   <MachineContextualEnvironmentOptions
@@ -582,6 +628,80 @@ export function EnvironmentPickerUI({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+const AUTO_PLACEMENT_ICON_NAME = "Zap";
+
+function autoPlacementTriggerLabel(autoPlacement: EnvironmentAutoPlacement) {
+  return autoPlacement.status === "chosen"
+    ? `Auto → ${autoPlacement.hostName}`
+    : "Auto";
+}
+
+function autoPlacementSkips(skipped: readonly EnvironmentAutoPlacementSkip[]) {
+  return skipped.map((skip) => `${skip.hostName} skipped: ${skip.label}`);
+}
+
+function autoPlacementHint(autoPlacement: EnvironmentAutoPlacement) {
+  switch (autoPlacement.status) {
+    case "pending":
+      return "Finding a machine…";
+    case "chosen":
+      return [
+        `Places on ${autoPlacement.hostName}`,
+        ...autoPlacementSkips(autoPlacement.skipped),
+      ].join(" · ");
+    case "server-default":
+      return [
+        "No ready machine — uses the server default",
+        ...autoPlacementSkips(autoPlacement.skipped),
+      ].join(" · ");
+  }
+}
+
+interface AutoPlacementOptionsProps {
+  autoPlacement: EnvironmentAutoPlacement;
+  environmentProviders: readonly SystemEnvironmentProvider[];
+  selectedProviderId: string | null;
+  inputsControlProviderIds: ReadonlySet<string>;
+  onSelectProvider:
+    | ((provider: SystemEnvironmentProvider, hostId: string | null) => void)
+    | undefined;
+}
+
+function AutoPlacementOptions({
+  autoPlacement,
+  environmentProviders,
+  selectedProviderId,
+  inputsControlProviderIds,
+  onSelectProvider,
+}: AutoPlacementOptionsProps) {
+  if (onSelectProvider === undefined || environmentProviders.length === 0) {
+    return null;
+  }
+  const hint = autoPlacementHint(autoPlacement);
+  return (
+    <>
+      <CommandGroup heading="Auto" className="shrink-0">
+        {environmentProviders.map((provider) => (
+          <EnvironmentMenuItem
+            key={provider.id}
+            value={`provider:auto:${provider.id}`}
+            label={provider.displayName}
+            description={hint}
+            icon={AUTO_PLACEMENT_ICON_NAME}
+            selected={selectedProviderId === provider.id}
+            disabled={
+              providerDisabledReason(provider, inputsControlProviderIds) !==
+              null
+            }
+            onSelect={() => onSelectProvider(provider, null)}
+          />
+        ))}
+      </CommandGroup>
+      <CommandSeparator className="mx-0 shrink-0" />
+    </>
   );
 }
 

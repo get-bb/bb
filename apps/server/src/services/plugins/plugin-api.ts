@@ -63,6 +63,7 @@ import type {
   PluginProviders,
   PluginRealtime,
   PluginRpc,
+  ExperimentalPluginRpcHandlerContext,
   PluginServerApi,
   PluginSettingDescriptors,
   PluginSettingValue,
@@ -188,7 +189,7 @@ export interface PluginRpcHandler {
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: unknown) => unknown;
+  handler: (input: unknown, context: ExperimentalPluginRpcHandlerContext) => unknown;
 }
 
 export interface PluginAgentToolRecord {
@@ -572,6 +573,7 @@ export function createPluginApi(options: {
   };
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
+    "experimental_thread.place": null,
   };
   const environmentCompositions = new Map<
     string,
@@ -1123,8 +1125,6 @@ export function createPluginApi(options: {
     },
     async recheck(hook) {
       assertLive();
-      // One hook key exists; the parameter selects which question to re-pose
-      // and widens additively when a second key ever ships.
       void hook;
       // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
       // caller is not the one it reports to — a failed re-attempt lands on the

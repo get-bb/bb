@@ -98,6 +98,7 @@ import type {
   PluginProviders,
   PluginRealtime,
   PluginRpc,
+  ExperimentalPluginRpcHandlerContext,
   PluginServerApi,
   PluginSettingDescriptors,
   PluginSettingValue,
@@ -373,7 +374,7 @@ export interface FakePluginBehaviorDrivers {
    * strict JSON result normalization, and structured failure codes. Rejects
    * with the same message/code/issues the frontend client surfaces.
    */
-  callRpc(method: string, input?: unknown): Promise<unknown>;
+  callRpc(method: string, input?: unknown, options?: { signal?: AbortSignal }): Promise<unknown>;
   /**
    * Invoke the plugin's CLI command with host semantics: the result's
    * exitCode must be a number, stdout/stderr default to "", and a throwing
@@ -591,7 +592,7 @@ interface FakeRpcRecord {
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: never) => unknown;
+  handler: (input: never, context: ExperimentalPluginRpcHandlerContext) => unknown;
 }
 
 type FakeHostWorkerExitSubscription = (event: {
@@ -1134,6 +1135,7 @@ function createFakePluginHostInternal(
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
     "message.dispatch": null,
+    "experimental_thread.place": null,
   };
   const environmentCompositions = new Map<
     string,
@@ -1760,7 +1762,7 @@ function createFakePluginHostInternal(
       await setSettingsValues(values);
     },
 
-    async callRpc(method, input) {
+    async callRpc(method, input, options) {
       const record = rpcHandlers.get(method);
       if (!record) {
         return throwRpcError({
@@ -1780,7 +1782,9 @@ function createFakePluginHostInternal(
       );
       let result: unknown;
       try {
-        result = await record.handler(validatedInput as never);
+        result = await record.handler(validatedInput as never, {
+          experimental_signal: options?.signal ?? AbortSignal.timeout(30_000),
+        });
       } catch (error) {
         return throwRpcError({
           code: "handler_error",

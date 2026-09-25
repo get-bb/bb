@@ -236,8 +236,8 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [
-      { id: "host_1", name: "Machine" },
-      { id: "host_2", name: "Other machine" },
+      { id: "host_1", name: "Machine", status: "connected" },
+      { id: "host_2", name: "Other machine", status: "connected" },
     ],
   }),
   selectHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],

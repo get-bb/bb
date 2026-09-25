@@ -1084,12 +1084,9 @@ describe("bb thread spawn command output", () => {
         model: "gpt-5",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
-          type: "host",
-          hostId: "host-test-001",
-          workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" },
-          },
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          inputs: { branch: { kind: "default" } },
         },
       },
     });
@@ -1124,6 +1121,8 @@ describe("bb thread spawn command output", () => {
         "proj-1",
         "--machine",
         "builder",
+        "--model",
+        "worker-only",
         "--prompt",
         "hello",
       ],
@@ -1133,6 +1132,7 @@ describe("bb thread spawn command output", () => {
     expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
     expect(post).toHaveBeenCalledWith({
       json: expect.objectContaining({
+        model: "worker-only",
         environment: {
           type: "host",
           hostId: "host-remote",
@@ -1344,7 +1344,7 @@ describe("bb thread spawn command output", () => {
       });
     }
 
-    it("sends parsed --environment-inputs with the default machine for a host provider", async () => {
+    it("sends parsed --environment-inputs with an implicit machine for a host provider", async () => {
       const post = vi.fn(async () =>
         fixtures.makeThread({
           id: "thread-provider",
@@ -1375,14 +1375,13 @@ describe("bb thread spawn command output", () => {
           environment: {
             type: "provider",
             environmentProviderId: "git-worktree",
-            machine: { type: "existing", hostId: "host-test-001" },
             inputs: { branch: { kind: "named", name: "release" } },
           },
         }),
       });
     });
 
-    it("sends null inputs with the default machine for a provider without inputs", async () => {
+    it("sends null inputs with an implicit machine for a provider without inputs", async () => {
       const post = vi.fn(async () =>
         fixtures.makeThread({
           id: "thread-provider",
@@ -1411,7 +1410,6 @@ describe("bb thread spawn command output", () => {
           environment: {
             type: "provider",
             environmentProviderId: "plain",
-            machine: { type: "existing", hostId: "host-test-001" },
             inputs: null,
           },
         }),
@@ -1447,7 +1445,6 @@ describe("bb thread spawn command output", () => {
           environment: {
             type: "provider",
             environmentProviderId: "optional",
-            machine: { type: "existing", hostId: "host-test-001" },
             inputs: {},
           },
         }),

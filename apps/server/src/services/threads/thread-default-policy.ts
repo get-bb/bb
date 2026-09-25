@@ -245,7 +245,7 @@ function requireDefaultEnvironmentProvider(id: string): string {
 
 export async function resolveProjectDefaultThreadEnvironment(
   deps: WorkSessionDeps,
-  args: { projectId: string },
+  args: { projectId: string; hostId: string },
 ): Promise<ResolvedCreateThreadEnvironment> {
   if (args.projectId === PERSONAL_PROJECT_ID) {
     return {
@@ -255,13 +255,13 @@ export async function resolveProjectDefaultThreadEnvironment(
       ),
       machine: {
         type: "existing",
-        hostId: requireConnectedPrimaryHostId(deps),
+        hostId: args.hostId,
       },
       inputs: null,
     };
   }
 
-  const hostId = requireConnectedPrimaryHostId(deps);
+  const hostId = args.hostId;
   const source = resolveProjectWorkspaceTarget(deps, {
     hostId,
     projectId: args.projectId,
@@ -343,6 +343,7 @@ export async function resolveCreateThreadEnvironment(
     args.requestedEnvironment.type === "project-default"
       ? await resolveProjectDefaultThreadEnvironment(deps, {
           projectId: args.projectId,
+          hostId: requireConnectedPrimaryHostId(deps),
         })
       : args.requestedEnvironment;
 

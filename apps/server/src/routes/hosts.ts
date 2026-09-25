@@ -92,6 +92,7 @@ async function revokeConnectMachineCredential(
   deps: AppDeps,
   plugins: PluginService,
   machineId: string,
+  signal: AbortSignal,
 ): Promise<void> {
   try {
     const connectPlugin = plugins
@@ -107,6 +108,7 @@ async function revokeConnectMachineCredential(
       "revokeMachine",
       handler.value,
       { machineId },
+      signal,
     );
     if (!result.ok) throw new Error(result.error.message);
   } catch (error) {
@@ -312,6 +314,7 @@ export function registerHostRoutes(
         deps,
         plugins,
         host.connectMachineId,
+        context.req.raw.signal,
       );
     }
     return context.json({ ok: true });

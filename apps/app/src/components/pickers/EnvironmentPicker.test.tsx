@@ -10,6 +10,7 @@ import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EnvironmentPickerUI,
+  type EnvironmentAutoPlacement,
   PROVIDER_INPUTS_CONTROL_MISSING_REASON,
 } from "./EnvironmentPicker";
 
@@ -654,6 +655,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     host?: Host;
     value?: string;
     selectedProviderHostId?: string | null;
+    autoPlacement?: EnvironmentAutoPlacement;
     providers?: readonly SystemEnvironmentProvider[];
     onSelectProvider?: (
       provider: SystemEnvironmentProvider,
@@ -678,6 +680,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
             ? thisMachine.id
             : overrides.selectedProviderHostId
         }
+        autoPlacement={overrides?.autoPlacement}
         onSelectProvider={overrides?.onSelectProvider ?? vi.fn()}
         onSelectHost={overrides?.onSelectHost}
         modal={false}
@@ -1249,6 +1252,82 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(
       document.querySelector("[data-promptbox-compact-label]")?.textContent,
     ).toBe("Project checkout");
+  });
+
+  it("offers an Auto row that names the recommended machine and selects no host", () => {
+    const onSelectProvider = vi.fn();
+    renderMachineMenu({
+      autoPlacement: { status: "chosen", hostName: studio.name, skipped: [] },
+      onSelectProvider,
+    });
+
+    const autoItem = screen.getByRole("option", {
+      name: /Places on Mac Studio/u,
+    });
+    expect(autoItem.getAttribute("aria-current")).toBeNull();
+    fireEvent.click(autoItem);
+    expect(onSelectProvider).toHaveBeenCalledWith(checkoutProvider, null);
+  });
+
+  it("labels the trigger with the auto-chosen machine when no host is selected", () => {
+    renderMachineMenu({
+      selectedProviderHostId: null,
+      autoPlacement: { status: "chosen", hostName: studio.name, skipped: [] },
+    });
+
+    expect(
+      screen.getByText("Auto → Mac Studio · Project checkout"),
+    ).toBeTruthy();
+    expect(
+      document.querySelector("[data-promptbox-compact-label]")?.textContent,
+    ).toBe("Auto");
+    expect(
+      screen
+        .getByRole("option", { name: /Places on Mac Studio/u })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+  });
+
+  it("explains an auto placement that falls back to the server default", () => {
+    renderMachineMenu({
+      selectedProviderHostId: null,
+      autoPlacement: {
+        status: "server-default",
+        skipped: [{ hostName: "omarchy", label: "Codex not signed in" }],
+      },
+    });
+
+    expect(screen.getByText("Auto · Project checkout")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "No ready machine — uses the server default · omarchy skipped: Codex not signed in",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("names each machine the placement skipped and why", () => {
+    renderMachineMenu({
+      autoPlacement: {
+        status: "chosen",
+        hostName: "macbook-m2",
+        skipped: [
+          { hostName: "omarchy", label: "no source for App" },
+          { hostName: "studio", label: "Codex not signed in" },
+        ],
+      },
+    });
+
+    expect(
+      screen.getByRole("option", {
+        name: /Places on macbook-m2 · omarchy skipped: no source for App · studio skipped: Codex not signed in/u,
+      }),
+    ).toBeTruthy();
+  });
+
+  it("omits the Auto group when auto placement is unavailable", () => {
+    renderMachineMenu();
+
+    expect(screen.queryByText(/Places on/u)).toBeNull();
   });
 
   it("names another selected machine in the trigger label", () => {

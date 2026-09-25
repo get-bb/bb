@@ -57,6 +57,7 @@ import {
 import {
   buildProviderThreadExecutionDefaults,
   resolveCreateThreadEnvironment,
+  resolveProjectDefaultThreadEnvironment,
 } from "./thread-default-policy.js";
 import { assertValidParentThread } from "./thread-parent.js";
 import {
@@ -65,6 +66,8 @@ import {
 } from "./thread-create-request.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { deriveTitleFallback } from "./title-generation.js";
+import { choosePreStartHost } from "./thread-pre-start-placement.js";
+import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 import {
@@ -653,30 +656,109 @@ export async function createThreadFromRequest(
     sourceThreadId: _requestedSourceThreadId,
     ...requestRest
   } = requestInput;
+  const environmentParent = forkSourceEnvironmentId !== undefined
+    ? null
+    : (sourceThread ?? parentThread);
+  const requestedProviderEnvironment = requestInput.environment.type === "provider"
+    ? requestInput.environment
+    : null;
+  const automaticEnvironment = requestInput.environment.type === "project-default" ||
+    (requestedProviderEnvironment !== null &&
+      requestedProviderEnvironment.machine === undefined &&
+      !listEnvironmentCompositions().some(
+        (record) => record.composition.id === requestedProviderEnvironment.environmentProviderId,
+      ));
+  const automaticPlacement = environmentParent === null && originKind === null && automaticEnvironment;
+  const chosenHostId = automaticPlacement
+    ? await choosePreStartHost(deps, { projectId: requestInput.projectId, providerId })
+    : null;
+  const inheritedHostId = environmentParent?.environmentId === null || environmentParent === null
+    ? null
+    : getEnvironment(deps.db, environmentParent.environmentId)?.hostId ?? null;
+  const modelIsExplicit = requestInput.model !== undefined &&
+    (requestInput.executionInputSources === undefined ||
+      requestInput.executionInputSources.model === "explicit");
+  const automaticHostId = chosenHostId ?? inheritedHostId;
+  const resolveModelOnSelectedHost = chosenHostId !== null;
+  const environmentForStart = requestedProviderEnvironment !== null &&
+      requestedProviderEnvironment.machine === undefined && automaticEnvironment
+    ? {
+        ...requestedProviderEnvironment,
+        machine: { type: "existing" as const, hostId: automaticHostId ?? requireConnectedPrimaryHostId(deps) },
+      }
+    : requestInput.environment.type === "project-default" && automaticPlacement && automaticHostId !== null
+      ? await resolveProjectDefaultThreadEnvironment(deps, {
+          projectId: requestInput.projectId,
+          hostId: automaticHostId,
+        })
+    : requestInput.environment;
   const requestedEnvironment = await resolveCreateThreadEnvironment(deps, {
-    parentThread:
-      forkSourceEnvironmentId !== undefined
-        ? null
-        : (sourceThread ?? parentThread),
+    parentThread: environmentParent,
     projectId: requestInput.projectId,
-    requestedEnvironment: requestInput.environment,
+    requestedEnvironment: environmentForStart,
   });
   if (
     requestedEnvironment.type === "provider" &&
-    getEnvironmentProvider(requestedEnvironment.environmentProviderId) ===
-      undefined &&
+    getEnvironmentProvider(requestedEnvironment.environmentProviderId) === undefined &&
     !listEnvironmentCompositions().some(
-      (record) =>
-        record.composition.id === requestedEnvironment.environmentProviderId,
+      (record) => record.composition.id === requestedEnvironment.environmentProviderId,
     )
   ) {
     throw new ApiError(400, "invalid_request", "unknown environment provider");
   }
+  const resolvedEnvironment = requestedEnvironment.type === "provider"
+    ? null
+    : resolveStableThreadRequestEnvironment(deps, {
+        allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
+        environment: requestedEnvironment,
+        projectId: requestInput.projectId,
+      });
+  const childHostId = resolvedEnvironment !== null
+    ? childHostIdForResolvedEnvironment(resolvedEnvironment)
+    : requestedEnvironment.type === "provider" && requestedEnvironment.machine?.type === "existing"
+      ? requestedEnvironment.machine.hostId
+      : null;
+  assertForkSourceHost(deps, {
+    childHostId,
+    originKind,
+    sourceThread,
+  });
+  if (childHostId !== null) {
+    await ensureHostSessionReadyForWork(deps, { hostId: childHostId });
+  }
+  const modelCatalogCwd = resolvedEnvironment !== null
+    ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
+    : requestedEnvironment.type === "provider" && requestedEnvironment.machine?.type === "existing"
+      ? projectCheckoutPathOnHost(deps, requestInput.projectId, requestedEnvironment.machine.hostId)
+      : undefined;
+  if (modelIsExplicit && requestedModel !== null && childHostId !== null) {
+    const catalog = await resolveSystemProviderModels(deps, {
+      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
+      hostId: childHostId,
+      providerId,
+    });
+    if (catalog.modelLoadError !== null) {
+      throw new ApiError(503, "model_catalog_unavailable", "Could not validate the selected model on the chosen machine.", {
+        details: catalog.modelLoadError,
+        retryable: true,
+      });
+    }
+    if (![...catalog.models, ...catalog.selectedOnlyModels].some((model) => model.model === requestedModel)) {
+      throw new ApiError(409, "model_unavailable", `Model ${requestedModel} is unavailable on the chosen machine.`);
+    }
+  }
+  const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(deps, {
+    ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
+    executionDefaults: resolveModelOnSelectedHost && !modelIsExplicit ? null : executionDefaults,
+    hostId: childHostId,
+    providerId,
+    providerFallbackCandidates: chosenHostId === null ? providerFallbackCandidates : [],
+    requestedModel: resolveModelOnSelectedHost && !modelIsExplicit ? null : requestedModel,
+  });
   const request: ThreadCreateServiceRequest = {
     ...requestRest,
-    ...(hierarchyParentThreadId
-      ? { parentThreadId: hierarchyParentThreadId }
-      : {}),
+    ...(resolveModelOnSelectedHost && !modelIsExplicit ? { model: undefined } : {}),
+    ...(hierarchyParentThreadId ? { parentThreadId: hierarchyParentThreadId } : {}),
     ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
     originKind,
     pluginMetadata,
@@ -685,62 +767,9 @@ export async function createThreadFromRequest(
       requestedVisibility: requestInput.visibility,
     }),
     environment: requestedEnvironment,
-    providerId,
+    providerId: resolvedExecutionDefaults?.providerId ?? providerId,
     titleFallback: deriveTitleFallback(requestInput.input),
   };
-  const resolvedEnvironment =
-    requestedEnvironment.type === "provider"
-      ? null
-      : resolveStableThreadRequestEnvironment(deps, {
-          allowUnmanagedPersonalProjectReuseEnvironmentId:
-            forkSourceEnvironmentId,
-          environment: requestedEnvironment,
-          projectId: request.projectId,
-        });
-  const childHostId =
-    resolvedEnvironment !== null
-      ? childHostIdForResolvedEnvironment(resolvedEnvironment)
-      : request.environment.type === "provider"
-        ? request.environment.machine?.type === "existing"
-          ? request.environment.machine.hostId
-          : null
-        : null;
-  assertForkSourceHost(deps, {
-    childHostId,
-    originKind: request.originKind ?? null,
-    sourceThread,
-  });
-  if (childHostId !== null) {
-    await ensureHostSessionReadyForWork(deps, { hostId: childHostId });
-  }
-  const modelCatalogCwd =
-    resolvedEnvironment !== null
-      ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
-      : request.environment.type === "provider" &&
-          request.environment.machine?.type === "existing"
-        ? projectCheckoutPathOnHost(
-            deps,
-            request.projectId,
-            request.environment.machine.hostId,
-          )
-        : undefined;
-  const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
-    deps,
-    {
-      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-      executionDefaults,
-      hostId: childHostId,
-      providerId,
-      providerFallbackCandidates,
-      requestedModel,
-    },
-  );
-  if (
-    resolvedExecutionDefaults !== null &&
-    resolvedExecutionDefaults.providerId !== request.providerId
-  ) {
-    request.providerId = resolvedExecutionDefaults.providerId;
-  }
 
   const { environmentId, environmentIntent } =
     await resolveThreadEnvironmentPlacement(deps, {

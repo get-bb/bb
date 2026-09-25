@@ -835,6 +835,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "",
         environmentProviders: [checkoutProvider, worktreeProvider],
         isProjectless: false,
@@ -846,11 +847,29 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("provider:project-checkout");
   });
 
-  it("does not invent a checkout for a standard project without a source on the primary host", () => {
+  it("offers the checkout when only a remote machine has the project source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1", "host_2"]),
+        connectedHostIds: new Set(["host_1", "host_2"]),
+        environmentSelectionValue: "",
+        environmentProviders: [checkoutProvider],
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_2")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("provider:project-checkout");
+  });
+
+  it("does not offer a remote checkout when its source machine is disconnected", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        seededReuseEnvironment: null,
+        knownHostIds: new Set(["host_1", "host_2"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -867,6 +886,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "provider:git-worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -880,6 +900,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("keeps a registered provider the user picked and drops one that is gone", () => {
     const args = {
       knownHostIds: new Set(["host_1"]),
+      connectedHostIds: new Set(["host_1"]),
       environmentProviders: [checkoutProvider, worktreeProvider],
       isProjectless: false,
       primaryHostId: "host_1",
@@ -908,6 +929,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_current",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -922,6 +944,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_stale",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -941,6 +964,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           status: "available",
         },
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_seeded",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -960,6 +984,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           status: "pending",
         },
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_seeded",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -979,6 +1004,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           status: "missing",
         },
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_seeded",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -998,6 +1024,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           status: "available",
         },
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_stale",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -1014,6 +1041,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -1028,6 +1056,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -1044,6 +1073,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_pending",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
@@ -1060,6 +1090,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_personal",
         environmentProviders: [
           makeProjectlessProvider("personal-workspace", true),
@@ -1078,6 +1109,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_gone",
         environmentProviders: [
           makeProjectlessProvider("personal-workspace", true),
@@ -1096,6 +1128,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "",
         environmentProviders: [
           makeProjectlessProvider("alpha-sandbox", true),
@@ -1115,6 +1148,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "provider:modal-sandbox",
         environmentProviders: [
           makeProjectlessProvider("modal-sandbox", false),
@@ -1134,6 +1168,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         seededReuseEnvironment: null,
         knownHostIds: new Set(["host_1"]),
+        connectedHostIds: new Set(["host_1"]),
         environmentSelectionValue: "provider:personal-workspace",
         isProjectless: true,
         primaryHostId: "host_1",

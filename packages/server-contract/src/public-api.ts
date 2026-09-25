@@ -235,6 +235,8 @@ import type {
   ThreadHostFileContentQuery,
   ThreadCountQuery,
   ThreadCountResponse,
+  ThreadPlacementPreviewQuery,
+  ThreadPlacementPreviewResponse,
   ThreadListQuery,
   ThreadListResponse,
   ThreadConversationOutlineResponse,
@@ -369,6 +371,7 @@ import {
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
   threadCountQuerySchema,
+  threadPlacementPreviewQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -1247,6 +1250,21 @@ export const publicApiRoutes = {
         threadCountQuerySchema,
       ),
       response: jsonResponse<ThreadCountResponse>(),
+    }),
+    /**
+     * Where an independent new thread with no explicit machine would start
+     * right now. Runs the `experimental_thread.place` hooks with the same
+     * validation as thread creation but reserves nothing: `host` names the
+     * machine a create would use now, `default` means the server default,
+     * and `unavailable` means no placement hook is registered.
+     */
+    placementPreview: defineRoute({
+      path: "/threads/placement-preview",
+      method: "get",
+      request: queryRequest<EmptyInput, ThreadPlacementPreviewQuery>(
+        threadPlacementPreviewQuerySchema,
+      ),
+      response: jsonResponse<ThreadPlacementPreviewResponse>(),
     }),
     /**
      * The threads occupying capacity right now, as rows rather than a count.

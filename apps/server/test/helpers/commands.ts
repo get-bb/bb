@@ -229,6 +229,8 @@ function respondToProviderModelListCommand(
             defaultReasoningLevel: "medium",
             isDefault: true,
           }),
+          availableModelFixture({ model: "requested-model" }),
+          availableModelFixture({ model: "gpt-5" }),
         ],
         selectedOnlyModels: [],
       },

@@ -823,15 +823,44 @@ export const threadCountResponseSchema = z.object({
 });
 export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
 
+export const threadPlacementPreviewQuerySchema = z.object({
+  projectId: z.string().min(1),
+  providerId: z.string().min(1),
+});
+export type ThreadPlacementPreviewQuery = z.infer<
+  typeof threadPlacementPreviewQuerySchema
+>;
+
+const threadPlacementSkipSchema = z.object({
+  hostId: z.string().min(1),
+  hostName: z.string(),
+  reason: z.string(),
+});
+
+export const threadPlacementPreviewResponseSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({ kind: z.literal("unavailable") }),
+    z.object({
+      kind: z.literal("host"),
+      hostId: z.string().min(1),
+      hostName: z.string(),
+      skipped: z.array(threadPlacementSkipSchema),
+    }),
+    z.object({
+      kind: z.literal("default"),
+      skipped: z.array(threadPlacementSkipSchema),
+    }),
+  ],
+);
+export type ThreadPlacementPreviewResponse = z.infer<
+  typeof threadPlacementPreviewResponseSchema
+>;
+
 /**
  * One thread currently occupying capacity — canonical status `starting` or
  * `active`. Archived and deleted threads are excluded (neither runs); hidden
  * ones are not, because a hidden thread burns a real slot on a real machine.
- *
- * The row is an id and the machine that id is occupying, and nothing else.
- * `hostId` is here because a per-host pool cannot be derived from an id
- * without a query per row; every other question a caller might ask is
- * answerable by fetching the thread it names.
  *
  * **Exact inside the `message.dispatch` hook, a snapshot everywhere else.**
  * Hook passes run one at a time under a server-wide lock, and a cleared first
@@ -847,8 +876,18 @@ export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
  */
 export const threadRunningEntrySchema = z.object({
   id: z.string(),
+  title: z.string().nullable(),
   /** The machine it runs on; null while no environment has been chosen. */
   hostId: z.string().nullable(),
+  status: z.enum(["starting", "active"]),
+  providerId: z.string(),
+  /** The thread's chosen model; null when it uses the provider default. */
+  model: z.string().nullable(),
+  /**
+   * Epoch milliseconds when the current run began: the latest root turn start
+   * for an active thread, otherwise its last status change.
+   */
+  runningSince: z.number().int().nonnegative(),
 });
 
 export const threadRunningResponseSchema = z.array(threadRunningEntrySchema);

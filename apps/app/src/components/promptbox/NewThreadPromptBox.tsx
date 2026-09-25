@@ -84,6 +84,7 @@ export interface NewThreadEnvironmentConfig {
   providersByHostId?: EnvironmentPickerUIProps["providersByHostId"];
   machineProviders?: readonly SystemMachineProvider[];
   selectedProviderHostId?: string | null;
+  autoPlacement?: EnvironmentPickerUIProps["autoPlacement"];
   inputsControlProviderIds?: ReadonlySet<string>;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
   onSelectHost?: EnvironmentPickerUIProps["onSelectHost"];
@@ -430,6 +431,7 @@ export function EnvironmentSlot({
         providers={providers}
         providersByHostId={environment.providersByHostId}
         selectedProviderHostId={environment.selectedProviderHostId}
+        autoPlacement={environment.autoPlacement}
         inputsControlProviderIds={environment.inputsControlProviderIds}
         onSelectProvider={environment.onSelectProvider}
         onSelectHost={environment.onSelectHost}

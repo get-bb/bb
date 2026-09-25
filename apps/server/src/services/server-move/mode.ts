@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AppDeps } from "../../types.js";
 import type { PluginService } from "../plugins/plugin-service.js";
 import { serverAccessStatus } from "../machines/server-access.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 
 export const CONNECT_PLUGIN_SOURCE = "builtin:connect";
 const CONNECT_SERVER_ACCESS_PROVIDER_ID = "connect";
@@ -50,6 +51,7 @@ export async function resolveServerMoveMode(
     "status",
     handler.value,
     null,
+    AbortSignal.timeout(COMMAND_TIMEOUT_MS),
   );
   if (!result.ok) {
     return { mode: "unavailable", message: result.error.message };

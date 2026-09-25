@@ -33,6 +33,8 @@ import type {
   ThreadCountGroupBy,
   ThreadCountQuery,
   ThreadCountResponse,
+  ThreadPlacementPreviewQuery,
+  ThreadPlacementPreviewResponse,
   ThreadListResponse,
   ThreadRunningResponse,
   ThreadOpenResponse,
@@ -124,6 +126,13 @@ export interface ThreadCountArgs {
   signal?: AbortSignal;
   status?: ThreadStatus;
 }
+
+export interface ThreadPlacementPreviewArgs
+  extends ThreadPlacementPreviewQuery {
+  signal?: AbortSignal;
+}
+
+export type ThreadPlacementPreviewResult = ThreadPlacementPreviewResponse;
 
 export interface ThreadResolveMentionsArgs extends ResolveThreadMentionsRequest {
   signal?: AbortSignal;
@@ -568,6 +577,9 @@ export interface ThreadsArea {
   getPluginMetadata(
     args: ThreadPluginMetadataArgs,
   ): Promise<ThreadPluginMetadataResult>;
+  placementPreview(
+    args: ThreadPlacementPreviewArgs,
+  ): Promise<ThreadPlacementPreviewResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1109,6 +1121,19 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads.count.$get(
           { query: countQuery(input) },
           ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async placementPreview(input) {
+      return transport.readJson(
+        transport.api.v1.threads["placement-preview"].$get(
+          {
+            query: {
+              projectId: input.projectId,
+              providerId: input.providerId,
+            },
+          },
+          ...signalRequestArgs(input.signal),
         ),
       );
     },

@@ -17,7 +17,7 @@ async function running(harness: TestAppHarness) {
 }
 
 describe("GET /threads/running", () => {
-  it("returns every occupying thread as an id and the host it occupies", async () => {
+  it("returns every occupying thread with its title and host", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-running",
@@ -74,7 +74,16 @@ describe("GET /threads/running", () => {
         new Set([root.id, child.id, spawned.id, unplaced.id]),
       );
       const byId = new Map(rows.map((row) => [row.id, row]));
-      expect(byId.get(root.id)).toEqual({ id: root.id, hostId: host.id });
+      expect(byId.get(root.id)).toEqual({
+        id: root.id,
+        title: root.title,
+        hostId: host.id,
+        status: "active",
+        providerId: root.providerId,
+        model: null,
+        runningSince: root.updatedAt,
+      });
+      expect(byId.get(unplaced.id)).toMatchObject({ status: "starting" });
       expect(byId.get(unplaced.id)?.hostId).toBeNull();
     });
   });

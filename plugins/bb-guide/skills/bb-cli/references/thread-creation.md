@@ -13,6 +13,12 @@
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
+- With an optional placement plugin enabled,
+  an independent new thread with no machine selector is placed once before
+  provisioning on the ready source machine the plugin chooses. An explicit
+  machine, existing environment, host-bound path, inherited environment, or
+  fork stays fixed. On placement failure the server default applies. Preview
+  with `bb thread placement --project ID --provider ID [--json]`.
 - List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose declared requirements are unmet. Without a machine, the project listing includes providers structurally eligible on any persistent machine. Git inspection and plugin availability run only for the selected provider and machine during thread creation. `--json` includes each provider's `description` and `icon`, its `requires` facts and its `inputs` JSON Schema or null.
   Pass the selected ID to `--environment-provider`. Add
   `--environment-inputs <json>` only when the provider's schema does not accept

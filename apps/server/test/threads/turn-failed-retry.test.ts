@@ -32,8 +32,6 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const WORKSPACE_PATH = "/tmp/turn-failed-project";
 
-type MessageDispatchRegistration = PluginHookRegistration<"message.dispatch">;
-
 /**
  * The hook registry. Reading a mapped type through a generic key is sound,
  * which is what lets the fake provider satisfy `listHooks<K>` with no cast.
@@ -43,9 +41,10 @@ type HookRegistry = {
 };
 
 function installHooks(
-  handlers: Partial<{ "message.dispatch": MessageDispatchRegistration[] }>,
+  handlers: Partial<HookRegistry>,
 ): void {
   const registry: HookRegistry = {
+    "experimental_thread.place": [],
     "message.dispatch": handlers["message.dispatch"] ?? [],
   };
   setPluginHookProvider({
@@ -652,6 +651,7 @@ describe("retrying a failed turn", () => {
     await withTestHarness(async (harness) => {
       let dispatchCalls = 0;
       installHooks({
+        "experimental_thread.place": [],
         "message.dispatch": [
           {
             pluginId: "concurrency-limit",

@@ -173,14 +173,17 @@ describe("buildSpawnEnvironment", () => {
     });
   });
 
-  it("throws for --new-environment worktree when host is null", () => {
-    expect(() =>
-      buildSpawnEnvironment({
-        defaultPersonalWorkspace: false,
-        newEnvironmentKind: "worktree",
-        hostId: null,
-      }),
-    ).toThrow("Cannot reach local host daemon");
+  it("leaves the machine implicit for a new worktree without --machine", () => {
+    expect(buildSpawnEnvironment({
+      defaultPersonalWorkspace: false,
+      newEnvironmentKind: "worktree",
+      hostId: null,
+      baseBranch: "release",
+    })).toEqual({
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      inputs: { branch: { kind: "named", name: "release" } },
+    });
   });
 
   it("throws for unknown --new-environment kind", () => {

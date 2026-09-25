@@ -687,6 +687,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "background",
           "wire",
           "thread-events",
+          "thread-placement-hook",
           "dispatch-hook",
           "environment-providers",
           "machine-providers",
@@ -805,7 +806,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Connects the plugin's own UI, its server code, and outside services. With this, a plugin can:",
         bullets: [
-          "Call its server from its UI over RPC, with arguments and results checked against a schema",
+          "Call its server from its UI over RPC, with schema-checked arguments and results and an optional abort signal",
+          "Pass the RPC handler's experimental_signal to downstream work so cancelled UI requests stop server probes",
           "Publish RPC methods with experimental_discoverable and registration/method experimental_description; other plugins discover implementations and copy their published JSON Schemas using bb plugin rpc inspect",
           "Serve exact-path HTTP and WebSocket routes other systems can call, webhooks included",
           "Publish messages to connected bb windows with bb.realtime.publish and receive them with useRealtime; signals are ephemeral, so observe useRealtimeConnectionState and reconcile server state after reconnecting",
@@ -813,6 +815,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginRpc",
           "PluginRpcMethodContract",
+          "ExperimentalPluginRpcHandlerContext",
           "PluginsArea.experimental_discoverRpc",
           "PluginHttp",
           "PluginRealtime",
@@ -868,6 +871,20 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Tasks",
           "Workflows",
         ],
+      },
+      {
+        id: "thread-placement-hook",
+        tagline: "Choose a machine before work starts",
+        title: "Thread placement hook",
+        summary:
+          "Answers one pre-start machine choice for an independent thread with no machine selected. With this, a plugin can:",
+        bullets: [
+          "Inspect project source, provider readiness, machine health, and fresh load before returning a host",
+          "Use the abort signal to stop in-flight work on timeout or plugin unload",
+          "Use the server default when it cannot choose safely",
+        ],
+        apiSymbols: ["PluginHooks", "PluginHookSignatures"],
+        experimental: true,
       },
       {
         id: "dispatch-hook",

@@ -32,6 +32,7 @@ const WIRE_SOURCE = `
     cyclicResult: { input: z.null(), output: z.any() },
     nonFiniteResult: { input: z.null(), output: z.any() },
     validated: { input: z.object({ value: z.string().min(1) }), output: z.string() },
+    waitForAbort: { input: z.null(), output: z.string() },
   });
   export default function plugin(bb: any) {
     bb.http.route("GET", "/hello", (c: any) => c.json({ message: "hello v1" }));
@@ -142,6 +143,12 @@ const WIRE_SOURCE = `
         globalThis.__validatedRpcCalls = (globalThis.__validatedRpcCalls ?? 0) + 1;
         return input.value;
       },
+      waitForAbort: (_input: null, context: { experimental_signal: AbortSignal }) => {
+        globalThis.__rpcAbortSignal = context.experimental_signal;
+        return new Promise((resolve) => {
+          context.experimental_signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+        });
+      },
     });
   }
 `;
@@ -207,6 +214,25 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   afterEach(async () => {
     await harness.pluginService.stop();
     await harness.cleanup();
+    delete (globalThis as Record<string, unknown>).__rpcAbortSignal;
+  });
+
+  it("passes a cancelled RPC request signal to the server handler", async () => {
+    const controller = new AbortController();
+    const request = harness.app.request(
+      `${BASE}/api/v1/plugins/wire/rpc/waitForAbort`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+        signal: controller.signal,
+      },
+    );
+    await vi.waitFor(() => expect((globalThis as Record<string, unknown>).__rpcAbortSignal).toBeInstanceOf(AbortSignal));
+    const signal = (globalThis as Record<string, unknown>).__rpcAbortSignal as AbortSignal;
+    controller.abort();
+    expect(signal.aborted).toBe(true);
+    await expect(request).resolves.toMatchObject({ status: 200 });
   });
 
   it("serves a registered route for local requests (no origin, and app origins)", async () => {
@@ -834,6 +860,22 @@ describe("plugin WebSocket routes", () => {
     sockets.clear();
     await server.pluginService.stop();
     await server.close();
+    delete (globalThis as Record<string, unknown>).__rpcAbortSignal;
+  });
+
+  it("aborts server RPC work when a network client cancels", async () => {
+    const controller = new AbortController();
+    const response = fetch(`${server.baseUrl}/api/v1/plugins/wire/rpc/waitForAbort`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect((globalThis as Record<string, unknown>).__rpcAbortSignal).toBeInstanceOf(AbortSignal));
+    const signal = (globalThis as Record<string, unknown>).__rpcAbortSignal as AbortSignal;
+    controller.abort();
+    await expect(response).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(signal.aborted).toBe(true));
   });
 
   it("upgrades an exact path and preserves the ordinary HTTP route on it", async () => {

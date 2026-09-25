@@ -23,6 +23,7 @@ export interface SeededReuseEnvironment {
 }
 
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
+  connectedHostIds: ReadonlySet<string>;
   environmentSelectionValue: string;
   environmentProviders?: readonly SystemEnvironmentProvider[];
   isProjectless: boolean;
@@ -208,6 +209,7 @@ function resolveProjectlessEnvironmentValue({
 }
 
 export function resolveRootComposeEffectiveEnvironmentValue({
+  connectedHostIds,
   environmentSelectionValue,
   environmentProviders,
   isProjectless,
@@ -246,10 +248,9 @@ export function resolveRootComposeEffectiveEnvironmentValue({
         )
       : undefined;
   const fallbackValue =
-    primaryHostId !== null &&
-    knownHostIds.has(primaryHostId) &&
-    findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
-      undefined &&
+    [...connectedHostIds].some((hostId) =>
+      findLocalPathProjectSourceForHost(projectSources, hostId) !== undefined,
+    ) &&
     providerRegistered(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
       ? encodeProviderValue(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
       : "";
@@ -271,7 +272,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
 
   if (
     selectedProvider !== undefined &&
-    (selectedProvider.machineProviderId !== null || primaryHostId !== null)
+    (selectedProvider.machineProviderId !== null || knownHostIds.size > 0)
   ) {
     return environmentSelectionValue;
   }

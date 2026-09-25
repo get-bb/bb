@@ -403,6 +403,7 @@ describe("slow query index plans", () => {
     });
     expect(details).toMatch(/USING INDEX threads_archived_status_idx/u);
     expect(details).not.toMatch(/SCAN threads/u);
+    expect(details).not.toMatch(/SCAN events/u);
 
     db.$client.close();
   });

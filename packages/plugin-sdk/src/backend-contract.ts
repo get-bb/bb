@@ -696,17 +696,39 @@ export interface MessageDispatchHookContext {
  * derive from this map — and so does the server's hook registry — so a
  * half-added hook does not compile.
  *
- * One hook today: `message.dispatch`, THE admission checkpoint, run identically
+ * `message.dispatch` is the admission checkpoint, run identically
  * for a thread's first message, a follow-up, a steer, a retry, and every
  * re-attempt a drain makes. It replaced the earlier `thread.create` +
  * `turn.submit` pair, whose split was an accident of where the code happened to
  * branch rather than a difference a plugin needed to see — the attempt's own
- * `attempt` kind carries what actually differs.
+ * `attempt` kind carries what actually differs. `experimental_thread.place`
+ * runs before an independent thread's implicit environment is resolved, and
+ * again, without starting anything, for each placement preview. Its optional
+ * `skipped` list names machines the plugin ruled out and why, for display.
  */
 export interface PluginHookSignatures {
   "message.dispatch": {
     context: MessageDispatchHookContext;
     decision: MessageDispatchHookDecision;
+  };
+  "experimental_thread.place": {
+    context: {
+      projectId: string;
+      providerId: string;
+      signal: AbortSignal;
+    };
+    decision:
+      | {
+          kind: "choose";
+          hostId: string;
+          requestedAt: number;
+          skipped?: readonly { hostId: string; reason: string }[];
+        }
+      | {
+          kind: "default";
+          reason: string;
+          skipped?: readonly { hostId: string; reason: string }[];
+        };
   };
 }
 
@@ -781,7 +803,7 @@ export interface PluginHooks {
    * awaiting a full hook pass from inside whatever called this, which for a
    * handler holding the evaluation lock could not complete. Fire and forget.
    */
-  recheck(hook: PluginHookName): Promise<void>;
+  recheck(hook: "message.dispatch"): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

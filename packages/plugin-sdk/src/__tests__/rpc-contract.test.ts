@@ -47,7 +47,12 @@ function assertFrontendInference(client: PluginRpcClient<typeof contract>) {
 describe("schema-driven rpc contract", () => {
   it("is an identity helper that preserves handler inference", () => {
     expect(Object.keys(contract)).toEqual(["lookup", "ping"]);
-    expect(handlers.lookup({ id: "x", includeClosed: true })).toEqual({
+    expect(
+      handlers.lookup(
+        { id: "x", includeClosed: true },
+        { experimental_signal: new AbortController().signal },
+      ),
+    ).toEqual({
       title: "x",
       closed: true,
     });

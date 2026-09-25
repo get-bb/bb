@@ -28,6 +28,7 @@ import {
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
   type ThreadCountResponse,
+  type ThreadPlacementPreviewResponse,
   type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
@@ -48,6 +49,7 @@ import {
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
 import { listRunningThreadsWithIntendedHosts } from "../../services/threads/dispatch-attempt.js";
+import { previewPreStartPlacement, type PlacementSkip } from "../../services/threads/thread-pre-start-placement.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import { requestThreadStorageDeletion } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
@@ -250,6 +252,26 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       total: result.total,
       ...(result.groups !== undefined ? { groups: result.groups } : {}),
     };
+    return context.json(response);
+  });
+
+  get(routes.placementPreview, async (context, query) => {
+    requirePublicProject(deps.db, query.projectId);
+    const placement = await previewPreStartPlacement(deps, query);
+    const hostName = (hostId: string) => getHost(deps.db, hostId)?.name ?? hostId;
+    const skipped = (skips: readonly PlacementSkip[]) =>
+      skips.map((skip) => ({ ...skip, hostName: hostName(skip.hostId) }));
+    const response: ThreadPlacementPreviewResponse =
+      placement.kind === "host"
+        ? {
+            kind: "host",
+            hostId: placement.hostId,
+            hostName: hostName(placement.hostId),
+            skipped: skipped(placement.skipped),
+          }
+        : placement.kind === "default"
+          ? { kind: "default", skipped: skipped(placement.skipped) }
+          : placement;
     return context.json(response);
   });
 

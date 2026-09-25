@@ -1637,9 +1637,25 @@ describe("@bb/sdk", () => {
 
   it("lists the running threads over the running route with no query", async () => {
     const rows = [
-      { id: "thr_a", hostId: "host_a" },
+      {
+        id: "thr_a",
+        title: "Build app",
+        hostId: "host_a",
+        status: "active",
+        providerId: "codex",
+        model: "gpt-5",
+        runningSince: 1_000,
+      },
       // Admitted but not yet placed: counts globally, on no host's pool.
-      { id: "thr_b", hostId: null },
+      {
+        id: "thr_b",
+        title: null,
+        hostId: null,
+        status: "starting",
+        providerId: "claude-code",
+        model: null,
+        runningSince: 2_000,
+      },
     ];
     const queue = createFetchQueue([{ body: rows }]);
     const sdk = createBbSdk({
@@ -1651,8 +1667,6 @@ describe("@bb/sdk", () => {
     });
 
     await expect(sdk.threads.listRunning()).resolves.toEqual(rows);
-    // No filters at all: the occupying set is small, and a caller that needs
-    // more than "which ids, on which hosts" fetches the threads it named.
     expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
   });
 

@@ -88,18 +88,23 @@ export function defineRpcContract<const Contract extends PluginRpcContract>(
 export type PluginRpcHandlers<Contract extends PluginRpcContract> = {
   [Method in keyof Contract]: (
     input: StandardSchemaV1InferOutput<Contract[Method]["input"]>,
+    context: ExperimentalPluginRpcHandlerContext,
   ) =>
     | StandardSchemaV1InferInput<Contract[Method]["output"]>
     | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
 };
+
+export interface ExperimentalPluginRpcHandlerContext {
+  experimental_signal: AbortSignal;
+}
 
 type PluginRpcCallInput<Method extends PluginRpcMethodContract> =
   StandardSchemaV1InferInput<Method["input"]>;
 
 export type PluginRpcCallArgs<Method extends PluginRpcMethodContract> =
   null extends PluginRpcCallInput<Method>
-    ? [input?: PluginRpcCallInput<Method>]
-    : [input: PluginRpcCallInput<Method>];
+    ? [input?: PluginRpcCallInput<Method>, options?: { signal?: AbortSignal }]
+    : [input: PluginRpcCallInput<Method>, options?: { signal?: AbortSignal }];
 
 export type PluginRpcResult<Method extends PluginRpcMethodContract> =
   StandardSchemaV1InferOutput<Method["output"]>;

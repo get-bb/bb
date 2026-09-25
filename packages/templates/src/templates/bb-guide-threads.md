@@ -78,8 +78,12 @@ Spawning:
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
-  environment already selects its machine. Without the flag, local/server
-  machine resolution is unchanged.
+  environment already selects its machine. Without the flag, a
+  placement plugin can select a ready source
+  machine once before an independent thread starts; without one, the server
+  default applies. Existing environments, host-bound paths, forks, and
+  inherited environments keep their machine. `bb thread placement` previews
+  that choice.
   Omit --base-branch for bb's default. Explicit values are exact; use
   origin/<branch> for a remote ref.
   Before selecting a provider, run `bb environment providers --project <id>
@@ -170,6 +174,9 @@ Listing:
   bb thread search <query> [--limit <1-50>]
                                              Search threads and messages
   bb thread history <id>                   List prompt history
+
+  bb thread placement --project <id> --provider <id>
+                                           Show the machine a thread without --machine would start on now
 
   bb thread count                          Count threads without listing them
     --status <status>                      Count threads in this status: pending, idle, starting, active, stopping, error

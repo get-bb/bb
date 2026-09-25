@@ -359,6 +359,7 @@ describe("runPeriodicSweeps", () => {
       });
       let attempts = 0;
       installHooks({
+        "experimental_thread.place": [],
         "message.dispatch": [
           {
             pluginId: "slow-idle-recovery",

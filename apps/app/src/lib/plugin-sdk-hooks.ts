@@ -153,6 +153,7 @@ export async function callPluginRpc(
   pluginId: string,
   method: string,
   input?: unknown,
+  options?: { signal?: AbortSignal },
 ): Promise<unknown> {
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
@@ -161,6 +162,7 @@ export async function callPluginRpc(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: serializedInput,
+      signal: options?.signal,
     },
   );
   const body = (await response.json().catch(() => null)) as {
@@ -230,8 +232,8 @@ export function useRpc<
   const pluginId = usePluginId();
   const client = useMemo(
     () => ({
-      call: (method: string, input?: unknown) =>
-        callPluginRpc(fetch, pluginId, method, input),
+      call: (method: string, input?: unknown, options?: { signal?: AbortSignal }) =>
+        callPluginRpc(fetch, pluginId, method, input, options),
     }),
     [pluginId],
   );

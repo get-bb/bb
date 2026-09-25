@@ -38,7 +38,16 @@ function hostRecord(
 }
 
 function running(overrides: Partial<RunningThread> = {}): RunningThread {
-  return { id: "thr_running", hostId: "host-a", ...overrides };
+  return {
+    id: "thr_running",
+    title: null,
+    hostId: "host-a",
+    status: "active",
+    providerId: "codex",
+    model: null,
+    runningSince: 0,
+    ...overrides,
+  };
 }
 
 interface GateContextOverrides {

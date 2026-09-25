@@ -141,18 +141,14 @@ export function buildSpawnEnvironment(args: {
   }
   if (newEnvironmentKind) {
     if (newEnvironmentKind === "personal") {
-      return {
-        type: "host",
-        hostId: requireHostId(args.hostId),
-        workspace: { type: "personal" },
-      };
+      return args.hostId === null
+        ? { type: "provider", environmentProviderId: "personal-workspace", inputs: null }
+        : { type: "host", hostId: args.hostId, workspace: { type: "personal" } };
     }
     if (newEnvironmentKind === "worktree") {
-      return {
-        type: "host",
-        hostId: requireHostId(args.hostId),
-        workspace: { type: "managed-worktree", baseBranch },
-      };
+      return args.hostId === null
+        ? { type: "provider", environmentProviderId: "git-worktree", inputs: { branch: baseBranch } }
+        : { type: "host", hostId: args.hostId, workspace: { type: "managed-worktree", baseBranch } };
     }
     throw new Error(
       `Unknown environment kind '${newEnvironmentKind}'. Supported: personal, worktree.`,
@@ -209,7 +205,6 @@ async function buildProviderSpawnEnvironment(args: {
   machineInputs: JsonValue | null;
   machineInputsProvided: boolean;
   projectId: string;
-  resolveDefaultHostId: () => Promise<string | null>;
 }): Promise<CreateThreadEnvironmentArgs> {
   if (args.environmentValue || args.newEnvironmentKind) {
     throw new Error(
@@ -288,16 +283,13 @@ async function buildProviderSpawnEnvironment(args: {
       "--machine-inputs requires --new-machine <provider-id> or a composed --environment-provider.",
     );
   }
-  const machine = args.machine ?? {
-    type: "existing" as const,
-    hostId: requireHostId(
-      args.machineHostId ?? (await args.resolveDefaultHostId()),
-    ),
-  };
+  const machine = args.machine ?? (args.machineHostId === null
+    ? undefined
+    : { type: "existing" as const, hostId: args.machineHostId });
   return {
     type: "provider",
     environmentProviderId: match.id,
-    machine,
+    ...(machine === undefined ? {} : { machine }),
     inputs,
   };
 }
@@ -500,9 +492,8 @@ export function registerSpawnCommand(
         const needsHostId =
           !opts.environmentProvider &&
           !opts.newMachine &&
-          (Boolean(opts.newEnvironment) ||
-            (environmentValue !== undefined &&
-              looksLikePath(environmentValue)));
+          environmentValue !== undefined &&
+          looksLikePath(environmentValue);
         const hostId = machineTarget
           ? await resolveMachineHostId({
               serverUrl: getUrl(),
@@ -524,7 +515,6 @@ export function registerSpawnCommand(
               machineInputs,
               machineInputsProvided: opts.machineInputs !== undefined,
               projectId,
-              resolveDefaultHostId: resolveLocalHostId,
             })
           : buildSpawnEnvironment({
               defaultPersonalWorkspace: projectId === PERSONAL_PROJECT_ID,

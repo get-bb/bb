@@ -579,6 +579,7 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
       await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
           projectId: project.id,
+          hostId: host.id,
         }),
       ).resolves.toEqual({
         type: "provider",
@@ -619,6 +620,7 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
       await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
           projectId: project.id,
+          hostId: host.id,
         }),
       ).resolves.toEqual({
         type: "provider",
@@ -640,6 +642,7 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
       await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
           projectId: PERSONAL_PROJECT_ID,
+          hostId: host.id,
         }),
       ).resolves.toEqual({
         type: "provider",

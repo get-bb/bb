@@ -137,6 +137,7 @@ describe("project-default thread environment", () => {
       await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
           projectId: PERSONAL_PROJECT_ID,
+          hostId: host.id,
         }),
       ).resolves.toEqual({
         type: "provider",

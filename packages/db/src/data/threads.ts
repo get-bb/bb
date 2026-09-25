@@ -36,6 +36,7 @@ import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
+  events,
   pendingInteractions,
   projects,
   terminalSessions,
@@ -1296,8 +1297,18 @@ const OCCUPYING_THREAD_STATUSES: readonly ThreadStatus[] = [
  */
 export interface RunningThreadRow {
   id: string;
+  title: string | null;
   /** The machine it runs on, or null while no environment has been chosen. */
   hostId: string | null;
+  status: "starting" | "active";
+  providerId: string;
+  /** The thread's chosen model, or null when it uses the provider default. */
+  model: string | null;
+  /**
+   * When the current run began: the latest root `turn/started` event for an
+   * active thread, otherwise the thread's last status change.
+   */
+  runningSince: number;
 }
 
 /**
@@ -1309,11 +1320,6 @@ export interface RunningThreadRow {
  * every such question at once, and the set is bounded by what is actually
  * running: a handful of rows, not a page of threads.
  *
- * The row is deliberately just `{ id, hostId }`. `hostId` is here because a
- * per-host pool cannot be derived from an id without a query per row; anything
- * else a caller needs it fetches by id, which keeps this from accreting a
- * projection of the threads table.
- *
  * Archived and deleted rows are excluded because neither runs: archival stops
  * a thread once its undo grace expires, and a soft-deleted row is gone. Hidden threads are NOT excluded —
  * visibility is a UI fact and a hidden thread burns a slot like any other, so
@@ -1324,10 +1330,22 @@ export interface RunningThreadRow {
  * range that follows.
  */
 export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
+  const latestRootTurnStartedAt = sql<number | null>`(
+    SELECT MAX(${events.createdAt}) FROM ${events}
+    WHERE ${events.threadId} = ${threads.id}
+      AND ${events.type} = 'turn/started'
+      AND ${events.parentToolCallId} IS NULL
+  )`;
   return db
     .select({
       id: threads.id,
+      title: threads.title,
       hostId: environments.hostId,
+      status: threads.status,
+      providerId: threads.providerId,
+      model: threads.modelOverride,
+      updatedAt: threads.updatedAt,
+      latestRootTurnStartedAt,
     })
     .from(threads)
     .leftJoin(environments, eq(environments.id, threads.environmentId))
@@ -1339,7 +1357,20 @@ export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
     )
     .orderBy(asc(threads.id))
     .all()
-    .map((row) => ({ ...row, hostId: row.hostId ?? null }));
+    .map(({ updatedAt, latestRootTurnStartedAt, status, ...row }) => {
+      if (status !== "starting" && status !== "active") {
+        throw new Error(`Unexpected running thread status: ${status}`);
+      }
+      return {
+        ...row,
+        hostId: row.hostId ?? null,
+        status,
+        runningSince:
+          status === "active"
+            ? (latestRootTurnStartedAt ?? updatedAt)
+            : updatedAt,
+      };
+    });
 }
 
 const ARCHIVED_TEARDOWN_THREAD_STATUSES: readonly ThreadStatus[] = [

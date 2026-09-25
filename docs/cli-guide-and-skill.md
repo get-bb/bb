@@ -37,4 +37,17 @@ Modal connection and machine commands are documented in [modal-sandboxes](../plu
 `--new-machine` or the machine provider owned by a composed
 `--environment-provider`; a composition rejects separate machine selectors.
 
+When a placement plugin is enabled, a new
+independent thread with an omitted machine asks it for a ready host before
+environment provisioning. An explicit `--machine`,
+existing `--environment`, host-bound path, inherited environment, or fork
+keeps its host. A failed or unavailable placement uses the primary host when it
+has the project source; otherwise thread creation reports the existing source
+or host error. Implicit models use the selected host's catalog; explicit models
+must be available there.
+`bb thread placement --project ID --provider ID [--json]` and
+`sdk.threads.placementPreview` run the same placement hooks without starting a
+thread; the app's Auto machine option shows that preview. No running thread is
+moved.
+
 Modal image debugging uses `bb modal image build`, `bb modal sandbox run`, `bb modal sandbox exec ID [--json] -- COMMAND...`, and `bb modal sandbox stop ID`. Debug compute expires after 30 minutes and skips BB enrollment and project setup. See the plugin skill for output limits and typed RPC equivalents.

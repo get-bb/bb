@@ -615,7 +615,7 @@ function PluginSettingsContent({
               {plugin.name ?? plugin.id}
             </h1>
             {plugin.description ? (
-              <p className="truncate text-xs text-subtle-foreground">
+              <p className="text-xs text-subtle-foreground">
                 {plugin.description}
               </p>
             ) : null}
