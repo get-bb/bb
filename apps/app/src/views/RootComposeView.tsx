@@ -820,11 +820,15 @@ function RootComposeSurface({
         encodeReuseValue(nextForkSeed.environmentId),
       );
     }
+    if (shouldStartComposingFromLocationState(location.state)) {
+      window.requestAnimationFrame(focusPromptBox);
+    }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: null,
     });
   }, [
+    focusPromptBox,
     location.search,
     location.state,
     hostSelectionReady,

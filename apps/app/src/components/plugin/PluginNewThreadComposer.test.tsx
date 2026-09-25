@@ -1420,6 +1420,18 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
       "provider:project-checkout",
     );
+    const selectedIndex = mocks.promptBoxProps.findIndex(
+      (props) =>
+        props.modeConfig.environment.selectedProviderHostId === "host_2",
+    );
+    expect(selectedIndex).toBeGreaterThan(0);
+    const focusRequestAtSelection =
+      mocks.promptBoxProps[selectedIndex].focusRequest;
+    await waitFor(() => {
+      expect(latestPromptBoxProps().focusRequest).not.toBe(
+        focusRequestAtSelection,
+      );
+    });
   });
 
   it("reuses an environment when the plugin supplies both targets", async () => {
