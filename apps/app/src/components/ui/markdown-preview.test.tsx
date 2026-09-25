@@ -410,6 +410,93 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("README.md").tagName).toBe("CODE");
   });
 
+  it("renders sanitized HTML video and source URLs through local file routing", () => {
+    const { container } = render(
+      <MarkdownPreview
+        allowHtml
+        content={
+          '<video controls poster="poster.png" title="Demo"><source src="clips/demo.mp4" type="video/mp4"></video>\n\n![image](still.mp4)\n\n[download](clips/demo.mp4)'
+        }
+        linkRouting={{
+          localImage: {
+            absolutePaths: { kind: "trusted-host" },
+            relativePaths: { baseDir: "/workspace", rootPath: "/workspace" },
+            resolveSrc: ({ path }) =>
+              `/content?path=${encodeURIComponent(path)}`,
+          },
+        }}
+      />,
+    );
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("poster")).toBe(
+      "/content?path=%2Fworkspace%2Fposter.png",
+    );
+    expect(video?.querySelector("source")?.getAttribute("src")).toBe(
+      "/content?path=%2Fworkspace%2Fclips%2Fdemo.mp4",
+    );
+    expect(video?.querySelector("source")?.type).toBe("video/mp4");
+    expect(video?.controls).toBe(true);
+    expect(video?.playsInline).toBe(true);
+    expect(video?.preload).toBe("metadata");
+    expect(video?.getAttribute("aria-label")).toBe("Demo");
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "download" })).not.toBeNull();
+  });
+
+  it("strips unsafe video attributes, URLs, and executable HTML", () => {
+    const { container } = render(
+      <MarkdownPreview
+        allowHtml
+        content={
+          '<video src="javascript:alert(1)" poster="javascript:alert(1)" onerror="alert(1)" autoplay style="position:fixed"><source src="javascript:alert(1)"></video><script>alert(1)</script><iframe src="https://example.com"></iframe>'
+        }
+      />,
+    );
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    for (const attribute of ["src", "poster", "onerror", "autoplay", "style"]) {
+      expect(video?.hasAttribute(attribute)).toBe(false);
+    }
+    expect(video?.querySelector("source")?.hasAttribute("src")).toBe(false);
+    expect(container.querySelector("script, iframe")).toBeNull();
+  });
+
+  it("preserves a video element as streaming Markdown grows", () => {
+    const content =
+      '<video src="https://example.com/clip.mp4" controls></video>\n\n';
+    const { container, rerender } = render(
+      <MarkdownPreview
+        allowHtml
+        incrementalBlocks
+        content={content + "First"}
+      />,
+    );
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    rerender(
+      <MarkdownPreview
+        allowHtml
+        incrementalBlocks
+        content={content + "First paragraph grows"}
+      />,
+    );
+    expect(container.querySelector("video")).toBe(video);
+  });
+
+  it("keeps video HTML disabled when not opted in and suppresses media in text-only previews", () => {
+    const content =
+      '<video src="https://example.com/clip.mp4" title="Demo"></video>';
+    const { container, rerender } = render(
+      <MarkdownPreview content={content} />,
+    );
+    expect(container.querySelector("video")).toBeNull();
+    rerender(
+      <MarkdownPreview allowHtml content={content} imagePolicy="alt-text" />,
+    );
+    expect(container.querySelector("video")).toBeNull();
+    expect(screen.getByText("[Video: Demo]")).not.toBeNull();
+  });
+
   it("routes local Markdown images through the configured content resolver", () => {
     const resolveSrc = vi.fn(
       ({ path }: { path: string }) =>

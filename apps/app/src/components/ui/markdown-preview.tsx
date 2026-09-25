@@ -33,7 +33,7 @@ import type {
   UrlTransform,
 } from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -291,7 +291,47 @@ const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
-  rehypeSanitize,
+  [
+    rehypeSanitize,
+    {
+      ...defaultSchema,
+      tagNames: [
+        ...(defaultSchema.tagNames ?? []),
+        "video",
+        "bb-thread-mention",
+        "bb-prompt-mention",
+        "bb-message-directive",
+      ],
+      protocols: { ...defaultSchema.protocols, poster: ["http", "https"] },
+      attributes: {
+        ...defaultSchema.attributes,
+        source: [
+          ...(defaultSchema.attributes?.source ?? []),
+          "src",
+          "type",
+          "media",
+        ],
+        video: [
+          "src",
+          "controls",
+          "playsInline",
+          "preload",
+          "poster",
+          "width",
+          "height",
+          "title",
+          "ariaLabel",
+        ],
+        "bb-thread-mention": [
+          "dataThreadId",
+          "dataRawThreadId",
+          "dataRawThreadInlineCode",
+        ],
+        "bb-prompt-mention": ["dataMentionIndex"],
+        "bb-message-directive": ["dataDirectiveIndex"],
+      },
+    },
+  ],
 ];
 
 const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
@@ -531,7 +571,10 @@ function buildLocalAwareUrlTransform({
       }
     }
 
-    if (key === "src" && localImageRouting !== undefined) {
+    if (
+      (key === "src" || (key === "poster" && node.tagName === "video")) &&
+      localImageRouting !== undefined
+    ) {
       const localImage = resolveMarkdownLocalFileTarget(
         value,
         localImageRouting.absolutePaths,
@@ -1267,6 +1310,39 @@ function buildMarkdownComponents({
     );
   }
 
+  function MarkdownVideo({
+    node: _node,
+    children,
+    src,
+    poster,
+    controls = true,
+    playsInline = true,
+    preload = "metadata",
+    width,
+    height,
+    title,
+    "aria-label": label,
+  }: ComponentPropsWithoutRef<"video"> & ExtraProps) {
+    if (imagePolicy === "alt-text") {
+      return <span>[Video: {label || title || "video"}]</span>;
+    }
+    return (
+      <video
+        src={src}
+        poster={poster}
+        aria-label={label || title || "Video"}
+        controls={controls}
+        playsInline={playsInline}
+        preload={preload}
+        width={width}
+        height={height}
+        className="my-2 max-h-[max(384px,50vh)] max-w-full"
+      >
+        {children}
+      </video>
+    );
+  }
+
   function MarkdownSource({
     media,
     node: _node,
@@ -1300,6 +1376,7 @@ function buildMarkdownComponents({
     p: MarkdownParagraph,
     pre: MarkdownPre,
     source: MarkdownSource,
+    video: MarkdownVideo,
     table: MarkdownTable,
     td: MarkdownTableCell,
     th: MarkdownTableHeader,
@@ -1616,8 +1693,9 @@ function MarkdownPreviewComponent({
   const [expandedImage, setExpandedImage] =
     useState<ExpandedMarkdownImage | null>(null);
   const [markdownPieceCache] = useState(createMarkdownPieceCache);
+  const rendersHtml = allowHtml && content.includes("<");
   const usesIncrementalBlocks =
-    incrementalBlocks && !allowHtml && promptMentions === undefined;
+    incrementalBlocks && !rendersHtml && promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1760,8 +1838,8 @@ function MarkdownPreviewComponent({
 
   const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
   const rehypePlugins = useMemo(
-    () => resolveRehypePlugins({ allowHtml, rehypeKatex }),
-    [allowHtml, rehypeKatex],
+    () => resolveRehypePlugins({ allowHtml: rendersHtml, rehypeKatex }),
+    [rendersHtml, rehypeKatex],
   );
 
   const markdownPieceRenderConfig = useMemo(

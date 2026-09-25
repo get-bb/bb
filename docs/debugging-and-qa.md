@@ -21,16 +21,35 @@ with `Content-Range` and the selected bytes. Unsatisfiable ranges return `416`
 with `Content-Range: bytes */<size>`. Malformed ranges, unsupported units, and
 multipart ranges fall back to the full `200` response. HEAD ignores Range.
 
-`If-None-Match` revalidation takes precedence over Range. `If-Range` permits a
-partial response only when it matches the current strong ETag; weak tags,
-stale tags, and dates fall back to `200`. File modification times are not
-treated as strong validators because files can change within one second.
-HTML previews retain their sandbox CSP, no-store policy, and size limit.
+`If-None-Match` revalidation takes precedence over Range. Storage responses use
+weak metadata ETags (`W/"file-<revision>"`), not content SHA-256 hashes. This
+avoids reading an entire large file just to validate it. Because the validator
+is weak, any `If-Range` header falls back to a full `200` response, including a
+matching weak tag or date. HTML previews retain their sandbox CSP, no-store
+policy, and 5 MiB size limit.
 
-The server selects bytes after reading the complete file from the host daemon.
-The existing daemon read-size limit still applies, and each request still
-transfers the whole file from the host. This endpoint does not provide
-streaming reads for files beyond that limit.
+The server uses `host.read_file_chunk` for a metadata-only probe (`length: 0`),
+then reads at most 1 MiB per RPC as the HTTP consumer pulls data. HEAD, `304`,
+and `416` responses read no contents. Cancelling or aborting stops subsequent
+reads; an already in-flight RPC can finish. Each RPC opens and closes its file
+handle, so no remote read session needs cleanup. Offsets and lengths are
+validated at the daemon boundary, and paths remain confined to thread storage.
+
+The daemon returns a revision based on device, inode, size, and nanosecond
+mtime/ctime. Every content read checks the expected revision before and after
+reading from its open descriptor. A mismatch before response headers produces
+retryable `409 file_changed`; a change or error after streaming starts aborts
+the HTTP body. The server also rejects short/misaligned chunks. This detects
+ordinary writes, truncation, and replacement; it is not an immutable filesystem
+snapshot or a cryptographic guarantee against changes hidden by filesystem
+metadata granularity.
+
+Thread-storage downloads now bypass the old whole-file size caps (including
+the 25 MiB non-image cap). Each chunk stays bounded regardless of file size.
+Existing `host.read_file` consumers and other raw-file routes retain their
+whole-file limits and SHA-256 validators. No public SDK/CLI request shape
+changed. Host-daemon protocol 219 introduces the chunk RPC and requires daemon
+updates; older enrolled daemons cannot serve this new path until updated.
 
 ## Stale Workspace Claims
 

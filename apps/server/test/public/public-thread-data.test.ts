@@ -4726,16 +4726,25 @@ describe("public thread data routes", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request) => {
-          expect(request.command.type).toBe("host.read_file");
+          if (request.command.type !== "host.read_file_chunk")
+            throw new Error("Unexpected command");
+          expect(request.command.length).toBeLessThanOrEqual(2);
+          expect(request.command.rootPath).toContain(thread.id);
           return {
             ok: true,
             result: {
               path: "/tmp/clip.mp4",
-              content: bytes.toString("base64"),
-              contentEncoding: "base64",
+              content: bytes
+                .subarray(
+                  request.command.offset,
+                  request.command.offset + request.command.length,
+                )
+                .toString("base64"),
+              offset: request.command.offset,
+              modifiedAtMs: 1234,
               mimeType: "video/mp4",
               sizeBytes: bytes.length,
-              sha256: "0".repeat(64),
+              revision: "0".repeat(64),
             },
           };
         },
@@ -4755,57 +4764,120 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("serves thread storage HTML preview content as raw text/html without app bridge injection", async () => {
+  it("reports file changes before streaming as retryable conflicts", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
+      const { host, session, thread } = seedThreadFixture(harness);
+      registerHostRpcResponder(harness, {
         hostId: host.id,
-        path: "/tmp/project-source",
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type !== "host.read_file_chunk")
+            throw new Error("Unexpected command");
+          if (command.length !== 0)
+            return {
+              ok: false,
+              errorCode: "file_changed",
+              errorMessage: "File changed",
+            };
+          return {
+            ok: true,
+            result: {
+              path: command.path,
+              content: "",
+              offset: 0,
+              sizeBytes: 30 * 1024 * 1024,
+              mimeType: "video/mp4",
+              modifiedAtMs: 1234,
+              revision: "0".repeat(64),
+            },
+          };
+        },
       });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/project-source",
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/files/clip.mp4`,
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "file_changed",
+        retryable: true,
       });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const threadStorageRoot = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
+    });
+  });
+
+  it("serves thread storage HTML with preview protections through bounded reads", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedThreadFixture(harness);
       const html = "<!doctype html><h1>Preview</h1>";
-
-      const filePromise = harness.app.request(
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type !== "host.read_file_chunk")
+            throw new Error("Unexpected command");
+          expect(command.path).toBe(
+            `${command.rootPath}/reports/preview v2.html`,
+          );
+          return {
+            ok: true,
+            result: {
+              path: command.path,
+              content: Buffer.from(html)
+                .subarray(command.offset, command.offset + command.length)
+                .toString("base64"),
+              offset: command.offset,
+              mimeType: "text/html",
+              modifiedAtMs: 1234,
+              sizeBytes: Buffer.byteLength(html),
+              revision: "0".repeat(64),
+            },
+          };
+        },
+      });
+      const response = await harness.app.request(
         `/api/v1/threads/${thread.id}/thread-storage/files/reports/preview%20v2.html`,
+        { headers: { "if-none-match": "*" } },
       );
-      const fileCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "host.read_file" &&
-          command.path === `${threadStorageRoot}/reports/preview v2.html`,
-      );
-      expect(fileCommand.command).toMatchObject({
-        type: "host.read_file",
-        path: `${threadStorageRoot}/reports/preview v2.html`,
-        rootPath: threadStorageRoot,
-      });
-      await reportQueuedCommandSuccess(harness, fileCommand, {
-        path: `${threadStorageRoot}/reports/preview v2.html`,
-        content: html,
-        contentEncoding: "utf8",
-        mimeType: "text/html",
-        sizeBytes: Buffer.byteLength(html),
-        sha256: "0".repeat(64),
-      });
-
-      const fileResponse = await filePromise;
-      expect(fileResponse.status).toBe(200);
-      expect(fileResponse.headers.get("content-type")).toBe(
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
         "text/html; charset=utf-8",
       );
-      expect(fileResponse.headers.get("content-security-policy")).toBe(
+      expect(response.headers.get("content-security-policy")).toBe(
         "sandbox allow-scripts",
       );
-      expect(await fileResponse.text()).toBe(html);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.text()).toBe(html);
+    });
+  });
+
+  it("rejects oversized storage HTML before requesting content", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedThreadFixture(harness);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          expect(command).toMatchObject({
+            type: "host.read_file_chunk",
+            length: 0,
+          });
+          return {
+            ok: true,
+            result: {
+              path: "/tmp/report.html",
+              offset: 0,
+              content: "",
+              mimeType: "text/html",
+              sizeBytes: 6 * 1024 * 1024,
+              modifiedAtMs: 1234,
+              revision: "0".repeat(64),
+            },
+          };
+        },
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/files/report.html`,
+      );
+      expect(response.status).toBe(413);
     });
   });
 

@@ -46,7 +46,9 @@ describe("ConversationMessageContent assistant images", () => {
             showActions={false}
             mobileActionDisplay="overflow"
             streaming={false}
-            text="![Generated diagram](/workspace/output/diagram.png)"
+            text={
+              '![Generated diagram](/workspace/output/diagram.png)\n\n<video src="/workspace/output/clip.mp4" title="Clip" controls></video>'
+            }
           />
         </RouteNavigationProvider>
       </MemoryRouter>,
@@ -58,6 +60,9 @@ describe("ConversationMessageContent assistant images", () => {
         .getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
+    );
+    expect(screen.getByLabelText("Clip").getAttribute("src")).toBe(
+      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fclip.mp4",
     );
   });
 });

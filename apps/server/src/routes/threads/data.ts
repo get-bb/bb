@@ -1,3 +1,4 @@
+import { serveDaemonFileStream } from "../../services/hosts/daemon-file-stream.js";
 import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
@@ -255,7 +256,6 @@ function createRawFilePreviewResponse(
   result: DaemonFileReadResult,
   relativePath: string,
   ifNoneMatch: string | undefined,
-  rangeRequest?: Request,
 ): Response {
   assertHtmlPreviewSize(relativePath, result.sizeBytes);
   const headers = new Headers({
@@ -270,7 +270,6 @@ function createRawFilePreviewResponse(
   return createDaemonFileContentResponse(result, {
     headers,
     ifNoneMatch: isHtml ? undefined : ifNoneMatch,
-    rangeRequest,
   });
 }
 
@@ -280,25 +279,28 @@ async function serveThreadStorageRawFile(
   rawPath: string,
   request: Request,
 ): Promise<Response> {
-  const ifNoneMatch = request.headers.get("if-none-match") ?? undefined;
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
-
-  return serveDaemonFileContent(
+  return serveDaemonFileStream(
     deps,
     {
       hostId: target.hostId,
-      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
       path: path.join(target.storagePath, filePath.relativePath),
       rootPath: target.storagePath,
     },
-    (result) =>
-      createRawFilePreviewResponse(
-        result,
-        filePath.relativePath,
-        ifNoneMatch,
-        request,
-      ),
+    request,
+    (metadata) => {
+      assertHtmlPreviewSize(filePath.relativePath, metadata.sizeBytes);
+      const headers = new Headers({
+        "x-content-type-options": RAW_FILE_CONTENT_TYPE_OPTIONS,
+      });
+      if (isHtmlPreviewPath(filePath.relativePath)) {
+        headers.set("cache-control", RAW_FILE_NO_STORE_CACHE_CONTROL);
+        headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
+        headers.set("content-type", RAW_FILE_HTML_CONTENT_TYPE);
+      }
+      return headers;
+    },
   );
 }
 
