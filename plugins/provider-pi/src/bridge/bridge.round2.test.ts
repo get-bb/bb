@@ -399,7 +399,7 @@ it("reports a bash call's cwd as the thread's working directory, never an empty 
   expect(JSON.stringify(harness.deltasOf(threadId))).not.toContain('"cwd":""');
 }, 90_000);
 
-it("a resumed thread reports the session header's cwd, not the cwd bb asked for", async () => {
+it("a resumed thread relocates to the cwd bb asked for", async () => {
   const headerDir = mkdtempSync(join(tmpdir(), "bb-pi-header-cwd-"));
   try {
     const sessionDir = join(harness.workspaceDir, "sessions");
@@ -416,7 +416,7 @@ it("a resumed thread reports the session header's cwd, not the cwd bb asked for"
       instructionMode: "append",
       options: FULL_PERMISSION_OPTIONS,
     });
-    expect(resumed.result).toMatchObject({ providerThreadId: threadId });
+    expect(resumed.result).toMatchObject({ providerThreadId: expect.stringMatching(/^pi_/) });
     turnStart(threadId, '/tool bash {"command":"pwd"}', "creq_rsm2345678");
     await harness.waitForDelta(threadId, (d) => d.kind === "item.close");
     const opened = harness
@@ -425,7 +425,7 @@ it("a resumed thread reports the session header's cwd, not the cwd bb asked for"
     expect(opened?.item).toMatchObject({
       type: "command",
       command: "pwd",
-      cwd: headerDir,
+      cwd: harness.workspaceDir,
     });
   } finally {
     rmSync(headerDir, { recursive: true, force: true });
@@ -451,7 +451,7 @@ it("resumes at bb's requested cwd when the session header's cwd was removed", as
     options: FULL_PERMISSION_OPTIONS,
   });
   expect(resumed.error, JSON.stringify(resumed)).toBeUndefined();
-  expect(resumed.result).toMatchObject({ providerThreadId: threadId });
+  expect(resumed.result).toMatchObject({ providerThreadId: expect.stringMatching(/^pi_/) });
 
   turnStart(threadId, '/tool bash {"command":"pwd"}', "creq_rsm2345678");
   await harness.waitForDelta(threadId, (d) => d.kind === "item.close");
