@@ -1,11 +1,13 @@
 import {
   archiveThread,
+  getAppSettings,
   updateHost,
   getQueuedThreadMessage,
   getThread,
   listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
+  setAppSettings,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
@@ -1404,6 +1406,50 @@ describe("idle cold-start activation", () => {
 });
 
 describe("service tier execution lifecycle", () => {
+  it("dispatches a previously queued fast message at the default tier after fast is disabled", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        value: 82,
+        serviceTier: "fast",
+      });
+      const queued = await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: { input: textInput("queued fast turn"), serviceTier: "fast" },
+      });
+      expect(queued.serviceTier).toBe("fast");
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        allowFastServiceTier: false,
+      });
+
+      await sendQueuedMessage(harness.deps, {
+        claimPolicy: {
+          kind: "automatic",
+          isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+            harness.deps,
+            { now: Date.now(), retryingFailure: false, thread },
+          ),
+          retryingFailure: false,
+        },
+        threadId: thread.id,
+        queuedMessageId: queued.id,
+        mode: "auto",
+      });
+
+      expect(
+        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+      ).toMatchObject({ serviceTier: "default" });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toContainEqual(
+        expect.objectContaining({
+          options: expect.objectContaining({ serviceTier: "default" }),
+        }),
+      );
+    });
+  });
+
   it.each(["fast", "default"] as const)(
     "uses an accepted direct %s choice as the next default",
     async (serviceTier) => {

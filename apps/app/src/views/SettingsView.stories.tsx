@@ -196,10 +196,12 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
+        allowFastServiceTier={true}
         desktopBrowserAvailable={desktopBrowserAvailable}
         generalSettingsDisabled={false}
         managedBranchPrefix={state.managedBranchPrefix}
         onManagedBranchPrefixChange={state.setManagedBranchPrefix}
+        onAllowFastServiceTierChange={() => {}}
         navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
         onNavigateToThreadAfterCreateChange={
           state.setNavigateToThreadAfterCreate

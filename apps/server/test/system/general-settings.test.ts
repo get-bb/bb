@@ -49,6 +49,7 @@ describe("general settings", () => {
         body: JSON.stringify({
           ...defaultAppSettings,
           showKeyboardHints: false,
+          allowFastServiceTier: false,
           steerActiveThreadOnEnter: true,
           providerOrder: ["pi", "codex"],
           defaultProviderId: "pi",
@@ -65,6 +66,7 @@ describe("general settings", () => {
       ).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -73,6 +75,7 @@ describe("general settings", () => {
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -86,6 +89,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showUnhandledProviderEvents: false,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",

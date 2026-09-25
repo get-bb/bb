@@ -128,6 +128,13 @@ it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
 entries stay in the config file.
 
+Settings → General includes `allowFastServiceTier`, which defaults to true.
+Set it to false with `bb settings general allowFastServiceTier false` to hide
+Fast mode and run new turns at the default service tier. This also applies to
+explicit fast requests, saved project defaults, automations, and messages queued
+before the setting changed. Turn it back on to choose fast again; project
+defaults saved while it was off retain the default tier.
+
 Settings → General includes `managedBranchPrefix`, which defaults to
 `bb/`. bb puts it in front of every branch name it creates for a worktree, so
 the default gives `bb/fix-login-flow-thr_ab12cd34ef`. Set `sawyer/wt-` to get
