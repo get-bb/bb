@@ -1,11 +1,19 @@
 import path from "node:path";
-import { markThreadDeleted } from "@bb/db";
-import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
-import { removeOrphanedThreadStorage } from "../../src/services/threads/thread-storage-orphans.js";
+import { setTimeout as sleep } from "node:timers/promises";
+import { markThreadDeleted, openSession } from "@bb/db";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  type HostDaemonOnlineRpcRequestMessage,
+} from "@bb/host-daemon-contract";
+import { describe, expect, it, vi } from "vitest";
+import {
+  installThreadStorageOrphanCleanup,
+  removeOrphanedThreadStorage,
+} from "../../src/services/threads/thread-storage-orphans.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import {
   seedEnvironment,
+  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -24,6 +32,57 @@ function orphanedThreadIdAt(index: number): string {
 }
 
 describe("thread storage orphan cleanup", () => {
+  it("waits for the daemon session instead of warning when a new host row announces itself", async () => {
+    await withTestHarness(async (harness) => {
+      const warn = vi.spyOn(harness.deps.logger, "warn");
+      const cleanup = installThreadStorageOrphanCleanup(harness.deps);
+      try {
+        const host = seedHost(harness.deps, { id: "host_fresh_machine" });
+        await sleep(20);
+        expect(warn).not.toHaveBeenCalled();
+
+        const session = openSession(harness.db, {
+          hostId: host.id,
+          instanceId: "instance-fresh",
+          hostName: host.name,
+          dataDir: "/tmp/bb-host-data/fresh",
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          heartbeatIntervalMs: 5_000,
+          leaseTimeoutMs: 30_000,
+        });
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: (request) => {
+            if (request.command.type !== "host.browse_directory") {
+              throw new Error(`Unexpected command ${request.command.type}`);
+            }
+            return {
+              ok: true,
+              result: {
+                directory: request.command.path ?? "",
+                parent: session.dataDir,
+                entries: [],
+              },
+            };
+          },
+        });
+        try {
+          await vi.waitFor(() => {
+            expect(
+              responder.requests.map((request) => request.command.type),
+            ).toEqual(["host.browse_directory"]);
+          });
+          expect(warn).not.toHaveBeenCalled();
+        } finally {
+          responder.unregister();
+        }
+      } finally {
+        cleanup.stop();
+      }
+    });
+  });
+
   it("continues removing orphaned directories after a removal fails", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

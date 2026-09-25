@@ -60,6 +60,7 @@ export async function removeOrphanedThreadStorage(
   const { hostId } = args;
   if (
     isServerMoveFrozen(deps.db) ||
+    !deps.hub.hasDaemonForHost(hostId) ||
     getHost(deps.db, hostId)?.phase !== "active"
   ) {
     return;
