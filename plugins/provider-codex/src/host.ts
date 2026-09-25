@@ -44,8 +44,8 @@ export default experimental_defineHostEntry({
       textResult(transcribeCodexVoice(input, context.signal)),
     "codex.ai.status": async (): Promise<CodexAiStatus> => {
       try {
-        const auth = await readCodexAuthCredentials();
-        return { ready: true, authMode: auth.type };
+        await readCodexAuthCredentials();
+        return { ready: true };
       } catch (error) {
         return {
           ready: false,

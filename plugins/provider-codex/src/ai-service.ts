@@ -6,9 +6,7 @@ import {
   type CodexAiTextResult,
 } from "./ai/host-contract.js";
 
-const CODEX_TEXT_MODEL = "gpt-5.6-luna";
-const CODEX_CHATGPT_FALLBACK_MODEL = "gpt-5.6-terra";
-const CODEX_API_KEY_FALLBACK_MODEL = "gpt-5.4-mini";
+const CODEX_TEXT_MODELS = ["gpt-5.6-luna", "gpt-6-luna"] as const;
 const CODEX_TRANSCRIPTION_MODEL = "gpt-transcribe";
 const COMPLETE_TIMEOUT_MS = 5_000;
 const TRANSCRIBE_TIMEOUT_MS = 10_000;
@@ -45,8 +43,9 @@ export function registerCodexAiService(bb: BbPluginApi): void {
     displayName: "Codex",
     async complete(prompt, { signal }) {
       const hostId = await requirePrimaryHostId();
-      const completeWithModel = (model: string): Promise<CodexAiTextResult> =>
-        host.call(
+      let last: CodexAiTextResult | null = null;
+      for (const model of CODEX_TEXT_MODELS) {
+        last = await host.call(
           "codex.ai.complete",
           { model, prompt, timeoutMs: COMPLETE_TIMEOUT_MS },
           {
@@ -55,26 +54,11 @@ export function registerCodexAiService(bb: BbPluginApi): void {
             timeoutMs: COMPLETE_TIMEOUT_MS + HOST_CALL_GRACE_MS,
           },
         );
-      let result = await completeWithModel(CODEX_TEXT_MODEL);
-      if (
-        !result.ok &&
-        RETRY_WITH_NEXT_MODEL.has(result.code) &&
-        !signal.aborted
-      ) {
-        const status = await host.call(
-          "codex.ai.status",
-          {},
-          { hostId, signal, timeoutMs: 5_000 },
-        );
-        if (status.ready && !signal.aborted) {
-          result = await completeWithModel(
-            status.authMode === "chatgpt"
-              ? CODEX_CHATGPT_FALLBACK_MODEL
-              : CODEX_API_KEY_FALLBACK_MODEL,
-          );
-        }
+        if (last.ok || !RETRY_WITH_NEXT_MODEL.has(last.code)) break;
+        if (signal.aborted) break;
       }
-      return textOrThrow(result);
+      if (last === null) throw new Error("Codex did not answer");
+      return textOrThrow(last);
     },
     async transcribe(audio, { signal, hint }) {
       if (audio.size > TRANSCRIBE_MAX_BYTES) {

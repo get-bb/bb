@@ -4,16 +4,14 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { registerCodexAiService } from "./ai-service.js";
-import type { CodexAiStatus, CodexAiTextResult } from "./ai/host-contract.js";
+import type { CodexAiTextResult } from "./ai/host-contract.js";
 
 function setup(
   answer: (call: ExperimentalFakeHostRpcCall) => CodexAiTextResult,
-  status: CodexAiStatus = { ready: true, authMode: "chatgpt" },
 ) {
   const { bb, harness } = createFakePluginHost({
     sdk: { system: { config: async () => ({ primaryHostId: "host-1" }) } },
-    experimental_callHostRpc: (call) =>
-      call.method === "codex.ai.status" ? status : answer(call),
+    experimental_callHostRpc: answer,
   });
   registerCodexAiService(bb);
   const [service] = harness.registrations.aiServiceRegistrations;
@@ -32,7 +30,7 @@ function modelOf(call: ExperimentalFakeHostRpcCall): unknown {
 }
 
 describe("Codex AI service", () => {
-  it("uses a ChatGPT-supported fallback after a rate limit", async () => {
+  it("retries with GPT-6 Luna after a rate limit", async () => {
     const codex = setup((call) =>
       modelOf(call) === "gpt-5.6-luna"
         ? { ok: false, code: "rate_limited", message: "Slow down" }
@@ -43,53 +41,12 @@ describe("Codex AI service", () => {
     await expect(codex.complete("Write a title", { signal })).resolves.toBe(
       "Fix login bug",
     );
-    expect(codex.calls.map((call) => call.method)).toEqual([
-      "codex.ai.complete",
-      "codex.ai.status",
-      "codex.ai.complete",
-    ]);
-    expect(codex.calls.map(modelOf)).toEqual([
-      "gpt-5.6-luna",
-      undefined,
-      "gpt-5.6-terra",
-    ]);
+    expect(codex.calls.map(modelOf)).toEqual(["gpt-5.6-luna", "gpt-6-luna"]);
     expect(codex.calls.map((call) => call.input)).toEqual([
       { model: "gpt-5.6-luna", prompt: "Write a title", timeoutMs: 5_000 },
-      {},
-      { model: "gpt-5.6-terra", prompt: "Write a title", timeoutMs: 5_000 },
+      { model: "gpt-6-luna", prompt: "Write a title", timeoutMs: 5_000 },
     ]);
     expect(codex.calls.every((call) => call.signal === signal)).toBe(true);
-  });
-
-  it("keeps the API-key fallback for API-key logins", async () => {
-    const codex = setup(
-      (call) =>
-        modelOf(call) === "gpt-5.6-luna"
-          ? { ok: false, code: "rate_limited", message: "Slow down" }
-          : { ok: true, text: "Fix login bug" },
-      { ready: true, authMode: "apiKey" },
-    );
-
-    await expect(
-      codex.complete("Write a title", { signal: new AbortController().signal }),
-    ).resolves.toBe("Fix login bug");
-    expect(codex.calls.map(modelOf)).toEqual([
-      "gpt-5.6-luna",
-      undefined,
-      "gpt-5.4-mini",
-    ]);
-  });
-
-  it("preserves the first failure if login is unavailable during fallback", async () => {
-    const codex = setup(
-      () => ({ ok: false, code: "rate_limited", message: "Slow down" }),
-      { ready: false, message: "Run codex login" },
-    );
-
-    await expect(
-      codex.complete("Write a title", { signal: new AbortController().signal }),
-    ).rejects.toThrow("Slow down");
-    expect(codex.calls).toHaveLength(2);
   });
 
   it("stops at a failure another model cannot fix", async () => {
