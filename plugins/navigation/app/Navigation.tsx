@@ -120,21 +120,6 @@ function RowMenuItems({
   );
 }
 
-function ItemShortcut({ item }: { item: ExperimentalSidebarNavigationItem }) {
-  const { isShortcutModifierHeld } = experimental_useSidebarNavigation();
-  if (item.shortcut === null) return null;
-  if (item.action.kind === "search-threads") {
-    return (
-      <span className="inline-flex shrink-0 opacity-0 transition-opacity group-hover/nav-row:opacity-100 group-focus-visible/nav-row:opacity-100 max-md:pointer-coarse:hidden">
-        <AppCommandShortcutPill shortcut={item.shortcut} />
-      </span>
-    );
-  }
-  return isShortcutModifierHeld ? (
-    <AppCommandShortcutPill shortcut={item.shortcut} />
-  ) : null;
-}
-
 function NavigationRow({
   item,
   isCompactViewport,
@@ -172,7 +157,8 @@ function NavigationRowChrome({
   rowRef: (element: HTMLElement | null) => void;
   rowStyle: CSSProperties;
 }) {
-  const { activeItemId, actions } = experimental_useSidebarNavigation();
+  const { activeItemId, actions, isShortcutModifierHeld } =
+    experimental_useSidebarNavigation();
   const split = experimental_useSidebarNavigationSplit(item.id);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
@@ -200,6 +186,7 @@ function NavigationRowChrome({
     />
   );
   const showsCustomize = item.action.kind === "new-thread";
+  const shortcut = isShortcutModifierHeld ? item.shortcut : null;
   const optionsLabel =
     item.pluginId === null
       ? `${item.label} options`
@@ -226,7 +213,7 @@ function NavigationRowChrome({
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
               "group/nav-row w-full",
-              "pr-7",
+              shortcut ? "pr-1" : "pr-7",
               Accessory && "pr-18",
               (isActive || isContextMenuOpen) &&
                 "bg-sidebar-accent text-sidebar-foreground",
@@ -261,7 +248,7 @@ function NavigationRowChrome({
                   label={`${item.label} — open in split`}
                 />
               ) : null}
-              <ItemShortcut item={item} />
+              {shortcut ? <AppCommandShortcutPill shortcut={shortcut} /> : null}
             </span>
           </Button>
           {Accessory ? (
@@ -286,6 +273,7 @@ function NavigationRowChrome({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
               "absolute inset-y-0 right-0 flex items-center",
+              shortcut && "hidden",
             )}
           >
             {showsCustomize ? (

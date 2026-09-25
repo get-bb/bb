@@ -234,13 +234,23 @@ describe("navigation plugin", () => {
     ).toBe("true");
   });
 
-  it("reveals the New thread shortcut only while the modifier is held", () => {
+  it("swaps New thread's row actions for its shortcut while the modifier is held", () => {
     renderNavigation(ITEMS, false);
     expect(screen.queryByText("⌘N")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Customize sidebar" })
+        .parentElement?.classList.contains("hidden"),
+    ).toBe(false);
     cleanup();
 
     renderNavigation(ITEMS, true);
     expect(screen.getByText("⌘N")).toBeDefined();
+    expect(
+      screen
+        .getByRole("button", { name: "Customize sidebar" })
+        .parentElement?.classList.contains("hidden"),
+    ).toBe(true);
   });
 
   it("keeps hidden items in place when reordering visible ones", () => {
