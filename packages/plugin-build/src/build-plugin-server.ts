@@ -103,7 +103,6 @@ async function transformSourceModuleLocation(
   const sourceUrl = pathToFileURL(path).href;
   const transformed = await esbuild.transform(await readFile(path, "utf8"), {
     loader: loaderForSourcePath(path),
-    format: "esm",
     target: "node22",
     sourcefile: path,
     define: {
@@ -301,7 +300,8 @@ export async function buildPluginServer(
                 const importerFromRoot = relative(sourceRoot, args.importer);
                 if (
                   importerFromRoot === ".." ||
-                  importerFromRoot.startsWith(`..${sep}`)
+                  importerFromRoot.startsWith(`..${sep}`) ||
+                  importerFromRoot.split(sep).includes("node_modules")
                 ) {
                   return undefined;
                 }

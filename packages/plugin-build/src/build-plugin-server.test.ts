@@ -365,6 +365,107 @@ export default async function plugin() {
     });
   });
 
+  it("keeps named exports of CommonJS dependencies when preserving module locations", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-server-cjs-dep-"));
+    tempDirs.push(dir);
+    const serverEntry = join(dir, "server.ts");
+    const dependencyDir = join(dir, "node_modules", "cjs-dependency");
+    await mkdir(dependencyDir, { recursive: true });
+    await writeFile(
+      join(dependencyDir, "package.json"),
+      JSON.stringify({ name: "cjs-dependency", main: "index.js" }),
+    );
+    await writeFile(
+      join(dependencyDir, "index.js"),
+      '"use strict";\nObject.defineProperty(exports, "__esModule", { value: true });\nexports.Status = { OK: 0 };\nexports.ClientError = class ClientError {};\n',
+    );
+    await writeFile(
+      serverEntry,
+      'import { ClientError, Status } from "cjs-dependency";\nexport default () => ({ status: Status.OK, error: typeof ClientError });\n',
+    );
+
+    const { jsPath } = await buildPluginServer(
+      dir,
+      "0.0.0-test",
+      await testToolchain(),
+      {
+        format: "cjs",
+        preserveSourceModuleLocation: true,
+        externalizeSourceOutsideRoot: true,
+        validatedConfig: {
+          serverEntry,
+          packageName: "bb-plugin-cjs-dependency-fixture",
+          pluginVersion: "1.0.0",
+        },
+      },
+    );
+    const loaded = createRequire(import.meta.url)(jsPath) as {
+      default: () => Record<string, unknown>;
+    };
+
+    expect(loaded.default()).toEqual({ status: 0, error: "function" });
+  });
+
+  it("compiles Zod installed inside the plugin root when preserving module locations", async () => {
+    const dir = await realpath(
+      await mkdtemp(join(tmpdir(), "bb-plugin-server-inroot-zod-")),
+    );
+    tempDirs.push(dir);
+    const serverEntry = join(dir, "server.ts");
+    const zodDir = join(dir, "node_modules", "zod");
+    await mkdir(join(zodDir, "v4", "classic"), { recursive: true });
+    await mkdir(join(zodDir, "v4", "locales"), { recursive: true });
+    await writeFile(
+      join(zodDir, "package.json"),
+      JSON.stringify({ name: "zod", type: "module", main: "index.js" }),
+    );
+    await writeFile(
+      join(zodDir, "index.js"),
+      'export { locales } from "./v4/classic/external.js";\nexport const owner = "plugin";\n',
+    );
+    await writeFile(
+      join(zodDir, "v4", "classic", "external.js"),
+      'import * as locales from "../locales/index.js";\nexport { locales };\n',
+    );
+    await writeFile(
+      join(zodDir, "v4", "locales", "index.js"),
+      'export { default as en } from "./en.js";\nexport { default as fr } from "./fr.js";\n',
+    );
+    await writeFile(
+      join(zodDir, "v4", "locales", "en.js"),
+      'export default () => "en";\n',
+    );
+    await writeFile(
+      join(zodDir, "v4", "locales", "fr.js"),
+      'export default () => "fr";\n',
+    );
+    await writeFile(
+      serverEntry,
+      'import { locales, owner } from "zod";\nexport default () => ({ owner, locale: locales.en() });\n',
+    );
+
+    const { jsPath } = await buildPluginServer(
+      dir,
+      "0.0.0-test",
+      await testToolchain(),
+      {
+        format: "cjs",
+        preserveSourceModuleLocation: true,
+        externalizeSourceOutsideRoot: true,
+        validatedConfig: {
+          serverEntry,
+          packageName: "bb-plugin-inroot-zod-fixture",
+          pluginVersion: "1.0.0",
+        },
+      },
+    );
+    const loaded = createRequire(import.meta.url)(jsPath) as {
+      default: () => Record<string, unknown>;
+    };
+
+    expect(loaded.default()).toEqual({ owner: "plugin", locale: "en" });
+  });
+
   it("rejects static source imports outside the plugin tree", async () => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-server-boundary-"));
     tempDirs.push(workDir);
