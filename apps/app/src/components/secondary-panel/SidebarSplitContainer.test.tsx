@@ -920,11 +920,11 @@ describe("SidebarSplitContainer", () => {
     vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 100,
+      left: 300,
       right: 500,
       top: 0,
-      width: 400,
-      x: 100,
+      width: 200,
+      x: 300,
       y: 0,
       toJSON: () => ({}),
     });
@@ -964,7 +964,10 @@ describe("SidebarSplitContainer", () => {
     fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 32 });
     fireEvent.pointerMove(hitTarget, { clientX: 518, pointerId: 32 });
 
-    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.5, 5);
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(
+      199.5 / 599,
+      5,
+    );
     expect(
       document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
         ?.style.left,
@@ -979,8 +982,8 @@ describe("SidebarSplitContainer", () => {
     );
     expect(persisted.layout.root.type).toBe("split");
     if (persisted.layout.root.type === "split") {
-      expect(persisted.layout.root.sizes[0]).toBeCloseTo(0.5, 5);
-      expect(persisted.layout.root.sizes[1]).toBeCloseTo(0.5, 5);
+      expect(persisted.layout.root.sizes[0]).toBeCloseTo(199.5 / 599, 5);
+      expect(persisted.layout.root.sizes[1]).toBeCloseTo(399.5 / 599, 5);
     }
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });

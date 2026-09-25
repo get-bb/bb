@@ -51,7 +51,6 @@ import {
 const MAIN_PANEL_OPEN_SIZE_PERCENT = 100;
 
 interface SplitWorkspaceSecondaryPanelHostProps {
-  mainMinimumWidth: number;
   children: ReactNode;
   focusedPaneId: string;
   isPaneMaximized: boolean;
@@ -59,16 +58,12 @@ interface SplitWorkspaceSecondaryPanelHostProps {
 }
 
 export function SplitWorkspaceSecondaryPanelHost({
-  mainMinimumWidth,
   children,
   focusedPaneId,
   isPaneMaximized,
   registry,
 }: SplitWorkspaceSecondaryPanelHostProps) {
-  const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing(
-    mainMinimumWidth,
-    1,
-  );
+  const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing(1);
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
   const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
@@ -231,7 +226,6 @@ export function SplitWorkspaceSecondaryPanelHost({
         >
           <Panel
             id="split-workspace-main-panel"
-            data-split-min-width={mainMinimumWidth}
             collapsible
             collapsedSize={0}
             defaultSize={

@@ -1,9 +1,5 @@
-import {
-  PANE_MIN_WIDTH_PX,
-  splitWidthLimits,
-  SPLIT_MIN_HEIGHT_FRACTION,
-  SPLIT_MAX_HEIGHT_FRACTION,
-} from "@/lib/split-layout/sizing";
+import { splitWidthLimits } from "@/lib/split-layout/sizing";
+import { clampSplitPairFraction } from "@/lib/split-layout";
 
 export type SplitResizeAxis = "x" | "y";
 
@@ -171,23 +167,14 @@ export function createSplitResizeSnapSession(
     resolve: ({ end, pointer, start }) => {
       const span = end - start;
       const contentSpan = span - extent;
-      const minimumWidth = (element: Element | null) => {
-        if (!(element instanceof HTMLElement)) return PANE_MIN_WIDTH_PX;
-        const minimum = Number(element.dataset.splitMinWidth);
-        return Number.isFinite(minimum) && minimum > 0
-          ? minimum
-          : PANE_MIN_WIDTH_PX;
-      };
-      const limits =
-        axis === "x"
-          ? splitWidthLimits(
-              contentSpan,
-              minimumWidth(divider.previousElementSibling),
-              minimumWidth(divider.nextElementSibling),
-            )
-          : { min: SPLIT_MIN_HEIGHT_FRACTION, max: SPLIT_MAX_HEIGHT_FRACTION };
+      const panelLimits =
+        axis === "x" && divider.matches("[data-panel-resize-snap-handle]")
+          ? splitWidthLimits(contentSpan)
+          : null;
       const clamp = (fraction: number) =>
-        Math.min(limits.max, Math.max(limits.min, fraction));
+        panelLimits === null
+          ? clampSplitPairFraction(fraction)
+          : Math.min(panelLimits.max, Math.max(panelLimits.min, fraction));
       const unsnappedFraction = clamp(
         contentSpan > 0 ? (pointer - start - extent / 2) / contentSpan : 0.5,
       );

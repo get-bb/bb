@@ -1321,11 +1321,11 @@ describe("SplitThreadArea", () => {
     vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 100,
+      left: 300,
       right: 500,
       top: 0,
-      width: 400,
-      x: 100,
+      width: 200,
+      x: 300,
       y: 0,
       toJSON: () => ({}),
     });
@@ -1365,7 +1365,10 @@ describe("SplitThreadArea", () => {
     fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 31 });
     fireEvent.pointerMove(hitTarget, { clientX: 518, pointerId: 31 });
 
-    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.5, 5);
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(
+      199.5 / 599,
+      5,
+    );
     expect(
       document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
         ?.style.left,
@@ -1376,8 +1379,8 @@ describe("SplitThreadArea", () => {
     const root = store.get(splitLayoutAtom)?.root;
     expect(root?.type).toBe("split");
     if (root?.type === "split") {
-      expect(root.sizes[0]).toBeCloseTo(0.5, 5);
-      expect(root.sizes[1]).toBeCloseTo(0.5, 5);
+      expect(root.sizes[0]).toBeCloseTo(199.5 / 599, 5);
+      expect(root.sizes[1]).toBeCloseTo(399.5 / 599, 5);
     }
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });

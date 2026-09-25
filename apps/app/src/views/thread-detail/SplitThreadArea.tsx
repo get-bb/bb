@@ -1,5 +1,3 @@
-import { useElementWidth } from "@/hooks/useElementWidth";
-import { fitSplitWidths, minimumSplitWidth } from "@/lib/split-layout/sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PANE_DIRECTION_APP_COMMAND_IDS,
@@ -312,9 +310,6 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       : currentContent
         ? reconcileLayoutForContent(null, currentContent)
         : null);
-  const { ref: splitWidthRef, width: splitWidth } = useElementWidth();
-  const fittedRoot =
-    layout === null ? null : fitSplitWidths(layout.root, splitWidth);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = splitWorkspaceActive && panes.length > 1;
   const maximizedPane =
@@ -501,15 +496,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       setLayout((previous) =>
         previous === null
           ? previous
-          : resizeSplit(
-              { ...previous, root: fitSplitWidths(previous.root, splitWidth) },
-              splitPath,
-              childIndex,
-              fraction,
-            ),
+          : resizeSplit(previous, splitPath, childIndex, fraction),
       );
     },
-    [setLayout, splitWidth],
+    [setLayout],
   );
 
   const pruneStalePane = useCallback(
@@ -649,32 +639,29 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5"
       >
         <SplitWorkspaceSecondaryPanelHost
-          mainMinimumWidth={minimumSplitWidth(layout.root)}
           focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
           isPaneMaximized={effectiveMaximizedPaneId !== null}
           registry={secondaryPanelRegistry}
         >
-          <div ref={splitWidthRef} className="flex min-h-0 min-w-0 flex-1">
-            <SplitTree
-              node={fittedRoot ?? layout.root}
-              path={EMPTY_PATH}
-              isTopRow
-              isLeftEdge
-              isRightEdge
-              dimsInactiveSplits={dimsInactiveSplits}
-              focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
-              maximizedPaneId={effectiveMaximizedPaneId}
-              secondaryPanelRegistry={secondaryPanelRegistry}
-              onFocusPane={focusPane}
-              onClosePane={closePane}
-              onToggleMaximizePane={toggleMaximizePane}
-              onMovePaneToSide={movePaneToSide}
-              onResize={resize}
-              onNavigateInPane={navigateInPane}
-              onBeginPaneDrag={beginPaneDrag}
-              onPruneStalePane={pruneStalePane}
-            />
-          </div>
+          <SplitTree
+            node={layout.root}
+            path={EMPTY_PATH}
+            isTopRow
+            isLeftEdge
+            isRightEdge
+            dimsInactiveSplits={dimsInactiveSplits}
+            focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
+            maximizedPaneId={effectiveMaximizedPaneId}
+            secondaryPanelRegistry={secondaryPanelRegistry}
+            onFocusPane={focusPane}
+            onClosePane={closePane}
+            onToggleMaximizePane={toggleMaximizePane}
+            onMovePaneToSide={movePaneToSide}
+            onResize={resize}
+            onNavigateInPane={navigateInPane}
+            onBeginPaneDrag={beginPaneDrag}
+            onPruneStalePane={pruneStalePane}
+          />
         </SplitWorkspaceSecondaryPanelHost>
       </div>
     </>
@@ -864,7 +851,6 @@ function SplitTree(props: SplitTreeProps) {
           ) : null}
           <div
             className="flex min-h-0 min-w-0"
-            data-split-min-width={minimumSplitWidth(child)}
             style={{ flex: `${node.sizes[index] ?? 1} 1 0` }}
           >
             <SplitTree
@@ -1525,13 +1511,7 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     ) {
       onStaleRef.current();
     }
-  }, [
-    isConfirmedArchived,
-    isDeleted,
-    isGone,
-    isUnarchived,
-    unarchivesInFlight,
-  ]);
+  }, [isConfirmedArchived, isDeleted, isGone, isUnarchived, unarchivesInFlight]);
 
   return null;
 }
