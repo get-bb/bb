@@ -6,6 +6,7 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { isDraftThread } from "@bb/client-core";
 import type {
   PluginSdkApp,
   PluginSidebarProject,
@@ -387,14 +388,22 @@ export function useSidebarThreadDraft(
     projectId: entry?.projectId ?? "",
     threadId,
   });
-  return entry !== null && hasDraft ? HAS_DRAFT : NO_DRAFT;
+  return entry !== null && (hasDraft || isDraftThread(entry))
+    ? HAS_DRAFT
+    : NO_DRAFT;
 }
 
 export function useSidebarThreadDraftIds(): ReadonlySet<string> {
   const entries = useThreadEntryMap();
   const refs = useMemo(() => [...entries.values()], [entries]);
-  const ids = usePromptDraftInputThreadIds(refs);
-  return ids.size === 0 ? EMPTY_DRAFT_IDS : ids;
+  const localDraftIds = usePromptDraftInputThreadIds(refs);
+  return useMemo(() => {
+    const ids = new Set(localDraftIds);
+    for (const entry of refs) {
+      if (isDraftThread(entry)) ids.add(entry.id);
+    }
+    return ids.size === 0 ? EMPTY_DRAFT_IDS : ids;
+  }, [localDraftIds, refs]);
 }
 
 export function useSidebarThreadRowStatus(

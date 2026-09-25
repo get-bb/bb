@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  StrictMode,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -748,6 +754,75 @@ describe("PluginNewThreadComposer seeding", () => {
     );
 
     expect(latestPromptBoxProps().mentionMenuPlacement).toBe("top");
+  });
+
+  function leaveDraftElement(
+    onLeaveWithDraft: NonNullable<
+      Parameters<typeof NewThreadComposer>[0]["onLeaveWithDraft"]
+    >,
+  ) {
+    return (
+      <StrictMode>
+        <Provider>
+          <MemoryRouter>
+            <NewThreadComposer
+              projectId="proj_1"
+              onProjectChange={() => undefined}
+              draftStorage={{ kind: "new-thread" }}
+              selectionScope="new-thread"
+              onSubmit={() => undefined}
+              onLeaveWithDraft={onLeaveWithDraft}
+            >
+              {(composer) =>
+                composer.renderPromptBox({ mentionMenuPlacement: "bottom" })
+              }
+            </NewThreadComposer>
+          </MemoryRouter>
+        </Provider>
+      </StrictMode>
+    );
+  }
+
+  it("hands a typed draft off once when the composer really unmounts", async () => {
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "Save me for later",
+      mentions: [],
+      attachments: [],
+    });
+    const onLeaveWithDraft = vi.fn();
+    const view = render(leaveDraftElement(onLeaveWithDraft));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onLeaveWithDraft).not.toHaveBeenCalled();
+
+    view.unmount();
+    await waitFor(() => {
+      expect(onLeaveWithDraft).toHaveBeenCalledTimes(1);
+    });
+    const [request, draft] = onLeaveWithDraft.mock.calls[0] ?? [];
+    expect(request).toMatchObject({
+      projectId: "proj_1",
+      input: [{ type: "text", text: "Save me for later" }],
+    });
+    expect(draft).toMatchObject({ text: "Save me for later" });
+  });
+
+  it("does not hand off an empty composer", async () => {
+    const onLeaveWithDraft = vi.fn();
+    const view = render(leaveDraftElement(onLeaveWithDraft));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe("");
+    });
+
+    view.unmount();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onLeaveWithDraft).not.toHaveBeenCalled();
   });
 
   it("restores the environment type and machine after reload and project switching", async () => {

@@ -2539,6 +2539,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const composerFooter = (
     <ThreadDetailPromptArea
       activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
+      serverDraft={thread.draft}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
