@@ -304,6 +304,70 @@ describe("environment path claim release", () => {
     });
   });
 
+  it.each(["error", "starting", "stopping"] as const)(
+    "checks explicit environment reuse when the preparation owner is %s",
+    async (status) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-reuse-${status}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: SHARED_PATH,
+        });
+        const shared = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: SHARED_PATH,
+          status: "ready",
+          environmentProviderId: PROVIDER_ID,
+          environmentProviderPluginId: PLUGIN_ID,
+        });
+        const owner = seedThread(harness.deps, {
+          projectId: project.id,
+          status,
+        });
+        holdPath(harness, {
+          environmentId: shared.id,
+          ownerThreadId: owner.id,
+        });
+        installClaimingProvider(async () => ({
+          status: "failed",
+          message: "unused",
+        }));
+        const request = createThreadFromRequest(harness.deps, {
+          environment: { type: "reuse", environmentId: shared.id },
+          input: textInput("reuse the workspace"),
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        });
+        if (status === "error") {
+          const thread = await request;
+          expect(thread.environmentId).toBe(shared.id);
+          expect(getEnvironment(harness.db, shared.id)).toMatchObject({
+            ownerThreadId: null,
+            claimPath: null,
+            status: "ready",
+            teardownStatus: null,
+          });
+        } else {
+          await expect(request).rejects.toMatchObject({
+            status: 409,
+            body: { code: "workspace_busy" },
+          });
+          expect(getEnvironment(harness.db, shared.id)).toMatchObject({
+            ownerThreadId: owner.id,
+            claimPath: SHARED_PATH,
+            teardownStatus: null,
+          });
+        }
+      });
+    },
+  );
+
   it("repairs a stale shared claim when a provider requests the path", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

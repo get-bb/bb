@@ -15,7 +15,7 @@ export const CHECKOUT_BUSY_MESSAGE =
   "Cannot checkout branch while another thread is using this workspace";
 
 export function findBlockingEnvironmentPathClaim(
-  deps: WorkSessionDeps,
+  deps: Pick<WorkSessionDeps, "db" | "hub">,
   args: { hostId: string; path: string; owner: EnvironmentRow | null },
 ): EnvironmentRow | null {
   if (
@@ -77,7 +77,7 @@ export function findBlockingEnvironmentPathClaim(
 }
 
 export function assertEnvironmentPathAvailable(
-  deps: WorkSessionDeps,
+  deps: Pick<WorkSessionDeps, "db" | "hub">,
   args: { hostId: string; path: string | null; threadId: string | null },
 ): void {
   if (args.path === null) return;
