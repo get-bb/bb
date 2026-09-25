@@ -29,6 +29,7 @@ export interface ChildThreadTurnNotificationBatchItem {
   childThread: ChildThreadNotificationSource;
   terminalOutput: string | null;
   turnStatus: ThreadEventTurnStatus;
+  failureContext?: string;
 }
 
 interface ChildThreadTurnNotificationBatch {
@@ -62,6 +63,7 @@ interface QueueChildThreadTurnNotificationArgs {
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
   turnStatus: ThreadEventTurnStatus;
+  failureContext?: string;
 }
 
 interface QueueChildThreadNeedsAttentionNotificationArgs {
@@ -93,7 +95,11 @@ const childThreadTurnNotificationBatches = new Map<
   ChildThreadTurnNotificationBatch
 >();
 
-function childThreadTurnStatusLabel(turnStatus: ThreadEventTurnStatus): string {
+function childThreadTurnStatusLabel(
+  item: ChildThreadTurnNotificationBatchItem,
+): string {
+  if (item.failureContext) return item.failureContext;
+  const { turnStatus } = item;
   switch (turnStatus) {
     case "completed":
       return "completed";
@@ -181,7 +187,7 @@ function buildSingleChildThreadTurnStatusSegments(
         { kind: "mention", mention: line.mention },
         {
           kind: "text",
-          text: ` failed.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
+          text: ` ${line.item.failureContext ?? "failed"}.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
         },
       ];
     case "interrupted":
@@ -210,7 +216,7 @@ function buildChildThreadBatchStatusLineSegments(
     { kind: "mention", mention: line.mention },
     {
       kind: "text",
-      text: ` ${childThreadTurnStatusLabel(line.item.turnStatus)}${workflowClause}.`,
+      text: ` ${childThreadTurnStatusLabel(line.item)}${workflowClause}.`,
     },
   ];
 }
@@ -406,13 +412,16 @@ function queueChildThreadTurnNotificationBatchItem(
     childThread: args.childThread,
     terminalOutput: getChildThreadCompletionOutput(deps, args),
     turnStatus: args.turnStatus,
+    ...(args.failureContext ? { failureContext: args.failureContext } : {}),
   };
   const existingBatch = childThreadTurnNotificationBatches.get(
     args.parentThreadId,
   );
   if (existingBatch) {
     const existingIndex = existingBatch.items.findIndex(
-      (entry) => entry.childThread.id === args.childThread.id,
+      (entry) =>
+        entry.childThread.id === args.childThread.id &&
+        entry.failureContext === args.failureContext,
     );
     if (existingIndex === -1) {
       existingBatch.items.push(item);

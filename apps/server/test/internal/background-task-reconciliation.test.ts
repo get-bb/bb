@@ -1,9 +1,14 @@
-import { closeSession, getThread, listEvents } from "@bb/db";
+import {
+  closeSession,
+  getThread,
+  listEvents,
+  listQueuedThreadMessages,
+} from "@bb/db";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonServerWsMessageSchema,
 } from "@bb/host-daemon-contract";
-import { threadScope, turnScope } from "@bb/domain";
+import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
@@ -15,10 +20,12 @@ import { internalAuthHeaders } from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHost,
+  seedHostSession,
   seedProjectWithSource,
   seedStoredEvent,
   seedThread,
   seedThreadFixture,
+  seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
@@ -558,6 +565,112 @@ describe("active thread disconnect reconciliation triggers", () => {
       });
     },
   );
+
+  it("queues the parent notice when both parent and child lose their host", async () => {
+    await withTestHarness(async (harness) => {
+      const {
+        session,
+        project,
+        environment,
+        thread: parent,
+      } = seedThreadFixture(harness);
+      seedThreadRuntimeState(harness.deps, {
+        threadId: parent.id,
+        environmentId: environment.id,
+        providerThreadId: "parent-provider-thread",
+      });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        parentThreadId: parent.id,
+        status: "active",
+        title: "Worker child",
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: child.id,
+        turnId: "child-turn",
+      });
+
+      vi.useFakeTimers();
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      await vi.advanceTimersByTimeAsync(
+        DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS + 2_000,
+      );
+
+      const parentNotices = listQueuedThreadMessages(
+        harness.deps.db,
+        parent.id,
+      );
+      expect(parentNotices).toHaveLength(1);
+      expect(JSON.parse(parentNotices[0]!.waitingOn!)).toEqual({
+        kind: "host-offline",
+        hostName: "Test Host",
+      });
+      expect(JSON.parse(parentNotices[0]!.systemNotice!)).toEqual({
+        kind: "child-interrupted",
+        subject: {
+          kind: "thread",
+          threadId: child.id,
+          threadName: "Worker child",
+        },
+      });
+    });
+  });
+
+  it("notifies a parent on another host when its child is interrupted", async () => {
+    await withTestHarness(async (harness) => {
+      const {
+        project,
+        environment: parentEnvironment,
+        thread: parent,
+      } = seedThreadFixture(harness);
+      seedThreadRuntimeState(harness.deps, {
+        threadId: parent.id,
+        environmentId: parentEnvironment.id,
+        providerThreadId: "parent-provider-thread",
+      });
+      const { host, session } = seedHostSession(harness.deps);
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: childEnvironment.id,
+        parentThreadId: parent.id,
+        status: "active",
+        title: "Worker child",
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: childEnvironment.id,
+        threadId: child.id,
+        turnId: "child-turn",
+      });
+
+      vi.useFakeTimers();
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      await vi.advanceTimersByTimeAsync(
+        DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS + 2_000,
+      );
+
+      const parentNotices = listEvents(harness.deps.db, {
+        threadId: parent.id,
+      })
+        .filter((row) => row.type === "client/turn/requested")
+        .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
+        .filter((data) => data.initiator === "system");
+      expect(parentNotices).toHaveLength(1);
+      expect(parentNotices[0]).toMatchObject({
+        systemMessageKind: "child-interrupted",
+        systemMessageSubject: {
+          kind: "thread",
+          threadId: child.id,
+          threadName: "Worker child",
+        },
+      });
+    });
+  });
 
   it("records a lost host connection after the live event window elapses without a reconnect", async () => {
     await withTestHarness(async (harness) => {

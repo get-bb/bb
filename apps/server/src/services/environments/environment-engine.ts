@@ -63,6 +63,7 @@ import {
 import {
   type ThreadProvisioningDeps,
   ensureWorkspaceReadyEventInTransaction,
+  queueChildSetupFailureNotification,
 } from "../threads/thread-provisioning-environment.js";
 import { toEnvironmentResponse } from "./environment-response.js";
 import {
@@ -100,6 +101,7 @@ import {
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   finalizeStoppedThreadInTransaction,
+  interruptedChildNotificationAction,
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
 import {
@@ -1151,10 +1153,10 @@ function shouldPreserveThreadProvisionCancellationOutcome(
 function recordEnvironmentProvisioningFailureInTransaction(
   deps: EnvironmentProvisionTransactionDeps,
   args: FailEnvironmentProvisioningDurablyArgs,
-): boolean {
+): string[] {
   const environment = getEnvironment(deps.db, args.environmentId);
   if (!environment) {
-    return false;
+    return [];
   }
   const liveThreads = listLiveEnvironmentThreads(deps, environment.id);
   const failureThreads = liveThreads.filter(
@@ -1165,14 +1167,14 @@ function recordEnvironmentProvisioningFailureInTransaction(
       }),
   );
   if (failureThreads.length === 0 && liveThreads.length > 0) {
-    if (environment.status === "destroyed") return false;
+    if (environment.status === "destroyed") return [];
     const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(deps, {
       environmentId: environment.id,
       event: { type: "provision.cancelled" },
     });
     if (outcome.applied)
       deps.hub.notifyEnvironment(environment.id, outcome.changes);
-    return true;
+    return [];
   }
 
   const failureOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
@@ -1194,6 +1196,7 @@ function recordEnvironmentProvisioningFailureInTransaction(
     entries: [args.failureEntry],
   });
 
+  const failedThreadIds: string[] = [];
   for (const thread of failureThreads) {
     clearThreadProvisionSchedule(thread.id);
     appendSystemErrorEventInTransaction(deps, {
@@ -1210,10 +1213,11 @@ function recordEnvironmentProvisioningFailureInTransaction(
     });
     if (outcome.applied) {
       deps.hub.notifyThread(thread.id, ["status-changed"]);
+      failedThreadIds.push(thread.id);
     }
   }
 
-  return true;
+  return failedThreadIds;
 }
 
 export function settleEnvironmentProvisionCommandResult(
@@ -1300,9 +1304,13 @@ function settleEnvironmentProvisionOutcome(
 
     for (const thread of boundThreads) {
       if (thread.deletedAt !== null) {
-        finalizeStoppedThreadInTransaction(args.deps, {
+        const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
           threadId: thread.id,
         });
+        if (interruptedChild)
+          postCommitActions.push(
+            interruptedChildNotificationAction(interruptedChild),
+          );
         continue;
       }
       if (
@@ -1351,19 +1359,31 @@ function settleEnvironmentProvisionOutcome(
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
-  recordEnvironmentProvisioningFailureInTransaction(args.deps, {
-    environmentId: args.command.environmentId,
-    failureReason: args.report.errorMessage,
-    provisioningId: environmentProvisioningId,
-    failureEntry: {
-      type: "step",
-      key: "workspace-failed",
-      text: "Workspace setup failed",
-      status: "failed",
-      startedAt: args.execution.createdAt,
-      metadata: { durationMs: Date.now() - args.execution.createdAt },
+  const failedThreadIds = recordEnvironmentProvisioningFailureInTransaction(
+    args.deps,
+    {
+      environmentId: args.command.environmentId,
+      failureReason: args.report.errorMessage,
+      provisioningId: environmentProvisioningId,
+      failureEntry: {
+        type: "step",
+        key: "workspace-failed",
+        text: "Workspace setup failed",
+        status: "failed",
+        startedAt: args.execution.createdAt,
+        metadata: { durationMs: Date.now() - args.execution.createdAt },
+      },
     },
-  });
+  );
+  for (const threadId of failedThreadIds) {
+    postCommitActions.push({
+      run: (deps) => {
+        const thread = getThread(deps.db, threadId);
+        if (thread && thread.deletedAt === null)
+          queueChildSetupFailureNotification(deps, thread);
+      },
+    });
+  }
   return { postCommitActions };
 }
 
@@ -1437,19 +1457,20 @@ export function settleEnvironmentProvisionCancelCommandResult(
   }
 
   for (const thread of stoppedThreads) {
-    finalizeStoppedThreadInTransaction(args.deps, {
+    const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
       threadId: thread.id,
     });
+    if (interruptedChild)
+      postCommitActions.push(
+        interruptedChildNotificationAction(interruptedChild),
+      );
   }
 
   return { postCommitActions };
 }
 
 function interruptUnrecoverableEnvironmentProvisioning(
-  deps: Pick<
-    CommandResultSideEffectsDeps,
-    "db" | "hub" | "logger" | "pendingInteractions"
-  >,
+  deps: CommandResultSideEffectsDeps,
   args: InterruptUnrecoverableEnvironmentProvisioningArgs,
 ): void {
   const environment = getEnvironment(deps.db, args.environmentId);
@@ -1458,9 +1479,9 @@ function interruptUnrecoverableEnvironmentProvisioning(
   }
 
   const now = Date.now();
-  deps.db.transaction(
+  const failedThreadIds = deps.db.transaction(
     (tx) => {
-      recordEnvironmentProvisioningFailureInTransaction(
+      return recordEnvironmentProvisioningFailureInTransaction(
         {
           ...deps,
           db: tx,
@@ -1482,13 +1503,15 @@ function interruptUnrecoverableEnvironmentProvisioning(
     },
     { behavior: "immediate" },
   );
+  for (const threadId of failedThreadIds) {
+    const thread = getThread(deps.db, threadId);
+    if (thread && thread.deletedAt === null)
+      queueChildSetupFailureNotification(deps, thread);
+  }
 }
 
 export function interruptEnvironmentProvisioningForHost(
-  deps: Pick<
-    CommandResultSideEffectsDeps,
-    "db" | "hub" | "logger" | "pendingInteractions"
-  >,
+  deps: CommandResultSideEffectsDeps,
   args: InterruptEnvironmentProvisioningForHostArgs,
 ): void {
   const environmentIds = deps.db
