@@ -286,7 +286,7 @@ export function SplitWorkspaceSecondaryPanelHost({
                   collapsedSize={0}
                   defaultSize={isOpen ? panelWidthPercent : 0}
                   minSize={(1 - minimumSize.max) * 100}
-                  maxSize={100}
+                  maxSize={(1 - minimumSize.min) * 100}
                   onCollapse={handleEmptyPanelCollapse}
                   onResize={handleEmptyPanelResize}
                   order={2}

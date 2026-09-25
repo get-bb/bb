@@ -150,7 +150,7 @@ function ThreadSecondaryPanelInlinePlaceholder({
           : 0
       }
       minSize={(1 - minimumSize.max) * 100}
-      maxSize={100}
+      maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
       order={2}
       className={cn(
         "min-w-0 overflow-clip",

@@ -1096,7 +1096,7 @@ function ThreadSecondaryPanelContent({
             : 0
         }
         minSize={(1 - minimumSize.max) * 100}
-        maxSize={100}
+        maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
         onTransitionEnd={handlePanelTransitionEnd}

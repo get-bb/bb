@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useResizeObserver } from "usehooks-ts";
@@ -94,6 +94,13 @@ export function useSecondaryPanelResize({
     },
     [],
   );
+
+  useLayoutEffect(() => {
+    const panel =
+      secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
+    const size = Number.parseFloat(panel?.style.flexGrow ?? "");
+    if (Number.isFinite(size)) handleSecondaryPanelResize(size);
+  });
 
   return {
     handleSecondaryPanelResize,

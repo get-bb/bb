@@ -60,7 +60,7 @@ it("revalidates pixel minimums on container resize while preserving explicit col
     },
   );
   const group = createRef<ImperativePanelGroupHandle>();
-  function Panels() {
+  function Panels({ collapsed = false }: { collapsed?: boolean }) {
     const limits = useSecondaryPanelMinimum();
     return (
       <PanelGroup direction="horizontal" ref={group}>
@@ -73,6 +73,7 @@ it("revalidates pixel minimums on container resize while preserving explicit col
         />
         <Panel
           id="secondary"
+          maxSize={collapsed ? 100 : (1 - limits.min) * 100}
           data-testid="secondary"
           collapsible
           minSize={(1 - limits.max) * 100}
@@ -81,7 +82,7 @@ it("revalidates pixel minimums on container resize while preserving explicit col
       </PanelGroup>
     );
   }
-  render(
+  const { rerender } = render(
     <SecondaryPanelSizingProvider>
       <Panels />
     </SecondaryPanelSizingProvider>,
@@ -95,6 +96,9 @@ it("revalidates pixel minimums on container resize while preserving explicit col
   });
   expect(size("main")).toBeCloseTo(30);
   expect(size("secondary")).toBeCloseTo(70);
+  act(() => group.current?.setLayout([10, 90]));
+  expect(size("main")).toBeCloseTo(30);
+  expect(size("secondary")).toBeCloseTo(70);
   act(() => group.current?.setLayout([100, 0]));
   act(() => {
     width = 600;
@@ -102,6 +106,11 @@ it("revalidates pixel minimums on container resize while preserving explicit col
   });
   expect(size("main")).toBe(100);
   expect(size("secondary")).toBe(0);
+  rerender(
+    <SecondaryPanelSizingProvider>
+      <Panels collapsed />
+    </SecondaryPanelSizingProvider>,
+  );
   act(() => group.current?.setLayout([0, 100]));
   act(() => {
     width = 400;
