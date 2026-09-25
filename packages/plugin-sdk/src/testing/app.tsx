@@ -1758,6 +1758,7 @@ export function renderSlot<
       options.sidebarThreads?.experimental_archived ?? null,
     status: options.sidebarThreads?.status ?? "ready",
     threads: options.sidebarThreads?.threads ?? [],
+    experimental_hosts: options.sidebarThreads?.experimental_hosts ?? [],
     projects: options.sidebarThreads?.projects ?? [],
     sections: options.sidebarThreads?.sections ?? [],
   };

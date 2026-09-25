@@ -39,6 +39,7 @@ import { resolveEnvironmentWorkspaceDisplayKind } from "../environments/environm
 import { canThreadSpawnChild } from "./thread-parent.js";
 import { canRestoreThreadEnvironment } from "./thread-environment-restore.js";
 import { toThreadEventWithMeta } from "./timeline.js";
+import { intendedThreadHostId } from "./dispatch-attempt.js";
 
 type ThreadRuntimeDisplayHub = Pick<
   NotificationHub,
@@ -572,7 +573,7 @@ export function toThreadListEntryResponses(
     args.threads,
   );
   return args.threads.map((thread) => {
-    return toThreadListEntryResponseFromLatestSession({
+    const entry = toThreadListEntryResponseFromLatestSession({
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
       queuedWork: queuedWorkByThreadId.get(thread.id) ?? "none",
       hostConnected:
@@ -585,6 +586,13 @@ export function toThreadListEntryResponses(
       now: args.now,
       thread,
     });
+    return thread.environmentHostId === null &&
+      (thread.status === "pending" || thread.status === "starting")
+      ? {
+          ...entry,
+          environmentHostId: intendedThreadHostId(deps, thread.id),
+        }
+      : entry;
   });
 }
 

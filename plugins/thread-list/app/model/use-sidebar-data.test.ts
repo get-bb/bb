@@ -110,6 +110,7 @@ describe("buildSidebarData structural sharing", () => {
       [a1, b1Changed],
       projects,
       [],
+      [],
       first,
     );
     expect(second.projects[0]).toBe(first.projects[0]);
@@ -122,6 +123,7 @@ describe("buildSidebarData structural sharing", () => {
       [a1, b1Changed],
       projects,
       [],
+      [],
       second,
     );
     expect(third.projects).toBe(second.projects);
@@ -132,6 +134,7 @@ describe("buildSidebarData structural sharing", () => {
     const state = {
       status: "ready" as const,
       threads: [makeSidebarThread({ id: "a1", projectId: "proj_a" })],
+      experimental_hosts: [],
       projects,
       sections: [],
       experimental_archived: null,

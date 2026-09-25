@@ -2664,6 +2664,13 @@ otherwise it exposes archive loading/error state, pagination flags, and
 archive-only loading/errors, combined views, pagination retries, and archived
 row actions before stabilizing these additions.
 
+**Machine list (Sep 2026).** `PluginSidebarThreadsState.experimental_hosts`
+contains the current machines in host query order, including those with no
+threads. Older hosts may omit the field; consumers can fall back to hosts
+present on thread rows. It shares the host query and realtime cache. Audit empty machine
+sections, machine removal, rename updates, and loading behavior before
+stabilizing this field.
+
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
 `useSidebarNavigation` query — the same cache and realtime subscriptions the

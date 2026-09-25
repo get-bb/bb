@@ -91,6 +91,7 @@ export function createThreadRecord(
   deps: Pick<AppDeps, "db"> & { hub: DbNotifier },
   args: {
     environmentId: string | null;
+    startupContext?: string;
     request: ThreadCreateServiceRequest;
   },
 ) {
@@ -120,6 +121,7 @@ export function createThreadRecord(
       // thread to `starting`. A caller that could pass `starting` here would
       // be claiming a thread had been admitted before anything decided so.
       status: "pending",
+      startupContext: args.startupContext,
     });
     emitPluginThreadCreated(thread);
     return thread;

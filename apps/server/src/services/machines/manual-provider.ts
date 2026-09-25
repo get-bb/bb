@@ -26,14 +26,14 @@ export function createManualMachineProviderRecord(
         const resource = { key: context.key };
         await context.checkpoint(resource);
         context.report.step("Preparing machine enrollment");
-        let hostId: string;
+        let hostName: string;
         try {
           const enrollment = await enrollments.prepare({
             key: context.key,
             signal: context.signal,
           });
           context.report.step("Run the enrollment command shown below");
-          ({ hostId } = await enrollments.waitForConnection({
+          ({ hostName } = await enrollments.waitForConnection({
             enrollmentId: enrollment.id,
             timeoutMs: 15 * 60_000,
             signal: context.signal,
@@ -45,7 +45,7 @@ export function createManualMachineProviderRecord(
         context.report.step("Machine connected");
         return {
           status: "created",
-          name: `Manual machine ${hostId.replace(/[^a-z0-9]/giu, "").slice(-6)}`,
+          name: hostName,
           resource,
         };
       },

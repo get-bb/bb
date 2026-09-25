@@ -6,6 +6,7 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import {
   authApiKeys,
   getHost,
+  getLatestSessionForHost,
   getNonDestroyedHostByLaunchKey,
   type DbConnection,
 } from "@bb/db";
@@ -46,7 +47,7 @@ export interface MachineEnrollments {
     enrollmentId: string;
     timeoutMs: number;
     signal: AbortSignal;
-  }): Promise<{ hostId: string }>;
+  }): Promise<{ hostId: string; hostName: string }>;
 }
 
 interface EnrollmentServiceDependencies {
@@ -229,7 +230,12 @@ export function createMachineEnrollmentService(
             throw new Error("Machine enrollment was cancelled");
           if (deps.isConnected(host.id)) {
             pending.delete(host.id);
-            return { hostId: host.id };
+            return {
+              hostId: host.id,
+              hostName:
+                getLatestSessionForHost(deps.db, { hostId: host.id })
+                  ?.hostName ?? host.name,
+            };
           }
           const remaining = deadline - Date.now();
           if (remaining <= 0)

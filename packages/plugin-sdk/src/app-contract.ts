@@ -1255,6 +1255,7 @@ export interface PluginSidebarThreadsState {
   } | null;
   status: "loading" | "ready" | "error";
   threads: readonly PluginSidebarThread[];
+  experimental_hosts?: readonly { id: string; name: string }[];
   projects: readonly PluginSidebarProject[];
   /** Every section, in the server's order (creation order). */
   sections: readonly PluginSidebarSection[];

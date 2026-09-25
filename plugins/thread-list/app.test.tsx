@@ -275,6 +275,32 @@ describe("thread-list plugin", () => {
     });
   });
 
+  it("shows a machine section before it has any threads", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    renderList(
+      { organizationMode: "machine" },
+      {
+        sidebarThreads: {
+          projects: PROJECTS,
+          sections: SECTIONS,
+          threads: THREADS,
+          experimental_hosts: [
+            { id: "host_laptop", name: "Laptop" },
+            { id: "host_empty", name: "Studio Mac" },
+          ],
+        },
+      },
+    );
+
+    await screen.findByText("Pinned thread");
+    expect(sectionHeaders()).toEqual([
+      "Pinned",
+      "Laptop",
+      "Studio Mac",
+      "No machine",
+    ]);
+  });
+
   it("groups threads by project in project mode", async () => {
     setPreferencesMirrorStorageForTest(null);
     renderList({ organizationMode: "project" });
