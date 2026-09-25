@@ -629,7 +629,11 @@ function RouteAwareSplitArea() {
   return (
     <SplitThreadArea
       routeContent={
-        location.pathname.startsWith("/plugins/") ? docsContent : undefined
+        location.pathname === "/"
+          ? newThreadContent
+          : location.pathname.startsWith("/plugins/")
+            ? docsContent
+            : undefined
       }
     />
   );
@@ -1776,10 +1780,15 @@ describe("SplitThreadArea", () => {
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Close pane" })).toBeTruthy();
     expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
     const remainingHost = screen.getByTestId("plugin-browser-host");
     expect(remainingHost.dataset.flushPageInsets).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close pane" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe("/"),
+    );
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
@@ -2368,7 +2377,55 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(1);
+    expect(screen.getByTestId("close-thr-a")).toBeTruthy();
+  });
+
+  it("closes the only thread into the new-thread page", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      routeAwareContent: true,
+    });
+    fireEvent.click(await screen.findByTestId("close-thr-a"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe("/"),
+    );
+    expect(screen.getByTestId("root-compose-view")).toBeTruthy();
+    expect(listPanes(store.get(splitLayoutAtom)!.root)[0]?.content).toEqual(
+      newThreadContent,
+    );
     expect(screen.queryByTestId("close-thr-a")).toBeNull();
+  });
+
+  it("closes the only plugin page into the new-thread page", async () => {
+    const store = renderSplitArea({
+      path: "/plugins/docs/docs",
+      routeAwareContent: true,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close pane" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe("/"),
+    );
+    expect(screen.getByTestId("root-compose-view")).toBeTruthy();
+    expect(listPanes(store.get(splitLayoutAtom)!.root)[0]?.content).toEqual(
+      newThreadContent,
+    );
+    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+  });
+
+  it("shows close on a compact plugin page", async () => {
+    viewportState.compact = true;
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      routeAwareContent: true,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close pane" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe("/"),
+    );
+    expect(screen.getByTestId("root-compose-view")).toBeTruthy();
   });
 
   it("moves the URL to the surviving pane when the focused pane is closed", async () => {
