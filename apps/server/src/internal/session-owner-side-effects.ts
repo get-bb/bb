@@ -129,6 +129,13 @@ export function handleDaemonSocketClosed(
   });
 }
 
+export function handleDaemonSocketOpened(
+  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
+  args: { hostId: string },
+): void {
+  notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
+}
+
 export function handleDaemonSessionSilent(
   deps: DaemonSocketClosedDeps,
   args: HandleDaemonSocketClosedArgs,

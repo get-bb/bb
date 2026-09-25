@@ -20,6 +20,7 @@ import {
 import {
   handleDaemonSessionSilent,
   handleDaemonSocketClosed,
+  handleDaemonSocketOpened,
 } from "../internal/session-owner-side-effects.js";
 import { HEARTBEAT_INTERVAL_MS, LEASE_TIMEOUT_MS } from "../constants.js";
 import {
@@ -105,6 +106,7 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
+  handleDaemonSocketOpened(deps, { hostId: args.hostId });
   deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   if (!isServerMoveSnapshotFenced(deps.db)) {
     deps.terminalSessions.reconcileDisconnectedHostTerminals({

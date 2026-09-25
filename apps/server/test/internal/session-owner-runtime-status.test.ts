@@ -7,6 +7,7 @@ import {
   handleHostRemoved,
 } from "../../src/internal/session-owner-side-effects.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -184,6 +185,43 @@ describe("host thread runtime status notifications", () => {
         harness.hub.cancelPendingDaemonDisconnect(fixture.sessionId);
         vi.useRealTimers();
       }
+    });
+  });
+
+  it("tells clients a disconnected host's threads are active again when its daemon reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHostThreadsFixture(harness, 6);
+      const socket = createMockHubSocket();
+      harness.hub.subscribe(socket, { kind: "thread-list" });
+
+      vi.useFakeTimers();
+      try {
+        handleDaemonSocketClosed(harness.deps, {
+          sessionId: fixture.sessionId,
+        });
+        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(
+        lastStatusChange(socket.messages, fixture.activeThreadId).metadata
+          ?.statusChange?.runtime.displayStatus,
+      ).toBe("waiting-for-host");
+
+      const reconnected = seedSession(harness.deps, fixture.hostId);
+      onDaemonSocketOpen(harness.deps, {
+        hostId: fixture.hostId,
+        sessionId: reconnected.id,
+        socket: createMockHubSocket(),
+      });
+
+      expect(
+        lastStatusChange(socket.messages, fixture.activeThreadId).metadata
+          ?.statusChange,
+      ).toMatchObject({
+        status: "active",
+        runtime: { displayStatus: "active" },
+      });
     });
   });
 
