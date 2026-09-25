@@ -35,6 +35,26 @@ await esbuild.build({
 
 const inputs = Object.keys(editor.metafile.inputs);
 const output = await readFile(path.join(outDir, "editor.js"), "utf8");
+const languagesModule = await esbuild.build({
+  entryPoints: [path.join(pluginRoot, "lib", "languages.ts")],
+  bundle: true,
+  format: "esm",
+  platform: "neutral",
+  write: false,
+});
+const { CLAIMED_EXTENSIONS, languageForPath } = await import(
+  `data:text/javascript;base64,${Buffer.from(languagesModule.outputFiles[0].contents).toString("base64")}`
+);
+const registeredLanguages = new Set(
+  [...output.matchAll(/id:"([a-z0-9+#-]+)"/g)].map((match) => match[1]),
+);
+const unregisteredLanguages = [
+  ...new Set(
+    CLAIMED_EXTENSIONS.map((extension) => languageForPath(`f.${extension}`)),
+  ),
+].filter(
+  (language) => language !== "plaintext" && !registeredLanguages.has(language),
+);
 const missing = [
   [
     "language grammars",
@@ -54,7 +74,8 @@ const missing = [
   ["line sorting", () => output.includes("sortLinesAscending")],
 ]
   .filter(([, present]) => !present())
-  .map(([name]) => name);
+  .map(([name]) => name)
+  .concat(unregisteredLanguages.map((language) => `language ${language}`));
 if (missing.length > 0) {
   throw new Error(
     `the Monaco bundle is missing: ${missing.join(", ")} — check monaco-bundle/editor.js`,

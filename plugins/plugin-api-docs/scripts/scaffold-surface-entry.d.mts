@@ -1,5 +1,4 @@
 export type FixtureFidelity = "none" | "anchor" | "state" | "flow";
-export type FixtureResponsiveStrategy = "scale-together" | "reflow";
 
 export interface SurfaceEntryScaffoldInput {
   id: string | null;
@@ -38,9 +37,6 @@ export function classifyFixtureFidelity(
     "spatialOwner" | "transient" | "outcome" | "replacement"
   >,
 ): FixtureFidelity;
-export function fixtureResponsiveStrategy(
-  input: Pick<SurfaceEntryScaffoldInput, "spatialOwner">,
-): FixtureResponsiveStrategy;
 export function parseScaffoldArgs(argv: string[]): SurfaceEntryScaffoldInput;
 export function buildSurfaceEntryScaffold(
   input: SurfaceEntryScaffoldInput,

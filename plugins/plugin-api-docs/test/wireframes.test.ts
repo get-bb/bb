@@ -12,12 +12,13 @@ import {
   annotationChipCounterScale,
   MAX_CHIP_COUNTER_SCALE,
 } from "../src/annotation";
-import { SURFACES_BY_ID } from "../src/surfaces";
+import { SURFACE_GROUPS, SURFACES_BY_ID } from "../src/surfaces";
 import anatomy from "../src/anatomy-manifest.json";
 import {
   AppShellRightPanel,
   AppShellWireframe,
   CommandPaletteWireframe,
+  ComposeScreenWireframe,
   RealComposerAnnotated,
   SettingsWireframe,
   ExtensionsPluginPageWireframe,
@@ -41,7 +42,45 @@ function renderWireframe(
   );
 }
 
+function guideSurfaceIds(markup: string): string[] {
+  return [
+    ...new Set(
+      [...markup.matchAll(/data-guide-(?:region|target)="([^"]+)"/g)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ].sort();
+}
+
 describe("guide fixture boundaries", () => {
+  it("draws exactly the surfaces of each visual group on its fixture", () => {
+    const fixtures: Record<string, ReactNode[]> = {
+      "app-shell": [createElement(AppShellWireframe)],
+      "command-palette": [createElement(CommandPaletteWireframe)],
+      composer: [createElement(RealComposerAnnotated)],
+      home: [
+        createElement(ComposeScreenWireframe),
+        createElement(ComposeScreenWireframe, { panel: true }),
+      ],
+      settings: [createElement(SettingsWireframe)],
+      extensions: [createElement(ExtensionsPluginPageWireframe)],
+    };
+    const visualGroups = SURFACE_GROUPS.filter(
+      (group) => group.id !== "headless",
+    );
+    expect(visualGroups.map((group) => group.id).sort()).toEqual(
+      Object.keys(fixtures).sort(),
+    );
+    for (const group of visualGroups) {
+      const markup = fixtures[group.id]!.map((node) =>
+        renderWireframe(node),
+      ).join("");
+      expect(guideSurfaceIds(markup), group.id).toEqual(
+        group.surfaces.map((surface) => surface.id).sort(),
+      );
+    }
+  });
+
   it("renders the anchor labels of the configuration and recovery fixtures", () => {
     for (const [id, component] of [
       ["declarative-settings", SettingsWireframe],

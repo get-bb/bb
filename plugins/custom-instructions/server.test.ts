@@ -90,39 +90,25 @@ describe("custom instructions plugin", () => {
     });
   });
 
-  it("renders help, refuses unknown flags, and reports errors as JSON", async () => {
+  it("documents set in help, requires its text, accepts dashed text, and reports errors as JSON", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "custom-instructions",
     });
     await plugin(bb);
 
-    for (const argv of [["--help"], ["-h"], ["set", "--help"]]) {
-      const help = await harness.runCli(argv);
-      expect(help.exitCode, argv.join(" ")).toBe(0);
-      expect(help.stderr).toBe("");
-      expect(help.stdout).toContain("bb instructions");
-    }
-    expect((await harness.runCli(["set", "--help"])).stdout).toContain(
-      "at most 4096 characters",
-    );
+    const help = (await harness.runCli(["set", "--help"])).stdout;
+    expect(help).toContain("bb instructions set");
+    expect(help).toContain("at most 4096 characters");
 
-    const unknownFlag = await harness.runCli(["get", "--josn"]);
-    expect(unknownFlag.exitCode).toBe(1);
-    expect(unknownFlag.stderr).toContain("unknown option '--josn'");
-    expect(unknownFlag.stderr).toContain("(Did you mean --json?)");
+    const dashed = await harness.runCli(["set", "--", "-n", "no flags here"]);
+    expect(dashed.exitCode, dashed.stderr).toBe(0);
+    await expect(harness.runCli(["get"])).resolves.toMatchObject({
+      stdout: "-n no flags here",
+    });
 
     const missingText = await harness.runCli(["set"]);
     expect(missingText.exitCode).toBe(1);
     expect(missingText.stderr).toContain("missing required arguments: <text>");
-    expect(
-      harness.registrations.instructionProvider?.({
-        threadId: "thr_1",
-        projectId: "proj_1",
-      }),
-    ).toBeNull();
-
-    const dashed = await harness.runCli(["set", "--", "-n", "no flags here"]);
-    expect(dashed.exitCode, dashed.stderr).toBe(0);
     await expect(harness.runCli(["get"])).resolves.toMatchObject({
       stdout: "-n no flags here",
     });

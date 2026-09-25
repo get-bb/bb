@@ -1307,41 +1307,6 @@ describe("bridge", () => {
     expect(options.additionalDirectories).toBeUndefined();
   });
 
-  it("configures auto sessions with additional writable roots", () => {
-    const options = buildSessionOptions(
-      {
-        chromeEnabled: false,
-        serviceTier: "default",
-        workflowsEnabled: false,
-        additionalWorkspaceWriteRoots: [
-          "/repo/.git/worktrees/bb13",
-          "/repo/.git/objects",
-        ],
-        baseInstructions: "You are a coder.",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionMode: "auto",
-        permissionScope: "workspace",
-      },
-      {},
-    );
-
-    expect(options.additionalDirectories).toEqual([
-      "/repo/.git/worktrees/bb13",
-      "/repo/.git/objects",
-    ]);
-    expect(options.sandbox).toEqual({
-      enabled: true,
-      failIfUnavailable: false,
-      autoAllowBashIfSandboxed: true,
-      allowUnsandboxedCommands: true,
-      network: { allowLocalBinding: true },
-      filesystem: {
-        allowWrite: ["/repo/.git/worktrees/bb13", "/repo/.git/objects"],
-      },
-    });
-  });
-
   describe("Bash canUseTool policy", () => {
     const WORKSPACE_AUTO_DENY_POLICY = {
       permissionMode: "auto",

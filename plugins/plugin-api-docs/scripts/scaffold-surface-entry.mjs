@@ -19,10 +19,6 @@ export function classifyFixtureFidelity({
   return "anchor";
 }
 
-export function fixtureResponsiveStrategy({ spatialOwner }) {
-  return spatialOwner ? "scale-together" : "reflow";
-}
-
 function uniqueSorted(values) {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
@@ -141,7 +137,7 @@ export function buildSurfaceEntryScaffold(input) {
         : {
             groupId: input.groupId,
             fidelity,
-            responsiveStrategy: fixtureResponsiveStrategy(input),
+            responsiveStrategy: "scale-together",
             requiredStates: REQUIRED_STATES[fidelity],
             sources: sourcePaths.map((path) => ({
               path,

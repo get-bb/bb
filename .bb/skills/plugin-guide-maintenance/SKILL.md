@@ -81,8 +81,10 @@ separate layout contracts. Whenever an annotation is added, removed, moved, or
 renumbered, or its target or surrounding layout changes:
 
 1. Build and reload the real Plugin Guide at each relevant viewport. Redraw the
-   complete affected sequence, then update `surfaces.ts`, the matching
-   `*_MARKS` order in `wireframes.tsx`, and the focused order test.
+   complete affected sequence, then update `surfaces.ts` and the focused
+   order test. `test/wireframes.test.ts` ("draws exactly the surfaces of each
+   visual group on its fixture") fails until the fixture's targets match the
+   group's surface ids.
 2. Inspect each rendered badge footprint, including its outline, ring, and
    hover scaling. It must remain inside its container, not intersect another
    badge, and leave its annotated content readable.

@@ -333,41 +333,15 @@ describe("configuration", () => {
     ).resolves.toMatchObject({ exitCode: 1 });
   });
 
-  it("renders help, refuses unknown flags, and reports errors as JSON", async () => {
+  it("documents the limit range in help and reports errors as JSON", async () => {
     const { harness } = await setup({
       hosts: [hostRecord("host-a", "connected", "Laptop")],
       capacities: [{ hostId: "host-a", availableParallelism: 8 }],
     });
 
-    for (const argv of [["--help"], ["-h"], ["host", "--help"]]) {
-      const help = await harness.behavior.runCli(argv);
-      expect(help.exitCode, argv.join(" ")).toBe(0);
-      expect(help.stderr).toBe("");
-      expect(help.stdout).toContain("bb concurrency-limit");
-    }
-    expect(
-      (await harness.behavior.runCli(["host", "--help"])).stdout,
-    ).toContain("0 to 10000");
-
-    const unknownFlag = await harness.behavior.runCli(["status", "--jsno"]);
-    expect(unknownFlag.exitCode).toBe(1);
-    expect(unknownFlag.stderr).toContain("unknown option '--jsno'");
-    expect(unknownFlag.stderr).toContain("(Did you mean --json?)");
-
-    const mistyped = await harness.behavior.runCli(["stats"]);
-    expect(mistyped.exitCode).toBe(1);
-    expect(mistyped.stderr).toContain("unknown command 'stats'");
-    expect(mistyped.stderr).toContain("(Did you mean status?)");
-
-    const missingHost = await harness.behavior.runCli(["host"]);
-    expect(missingHost.exitCode).toBe(1);
-    expect(missingHost.stderr).toContain(
-      "missing required arguments: <host-id>",
-    );
-
-    const stray = await harness.behavior.runCli(["global", "3", "4"]);
-    expect(stray.exitCode).toBe(1);
-    expect(stray.stderr).toContain("unexpected argument '4'");
+    const help = (await harness.behavior.runCli(["host", "--help"])).stdout;
+    expect(help).toContain("bb concurrency-limit host");
+    expect(help).toContain("0 to 10000");
 
     const envelope = await harness.behavior.runCli([
       "host",

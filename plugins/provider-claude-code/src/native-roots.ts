@@ -3,7 +3,6 @@ import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   experimental_filterResolvedNativeRoots,
   experimental_resolveClaudePluginRoots,
-  type ExperimentalClaudePluginRoots,
   type ExperimentalClaudePluginRootsArgs,
   type ExperimentalVendorPluginRoots,
 } from "@get-bb/plugin-sdk/host";
@@ -36,10 +35,10 @@ const CLAUDE_PLUGIN_MANIFEST_MARKER = ".claude-plugin/plugin.json";
 
 type ClaudeResolvedRoot = ExperimentalVendorPluginRoots["skills"][number];
 
-export function filterClaudeNativeRoots(
-  plugins: ExperimentalClaudePluginRoots,
-  warn: (message: string) => void,
-): ExperimentalVendorPluginRoots {
+export async function resolveClaudeNativeRoots(
+  args: ExperimentalClaudePluginRootsArgs,
+): Promise<ExperimentalVendorPluginRoots> {
+  const plugins = await experimental_resolveClaudePluginRoots(args);
   const userSkillsRoot: ClaudeResolvedRoot = {
     path: path.join(plugins.claudeDir, "skills"),
     origin: "user",
@@ -65,13 +64,6 @@ export function filterClaudeNativeRoots(
         ),
       ],
     },
-    { warn },
+    { warn: console.warn },
   ).answer;
-}
-
-export async function resolveClaudeNativeRoots(
-  args: ExperimentalClaudePluginRootsArgs,
-): Promise<ExperimentalVendorPluginRoots> {
-  const plugins = await experimental_resolveClaudePluginRoots(args);
-  return filterClaudeNativeRoots(plugins, console.warn);
 }
