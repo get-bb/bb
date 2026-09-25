@@ -49,7 +49,9 @@ export type CodexAiTranscribeInput = z.infer<
 >;
 
 export const codexAiStatusSchema = z.discriminatedUnion("ready", [
-  z.object({ ready: z.literal(true) }).strict(),
+  z
+    .object({ ready: z.literal(true), authMode: z.enum(["chatgpt", "apiKey"]) })
+    .strict(),
   z.object({ ready: z.literal(false), message: z.string().min(1) }).strict(),
 ]);
 export type CodexAiStatus = z.infer<typeof codexAiStatusSchema>;
