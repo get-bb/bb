@@ -29,6 +29,7 @@ import {
   setAutomationEnabled,
   setAutomationRunThread,
   AUTOMATION_RETRY_BASE_MS,
+  AUTOMATION_RETRY_MAX_MS,
   type Db,
 } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
@@ -44,7 +45,13 @@ import {
   mapScriptResultToRun,
   scriptPathEnv,
 } from "./script-runner.js";
-import { executeScriptRun, reconcileRunningAutomationRuns } from "./run.js";
+import {
+  executeAgentRun,
+  executeScriptRun,
+  isTransientDispatchError,
+  isTransientTurnFailure,
+  reconcileRunningAutomationRuns,
+} from "./run.js";
 import { createScriptWorkingDirectoryResolver } from "./working-directory.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
@@ -628,6 +635,36 @@ describe("automation data access", () => {
     expect(getAutomation(db, automation.id)?.nextRunAt).toBeNull();
   });
 
+  it("does not re-enable a manually paused automation after a transient failure", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 2000,
+      now: 1000,
+    });
+    if (!claim.advanced) throw new Error("claim failed");
+    setAutomationEnabled(db, {
+      projectId: automation.projectId,
+      automationId: automation.id,
+      enabled: false,
+      nextRunAt: null,
+    });
+    closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "failed",
+      error: "temporary connection failure",
+      transient: true,
+      now: 1001,
+    });
+    expect(getAutomation(db, automation.id)).toMatchObject({
+      enabled: false,
+      nextRunAt: null,
+      lastError: "temporary connection failure",
+    });
+  });
+
   it("auto-pauses after three consecutive scheduled failures", () => {
     const db = createTestDb();
     const automation = createScheduledAutomation(db, 1000);
@@ -664,6 +701,214 @@ describe("automation data access", () => {
         );
       }
     }
+  });
+
+  it("keeps retrying classified transient failures with capped backoff", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    let expectedNextRunAt = 1000;
+
+    for (let failure = 1; failure <= 10; failure += 1) {
+      const claim = claimAutomationScheduledRun(db, {
+        automationId: automation.id,
+        expectedNextRunAt,
+        newNextRunAt: expectedNextRunAt + 60_000,
+        now: expectedNextRunAt,
+      });
+      if (!claim.advanced) throw new Error(`claim ${failure} failed`);
+      const failedAt = expectedNextRunAt + 1;
+      closeAutomationRun(db, {
+        runId: claim.run.id,
+        status: "failed",
+        error: "Provider connection failed",
+        transient: true,
+        now: failedAt,
+      });
+      const current = getAutomation(db, automation.id);
+      expect(current?.enabled).toBe(true);
+      expect(current?.consecutiveFailures).toBe(failure);
+      expect(current?.lastError).toBe("Provider connection failed");
+      expectedNextRunAt =
+        failedAt +
+        Math.min(
+          AUTOMATION_RETRY_MAX_MS,
+          AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1),
+        );
+      expect(current?.nextRunAt).toBe(expectedNextRunAt);
+    }
+  });
+
+  it("classifies provider transport, 5xx, and accepted unstarted failures", () => {
+    const failure = {
+      threadId: "thr_test",
+      requestId: "req_test",
+      turnId: "turn_test",
+      errorInfo: {
+        category: "connection-failed" as const,
+        providerCode: null,
+        httpStatusCode: null,
+      },
+      inputAccepted: false,
+      rateLimits: null,
+      attemptNumber: 1,
+    };
+    expect(isTransientTurnFailure(failure)).toBe(true);
+    expect(
+      isTransientTurnFailure({
+        ...failure,
+        errorInfo: {
+          ...failure.errorInfo,
+          category: "internal",
+          httpStatusCode: 503,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isTransientTurnFailure({
+        ...failure,
+        turnId: null,
+        errorInfo: null,
+        inputAccepted: true,
+      }),
+    ).toBe(true);
+    expect(
+      isTransientTurnFailure({
+        ...failure,
+        errorInfo: {
+          ...failure.errorInfo,
+          category: "unauthorized",
+          httpStatusCode: 401,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("classifies transient dispatch errors without treating configuration errors as transient", () => {
+    expect(
+      isTransientDispatchError(
+        Object.assign(new Error("unavailable"), { status: 503 }),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientDispatchError(
+        Object.assign(new Error("connection lost"), { code: "ECONNRESET" }),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientDispatchError(
+        Object.assign(new Error("invalid model"), { status: 400 }),
+      ),
+    ).toBe(false);
+  });
+
+  it("starts a new scheduled run in a reused error thread", async () => {
+    const db = createTestDb();
+    const execution = {
+      mode: "agent" as const,
+      prompt: "do it",
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "medium" as const,
+      permissionMode: "accept-edits" as const,
+      environment: { type: "project-default" as const },
+      targetThreadId: "thr_target",
+    };
+    const automation = createAutomation(db, {
+      id: "auto_target",
+      projectId: "proj_test",
+      name: "Target",
+      enabled: true,
+      trigger: { triggerType: "schedule", cron: "* * * * *", timezone: "UTC" },
+      runMode: "agent",
+      execution,
+      origin: "human",
+      createdByThreadId: null,
+      nextRunAt: 1000,
+    });
+    const sent: unknown[] = [];
+    const bb = {
+      sdk: {
+        threads: {
+          get: async () => ({
+            id: "thr_target",
+            status: "error",
+            deletedAt: null,
+            archivedAt: null,
+          }),
+          send: async (args: unknown) => {
+            sent.push(args);
+          },
+          spawn: async () => {
+            throw new Error("unexpected spawn");
+          },
+        },
+      },
+      realtime: { publish: () => undefined },
+      log: {
+        debug: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+      },
+    };
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 60_000,
+      now: 1000,
+    });
+    if (!claim.advanced) throw new Error("claim failed");
+    await executeAgentRun(bb, db, {
+      automation,
+      run: claim.run,
+      execution,
+      onFailure: (error) => {
+        throw error;
+      },
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      threadId: "thr_target",
+      mode: "steer-if-active",
+    });
+    expect(getRunningAutomationRun(db, automation.id)?.id).toBe(claim.run.id);
+    expect(getRunningAutomationRun(db, automation.id)?.threadId).toBe(
+      "thr_target",
+    );
+    expect(getAutomation(db, automation.id)?.enabled).toBe(true);
+
+    closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "failed",
+      error: "Provider connection failed",
+      transient: true,
+      now: 1001,
+    });
+    const retryAt = getAutomation(db, automation.id)?.nextRunAt;
+    if (retryAt === null || retryAt === undefined) {
+      throw new Error("retry was not scheduled");
+    }
+    const retry = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: retryAt,
+      newNextRunAt: retryAt + 60_000,
+      now: retryAt,
+    });
+    if (!retry.advanced) throw new Error("retry claim failed");
+    await executeAgentRun(bb, db, {
+      automation: getAutomation(db, automation.id)!,
+      run: retry.run,
+      execution,
+      onFailure: (error) => {
+        throw error;
+      },
+    });
+    expect(retry.run.id).not.toBe(claim.run.id);
+    expect(sent).toHaveLength(2);
+    expect(getRunningAutomationRun(db, automation.id)?.id).toBe(retry.run.id);
+    expect(getRunningAutomationRun(db, automation.id)?.threadId).toBe(
+      "thr_target",
+    );
   });
 
   it("applies the same backoff and pause policy to settled script failures", () => {

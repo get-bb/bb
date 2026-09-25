@@ -168,7 +168,10 @@ function automationDetailNextRun(
   if (label === null) return null;
   if (!label.startsWith("Next ")) return label;
   return (
-    <AutomationMetadataItem icon="CalendarCheckOut02" iconLabel="Next run">
+    <AutomationMetadataItem
+      icon="CalendarCheckOut02"
+      iconLabel={automation.lastError === null ? "Next run" : "Next retry"}
+    >
       {label.slice("Next ".length)}
     </AutomationMetadataItem>
   );
@@ -797,6 +800,21 @@ export function AutomationDetailView({
               {formatAutomationTrigger(automation.trigger)}
             </AutomationMetadataItem>,
             automationDetailNextRun(automation),
+            automation.lastError !== null ? (
+              <AutomationMetadataItem
+                icon="AlertCircle"
+                iconLabel={
+                  automation.enabled
+                    ? "Retrying after failure"
+                    : "Paused after failure"
+                }
+                title={automation.lastError}
+              >
+                {automation.enabled
+                  ? `Retrying: ${automation.lastError}`
+                  : `Paused: ${automation.lastError}. Resume after resolving the error.`}
+              </AutomationMetadataItem>
+            ) : null,
           ]}
         />
       }

@@ -82,14 +82,19 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
 
 - An automation has at most one active run. A duplicate tick or manual request
   uses the active run.
-- Failed recurring runs retry after 30 seconds and then 60 seconds. The third
-  consecutive failure pauses the automation.
+- Failed recurring runs retry after 30 seconds and then 60 seconds. A
+  permanent or unclassified failure pauses the automation once the consecutive
+  failure count reaches three.
+- Classified provider transport, overload, rate-limit, HTTP 5xx, and accepted
+  but unstarted failures keep retrying with exponential backoff capped at
+  30 minutes. Each retry is a new automation run with its own run ID. The
+  automation shows the failure reason and next run time until it succeeds.
 - A successful or skipped run clears the failure count. A resume command also
   clears the count.
 - An unavailable target thread disables every enabled automation that targets
-  the thread immediately. This path does not retry and does not use the failure
-  count. The plugin treats a thread as unavailable when it is missing, deleted,
-  archived, or cannot accept a run.
+  the thread immediately when it is verified missing, deleted, or archived.
+  This path does not retry and does not use the failure count. An existing
+  thread in error can start a new run in the same thread.
 - A timeout or output limit stops the process group. On Windows, it stops the
   direct child.
 - Startup settles runs interrupted by a server restart or plugin reload.

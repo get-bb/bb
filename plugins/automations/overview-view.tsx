@@ -236,9 +236,30 @@ function AutomationRowMetadata({
         automation !== null && scheduleMetadata !== null ? (
           <AutomationMetadataItem
             icon={scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined}
-            iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
+            iconLabel={
+              scheduleMetadata.isNextRun
+                ? automation.lastError === null
+                  ? "Next run"
+                  : "Next retry"
+                : undefined
+            }
           >
             {scheduleMetadata.text}
+          </AutomationMetadataItem>
+        ) : null,
+        automation !== null && automation.lastError !== null ? (
+          <AutomationMetadataItem
+            icon="AlertCircle"
+            iconLabel={
+              automation.enabled
+                ? "Retrying after failure"
+                : "Paused after failure"
+            }
+            title={automation.lastError}
+          >
+            {automation.enabled
+              ? `Retrying: ${automation.lastError}`
+              : `Paused: ${automation.lastError}. Resume after resolving the error.`}
           </AutomationMetadataItem>
         ) : null,
         automation === null ? "The stored configuration cannot be read." : null,

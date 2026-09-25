@@ -39,6 +39,7 @@ export type Db = Database.Database;
 
 const AUTOMATION_MAX_CONSECUTIVE_FAILURES = 3;
 export const AUTOMATION_RETRY_BASE_MS = 30_000;
+export const AUTOMATION_RETRY_MAX_MS = 30 * 60_000;
 
 export interface AutomationRow {
   id: string;
@@ -221,7 +222,10 @@ export const migrations = [
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
   const exponent = Math.max(0, consecutiveFailures - 1);
-  return AUTOMATION_RETRY_BASE_MS * 2 ** exponent;
+  return Math.min(
+    AUTOMATION_RETRY_MAX_MS,
+    AUTOMATION_RETRY_BASE_MS * 2 ** Math.min(exponent, 16),
+  );
 }
 
 export interface CreateAutomationInput {
@@ -740,6 +744,7 @@ function recordAutomationFailure(
   args: {
     automationId: string;
     retrySchedule: boolean;
+    transient: boolean;
     error: string;
     now: number;
   },
@@ -749,7 +754,9 @@ function recordAutomationFailure(
     return { consecutiveFailures: 0, paused: false, retryAt: null };
   }
   const consecutiveFailures = automation.consecutiveFailures + 1;
-  const paused = consecutiveFailures >= AUTOMATION_MAX_CONSECUTIVE_FAILURES;
+  const paused =
+    !args.transient &&
+    consecutiveFailures >= AUTOMATION_MAX_CONSECUTIVE_FAILURES;
   const retryAt =
     args.retrySchedule && automation.enabled && !paused
       ? args.now + automationRetryDelayMs(consecutiveFailures)
@@ -788,6 +795,7 @@ export function closeAutomationRun(
     status: "succeeded" | "failed" | "skipped";
     skipReason?: string | null;
     error?: string | null;
+    transient?: boolean;
     output?: string | null;
     exitCode?: number | null;
     threadId?: string | null;
@@ -825,6 +833,7 @@ export function closeAutomationRun(
       recordAutomationFailure(db, {
         automationId: existing.automationId,
         retrySchedule: existing.trigger === "schedule",
+        transient: args.transient === true,
         error: args.error ?? "Automation run failed",
         now: args.now,
       });
@@ -1025,26 +1034,31 @@ export function listAutomationRuns(
   return rows.map(requiredRunRow);
 }
 
-export function disableAutomationsForDeletedThread(
+export function disableAutomationsForUnavailableThread(
   db: Db,
-  args: { threadId: string; now: number },
+  args: {
+    threadId: string;
+    reason: "missing" | "deleted" | "archived";
+    now: number;
+  },
 ): AutomationRow[] {
+  const lastError = `target thread ${args.reason}`;
   db.prepare(
     `UPDATE automations SET
        enabled = 0,
        next_run_at = NULL,
-       last_error = 'target thread deleted',
+       last_error = @lastError,
        updated_at = @now
      WHERE target_thread_id = @threadId AND enabled = 1`,
-  ).run(args);
+  ).run({ ...args, lastError });
   return db
     .prepare(
       `SELECT
          ${AUTOMATION_COLUMNS}
        FROM automations
-       WHERE target_thread_id = @threadId AND last_error = 'target thread deleted'
+       WHERE target_thread_id = @threadId AND last_error = @lastError
        ORDER BY updated_at DESC`,
     )
-    .all(args)
+    .all({ threadId: args.threadId, lastError })
     .map(requiredAutomationRow);
 }
