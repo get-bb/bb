@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SIDEBAR_DISCLOSURE_ACTION_CLASS } from "@/components/ui/chrome-style-tokens";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
@@ -447,7 +448,22 @@ export function Navigation({
               ))
             }
           </SidebarMore>
-        ) : null}
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(
+              PROJECT_LIST_ACTION_BUTTON_CLASS,
+              SIDEBAR_DISCLOSURE_ACTION_CLASS,
+              "w-full hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
+            )}
+            data-testid="sidebar-navigation-customize-trigger"
+            onClick={() => actions.openCustomize()}
+          >
+            <SidebarCustomizeActionContent label="Customize sidebar" />
+          </Button>
+        )}
       </div>
       <div
         aria-hidden="true"
