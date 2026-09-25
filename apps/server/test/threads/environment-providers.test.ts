@@ -752,12 +752,14 @@ describe("shared machine preparation retention", () => {
             );
             release.resolve();
             await expect
-              .poll(() => getPreparingEnvironment(harness.db, next.id)?.status)
+              .poll(() => getThread(harness.db, next.id)?.status)
               .toBe("error");
-            await advanceThreadProvisioning(harness.deps, {
-              threadId: next.id,
-            });
-            expect(getThread(harness.db, next.id)?.status).toBe("error");
+            await expect
+              .poll(
+                () =>
+                  getPreparingEnvironment(harness.db, next.id)?.teardownStatus,
+              )
+              .toBe("removed");
           }
           await sweepProviderMachine(harness.deps, host.id);
           expect(remove).toHaveBeenCalledTimes(1);

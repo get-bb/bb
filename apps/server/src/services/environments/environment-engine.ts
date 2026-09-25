@@ -27,6 +27,7 @@ import {
   findProjectEnvironmentByHostPath,
   getPreparingEnvironment,
   claimEnvironmentPath,
+  listAbandonedEnvironmentPreparationOwners,
   bindEnvironmentPath,
   listProviderLifecycleEnvironments,
   updatePreparingEnvironment,
@@ -839,6 +840,19 @@ async function sweepProviderEnvironmentInSlot(
     row.teardownAttempt > 0,
     signal,
   );
+}
+
+export async function cancelAbandonedEnvironmentPreparations(
+  deps: Deps,
+): Promise<void> {
+  for (const threadId of listAbandonedEnvironmentPreparationOwners(deps.db)) {
+    await cancelProviderEnvironmentCreation(deps, threadId).catch((error) =>
+      deps.logger.warn(
+        { threadId, error },
+        "Abandoned environment preparation cleanup will retry",
+      ),
+    );
+  }
 }
 
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
