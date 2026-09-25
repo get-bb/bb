@@ -410,6 +410,76 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("README.md").tagName).toBe("CODE");
   });
 
+  it("renders video embeds through local media routing without changing links or images", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={
+          "![demo](clips/demo.MP4)\n\n![image](still.png?name=demo.mp4)\n\n[download](clips/demo.mp4)"
+        }
+        linkRouting={{
+          localImage: {
+            absolutePaths: { kind: "trusted-host" },
+            relativePaths: { baseDir: "/workspace", rootPath: "/workspace" },
+            resolveSrc: ({ path }) =>
+              `/content?path=${encodeURIComponent(path)}`,
+          },
+        }}
+      />,
+    );
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("src")).toBe(
+      "/content?path=%2Fworkspace%2Fclips%2Fdemo.MP4",
+    );
+    expect(video?.getAttribute("aria-label")).toBe("demo");
+    expect(video?.controls).toBe(true);
+    expect(video?.playsInline).toBe(true);
+    expect(video?.preload).toBe("metadata");
+    expect(video?.autoplay).toBe(false);
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "download" })).not.toBeNull();
+  });
+
+  it("handles reference video embeds and keeps unsafe URLs and HTML disabled", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={
+          '![clip][movie]\n\n[movie]: https://example.com/clip.webm?token=x#t=2\n\n![unsafe](javascript:clip.mp4)\n\n<video src="https://example.com/raw.mp4" controls></video>'
+        }
+      />,
+    );
+    expect(container.querySelectorAll("video")).toHaveLength(1);
+    expect(container.querySelector("video")?.getAttribute("src")).toBe(
+      "https://example.com/clip.webm?token=x#t=2",
+    );
+  });
+
+  it("keeps a playing video element when incremental text is appended", () => {
+    const content = "![clip](https://example.com/clip.mp4)\n\n";
+    const { container, rerender } = render(
+      <MarkdownPreview content={content + "First"} incrementalBlocks />,
+    );
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    rerender(
+      <MarkdownPreview
+        content={content + "First paragraph grows"}
+        incrementalBlocks
+      />,
+    );
+    expect(container.querySelector("video")).toBe(video);
+  });
+
+  it("does not load videos in text-only Markdown previews", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content="![clip](https://example.com/clip.mp4)"
+        imagePolicy="alt-text"
+      />,
+    );
+    expect(container.querySelector("video")).toBeNull();
+    expect(screen.getByText("[Video: clip]")).not.toBeNull();
+  });
+
   it("routes local Markdown images through the configured content resolver", () => {
     const resolveSrc = vi.fn(
       ({ path }: { path: string }) =>

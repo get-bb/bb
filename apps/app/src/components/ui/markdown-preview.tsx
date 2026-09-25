@@ -265,6 +265,7 @@ type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> &
   ExtraProps & {
     "data-markdown-image-offset"?: number;
+    "data-markdown-video"?: boolean;
   };
 type MarkdownImageRenderAttributes = Omit<
   MarkdownImageProps,
@@ -520,6 +521,11 @@ function buildLocalAwareUrlTransform({
   localImageRouting,
 }: BuildLocalAwareUrlTransformArgs): UrlTransform {
   return (value, key, node) => {
+    if (key === "src" && node.tagName === "img") {
+      node.properties["data-markdown-video"] = /\.(?:mp4|webm|ogv|mov)$/iu.test(
+        value.split(/[?#]/u, 1)[0] ?? "",
+      );
+    }
     if (key === "href" && localFileRouting !== undefined) {
       const localFile = resolveMarkdownLocalFileTarget(
         value,
@@ -1242,13 +1248,33 @@ function buildMarkdownComponents({
     className: _className,
     node,
     "data-markdown-image-offset": pieceOffset,
+    "data-markdown-video": isVideo,
     ...imageAttributes
   }: MarkdownImageProps) {
     if (imagePolicy === "alt-text") {
       return (
         <span data-markdown-image-fallback="">
-          [Image: {typeof alt === "string" && alt.length > 0 ? alt : "image"}]
+          [{isVideo ? "Video" : "Image"}:{" "}
+          {typeof alt === "string" && alt.length > 0
+            ? alt
+            : isVideo
+              ? "video"
+              : "image"}
+          ]
         </span>
+      );
+    }
+    if (isVideo && typeof src === "string" && src.length > 0) {
+      return (
+        <video
+          src={src}
+          aria-label={alt || "Video"}
+          title={imageAttributes.title}
+          controls
+          playsInline
+          preload="metadata"
+          className="my-2 max-h-[max(384px,50vh)] max-w-full"
+        />
       );
     }
     const sourceOffset = pieceOffset ?? node?.position?.start.offset;
@@ -1748,13 +1774,11 @@ function MarkdownPreviewComponent({
   );
   const resolvedUrlTransform = useMemo(
     () =>
-      localFileRouting || localImageRouting
-        ? buildLocalAwareUrlTransform({
-            fallbackUrlTransform: urlTransform,
-            localFileRouting,
-            localImageRouting,
-          })
-        : urlTransform,
+      buildLocalAwareUrlTransform({
+        fallbackUrlTransform: urlTransform,
+        localFileRouting,
+        localImageRouting,
+      }),
     [localFileRouting, localImageRouting, urlTransform],
   );
 

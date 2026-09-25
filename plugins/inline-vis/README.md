@@ -69,3 +69,11 @@ Markdown links and images resolve relative to the document's directory in the
 selected source. For `::inline-vis{source="thread-storage" file="reports/report.md"}`,
 `[Notes](notes.md)` and `![Chart](chart.svg)` refer to files under `reports/`
 in that thread's storage. The same rule applies to workspace reports.
+
+Markdown media embeds use image syntax: `![Video description](clip.mp4)` renders
+a native player with playback controls and inline playback. Supported filename
+extensions are `.mp4`, `.webm`, `.ogv`, and `.mov`; codec support depends on the
+browser. Relative video paths resolve like relative image paths. Regular links
+remain links. Videos render in the app page, so stored media can use the app's
+Connect authentication without the HTML iframe sandbox. This also works in
+Markdown supplied through the existing SDK and CLI message/file surfaces.
