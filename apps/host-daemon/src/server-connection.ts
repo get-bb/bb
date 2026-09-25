@@ -89,6 +89,8 @@ function recoverableMessageKey(
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
     case "environment-metadata-change":
       return `environment-metadata-change\u0000${message.environmentId}`;
+    case "terminal.exited":
+      return `terminal.exited\u0000${message.terminalId}`;
     default:
       return null;
   }

@@ -107,7 +107,7 @@ export function onDaemonSocketOpen(
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
   deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   if (!isServerMoveSnapshotFenced(deps.db)) {
-    deps.terminalSessions.expireDisconnectedHostTerminals({
+    deps.terminalSessions.reconcileDisconnectedHostTerminals({
       daemonSessionId: args.sessionId,
       hostId: args.hostId,
     });

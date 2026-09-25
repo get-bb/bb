@@ -267,7 +267,7 @@ function seedDisconnectedTerminal(harness: TestAppHarness, hostId: string) {
   });
   updateTerminalSession(harness.db, {
     scope: { kind: "terminal", terminalId: terminal.id },
-    update: { kind: "disconnect" },
+    update: { kind: "disconnect", retainDaemonSession: false },
   });
   const session = seedSession(harness.deps, host.id);
   return {

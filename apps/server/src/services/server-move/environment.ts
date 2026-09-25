@@ -83,7 +83,7 @@ export function resumeServerMoveDeferredWork(
   for (const hostId of deps.hub.listConnectedHostIds()) {
     const daemonSessionId = deps.hub.getDaemonSessionIdForHost(hostId);
     if (daemonSessionId !== null) {
-      deps.terminalSessions.expireDisconnectedHostTerminals({
+      deps.terminalSessions.reconcileDisconnectedHostTerminals({
         daemonSessionId,
         hostId,
       });

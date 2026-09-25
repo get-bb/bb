@@ -392,6 +392,10 @@ export class NotificationHub implements DbNotifier {
     );
   }
 
+  hasTerminalClients(terminalId: string): boolean {
+    return (this.terminalClientSocketsById.get(terminalId)?.size ?? 0) > 0;
+  }
+
   sendTerminalClientMessage(
     terminalId: string,
     message: TerminalServerMessage,

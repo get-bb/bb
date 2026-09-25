@@ -170,7 +170,7 @@ function markDaemonTerminalSessionsDisconnected(
       kind: "daemon",
       statuses: ["starting", "running"],
     },
-    update: { kind: "disconnect" },
+    update: { kind: "disconnect", retainDaemonSession: false },
   });
 }
 
@@ -197,7 +197,7 @@ function setup(): TerminalSessionFixture {
     source: { type: "local_path", hostId: host.id, path: "/tmp/project" },
   });
   const environment = createEnvironment(db, noopNotifier, {
-      providerOwnsPath: false,
+    providerOwnsPath: false,
     projectId: project.id,
     hostId: host.id,
     path: "/tmp/workspace",
@@ -257,9 +257,9 @@ describe("terminal sessions", () => {
     const threadTerminal = createStartingTerminal(fixture);
     const threadlessTerminal = createStartingThreadlessTerminal(fixture);
 
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({ id: threadTerminal.id }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [expect.objectContaining({ id: threadTerminal.id })],
+    );
     expect(
       listThreadlessTerminalSessionsByEnvironment(
         fixture.db,
@@ -349,14 +349,16 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        closeReason: "thread-deleted",
-        daemonSessionId: null,
-        status: "exited",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          closeReason: "thread-deleted",
+          daemonSessionId: null,
+          status: "exited",
+        }),
+      ],
+    );
   });
 
   it("marks a terminal dirty on first user input only", () => {
@@ -380,12 +382,14 @@ describe("terminal sessions", () => {
       updatedAt: 10,
     });
     expect(secondInput).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        lastUserInputAt: 10,
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          lastUserInputAt: 10,
+        }),
+      ],
+    );
   });
 
   it("does not resurrect a terminal exited by environment destruction", () => {
@@ -406,14 +410,16 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        closeReason: "environment-destroyed",
-        daemonSessionId: null,
-        status: "exited",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          closeReason: "environment-destroyed",
+          daemonSessionId: null,
+          status: "exited",
+        }),
+      ],
+    );
   });
 
   it("does not resurrect a terminal disconnected from its daemon session", () => {
@@ -433,13 +439,15 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        daemonSessionId: null,
-        status: "disconnected",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          daemonSessionId: null,
+          status: "disconnected",
+        }),
+      ],
+    );
   });
 
   it("lists starting, running, and disconnected terminals as visible", () => {
@@ -527,12 +535,14 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        daemonSessionId: fixture.session.id,
-        status: "starting",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          daemonSessionId: fixture.session.id,
+          status: "starting",
+        }),
+      ],
+    );
   });
 });
