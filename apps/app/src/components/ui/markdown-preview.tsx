@@ -33,7 +33,7 @@ import type {
   UrlTransform,
 } from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -265,7 +265,6 @@ type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> &
   ExtraProps & {
     "data-markdown-image-offset"?: number;
-    "data-markdown-video"?: boolean;
   };
 type MarkdownImageRenderAttributes = Omit<
   MarkdownImageProps,
@@ -292,7 +291,47 @@ const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
-  rehypeSanitize,
+  [
+    rehypeSanitize,
+    {
+      ...defaultSchema,
+      tagNames: [
+        ...(defaultSchema.tagNames ?? []),
+        "video",
+        "bb-thread-mention",
+        "bb-prompt-mention",
+        "bb-message-directive",
+      ],
+      protocols: { ...defaultSchema.protocols, poster: ["http", "https"] },
+      attributes: {
+        ...defaultSchema.attributes,
+        source: [
+          ...(defaultSchema.attributes?.source ?? []),
+          "src",
+          "type",
+          "media",
+        ],
+        video: [
+          "src",
+          "controls",
+          "playsInline",
+          "preload",
+          "poster",
+          "width",
+          "height",
+          "title",
+          "ariaLabel",
+        ],
+        "bb-thread-mention": [
+          "dataThreadId",
+          "dataRawThreadId",
+          "dataRawThreadInlineCode",
+        ],
+        "bb-prompt-mention": ["dataMentionIndex"],
+        "bb-message-directive": ["dataDirectiveIndex"],
+      },
+    },
+  ],
 ];
 
 const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
@@ -521,11 +560,6 @@ function buildLocalAwareUrlTransform({
   localImageRouting,
 }: BuildLocalAwareUrlTransformArgs): UrlTransform {
   return (value, key, node) => {
-    if (key === "src" && node.tagName === "img") {
-      node.properties["data-markdown-video"] = /\.(?:mp4|webm|ogv|mov)$/iu.test(
-        value.split(/[?#]/u, 1)[0] ?? "",
-      );
-    }
     if (key === "href" && localFileRouting !== undefined) {
       const localFile = resolveMarkdownLocalFileTarget(
         value,
@@ -537,7 +571,10 @@ function buildLocalAwareUrlTransform({
       }
     }
 
-    if (key === "src" && localImageRouting !== undefined) {
+    if (
+      (key === "src" || (key === "poster" && node.tagName === "video")) &&
+      localImageRouting !== undefined
+    ) {
       const localImage = resolveMarkdownLocalFileTarget(
         value,
         localImageRouting.absolutePaths,
@@ -1248,32 +1285,13 @@ function buildMarkdownComponents({
     className: _className,
     node,
     "data-markdown-image-offset": pieceOffset,
-    "data-markdown-video": isVideo,
     ...imageAttributes
   }: MarkdownImageProps) {
     if (imagePolicy === "alt-text") {
       return (
         <span data-markdown-image-fallback="">
-          [{isVideo ? "Video" : "Image"}:{" "}
-          {typeof alt === "string" && alt.length > 0
-            ? alt
-            : isVideo
-              ? "video"
-              : "image"}
-          ]
+          [Image: {typeof alt === "string" && alt.length > 0 ? alt : "image"}]
         </span>
-      );
-    }
-    if (isVideo && typeof src === "string" && src.length > 0) {
-      return (
-        <video
-          src={src}
-          aria-label={alt || imageAttributes.title || "Video"}
-          controls
-          playsInline
-          preload="metadata"
-          className="my-2 max-h-[max(384px,50vh)] max-w-full"
-        />
       );
     }
     const sourceOffset = pieceOffset ?? node?.position?.start.offset;
@@ -1289,6 +1307,39 @@ function buildMarkdownComponents({
         setExpandedImage={setExpandedImage}
         src={src}
       />
+    );
+  }
+
+  function MarkdownVideo({
+    node: _node,
+    children,
+    src,
+    poster,
+    controls = true,
+    playsInline = true,
+    preload = "metadata",
+    width,
+    height,
+    title,
+    "aria-label": label,
+  }: ComponentPropsWithoutRef<"video"> & ExtraProps) {
+    if (imagePolicy === "alt-text") {
+      return <span>[Video: {label || title || "video"}]</span>;
+    }
+    return (
+      <video
+        src={src}
+        poster={poster}
+        aria-label={label || title || "Video"}
+        controls={controls}
+        playsInline={playsInline}
+        preload={preload}
+        width={width}
+        height={height}
+        className="my-2 max-h-[max(384px,50vh)] max-w-full"
+      >
+        {children}
+      </video>
     );
   }
 
@@ -1325,6 +1376,7 @@ function buildMarkdownComponents({
     p: MarkdownParagraph,
     pre: MarkdownPre,
     source: MarkdownSource,
+    video: MarkdownVideo,
     table: MarkdownTable,
     td: MarkdownTableCell,
     th: MarkdownTableHeader,
@@ -1641,8 +1693,9 @@ function MarkdownPreviewComponent({
   const [expandedImage, setExpandedImage] =
     useState<ExpandedMarkdownImage | null>(null);
   const [markdownPieceCache] = useState(createMarkdownPieceCache);
+  const rendersHtml = allowHtml && content.includes("<");
   const usesIncrementalBlocks =
-    incrementalBlocks && !allowHtml && promptMentions === undefined;
+    incrementalBlocks && !rendersHtml && promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1773,18 +1826,20 @@ function MarkdownPreviewComponent({
   );
   const resolvedUrlTransform = useMemo(
     () =>
-      buildLocalAwareUrlTransform({
-        fallbackUrlTransform: urlTransform,
-        localFileRouting,
-        localImageRouting,
-      }),
+      localFileRouting || localImageRouting
+        ? buildLocalAwareUrlTransform({
+            fallbackUrlTransform: urlTransform,
+            localFileRouting,
+            localImageRouting,
+          })
+        : urlTransform,
     [localFileRouting, localImageRouting, urlTransform],
   );
 
   const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
   const rehypePlugins = useMemo(
-    () => resolveRehypePlugins({ allowHtml, rehypeKatex }),
-    [allowHtml, rehypeKatex],
+    () => resolveRehypePlugins({ allowHtml: rendersHtml, rehypeKatex }),
+    [rendersHtml, rehypeKatex],
   );
 
   const markdownPieceRenderConfig = useMemo(

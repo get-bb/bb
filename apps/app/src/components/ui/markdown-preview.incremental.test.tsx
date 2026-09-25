@@ -122,12 +122,18 @@ const threadById = new Map([[mentionedThread.id, mentionedThread]]);
 const rawThreadId = "thr_dcwivn5n8w";
 
 interface PreviewTreeArgs {
+  allowHtml?: boolean;
   content: string;
   leg: PreviewLeg;
   wrapper: (props: { children: ReactNode }) => ReactNode;
 }
 
-function PreviewTree({ content, leg, wrapper: Wrapper }: PreviewTreeArgs) {
+function PreviewTree({
+  content,
+  leg,
+  wrapper: Wrapper,
+  allowHtml = false,
+}: PreviewTreeArgs) {
   return (
     <Wrapper>
       <MemoryRouter>
@@ -139,6 +145,7 @@ function PreviewTree({ content, leg, wrapper: Wrapper }: PreviewTreeArgs) {
           >
             <MarkdownPreview
               content={content}
+              allowHtml={allowHtml}
               incrementalBlocks={leg === "incremental"}
               linkRouting={linkRouting}
               messageDirectives={messageDirectives[leg]}
@@ -270,6 +277,24 @@ afterEach(() => {
 });
 
 describe("MarkdownPreview incremental blocks", () => {
+  it("preserves directives and thread mentions alongside sanitized HTML video", () => {
+    const { container } = render(
+      <PreviewTree
+        allowHtml
+        leg="legacy"
+        wrapper={({ children }) => <div>{children}</div>}
+        content={
+          '<video src="https://example.com/clip.mp4" controls></video>\n\n::inline-vis{file="a.html"}\n\n@thread:thr_mentioned'
+        }
+      />,
+    );
+    expect(container.querySelector("video")).not.toBeNull();
+    expect(
+      within(container).getByTestId("inline-vis").getAttribute("data-file"),
+    ).toBe("a.html");
+    expect(container.textContent).toContain("Related thread");
+  });
+
   it.each(CURATED_DOCUMENTS)(
     "renders the same DOM as a single document at every line step: %s",
     (_label, document) => {

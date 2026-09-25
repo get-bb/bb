@@ -39,7 +39,7 @@ bb replaces that leaf with this plugin's React component, which:
    cookies, or storage. Remote scripts, styles, images, fonts, media, fetches,
    and WebSockets work subject to ordinary browser CORS, mixed-content, and
    remote-server policies.
-5. Renders Markdown files with bb's Markdown renderer. Raw HTML is disabled.
+5. Renders Markdown files with bb's Markdown renderer. HTML is sanitized by the shared renderer.
 
 ## Backend security
 
