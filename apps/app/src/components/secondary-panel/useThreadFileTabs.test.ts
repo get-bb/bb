@@ -590,10 +590,10 @@ describe("useThreadFileTabs terminal pruning", () => {
     expect(syncMocks.scheduleThreadTabsPersistence).not.toHaveBeenCalled();
   });
 
-  it("drops disconnected terminal tabs when not retained", async () => {
-    const threadId = "terminal-prune-unretained";
-    const disconnectedTab = createTerminalFixedPanelTab({
-      terminalId: "term_disconnected",
+  it("drops terminal tabs whose sessions exited", async () => {
+    const threadId = "terminal-prune-exited";
+    const exitedTab = createTerminalFixedPanelTab({
+      terminalId: "term_exited",
     });
     const runningTab = createTerminalFixedPanelTab({
       terminalId: "term_running",
@@ -602,7 +602,7 @@ describe("useThreadFileTabs terminal pruning", () => {
       secondary: {
         activeTabId: runningTab.id,
         isOpen: true,
-        tabs: [disconnectedTab, runningTab],
+        tabs: [exitedTab, runningTab],
       },
       lastUsedAt: Date.now(),
     });
@@ -619,8 +619,8 @@ describe("useThreadFileTabs terminal pruning", () => {
         storageFiles: undefined,
         terminalSessions: [
           terminalSession({
-            id: "term_disconnected",
-            status: "disconnected",
+            id: "term_exited",
+            status: "exited",
           }),
           terminalSession({ id: "term_running" }),
         ],
@@ -634,8 +634,8 @@ describe("useThreadFileTabs terminal pruning", () => {
     });
   });
 
-  it("keeps a retained disconnected terminal tab", async () => {
-    const threadId = "terminal-prune-retained";
+  it("keeps a disconnected terminal tab so it can reattach", async () => {
+    const threadId = "terminal-prune-disconnected";
     const disconnectedTab = createTerminalFixedPanelTab({
       terminalId: "term_disconnected",
     });
@@ -661,7 +661,6 @@ describe("useThreadFileTabs terminal pruning", () => {
         panelStateId: threadId,
         syncThreadId: threadId,
         environmentId: "env_current",
-        retainedTerminalId: "term_disconnected",
         storageFiles: undefined,
         terminalSessions: [
           terminalSession({
