@@ -395,6 +395,27 @@ describe("plugin service", () => {
     expect(globals.esmReloader).toBe("entry2:sub2");
   });
 
+  it("runs a CommonJS entry whose module.exports is the factory", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-cjs-factory",
+      serverSource: "",
+      bb: { server: "./server.cjs" },
+    });
+    await writeFile(
+      join(rootDir, "server.cjs"),
+      `module.exports = function plugin() {
+         globalThis.cjsFactoryLoads = (globalThis.cjsFactoryLoads ?? 0) + 1;
+       };\n`,
+    );
+    const globals = globalThis as Record<string, unknown>;
+    delete globals.cjsFactoryLoads;
+
+    const entry = await service.installPath(rootDir);
+
+    expect(entry.status).toBe("running");
+    expect(globals.cjsFactoryLoads).toBe(1);
+  });
+
   it("reload re-reads a plugin's CommonJS children", async () => {
     const rootDir = join(workDir, "bb-plugin-cjs-child");
     await writeEsmPlugin(rootDir, "cjs-child");

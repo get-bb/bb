@@ -1773,7 +1773,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         mod = (await jiti.import(serverEntry.path)) as { default?: unknown };
       } else if (serverEntry.loader === "cjs") {
         try {
-          mod = runtimeRequire(serverEntry.path) as { default?: unknown };
+          const exported: unknown = runtimeRequire(serverEntry.path);
+          mod =
+            typeof exported === "function"
+              ? { default: exported }
+              : (exported as { default?: unknown });
         } finally {
           const entry = runtimeRequire.cache[serverEntry.path];
           if (entry !== undefined) detachCommonJsModule(entry);
