@@ -10,7 +10,7 @@ Superset and bb both run Claude Code, Codex, and other coding agents in parallel
 **Pick bb if you want:**
 
 - Claude Code and Codex (plus Cursor, Pi, OpenCode, Grok, and others) to work on the same task and hand off to each other.
-- Everything free: phone access, automations, and extra machines are not behind a paid plan.
+- Everything free: phone access and automations are not behind a paid plan.
 - An app you can extend with plugins, including ones your agents write.
 - Windows through WSL2, or Linux (alpha).
 
@@ -47,7 +47,7 @@ What you skip compared with two terminals: pasting diffs and review notes betwee
 | **Ways to drive it** | Desktop app, web app, `bb` CLI, and HTTP API                                                                                                                                             | Desktop app, CLI, and MCP server                                                                                                |
 | **From your phone**  | The full web app in your phone's browser through bb Connect, with notifications while a bb tab is open. Free. A native iOS app with push is in early access                              | iPhone app on iOS 26+, with the Pro plan                                                                                        |
 | **Automation**       | Scheduled and repeating agent runs or scripts. Free                                                                                                                                      | Automations and scheduled sessions, with the Pro plan                                                                           |
-| **Other machines**   | Enroll more machines and run threads on any of them from one bb. Free                                                                                                                    | Remote access with the Pro plan                                                                                                 |
+| **Other machines**   | Enroll more machines and run threads on any of them from one bb. Free                                                                                                                    | Connect to remote hosts on any plan (since July 2026)                                                                           |
 | **Extending it**     | Plugins from the [plugin gallery](https://getbb.app/marketplace), or ones your agents write inside bb                                                                                    | Themes from its marketplace. Scripting through its SDK, CLI, and MCP server                                                     |
 | **Platforms**        | macOS (Apple Silicon). Linux is alpha. Intel Macs and Windows (WSL2) through `npx`                                                                                                       | macOS. Linux is experimental. No Windows                                                                                        |
 | **Price**            | Free, MIT license. No paid tier                                                                                                                                                          | Free plan for 1 user: local workspaces, desktop app, CLI, GitHub integration. Pro is $20 per user per month ($15 billed yearly) |
