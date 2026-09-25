@@ -8,21 +8,42 @@
 
 `packages/shared-ui` has 253 components. Building a bb plugin means knowing
 what's available and how it's actually used — today there's no way to browse
-that. Two prior efforts touched adjacent ground and are both explicitly
-**not** the basis for this one:
+that.
 
-- `design-sync/bb-shared-ui-pilot` — hand-authored `.design-sync/previews/*.tsx`
-  for 48/253 components, built toward syncing `@bb/shared-ui` to
-  claude.ai/design with screenshot-graded fidelity verification.
-- `shared-ui-ladle-stories-icon-textarea` (PR #4286) — atomic, capped-at-6,
-  per-state Ladle stories for Icon and Textarea, built for the same
-  design-sync grading pipeline.
+This catalog is browsable via **[Ladle](https://ladle.dev)**, a Vite-based
+component-story dev tool (same category as Storybook). This repo already
+runs it — `pnpm run storybook` in `apps/app` is an alias for `ladle serve`
+— currently for 112 app-level components, none from `packages/shared-ui`.
+
+Two prior efforts touched adjacent ground and are both explicitly **not**
+the basis for this one. Both exist to feed
+**[claude.ai/design](https://claude.ai/design)** — Anthropic's product for
+AI-assisted UI design, which can build real interfaces from a synced
+design system. bb's internal project for that sync is called
+**"design-sync"**; the actual conversion script bundle it uses internally
+is a vendored tool called **`.ds-sync`**. None of those three things
+(claude.ai/design the product, "design-sync" the bb project, `.ds-sync`
+the tool) are this spec's concern — flagged here only so later mentions
+in this doc are unambiguous:
+
+- `design-sync/bb-shared-ui-pilot` (branch) — hand-authored
+  `.design-sync/previews/*.tsx` for 48/253 components, built toward
+  syncing `@bb/shared-ui` to [claude.ai/design](https://claude.ai/design)
+  with screenshot-graded fidelity verification.
+- `shared-ui-ladle-stories-icon-textarea` (branch;
+  [PR #4286](https://github.com/get-bb/bb/pull/4286)) — atomic,
+  capped-at-6, per-state Ladle stories for Icon and Textarea, built for
+  the same design-sync grading pipeline described above.
 
 Both were shaped by design-sync's grading requirements (per-story
 screenshot comparison needs one named export per distinct visual state).
-This effort drops that requirement entirely — no grading, no design-sync
-upload, no atomic split, no story cap — and starts over on a clean branch.
-Both prior branches stay parked, untouched, revisited later if ever.
+This effort drops that requirement entirely — no grading, no
+claude.ai/design upload, no atomic split, no story cap — and starts over
+on a clean branch, `shared-ui-component-catalog`, cut directly from
+`main`. **Neither prior branch's files exist on this branch** — `.ds-sync/`,
+`.design-sync/`, and their prior spec are only reachable by checking out
+those other branches; they stay parked there, untouched, revisited later
+if ever.
 
 A baseline already exists independent of both branches: on `main`, 8 of 253
 components (Button, Icon, Input, Pill, Tooltip, ResourceList, Switch,
@@ -42,15 +63,18 @@ isolation.
 
 ## Non-goals
 
-- **design-sync / claude.ai upload** — not a target. If it resumes later,
-  it decides independently whether these stories are sufficient input.
+- **design-sync / [claude.ai/design](https://claude.ai/design) upload** —
+  not a target (see Background for what those terms mean). If it resumes
+  later, it decides independently whether these stories are sufficient
+  input.
 - **Pixel-fidelity grading** — no compare/grade loop, no screenshot
   verification.
-- **Citability / cross-doc linking** (e.g. `plugin-api-docs` linking to a
-  specific component's story) — deferred to a later phase once more is
-  known about how the docs/website side works. This spec produces the
-  catalog itself, browsable via Ladle's own UI; it doesn't design how
-  other docs reference it.
+- **Citability / cross-doc linking** (e.g. `plugin-api-docs` — the
+  in-repo "Plugin Guide" app that documents Plugin SDK surfaces —
+  linking to a specific component's story) — deferred to a later phase
+  once more is known about how the docs/website side works. This spec
+  produces the catalog itself, browsable via Ladle's own UI; it doesn't
+  design how other docs reference it.
 - **Coverage or freshness enforcement beyond a build check** — see CI
   section. No automated drift detection for "this component gained a new
   real usage pattern."
@@ -58,10 +82,12 @@ isolation.
 ## Content convention
 
 One `Overview` story per component, rendered via `StoryCard`/`StoryRow`
-(`apps/app/.ladle/story-card.tsx`) when a component has more than one
-real pattern worth showing, or a plain render when it has exactly one.
-No atomic per-state split, no story cap — those existed solely to serve
-design-sync's per-story grading and that requirement is gone.
+(`apps/app/.ladle/story-card.tsx` — a small layout helper already used by
+existing app-level stories that renders a labeled list of side-by-side
+variants) when a component has more than one real pattern worth showing,
+or a plain render when it has exactly one. No atomic per-state split, no
+story cap — those existed solely to serve design-sync's per-story grading
+(see Background) and that requirement is gone.
 
 **The content rule that matters most: show components composed together,
 the way they're actually used — not isolated.** A bare `<Icon name="Plus" />`
@@ -90,11 +116,17 @@ from.
 
 ## Scope and priority order
 
-All 253 components, authored once. Priority order reuses the existing
-install-weighted plugin-usage survey
-(`.design-sync/NOTES.md` on `design-sync/bb-shared-ui-pilot`,
-2026-09-16, 197 marketplace plugins + in-repo plugins) — this ordering
-logic is independent of the grading rationale that's been dropped:
+All 253 components, authored once. Priority order below reuses the
+existing plugin-usage survey's conclusions (numbers restated here so this
+list is self-contained) — this ordering logic is independent of the
+grading rationale that's been dropped, only the numbers are inherited.
+The survey itself is "install-weighted": for each shared-ui component, it
+counted how many marketplace plugins (weighted by that plugin's install
+count) actually use it, across 197 marketplace plugins plus bb's own
+in-repo plugins, run 2026-09-16. **The survey file
+(`.design-sync/NOTES.md`) only exists on `design-sync/bb-shared-ui-pilot`,
+not on this branch** — to see the full methodology or re-derive it,
+`git show design-sync/bb-shared-ui-pilot:.design-sync/NOTES.md`.
 
 1. Select\* (7 components, 25% of installs), DropdownMenu\* (12, 22%),
    Dialog\* (8, 21%) — highest install-weighted reach with zero existing
@@ -105,27 +137,34 @@ logic is independent of the grading rationale that's been dropped:
    82/253 have marketplace usage).
 5. Zero-usage components (`Resource*`, most `Data display`) last.
 
-Icon and Textarea (PR #4286) are out of scope here — that PR's atomic
-stories stay as-is, undecided, on their own branch. If this effort later
-wants Icon/Textarea to match the new `Overview` convention, that's a
-separate follow-up, not part of this pass.
+Icon and Textarea ([PR #4286](https://github.com/get-bb/bb/pull/4286))
+are out of scope here — that PR's atomic stories stay as-is, undecided,
+on their own branch (`shared-ui-ladle-stories-icon-textarea`). If this
+effort later wants Icon/Textarea to match the new `Overview` convention,
+that's a separate follow-up, not part of this pass.
 
 ## Generation approach
 
 Agent-driven (subagent-driven-development / fan-out), not a mechanical
 script. Picking "which real call site is representative" and "how much
-surrounding composition to keep" is a judgment call a script can't make —
-the same grep-and-read process PR #4286 used for Icon/Textarea, applied
-without the atomic/cap/grading constraints that made it heavier than it
-needed to be.
+surrounding composition to keep" is a judgment call a script can't make:
+grep `plugins/*` for real usages of the target component, read the
+surrounding JSX to find the most representative real pattern, and write
+a story that preserves it. That's the same process
+[PR #4286](https://github.com/get-bb/bb/pull/4286) used for Icon and
+Textarea, just without the atomic/cap/grading constraints that made it
+heavier than it needed to be.
 
 ## Location and format
 
 Co-located: `packages/shared-ui/src/components/ui/<name>.stories.tsx`,
 title `"shared-ui/<Name>"`. Matches the existing project convention
-("stories are co-located with the component") and the title namespace
-choice from the prior spec (kept for consistency, not because
-`.ds-sync`'s title-collision handling matters here anymore — it doesn't).
+("stories are co-located with the component") and the same title
+namespace used by
+`docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md`
+(on branch `shared-ui-ladle-stories-icon-textarea`, not present here) —
+kept purely for naming consistency with that prior effort, not for any
+technical reason tied to it.
 
 ## CI
 
@@ -133,8 +172,10 @@ choice from the prior spec (kept for consistency, not because
 compiles and renders without error. This is a build-health gate only: it
 does not check coverage (a component missing a story doesn't fail CI) and
 does not check freshness (a story that's drifted from current real usage
-doesn't fail CI). Matches what the prior spec called "sub-project 2 (CI
-integration)," now folded into this effort instead of deferred.
+doesn't fail CI). The 2026-09-24 predecessor spec (see Location and
+format above) called this same idea "sub-project 2 (CI integration)" and
+deferred it as separate, independent work; this spec folds it in as a
+first-class part of the design instead.
 
 ## AGENTS.md convention
 
