@@ -26,14 +26,17 @@ is a vendored tool called **`.ds-sync`**. None of those three things
 the tool) are this spec's concern — flagged here only so later mentions
 in this doc are unambiguous:
 
-- `design-sync/bb-shared-ui-pilot` (branch) — hand-authored
-  `.design-sync/previews/*.tsx` for 48/253 components, built toward
-  syncing `@bb/shared-ui` to [claude.ai/design](https://claude.ai/design)
-  with screenshot-graded fidelity verification.
-- `shared-ui-ladle-stories-icon-textarea` (branch;
-  [PR #4286](https://github.com/get-bb/bb/pull/4286)) — atomic,
-  capped-at-6, per-state Ladle stories for Icon and Textarea, built for
-  the same design-sync grading pipeline described above.
+- [`design-sync/bb-shared-ui-pilot`](https://github.com/technicalpickles/bb/tree/design-sync/bb-shared-ui-pilot)
+  (branch, on Josh's fork `technicalpickles/bb` — not on `get-bb/bb`) —
+  hand-authored `.design-sync/previews/*.tsx` for 48/253 components,
+  built toward syncing `@bb/shared-ui` to
+  [claude.ai/design](https://claude.ai/design) with screenshot-graded
+  fidelity verification.
+- [`shared-ui-ladle-stories-icon-textarea`](https://github.com/technicalpickles/bb/tree/shared-ui-ladle-stories-icon-textarea)
+  (branch, same fork; [PR #4286](https://github.com/get-bb/bb/pull/4286)
+  opened from it against `get-bb/bb:main`) — atomic, capped-at-6,
+  per-state Ladle stories for Icon and Textarea, built for the same
+  design-sync grading pipeline described above.
 
 Both were shaped by design-sync's grading requirements (per-story
 screenshot comparison needs one named export per distinct visual state).
@@ -124,9 +127,12 @@ The survey itself is "install-weighted": for each shared-ui component, it
 counted how many marketplace plugins (weighted by that plugin's install
 count) actually use it, across 197 marketplace plugins plus bb's own
 in-repo plugins, run 2026-09-16. **The survey file
-(`.design-sync/NOTES.md`) only exists on `design-sync/bb-shared-ui-pilot`,
+(`.design-sync/NOTES.md`) only exists on
+[`design-sync/bb-shared-ui-pilot`](https://github.com/technicalpickles/bb/tree/design-sync/bb-shared-ui-pilot),
 not on this branch** — to see the full methodology or re-derive it,
-`git show design-sync/bb-shared-ui-pilot:.design-sync/NOTES.md`.
+`git show design-sync/bb-shared-ui-pilot:.design-sync/NOTES.md` (that
+branch needs to be fetched from the `technicalpickles/bb` fork first if
+it isn't already a local remote-tracking branch).
 
 1. Select\* (7 components, 25% of installs), DropdownMenu\* (12, 22%),
    Dialog\* (8, 21%) — highest install-weighted reach with zero existing
@@ -139,9 +145,10 @@ not on this branch** — to see the full methodology or re-derive it,
 
 Icon and Textarea ([PR #4286](https://github.com/get-bb/bb/pull/4286))
 are out of scope here — that PR's atomic stories stay as-is, undecided,
-on their own branch (`shared-ui-ladle-stories-icon-textarea`). If this
-effort later wants Icon/Textarea to match the new `Overview` convention,
-that's a separate follow-up, not part of this pass.
+on their own branch
+([`shared-ui-ladle-stories-icon-textarea`](https://github.com/technicalpickles/bb/tree/shared-ui-ladle-stories-icon-textarea)).
+If this effort later wants Icon/Textarea to match the new `Overview`
+convention, that's a separate follow-up, not part of this pass.
 
 ## Generation approach
 
@@ -161,7 +168,7 @@ Co-located: `packages/shared-ui/src/components/ui/<name>.stories.tsx`,
 title `"shared-ui/<Name>"`. Matches the existing project convention
 ("stories are co-located with the component") and the same title
 namespace used by
-`docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md`
+[`docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md`](https://github.com/technicalpickles/bb/blob/shared-ui-ladle-stories-icon-textarea/docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md)
 (on branch `shared-ui-ladle-stories-icon-textarea`, not present here) —
 kept purely for naming consistency with that prior effort, not for any
 technical reason tied to it.
