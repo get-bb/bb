@@ -137,9 +137,7 @@ function toWorkspaceArgs(
   return { ...workspace, baseBranch: { kind: "default" } };
 }
 
-export function requireEnvironmentMergeBaseBranch(
-  environment: Environment,
-): string {
+function requireEnvironmentMergeBaseBranch(environment: Environment): string {
   const mergeBaseBranch = resolveEnvironmentMergeBaseBranch(environment);
   if (!mergeBaseBranch) {
     throw new Error(`Environment ${environment.id} has no merge base branch`);

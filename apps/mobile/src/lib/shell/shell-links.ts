@@ -17,16 +17,16 @@ const NATIVE_ONLY_PREFIXES = [
   "/settings/notifications",
 ] as const;
 
-export function isNativeOnlyShellPath(path: string): boolean {
+function isNativeOnlyShellPath(path: string): boolean {
   return pathMatchesPrefix(path, NATIVE_ONLY_PREFIXES);
 }
 
-export interface ShellHrefParams {
+interface ShellHrefParams {
   profileId: string | null;
   path: string;
 }
 
-export function shellHref({ profileId, path }: ShellHrefParams): string {
+function shellHref({ profileId, path }: ShellHrefParams): string {
   const params = new URLSearchParams();
   if (profileId !== null) params.set("profileId", profileId);
   if (path !== "/") params.set("path", path);

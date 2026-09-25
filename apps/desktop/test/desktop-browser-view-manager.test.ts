@@ -22,7 +22,6 @@ import type { DesktopBrowserCdpPage } from "../src/desktop-browser-cdp.js";
 import {
   browserPageEvaluationSource,
   createDesktopBrowserViewManager as createProductionDesktopBrowserViewManager,
-  isAllowedBrowserPermission,
   type CreateDesktopBrowserViewManagerArgs,
   type DesktopBrowserViewManager,
   type DesktopBrowserHostContentBounds,
@@ -3844,12 +3843,6 @@ describe("DesktopBrowserViewManager", () => {
   });
 
   it("allows clipboard-sanitized-write but denies clipboard-read and device permissions", () => {
-    expect(isAllowedBrowserPermission("clipboard-sanitized-write")).toBe(true);
-    expect(isAllowedBrowserPermission("clipboard-read")).toBe(false);
-    expect(isAllowedBrowserPermission("media")).toBe(false);
-    expect(isAllowedBrowserPermission("notifications")).toBe(false);
-    expect(isAllowedBrowserPermission("geolocation")).toBe(false);
-
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -3877,20 +3870,23 @@ describe("DesktopBrowserViewManager", () => {
       throw new Error("Expected permission handlers to be registered.");
     }
 
-    expect(checkHandler(null, "clipboard-sanitized-write")).toBe(true);
-    expect(checkHandler(null, "clipboard-read")).toBe(false);
-    expect(checkHandler(null, "media")).toBe(false);
+    const permissions = [
+      "clipboard-sanitized-write",
+      "clipboard-read",
+      "media",
+      "notifications",
+      "geolocation",
+    ];
+    expect(
+      permissions.map((permission) => checkHandler(null, permission)),
+    ).toEqual([true, false, false, false, false]);
 
     const requestGrants: boolean[] = [];
-    requestHandler(null, "clipboard-sanitized-write", (granted) => {
-      requestGrants.push(granted);
-    });
-    requestHandler(null, "clipboard-read", (granted) => {
-      requestGrants.push(granted);
-    });
-    requestHandler(null, "media", (granted) => {
-      requestGrants.push(granted);
-    });
-    expect(requestGrants).toEqual([true, false, false]);
+    for (const permission of permissions) {
+      requestHandler(null, permission, (granted) => {
+        requestGrants.push(granted);
+      });
+    }
+    expect(requestGrants).toEqual([true, false, false, false, false]);
   });
 });

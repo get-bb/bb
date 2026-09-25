@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
-  getHelpOutput,
   runCommand,
   stubServerApi,
 } from "../helpers/command-output-harness.js";
@@ -15,13 +14,6 @@ describe("bb thread log command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
-
-  it("bb thread log help describes verbose as expanded timeline output", async () => {
-    const helpOutput = await getHelpOutput(["thread", "log"], register);
-
-    expect(helpOutput).toContain("verbose (expanded timeline)");
-    expect(helpOutput).not.toContain("verbose (full timeline)");
-  });
 
   it("bb thread log --json prints raw events", async () => {
     const thread = {

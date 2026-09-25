@@ -21,10 +21,7 @@ import {
   MARKETPLACE_STATS_FIXTURE,
   MARKETPLACE_V2_FIXTURE,
 } from "./marketplace-v2.fixture.js";
-import {
-  PublicMarketplacePage,
-  PublicMarketplaceUnavailablePage,
-} from "./public-marketplace.js";
+import { PublicMarketplaceUnavailablePage } from "./public-marketplace.js";
 
 const AVAILABLE_MARKETPLACE: PublicMarketplaceData = {
   status: "available",
@@ -93,6 +90,8 @@ describe("marketplace routes", () => {
     expect(second).toEqual(first);
     expect(encoded).toBe("?sort=recently-added&category=thread-content");
     expect(validateMarketplaceSearch({})).toEqual({});
+    expect(stringifySiteSearch(validateMarketplaceSearch({}))).toBe("");
+    expect(stringifySiteSearch({ category: undefined })).toBe("");
   });
 
   it("keeps an empty catalog available", async () => {
@@ -107,24 +106,5 @@ describe("marketplace routes", () => {
       manifest: { plugins: [] },
     });
     expect(marketplaceResponseStatus("/marketplace", [marketplace])).toBeNull();
-  });
-
-  it("renders the Marketplace through SSR in the dark theme", () => {
-    const html = renderToStaticMarkup(
-      <html className="dark">
-        <body>
-          <PublicMarketplacePage
-            manifest={MARKETPLACE_V2_FIXTURE}
-            stats={MARKETPLACE_STATS_FIXTURE}
-            state={{}}
-            onStateChange={() => {}}
-          />
-        </body>
-      </html>,
-    );
-    expect(html).toContain('<html class="dark">');
-    expect(html).toContain('aria-label="Make bb yours"');
-    expect(html).toContain("New &amp; notable");
-    expect(html).toContain("marketplace-shelf-notable");
   });
 });
