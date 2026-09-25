@@ -2866,8 +2866,8 @@ its owner through the queued row's existing `waitingOn` value. Backed host-side
 by an optional `submit` on the internal
 `PluginComposerHost`, supplied by the thread and new-thread composers. Rejects
 with a user-presentable message when the composer cannot submit and restores
-the draft after request failure. Consumers: `plugins/scheduled-send` and
-`plugins/drafts`.
+the draft after request failure. Consumer: `plugins/scheduled-send`, which uses
+`sendAt`; no first-party plugin uses `experimental_data`.
 
 **Audit before stabilizing.**
 

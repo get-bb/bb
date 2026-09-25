@@ -1012,8 +1012,8 @@ describe("ThreadDetailPromptArea", () => {
       screen.getByRole("button", { name: "Capture plugin host" }),
     );
     const pluginSubmission = {
-      pluginId: "drafts",
-      data: { kind: "draft" } as const,
+      pluginId: "example-plugin",
+      data: { kind: "hold" } as const,
     };
 
     await act(async () => {

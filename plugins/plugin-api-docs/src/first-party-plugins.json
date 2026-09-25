@@ -35,11 +35,6 @@
     "icon": "FileText"
   },
   {
-    "id": "drafts",
-    "name": "Drafts",
-    "icon": "EditFile"
-  },
-  {
     "id": "monaco-editor",
     "name": "File Editor",
     "icon": "Code"
