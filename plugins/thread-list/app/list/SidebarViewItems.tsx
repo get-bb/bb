@@ -21,6 +21,7 @@ import {
   sidebarSortDirectionAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarShowProviderIconsAtom,
 } from "../preferences/atoms.js";
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
@@ -137,6 +138,9 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
+  const [showProviderIcons, setShowProviderIcons] = useAtom(
+    sidebarShowProviderIconsAtom,
+  );
   const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
@@ -208,6 +212,23 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             By environment
             <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
               {groupByEnvironment && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup aria-label="Rows">
+          <DropdownMenuLabel>Rows</DropdownMenuLabel>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={showProviderIcons}
+            onSelect={(event) => {
+              event.preventDefault();
+              setShowProviderIcons(!showProviderIcons);
+            }}
+          >
+            Provider icons
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {showProviderIcons && <Icon name="Check" className="size-4" />}
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>

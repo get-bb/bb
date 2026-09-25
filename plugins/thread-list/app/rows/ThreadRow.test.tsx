@@ -2,12 +2,14 @@
 
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getDefaultStore } from "jotai";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
   PluginSidebarThreadRowStatus,
+  PluginProvidersState,
 } from "@get-bb/plugin-sdk/app";
 import {
   installTestPluginRuntime,
@@ -17,6 +19,7 @@ import {
 } from "@get-bb/plugin-sdk/testing/app";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import { makeSidebarThread } from "../model/fixtures.js";
+import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -105,6 +108,7 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   pluginStatus?: PluginSidebarThreadRowStatus;
   splitLayout?: PluginSidebarSplitLayout;
   projects?: PluginSidebarProject[];
+  providers?: PluginProvidersState["providers"];
   sdk?: PluginSdkTestFakes;
 }
 
@@ -115,6 +119,7 @@ function renderThreadRow({
   pluginStatus,
   splitLayout,
   projects = [],
+  providers = [],
   sdk,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
@@ -125,6 +130,7 @@ function renderThreadRow({
     { thread, ...harness },
     {
       sidebarThreads: { threads: [thread], projects },
+      providers: { providers },
       sidebarDraftThreadIds: hasComposerDraft ? [thread.id] : [],
       sidebarRowStatuses: pluginStatus ? { [thread.id]: pluginStatus } : {},
       sidebarShortcuts: shortcutKey
@@ -196,9 +202,47 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
+  getDefaultStore().set(sidebarShowProviderIconsAtom, false);
 });
 
 describe("ThreadRow", () => {
+  it("shows a labeled provider icon only for a registered provider when enabled", () => {
+    const provider: PluginProvidersState["providers"][number] = {
+      id: "provider-test",
+      pluginId: "provider-test",
+      displayName: "Test Provider",
+      logoUrl: "/provider-test.svg",
+      available: true,
+      maintenance: { health: false, usage: false, installation: false },
+      capabilities: {
+        supportsThreadArchive: true,
+        supportsThreadRename: true,
+        supportsServiceTier: false,
+        supportsNativeUserQuestion: false,
+        supportsFork: true,
+        supportsSessionRewind: false,
+        modelCatalogScope: "workspace",
+        permissionModes: ["accept-edits", "auto", "full"],
+      },
+      composerActions: [],
+      completedTurnDisplay: "collapse",
+    };
+    const slot = renderThreadRow({ providers: [provider] });
+    expect(slot.container.querySelector("[data-sidebar-thread-provider]")).toBeNull();
+
+    act(() => getDefaultStore().set(sidebarShowProviderIconsAtom, true));
+    expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
+    expect(slot.container.querySelector('[data-provider-logo="/provider-test.svg"]')).toBeTruthy();
+
+    slot.rerenderThreadRow(createThread({ providerId: "missing" }));
+    expect(screen.queryByRole("img", { name: "Test Provider" })).toBeNull();
+    expect(slot.container.querySelector("[data-sidebar-thread-provider]")).toBeNull();
+
+    slot.rerenderThreadRow(createThread());
+    act(() => getDefaultStore().set(sidebarShowProviderIconsAtom, false));
+    expect(slot.container.querySelector("[data-sidebar-thread-provider]")).toBeNull();
+  });
+
   it("links the row to the thread href and leaves a plain click to the host", () => {
     const slot = renderThreadRow({ thread: createThread({ href: "/projects/proj_test/threads/thr_test" }) });
     const link = screen.getByRole("link", { name: "Open Thread" });

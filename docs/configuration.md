@@ -1720,7 +1720,12 @@ takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
 
-### Thread list lifecycle filter
+### Thread list provider icons and lifecycle filter
+
+The Thread list plugin's `showProviderIcons` preference defaults to `false`.
+Organize → Rows → Provider icons or
+`bb thread-list prefs set showProviderIcons true` shows the agent provider
+icon before each thread title. Unknown provider ids have no icon.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with

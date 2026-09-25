@@ -31,6 +31,7 @@ describe("thread-list preferences rpc", () => {
     await expect(harness.behavior.callRpc("listPreferences", null)).resolves.toEqual({
       preferences: defaultPreferences(),
     });
+    expect(defaultPreferences().showProviderIcons).toBe(false);
 
     await expect(
       harness.behavior.callRpc("setPreference", {
@@ -66,6 +67,12 @@ describe("thread-list preferences rpc", () => {
         value: ["project:a", "bogus"],
       }),
     ).rejects.toThrow(/Invalid value for hiddenGroups/);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "showProviderIcons",
+        value: "false",
+      }),
+    ).rejects.toThrow(/Invalid value for showProviderIcons/);
   });
 
   it("dedupes hidden groups and resets to the default", async () => {
@@ -167,6 +174,20 @@ describe("bb thread-list prefs", () => {
 
     const got = await harness.behavior.runCli(["prefs", "get", "organizationMode"]);
     expect(got.stdout).toBe('"project"');
+
+    const iconsOn = await harness.behavior.runCli([
+      "prefs", "set", "showProviderIcons", "true",
+    ]);
+    expect(iconsOn.exitCode).toBe(0);
+    expect(iconsOn.stdout).toBe("showProviderIcons = true");
+    await expect(bb.storage.kv.get("preference:showProviderIcons")).resolves.toBe(true);
+    const resetIcons = await harness.behavior.runCli([
+      "prefs", "reset", "showProviderIcons", "--json",
+    ]);
+    expect(JSON.parse(resetIcons.stdout)).toEqual({
+      key: "showProviderIcons",
+      value: false,
+    });
 
     const bad = await harness.behavior.runCli(["prefs", "set", "organizationMode", "nope"]);
     expect(bad.exitCode).not.toBe(0);
