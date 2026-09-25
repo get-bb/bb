@@ -28,6 +28,8 @@ it("sizes a lazily mounted surface from its clamped panel instead of the saved w
     } = useSecondaryPanelResize({
       isSecondaryPanelOpen: true,
       onPanelWidthChange: () => {},
+      panelId: "secondary",
+      renderAsDrawer: false,
     });
     return (
       <Panel
@@ -61,4 +63,7 @@ it("sizes a lazily mounted surface from its clamped panel instead of the saved w
   expect(surface.style.getPropertyValue("--secondary-swipe-width")).toBe(
     "70cqw",
   );
+  const setProperty = vi.spyOn(surface.style, "setProperty");
+  rerender(<Harness loaded />);
+  expect(setProperty).not.toHaveBeenCalled();
 });

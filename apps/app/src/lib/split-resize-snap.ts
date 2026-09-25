@@ -136,6 +136,8 @@ export function createSplitResizeSnapSession(
   const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
   const gridRect = grid?.getBoundingClientRect() ?? null;
   const extent = axisExtent(divider.getBoundingClientRect(), axis);
+  const usesPanelWidthLimits =
+    axis === "x" && divider.matches("[data-panel-resize-snap-handle]");
   const gridCoordinate =
     gridRect === null
       ? null
@@ -167,10 +169,9 @@ export function createSplitResizeSnapSession(
     resolve: ({ end, pointer, start }) => {
       const span = end - start;
       const contentSpan = span - extent;
-      const panelLimits =
-        axis === "x" && divider.matches("[data-panel-resize-snap-handle]")
-          ? splitWidthLimits(contentSpan)
-          : null;
+      const panelLimits = usesPanelWidthLimits
+        ? splitWidthLimits(contentSpan)
+        : null;
       const clamp = (fraction: number) =>
         panelLimits === null
           ? clampSplitPairFraction(fraction)

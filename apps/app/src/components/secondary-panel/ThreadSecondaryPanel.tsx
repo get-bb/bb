@@ -273,6 +273,8 @@ function ThreadSecondaryPanelContent({
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
+    panelId: resizablePanelId,
+    renderAsDrawer,
   });
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {

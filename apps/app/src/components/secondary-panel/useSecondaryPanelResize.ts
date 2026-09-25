@@ -17,11 +17,15 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
+  panelId: string;
+  renderAsDrawer: boolean;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
   onPanelWidthChange,
+  panelId,
+  renderAsDrawer,
 }: UseSecondaryPanelResizeArgs) {
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
   const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
@@ -100,7 +104,7 @@ export function useSecondaryPanelResize({
       secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
     const size = Number.parseFloat(panel?.style.flexGrow ?? "");
     if (Number.isFinite(size)) handleSecondaryPanelResize(size);
-  });
+  }, [handleSecondaryPanelResize, isSecondaryPanelOpen, panelId, renderAsDrawer]);
 
   return {
     handleSecondaryPanelResize,
