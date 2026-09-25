@@ -319,7 +319,7 @@ export const BB_HOST_DAEMON_AUTO_UPDATE_ENV = defineEnvVar<boolean>({
 export const BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL_ENV =
   defineEnvVar<boolean>({
     description:
-      "Let a host daemon fetch project attachments from a plain-HTTP, non-loopback server URL. Only for private networks where the server is reachable solely over trusted transport (for example an in-cluster Service).",
+      "Let a host daemon fetch project attachments and its own auto-update package from a plain-HTTP, non-loopback server URL. Only for private networks where the server is reachable solely over trusted transport (for example an in-cluster Service). Auto-update still verifies the downloaded package against the server's artifact digest.",
     name: "BB_HOST_DAEMON_ALLOW_INSECURE_SERVER_URL",
     parse: parseBooleanEnvValue,
   });
