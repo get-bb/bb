@@ -1048,6 +1048,18 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     );
   });
 
+  it("focuses the More popover itself instead of its first row on open", async () => {
+    renderNavigation();
+
+    await openMoreMenu();
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("dialog", { name: "More sidebar navigation" }),
+      ),
+    );
+  });
+
   it("returns focus to More after Done when Customize was opened from More", async () => {
     renderNavigation();
 
