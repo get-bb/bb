@@ -142,6 +142,7 @@ beforeEach(() => {
   });
   vi.mocked(sdk.threads.childSummary).mockResolvedValue({
     nonDeletedChildCount: 1,
+    unarchivedDescendantCount: 1,
   });
   vi.mocked(sdk.threads.unarchive).mockResolvedValue({ ok: true });
   mocks.closePanesForThreads.mockReturnValue({
@@ -159,6 +160,30 @@ describe("ThreadActionsProvider archive confirmation", () => {
   it("archives a thread without children without opening a dialog", async () => {
     vi.mocked(sdk.threads.childSummary).mockResolvedValue({
       nonDeletedChildCount: 0,
+      unarchivedDescendantCount: 0,
+    });
+    renderProvider(<ArchiveButton thread={makeThread()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    await vi.waitFor(() => {
+      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+        threadId: "thr_parent",
+      });
+    });
+    expect(
+      screen.queryByRole("heading", { name: /Archive \d+ threads\?/ }),
+    ).toBeNull();
+  });
+
+  it("archives without confirmation when its only child is already archived", async () => {
+    vi.mocked(sdk.threads.childSummary).mockResolvedValue({
+      nonDeletedChildCount: 1,
+      unarchivedDescendantCount: 0,
+    });
+    vi.mocked(sdk.threads.archiveAll).mockResolvedValue({
+      archivedThreadIds: ["thr_parent"],
+      ok: true,
     });
     renderProvider(<ArchiveButton thread={makeThread()} />);
 
@@ -176,7 +201,8 @@ describe("ThreadActionsProvider archive confirmation", () => {
 
   it("reports child threads and archives nothing before confirmation", async () => {
     vi.mocked(sdk.threads.childSummary).mockResolvedValue({
-      nonDeletedChildCount: 4,
+      nonDeletedChildCount: 6,
+      unarchivedDescendantCount: 4,
     });
     renderProvider(<ArchiveButton thread={makeThread()} />);
 

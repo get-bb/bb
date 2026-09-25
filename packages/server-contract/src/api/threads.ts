@@ -612,6 +612,7 @@ export type ThreadQueuedMessageListResponse = z.infer<
 
 export const threadChildSummaryResponseSchema = z.object({
   nonDeletedChildCount: z.number().int().nonnegative(),
+  unarchivedDescendantCount: z.number().int().nonnegative(),
 });
 export type ThreadChildSummaryResponse = z.infer<
   typeof threadChildSummaryResponseSchema
