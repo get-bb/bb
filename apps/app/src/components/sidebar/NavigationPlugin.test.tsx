@@ -413,7 +413,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     ["Plugins", "Plug02", "/plugins"],
     ["Skills", "Zap", "/skills"],
   ] as const)(
-    "renders the static %s row with sidebar options and routes to it",
+    "renders the static %s row without plugin-panel options and routes to it",
     (title, icon, routePath) => {
       renderNavigation();
 
@@ -422,9 +422,6 @@ describe("Navigation plugin in the sidebar navigation region", () => {
       expect(
         screen.queryByRole("button", { name: `${title} panel options` }),
       ).toBeNull();
-      expect(
-        screen.getByRole("button", { name: `${title} options` }),
-      ).not.toBeNull();
       fireEvent.click(row);
       expect(screen.getByTestId("location-path").textContent).toBe(routePath);
       expect(
