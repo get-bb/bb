@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEventHandler,
+  type PointerEvent,
   type PointerEventHandler,
   type ReactNode,
 } from "react";
@@ -198,7 +199,10 @@ function renderThreadRowContainer({
     ...(dragBindings?.listeners ?? {}),
     onClick,
     onClickCapture,
-    onPointerDown: onSplitDragPointerDown,
+    onPointerDown: (event: PointerEvent<HTMLElement>) => {
+      dragBindings?.listeners?.onPointerDown?.(event);
+      onSplitDragPointerDown?.(event);
+    },
   };
   if (stickyLevel !== undefined) {
     return (

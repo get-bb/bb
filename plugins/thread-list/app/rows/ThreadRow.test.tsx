@@ -1507,6 +1507,38 @@ describe("ThreadRow", () => {
     expect(screen.queryByRole("button", { name: "Reorder Thread" })).toBeNull();
   });
 
+  it("starts sortable and split drags from the same pointer down", () => {
+    const onPointerDown = vi.fn();
+    const slot = renderThreadRow({
+      options: {
+        ...DEFAULT_OPTIONS,
+        dragBindings: {
+          attributes: {
+            role: "button",
+            tabIndex: 0,
+            "aria-disabled": false,
+            "aria-pressed": undefined,
+            "aria-roledescription": "sortable",
+            "aria-describedby": "thread-sortable",
+          },
+          disabled: false,
+          isDragging: false,
+          listeners: { onPointerDown },
+          setActivatorNodeRef: vi.fn(),
+        },
+      },
+    });
+
+    fireEvent.pointerDown(screen.getByRole("link", { name: "Open Thread" }), {
+      button: 0,
+    });
+
+    expect(onPointerDown).toHaveBeenCalledTimes(1);
+    expect(slot.inspection.sidebarActionCalls).toEqual([
+      { method: "open", threadId: "thr_test" },
+    ]);
+  });
+
   it("suppresses the click that follows a drag and drops the suppression afterwards", () => {
     const consumeClickSuppression = vi
       .fn<() => boolean>()
