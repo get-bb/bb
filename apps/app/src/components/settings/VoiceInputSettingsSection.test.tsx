@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { VoiceInputSettingsSectionContent } from "./VoiceInputSettingsSection";
 
 const devices = [
@@ -38,24 +38,89 @@ describe("VoiceInputSettingsSectionContent", () => {
     expect(sectionHeader?.classList.contains("flex-col")).toBe(false);
   });
 
-  it("keeps a stale selected microphone visible as unavailable", () => {
-    render(
+  it("falls back when the preferred microphone disconnects and restores it on reconnect", () => {
+    const content = (availableDevices: typeof devices) => (
       <TooltipProvider>
         <VoiceInputSettingsSectionContent
-          devices={devices}
+          devices={availableDevices}
           errorMessage={null}
           isLoading={false}
           isSupported={true}
           onDeviceChange={() => undefined}
           onRefresh={() => undefined}
-          preferredDeviceId="missing-mic"
+          preferredDeviceId="studio-mic"
+        />
+      </TooltipProvider>
+    );
+    const { rerender } = render(content(devices));
+    expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
+      "Studio Display Microphone",
+    );
+
+    rerender(
+      content(devices.filter((device) => device.deviceId !== "studio-mic")),
+    );
+    expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
+      "System default",
+    );
+    expect(
+      screen.getByText(
+        "Preferred microphone is disconnected. Using the system default until it reconnects.",
+      ),
+    ).toBeDefined();
+
+    rerender(content([]));
+    expect(
+      screen.getByRole("button", { name: "Check microphone access" }),
+    ).toBeDefined();
+
+    rerender(content(devices));
+    expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
+      "Studio Display Microphone",
+    );
+  });
+
+  it.each([
+    ["Microphone permission denied", "Microphone permission denied"],
+    ["No microphones found", "No microphones found"],
+  ])(
+    "distinguishes an empty list from an access error: %s",
+    (errorMessage, message) => {
+      render(
+        <TooltipProvider>
+          <VoiceInputSettingsSectionContent
+            devices={[]}
+            errorMessage={errorMessage}
+            isLoading={false}
+            isSupported={true}
+            onDeviceChange={() => undefined}
+            onRefresh={() => undefined}
+            preferredDeviceId={null}
+          />
+        </TooltipProvider>,
+      );
+      expect(screen.getByText(message)).toBeDefined();
+    },
+  );
+
+  it("checks microphone access from the inline action", () => {
+    const onRefresh = vi.fn();
+    render(
+      <TooltipProvider>
+        <VoiceInputSettingsSectionContent
+          devices={[]}
+          errorMessage={null}
+          isLoading={false}
+          isSupported={true}
+          onDeviceChange={() => undefined}
+          onRefresh={onRefresh}
+          preferredDeviceId={null}
         />
       </TooltipProvider>,
     );
-
-    expect(screen.getByText("Unavailable microphone")).toBeDefined();
-    expect(
-      screen.getByText("Selected microphone is unavailable."),
-    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check microphone access" }),
+    );
+    expect(onRefresh).toHaveBeenCalledExactlyOnceWith(true);
   });
 });

@@ -1290,7 +1290,7 @@ export function registerPluginCommands(
   plugin
     .command("types [path]")
     .description(
-      "Sync a package-layout plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency and the type-only devDependencies of the packages bb shims at runtime (sonner, vaul, the portal radix families, ...); legacy vendored-layout plugins must migrate first",
+      "Sync a package-layout plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency and the declared type-only devDependencies of the packages bb shims at runtime (sonner, vaul, the portal radix families, ...); legacy vendored-layout plugins must migrate first",
     )
     .option(
       "--check",
@@ -1314,7 +1314,6 @@ export function registerPluginCommands(
             const pending = await setPluginSdkPin({
               rootDir,
               sdkVersion: PLUGIN_SDK_VERSION,
-              app: hasApp,
               dryRun: true,
             });
             if (pending === null) {
@@ -1342,11 +1341,10 @@ export function registerPluginCommands(
           const changed = await setPluginSdkPin({
             rootDir,
             sdkVersion: PLUGIN_SDK_VERSION,
-            app: hasApp,
           });
           if (changed === null) {
             console.log(
-              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version${hasApp ? ", and the runtime-shimmed packages are at this bb's versions" : ""}.`,
+              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version${hasApp ? ", and the declared runtime-shimmed packages are at this bb's versions" : ""}.`,
             );
             console.log(
               "The declarations are in node_modules/@get-bb/plugin-sdk/bundled-types/ — read them for exact signatures.",

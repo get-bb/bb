@@ -238,7 +238,10 @@ Codex transcribes recordings up to 20 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
-`bb.voiceInput.audioInputDeviceId`; it does not change which service
+`bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
+back to the system default when it is disconnected, then uses the saved
+preference again when it reconnects. Select System default to follow system
+microphone changes; it does not change which service
 transcribes.
 
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.

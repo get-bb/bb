@@ -38,8 +38,7 @@ import {
 } from "./panelChromeClasses";
 import {
   CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+  useSecondaryPanelMinimum,
 } from "./secondaryPanelSizing";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
@@ -274,6 +273,8 @@ function ThreadSecondaryPanelContent({
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
+    panelId: resizablePanelId,
+    renderAsDrawer,
   });
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
@@ -288,6 +289,7 @@ function ThreadSecondaryPanelContent({
     },
     [handleSecondaryPanelResize],
   );
+  const minimumSize = useSecondaryPanelMinimum();
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
     if (!isOpen || hostLayout?.isSuppressed) {
@@ -1095,12 +1097,8 @@ function ThreadSecondaryPanelContent({
               : persistedWidthPercent
             : 0
         }
-        minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-        maxSize={
-          isConversationCollapsed
-            ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
-            : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
-        }
+        minSize={(1 - minimumSize.max) * 100}
+        maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
         onTransitionEnd={handlePanelTransitionEnd}

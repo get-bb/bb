@@ -302,15 +302,19 @@ Read the installed declarations for exact current signatures.
   `PluginEnvironmentProviderAvailability` — context and result for a
   declaration's optional `availability` method
 - `PluginEnvironmentProviderDefinition` — idempotent long-running `create`
-  and `remove`, plus optional `validate`, `availability`, `inputs` and policy
+  and `remove`, plus optional `validate`, `availability`,
+  `restore`, `inputs` and policy
 - `PluginEnvironmentProviderInputsSchema` — the `inputs` type parameter:
   a Standard Schema v1 validator (a zod schema is one), or `undefined` for
   `inputs: null` in `create`
 - `PluginEnvironmentProviderPolicy` — `retireGraceMs`, `pathKeys`
 - `PluginEnvironmentProviderValidateContext` — the `validate` context
   typed from `requires` and `inputs`, like the create context
-- `PluginEnvironmentProviderCreateContext` — a replacement create's
-  `previous.resource` is the provider's private JSON handle
+- `PluginEnvironmentProviderCreateContext` — facts for a fresh environment,
+  including the `suggestedBranchName` core would use
+- `PluginEnvironmentProviderRestoreContext` — `restore`'s
+  context: the creation inputs plus `previous.environment` and its private
+  `previous.resource`
 - `PluginEnvironmentProviderCreateResult` — `created` names the path and may
   carry the private, 16 KiB-capped JSON `resource`; the selected machine owns
   the host identity

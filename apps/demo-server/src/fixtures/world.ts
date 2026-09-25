@@ -108,6 +108,7 @@ export function threadResponse(
   return {
     ...thread,
     activeBackgroundAgentCount: 0,
+    canRestoreEnvironment: false,
     canSpawnChild: true,
     queuedMessageCount: 0,
   };

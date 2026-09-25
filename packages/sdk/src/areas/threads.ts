@@ -192,6 +192,7 @@ export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
 export type ThreadReadStateResult = ThreadResponse;
+export type ThreadRestoreEnvironmentResult = ThreadResponse;
 export type ThreadPinOrderResult = ThreadListResponse;
 export type ThreadPromptHistoryResult = PromptHistoryResponse;
 export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
@@ -594,6 +595,16 @@ export interface ThreadsArea {
    * `sendAt` in the future queues it on the clock and a `message.dispatch` hook
    * can still hold it; the response says which of the two happened.
    */
+  /**
+   * Ask the environment provider to restore the destroyed workspace of a
+   * thread and attach it; the provider decides what restoring means, such as
+   * checking the recorded branch out again. Sends fail until this runs. Starts
+   * no turn: the thread settles back to `idle` once the workspace is ready.
+   * Refused unless the thread's `canRestoreEnvironment` is true.
+   */
+  restoreEnvironment(
+    args: ThreadActionArgs,
+  ): Promise<ThreadRestoreEnvironmentResult>;
   retry(args: ThreadRetryArgs): Promise<ThreadRetryResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
@@ -1293,6 +1304,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].send.$post({
           param: { id: input.threadId },
           json: sendJson(input),
+        }),
+      );
+    },
+    async restoreEnvironment(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["restore-environment"].$post({
+          param: { id: input.threadId },
         }),
       );
     },

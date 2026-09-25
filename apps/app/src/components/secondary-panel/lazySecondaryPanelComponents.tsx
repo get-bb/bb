@@ -12,8 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import {
   CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+  useSecondaryPanelMinimum,
 } from "./secondaryPanelSizing";
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
@@ -136,6 +135,7 @@ function ThreadSecondaryPanelInlinePlaceholder({
   isConversationCollapsed,
   resizablePanelId,
 }: ThreadSecondaryPanelInlinePlaceholderProps) {
+  const minimumSize = useSecondaryPanelMinimum();
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
   return (
     <Panel
@@ -149,12 +149,8 @@ function ThreadSecondaryPanelInlinePlaceholder({
             : persistedWidthPercent
           : 0
       }
-      minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-      maxSize={
-        isConversationCollapsed
-          ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
-          : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
-      }
+      minSize={(1 - minimumSize.max) * 100}
+      maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
       order={2}
       className={cn(
         "min-w-0 overflow-clip",

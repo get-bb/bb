@@ -483,6 +483,15 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
   activeBackgroundAgentCount: z.number().int().nonnegative(),
+  /**
+   * Whether `POST /threads/:id/restore-environment` would build this thread a
+   * replacement workspace right now. True only for a live, settled thread whose
+   * environment was destroyed while the provider that created it is still here
+   * and restores environments, and the machine it stood on is still here — so a
+   * surface can offer the action instead of discovering the refusal by making
+   * the call.
+   */
+  canRestoreEnvironment: z.boolean(),
   canSpawnChild: z.boolean(),
   // How many messages are waiting on this thread's queue right now — waiting on
   // the clock, on the running turn, on provisioning, on an interaction, or on

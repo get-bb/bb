@@ -192,33 +192,69 @@ describe("ThreadPromptContextBanner", () => {
     },
   );
 
-  it("prioritizes the archived-environment status over unarchiving", () => {
+  it("offers unarchiving first when an archived thread also lost its environment", () => {
     const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <ThreadPromptContextBanner
-          gitSection={null}
-          gitSectionPending={false}
-          archivedSection={{
-            archivedAt: 1_731_456_000_000,
-            onUnarchive: noop,
-          }}
-          environmentGoneSection={{ status: "destroyed" }}
-          parentThreadSection={{
-            parentThreadTitle: "Parent thread",
-            href: "/threads/thr_parent",
-            relationship: "parent",
-          }}
-          childThreadsSection={null}
-          pullRequestSection={null}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={{
+          archivedAt: 1_731_456_000_000,
+          onUnarchive: noop,
+        }}
+        environmentGoneSection={{ status: "destroyed" }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
     );
 
     expect(markup).toContain("Environment unavailable");
     expect(markup).not.toContain("Thread is archived");
-    expect(markup).not.toContain(">Unarchive<");
+    expect(markup).toContain(">Unarchive<");
+  });
+
+  it("offers restoring the workspace once the thread is live again", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={{ status: "destroyed", onRestore: noop }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("Environment unavailable");
+    expect(markup).toContain(">Restore workspace<");
+  });
+
+  it("shows the restore action as pending while it runs", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={{
+          status: "destroyed",
+          onRestore: noop,
+          restorePending: true,
+        }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain(">Restoring...<");
+    expect(markup).toContain("disabled");
   });
 
   it("labels a standalone pull request without non-actionable attention text", () => {

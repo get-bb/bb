@@ -744,7 +744,7 @@ class-variance-authority libraries are runtime-shimmed (never bundled). Shimmed
 does not mean undeclared: tsc resolves their declarations through node_modules,
 so each shimmed package a plugin imports is a type-only devDependency at the
 host's version — the scaffold declares all of them and `bb plugin types`
-repins them; never list one in dependencies, which would bundle a second copy —
+repins declared packages; unused packages may be removed. Never list one in dependencies, which would bundle a second copy —
 though source and diffs should go through the host's own
 experimental_SourceCode / experimental_Diff components rather than
 @pierre/diffs directly, so bb owns patch normalization, syntax
@@ -856,8 +856,9 @@ without updating them. Run `bb plugin migrate` to receive current SDK types and
 before adding `bb.host` so the `/host` and `/testing/host` declaration subpaths
 are available; migration shows every change and asks first.
 The SDK surface grows every release, so `bb plugin types` syncs a plugin to
-the running bb by repinning the SDK devDependency and the shimmed packages'
-type-only devDependencies. It exits with migration instructions for a plugin
+the running bb by repinning the SDK devDependency and the declared shimmed packages'
+type-only devDependencies. Unused, undeclared shim packages are optional for both
+updates and `--check`; declare packages your source imports. It exits with migration instructions for a plugin
 that still vendors types/. Run it in a cloned or older package-layout plugin,
 and `bb plugin types --check` in CI. Need a symbol the types don't explain?
 Clone the repo: https://github.com/get-bb/bb. The API in

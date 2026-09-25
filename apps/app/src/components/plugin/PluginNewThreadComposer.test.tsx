@@ -1383,6 +1383,96 @@ describe("PluginNewThreadComposer seeding", () => {
     ).toBe(true);
   });
 
+  it("applies a plugin machine target after the root composer loads", async () => {
+    mocks.sidebarNavigationSettled = false;
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: { newEnvironmentHostId: "host_2", focusPrompt: true },
+          },
+        ],
+      },
+    );
+    const element = () => (
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>
+    );
+    const view = render(element());
+
+    expect(router.state.location.state).toEqual({
+      newEnvironmentHostId: "host_2",
+      focusPrompt: true,
+    });
+    mocks.sidebarNavigationSettled = true;
+    view.rerender(element());
+
+    await waitFor(() => {
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+      expect(router.state.location.state).toBeNull();
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:project-checkout",
+    );
+    const selectedIndex = mocks.promptBoxProps.findIndex(
+      (props) =>
+        props.modeConfig.environment.selectedProviderHostId === "host_2",
+    );
+    expect(selectedIndex).toBeGreaterThan(0);
+    const focusRequestAtSelection =
+      mocks.promptBoxProps[selectedIndex].focusRequest;
+    await waitFor(() => {
+      expect(latestPromptBoxProps().focusRequest).not.toBe(
+        focusRequestAtSelection,
+      );
+    });
+  });
+
+  it("reuses an environment when the plugin supplies both targets", async () => {
+    mocks.projectThreads = [
+      makeThreadListEntry({
+        id: "thr_existing",
+        projectId: "proj_1",
+        environmentId: "env_existing",
+        environmentHostId: "host_1",
+        environmentProviderId: "git-worktree",
+      }),
+    ];
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: {
+              newEnvironmentHostId: "host_2",
+              reuseEnvironmentId: "env_existing",
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        encodeReuseValue("env_existing"),
+      );
+      expect(router.state.location.state).toBeNull();
+    });
+  });
+
   it("closes visible plugin details before an underlying terminal", async () => {
     const terminal = createTerminalFixedPanelTab({
       terminalId: "terminal-under-details",

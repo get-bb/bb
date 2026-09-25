@@ -317,6 +317,10 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           ...(options?.environmentId !== undefined
             ? { reuseEnvironmentId: options.environmentId }
             : {}),
+          ...(typeof options?.hostId === "string" &&
+          options.hostId.trim().length > 0
+            ? { newEnvironmentHostId: options.hostId.trim() }
+            : {}),
         };
         navigate(
           getRootComposeRoutePath(),

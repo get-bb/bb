@@ -559,15 +559,31 @@ listing never blocks on the answer. Core invokes it again for the selected
 provider and machine during thread creation. Its context contains project,
 host, projectCheckout, and gitRemote; its named types intentionally have no
 experimental prefix.
+The optional `restore(context)` method, unprefixed like `availability` because
+the whole registration is experimental, is the only way core
+rebuilds a destroyed environment, and runs only when a user restores an
+unarchived, settled thread (`POST /threads/:id/restore-environment`,
+`bb thread restore-environment`). Its context carries the creation inputs and
+`previous: { environment, resource }` for the removed environment; the provider
+decides what restoring means. Git worktree re-creates the worktree on the
+recorded branch, project checkout switches back to the recorded branch, and
+personal workspace does not restore. Without the method, the thread reports
+`canRestoreEnvironment: false` and sends fail with
+`thread_environment_unavailable`. `create` no longer receives `rebuild` or
+`previous` in its type; core still passes `rebuild: false` and
+`previous: null` at runtime for plugins built against the older contract.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
 removal serialization; retry caps and timing defaults; resource privacy and the
 16 KiB boundary; create-timeout aborts; and the read-only lifecycle projection.
 The pathKey gives create and remove stable resource identity. Confirm these
-extensions before stabilizing. Rebuilds
-receive previous.environment and previous.resource, null after completed
-removal. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
+extensions before stabilizing. Restores receive previous.environment and
+previous.resource, null after completed removal; decide whether restore should
+stay a separate method or become a create mode, whether a provider needs a way
+to decline before the button is offered (git worktree currently fails after
+the click when no branch was recorded), and when to stop passing the retired
+`rebuild`/`previous` create fields. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
 per-thread/null; nullable retirement and create timeout disable those policies.
 EnvironmentStatus remains provisioning/ready/error/destroyed;
 retiring and teardown are lifecycle phases, not restored statuses.
@@ -2631,6 +2647,13 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
+**New-thread machine selection (Sep 2026).**
+`PluginSidebarThreadActions.openNewThread` accepts `hostId` to
+preselect a known machine with an available environment provider for a new
+environment. `environmentId` takes priority when both are present. The public
+name follows the requested `hostId` spelling without an experimental prefix;
+audit the selection semantics and router-state transport as the API evolves.
+
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
 
 **Archive selection (Sep 2026).** `experimental_useSidebarThreads` accepts
@@ -2697,8 +2720,8 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    fan-out. Confirm that split holds once a replaced list ships section
    drag-and-drop, where the built-in list's optimistic cache transactions
    have no plugin equivalent. `openNewThread` gained `sectionId` and
-   `environmentId`, which today ride on router state; confirm router state
-   stays the right transport.
+   `environmentId`, and `hostId`, which today ride on router
+   state; confirm router state stays the right transport.
 7. **Action surface.** Destructive and dialog-bearing actions route through
    `useThreadActions()`, so `archive` closes panes and repairs the route, and
    `requestDelete` opens bb's confirmation rather than deleting silently.
@@ -2716,17 +2739,17 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
 10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
-   drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
-   on `isAvailable`, and read `layout` to paint where the thread already sits.
-   The host owns every rule — the drag engages only after the pointer leaves the
-   sidebar, an edge drop splits, a center drop replaces, an open thread focuses
-   its pane, and the pane cap turns a split into a replace — so a plugin cannot
-   reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
-   list with its own pointer-drag (reorder, swipe) still composes with the
-   host's engage threshold; `splitProps` staying an open object is the right
-   forward-compatible shape, or it should narrow to a named handler; and
-   exposing the full `panes` array does not leak more layout state than a row
-   needs.
+    drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
+    on `isAvailable`, and read `layout` to paint where the thread already sits.
+    The host owns every rule — the drag engages only after the pointer leaves the
+    sidebar, an edge drop splits, a center drop replaces, an open thread focuses
+    its pane, and the pane cap turns a split into a replace — so a plugin cannot
+    reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
+    list with its own pointer-drag (reorder, swipe) still composes with the
+    host's engage threshold; `splitProps` staying an open object is the right
+    forward-compatible shape, or it should narrow to a named handler; and
+    exposing the full `panes` array does not leak more layout state than a row
+    needs.
 
 ## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 

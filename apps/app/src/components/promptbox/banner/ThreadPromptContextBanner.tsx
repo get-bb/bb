@@ -117,6 +117,8 @@ export interface ThreadPromptArchivedSection {
 
 export interface ThreadPromptEnvironmentGoneSection {
   status: Extract<EnvironmentStatus, "destroyed"> | MachineRemovalStatus;
+  onRestore?: () => void;
+  restorePending?: boolean;
 }
 
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
@@ -863,12 +865,19 @@ export function ThreadPromptContextBanner({
         statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
         description={environmentGoneCopy?.description ?? null}
         statusAction={
-          archivedSection?.onUnarchive && !environmentGone ? (
+          archivedSection?.onUnarchive ? (
             <PendingBannerActionButton
               pending={Boolean(archivedSection.unarchivePending)}
               label="Unarchive"
               pendingLabel="Unarchiving..."
               onClick={archivedSection.onUnarchive}
+            />
+          ) : environmentGoneSection?.onRestore ? (
+            <PendingBannerActionButton
+              pending={Boolean(environmentGoneSection.restorePending)}
+              label="Restore workspace"
+              pendingLabel="Restoring..."
+              onClick={environmentGoneSection.onRestore}
             />
           ) : null
         }

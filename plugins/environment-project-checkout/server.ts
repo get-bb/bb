@@ -1,12 +1,17 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
+import type {
+  PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderCreateResult,
+  PluginEnvironmentProviderProgress,
+} from "@get-bb/plugin-sdk/environment-provider";
 import { reportHostProgress } from "bb-environment-provider-host/progress";
 import { z } from "zod";
 import {
   checkoutBranchSelectionSchema,
   checkoutHostContract,
   checkoutHostSignals,
+  type CheckoutBranch,
   type CheckoutBranchSelection,
 } from "./contract.js";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
@@ -29,6 +34,18 @@ export const checkoutInputsSchema = z.object({
   path: z.string().min(1).optional(),
   branch: checkoutBranchSelectionSchema.optional(),
 });
+
+type CheckoutOperation = Pick<
+  PluginEnvironmentProviderCreateContext<{ projectCheckout: true }>,
+  | "attempt"
+  | "experimental_claimPath"
+  | "host"
+  | "pathKey"
+  | "projectCheckout"
+  | "report"
+  | "signal"
+  | "thread"
+>;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -138,6 +155,59 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     return environment?.id ?? null;
   }
 
+  async function attachWorkspace(
+    context: CheckoutOperation,
+    target: { path: string; branch: CheckoutBranch | null },
+  ): Promise<PluginEnvironmentProviderCreateResult> {
+    const hostId = context.host.id;
+    const { path, branch } = target;
+    const claimDeadline = Date.now() + ATTACH_TIMEOUT_MS;
+    while (!(await context.experimental_claimPath(path))) {
+      context.signal.throwIfAborted();
+      if (branch !== null || Date.now() >= claimDeadline) {
+        return {
+          status: "failed",
+          message: "Workspace is being prepared by another thread",
+        };
+      }
+      await delay(50, undefined, { signal: context.signal });
+    }
+    if (
+      branch !== null &&
+      (await otherLiveThreadUsesPath({
+        hostId,
+        path,
+        threadId: context.thread.id,
+      }))
+    ) {
+      return { status: "failed", message: LIVE_THREAD_MESSAGE };
+    }
+    const operationId = `${context.pathKey}#${context.attempt}`;
+    reports.set(operationId, context.report);
+    try {
+      const result = await host.call(
+        "attach",
+        { operationId, path, branch },
+        { hostId, signal: context.signal, timeoutMs: ATTACH_TIMEOUT_MS },
+      );
+      if (result.status === "failed") {
+        return { status: "failed", message: result.message };
+      }
+      return {
+        status: "created",
+        path: result.path,
+        ownsPath:
+          result.path === context.projectCheckout.path &&
+          context.projectCheckout.experimental_ownsPath === true,
+      };
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+      return { status: "failed", message: errorMessage(error) };
+    } finally {
+      reports.delete(operationId);
+    }
+  }
+
   bb.experimental_environments.register({
     id: PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
     displayName: "Project checkout",
@@ -183,76 +253,38 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         : { action: "refuse", message: blocker };
     },
     async create(context) {
-      const hostId = context.host.id;
-      const path = context.inputs.path ?? context.projectCheckout.path;
       const branchInput = context.inputs.branch;
-      const claimDeadline = Date.now() + ATTACH_TIMEOUT_MS;
-      while (!(await context.experimental_claimPath(path))) {
-        context.signal.throwIfAborted();
-        if (branchInput !== undefined || Date.now() >= claimDeadline) {
-          return {
-            status: "failed",
-            message: "Workspace is being prepared by another thread",
-          };
-        }
-        await delay(50, undefined, { signal: context.signal });
+      return attachWorkspace(context, {
+        path: context.inputs.path ?? context.projectCheckout.path,
+        branch:
+          branchInput === undefined
+            ? null
+            : branchInput.kind === "existing"
+              ? { kind: "existing", name: branchInput.name }
+              : {
+                  kind: "new",
+                  name: context.suggestedBranchName,
+                  baseBranch: branchInput.baseBranch,
+                },
+      });
+    },
+    async restore(context) {
+      const path = context.inputs.path ?? context.projectCheckout.path;
+      if (context.inputs.branch === undefined) {
+        return attachWorkspace(context, { path, branch: null });
       }
-      if (
-        branchInput !== undefined &&
-        (await otherLiveThreadUsesPath({
-          hostId,
-          path,
-          threadId: context.thread.id,
-        }))
-      ) {
+      const branchName = context.previous.environment.branchName;
+      if (branchName === null) {
         return {
           status: "failed",
-
-          message: LIVE_THREAD_MESSAGE,
+          message:
+            "The removed workspace had no branch checked out, so there is no branch to restore it on.",
         };
       }
-      const branch =
-        branchInput === undefined
-          ? null
-          : branchInput.kind === "existing"
-            ? { kind: "existing" as const, name: branchInput.name }
-            : {
-                kind: "new" as const,
-                name: context.suggestedBranchName,
-                baseBranch: branchInput.baseBranch,
-              };
-      const operationId = `${context.pathKey}#${context.attempt}`;
-      reports.set(operationId, context.report);
-      try {
-        const result = await host.call(
-          "attach",
-          { operationId, path, branch },
-          { hostId, signal: context.signal, timeoutMs: ATTACH_TIMEOUT_MS },
-        );
-        if (result.status === "failed") {
-          return {
-            status: "failed",
-
-            message: result.message,
-          };
-        }
-        return {
-          status: "created",
-          path: result.path,
-          ownsPath:
-            result.path === context.projectCheckout.path &&
-            context.projectCheckout.experimental_ownsPath === true,
-        };
-      } catch (error) {
-        if (context.signal.aborted) throw error;
-        return {
-          status: "failed",
-
-          message: errorMessage(error),
-        };
-      } finally {
-        reports.delete(operationId);
-      }
+      return attachWorkspace(context, {
+        path,
+        branch: { kind: "existing", name: branchName },
+      });
     },
     async remove() {
       return { status: "removed" };

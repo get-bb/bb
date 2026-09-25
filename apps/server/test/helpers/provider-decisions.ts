@@ -1,6 +1,9 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
-import type { PluginEnvironmentProviderCreateContext } from "@get-bb/plugin-sdk/environment-provider";
+import type {
+  PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderRestoreContext,
+} from "@get-bb/plugin-sdk/environment-provider";
 import type { ProviderReadyEnvironmentInput } from "@bb/server-contract";
 
 export type TestProviderDecision =
@@ -12,20 +15,14 @@ export type TestProviderDecision =
   | { action: "wait"; reason: string; log?: string }
   | { action: "reject"; message: string };
 
-type GenericCreateContext = PluginEnvironmentProviderCreateContext;
 export type TestEnvironmentProviderContext = Pick<
-  GenericCreateContext,
-  | "thread"
-  | "project"
-  | "host"
-  | "projectCheckout"
-  | "gitRemote"
-  | "suggestedBranchName"
+  PluginEnvironmentProviderCreateContext,
+  "thread" | "project" | "host" | "projectCheckout" | "gitRemote"
 > & {
   machine: import("@bb/domain").EnvironmentMachineSelection;
   inputs: JsonValue | null;
   environment:
-    | NonNullable<GenericCreateContext["previous"]>["environment"]
+    | PluginEnvironmentProviderRestoreContext["previous"]["environment"]
     | null;
 };
 
@@ -33,7 +30,10 @@ export function providerOperations(
   decide: (
     context: TestEnvironmentProviderContext,
   ) => TestProviderDecision | Promise<TestProviderDecision>,
-): Pick<PluginEnvironmentProviderDeclaration, "create" | "remove"> {
+): Pick<
+  PluginEnvironmentProviderDeclaration,
+  "create" | "restore" | "remove"
+> {
   async function run(
     context: TestEnvironmentProviderContext,
     report: Parameters<
@@ -80,7 +80,16 @@ export function providerOperations(
         ...context,
         machine: { type: "existing" as const, hostId: context.host.id },
         inputs: jsonValueSchema.parse(context.inputs),
-        environment: context.previous?.environment ?? null,
+        environment: null,
+      };
+      return run(facts, context.report, context.signal);
+    },
+    restore: async (context) => {
+      const facts = {
+        ...context,
+        machine: { type: "existing" as const, hostId: context.host.id },
+        inputs: jsonValueSchema.parse(context.inputs),
+        environment: context.previous.environment,
       };
       return run(facts, context.report, context.signal);
     },

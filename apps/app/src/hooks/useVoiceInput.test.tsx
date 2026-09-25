@@ -14,7 +14,8 @@ import { useVoiceInput } from "./useVoiceInput";
 vi.mock("@/components/ui/app-toast", () => ({ appToast: { error: vi.fn() } }));
 vi.mock("@/lib/audio-input-device-preference", () => ({
   useAudioInputDevicePreferenceValue: () => null,
-  buildAudioInputConstraints: () => ({ audio: true }),
+  requestAudioInputStream: (mediaDevices: MediaDevices) =>
+    mediaDevices.getUserMedia({ audio: true }),
 }));
 
 class Recorder {
@@ -30,6 +31,25 @@ class Recorder {
   }
   stop() {
     this.state = "inactive";
+    this.ondataavailable({ data: new Blob(["recorded audio"]) });
+    return this.onstop();
+  }
+}
+
+class DeferredRecorder extends Recorder {
+  static current: DeferredRecorder;
+
+  constructor() {
+    super();
+    DeferredRecorder.current = this;
+  }
+
+  stop() {
+    this.state = "inactive";
+    return Promise.resolve();
+  }
+
+  finish() {
     this.ondataavailable({ data: new Blob(["recorded audio"]) });
     return this.onstop();
   }
@@ -115,4 +135,81 @@ it("does not offer a download after explicit cancellation", async () => {
   await act(async () => result.current.stop());
   expect(result.current.state).toBe("idle");
   expect(appToast.error).not.toHaveBeenCalled();
+});
+
+it("keeps an accepted transcription running after unmount", async () => {
+  let finishTranscription: ((text: string) => void) | undefined;
+  const transcribe = vi.fn(
+    (_args: { file: File; promptContext?: string; signal?: AbortSignal }) =>
+      new Promise<string>((resolve) => {
+        finishTranscription = resolve;
+      }),
+  );
+  const onTranscript = vi.fn();
+  const { result, unmount } = renderHook(() =>
+    useVoiceInput({ onTranscribe: transcribe, onTranscript }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop());
+  const signal = transcribe.mock.calls[0]?.[0].signal;
+  expect(signal?.aborted).toBe(false);
+
+  unmount();
+  expect(signal?.aborted).toBe(false);
+  await act(async () => finishTranscription?.(" Spoken words "));
+  expect(onTranscript).toHaveBeenCalledWith("Spoken words");
+});
+
+it("transcribes an accepted recording when the recorder stops after unmount", async () => {
+  vi.stubGlobal("MediaRecorder", DeferredRecorder);
+  const onTranscribe = vi.fn().mockResolvedValue("Delayed words");
+  const onTranscript = vi.fn();
+  const { result, unmount } = renderHook(() =>
+    useVoiceInput({ onTranscribe, onTranscript }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  act(() => result.current.stop());
+  unmount();
+
+  await act(async () => DeferredRecorder.current.finish());
+  expect(onTranscribe).toHaveBeenCalledOnce();
+  expect(onTranscript).toHaveBeenCalledWith("Delayed words");
+  expect(appToast.error).not.toHaveBeenCalled();
+});
+
+it("discards a recording when its composer unmounts before acceptance", async () => {
+  vi.stubGlobal("MediaRecorder", DeferredRecorder);
+  const onTranscribe = vi.fn();
+  const { result, unmount } = renderHook(() =>
+    useVoiceInput({ onTranscribe, onTranscript: vi.fn() }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  unmount();
+  await act(async () => DeferredRecorder.current.finish());
+  expect(onTranscribe).not.toHaveBeenCalled();
+});
+
+it("aborts transcription when the user cancels it", async () => {
+  let finishTranscription: ((text: string) => void) | undefined;
+  const onTranscribe = vi.fn(
+    (_args: { file: File; promptContext?: string; signal?: AbortSignal }) =>
+      new Promise<string>((resolve) => {
+        finishTranscription = resolve;
+      }),
+  );
+  const onTranscript = vi.fn();
+  const { result } = renderHook(() =>
+    useVoiceInput({ onTranscribe, onTranscript }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop());
+  const signal = onTranscribe.mock.calls[0]?.[0].signal;
+  act(() => result.current.cancel());
+  expect(signal?.aborted).toBe(true);
+  await act(async () => finishTranscription?.("Cancelled words"));
+  expect(onTranscript).not.toHaveBeenCalled();
 });

@@ -1,10 +1,6 @@
 import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
-import {
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "./secondaryPanelSizing";
 
 interface UsePanelResizeSnapArgs {
   onResize: (leadingFraction: number) => void;
@@ -96,13 +92,7 @@ export function usePanelResizeSnap({
           pointer: moveEvent.clientX,
           start,
         });
-        pendingFraction = Math.max(
-          (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
-          Math.min(
-            (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
-            result.fraction,
-          ),
-        );
+        pendingFraction = result.fraction;
         if (frame === null) {
           frame = ownerWindow.requestAnimationFrame(applyResize);
         }
