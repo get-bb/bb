@@ -26,14 +26,16 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 const PROVIDER_ID = "test-worktree";
 const BRANCH_NAME = "bb/important-work";
 
-interface CreateCall {
-  rebuild: boolean;
-  previousBranchName: string | null | undefined;
-  suggestedBranchName: string;
-}
-
-function registerProvider(options: { pluginId?: string } = {}) {
-  const createCalls: CreateCall[] = [];
+function registerProvider(
+  options: { pluginId?: string; restorable?: boolean } = {},
+) {
+  const createCalls: string[] = [];
+  const restoreCalls: (string | null)[] = [];
+  const created = {
+    status: "created" as const,
+    path: "/tmp/restored-worktree",
+    ownsPath: true,
+  };
   const record = {
     pluginId: options.pluginId ?? "test",
     provider: validatePluginEnvironmentProviderDeclaration({
@@ -43,17 +45,17 @@ function registerProvider(options: { pluginId?: string } = {}) {
       icon: "Folder",
       policy: { retireGraceMs: 0, pathKeys: "per-attempt" },
       create: async (context) => {
-        createCalls.push({
-          rebuild: context.rebuild,
-          previousBranchName: context.previous?.environment.branchName,
-          suggestedBranchName: context.suggestedBranchName,
-        });
-        return {
-          status: "created",
-          path: "/tmp/restored-worktree",
-          ownsPath: true,
-        };
+        createCalls.push(context.suggestedBranchName);
+        return created;
       },
+      ...(options.restorable === false
+        ? {}
+        : {
+            restore: async (context) => {
+              restoreCalls.push(context.previous.environment.branchName);
+              return created;
+            },
+          }),
       remove: async () => ({ status: "removed" }),
     }),
   };
@@ -67,12 +69,12 @@ function registerProvider(options: { pluginId?: string } = {}) {
     }),
     decisionTimeoutMs: 10_000,
   });
-  return { createCalls, record };
+  return { createCalls, restoreCalls, record };
 }
 
 function seedDestroyableThread(
   harness: TestAppHarness,
-  options: { branchName?: string | null; ranTurn?: boolean } = {},
+  options: { ranTurn?: boolean } = {},
 ) {
   const { host } = seedHostSession(harness.deps, { id: "host_restore" });
   const { project } = seedProjectWithSource(harness.deps, {
@@ -86,8 +88,7 @@ function seedDestroyableThread(
     environmentProviderId: PROVIDER_ID,
     environmentProviderPluginId: "test",
     providerOwnsPath: true,
-    branchName:
-      options.branchName === undefined ? BRANCH_NAME : options.branchName,
+    branchName: BRANCH_NAME,
   });
   const thread = seedThread(harness.deps, {
     projectId: project.id,
@@ -146,9 +147,9 @@ afterEach(() => {
 });
 
 describe("POST /threads/:id/restore-environment (#1710)", () => {
-  it("rebuilds the workspace on the branch the destroyed environment held", async () => {
+  it("asks the provider to restore the destroyed environment without starting a turn", async () => {
     await withTestHarness(async (harness) => {
-      const { createCalls } = registerProvider();
+      const { createCalls, restoreCalls } = registerProvider();
       const { environment, thread } = seedDestroyableThread(harness);
       await archiveAndDestroy(harness, {
         environmentId: environment.id,
@@ -166,11 +167,8 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
       const body = threadResponseSchema.parse(await readJson(response));
       expect(body.status).toBe("starting");
 
-      await expect.poll(() => createCalls.length).toBe(1);
-      expect(createCalls[0]).toMatchObject({
-        rebuild: true,
-        previousBranchName: BRANCH_NAME,
-      });
+      await expect.poll(() => restoreCalls).toEqual([BRANCH_NAME]);
+      expect(createCalls).toHaveLength(0);
 
       const restored = getThread(harness.db, thread.id);
       expect(restored?.environmentId).not.toBe(environment.id);
@@ -204,7 +202,7 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
 
   it("restores a thread whose turn settings no longer resolve", async () => {
     await withTestHarness(async (harness) => {
-      const { createCalls } = registerProvider();
+      const { restoreCalls } = registerProvider();
       const { environment, thread } = seedDestroyableThread(harness, {
         ranTurn: false,
       });
@@ -216,16 +214,14 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
 
       const response = await restore(harness, thread.id);
       expect(response.status, await response.clone().text()).toBe(200);
-      await expect.poll(() => createCalls.length).toBe(1);
+      await expect.poll(() => restoreCalls.length).toBe(1);
     });
   });
 
-  it("refuses a workspace whose branch is unknown, such as a detached HEAD", async () => {
+  it("refuses when the environment provider does not restore environments", async () => {
     await withTestHarness(async (harness) => {
-      const { createCalls } = registerProvider();
-      const { environment, thread } = seedDestroyableThread(harness, {
-        branchName: null,
-      });
+      const { createCalls } = registerProvider({ restorable: false });
+      const { environment, thread } = seedDestroyableThread(harness);
       await archiveAndDestroy(harness, {
         environmentId: environment.id,
         threadId: thread.id,
@@ -245,6 +241,41 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
         code: "thread_environment_unavailable",
       });
       expect(createCalls).toHaveLength(0);
+    });
+  });
+
+  it("refuses a send until the destroyed environment is restored", async () => {
+    await withTestHarness(async (harness) => {
+      const { createCalls, restoreCalls } = registerProvider();
+      const { environment, thread } = seedDestroyableThread(harness);
+      await archiveAndDestroy(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+      });
+      await unarchive(harness, thread.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "start",
+            input: [{ type: "text", text: "Keep going" }],
+          }),
+        },
+      );
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+        code: "thread_environment_unavailable",
+        details: { reason: "destroyed" },
+      });
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        environmentId: environment.id,
+        status: "idle",
+      });
+      expect(createCalls).toHaveLength(0);
+      expect(restoreCalls).toHaveLength(0);
     });
   });
 

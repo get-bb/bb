@@ -279,8 +279,14 @@ call `sdk.environments.delete` to drive retirement. The former
 contract are removed. The environment-provider entry exports operation types.
 
 `create` receives the resolved facts, thread, suggestedBranchName, monotonic
-attempt, pathKey, rebuild, `previous: { environment, resource } | null`,
-report, and an abort signal. It is one long call and must be idempotent for
+attempt, pathKey, report, and an abort signal, and always builds a fresh
+environment. A thread whose environment was destroyed gets it back only when
+the user asks for a restore and the provider declares the optional
+`restore`: it receives the same facts, with the inputs the
+environment was created with, plus `previous: { environment, resource }`
+describing the removed environment, and decides what restoring means, such as
+checking the recorded branch out again. Without it, core never rebuilds a
+destroyed environment and its threads report it unavailable. `create` is one long call and must be idempotent for
 pathKey: after a process or plugin restart, core calls it again with the same
 attempt and pathKey. Return `created` with `path`, explicit `ownsPath`
 and optional `mergeBaseBranch`, or `failed` with a message; a failed create is terminal.
@@ -289,7 +295,7 @@ and optional `mergeBaseBranch`, or `failed` with a message; a failed create is t
 
 A created result may carry a private JSON resource capped at
 16 KiB. Core transfers it directly to the environment row and never includes
-it in responses or events. Rebuild and removal receive it; completed removal
+it in responses or events. Restore and removal receive it; completed removal
 clears it. On cancellation core aborts create, waits for it to stop, then calls
 `remove` with nullable `environment`, `hostId` and `path`, plus `pathKey`,
 `resource`, `attempt`, `report`, and a new signal. Remove must clean everything

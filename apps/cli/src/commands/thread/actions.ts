@@ -7,10 +7,15 @@ import {
   type ServiceTier,
   type ThreadVisibility,
 } from "@bb/domain";
-import { action } from "../../action.js";
+import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
+import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
-import type { ThreadRetryResult, ThreadSendResult } from "@bb/sdk";
+import {
+  BbHttpError,
+  type ThreadRetryResult,
+  type ThreadSendResult,
+} from "@bb/sdk";
 import type { QueuedMessageWaitingOn } from "@bb/domain";
 import {
   collectOption,
@@ -324,7 +329,7 @@ export function registerActionsCommands(
   parent
     .command("restore-environment [id]")
     .description(
-      "Rebuild the workspace of a thread whose environment was destroyed, on the branch it held",
+      "Restore the workspace of a thread whose environment was destroyed, when its environment provider supports restoring",
     )
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
@@ -640,23 +645,49 @@ async function postThreadMessage(
       (await sdk.threads.get({ threadId: args.threadId })).projectId,
     sdk,
   });
-  const response = await sdk.threads.send({
-    threadId: args.threadId,
-    input,
-    mode:
-      args.mode === "steer"
-        ? "steer-if-active"
-        : args.mode === "auto"
-          ? "auto"
-          : "queue-if-active",
-    ...(args.model ? { model: args.model } : {}),
-    ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
-    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
-    ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
-    ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
-    ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
-  });
+  let response: ThreadSendResult;
+  try {
+    response = await sdk.threads.send({
+      threadId: args.threadId,
+      input,
+      mode:
+        args.mode === "steer"
+          ? "steer-if-active"
+          : args.mode === "auto"
+            ? "auto"
+            : "queue-if-active",
+      ...(args.model ? { model: args.model } : {}),
+      ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
+      ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
+      ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
+      ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
+      ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
+    });
+  } catch (error: unknown) {
+    throw await withRestoreEnvironmentHint(sdk, args.threadId, error);
+  }
   return { ...response, mode: args.mode };
+}
+
+async function withRestoreEnvironmentHint(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  threadId: string,
+  error: unknown,
+): Promise<unknown> {
+  if (!(error instanceof BbHttpError)) return error;
+  const parsed = threadEnvironmentUnavailableApiErrorSchema.safeParse(
+    error.body,
+  );
+  if (!parsed.success || parsed.data.details.reason !== "destroyed") {
+    return error;
+  }
+  const { canRestoreEnvironment } = await sdk.threads.get({ threadId });
+  return new CliExitError(error.message, 1, {
+    code: parsed.data.code,
+    hint: canRestoreEnvironment
+      ? `Its workspace was removed. Restore it with \`bb thread restore-environment ${threadId}\`, then send again.`
+      : "Its workspace was removed and its environment provider cannot restore it. Start a new thread to continue.",
+  });
 }
 
 function describeThreadTellOutcome(

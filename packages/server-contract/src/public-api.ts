@@ -1564,8 +1564,10 @@ export const publicApiRoutes = {
       response: jsonResponse<{ ok: true }>(),
     }),
     /**
-     * Build a replacement workspace for a thread whose environment was
-     * destroyed, on the branch the destroyed one held, and attach it. Answers
+     * Ask the environment provider to restore a thread's destroyed environment
+     * and attach the result; the provider decides what restoring means, such
+     * as checking the recorded branch out again. Sends to such a thread fail
+     * until this runs. Answers
      * the thread as it now stands — `starting`, with provisioning underway —
      * and starts no turn: the thread settles back to `idle` once the workspace
      * is ready. Refused unless `canRestoreEnvironment` is true.

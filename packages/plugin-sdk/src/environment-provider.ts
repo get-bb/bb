@@ -61,10 +61,24 @@ export interface PluginEnvironmentProviderCreateContext<
   suggestedBranchName: string;
   attempt: number;
   pathKey: string;
-  rebuild: boolean;
+  experimental_claimPath(path: string): Promise<boolean>;
+  report: PluginEnvironmentProviderProgress;
+  signal: AbortSignal;
+}
+
+/** Rebuilds a thread's destroyed environment; `inputs` are the ones it was created with. */
+export interface PluginEnvironmentProviderRestoreContext<
+  R extends PluginEnvironmentProviderRequirements =
+    PluginEnvironmentProviderRequirements,
+  S extends PluginEnvironmentProviderInputsSchema =
+    PluginEnvironmentProviderInputsSchema,
+> extends PluginEnvironmentProviderValidateContext<R, S> {
+  thread: ThreadResponse;
+  attempt: number;
+  pathKey: string;
   experimental_claimPath(path: string): Promise<boolean>;
   /** Resource is private to this provider; null after completed removal. */
-  previous: { environment: Environment; resource: JsonValue | null } | null;
+  previous: { environment: Environment; resource: JsonValue | null };
   report: PluginEnvironmentProviderProgress;
   signal: AbortSignal;
 }
@@ -98,7 +112,7 @@ export type PluginEnvironmentProviderRemoveResult =
 export interface PluginEnvironmentProviderPolicy {
   /** Default five minutes; null keeps the environment indefinitely. */
   retireGraceMs: number | null;
-  /** Default per-thread; rebuilds use a fresh key to avoid dead paths. */
+  /** Default per-thread; replacement environments use a fresh key to avoid dead paths. */
   pathKeys: "per-thread" | "per-attempt";
 }
 
@@ -133,6 +147,10 @@ export interface PluginEnvironmentProviderDefinition<
   experimental_existingPath?(inputs: InputsValue<S>): string | null;
   create(
     context: PluginEnvironmentProviderCreateContext<R, S>,
+  ): Promise<PluginEnvironmentProviderCreateResult>;
+  /** Experimental: rebuild a destroyed environment when its thread asks for it back. Without it, core never rebuilds this provider's destroyed environments: see docs/api_to_audit.md. */
+  restore?(
+    context: PluginEnvironmentProviderRestoreContext<R, S>,
   ): Promise<PluginEnvironmentProviderCreateResult>;
   remove(
     context: PluginEnvironmentProviderRemoveContext,

@@ -518,6 +518,16 @@ export async function unarchiveThread(
   await expectStatus(response, 200, `unarchive thread ${threadId}`);
 }
 
+export async function restoreThreadEnvironment(
+  api: PublicApiClient,
+  threadId: string,
+): Promise<void> {
+  const response = await api.threads[":id"]["restore-environment"].$post({
+    param: { id: threadId },
+  });
+  await expectStatus(response, 200, `restore thread ${threadId} environment`);
+}
+
 export async function updateThread(
   api: PublicApiClient,
   threadId: string,

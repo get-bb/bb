@@ -337,16 +337,6 @@ export function requestThreadProvision(
   });
 }
 
-/**
- * Start provisioning a replacement workspace for a thread whose own was
- * destroyed, without asking the agent to do anything once it exists.
- *
- * The reprovision that rides on a message (see `dispatchTurnDuringReprovision`)
- * is the same machinery with a turn attached to the end of it. This one is the
- * user asking only for their files back: no `client/turn/requested` event, no
- * prompt-history entry, and `seedWithoutRun` settles the thread to `idle` once
- * the workspace is ready instead of starting a run in it.
- */
 export function requestThreadEnvironmentRestore(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   args: RequestThreadEnvironmentRestoreArgs,

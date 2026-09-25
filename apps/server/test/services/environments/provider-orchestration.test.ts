@@ -48,6 +48,7 @@ import {
   cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
   sweepProviderLifecycles,
+  type ProviderOperationContext,
 } from "../../../src/services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../../../src/services/environments/environment-response.js";
 import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -60,7 +61,6 @@ import {
   runEnvironmentProvisioningSweep,
 } from "../../../src/services/system/periodic-sweeps.js";
 import { toThreadResponseFromThread } from "../../../src/services/threads/thread-runtime-display.js";
-import type { TestEnvironmentProviderContext } from "../../helpers/provider-decisions.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -112,7 +112,7 @@ function setup(
     }),
     decisionTimeoutMs: 10_000,
   });
-  const context: TestEnvironmentProviderContext = {
+  const context: ProviderOperationContext = {
     thread: toThreadResponseFromThread(harness.deps, { thread }),
     project,
     host: makeHost({ id: host.id, name: host.name }),

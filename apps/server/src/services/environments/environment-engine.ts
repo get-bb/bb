@@ -55,8 +55,10 @@ import {
 } from "@bb/domain";
 import { type ThreadResponse } from "@bb/server-contract";
 import {
+  type PluginEnvironmentProviderCreateContext,
   type PluginEnvironmentProviderCreateResult,
   type PluginEnvironmentProviderProgress,
+  type PluginEnvironmentProviderRestoreContext,
 } from "@get-bb/plugin-sdk/environment-provider";
 import {
   type ThreadProvisioningDeps,
@@ -297,14 +299,39 @@ function runTrackedOperation(args: {
 
 const REMOVE_RETRY_MS = 60_000;
 
+const RETIRED_CREATE_CONTEXT_FIELDS = { rebuild: false, previous: null };
+
 async function invokeCreate(
   record: PluginEnvironmentProviderRecord,
-  context: Parameters<PluginEnvironmentProviderRecord["provider"]["create"]>[0],
+  context: PluginEnvironmentProviderCreateContext,
 ): Promise<PluginEnvironmentProviderCreateResult> {
   const invocation = await invokeEnvironmentProvider(
     record,
     "environment create",
-    () => record.provider.create(context),
+    () =>
+      record.provider.create({ ...RETIRED_CREATE_CONTEXT_FIELDS, ...context }),
+  );
+  if (!invocation.ok) throw new Error(invocation.error);
+  if (invocation.value === null)
+    throw new Error("The environment provider became unavailable.");
+  return createResultSchema.parse(invocation.value);
+}
+
+async function invokeRestore(
+  record: PluginEnvironmentProviderRecord,
+  context: PluginEnvironmentProviderRestoreContext,
+): Promise<PluginEnvironmentProviderCreateResult> {
+  const restore = record.provider.restore;
+  if (restore === null) {
+    return {
+      status: "failed",
+      message: `The "${record.provider.displayName}" environment provider cannot restore a removed environment.`,
+    };
+  }
+  const invocation = await invokeEnvironmentProvider(
+    record,
+    "environment restore",
+    () => restore(context),
   );
   if (!invocation.ok) throw new Error(invocation.error);
   if (invocation.value === null)
@@ -329,6 +356,37 @@ async function runCreate(
       context.environment === null
         ? null
         : getEnvironment(deps.db, context.environment.id);
+    const operation = {
+      thread: context.thread,
+      project: context.project,
+      host: context.host,
+      projectCheckout: context.projectCheckout,
+      gitRemote: context.gitRemote,
+      inputs: context.inputs,
+      pathKey: provisioning.environmentProviderInstanceKey ?? provisioning.id,
+      attempt: provisioning.attempt,
+      experimental_claimPath: async (value: string) => {
+        const path = z
+          .string()
+          .min(1)
+          .startsWith("/")
+          .refine((path) => !path.includes("\0"))
+          .parse(value);
+        if (signal.aborted) return false;
+        const normalizedPath = path.replace(/\/+$/u, "") || "/";
+        if (
+          findBlockingEnvironmentPathClaim(deps, {
+            hostId: context.host.id,
+            path: normalizedPath,
+            owner: provisioning,
+          }) !== null
+        )
+          return false;
+        return claimEnvironmentPath(deps.db, provisioning, normalizedPath);
+      },
+      report: provisioningReporter(deps, provisioning),
+      signal: signal,
+    };
     let result =
       provisioning.providerOwnsPath && provisioning.path !== null
         ? {
@@ -338,54 +396,21 @@ async function runCreate(
             mergeBaseBranch: provisioning.mergeBaseBranch ?? undefined,
             resource: provisioning.resource ?? undefined,
           }
-        : await invokeCreate(record, {
-            thread: context.thread,
-            project: context.project,
-            host: context.host,
-            projectCheckout: context.projectCheckout,
-            gitRemote: context.gitRemote,
-            inputs: context.inputs,
-            suggestedBranchName: context.suggestedBranchName,
-            pathKey:
-              provisioning.environmentProviderInstanceKey ?? provisioning.id,
-            attempt: provisioning.attempt,
-            rebuild: previous !== null,
-            experimental_claimPath: async (value) => {
-              const path = z
-                .string()
-                .min(1)
-                .startsWith("/")
-                .refine((path) => !path.includes("\0"))
-                .parse(value);
-              if (signal.aborted) return false;
-              const normalizedPath = path.replace(/\/+$/u, "") || "/";
-              if (
-                findBlockingEnvironmentPathClaim(deps, {
-                  hostId: context.host.id,
-                  path: normalizedPath,
-                  owner: provisioning,
-                }) !== null
-              )
-                return false;
-              return claimEnvironmentPath(
-                deps.db,
-                provisioning,
-                normalizedPath,
-              );
-            },
-            previous:
-              previous === null
-                ? null
-                : {
-                    environment: toEnvironmentResponse(deps.db, previous),
-                    resource:
-                      previous.teardownStatus === "removed"
-                        ? null
-                        : previous.resource,
-                  },
-            report: provisioningReporter(deps, provisioning),
-            signal: signal,
-          });
+        : previous?.status === "destroyed"
+          ? await invokeRestore(record, {
+              ...operation,
+              previous: {
+                environment: toEnvironmentResponse(deps.db, previous),
+                resource:
+                  previous.teardownStatus === "removed"
+                    ? null
+                    : previous.resource,
+              },
+            })
+          : await invokeCreate(record, {
+              ...operation,
+              suggestedBranchName: context.suggestedBranchName,
+            });
     if (result.status === "created") {
       let adoptedExistingEnvironment = false;
       let existingProviderOwnsLifecycle = false;

@@ -596,9 +596,10 @@ export interface ThreadsArea {
    * can still hold it; the response says which of the two happened.
    */
   /**
-   * Rebuild the workspace of a thread whose environment was destroyed — on the
-   * branch that environment held — and attach it to the thread. Starts no
-   * turn: the thread settles back to `idle` once the workspace is ready.
+   * Ask the environment provider to restore the destroyed workspace of a
+   * thread and attach it; the provider decides what restoring means, such as
+   * checking the recorded branch out again. Sends fail until this runs. Starts
+   * no turn: the thread settles back to `idle` once the workspace is ready.
    * Refused unless the thread's `canRestoreEnvironment` is true.
    */
   restoreEnvironment(

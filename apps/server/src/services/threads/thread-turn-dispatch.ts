@@ -66,7 +66,8 @@ export async function dispatchTurnDuringReprovision(
   if (
     environmentProviderId !== null &&
     environmentProviderSelection !== null &&
-    args.environment.status !== "provisioning"
+    args.environment.status !== "provisioning" &&
+    args.environment.status !== "destroyed"
   ) {
     requestThreadTargetReprovision(args.deps, {
       beforeRequestAppendInTransaction: ({ tx }) => {

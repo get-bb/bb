@@ -22,15 +22,6 @@ export interface ThreadEnvironmentRestoreDeps {
   db: DbConnection;
 }
 
-/**
- * Why a thread cannot be handed a fresh workspace in place of the destroyed
- * one it still points at.
- *
- * `not_destroyed` is the "nothing to do" refusal — the thread still has a
- * workspace, ready or being prepared — while `unrecoverable` is the terminal
- * one: the branch the workspace held is unknown, or the provider that built it
- * or the machine it stood on is no longer here to build it again.
- */
 export type ThreadEnvironmentRestoreRefusal =
   | "never_attached"
   | "not_destroyed"
@@ -56,17 +47,6 @@ function isRestoreReadyThreadStatus(status: Thread["status"]): boolean {
   return status === "idle" || status === "error";
 }
 
-/**
- * Whether the thread's destroyed workspace can be rebuilt, and with what.
- *
- * A managed workspace outlives its files: the environment row keeps the branch
- * the work was committed to, the provider that created it and the machine it
- * ran on, so provisioning can create a second workspace on that same branch and
- * attach it to the thread. That is only true while all three parts are still
- * here — hence the branch, provider registration and machine checks rather
- * than a bare `status === "destroyed"` test. A detached HEAD records no branch,
- * and rebuilding it would start a fresh branch without its commits.
- */
 export function resolveThreadEnvironmentRestore(
   deps: ThreadEnvironmentRestoreDeps,
   args: { thread: RestoreCandidateThread },
@@ -90,7 +70,6 @@ export function resolveThreadEnvironmentRestore(
   }
   const { environmentProviderId, environmentProviderSelection } = environment;
   if (
-    environment.branchName === null ||
     environmentProviderId === null ||
     environmentProviderSelection === null
   ) {
@@ -99,7 +78,8 @@ export function resolveThreadEnvironmentRestore(
   const record = getEnvironmentProvider(environmentProviderId);
   if (
     record === undefined ||
-    record.pluginId !== environment.environmentProviderPluginId
+    record.pluginId !== environment.environmentProviderPluginId ||
+    record.provider.restore === null
   ) {
     return { restorable: false, refusal: "unrecoverable" };
   }

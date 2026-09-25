@@ -559,15 +559,31 @@ listing never blocks on the answer. Core invokes it again for the selected
 provider and machine during thread creation. Its context contains project,
 host, projectCheckout, and gitRemote; its named types intentionally have no
 experimental prefix.
+The optional `restore(context)` method, unprefixed like `availability` because
+the whole registration is experimental, is the only way core
+rebuilds a destroyed environment, and runs only when a user restores an
+unarchived, settled thread (`POST /threads/:id/restore-environment`,
+`bb thread restore-environment`). Its context carries the creation inputs and
+`previous: { environment, resource }` for the removed environment; the provider
+decides what restoring means. Git worktree re-creates the worktree on the
+recorded branch, project checkout switches back to the recorded branch, and
+personal workspace does not restore. Without the method, the thread reports
+`canRestoreEnvironment: false` and sends fail with
+`thread_environment_unavailable`. `create` no longer receives `rebuild` or
+`previous` in its type; core still passes `rebuild: false` and
+`previous: null` at runtime for plugins built against the older contract.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
 removal serialization; retry caps and timing defaults; resource privacy and the
 16 KiB boundary; create-timeout aborts; and the read-only lifecycle projection.
 The pathKey gives create and remove stable resource identity. Confirm these
-extensions before stabilizing. Rebuilds
-receive previous.environment and previous.resource, null after completed
-removal. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
+extensions before stabilizing. Restores receive previous.environment and
+previous.resource, null after completed removal; decide whether restore should
+stay a separate method or become a create mode, whether a provider needs a way
+to decline before the button is offered (git worktree currently fails after
+the click when no branch was recorded), and when to stop passing the retired
+`rebuild`/`previous` create fields. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
 per-thread/null; nullable retirement and create timeout disable those policies.
 EnvironmentStatus remains provisioning/ready/error/destroyed;
 retiring and teardown are lifecycle phases, not restored statuses.
