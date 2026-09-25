@@ -1314,7 +1314,9 @@ export function useSectionThreadDnd({
       const decision = resolveSectionThreadDropDecision(
         lookup,
         activeId,
-        overId,
+        rowDrop?.state === "valid"
+          ? getSidebarThreadRowDroppableId(rowDrop.threadId)
+          : overId,
         dragOverParentKey,
         projectedNestParentId,
         decisionOptions,
@@ -1375,6 +1377,7 @@ export function useSectionThreadDnd({
       onTopLevelSectionOrderChange,
       projectedNestParentId,
       reorderTarget,
+      rowDrop,
       topLevelSectionIds,
       topLevelSectionOrder,
     ],
