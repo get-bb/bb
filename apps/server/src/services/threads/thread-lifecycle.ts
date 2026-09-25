@@ -899,13 +899,9 @@ export function settleThreadStartCommandResult(
   clearThreadProvisionSchedule(thread.id);
   const currentThread = getThread(args.deps.db, args.command.threadId);
   if (currentThread && currentThread.deletedAt !== null) {
-    const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+    finalizeStoppedThreadInTransaction(args.deps, {
       threadId: currentThread.id,
     });
-    if (interruptedChild)
-      postCommitActions.push(
-        interruptedChildNotificationAction(interruptedChild),
-      );
     return { postCommitActions };
   }
   if (
@@ -1021,19 +1017,6 @@ export async function prepareReadyThreadTurnCommand(
   };
 }
 
-export function interruptedChildNotificationAction(
-  childThread: Thread & { parentThreadId: string },
-): CommandResultPostCommitAction {
-  return {
-    run: (deps) =>
-      queueChildThreadTurnNotificationBestEffort(deps, {
-        childThread,
-        parentThreadId: childThread.parentThreadId,
-        turnStatus: "interrupted",
-      }),
-  };
-}
-
 export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
@@ -1066,20 +1049,17 @@ export function settleThreadStopCommandResult(
       return emptyCommandResultSideEffects();
     }
 
-    const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+    finalizeStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
     });
     return {
       postCommitActions: [
-        ...(interruptedChild
-          ? [interruptedChildNotificationAction(interruptedChild)]
-          : []),
         drainQueuedMessagesAfterStopAction(args.command.threadId),
       ],
     };
   }
 
-  const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+  finalizeStoppedThreadInTransaction(args.deps, {
     ...(args.report.result.providerCheckpointId !== null
       ? { providerCheckpointId: args.report.result.providerCheckpointId }
       : {}),
@@ -1088,9 +1068,6 @@ export function settleThreadStopCommandResult(
 
   return {
     postCommitActions: [
-      ...(interruptedChild
-        ? [interruptedChildNotificationAction(interruptedChild)]
-        : []),
       {
         run: (deps) => {
           dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
@@ -1115,17 +1092,13 @@ export function settleThreadStorageDeleteCommandResult(
   markThreadStorageDeleted(args.deps.db, {
     threadId: args.command.threadId,
   });
-  const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+  finalizeStoppedThreadInTransaction(args.deps, {
     ...(args.report.result.providerCheckpointId !== null
       ? { providerCheckpointId: args.report.result.providerCheckpointId }
       : {}),
     threadId: args.command.threadId,
   });
-  return {
-    postCommitActions: interruptedChild
-      ? [interruptedChildNotificationAction(interruptedChild)]
-      : [],
-  };
+  return emptyCommandResultSideEffects();
 }
 
 export function requestThreadStorageDeletion(
@@ -1202,14 +1175,10 @@ export function settleThreadPlanCancelCommandResult(
   if (activeTurnId !== null && activeTurnId !== args.command.expectedTurnId) {
     return emptyCommandResultSideEffects();
   }
-  const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+  finalizeStoppedThreadInTransaction(args.deps, {
     threadId: args.command.threadId,
   });
-  return {
-    postCommitActions: interruptedChild
-      ? [interruptedChildNotificationAction(interruptedChild)]
-      : [],
-  };
+  return emptyCommandResultSideEffects();
 }
 
 function dispatchThreadStartFromRequest(
@@ -1935,7 +1904,7 @@ export function finalizeStoppedThread(
   args: FinalizeStoppedThreadArgs,
 ): void {
   const notificationBuffer = new NotificationBuffer();
-  const interruptedChild = deps.db.transaction(
+  deps.db.transaction(
     (tx) =>
       finalizeStoppedThreadInTransaction(
         {
@@ -1948,13 +1917,6 @@ export function finalizeStoppedThread(
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
-  if (interruptedChild) {
-    void queueChildThreadTurnNotificationBestEffort(deps, {
-      childThread: interruptedChild,
-      parentThreadId: interruptedChild.parentThreadId,
-      turnStatus: "interrupted",
-    });
-  }
   requestQueuedMessageDispatch(deps, {
     kind: "thread-ready",
     threadId: args.threadId,
@@ -1967,18 +1929,11 @@ export function finalizeStoppedThread(
 export function finalizeStoppedThreadInTransaction(
   deps: FinalizeStoppedThreadTransactionDeps,
   args: FinalizeStoppedThreadArgs,
-): (Thread & { parentThreadId: string }) | null {
+): void {
   const currentThread = getThread(deps.db, args.threadId);
   if (!currentThread) {
-    return null;
+    return;
   }
-  const interruptedChild =
-    isParentNotifiableChildThread(currentThread) &&
-    (currentThread.status === "active" ||
-      currentThread.status === "stopping") &&
-    getActiveTurnId(deps, currentThread.id) !== null
-      ? currentThread
-      : null;
 
   const interruptionReason =
     getLatestThreadInterruptedReason(deps.db, {
@@ -2021,7 +1976,7 @@ export function finalizeStoppedThreadInTransaction(
 
   const finalizedThread = getThread(deps.db, args.threadId);
   if (!finalizedThread) {
-    return interruptedChild;
+    return;
   }
 
   if (finalizedThread.deletedAt === null) {
@@ -2056,14 +2011,13 @@ export function finalizeStoppedThreadInTransaction(
       finalizedThread.environmentId !== null &&
       finalizedThread.storageDeletedAt === null
     )
-      return interruptedChild;
+      return;
     if (providerEnvironmentHasPendingWork(deps.db, finalizedThread.id))
-      return interruptedChild;
+      return;
     deleteThread(deps.db, deps.hub, finalizedThread.id);
     if (finalizedThread.environmentId !== null)
       refreshProviderRetirement(deps, finalizedThread.environmentId);
   }
-  return interruptedChild;
 }
 
 export async function reconcileDaemonReportedThreads(

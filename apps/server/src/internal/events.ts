@@ -443,7 +443,13 @@ async function applyEventEffects(
               threadId: turnCompleted.thread.id,
               turnId,
             });
-          if (!alreadyHandledByCommandFailure) {
+          const manuallyStopped =
+            event.status === "interrupted" &&
+            wasTurnManuallyStopped(deps, {
+              threadId: turnCompleted.thread.id,
+              turnId,
+            });
+          if (!alreadyHandledByCommandFailure && !manuallyStopped) {
             addParentTurnNotificationFollowUp({
               failedParentNotificationThreadIds,
               followUps,
@@ -640,6 +646,43 @@ function hasThreadStopBeforeTurnStarted(
           eq(storedEvents.type, "system/thread/interrupted"),
           gt(storedEvents.sequence, lowerSequence),
           lt(storedEvents.sequence, turnStarted.sequence),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+function wasTurnManuallyStopped(
+  deps: Pick<AppDeps, "db">,
+  args: HasThreadStopBeforeTurnStartedArgs,
+): boolean {
+  const turnStarted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, args.turnId),
+        eq(storedEvents.type, "turn/started"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!turnStarted) {
+    return false;
+  }
+
+  return (
+    deps.db
+      .select({ id: storedEvents.id })
+      .from(storedEvents)
+      .where(
+        and(
+          eq(storedEvents.threadId, args.threadId),
+          eq(storedEvents.type, "system/thread/interrupted"),
+          gt(storedEvents.sequence, turnStarted.sequence),
+          sql`json_extract(${storedEvents.data}, '$.reason') = 'manual-stop'`,
         ),
       )
       .limit(1)

@@ -3,7 +3,8 @@ import {
   listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
-import { turnRequestEventDataSchema } from "@bb/domain";
+import { threadScope, turnScope, turnRequestEventDataSchema } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeStoppedThread } from "../../src/services/threads/thread-lifecycle.js";
 import { interruptEnvironmentProvisioningForHost } from "../../src/services/environments/environment-engine.js";
@@ -12,6 +13,7 @@ import { recordQueuedMessageDrainFailure } from "../../src/services/threads/queu
 import {
   seedQueuedMessage,
   seedEnvironment,
+  seedEvent,
   seedHost,
   seedThread,
   seedThreadFixture,
@@ -19,13 +21,15 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
+import { internalAuthHeaders } from "../helpers/commands.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 function seedParentAndChild(
   harness: TestAppHarness,
   childStatus: "active" | "starting" | "idle",
 ) {
-  const { project, environment, thread: parent } = seedThreadFixture(harness);
+  const { project, environment, session, thread: parent } =
+    seedThreadFixture(harness);
   seedThreadRuntimeState(harness.deps, {
     threadId: parent.id,
     environmentId: environment.id,
@@ -38,7 +42,7 @@ function seedParentAndChild(
     status: childStatus,
     title: "Worker child",
   });
-  return { parent, child, environment };
+  return { parent, child, environment, session };
 }
 
 function parentSystemRequests(harness: TestAppHarness, parentThreadId: string) {
@@ -51,7 +55,7 @@ function parentSystemRequests(harness: TestAppHarness, parentThreadId: string) {
 afterEach(() => vi.useRealTimers());
 
 describe("child outcomes without provider completion", () => {
-  it("notifies the parent when Stop synthesizes an open turn interruption", async () => {
+  it("keeps a manual Stop silent when it synthesizes an open turn interruption", async () => {
     await withTestHarness(async (harness) => {
       const { parent, child, environment } = seedParentAndChild(
         harness,
@@ -68,11 +72,71 @@ describe("child outcomes without provider completion", () => {
       finalizeStoppedThread(harness.deps, { threadId: child.id });
       await vi.advanceTimersByTimeAsync(2_000);
 
-      expect(parentSystemRequests(harness, parent.id)).toMatchObject([
-        { systemMessageKind: "child-interrupted" },
-      ]);
+      expect(parentSystemRequests(harness, parent.id)).toHaveLength(0);
+      expect(
+        listEvents(harness.db, { threadId: child.id }).some(
+          (event) =>
+            event.type === "turn/completed" &&
+            JSON.parse(event.data).status === "interrupted",
+        ),
+      ).toBe(true);
     });
   });
+
+  it.each([
+    { reason: "manual-stop", expectedNotices: 0 },
+    { reason: "host-daemon-restarted", expectedNotices: 1 },
+  ])(
+    "sends $expectedNotices parent notices for a provider interruption after $reason",
+    async ({ reason, expectedNotices }) => {
+      await withTestHarness(async (harness) => {
+        const { parent, child, environment, session } = seedParentAndChild(
+          harness,
+          "active",
+        );
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          threadId: child.id,
+          turnId: "child-turn",
+        });
+        seedEvent(harness.deps, {
+          threadId: child.id,
+          environmentId: environment.id,
+          providerThreadId: "provider-child-turn",
+          sequence: 2,
+          type: "system/thread/interrupted",
+          scope: threadScope(),
+          data: { reason },
+        });
+
+        vi.useFakeTimers();
+        const response = await harness.app.request("/internal/session/events", {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            eventGroups: groupHostDaemonEvents([
+              {
+                threadId: child.id,
+                event: {
+                  type: "turn/completed",
+                  threadId: child.id,
+                  providerThreadId: "provider-child-turn",
+                  scope: turnScope("child-turn"),
+                  status: "interrupted",
+                },
+              },
+            ]),
+          }),
+        });
+        expect(response.status).toBe(200);
+        await vi.advanceTimersByTimeAsync(2_000);
+        expect(parentSystemRequests(harness, parent.id)).toHaveLength(
+          expectedNotices,
+        );
+      });
+    },
+  );
 
   it("notifies the parent when setup fails before the child starts a turn", async () => {
     await withTestHarness(async (harness) => {

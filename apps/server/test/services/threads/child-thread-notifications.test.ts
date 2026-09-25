@@ -100,8 +100,6 @@ describe("child thread notifications", () => {
         "@thread:thr_child was interrupted.",
         "",
         "Review the thread before deciding next steps.",
-        "",
-        "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
       ].join("\n"),
     );
     expect(message).not.toContain("Child thread updates:");

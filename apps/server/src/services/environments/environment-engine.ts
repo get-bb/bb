@@ -101,7 +101,6 @@ import {
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   finalizeStoppedThreadInTransaction,
-  interruptedChildNotificationAction,
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
 import {
@@ -1304,13 +1303,9 @@ function settleEnvironmentProvisionOutcome(
 
     for (const thread of boundThreads) {
       if (thread.deletedAt !== null) {
-        const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+        finalizeStoppedThreadInTransaction(args.deps, {
           threadId: thread.id,
         });
-        if (interruptedChild)
-          postCommitActions.push(
-            interruptedChildNotificationAction(interruptedChild),
-          );
         continue;
       }
       if (
@@ -1457,13 +1452,9 @@ export function settleEnvironmentProvisionCancelCommandResult(
   }
 
   for (const thread of stoppedThreads) {
-    const interruptedChild = finalizeStoppedThreadInTransaction(args.deps, {
+    finalizeStoppedThreadInTransaction(args.deps, {
       threadId: thread.id,
     });
-    if (interruptedChild)
-      postCommitActions.push(
-        interruptedChildNotificationAction(interruptedChild),
-      );
   }
 
   return { postCommitActions };
