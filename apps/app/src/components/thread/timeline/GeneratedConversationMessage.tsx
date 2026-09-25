@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type {
   PromptTextMention,
@@ -47,6 +47,7 @@ import {
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  messageTimestamp: ReactNode | null;
   originKind: ThreadOriginKind | null;
   mentions: readonly PromptTextMention[];
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -444,6 +445,7 @@ const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
+    messageTimestamp,
     originKind,
     mentions,
     onOpenLink,
@@ -645,6 +647,9 @@ export const GeneratedConversationMessage = memo(
                 <TurnRequestLabel turnRequest={turnRequest} />
               </div>
             ) : null}
+            {messageTimestamp !== null ? (
+              <div className="mt-1 flex items-center">{messageTimestamp}</div>
+            ) : null}
           </div>
         </div>
       ),
@@ -654,6 +659,7 @@ export const GeneratedConversationMessage = memo(
         linkRouting,
         messageText,
         messageMentions,
+        messageTimestamp,
         onOpenLocalFileLink,
         projectId,
         resolveSegmentLinkHref,

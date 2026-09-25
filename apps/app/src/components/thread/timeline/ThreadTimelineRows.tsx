@@ -67,6 +67,11 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
+// bb-fork(windows): turn process timings for message timestamps.
+import {
+  buildTimelineTurnProcessTimings,
+  TimelineTurnProcessContext,
+} from "./timeline-turn-process.js";
 import {
   MessageColumnWidthContext,
   useMeasuredWidth,
@@ -950,6 +955,8 @@ const ConversationRowContent = memo(function ConversationRowContent({
         initiator={row.initiator}
         mentions={row.mentions}
         mobileActionDisplay={mobileActionDisplay}
+        createdAt={row.createdAt}
+        turnId={row.turnId}
         onAddToChat={onSelectionAddToChat}
         onEdit={onEdit}
         onOpenLink={onOpenLink}
@@ -999,6 +1006,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     <ConversationMessageContent
       attachments={row.attachments}
       id={row.id}
+      createdAt={row.createdAt}
       onAddToChat={onMessageAddToChat}
       onFork={onFork}
       onSendToMain={onSendToMain}
@@ -1936,6 +1944,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],
   );
+  // bb-fork(windows): index turn timings so messages can show process duration.
+  const turnProcessTimings = useMemo(
+    () => buildTimelineTurnProcessTimings(props.timelineRows),
+    [props.timelineRows],
+  );
   const heightSnapRevision = timelineHeightSnapRevision(props.timelineRows);
   const latestActionableAssistantMessageId = useMemo(
     () => findLastActionableAssistantMessageId(rows),
@@ -2180,27 +2193,32 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                         snapRevision={heightSnapRevision}
                         animateGrowth={!scopeActive}
                       >
-                        <TimelineRowsList
-                          hasOlderTimelineRows={props.hasOlderTimelineRows}
-                          isLoadingOlderTimelineRows={
-                            props.isLoadingOlderTimelineRows
-                          }
-                          navigationTargetRowId={
-                            props.timelineNavigationTargetRowId
-                          }
-                          onLoadOlderRows={props.onLoadOlderRows}
-                          rows={rows}
-                          scopeActive={scopeActive}
-                          showAssistantMessageActions={true}
-                          compactActivityIntents={false}
-                          spacing="top-level"
-                          unreadDividerAutoScroll={
-                            props.unreadDividerAutoScroll ?? true
-                          }
-                          unreadDividerPlacement={
-                            props.unreadDividerPlacement ?? null
-                          }
-                        />
+                        {/* bb-fork(windows): messages read turn timings from here. */}
+                        <TimelineTurnProcessContext.Provider
+                          value={turnProcessTimings}
+                        >
+                          <TimelineRowsList
+                            hasOlderTimelineRows={props.hasOlderTimelineRows}
+                            isLoadingOlderTimelineRows={
+                              props.isLoadingOlderTimelineRows
+                            }
+                            navigationTargetRowId={
+                              props.timelineNavigationTargetRowId
+                            }
+                            onLoadOlderRows={props.onLoadOlderRows}
+                            rows={rows}
+                            scopeActive={scopeActive}
+                            showAssistantMessageActions={true}
+                            compactActivityIntents={false}
+                            spacing="top-level"
+                            unreadDividerAutoScroll={
+                              props.unreadDividerAutoScroll ?? true
+                            }
+                            unreadDividerPlacement={
+                              props.unreadDividerPlacement ?? null
+                            }
+                          />
+                        </TimelineTurnProcessContext.Provider>
                       </AutoHeightContainer>
                     </TimelineWindowingEnabledContext.Provider>
                   </TimelineWindowingMeasurementsContext.Provider>
