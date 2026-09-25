@@ -54,8 +54,8 @@ EmptyState) have real story coverage already, scattered across 20
 `apps/app/**/*.stories.tsx` files — mostly as supporting actors inside
 composite app stories, with Button and Pill the only two having a
 dedicated reference story. Select, DropdownMenu, and Dialog — the
-highest install-weighted components after Icon/Textarea — have zero
-coverage anywhere.
+components plugins use most after Icon/Textarea, per the usage survey
+in Scope and priority order below — have zero coverage anywhere.
 
 ## Goal
 
@@ -119,14 +119,15 @@ from.
 
 ## Scope and priority order
 
-All 253 components, authored once. Priority order below reuses the
-existing plugin-usage survey's conclusions (numbers restated here so this
-list is self-contained) — this ordering logic is independent of the
-grading rationale that's been dropped, only the numbers are inherited.
-The survey itself is "install-weighted": for each shared-ui component, it
-counted how many marketplace plugins (weighted by that plugin's install
-count) actually use it, across 197 marketplace plugins plus bb's own
-in-repo plugins, run 2026-09-16. **The survey file
+All 253 components, authored once, in the order below. That order comes
+from a plugin-usage survey run 2026-09-16 as part of the design-sync
+effort (see Background) — for each shared-ui component, it counted how
+many marketplace plugins (weighted by that plugin's install count)
+actually use it, across 197 marketplace plugins plus bb's own in-repo
+plugins ("install-weighted," in the numbers below). This spec inherits
+only the survey's conclusions, not its design-sync-grading rationale —
+the numbers are restated here so this list is self-contained. **The
+survey file
 (`.design-sync/NOTES.md`) only exists on
 [`design-sync/bb-shared-ui-pilot`](https://github.com/technicalpickles/bb/tree/design-sync/bb-shared-ui-pilot),
 not on this branch** — to see the full methodology or re-derive it,
@@ -166,7 +167,8 @@ heavier than it needed to be.
 
 Co-located: `packages/shared-ui/src/components/ui/<name>.stories.tsx`,
 title `"shared-ui/<Name>"`. Matches the existing project convention
-("stories are co-located with the component") and the same title
+("stories are co-located with the component," stated in
+`apps/app/src/components/ui/README.md`) and the same title
 namespace used by
 [`docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md`](https://github.com/technicalpickles/bb/blob/shared-ui-ladle-stories-icon-textarea/docs/superpowers/specs/2026-09-24-shared-ui-ladle-stories-design.md)
 (on branch `shared-ui-ladle-stories-icon-textarea`, not present here) —
