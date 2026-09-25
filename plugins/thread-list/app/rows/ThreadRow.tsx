@@ -8,6 +8,7 @@ import {
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
+  type TouchEventHandler,
 } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Icon } from "@/components/ui/icon";
@@ -183,6 +184,11 @@ function renderThreadRowContainer({
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
+  const onTouchStart: TouchEventHandler<HTMLDivElement> = (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (!event.target.closest("[data-sidebar-thread-drag-handle]")) return;
+    dragBindings?.listeners?.onTouchStart?.(event);
+  };
   const containerProps = {
     "data-sidebar-rename-row": "",
     className,
@@ -191,6 +197,7 @@ function renderThreadRowContainer({
     "data-sidebar-reorder-placement": reorderPlacement ?? undefined,
     ...dragBindings?.attributes,
     ...(dragBindings?.listeners ?? {}),
+    onTouchStart,
     onClick,
     onClickCapture,
     onPointerDown: onSplitDragPointerDown,
@@ -573,6 +580,17 @@ function ThreadRowComponent({
           />
         ) : null}
       </span>
+      {rowDragBindings && !rowDragBindings.disabled ? (
+        <button
+          type="button"
+          data-sidebar-thread-drag-handle=""
+          aria-label={`Reorder ${labelTitle}`}
+          className="relative z-10 hidden size-9 shrink-0 cursor-grab items-center justify-center text-muted-foreground touch-none pointer-coarse:flex"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Icon name="SectionMove" className="size-4" aria-hidden />
+        </button>
+      ) : null}
       <span
         data-sidebar-thread-trailing=""
         className={cn(
