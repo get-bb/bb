@@ -1,51 +1,11 @@
 import type { ThreadListEntry } from "@bb/domain";
-import { compareCodepoint } from "../codepoint-compare.js";
-import {
-  buildProjectThreadGroups,
-  compareStandardThreads,
-  type ProjectThreadItem,
-  type ProjectThreadNode,
-} from "./projectThreadGroups.js";
 
 interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
-  rootNodes: ProjectThreadNode[];
 }
 
 interface BuildPinnedSidebarStateArgs {
-  draftThreadIds?: ReadonlySet<string>;
   threads: readonly ThreadListEntry[];
-}
-
-function compareByPinnedFallback(
-  left: ThreadListEntry,
-  right: ThreadListEntry,
-): number {
-  const pinnedAtDelta = (right.pinnedAt ?? 0) - (left.pinnedAt ?? 0);
-  if (pinnedAtDelta !== 0) {
-    return pinnedAtDelta;
-  }
-
-  const createdAtDelta = right.createdAt - left.createdAt;
-  if (createdAtDelta !== 0) {
-    return createdAtDelta;
-  }
-
-  return compareCodepoint(left.id, right.id);
-}
-
-function comparePinnedRoots(
-  left: ThreadListEntry,
-  right: ThreadListEntry,
-): number {
-  if (left.pinSortKey !== null && right.pinSortKey !== null) {
-    const pinSortKeyDelta = compareCodepoint(left.pinSortKey, right.pinSortKey);
-    if (pinSortKeyDelta !== 0) {
-      return pinSortKeyDelta;
-    }
-  }
-
-  return compareByPinnedFallback(left, right);
 }
 
 function addDescendantThreadIds({
@@ -75,21 +35,7 @@ interface AddDescendantThreadIdsArgs {
   visitedThreadIds: Set<string>;
 }
 
-function collectRootNodes(
-  items: readonly ProjectThreadItem[],
-): ProjectThreadNode[] {
-  return items.flatMap((item) => {
-    switch (item.kind) {
-      case "thread":
-        return [item.node];
-      case "environment":
-        return item.group.nodes;
-    }
-  });
-}
-
 export function buildPinnedSidebarState({
-  draftThreadIds = new Set(),
   threads,
 }: BuildPinnedSidebarStateArgs): PinnedSidebarState {
   const explicitlyPinnedThreads = threads.filter(
@@ -120,21 +66,5 @@ export function buildPinnedSidebarState({
     });
   }
 
-  const effectivePinnedThreads = threads.filter((thread) =>
-    effectivePinnedThreadIds.has(thread.id),
-  );
-  const projectItems = buildProjectThreadGroups(
-    effectivePinnedThreads,
-    compareStandardThreads,
-    draftThreadIds,
-  );
-  const rootNodes = collectRootNodes(projectItems);
-  rootNodes.sort((left, right) =>
-    comparePinnedRoots(left.thread, right.thread),
-  );
-
-  return {
-    effectivePinnedThreadIds,
-    rootNodes,
-  };
+  return { effectivePinnedThreadIds };
 }

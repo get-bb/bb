@@ -68,7 +68,6 @@ const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 const SYSTEM_APP_UPDATE_QUERY_KEY = "systemAppUpdate";
 const SERVER_MOVE_STATUS_QUERY_KEY = "serverMoveStatus";
 const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
-const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 const SYSTEM_PROVIDER_STATES_QUERY_KEY = "systemProviderStates";
 const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
@@ -479,11 +478,6 @@ type SystemAppUpdateQueryKey = readonly [typeof SYSTEM_APP_UPDATE_QUERY_KEY];
 type ServerMoveStatusQueryKey = readonly [typeof SERVER_MOVE_STATUS_QUERY_KEY];
 type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
-  string | null,
-];
-type SystemUsageLimitsQueryKey = readonly [
-  typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
-  string | null,
   string | null,
 ];
 type SystemProviderStatesQueryKey = readonly [
@@ -1158,13 +1152,6 @@ export function hostProviderCliStatusQueryKey(
   hostId: string | null,
 ): HostProviderCliStatusQueryKey {
   return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY, hostId];
-}
-
-export function systemUsageLimitsQueryKey(
-  hostId: string | null,
-  providerId: string | null = null,
-): SystemUsageLimitsQueryKey {
-  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId, providerId];
 }
 
 export function systemProviderStatesQueryKey(

@@ -12,7 +12,7 @@ import {
 } from "@/test/fixtures/thread-timeline-rows";
 import {
   collectTimelineAutoExpansionRowIds,
-  isWorkRowExpandable,
+  isRowExpandable,
 } from "@bb/client-core";
 
 interface CollectAutoExpandedIdsArgs {
@@ -32,38 +32,43 @@ function collectAutoExpandedIds({
   return new Set([...liveExpandedRowIds, ...terminalFrontierRowIds]);
 }
 
-describe("isWorkRowExpandable", () => {
-  it("marks an error-only degraded workflow row expandable so the error is reachable", () => {
-    const row = workflowRow({
-      error: "agent abandoned: user requested retry on all 3 attempts",
-      status: "error",
-      taskStatus: "failed",
-    });
+const extensionPresentation = {
+  ...ECHO_RECEIPT_PRESENTATION,
+  icon: { glyph: "Check" },
+};
 
-    expect(isWorkRowExpandable(row)).toBe(true);
-  });
-
-  it("keeps a degraded workflow row without workflow, summary, or error title-only", () => {
-    const row = workflowRow({ status: "pending", taskStatus: "running" });
-
-    expect(isWorkRowExpandable(row)).toBe(false);
-  });
-
-  it("expands an extension row only when its detail has text", () => {
-    const base = { ...ECHO_RECEIPT_PRESENTATION, icon: { glyph: "Check" } };
-    for (const detail of [undefined, "", "   ", "\n\t "]) {
-      expect(
-        isWorkRowExpandable(
-          extensionRow({ presentation: { ...base, detail } }),
-        ),
-        JSON.stringify(detail),
-      ).toBe(false);
-    }
-    expect(
-      isWorkRowExpandable(
-        extensionRow({ presentation: { ...base, detail: "Echoed **2**" } }),
-      ),
-    ).toBe(true);
+describe("isRowExpandable", () => {
+  it.each([
+    {
+      label: "an error-only degraded workflow row",
+      row: workflowRow({
+        error: "agent abandoned: user requested retry on all 3 attempts",
+        status: "error",
+        taskStatus: "failed",
+      }),
+      expandable: true,
+    },
+    {
+      label: "a degraded workflow row without workflow, summary, or error",
+      row: workflowRow({ status: "pending", taskStatus: "running" }),
+      expandable: false,
+    },
+    ...[undefined, "", "   ", "\n\t "].map((detail) => ({
+      label: `an extension row with detail ${JSON.stringify(detail)}`,
+      row: extensionRow({
+        presentation: { ...extensionPresentation, detail },
+      }),
+      expandable: false,
+    })),
+    {
+      label: "an extension row with detail text",
+      row: extensionRow({
+        presentation: { ...extensionPresentation, detail: "Echoed **2**" },
+      }),
+      expandable: true,
+    },
+  ])("treats $label as expandable: $expandable", ({ row, expandable }) => {
+    expect(isRowExpandable(row)).toBe(expandable);
   });
 });
 

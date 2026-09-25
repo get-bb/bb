@@ -317,19 +317,3 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
     ),
   },
 ];
-
-const APP_COMMAND_METADATA = new Map(
-  APP_COMMAND_GROUPS.flatMap((group) =>
-    group.commands.map((metadata) => [metadata.command, metadata]),
-  ),
-);
-
-export function getAppCommandMetadata(
-  commandId: AppCommandId,
-): AppCommandMetadata {
-  const metadata = APP_COMMAND_METADATA.get(commandId);
-  if (metadata === undefined) {
-    throw new Error(`Missing metadata for app command ${commandId}`);
-  }
-  return metadata;
-}

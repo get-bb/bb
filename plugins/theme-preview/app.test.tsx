@@ -574,6 +574,7 @@ describe("Theme Preview", () => {
     expect(light.getAttribute("aria-pressed")).toBe("false");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(localStorage.getItem("bb.theme")).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("");
 
     light.focus();
     fireEvent.click(light, { detail: 0 });

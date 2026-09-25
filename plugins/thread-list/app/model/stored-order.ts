@@ -1,43 +1,5 @@
 import { arrayMove } from "./array-move.js";
 
-interface ArrangeByStoredOrderArgs<TItem> {
-  items: readonly TItem[];
-  getId: (item: TItem) => string;
-  storedOrder: readonly string[];
-}
-
-interface ArrangedByStoredOrder<TItem> {
-  ordered: TItem[];
-  normalizedOrder: string[];
-}
-
-export function arrangeByStoredOrder<TItem>({
-  items,
-  getId,
-  storedOrder,
-}: ArrangeByStoredOrderArgs<TItem>): ArrangedByStoredOrder<TItem> {
-  const byId = new Map(items.map((item) => [getId(item), item]));
-  const ordered: TItem[] = [];
-  const normalizedOrder: string[] = [];
-  const seen = new Set<string>();
-  for (const id of storedOrder) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    normalizedOrder.push(id);
-    const item = byId.get(id);
-    if (item) ordered.push(item);
-  }
-  for (const item of items) {
-    const id = getId(item);
-    if (seen.has(id)) continue;
-    seen.add(id);
-    normalizedOrder.push(id);
-    ordered.push(item);
-  }
-
-  return { ordered, normalizedOrder };
-}
-
 type ReorderStoredOrderArgs<TId extends string> = {
   order: readonly TId[];
   visibleIds: readonly TId[];

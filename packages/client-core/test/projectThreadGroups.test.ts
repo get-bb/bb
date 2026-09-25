@@ -3,20 +3,21 @@ import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   buildChronologicalThreadList,
-  buildProjectThreadGroups,
-  compareByCreatedAtDescending,
-  compareStandardThreads,
-  createSidebarProjectIdResolver,
   resolveSidebarProjectId,
   type ProjectThreadItem,
   type ProjectThreadNode,
+  type ThreadComparator,
 } from "../src/sidebar/projectThreadGroups.js";
 
 type ThreadListEntryOverrides = Partial<ThreadListEntry>;
-type TreeSummary =
-  | string
-  | { id: string; children: TreeSummary[] }
-  | { env: string; threads: TreeSummary[] };
+type TreeSummary = string | { id: string; children: TreeSummary[] };
+
+const compareByAttentionDescending: ThreadComparator = (left, right) =>
+  right.latestAttentionAt - left.latestAttentionAt;
+
+function buildList(threads: readonly ThreadListEntry[]): ProjectThreadItem[] {
+  return buildChronologicalThreadList(threads, compareByAttentionDescending);
+}
 
 function createThread(
   overrides: ThreadListEntryOverrides = {},
@@ -46,42 +47,29 @@ function summarizeNode(node: ProjectThreadNode): TreeSummary {
 }
 
 function summarizeItems(items: readonly ProjectThreadItem[]): TreeSummary[] {
-  return items.map((item) => {
-    switch (item.kind) {
-      case "thread":
-        return summarizeNode(item.node);
-      case "environment":
-        return {
-          env: item.group.environmentId,
-          threads: item.group.nodes.map(summarizeNode),
-        };
-    }
-  });
+  return items.map((item) => summarizeNode(item.node));
 }
 
 function findNode(
   items: readonly ProjectThreadItem[],
   threadId: string,
 ): ProjectThreadNode | null {
-  for (const item of items) {
-    const nodes = item.kind === "thread" ? [item.node] : item.group.nodes;
-    for (const node of nodes) {
-      if (node.thread.id === threadId) {
-        return node;
-      }
-      const childNode = findNode(node.children, threadId);
-      if (childNode) {
-        return childNode;
-      }
+  for (const { node } of items) {
+    if (node.thread.id === threadId) {
+      return node;
+    }
+    const childNode = findNode(node.children, threadId);
+    if (childNode) {
+      return childNode;
     }
   }
 
   return null;
 }
 
-describe("buildProjectThreadGroups", () => {
+describe("buildChronologicalThreadList", () => {
   it("nests threads recursively from parentThreadId regardless of thread type", () => {
-    const rootItems = buildProjectThreadGroups([
+    const rootItems = buildList([
       createThread({
         id: "manager-root",
         createdAt: 10,
@@ -123,7 +111,7 @@ describe("buildProjectThreadGroups", () => {
   });
 
   it("renders forks as roots and excludes side chats", () => {
-    const rootItems = buildProjectThreadGroups([
+    const rootItems = buildList([
       createThread({
         id: "thr_parent",
         createdAt: 10,
@@ -152,7 +140,7 @@ describe("buildProjectThreadGroups", () => {
   });
 
   it("keeps orphaned children as project roots", () => {
-    const rootItems = buildProjectThreadGroups([
+    const rootItems = buildList([
       createThread({
         id: "orphan-child",
         parentThreadId: "missing-parent",
@@ -170,7 +158,7 @@ describe("buildProjectThreadGroups", () => {
   });
 
   it("cuts cycles without duplicating or dropping every cycle member", () => {
-    const rootItems = buildProjectThreadGroups([
+    const rootItems = buildList([
       createThread({
         id: "cycle-a",
         parentThreadId: "cycle-b",
@@ -191,224 +179,8 @@ describe("buildProjectThreadGroups", () => {
     ]);
   });
 
-  it("leaves a shared environment from a provider that made no worktree loose", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "sandbox-a",
-        environmentId: "env_sandbox",
-        environmentProviderId: "modal-sandbox",
-        environmentIsWorktree: false,
-        createdAt: 10,
-      }),
-      createThread({
-        id: "sandbox-b",
-        environmentId: "env_sandbox",
-        environmentProviderId: "modal-sandbox",
-        environmentIsWorktree: false,
-        createdAt: 20,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual(["sandbox-b", "sandbox-a"]);
-  });
-
-  it("groups a checkout provider's threads when its directory is a linked worktree", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "checkout-a",
-        environmentId: "env_checkout",
-        environmentProviderId: "project-checkout",
-        environmentIsWorktree: true,
-        createdAt: 10,
-      }),
-      createThread({
-        id: "checkout-b",
-        environmentId: "env_checkout",
-        environmentProviderId: "project-checkout",
-        environmentIsWorktree: true,
-        createdAt: 20,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual([
-      { env: "env_checkout", threads: ["checkout-b", "checkout-a"] },
-    ]);
-    const [group] = rootItems;
-    expect(
-      group.kind === "environment" && group.group.environmentProviderId,
-    ).toBe("project-checkout");
-  });
-
-  it("leaves threads sharing the project's own checkout loose", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "checkout-a",
-        environmentId: "env_checkout",
-        environmentProviderId: "project-checkout",
-        environmentIsWorktree: false,
-        createdAt: 10,
-      }),
-      createThread({
-        id: "checkout-b",
-        environmentId: "env_checkout",
-        environmentProviderId: "project-checkout",
-        environmentIsWorktree: false,
-        createdAt: 20,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual(["checkout-b", "checkout-a"]);
-  });
-
-  it("leaves a single thread on an environment ungrouped", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "only-a",
-        environmentId: "env_only",
-        environmentProviderId: null,
-        createdAt: 10,
-      }),
-      createThread({
-        id: "only-b",
-        environmentId: "env_other",
-        environmentProviderId: "git-worktree",
-        environmentIsWorktree: true,
-        createdAt: 20,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual(["only-b", "only-a"]);
-  });
-
-  it("leaves personal threads ungrouped, one environment each", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "notes",
-        environmentId: "env_notes",
-        environmentProviderId: "personal-workspace",
-        environmentIsWorktree: false,
-        createdAt: 10,
-      }),
-      createThread({
-        id: "errands",
-        environmentId: "env_errands",
-        environmentProviderId: "personal-workspace",
-        environmentIsWorktree: false,
-        createdAt: 20,
-      }),
-      createThread({
-        id: "reading",
-        environmentId: "env_reading",
-        environmentProviderId: "personal-workspace",
-        environmentIsWorktree: false,
-        createdAt: 30,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual(["reading", "errands", "notes"]);
-  });
-
-  it("groups shared environments at nested sibling levels", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "parent",
-        createdAt: 100,
-      }),
-      createThread({
-        id: "worktree-a",
-        parentThreadId: "parent",
-        environmentId: "env_shared",
-        queuedWork: "none",
-        environmentProviderId: "git-worktree",
-        environmentIsWorktree: true,
-        createdAt: 10,
-        latestAttentionAt: 100,
-      }),
-      createThread({
-        id: "worktree-b",
-        parentThreadId: "parent",
-        environmentId: "env_shared",
-        queuedWork: "none",
-        environmentProviderId: "git-worktree",
-        environmentIsWorktree: true,
-        createdAt: 20,
-        latestAttentionAt: 200,
-      }),
-      createThread({
-        id: "loose-child",
-        parentThreadId: "parent",
-        createdAt: 5,
-        latestAttentionAt: 50,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "parent",
-        children: [
-          { env: "env_shared", threads: ["worktree-b", "worktree-a"] },
-          "loose-child",
-        ],
-      },
-    ]);
-  });
-
-  it("sorts siblings with active rows first, then inactive attention recency", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "root",
-      }),
-      createThread({
-        id: "active-older-created",
-        parentThreadId: "root",
-        status: "active",
-        createdAt: 10,
-        latestAttentionAt: 2_000,
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-      createThread({
-        id: "active-newer-created",
-        parentThreadId: "root",
-        status: "active",
-        createdAt: 20,
-        latestAttentionAt: 1_500,
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-      createThread({
-        id: "idle-newer-attention",
-        parentThreadId: "root",
-        createdAt: 40,
-        latestAttentionAt: 900,
-      }),
-      createThread({
-        id: "idle-older-attention",
-        parentThreadId: "root",
-        createdAt: 30,
-        latestAttentionAt: 750,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "root",
-        children: [
-          "active-newer-created",
-          "active-older-created",
-          "idle-newer-attention",
-          "idle-older-attention",
-        ],
-      },
-    ]);
-  });
-
   it("rolls collapsed child activity up from all descendants", () => {
-    const rootItems = buildProjectThreadGroups([
+    const rootItems = buildList([
       createThread({
         id: "parent",
       }),
@@ -466,161 +238,65 @@ describe("buildProjectThreadGroups", () => {
     });
   });
 
-  it("orders roots by literal createdAt when given the created comparator", () => {
-    const threads = [
+  it("nests parent/child threads under globally sorted roots", () => {
+    const items = buildList([
+      createThread({ id: "parent", createdAt: 10, latestAttentionAt: 10 }),
       createThread({
-        id: "active-old",
-        status: "active",
-        createdAt: 10,
-        latestAttentionAt: 5,
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
+        id: "child",
+        parentThreadId: "parent",
+        createdAt: 30,
+        latestAttentionAt: 30,
       }),
-      createThread({
-        id: "idle-new",
-        status: "idle",
-        createdAt: 50,
-        latestAttentionAt: 5,
-      }),
-    ];
-
-    expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual([
-      "active-old",
-      "idle-new",
+      createThread({ id: "other", createdAt: 20, latestAttentionAt: 20 }),
     ]);
 
-    expect(
-      summarizeItems(
-        buildProjectThreadGroups(threads, compareByCreatedAtDescending),
-      ),
-    ).toEqual(["idle-new", "active-old"]);
+    expect(summarizeItems(items)).toEqual([
+      "other",
+      { id: "parent", children: ["child"] },
+    ]);
   });
 
-  describe("buildChronologicalThreadList", () => {
-    it("nests parent/child threads under globally sorted roots", () => {
-      const items = buildChronologicalThreadList(
-        [
-          createThread({ id: "parent", createdAt: 10, latestAttentionAt: 10 }),
-          createThread({
-            id: "child",
-            parentThreadId: "parent",
-            createdAt: 30,
-            latestAttentionAt: 30,
-          }),
-          createThread({ id: "other", createdAt: 20, latestAttentionAt: 20 }),
-        ],
-        compareByCreatedAtDescending,
-      );
-
-      expect(summarizeItems(items)).toEqual([
-        "other",
-        { id: "parent", children: ["child"] },
-      ]);
-    });
-
-    it("keeps worktree siblings as thread rows", () => {
-      const items = buildChronologicalThreadList(
-        [
-          createThread({ id: "parent", createdAt: 100 }),
-          createThread({
-            id: "worktree-a",
-            parentThreadId: "parent",
-            environmentId: "env_shared",
-            queuedWork: "none",
-            createdAt: 10,
-            latestAttentionAt: 100,
-          }),
-          createThread({
-            id: "worktree-b",
-            parentThreadId: "parent",
-            environmentId: "env_shared",
-            queuedWork: "none",
-            createdAt: 20,
-            latestAttentionAt: 200,
-          }),
-        ],
-        compareByCreatedAtDescending,
-      );
-
-      expect(summarizeItems(items)).toEqual([
-        {
-          id: "parent",
-          children: ["worktree-b", "worktree-a"],
-        },
-      ]);
-    });
-
-    it("excludes side chats", () => {
-      const items = buildChronologicalThreadList([
-        createThread({ id: "root", createdAt: 10 }),
-        createThread({
-          id: "side",
-          parentThreadId: "root",
-          visibility: "hidden",
-          createdAt: 20,
-        }),
-      ]);
-
-      expect(summarizeItems(items)).toEqual(["root"]);
-    });
-  });
-
-  it("sorts top-level manager roots with the regular root ordering", () => {
-    const rootItems = buildProjectThreadGroups([
+  it("keeps worktree siblings as thread rows", () => {
+    const items = buildList([
+      createThread({ id: "parent", createdAt: 100 }),
       createThread({
-        id: "root-thread",
-        createdAt: 100,
+        id: "worktree-a",
+        parentThreadId: "parent",
+        environmentId: "env_shared",
+        queuedWork: "none",
+        createdAt: 10,
         latestAttentionAt: 100,
       }),
       createThread({
-        id: "manager-old",
-        createdAt: 10,
-        latestAttentionAt: 10,
-      }),
-      createThread({
-        id: "manager-new",
+        id: "worktree-b",
+        parentThreadId: "parent",
+        environmentId: "env_shared",
+        queuedWork: "none",
         createdAt: 20,
-        latestAttentionAt: 20,
+        latestAttentionAt: 200,
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual([
-      "root-thread",
-      "manager-new",
-      "manager-old",
+    expect(summarizeItems(items)).toEqual([
+      {
+        id: "parent",
+        children: ["worktree-b", "worktree-a"],
+      },
     ]);
   });
-});
 
-describe("worktree grouping preference", () => {
-  const worktreeSiblings = [
-    createThread({
-      id: "wt-a",
-      environmentId: "env_wt",
-      environmentIsWorktree: true,
-      sectionId: "sec_work",
-      createdAt: 10,
-    }),
-    createThread({
-      id: "wt-b",
-      environmentId: "env_wt",
-      environmentIsWorktree: true,
-      sectionId: "sec_work",
-      createdAt: 20,
-    }),
-  ];
+  it("excludes side chats", () => {
+    const items = buildList([
+      createThread({ id: "root", createdAt: 10 }),
+      createThread({
+        id: "side",
+        parentThreadId: "root",
+        visibility: "hidden",
+        createdAt: 20,
+      }),
+    ]);
 
-  it("keeps worktree siblings flat under a project when disabled", () => {
-    const items = buildProjectThreadGroups(
-      worktreeSiblings,
-      compareStandardThreads,
-      new Set(),
-      false,
-    );
-
-    expect(summarizeItems(items)).toEqual(["wt-b", "wt-a"]);
+    expect(summarizeItems(items)).toEqual(["root"]);
   });
 });
 
@@ -673,42 +349,5 @@ describe("resolveSidebarProjectId", () => {
       [right.id, right],
     ]);
     expect(resolveSidebarProjectId(left, threadById)).toBe("proj_b");
-  });
-
-  it("memoizes ancestor walks across siblings and descendants", () => {
-    const root = createThread({ id: "thr_root", projectId: "proj_a" });
-    const child = createThread({
-      id: "thr_child",
-      parentThreadId: "thr_root",
-      projectId: "proj_b",
-    });
-    const grandchildren = Array.from({ length: 5 }, (_, index) =>
-      createThread({
-        id: `thr_grandchild_${index}`,
-        parentThreadId: "thr_child",
-        projectId: "proj_c",
-      }),
-    );
-    const all = [root, child, ...grandchildren];
-    const lookups: string[] = [];
-    const threadById = new Map(all.map((thread) => [thread.id, thread]));
-    const spyingMap: ReadonlyMap<string, ThreadListEntry> = {
-      ...threadById,
-      get: (id: string) => {
-        lookups.push(id);
-        return threadById.get(id);
-      },
-    } as unknown as ReadonlyMap<string, ThreadListEntry>;
-    const resolve = createSidebarProjectIdResolver(spyingMap);
-
-    expect(all.map(resolve)).toEqual(Array(all.length).fill("proj_a"));
-    expect(lookups).toEqual([
-      "thr_root",
-      "thr_child",
-      "thr_child",
-      "thr_child",
-      "thr_child",
-      "thr_child",
-    ]);
   });
 });

@@ -1361,7 +1361,7 @@ function leadingIconForWorkRow(
   return workRowGlyph(row, (glyph): glyph is string => glyph.length > 0);
 }
 
-export function systemOperationLeadingIcon(
+function systemOperationLeadingIcon(
   operationKind: TimelineSystemOperationKind,
   parentChangeAction: TimelineParentChange["action"] | null,
 ): IconName | undefined {

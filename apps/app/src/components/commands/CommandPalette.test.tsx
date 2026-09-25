@@ -12,7 +12,6 @@ import {
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { createStore, Provider } from "jotai";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
-import { sidebarThreadLifecyclesAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { MAX_PANES, type SplitLayout } from "@/lib/split-layout";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1089,7 +1088,6 @@ describe("CommandPalette", () => {
     expect(input.getAttribute("aria-activedescendant")).toBe(
       selectedOption()?.id,
     );
-    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
   });
 
   it("operates the lifecycle filter with the keyboard without selecting a result", async () => {

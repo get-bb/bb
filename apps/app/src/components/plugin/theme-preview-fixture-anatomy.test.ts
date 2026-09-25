@@ -22,7 +22,7 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
       "The mock sidebar carries `fixed bg-sidebar` so theme blocks scoped to `.fixed.bg-sidebar` (token overrides, noise overlays) apply to it exactly as they do in the app.",
   },
   {
-    file: "apps/app/src/components/sidebar/sidebarRowClasses.ts",
+    file: "plugins/thread-list/app/rows/sidebarRowClasses.ts",
     mustContain: [
       "SIDEBAR_ROW_BASE_CLASS =",
       "SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =",

@@ -20,41 +20,35 @@ type ThreadStatusShape = Pick<
 type ThreadRuntimeShape = Pick<ThreadWithRuntime, "runtime">;
 type ThreadActivityStateShape = Pick<ThreadListEntry, "activity">;
 
-export function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
+function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
   return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
 }
 
-export function hasActiveWorkflowActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
+function hasActiveWorkflowActivity(thread: ThreadActivityStateShape): boolean {
   return thread.activity.activeWorkflowCount > 0;
 }
 
-export function hasActiveBackgroundAgentActivity(
+function hasActiveBackgroundAgentActivity(
   thread: ThreadActivityStateShape,
 ): boolean {
   return thread.activity.activeBackgroundAgentCount > 0;
 }
 
-export function hasActiveBackgroundCommandActivity(
+function hasActiveBackgroundCommandActivity(
   thread: ThreadActivityStateShape,
 ): boolean {
   return thread.activity.activeBackgroundCommandCount > 0;
 }
 
-export function hasActivePlanModeActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
+function hasActivePlanModeActivity(thread: ThreadActivityStateShape): boolean {
   return thread.activity.activePlanModeCount > 0;
 }
 
-export function hasActiveGoalActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
+function hasActiveGoalActivity(thread: ThreadActivityStateShape): boolean {
   return thread.activity.activeGoalCount > 0;
 }
 
-export function isBusyThread(
+function isBusyThread(
   thread: ThreadRuntimeShape & ThreadActivityStateShape,
 ): boolean {
   return (
@@ -130,7 +124,6 @@ export function getThreadListIndicatorLabel(
 
 export function hasThreadListWorkingActivity(
   state: ThreadListIndicatorState,
-  hasRunningPluginStatus = false,
 ): boolean {
   return (
     state.isRuntimeActive ||
@@ -138,8 +131,7 @@ export function hasThreadListWorkingActivity(
     state.isBackgroundAgentActive ||
     state.isBackgroundCommandActive ||
     state.isPlanModeActive ||
-    state.isGoalActive ||
-    hasRunningPluginStatus
+    state.isGoalActive
   );
 }
 

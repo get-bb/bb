@@ -1,9 +1,4 @@
-import {
-  queryOptions,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   PermissionMode,
@@ -19,11 +14,7 @@ import type {
   SystemProviderStatesResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
-import type {
-  ProviderCliStatusResponse,
-  ProviderUsage,
-  ProviderUsageResponse,
-} from "@bb/host-daemon-contract";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { isAbortLikeError } from "@/lib/mutation-errors";
 import {
@@ -51,13 +42,11 @@ import {
   systemProvidersQueryKey,
   systemProviderStatesQueryKey,
   systemThemeQueryKey,
-  systemUsageLimitsQueryKey,
   systemVersionQueryKey,
   uiPreferencesQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
-  FOCUS_OWNED_LIVE_QUERY_POLICY,
   SERVER_SESSION_QUERY_POLICY,
   SESSION_STATIC_QUERY_POLICY,
 } from "./query-policies";
@@ -501,60 +490,4 @@ export function useSystemProviderStates(
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
   });
-}
-
-export interface ProviderUsageQueryState {
-  isError: boolean;
-  isLoading: boolean;
-}
-
-interface UseSystemProviderUsageLimitsArgs extends QueryOptions {
-  hostId?: string;
-  providerIds: readonly string[];
-}
-
-export function useSystemProviderUsageLimits(
-  args: UseSystemProviderUsageLimitsArgs,
-) {
-  const hostId = args.hostId ?? null;
-  const enabled = args.enabled ?? true;
-  const queries = useQueries({
-    queries: args.providerIds.map((providerId) => ({
-      queryKey: systemUsageLimitsQueryKey(hostId, providerId),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        sdk.system.usageLimits({
-          ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
-          providerId,
-          signal,
-        }),
-      enabled,
-      ...FOCUS_OWNED_LIVE_QUERY_POLICY,
-    })),
-  });
-  const usage: ProviderUsageResponse = {};
-  const providerStates: Record<string, ProviderUsageQueryState> = {};
-
-  args.providerIds.forEach((providerId, index) => {
-    const query = queries[index];
-    if (query === undefined) return;
-    const providerUsage: ProviderUsage | undefined = query.data?.[providerId];
-    if (providerUsage !== undefined) {
-      usage[providerId] = providerUsage;
-    }
-    providerStates[providerId] = {
-      isError: query.isError,
-      isLoading: query.isLoading,
-    };
-  });
-
-  return {
-    isError: queries.some((query) => query.isError),
-    isFetching: queries.some((query) => query.isFetching),
-    isLoading: queries.some((query) => query.isLoading),
-    providerStates,
-    refetch: async () => {
-      await Promise.all(queries.map((query) => query.refetch()));
-    },
-    usage,
-  };
 }
