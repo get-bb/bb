@@ -6,7 +6,7 @@ import {
   type CodexAiTextResult,
 } from "./ai/host-contract.js";
 
-const CODEX_TEXT_MODELS = ["gpt-5.6-luna", "gpt-6-luna"] as const;
+const CODEX_TEXT_MODELS = ["gpt-6-luna", "gpt-5.6-luna"] as const;
 const CODEX_TRANSCRIPTION_MODEL = "gpt-transcribe";
 const COMPLETE_TIMEOUT_MS = 5_000;
 const TRANSCRIBE_TIMEOUT_MS = 10_000;
