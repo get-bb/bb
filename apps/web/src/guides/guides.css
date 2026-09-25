@@ -42,7 +42,9 @@
 }
 
 .guide-table {
-  margin-top: 20px;
+  --guide-table-width: min(960px, calc(100vw - 48px));
+  width: var(--guide-table-width);
+  margin: 20px 0 0 calc((100% - var(--guide-table-width)) / 2);
   overflow-x: auto;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
