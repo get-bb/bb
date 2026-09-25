@@ -8,10 +8,7 @@ import {
   runProjectAttachmentBackfill,
   runProjectAttachmentPrune,
 } from "../projects/attachment-maintenance.js";
-import {
-  cancelAbandonedEnvironmentPreparations,
-  sweepProviderLifecycles,
-} from "../environments/environment-engine.js";
+import { sweepProviderLifecycles } from "../environments/environment-engine.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
@@ -622,7 +619,6 @@ export async function runStartupRecoverySweep(
   await deliverLegacyDeferredThreadMessages(deps);
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
-  await cancelAbandonedEnvironmentPreparations(deps);
 }
 
 export async function runPeriodicSweeps(

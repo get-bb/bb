@@ -12,6 +12,19 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## Stale Workspace Claims
+
+Failed thread provisioning immediately requests environment cleanup. If a previous
+failure left a claim behind, sends, environment admission, and provider path claims
+repair it when they encounter it; restarting the server is not required.
+
+Claims owned by threads that are still starting or stopping remain blocked. A stale
+claim on a ready or shared checkout is released locally, preserving the workspace.
+A partially created environment retains its claim and is scheduled for the existing
+background lifecycle cleanup. Sends report `workspace_busy` with “Workspace cleanup
+is pending. Try again shortly.” until removal completes. Provider cleanup is never
+awaited by this admission repair, and startup does not scan for abandoned claims.
+
 ## Local Dev QA
 
 Run `pnpm dev` from this checkout and keep it running in a terminal. It prints

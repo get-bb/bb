@@ -233,7 +233,6 @@ export {
   releaseFinishedEnvironmentPreparationOwners,
   claimEnvironmentPath,
   findEnvironmentPathClaim,
-  listAbandonedEnvironmentPreparationOwners,
   bindEnvironmentPath,
   createEnvironment,
   getEnvironment,

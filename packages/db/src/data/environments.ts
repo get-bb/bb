@@ -555,10 +555,6 @@ export function releaseFinishedEnvironmentPreparationOwners(db: EnvironmentWrite
   db.update(environments).set({ ownerThreadId: null }).where(and(isNotNull(environments.ownerThreadId), eq(environments.teardownStatus, "removed"), sql`not exists (select 1 from ${threads} where ${threads.id} = ${environments.ownerThreadId} and ${threads.deletedAt} is null)`)).run();
 }
 
-export function listAbandonedEnvironmentPreparationOwners(db: EnvironmentWriteConnection): string[] {
-  return db.select({ ownerThreadId: environments.ownerThreadId }).from(environments).where(and(isNotNull(environments.ownerThreadId), isNull(environments.teardownStatus), sql`not exists (select 1 from ${threads} where ${threads.id} = ${environments.ownerThreadId} and ${threads.status} in ('starting', 'stopping'))`)).all().flatMap((row) => row.ownerThreadId === null ? [] : [row.ownerThreadId]);
-}
-
 export function claimEnvironmentPath(db: DbConnection, provisioning: EnvironmentRow, path: string, allowCancelled = false): boolean {
   return db.transaction((tx) => {
     const current = getEnvironment(tx, provisioning.id);

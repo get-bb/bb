@@ -1,7 +1,10 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { updateThread } from "@bb/db";
-import { assertEnvironmentPathAvailable } from "./path-admission.js";
+import {
+  assertEnvironmentPathAvailable,
+  findBlockingEnvironmentPathClaim,
+} from "./path-admission.js";
 import { saveThreadProvisionContext } from "../threads/thread-startup-store.js";
 import {
   refreshAttachedEnvironmentBranch,
@@ -27,7 +30,6 @@ import {
   findProjectEnvironmentByHostPath,
   getPreparingEnvironment,
   claimEnvironmentPath,
-  listAbandonedEnvironmentPreparationOwners,
   bindEnvironmentPath,
   listProviderLifecycleEnvironments,
   updatePreparingEnvironment,
@@ -356,10 +358,19 @@ async function runCreate(
                 .refine((path) => !path.includes("\0"))
                 .parse(value);
               if (signal.aborted) return false;
+              const normalizedPath = path.replace(/\/+$/u, "") || "/";
+              if (
+                findBlockingEnvironmentPathClaim(deps, {
+                  hostId: context.host.id,
+                  path: normalizedPath,
+                  owner: provisioning,
+                }) !== null
+              )
+                return false;
               return claimEnvironmentPath(
                 deps.db,
                 provisioning,
-                path.replace(/\/+$/u, "") || "/",
+                normalizedPath,
               );
             },
             previous:
@@ -382,6 +393,11 @@ async function runCreate(
         const producedPath = result.path.replace(/\/+$/u, "") || "/";
         await ensureHostSessionReadyForWork(deps, {
           hostId: context.host.id,
+        });
+        findBlockingEnvironmentPathClaim(deps, {
+          hostId: context.host.id,
+          path: producedPath,
+          owner: provisioning,
         });
         deps.db.transaction(
           () => {
@@ -840,19 +856,6 @@ async function sweepProviderEnvironmentInSlot(
     row.teardownAttempt > 0,
     signal,
   );
-}
-
-export async function cancelAbandonedEnvironmentPreparations(
-  deps: Deps,
-): Promise<void> {
-  for (const threadId of listAbandonedEnvironmentPreparationOwners(deps.db)) {
-    await cancelProviderEnvironmentCreation(deps, threadId).catch((error) =>
-      deps.logger.warn(
-        { threadId, error },
-        "Abandoned environment preparation cleanup will retry",
-      ),
-    );
-  }
 }
 
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
