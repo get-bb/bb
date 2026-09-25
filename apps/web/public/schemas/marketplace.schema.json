@@ -32,8 +32,7 @@
       "$comment": "Entry ids must also be unique within one manifest.",
       "items": {
         "$ref": "#/$defs/entry"
-      },
-      "maxItems": 256
+      }
     }
   },
   "$defs": {

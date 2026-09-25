@@ -493,14 +493,14 @@ describe("published marketplace schema parity", () => {
     );
   });
 
-  it("caps the entry count in both contracts", async () => {
+  it("accepts more than 1024 entries in both contracts", async () => {
     for (const version of [1, 2] as const) {
       const validate = await compilePublishedSchema(version);
-      const oversize = {
+      const largeManifest = {
         schemaVersion: version,
         name: "acme",
         displayName: "Acme plugins",
-        plugins: Array.from({ length: 257 }, (_unused, index) => ({
+        plugins: Array.from({ length: 1025 }, (_unused, index) => ({
           id: `acme-plugin-${index}`,
           displayName: "Acme",
           description: "An Acme plugin.",
@@ -510,10 +510,10 @@ describe("published marketplace schema parity", () => {
         })),
       };
 
-      expect(validate(oversize)).toBe(false);
-      expect(() => parseMarketplaceManifest(oversize, "fixture")).toThrow(
-        /at most 256 plugins/u,
-      );
+      expect(validate(largeManifest)).toBe(true);
+      expect(
+        parseMarketplaceManifest(largeManifest, "fixture").plugins,
+      ).toHaveLength(1025);
     }
   });
 });
