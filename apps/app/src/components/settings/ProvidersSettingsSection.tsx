@@ -269,7 +269,7 @@ export function ProvidersSettingsSection({
       <SettingsSection title="Service tiers">
         <SettingsWithControl
           label="Allow fast service tier"
-          description="When off, all new turns use the default service tier, including queued messages and automations."
+          description="Turn this off to use the default service tier for all new turns, including those from queued messages and automations."
         >
           <Switch
             checked={generalSettings.allowFastServiceTier}
