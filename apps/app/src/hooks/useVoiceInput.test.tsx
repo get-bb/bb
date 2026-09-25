@@ -35,6 +35,25 @@ class Recorder {
   }
 }
 
+class DeferredRecorder extends Recorder {
+  static current: DeferredRecorder;
+
+  constructor() {
+    super();
+    DeferredRecorder.current = this;
+  }
+
+  stop() {
+    this.state = "inactive";
+    return Promise.resolve();
+  }
+
+  finish() {
+    this.ondataavailable({ data: new Blob(["recorded audio"]) });
+    return this.onstop();
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("MediaRecorder", Recorder);
@@ -141,7 +160,26 @@ it("keeps an accepted transcription running after unmount", async () => {
   expect(onTranscript).toHaveBeenCalledWith("Spoken words");
 });
 
+it("transcribes an accepted recording when the recorder stops after unmount", async () => {
+  vi.stubGlobal("MediaRecorder", DeferredRecorder);
+  const onTranscribe = vi.fn().mockResolvedValue("Delayed words");
+  const onTranscript = vi.fn();
+  const { result, unmount } = renderHook(() =>
+    useVoiceInput({ onTranscribe, onTranscript }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  act(() => result.current.stop());
+  unmount();
+
+  await act(async () => DeferredRecorder.current.finish());
+  expect(onTranscribe).toHaveBeenCalledOnce();
+  expect(onTranscript).toHaveBeenCalledWith("Delayed words");
+  expect(appToast.error).not.toHaveBeenCalled();
+});
+
 it("discards a recording when its composer unmounts before acceptance", async () => {
+  vi.stubGlobal("MediaRecorder", DeferredRecorder);
   const onTranscribe = vi.fn();
   const { result, unmount } = renderHook(() =>
     useVoiceInput({ onTranscribe, onTranscript: vi.fn() }),
@@ -149,7 +187,7 @@ it("discards a recording when its composer unmounts before acceptance", async ()
   await act(() => result.current.start());
   vi.advanceTimersByTime(1500);
   unmount();
-  await act(async () => Promise.resolve());
+  await act(async () => DeferredRecorder.current.finish());
   expect(onTranscribe).not.toHaveBeenCalled();
 });
 
