@@ -289,12 +289,12 @@ function menuEntryLabels(): (string | undefined)[] {
 
 async function openMoreMenu(): Promise<(string | undefined)[]> {
   fireEvent.click(moreTrigger());
-  await screen.findByRole("button", { name: "Customize sidebar" });
+  await screen.findByTestId("sidebar-navigation-customize-trigger");
   return menuEntryLabels();
 }
 
 async function openCustomizeFromMore(): Promise<HTMLElement> {
-  fireEvent.click(screen.getByRole("button", { name: "Customize sidebar" }));
+  fireEvent.click(screen.getByTestId("sidebar-navigation-customize-trigger"));
   return await screen.findByRole("list", { name: "Sidebar navigation" });
 }
 
@@ -924,7 +924,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
     fireEvent.click(moreTrigger());
     fireEvent.click(
-      await screen.findByRole("button", { name: "Customize sidebar" }),
+      await screen.findByTestId("sidebar-navigation-customize-trigger"),
     );
 
     expect(onCustomizingChange).toHaveBeenCalledWith(true);
@@ -1184,7 +1184,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     expect(items).toEqual(["Search threads", "Customize sidebar"]);
     expect(
       screen
-        .getByRole("button", { name: "Customize sidebar" })
+        .getByTestId("sidebar-navigation-customize-trigger")
         .querySelectorAll(
           ':scope > [data-icon="FilterHorizontal"][data-icon-root]',
         ),

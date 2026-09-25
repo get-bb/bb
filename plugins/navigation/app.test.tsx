@@ -179,11 +179,14 @@ describe("navigation plugin", () => {
     ]);
   });
 
-  it("gives every visible row an options button with sidebar actions", async () => {
+  it("gives New thread a customize button and every other row an options button", async () => {
     const view = renderNavigation();
 
+    expect(
+      screen.queryByRole("button", { name: "New thread options" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Customize sidebar" }));
     for (const name of [
-      "New thread options",
       "Docs panel options",
       "Tasks panel options",
       "Skills options",
@@ -206,6 +209,7 @@ describe("navigation plugin", () => {
     );
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
+      { method: "openCustomize" },
       { method: "setVisible", itemId: "__bb__/skills", isVisible: false },
       { method: "openCustomize" },
     ]);
