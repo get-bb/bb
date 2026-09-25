@@ -2631,6 +2631,12 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
+**New-thread machine selection (Sep 2026).**
+`PluginSidebarThreadActions.openNewThread` accepts `experimental_hostId` to
+preselect a known machine with an available environment provider for a new
+environment. `environmentId` takes priority when both are present. Audit the
+name and router-state transport before stabilizing the option.
+
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
 
 **Archive selection (Sep 2026).** `experimental_useSidebarThreads` accepts
@@ -2697,8 +2703,8 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    fan-out. Confirm that split holds once a replaced list ships section
    drag-and-drop, where the built-in list's optimistic cache transactions
    have no plugin equivalent. `openNewThread` gained `sectionId` and
-   `environmentId`, which today ride on router state; confirm router state
-   stays the right transport.
+   `environmentId`, and `experimental_hostId`, which today ride on router
+   state; confirm router state stays the right transport.
 7. **Action surface.** Destructive and dialog-bearing actions route through
    `useThreadActions()`, so `archive` closes panes and repairs the route, and
    `requestDelete` opens bb's confirmation rather than deleting silently.
@@ -2716,17 +2722,17 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
 10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
-   drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
-   on `isAvailable`, and read `layout` to paint where the thread already sits.
-   The host owns every rule — the drag engages only after the pointer leaves the
-   sidebar, an edge drop splits, a center drop replaces, an open thread focuses
-   its pane, and the pane cap turns a split into a replace — so a plugin cannot
-   reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
-   list with its own pointer-drag (reorder, swipe) still composes with the
-   host's engage threshold; `splitProps` staying an open object is the right
-   forward-compatible shape, or it should narrow to a named handler; and
-   exposing the full `panes` array does not leak more layout state than a row
-   needs.
+    drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
+    on `isAvailable`, and read `layout` to paint where the thread already sits.
+    The host owns every rule — the drag engages only after the pointer leaves the
+    sidebar, an edge drop splits, a center drop replaces, an open thread focuses
+    its pane, and the pane cap turns a split into a replace — so a plugin cannot
+    reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
+    list with its own pointer-drag (reorder, swipe) still composes with the
+    host's engage threshold; `splitProps` staying an open object is the right
+    forward-compatible shape, or it should narrow to a named handler; and
+    exposing the full `panes` array does not leak more layout state than a row
+    needs.
 
 ## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 

@@ -400,6 +400,26 @@ describe("useSidebarThreadActions", () => {
     });
   });
 
+  it("passes a machine selection to the root composer", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+
+    act(() => {
+      result.current.openNewThread({
+        projectId: "proj_app",
+        experimental_hostId: "host_homelab",
+        focusPrompt: true,
+      });
+    });
+
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: {
+        focusPrompt: true,
+        newEnvironmentHostId: "host_homelab",
+      },
+    });
+  });
+
   it("navigates with no router state when no option is set", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());

@@ -330,6 +330,29 @@ function readReuseEnvironmentIdFromLocationState(
   return null;
 }
 
+export function readNewEnvironmentHostIdFromLocationState(
+  state: unknown,
+): string | null {
+  if (typeof state !== "object" || state === null) return null;
+  if (!("newEnvironmentHostId" in state)) return null;
+  const hostId = state.newEnvironmentHostId;
+  return typeof hostId === "string" && hostId.trim().length > 0
+    ? hostId.trim()
+    : null;
+}
+
+export function readRootComposeEnvironmentTargetFromLocationState(
+  state: unknown,
+):
+  | { kind: "reuse"; environmentId: string }
+  | { kind: "host"; hostId: string }
+  | null {
+  const environmentId = readReuseEnvironmentIdFromLocationState(state);
+  if (environmentId !== null) return { kind: "reuse", environmentId };
+  const hostId = readNewEnvironmentHostIdFromLocationState(state);
+  return hostId === null ? null : { kind: "host", hostId };
+}
+
 export function shouldNavigateAfterThreadCreate({
   isForkDraft,
   navigateToThreadAfterCreate,
@@ -408,7 +431,7 @@ function readForkThreadCreateSeedFromLocationState(
 export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
   return (
     readRootComposeSectionTargetFromLocationState(state) !== null ||
-    readReuseEnvironmentIdFromLocationState(state) !== null ||
+    readRootComposeEnvironmentTargetFromLocationState(state) !== null ||
     readForkThreadCreateSeedFromLocationState(state) !== null
   );
 }
@@ -692,6 +715,8 @@ function RootComposeSurface({
     textEffects: promptTextEffects,
     isSubmitting,
     seedEnvironmentSelectionValue,
+    hostSelectionReady,
+    selectHostForNewEnvironment,
     setEnvironmentSelectionValue,
     setProviderModelReasoning,
     setPermissionMode,
@@ -760,13 +785,16 @@ function RootComposeSurface({
     const sectionTarget = readRootComposeSectionTargetFromLocationState(
       location.state,
     );
-    const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
+    const environmentTarget = readRootComposeEnvironmentTargetFromLocationState(
       location.state,
     );
     const nextForkSeed = readForkThreadCreateSeedFromLocationState(
       location.state,
     );
     if (!hasSingleUseRootComposeTargetState(location.state)) return;
+    if (environmentTarget?.kind === "host" && !hostSelectionReady) {
+      return;
+    }
     if (shouldStartComposingFromLocationState(location.state)) {
       setStartedComposing(true);
     }
@@ -775,8 +803,12 @@ function RootComposeSurface({
     } else if (sectionTarget?.kind === "clear") {
       setRootComposeSectionId(null);
     }
-    if (reuseEnvironmentId !== null) {
-      seedEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
+    if (environmentTarget?.kind === "reuse") {
+      seedEnvironmentSelectionValue(
+        encodeReuseValue(environmentTarget.environmentId),
+      );
+    } else if (environmentTarget?.kind === "host") {
+      selectHostForNewEnvironment(environmentTarget.hostId);
     }
     if (nextForkSeed !== null) {
       setForkSeed(nextForkSeed);
@@ -795,8 +827,10 @@ function RootComposeSurface({
   }, [
     location.search,
     location.state,
+    hostSelectionReady,
     navigate,
     seedEnvironmentSelectionValue,
+    selectHostForNewEnvironment,
     setForkSeed,
     setPermissionMode,
     setProviderModelReasoning,

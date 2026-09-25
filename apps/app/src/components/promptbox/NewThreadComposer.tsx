@@ -114,6 +114,7 @@ import { sdk } from "@/lib/sdk";
 import {
   buildReuseThreadOptions,
   resolveHostEnvironmentProvider,
+  resolveNewThreadHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
   type SeededReuseEnvironment,
 } from "@/views/root-compose-environment-selection";
@@ -219,6 +220,8 @@ export interface NewThreadComposerState {
   textEffects: NewThreadPromptBoxProps["textEffects"];
   isSubmitting: boolean;
   seedEnvironmentSelectionValue: (value: string) => void;
+  hostSelectionReady: boolean;
+  selectHostForNewEnvironment: (hostId: string) => void;
   setEnvironmentSelectionValue: (
     value: string,
     providerHostId?: string | null,
@@ -672,7 +675,11 @@ export function NewThreadComposer({
         threads: [],
       },
     ];
-  }, [seededReuseEnvironmentRow, threadDerivedReuseOptions, worktreeHostNameById]);
+  }, [
+    seededReuseEnvironmentRow,
+    threadDerivedReuseOptions,
+    worktreeHostNameById,
+  ]);
   const { value: storedMachineId, setValue: setStoredMachineId } =
     usePromptBoxMachinePreference(projectId);
   const [activeSeedSignature, setActiveSeedSignature] = useState(seedSignature);
@@ -1020,6 +1027,27 @@ export function NewThreadComposer({
       selectedEnvironmentProvider,
     ],
   );
+  const selectHostForNewEnvironment = useCallback(
+    (hostId: string) => {
+      if (!knownHostIds.has(hostId)) return;
+      const currentProviderId =
+        parsedEnvironment?.type === "provider"
+          ? parsedEnvironment.environmentProviderId
+          : null;
+      const provider = resolveNewThreadHostEnvironmentProvider({
+        currentProviderId,
+        providers: environmentProvidersByHostId.get(hostId) ?? [],
+      });
+      if (provider === null) return;
+      changeEnvironment(encodeProviderValue(provider.id), hostId);
+    },
+    [
+      changeEnvironment,
+      environmentProvidersByHostId,
+      knownHostIds,
+      parsedEnvironment,
+    ],
+  );
   const selectedMachineProvider =
     providerMachine?.type === "new"
       ? machineProviders?.find(
@@ -1344,7 +1372,13 @@ export function NewThreadComposer({
         setIsUploading(pendingUploadCountRef.current > 0);
       }
     },
-    [projectId, promptDraft, uploadPromptAttachment, startUploads, finishUploads],
+    [
+      projectId,
+      promptDraft,
+      uploadPromptAttachment,
+      startUploads,
+      finishUploads,
+    ],
   );
   const changeProject = useCallback(
     async (nextProjectId: string | null): Promise<ProjectChangeOutcome> => {
@@ -2089,6 +2123,12 @@ export function NewThreadComposer({
         textEffects,
         isSubmitting,
         seedEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
+        hostSelectionReady:
+          sidebarNavigationSettled &&
+          !hostsQuery.isPending &&
+          registeredEnvironmentProviders !== undefined &&
+          projectEnvironmentProviders !== undefined,
+        selectHostForNewEnvironment,
         setEnvironmentSelectionValue: changeEnvironment,
         setProviderModelReasoning,
         setPermissionMode,
