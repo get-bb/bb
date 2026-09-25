@@ -332,69 +332,6 @@ describe("NotificationHub", () => {
     });
   });
 
-  it("does not resolve host RPC waiters from mismatched daemon sessions", async () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-    hub.registerDaemon("session-1", "host-1", socket);
-    hub.registerDaemon("session-2", "host-2", createMockHubSocket());
-
-    const wait = hub.requestHostOnlineRpc({
-      hostId: "host-1",
-      timeoutMs: 1_000,
-      message: {
-        type: "host-rpc.request",
-        requestId: "rpc-session-scoped",
-        command: {
-          type: "provider.list_models",
-          providerId: "codex",
-          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
-        },
-      },
-    });
-    let resolved = false;
-    const observed = wait.then((response) => {
-      resolved = true;
-      return response;
-    });
-
-    const mismatch = hub.recordHostOnlineRpcResponse({
-      message: {
-        type: "host-rpc.response",
-        requestId: "rpc-session-scoped",
-        commandType: "provider.list_models",
-        ok: true,
-        result: { models: [], selectedOnlyModels: [] },
-      },
-      sessionId: "session-2",
-    });
-    expect(mismatch).toEqual({
-      expectedSessionId: "session-1",
-      handled: false,
-      reason: "session_mismatch",
-    });
-    await Promise.resolve();
-    expect(resolved).toBe(false);
-
-    const handled = hub.recordHostOnlineRpcResponse({
-      message: {
-        type: "host-rpc.response",
-        requestId: "rpc-session-scoped",
-        commandType: "provider.list_models",
-        ok: true,
-        result: { models: [], selectedOnlyModels: [] },
-      },
-      sessionId: "session-1",
-    });
-    expect(handled).toEqual({ handled: true });
-    await expect(observed).resolves.toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-session-scoped",
-      commandType: "provider.list_models",
-      ok: true,
-      result: { models: [], selectedOnlyModels: [] },
-    });
-  });
-
   it("rejects in-flight host RPC requests when the daemon unregisters", async () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

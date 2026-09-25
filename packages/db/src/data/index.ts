@@ -347,7 +347,6 @@ export {
   pruneContextWindowUsageEvents,
   pruneTokenUsageEvents,
   pruneResolvedItemDeltas,
-  pruneThreadEventsBeforeSequence,
 } from "./events.js";
 export {
   getDatabaseDataVersion,
@@ -419,7 +418,6 @@ export {
 export type { HostDaemonSessionRow } from "./sessions.js";
 
 export {
-  claimQueuedThreadMessage,
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
   clearQueuedThreadMessageWaitingOn,

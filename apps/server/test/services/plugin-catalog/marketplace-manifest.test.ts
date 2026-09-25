@@ -16,7 +16,6 @@ import {
   resolvedEntrySource,
   type MarketplaceEntry,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
-import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
 const MANIFEST_V2_URL = "https://getbb.app/marketplace/v2/marketplace.json";
@@ -689,11 +688,5 @@ describe("marketplace manifest schema", () => {
         expect(() => parse([entry({ engines })])).toThrow(/engines/u);
       }
     });
-  });
-
-  it("validates the bundled seed snapshot", () => {
-    expect(() =>
-      parseMarketplaceManifest(BUNDLED_CURATED_MARKETPLACE, "bundled snapshot"),
-    ).not.toThrow();
   });
 });

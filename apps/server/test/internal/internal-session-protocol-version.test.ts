@@ -1,13 +1,21 @@
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
-  createHostDaemonClient,
+  type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
+import type { Hono } from "hono";
+import { hc } from "hono/client";
 import { describe, expect, it } from "vitest";
 import { getHost, updateHost, upsertHost } from "@bb/db";
 import {
   createTestDaemonHostKey,
   startTestServer,
 } from "../helpers/test-app.js";
+
+function createHostDaemonClient(baseUrl: string, hostKey: string) {
+  return hc<Hono<{}, HostDaemonInternalSchema, "/">>(`${baseUrl}/internal`, {
+    headers: { authorization: `Bearer ${hostKey}` },
+  });
+}
 
 describe("internal session protocol version", () => {
   it.each(["suspending", "suspended"] as const)(

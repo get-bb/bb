@@ -4,8 +4,6 @@ import {
   serverMovedMessageSchema,
   serverMoveProgressMessageSchema,
 } from "./server-move.js";
-import type { Hono } from "hono";
-import { hc } from "hono/client";
 import {
   discoveredWorkspacePropertiesSchema,
   ENVIRONMENT_CHANGE_KINDS,
@@ -922,8 +920,6 @@ export type HostDaemonInternalSchema = {
   };
 };
 
-type HostDaemonInternalRoutes = Hono<{}, HostDaemonInternalSchema, "/">;
-
 function parseProtocolHeader(protocolHeader: string | undefined): string[] {
   if (!protocolHeader) {
     return [];
@@ -951,16 +947,4 @@ export function hasHostDaemonWebSocketProtocol(
   return parseProtocolHeader(protocolHeader).includes(
     HOST_DAEMON_WEBSOCKET_PROTOCOL,
   );
-}
-
-export function createHostDaemonClient(baseUrl: string, hostKey: string) {
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
-  const internalBaseUrl = normalizedBaseUrl.endsWith("/internal")
-    ? normalizedBaseUrl
-    : `${normalizedBaseUrl}/internal`;
-  return hc<HostDaemonInternalRoutes>(internalBaseUrl, {
-    headers: {
-      authorization: `Bearer ${hostKey}`,
-    },
-  });
 }

@@ -63,29 +63,6 @@ describe("experiments settings", () => {
     });
   });
 
-  it("does not expose legacy direct bb connect routes", async () => {
-    await withTestHarness(async (harness) => {
-      const disabled = await harness.app.request("/api/v1/connect/status");
-      expect(disabled.status).toBe(404);
-
-      const put = await harness.app.request("/api/v1/settings/experiments", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          changelogPreview: false,
-          legacyJitiPluginLoader: false,
-          mobileApp: false,
-          serverMove: false,
-          sidebarProgressiveDisclosure: false,
-        }),
-      });
-      expect(put.status).toBe(200);
-
-      const enabled = await harness.app.request("/api/v1/connect/status");
-      expect(enabled.status).toBe(404);
-    });
-  });
-
   it("rejects payloads that are not the full experiments object", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request(

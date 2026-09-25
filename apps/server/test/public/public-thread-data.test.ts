@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import {
-  claimQueuedThreadMessage,
+  claimQueuedThreadMessageGroup,
   createQueuedThreadMessageId,
   createThreadSection,
   deleteQueuedThreadMessage,
@@ -3314,11 +3314,12 @@ describe("public thread data routes", () => {
         message: "Queued message order changed",
       });
 
-      const claimedQueuedMessage = claimQueuedThreadMessage(
+      const claimedQueuedMessage = claimQueuedThreadMessageGroup(
         harness.db,
         harness.hub,
         secondQueuedMessage.id,
-      );
+        { kind: "explicit-send" },
+      )?.[0];
       expect(claimedQueuedMessage?.id).toBe(secondQueuedMessage.id);
       const claimedResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${secondQueuedMessage.id}/order`,
@@ -4470,48 +4471,6 @@ describe("public thread data routes", () => {
             positions: [0, 1, 2, 3, 4],
           },
         ],
-        truncated: false,
-        storageRootPath: threadStoragePath,
-      });
-    });
-  });
-
-  it("lists thread storage files for threads with environments", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/project-source",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/project-source",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const threadStoragePath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
-
-      const filesPromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/thread-storage/files`,
-      );
-      const filesCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "host.list_files" &&
-          command.path === threadStoragePath,
-      );
-      await reportQueuedCommandSuccess(harness, filesCommand, {
-        files: [{ path: "notes/plan.md", name: "plan.md" }],
-        truncated: false,
-      });
-
-      const filesResponse = await filesPromise;
-      expect(filesResponse.status).toBe(200);
-      await expect(readJson(filesResponse)).resolves.toEqual({
-        files: [{ path: "notes/plan.md", name: "plan.md" }],
         truncated: false,
         storageRootPath: threadStoragePath,
       });

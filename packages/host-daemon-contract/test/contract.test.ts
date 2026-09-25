@@ -15,7 +15,6 @@ import {
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
-  createHostDaemonClient,
   hostDaemonEnrollRequestSchema,
   hostDaemonEnrollResponseSchema,
   hostDaemonCommandResultSchemaByType,
@@ -4112,12 +4111,6 @@ describe("host-daemon session schemas", () => {
         dataBase64: oversizedEncodedPayload,
       }).success,
     ).toBe(false);
-  });
-
-  it("builds an internal client rooted at /internal", () => {
-    const client = createHostDaemonClient("http://localhost:3334", "secret");
-
-    expect(client.session.open.$url().pathname).toBe("/internal/session/open");
   });
 });
 
