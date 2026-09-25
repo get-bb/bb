@@ -137,6 +137,7 @@ interface ThreadRowProps {
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 interface ThreadRowContainerArgs {
+  actionsOpen: boolean;
   children: ReactNode;
   className: string;
   containerRef: (element: HTMLDivElement | null) => void;
@@ -172,6 +173,7 @@ function getThreadRowStyle(depth: number): CSSProperties {
 }
 
 function renderThreadRowContainer({
+  actionsOpen,
   children,
   className,
   containerRef,
@@ -186,6 +188,7 @@ function renderThreadRowContainer({
 }: ThreadRowContainerArgs) {
   const containerProps = {
     "data-sidebar-rename-row": "",
+    "data-sidebar-actions-open": actionsOpen ? "true" : undefined,
     className,
     style,
     "data-sidebar-nest-target": nestTargetState ?? undefined,
@@ -416,6 +419,7 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = isEditing ? undefined : options.dragBindings;
+  const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const nestTargetState = options.nestDrop?.state ?? null;
   const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
   const containerRef = useComposedRefs<HTMLDivElement>(
@@ -445,7 +449,6 @@ function ThreadRowComponent({
   const rowStyle = getThreadRowStyle(options.depth);
   const parentGuideLeft =
     options.depth > 0 ? getSidebarThreadGroupLineLeft(options.depth - 1) : null;
-  const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
       if (!options.consumeClickSuppression?.()) {
@@ -580,7 +583,7 @@ function ThreadRowComponent({
         <SidebarThreadDragChip
           title={labelTitle}
           visualOnly
-          className="hidden group-data-[sidebar-touch-armed=true]/thread-row:flex"
+          className={isActionsOpen ? "hidden" : "hidden group-data-[sidebar-touch-armed=true]/thread-row:flex"}
         />
       ) : null}
       <span
@@ -696,6 +699,7 @@ function ThreadRowComponent({
   );
 
   const row = renderThreadRowContainer({
+    actionsOpen: isActionsOpen,
     children: rowContent,
     className: rowClassName,
     containerRef,

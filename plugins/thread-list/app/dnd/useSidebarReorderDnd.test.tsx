@@ -83,9 +83,9 @@ describe("useSidebarReorderDnd", () => {
 });
 
 describe("SidebarTouchSensor", () => {
-  function DraggableRow({ onClick }: { onClick?: () => void }) {
+  function DraggableRow({ onClick, actionsOpen = false }: { onClick?: () => void; actionsOpen?: boolean }) {
     const { attributes, listeners, setNodeRef } = useDraggable({ id: "thread-1" });
-    return <div ref={setNodeRef} {...attributes} {...listeners} onClick={onClick}>Thread</div>;
+    return <div ref={setNodeRef} {...attributes} {...listeners} data-sidebar-actions-open={actionsOpen ? "true" : undefined} onClick={onClick}>Thread</div>;
   }
 
   it("keeps a slow drifting row touch as a tap and starts drag after hold and movement", async () => {
@@ -110,13 +110,13 @@ describe("SidebarTouchSensor", () => {
 
     fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
-    expect(row.dataset.sidebarTouchArmed).toBe("true");
+    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.touchEnd(row, { touches: [] });
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(2);
 
     fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 900)));
     expect(onDragStart).not.toHaveBeenCalled();
     expect(row.dataset.sidebarTouchArmed).toBe("true");
     fireEvent.touchMove(row, { touches: [{ clientX: 14, clientY: 10 }] });
@@ -126,6 +126,42 @@ describe("SidebarTouchSensor", () => {
     expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.touchEnd(row, { touches: [] });
     expect(onDragEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the chip hidden while the actions menu is open without blocking drag", async () => {
+    const onDragStart = vi.fn();
+    const onDragEnd = vi.fn();
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({ onDragStart, onDragEnd });
+      return <DndContext {...dndContextProps}><DraggableRow actionsOpen /></DndContext>;
+    }
+    const { getByText } = render(<Harness />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 900)));
+    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
+    fireEvent.touchMove(row, { touches: [{ clientX: 24, clientY: 10 }] });
+    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
+    fireEvent.touchEnd(row, { touches: [] });
+  });
+
+  it("starts drag before the delayed chip appears", async () => {
+    const onDragStart = vi.fn();
+    const onDragEnd = vi.fn();
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({ onDragStart, onDragEnd });
+      return <DndContext {...dndContextProps}><DraggableRow /></DndContext>;
+    }
+    const { getByText } = render(<Harness />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
+    fireEvent.touchMove(row, { touches: [{ clientX: 24, clientY: 10 }] });
+    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
+    fireEvent.touchEnd(row, { touches: [] });
   });
 
   function touchMoveListenerCalls(spy: {

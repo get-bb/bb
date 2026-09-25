@@ -29,6 +29,7 @@ import {
   useDragClickSuppression,
   type ConsumeDragClickSuppression,
 } from "./use-drag-click-suppression.js";
+import { SIDEBAR_TOUCH_ARM_DELAY_MS } from "./touch-interaction-timing.js";
 
 export const reorderCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
@@ -93,7 +94,7 @@ export function useReorderDnd({
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(touchSensor, {
-      activationConstraint: { delay: 500, tolerance: 6 },
+      activationConstraint: { delay: SIDEBAR_TOUCH_ARM_DELAY_MS, tolerance: 6 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,

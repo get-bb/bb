@@ -13,8 +13,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
+import { SIDEBAR_ACTIONS_LONG_PRESS_MS } from "./touch-interaction-timing.js";
 
-const LONG_PRESS_MS = 700;
 const LONG_PRESS_MOVE_SLOP_PX = 10;
 
 const LONG_PRESS_TARGET_STYLE: CSSProperties = {
@@ -116,7 +116,7 @@ export function CompactLongPressMenu({
         pressRef.current = null;
         suppressClickRef.current = true;
         openMenu();
-      }, LONG_PRESS_MS);
+      }, SIDEBAR_ACTIONS_LONG_PRESS_MS);
     },
     [clearPress, disabled, dragging, openMenu],
   );
