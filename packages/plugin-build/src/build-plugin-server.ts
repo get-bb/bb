@@ -109,6 +109,8 @@ async function transformSourceModuleLocation(
       "import.meta.url": JSON.stringify(sourceUrl),
       "import.meta.dirname": JSON.stringify(dirname(path)),
       "import.meta.filename": JSON.stringify(path),
+      __dirname: JSON.stringify(dirname(path)),
+      __filename: JSON.stringify(path),
     },
   });
   await initModuleLexer;

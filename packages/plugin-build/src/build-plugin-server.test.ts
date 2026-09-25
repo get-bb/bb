@@ -406,6 +406,65 @@ export default async function plugin() {
     expect(loaded.default()).toEqual({ status: 0, error: "function" });
   });
 
+  it("resolves CommonJS module paths against their original files", async () => {
+    const dir = await realpath(
+      await mkdtemp(join(tmpdir(), "bb-plugin-server-cjs-paths-")),
+    );
+    tempDirs.push(dir);
+    const serverEntry = join(dir, "server.ts");
+    const dependencyDir = join(dir, "node_modules", "asset-dependency");
+    await mkdir(dependencyDir, { recursive: true });
+    await mkdir(join(dir, "scripts"));
+    await writeFile(
+      join(dependencyDir, "package.json"),
+      JSON.stringify({ name: "asset-dependency", main: "index.js" }),
+    );
+    await writeFile(
+      join(dependencyDir, "index.js"),
+      'exports.read = () => require("node:fs").readFileSync(require("node:path").join(__dirname, "asset.txt"), "utf8");\n',
+    );
+    await writeFile(join(dependencyDir, "asset.txt"), "dependency asset");
+    await writeFile(join(dir, "scripts", "helper.py"), "source asset");
+    await writeFile(
+      serverEntry,
+      `import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { read } from "asset-dependency";
+const currentDir = typeof __dirname !== "undefined" ? __dirname : "unset";
+export default () => ({
+  dependency: read(),
+  source: readFileSync(join(currentDir, "scripts", "helper.py"), "utf8"),
+  filename: __filename,
+});
+`,
+    );
+
+    const { jsPath } = await buildPluginServer(
+      dir,
+      "0.0.0-test",
+      await testToolchain(),
+      {
+        format: "cjs",
+        preserveSourceModuleLocation: true,
+        externalizeSourceOutsideRoot: true,
+        validatedConfig: {
+          serverEntry,
+          packageName: "bb-plugin-cjs-paths-fixture",
+          pluginVersion: "1.0.0",
+        },
+      },
+    );
+    const loaded = createRequire(import.meta.url)(jsPath) as {
+      default: () => Record<string, unknown>;
+    };
+
+    expect(loaded.default()).toEqual({
+      dependency: "dependency asset",
+      source: "source asset",
+      filename: serverEntry,
+    });
+  });
+
   it("compiles Zod installed inside the plugin root when preserving module locations", async () => {
     const dir = await realpath(
       await mkdtemp(join(tmpdir(), "bb-plugin-server-inroot-zod-")),
