@@ -293,6 +293,40 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
   }
 }
 
+const claudeApiKeySettingsSchema = z.object({
+  env: z.record(z.string(), z.unknown()).nullish().catch(null),
+  apiKeyHelper: z.unknown(),
+});
+
+function nonEmptyString(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+async function settingsConfigureApiKey(file: string): Promise<boolean> {
+  try {
+    const parsed = claudeApiKeySettingsSchema.safeParse(
+      JSON.parse(await fs.readFile(file, "utf8")),
+    );
+    return (
+      parsed.success &&
+      (nonEmptyString(parsed.data.env?.ANTHROPIC_API_KEY) ||
+        nonEmptyString(parsed.data.apiKeyHelper))
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function hasApiKeyAuth(): Promise<boolean> {
+  if (nonEmptyString(process.env.ANTHROPIC_API_KEY)) return true;
+  const claudeDir = path.join(os.homedir(), ".claude");
+  const results = await Promise.all([
+    settingsConfigureApiKey(path.join(claudeDir, "settings.json")),
+    settingsConfigureApiKey(path.join(claudeDir, "settings.local.json")),
+  ]);
+  return results.includes(true);
+}
+
 async function readAccount() {
   try {
     const parsed = claudeAccountSchema.safeParse(
@@ -356,7 +390,13 @@ export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
       readAccountEmail(),
     ]);
     if (!credentials) {
-      return healthResult("unauthenticated", { installedVersion: version });
+      return (await hasApiKeyAuth())
+        ? healthResult("ready", {
+            planLabel: "API key",
+            accountEmail: null,
+            installedVersion: version,
+          })
+        : healthResult("unauthenticated", { installedVersion: version });
     }
     const known = {
       accountEmail: email,
