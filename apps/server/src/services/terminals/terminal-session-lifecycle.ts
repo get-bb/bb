@@ -1450,6 +1450,14 @@ export class TerminalSessionLifecycle {
     }
 
     const session = toTerminalSession(current);
+    if (current.status === "disconnected") {
+      this.holdBrowserTerminalForReattach({
+        session,
+        sinceSeq: args.sinceSeq,
+        socket: args.socket,
+      });
+      return;
+    }
     if (current.status !== "running" || current.daemonSessionId === null) {
       this.options.hub.sendTerminalSocketMessage(args.socket, {
         type: "attached",
@@ -1495,18 +1503,37 @@ export class TerminalSessionLifecycle {
       },
     );
     if (!sent) {
-      if (this.pendingAttaches.cancel(pendingAttach.rpcKey)) {
-        this.options.hub.unregisterTerminalClient(current.id, args.socket);
-      }
-      this.sendTerminalSocketError({
+      this.pendingAttaches.cancel(pendingAttach.rpcKey);
+      this.holdBrowserTerminalForReattach({
+        session,
+        sinceSeq: args.sinceSeq,
         socket: args.socket,
-        code: "host_disconnected",
-        message: "Host is not connected",
       });
       this.disconnectDaemonSessionTerminals({
         daemonSessionId: current.daemonSessionId,
       });
     }
+  }
+
+  private holdBrowserTerminalForReattach(args: {
+    session: TerminalSession;
+    sinceSeq: number;
+    socket: TerminalClientSocket;
+  }): void {
+    this.options.hub.registerTerminalClient(args.session.id, args.socket);
+    this.forwardedNextSeqByTerminalId.set(
+      args.session.id,
+      Math.max(
+        this.forwardedNextSeqByTerminalId.get(args.session.id) ?? 0,
+        args.sinceSeq,
+      ),
+    );
+    this.options.hub.sendTerminalSocketMessage(args.socket, {
+      type: "attached",
+      session: args.session,
+      replayStartSeq: args.sinceSeq,
+      nextSeq: args.sinceSeq,
+    });
   }
 
   detachBrowserTerminal(args: DetachBrowserTerminalArgs): void {

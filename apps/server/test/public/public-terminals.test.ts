@@ -1645,6 +1645,74 @@ describe("public terminal routes", () => {
     expect(browserOutputSeqs()).toEqual([0, 1, 2, 3, 4]);
   });
 
+  it.each([
+    { name: "whose terminal is already disconnected", closeSession: true },
+    { name: "before its daemon has re-registered", closeSession: false },
+  ])(
+    "keeps a browser that attaches $name and catches it up when the terminal reattaches",
+    async ({ closeSession }) => {
+      const fixture = await createTerminalRouteFixture();
+      harnesses.push(fixture.harness);
+      const stored = createTerminalSession(fixture.harness.db, {
+        cols: 80,
+        daemonSessionId: fixture.session.id,
+        environmentId: fixture.environment.id,
+        hostId: fixture.host.id,
+        initialCwd: "/tmp/terminal-workspace",
+        rows: 24,
+        status: "running",
+        threadId: fixture.thread.id,
+        title: "Terminal 1",
+      });
+      if (closeSession) {
+        handleDaemonSocketClosed(fixture.harness.deps, {
+          sessionId: fixture.session.id,
+        });
+      } else {
+        fixture.harness.hub.unregisterDaemon(fixture.session.id);
+      }
+      const browserSocket = createFakeBrowserSocket();
+      fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+        socket: browserSocket,
+        sinceSeq: 5,
+        terminalId: stored.id,
+      });
+
+      expect(
+        readBrowserMessages(browserSocket).filter(
+          (message) => message.type === "error",
+        ),
+      ).toEqual([]);
+      expect(
+        getTerminalSessionForThread(fixture.harness.db, {
+          terminalId: stored.id,
+          threadId: fixture.thread.id,
+        }),
+      ).toMatchObject({ status: "disconnected" });
+
+      const replacementSession = seedSession(
+        fixture.harness.deps,
+        fixture.host.id,
+      );
+      const replacementSocket = createFakeDaemonSocket();
+      onDaemonSocketOpen(fixture.harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: replacementSession.id,
+        socket: replacementSocket,
+      });
+
+      expect(readBrowserMessages(browserSocket).at(-1)).toMatchObject({
+        type: "session-updated",
+        session: { id: stored.id, status: "running" },
+      });
+      expect(
+        readDaemonOperationMessages(replacementSocket).find(
+          (message) => message.type === "terminal.attach",
+        ),
+      ).toMatchObject({ terminalId: stored.id, sinceSeq: 5 });
+    },
+  );
+
   it("expires disconnected terminals when a restarted daemon instance reconnects", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
