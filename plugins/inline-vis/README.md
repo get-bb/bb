@@ -69,4 +69,3 @@ Markdown links and images resolve relative to the document's directory in the
 selected source. For `::inline-vis{source="thread-storage" file="reports/report.md"}`,
 `[Notes](notes.md)` and `![Chart](chart.svg)` refer to files under `reports/`
 in that thread's storage. The same rule applies to workspace reports.
-
