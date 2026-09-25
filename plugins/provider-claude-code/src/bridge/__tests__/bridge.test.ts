@@ -903,6 +903,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a manager.",
         cwd: "/tmp/worktree",
@@ -927,6 +928,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -943,6 +945,7 @@ describe("bridge", () => {
       autoMemoryEnabled: true,
       enableWorkflows: true,
       ultracode: true,
+      fastMode: false,
     });
   });
 
@@ -950,6 +953,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -966,13 +970,33 @@ describe("bridge", () => {
       autoMemoryEnabled: true,
       enableWorkflows: true,
       ultracode: false,
+      fastMode: false,
     });
+  });
+
+  it("sets fast mode only for the fast service tier at session start", () => {
+    const options = buildSessionOptions(
+      {
+        chromeEnabled: false,
+        workflowsEnabled: false,
+        serviceTier: "fast",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionMode: "default",
+        permissionScope: "workspace",
+        model: "claude-opus-5",
+      },
+      {},
+    );
+
+    expect(options.settings).toMatchObject({ fastMode: true });
   });
 
   it("passes the memory setting when workflows are not enabled", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -988,6 +1012,7 @@ describe("bridge", () => {
       autoMemoryEnabled: true,
       enableWorkflows: false,
       ultracode: false,
+      fastMode: false,
     });
   });
 
@@ -995,6 +1020,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         memoryEnabled: false,
         cwd: "/tmp/worktree",
@@ -1009,12 +1035,14 @@ describe("bridge", () => {
       autoMemoryEnabled: false,
       enableWorkflows: false,
       ultracode: false,
+      fastMode: false,
     });
   });
 
   it("passes --chrome only when Claude in Chrome is enabled", () => {
     const base = {
       workflowsEnabled: false,
+      serviceTier: "default",
       cwd: "/tmp/worktree",
       instructionMode: "append",
       permissionMode: "default",
@@ -1033,6 +1061,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1061,6 +1090,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1082,6 +1112,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1100,6 +1131,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1125,6 +1157,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1143,6 +1176,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1164,6 +1198,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1189,6 +1224,7 @@ describe("bridge", () => {
       buildSessionOptions(
         {
           chromeEnabled: false,
+          serviceTier: "default",
           workflowsEnabled: false,
           baseInstructions: "You are a coder.",
           cwd: "/tmp/worktree",
@@ -1208,6 +1244,7 @@ describe("bridge", () => {
     const acceptEditsOptions = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1220,6 +1257,7 @@ describe("bridge", () => {
     const autoOptions = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1252,6 +1290,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
         baseInstructions: "You are a coder.",
@@ -1272,6 +1311,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        serviceTier: "default",
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
@@ -3169,6 +3209,7 @@ describe("bridge", () => {
           permissionEscalation: "ask",
           model: "claude-opus-5[1m]",
           reasoningLevel: "max",
+          serviceTier: "fast",
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
@@ -3187,6 +3228,7 @@ describe("bridge", () => {
         enableWorkflows: true,
         effortLevel: "max",
         ultracode: false,
+        fastMode: true,
       });
 
       for (const toolName of ["Agent", "Task"]) {
@@ -3245,6 +3287,7 @@ describe("bridge", () => {
           permissionEscalation: "ask",
           model: "claude-opus-5[1m]",
           reasoningLevel: "xhigh",
+          serviceTier: "default",
           providerOptions: {
             workflowsEnabled: false,
             memoryEnabled: true,
@@ -3261,6 +3304,7 @@ describe("bridge", () => {
         enableWorkflows: false,
         effortLevel: "xhigh",
         ultracode: false,
+        fastMode: false,
       });
       const enabledSubagentOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,

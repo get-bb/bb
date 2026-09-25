@@ -87,6 +87,7 @@ describe("buildClaudeSessionParams", () => {
       providerSubagentsEnabled: false,
       model: "claude-sonnet-5",
       reasoningLevel: "high",
+      serviceTier: "default",
       disallowedTools: ["WebSearch"],
       config: { envVars: { BB_TEST: "1" } },
     });
@@ -363,6 +364,21 @@ describe("buildClaudeTurnParams", () => {
     expect(params.memoryEnabled).toBeUndefined();
     expect(params.providerSubagentsEnabled).toBeUndefined();
     expect(params.permissionEscalation).toBeNull();
+    expect(params).not.toHaveProperty("serviceTier");
+  });
+
+  it("forwards fast service tier to Claude turns", () => {
+    const params = buildClaudeTurnParams({
+      threadId: "thread-1",
+      providerThreadId: "provider-1",
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: {
+        ...FULL_POLICY,
+        model: "claude-opus-5",
+        serviceTier: "fast",
+      },
+    });
+    expect(params.serviceTier).toBe("fast");
   });
 
   it("strips the /plan command mention that opened plan mode", () => {

@@ -6,6 +6,7 @@ import {
   type PendingInteractionPayload,
   type PermissionEscalation,
   type ReasoningLevel,
+  type ServiceTier,
   type ThreadDelta,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -276,7 +277,11 @@ interface SessionConstructionConfig {
   dynamicTools: ThreadResumeParams["dynamicTools"];
   sessionOptions: Omit<
     BuildSessionOptionsArgs,
-    "memoryEnabled" | "model" | "reasoningLevel" | "workflowsEnabled"
+    | "memoryEnabled"
+    | "model"
+    | "reasoningLevel"
+    | "serviceTier"
+    | "workflowsEnabled"
   >;
 }
 
@@ -285,6 +290,7 @@ interface ClaudeLiveSessionSettings {
   model?: string;
   providerSubagentsEnabled: boolean;
   reasoningLevel?: ReasoningLevel;
+  serviceTier: ServiceTier;
   workflowsEnabled: boolean;
 }
 
@@ -629,6 +635,7 @@ async function applyLiveSessionSettings(
   if (
     current.memoryEnabled !== next.memoryEnabled ||
     current.reasoningLevel !== next.reasoningLevel ||
+    current.serviceTier !== next.serviceTier ||
     current.workflowsEnabled !== next.workflowsEnabled
   ) {
     await threadSession.session.applyMutableSettings({
@@ -640,6 +647,7 @@ async function applyLiveSessionSettings(
         memoryEnabled: next.memoryEnabled,
         reasoningLevel: next.reasoningLevel,
         workflowsEnabled: next.workflowsEnabled,
+        serviceTier: next.serviceTier,
       }),
     });
   }
@@ -868,6 +876,7 @@ function toInitialLiveSessionSettings(
     ...(params.reasoningLevel !== undefined
       ? { reasoningLevel: params.reasoningLevel }
       : {}),
+    serviceTier: params.serviceTier,
     workflowsEnabled: params.workflowsEnabled,
   };
 }
@@ -884,6 +893,7 @@ function withTurnLiveSessionSettings(
     providerSubagentsEnabled:
       params.providerSubagentsEnabled ?? current.providerSubagentsEnabled,
     ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
+    serviceTier: params.serviceTier ?? current.serviceTier,
     workflowsEnabled: params.workflowsEnabled ?? current.workflowsEnabled,
   };
 }
