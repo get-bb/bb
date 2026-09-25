@@ -72,6 +72,7 @@ import type {
   ThreadRowNestDrop,
 } from "./sidebarThreadRowDroppable.js";
 import type { SidebarSortableDragBindings } from "./sortableMotion.js";
+import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
 import {
   ThreadActionsContextMenu,
@@ -437,7 +438,7 @@ function ThreadRowComponent({
     !showActive &&
       "has-[[data-state=open]]:bg-sidebar-accent has-[[data-sidebar-rename-anchor]:focus-visible]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
-    "data-[sidebar-touch-armed=true]:bg-sidebar-accent data-[sidebar-touch-armed=true]:text-sidebar-accent-foreground",
+    "data-[sidebar-touch-armed=true]:!bg-transparent",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
@@ -480,6 +481,7 @@ function ThreadRowComponent({
       <span
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
+          "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
             !isEditing &&
             (reserveActionSpace
@@ -575,19 +577,16 @@ function ThreadRowComponent({
         ) : null}
       </span>
       {rowDragBindings && !rowDragBindings.disabled ? (
-        <span
-          data-sidebar-touch-armed-affordance=""
-          aria-hidden="true"
-          className="pointer-events-none relative z-10 hidden shrink-0 items-center gap-1 rounded-md bg-sidebar-accent px-1.5 text-xs text-sidebar-accent-foreground ring-1 ring-sidebar-border group-data-[sidebar-touch-armed=true]/thread-row:inline-flex"
-        >
-          <Icon name="SectionMove" className="size-3.5" aria-hidden />
-          Drag
-        </span>
+        <SidebarThreadDragChip
+          title={labelTitle}
+          visualOnly
+          className="hidden group-data-[sidebar-touch-armed=true]/thread-row:flex"
+        />
       ) : null}
       <span
         data-sidebar-thread-trailing=""
         className={cn(
-          "flex shrink-0 items-center gap-0.5",
+          "flex shrink-0 items-center gap-0.5 group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           isEditing && "hidden",
         )}
       >

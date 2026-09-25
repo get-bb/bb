@@ -169,8 +169,7 @@ import {
 import { SectionThreadDndProvider } from "../dnd/SectionThreadDndContext.js";
 import {
   useSidebarThreadDragOverlayModifiers,
-  SIDEBAR_THREAD_DRAG_CHIP_CLASS,
-  SIDEBAR_THREAD_DRAG_CHIP_STYLE,
+  SidebarThreadDragChip,
 } from "../dnd/sidebarThreadDragChip.js";
 
 const SIDEBAR_STICKY_PARENT_DEPTH_CAP = 4;
@@ -1349,18 +1348,7 @@ export function SectionThreadDragOverlay({
 }: {
   thread: SidebarThread;
 }) {
-  return (
-    <div
-      aria-hidden="true"
-      data-sidebar-section-drag-overlay="true"
-      style={SIDEBAR_THREAD_DRAG_CHIP_STYLE}
-      className={SIDEBAR_THREAD_DRAG_CHIP_CLASS}
-    >
-      <span className="min-w-0 flex-1 truncate">
-        {thread.displayTitle}
-      </span>
-    </div>
-  );
+  return <SidebarThreadDragChip title={thread.displayTitle} />;
 }
 
 const SectionTreeItemRow = memo(function SectionTreeItemRow({

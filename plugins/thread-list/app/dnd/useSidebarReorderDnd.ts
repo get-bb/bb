@@ -32,6 +32,7 @@ export class SidebarTouchSensor {
   private readonly props: SensorProps<TouchSensorOptions>;
   private readonly document: Document;
   private readonly activator: HTMLElement | null;
+  private readonly armedChip: HTMLElement | null;
   private readonly initialCoordinates: { x: number; y: number };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private armed = false;
@@ -47,6 +48,7 @@ export class SidebarTouchSensor {
     this.initialCoordinates = { x: touch.clientX, y: touch.clientY };
     this.document = event.target instanceof Node ? event.target.ownerDocument ?? document : document;
     this.activator = props.activeNode.activatorNode.current ?? props.activeNode.node.current;
+    this.armedChip = this.activator?.querySelector("[data-sidebar-touch-armed-chip]") ?? null;
     this.document.addEventListener("touchmove", this.handleMove, { passive: false });
     this.document.addEventListener("touchend", this.handleEnd);
     this.document.addEventListener("touchcancel", this.handleCancel);
@@ -60,6 +62,10 @@ export class SidebarTouchSensor {
       this.timer = null;
       this.armed = true;
       this.activator?.setAttribute("data-sidebar-touch-armed", "true");
+      if (this.armedChip) {
+        const rect = this.armedChip.getBoundingClientRect();
+        this.armedChip.style.transform = `translate(${this.initialCoordinates.x - rect.left - rect.width / 2}px, ${this.initialCoordinates.y - rect.top - rect.height / 2}px)`;
+      }
     }, delay);
   }
 
@@ -107,6 +113,7 @@ export class SidebarTouchSensor {
   private detach(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.activator?.removeAttribute("data-sidebar-touch-armed");
+    this.armedChip?.style.removeProperty("transform");
     this.document.removeEventListener("touchmove", this.handleMove);
     this.document.removeEventListener("touchend", this.handleEnd);
     this.document.removeEventListener("touchcancel", this.handleCancel);

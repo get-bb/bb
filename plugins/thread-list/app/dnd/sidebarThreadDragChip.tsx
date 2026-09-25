@@ -19,6 +19,35 @@ export const SIDEBAR_THREAD_DRAG_CHIP_STYLE = {
   paddingLeft: `${getSidebarThreadRowPaddingLeft(0)}px`,
 } satisfies CSSProperties;
 
+export function SidebarThreadDragChip({
+  title,
+  className,
+  visualOnly = false,
+}: {
+  title: string;
+  className?: string;
+  visualOnly?: boolean;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      data-sidebar-section-drag-overlay="true"
+      data-sidebar-touch-armed-chip={visualOnly ? "" : undefined}
+      style={SIDEBAR_THREAD_DRAG_CHIP_STYLE}
+      className={cn(SIDEBAR_THREAD_DRAG_CHIP_CLASS, className)}
+    >
+      {visualOnly ? (
+        <span
+          data-sidebar-drag-title={title}
+          className="min-w-0 flex-1 truncate before:content-[attr(data-sidebar-drag-title)]"
+        />
+      ) : (
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+      )}
+    </div>
+  );
+}
+
 export function createSnapSidebarThreadDragChipToCursor(): Modifier {
   let overlayOriginRect: ClientRect | null = null;
   return ({
