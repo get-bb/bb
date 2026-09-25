@@ -220,6 +220,7 @@ describe("navigation plugin", () => {
     fireEvent.contextMenu(row);
     await screen.findByRole("menuitem", { name: "Hide from sidebar" });
 
+    expect(screen.queryByRole("separator")).toBeNull();
     expect(row.classList.contains("bg-sidebar-accent")).toBe(true);
     expect(options.classList.contains("bg-state-active")).toBe(true);
     expect(

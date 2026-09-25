@@ -86,7 +86,6 @@ function RowMenuItems({
         <Item onSelect={() => actions.setVisible(item.id, false)}>
           <SidebarVisibilityActionContent visible />
         </Item>
-        <Separator />
         <Item onSelect={() => actions.openCustomize()}>
           <SidebarCustomizeActionContent label="Customize sidebar" />
         </Item>
@@ -105,10 +104,10 @@ function RowMenuItems({
         <Icon name="Info" aria-hidden="true" />
         View details
       </Item>
+      <Separator />
       <Item onSelect={() => actions.setVisible(item.id, false)}>
         <SidebarVisibilityActionContent visible />
       </Item>
-      <Separator />
       <Item onSelect={() => actions.openCustomize()}>
         <SidebarCustomizeActionContent label="Customize sidebar" />
       </Item>
