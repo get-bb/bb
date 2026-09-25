@@ -477,7 +477,7 @@ export function useThreadCreationOptions(
     selectedProviderInfo?.composerActions ?? EMPTY_COMPOSER_ACTIONS;
 
   const allowFastServiceTier =
-    systemConfig.data?.generalSettings.allowFastServiceTier ?? true;
+    systemConfig.data?.generalSettings?.allowFastServiceTier ?? true;
   const supportsServiceTier =
     allowFastServiceTier &&
     (activeProviderCapabilities?.supportsServiceTier ?? false);

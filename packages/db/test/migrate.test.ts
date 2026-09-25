@@ -1994,6 +1994,7 @@ describe("migrate", () => {
         defaultMachineAccess: null,
         machineGitCredentialsEnabled: true,
         streamerMode: false,
+        allowFastServiceTier: true,
         telemetryEnabled: true,
         managedBranchPrefix: "bb/",
       });
