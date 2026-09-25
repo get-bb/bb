@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type RefObject } from "react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { transcribeVoiceInput } from "@/lib/api";
+import type { PromptDraftState } from "@bb/client-core";
 import type { PromptBoxHandle, PromptVoiceConfig } from "./PromptBoxInternal";
 
 async function requestVoiceTranscription({
@@ -22,12 +23,24 @@ function createVoiceAbortError(): DOMException {
 
 export function usePromptVoice(
   promptBoxRef: RefObject<PromptBoxHandle | null>,
+  draft?: {
+    getCurrent: () => PromptDraftState;
+    setDraft: (draft: PromptDraftState) => void;
+  },
 ): PromptVoiceConfig {
   const onTranscript = useCallback(
     (text: string) => {
-      promptBoxRef.current?.insertTextAtCursor(text);
+      if (promptBoxRef.current) {
+        promptBoxRef.current.insertTextAtCursor(text);
+        return;
+      }
+      if (!draft) return;
+      const current = draft.getCurrent();
+      const separator =
+        current.text.length > 0 && !/\s$/.test(current.text) ? " " : "";
+      draft.setDraft({ ...current, text: `${current.text}${separator}${text}` });
     },
-    [promptBoxRef],
+    [draft, promptBoxRef],
   );
 
   const getPromptContext = useCallback(

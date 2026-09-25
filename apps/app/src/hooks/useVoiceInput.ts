@@ -225,6 +225,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     return () => {
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state === "recording") {
+        shouldTranscribeRef.current = false;
         try {
           recorder.stop();
         } catch {}
@@ -233,12 +234,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       chunksRef.current = [];
       startedAtMsRef.current = null;
       promptContextRef.current = undefined;
-      shouldTranscribeRef.current = true;
       releaseRecordingWakeLock();
-      if (transcriptionAbortRef.current) {
-        transcriptionAbortRef.current.abort();
-        transcriptionAbortRef.current = null;
-      }
       stopMediaStream();
     };
   }, [releaseRecordingWakeLock, stopMediaStream]);
@@ -340,6 +336,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
             promptContext,
             signal: abortController.signal,
           });
+          if (abortController.signal.aborted) return;
           const normalized = normalizeTranscript(transcript);
           if (normalized.length === 0) {
             throw new Error("Voice transcription returned an empty result.");
