@@ -38,8 +38,8 @@ is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
 
 `rowActions` picks up to three quick-action buttons a thread row shows on
-hover, left to right before its actions menu. Choose from `archive`, `pin`, `read`,
-`rename`, `copyLink`, and `split`; the default is `'["archive"]'` and `'[]'`
+hover, left to right before its actions menu. Choose from `split`, `copyLink`, `read`,
+`pin`, `move` (opens a section menu), `rename`, and `archive`; the default is `'["archive"]'` and `'[]'`
 leaves only the menu. For example,
 `bb thread-list prefs set rowActions '["pin","archive"]'`. In the app, a thread
 row's actions menu has Customize row actions, which previews the row's three

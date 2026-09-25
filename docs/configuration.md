@@ -932,9 +932,10 @@ None leaves only the actions menu.
 Archived rows keep their unarchive button regardless of this setting.
 
 The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
-accepts up to three of `archive`, `pin`, `read`, `rename`, `copyLink`, and
-`split`, in display order. Duplicates are deduplicated, and `split` is skipped
-where a split is unavailable.
+accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
+`archive`, in display order. Duplicates are deduplicated. `split` is skipped
+where a split is unavailable, and `move` is skipped for threads that cannot
+move to another section. `move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions

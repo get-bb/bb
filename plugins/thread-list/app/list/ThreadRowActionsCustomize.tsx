@@ -25,19 +25,8 @@ import { threadRowActionsAtom } from "../preferences/atoms.js";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { useSidebarSortable } from "../rows/sortableMotion.js";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
+import { THREAD_ROW_ACTIONS } from "../rows/threadRowActions.js";
 import { SidebarCustomizePanel } from "./SidebarVisibilityCustomize.js";
-
-const ROW_ACTION_ITEMS: Record<
-  ThreadRowActionId,
-  { title: string; icon: IconName }
-> = {
-  archive: { title: "Archive", icon: "Archive" },
-  pin: { title: "Pin", icon: "Pin" },
-  read: { title: "Mark read / unread", icon: "MailOpen" },
-  rename: { title: "Rename", icon: "Edit" },
-  copyLink: { title: "Copy thread link", icon: "Copy" },
-  split: { title: "Open in split", icon: "Columns2" },
-};
 
 type RowActionSlot = ThreadRowActionId | null;
 
@@ -201,7 +190,7 @@ function RowActionSlotPicker({
     id: value ?? `empty-${index}`,
     disabled: reorderDisabled,
   });
-  const label = `Row action ${index + 1}: ${value === null ? "None" : ROW_ACTION_ITEMS[value].title}`;
+  const label = `Row action ${index + 1}: ${value === null ? "None" : THREAD_ROW_ACTIONS[value].title}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -233,7 +222,7 @@ function RowActionSlotPicker({
           >
             {value !== null && (
               <Icon
-                name={ROW_ACTION_ITEMS[value].icon}
+                name={THREAD_ROW_ACTIONS[value].icon}
                 className={COARSE_POINTER_ICON_SIZE_CLASS}
               />
             )}
@@ -251,8 +240,8 @@ function RowActionSlotPicker({
         {THREAD_ROW_ACTION_IDS.map((id) => (
           <RowActionOption
             key={id}
-            icon={ROW_ACTION_ITEMS[id].icon}
-            label={ROW_ACTION_ITEMS[id].title}
+            icon={THREAD_ROW_ACTIONS[id].icon}
+            label={THREAD_ROW_ACTIONS[id].title}
             selected={value === id}
             onSelect={() => onChange(id)}
           />

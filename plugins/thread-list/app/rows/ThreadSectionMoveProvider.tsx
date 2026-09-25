@@ -18,7 +18,7 @@ export interface ThreadSectionMoveDestination {
   sectionId: string | null;
 }
 
-interface ThreadSectionMoveContextValue {
+export interface ThreadSectionMoveContextValue {
   destinations: readonly ThreadSectionMoveDestination[];
   moveThread: (thread: SidebarThread, sectionId: string | null) => void;
 }

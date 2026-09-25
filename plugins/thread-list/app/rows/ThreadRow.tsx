@@ -79,9 +79,11 @@ import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
   ThreadArchiveQuickAction,
+  canMoveThreadToSection,
   ThreadRowQuickActions,
   visibleThreadRowActions,
 } from "./ThreadActionsMenu.js";
+import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
 import {
   ThreadStatusGlyph,
   resolveThreadStatus,
@@ -368,9 +370,13 @@ function ThreadRowComponent({
   const openInSplit = useCallback(() => {
     actions.open(thread.id, { split: true });
   }, [actions, thread.id]);
+  const sectionMove = useThreadSectionMove();
   const rowActionIds = visibleThreadRowActions(
     useAtomValue(threadRowActionsAtom),
-    splitAvailable,
+    {
+      split: splitAvailable,
+      move: canMoveThreadToSection(sectionMove, thread),
+    },
   );
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
@@ -379,7 +385,8 @@ function ThreadRowComponent({
   const childActivity =
     parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
   const hasChildren = childCount > 0;
-  const reserveActionSpace = crossProjectLabel !== null || (isParentRow && hasChildren);
+  const reserveActionSpace =
+    crossProjectLabel !== null || (isParentRow && hasChildren);
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const trailingIndicatorState: ThreadListIndicatorState = {
     hasPendingInteraction:
@@ -685,6 +692,7 @@ function ThreadRowComponent({
                       className={SIDEBAR_CONTROL_BUTTON_CLASS}
                       onOpenInSplit={openInSplit}
                       onRename={startEditing}
+                      onMenuOpenChange={setIsDropdownActionsOpen}
                     />
                   }
                 >
