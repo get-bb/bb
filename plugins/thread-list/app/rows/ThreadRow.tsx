@@ -437,6 +437,7 @@ function ThreadRowComponent({
     !showActive &&
       "has-[[data-state=open]]:bg-sidebar-accent has-[[data-sidebar-rename-anchor]:focus-visible]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
+    "data-[sidebar-touch-armed=true]:bg-sidebar-accent data-[sidebar-touch-armed=true]:text-sidebar-accent-foreground",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
@@ -573,6 +574,16 @@ function ThreadRowComponent({
           />
         ) : null}
       </span>
+      {rowDragBindings && !rowDragBindings.disabled ? (
+        <span
+          data-sidebar-touch-armed-affordance=""
+          aria-hidden="true"
+          className="pointer-events-none relative z-10 hidden shrink-0 items-center gap-1 rounded-md bg-sidebar-accent px-1.5 text-xs text-sidebar-accent-foreground ring-1 ring-sidebar-border group-data-[sidebar-touch-armed=true]/thread-row:inline-flex"
+        >
+          <Icon name="SectionMove" className="size-3.5" aria-hidden />
+          Drag
+        </span>
+      ) : null}
       <span
         data-sidebar-thread-trailing=""
         className={cn(
