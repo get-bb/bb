@@ -20,6 +20,7 @@ import {
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
+import { handleDaemonSessionSilent } from "../../src/internal/session-owner-side-effects.js";
 import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
@@ -255,7 +256,8 @@ describe("public provider installation routes", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "provider-installation-offline-host",
       });
-      harness.hub.unregisterDaemon(session.id);
+      handleDaemonSessionSilent(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
 
       const response = await harness.app.request(
         `${API}/hosts/${host.id}/provider-clis/status`,

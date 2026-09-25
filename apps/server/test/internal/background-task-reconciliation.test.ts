@@ -1,9 +1,12 @@
 import {
   closeSession,
   getThread,
+  hostDaemonSessions,
   listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
+import { eq } from "drizzle-orm";
+import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonServerWsMessageSchema,
@@ -710,6 +713,56 @@ describe("active thread disconnect reconciliation triggers", () => {
       expect(JSON.stringify(parentNotices[0]?.input)).toContain(
         "because its host connection was lost",
       );
+    });
+  });
+
+  it("delivers a stop requested while the host was offline once the same daemon reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedActiveTurnThread(harness);
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+      harness.deps.db
+        .update(hostDaemonSessions)
+        .set({ closedAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1 })
+        .where(eq(hostDaemonSessions.id, session.id))
+        .run();
+
+      await harness.app.request(`/api/v1/threads/${thread.id}/stop`, {
+        method: "POST",
+      });
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("stopping");
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-stop-after-reconnect",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [{ threadId: thread.id }],
+        }),
+      });
+      expect(response.status).toBe(201);
+      const { sessionId } = (await response.json()) as { sessionId: string };
+      const commandTypes: string[] = [];
+      harness.hub.registerDaemon(sessionId, host.id, {
+        close() {},
+        send(data) {
+          const message = hostDaemonServerWsMessageSchema.parse(
+            JSON.parse(data),
+          );
+          if (message.type === "host-rpc.request") {
+            commandTypes.push(message.command.type);
+          }
+        },
+      });
+
+      await vi.waitFor(() => expect(commandTypes).toContain("thread.stop"));
     });
   });
 
