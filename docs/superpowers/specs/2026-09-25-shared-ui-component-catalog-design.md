@@ -6,9 +6,15 @@
 
 ## Background
 
-`packages/shared-ui` has 253 components. Building a bb plugin means knowing
-what's available and how it's actually used — today there's no way to browse
-that.
+`packages/shared-ui` has 253 components, counting compound sub-parts
+separately (e.g. Dialog, DialogHeader, DialogContent, and DialogTitle
+each count as one) — that's the same unit the design-sync survey below
+uses, not a file count. The actual file count is smaller: 59 files under
+`packages/shared-ui/src/components/ui`, 67 across all of `src` — most
+files export several of the 253 (a `dialog.tsx` file exports `Dialog`,
+`DialogHeader`, `DialogContent`, etc., all separately counted). Building
+a bb plugin means knowing what's available and how it's actually used —
+today there's no way to browse that.
 
 This catalog is browsable via **[Ladle](https://ladle.dev)**, a Vite-based
 component-story dev tool (same category as Storybook). This repo already
@@ -104,9 +110,12 @@ thread</Button>` shows them how the two actually combine. Concretely:
   the story demonstrates usage, not just the target component's own
   props. Don't strip a real usage down to the target component alone.
 - **This is mandatory, not optional, for compound components**
-  (Select/DropdownMenu/Dialog and similar) — they can't render
-  meaningfully in isolation anyway, so "always show it composed" is also
-  what makes them render at all, not just what makes them useful.
+  (Select/DropdownMenu/Dialog and similar — components made of several
+  cooperating pieces, like `Select` needing a `SelectTrigger` and
+  `SelectContent`/`SelectItem`s to have anything to open or pick from)
+  — they can't render meaningfully in isolation anyway, so "always show
+  it composed" is also what makes them render at all, not just what
+  makes them useful.
 - Zero-usage components (no hits in either source) get a single
   plausible render using the component's own default/example props —
   the one case where there's no real usage to derive from.
@@ -153,12 +162,13 @@ convention, that's a separate follow-up, not part of this pass.
 
 ## Generation approach
 
-Agent-driven (subagent-driven-development / fan-out), not a mechanical
-script. Picking "which real call site is representative" and "how much
-surrounding composition to keep" is a judgment call a script can't make:
-grep `plugins/*` for real usages of the target component, read the
-surrounding JSX to find the most representative real pattern, and write
-a story that preserves it. That's the same process
+A person or an AI coding agent works through the priority order above,
+component by component (or in parallel batches, if using multiple
+agents) — not a mechanical script. For each component: grep `plugins/*`
+for real usages, read the surrounding JSX to find the most representative
+real pattern, and write a story that preserves it. Picking "which real
+call site is representative" and "how much surrounding composition to
+keep" is a judgment call a script can't make. That's the same process
 [PR #4286](https://github.com/get-bb/bb/pull/4286) used for Icon and
 Textarea, just without the atomic/cap/grading constraints that made it
 heavier than it needed to be.
