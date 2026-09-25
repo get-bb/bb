@@ -1678,6 +1678,16 @@ describe("public terminal routes", () => {
         terminalId: stored.id,
       });
 
+      fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+        message: { type: "resize", cols: 100, rows: 30 },
+        socket: browserSocket,
+        terminalId: stored.id,
+      });
+      fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+        message: { type: "input", dataBase64: btoa("ls\n") },
+        socket: browserSocket,
+        terminalId: stored.id,
+      });
       expect(
         readBrowserMessages(browserSocket).filter(
           (message) => message.type === "error",

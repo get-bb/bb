@@ -1896,11 +1896,13 @@ export class TerminalSessionLifecycle {
       return null;
     }
     if (!isRunningBrowserTerminalSession(current)) {
-      this.sendTerminalSocketError({
-        socket: args.socket,
-        code: "terminal_not_running",
-        message: "Terminal session is not running",
-      });
+      if (current.status !== "disconnected") {
+        this.sendTerminalSocketError({
+          socket: args.socket,
+          code: "terminal_not_running",
+          message: "Terminal session is not running",
+        });
+      }
       return null;
     }
     return current;
