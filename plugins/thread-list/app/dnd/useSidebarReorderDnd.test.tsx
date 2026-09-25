@@ -88,7 +88,7 @@ describe("SidebarTouchSensor", () => {
     return <div ref={setNodeRef} {...attributes} {...listeners}>Thread</div>;
   }
 
-  it("keeps a slow drifting row touch as a tap and starts a longer hold as a drag", async () => {
+  it("keeps a slow drifting row touch as a tap and starts drag after hold and movement", async () => {
     const onDragStart = vi.fn();
     const onDragEnd = vi.fn();
     function Harness() {
@@ -105,9 +105,10 @@ describe("SidebarTouchSensor", () => {
     expect(onDragStart).not.toHaveBeenCalled();
 
     fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
-    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1), {
-      timeout: 900,
-    });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    expect(onDragStart).not.toHaveBeenCalled();
+    fireEvent.touchMove(row, { touches: [{ clientX: 24, clientY: 10 }] });
+    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
     fireEvent.touchEnd(row, { touches: [] });
     expect(onDragEnd).toHaveBeenCalledTimes(1);
   });
