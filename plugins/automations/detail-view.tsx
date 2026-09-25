@@ -172,7 +172,9 @@ function automationDetailNextRun(
       icon="CalendarCheckOut02"
       iconLabel={automation.lastError === null ? "Next run" : "Next retry"}
     >
-      {label.slice("Next ".length)}
+      {automation.lastError === null
+        ? label.slice("Next ".length)
+        : `Retry ${label.slice("Next ".length)}`}
     </AutomationMetadataItem>
   );
 }

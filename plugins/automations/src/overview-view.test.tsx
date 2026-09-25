@@ -92,6 +92,7 @@ describe("AutomationOverviewView", () => {
     expect(
       screen.getByText("Retrying: Provider connection failed"),
     ).toBeTruthy();
+    expect(screen.getByText(/^Retry /u)).toBeTruthy();
     expect(
       screen.getByRole("img", { name: "Retrying after failure" }),
     ).toBeTruthy();

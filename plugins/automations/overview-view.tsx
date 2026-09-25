@@ -244,7 +244,9 @@ function AutomationRowMetadata({
                 : undefined
             }
           >
-            {scheduleMetadata.text}
+            {scheduleMetadata.isNextRun && automation.lastError !== null
+              ? `Retry ${scheduleMetadata.text}`
+              : scheduleMetadata.text}
           </AutomationMetadataItem>
         ) : null,
         automation !== null && automation.lastError !== null ? (
