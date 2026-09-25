@@ -29,6 +29,7 @@ const SERVER_MENU_ITEM_IDS = [
   WINDOW_SERVER_MENU_ITEM_ID,
 ];
 export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
+export const SHOW_BUILTIN_SERVER_MENU_LABEL = `Show ${BUILTIN_SERVER_NAME}`;
 export const CONNECT_SERVERS_SKIPPED_MENU_LABELS: Record<
   ConnectServerSyncSkipReason,
   string
@@ -65,6 +66,8 @@ export interface InstallApplicationMenuArgs {
   selectServer(serverId: string): void;
   setServerUrl(): void;
   addServer(): void;
+  showBuiltinServer: boolean;
+  toggleBuiltinServer(): void;
   onServerMenuWillShow?: () => void;
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
@@ -163,6 +166,14 @@ export function buildApplicationMenuTemplate(
               id: DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID,
               label: SERVER_MENU_LABEL,
               submenu: createServerMenuItems(args),
+            },
+            {
+              checked: args.showBuiltinServer,
+              label: SHOW_BUILTIN_SERVER_MENU_LABEL,
+              type: "checkbox",
+              click() {
+                args.toggleBuiltinServer();
+              },
             },
           ],
         },

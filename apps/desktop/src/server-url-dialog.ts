@@ -11,20 +11,28 @@ import {
   serverUrlDialogSubmitRequestSchema,
   type ServerUrlDialogSubmitResponse,
 } from "./server-url-dialog-ipc.js";
-import { normalizeCustomServerUrl } from "./server-target.js";
+import {
+  MAX_SERVER_NAME_LENGTH,
+  normalizeCustomServerUrl,
+  normalizeServerName,
+} from "./server-target.js";
 
 type ServerUrlDialogResult =
   | { kind: "cancelled" }
   | { kind: "clear" }
-  | { kind: "set"; url: string };
+  | { kind: "set"; name: string | null; url: string };
 
 interface OpenServerUrlDialogArgs {
+  initialName: string | null;
   initialUrl: string | null;
   parentWindow: BrowserWindow | null;
   preloadPath: string;
 }
 
-function renderServerUrlDialogHtml(initialUrl: string | null): string {
+function renderServerUrlDialogHtml(
+  initialUrl: string | null,
+  initialName: string | null,
+): string {
   return `<!doctype html>
 <html>
 <head>
@@ -43,6 +51,10 @@ ${DESKTOP_DIALOG_BASE_CSS}
       font-size: 13px;
       padding: 6px 8px;
       width: 100%;
+    }
+
+    input + input {
+      margin-top: 8px;
     }
 
     [data-error] {
@@ -69,9 +81,10 @@ ${DESKTOP_DIALOG_BASE_CSS}
 </head>
 <body>
   <h1>${initialUrl === null ? "Add Server" : "Set Server URL"}</h1>
-  <p>${initialUrl === null ? "Save another bb server to the Server menu." : "Edit this saved server. Leave empty to remove it."}</p>
+  <p>${initialUrl === null ? "Save another bb server to the Server menu." : "Edit this saved server. Leave the URL empty to remove it."}</p>
   <form>
     <input name="url" type="text" placeholder="https://example.com:38886" value="${escapeHtmlText(initialUrl ?? "")}" autocomplete="off" spellcheck="false">
+    <input name="name" type="text" placeholder="Name (optional)" value="${escapeHtmlText(initialName ?? "")}" maxlength="${MAX_SERVER_NAME_LENGTH}" autocomplete="off" spellcheck="false">
     <div data-error></div>
     <div class="actions">
       <button type="button" data-cancel>Cancel</button>
@@ -146,7 +159,16 @@ export function openServerUrlDialog(
         if (normalized === null) {
           return { ok: false, message: "Enter a valid http(s) URL." };
         }
-        finish({ kind: "set", url: normalized });
+        let name: string | null;
+        try {
+          name = normalizeServerName(parsed.data.name);
+        } catch (error) {
+          return {
+            ok: false,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+        finish({ kind: "set", name, url: normalized });
         return { ok: true };
       },
     );
@@ -160,7 +182,7 @@ export function openServerUrlDialog(
 
   showDesktopDialogHtml(
     dialogWindow,
-    renderServerUrlDialogHtml(args.initialUrl),
+    renderServerUrlDialogHtml(args.initialUrl, args.initialName),
   );
 
   return result;
