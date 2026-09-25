@@ -212,6 +212,13 @@ verifies its SHA-256 digest, updates its private install, then exits so the
 service manager restarts it. If the identical artifact is already installed,
 the server returns `304` and the daemon restarts without downloading or running
 npm again.
+On Linux, the installer uses the current user's systemd manager (or a system
+unit when run as root on a non-container systemd host). If the user bus is not
+reachable from the installer's environment, it retries using the current
+user's runtime path reported by `loginctl`. If the bus remains unavailable,
+installation fails before creating or enabling a unit; rerun it from a systemd
+user session. Set `BB_INSTALL_SKIP_SERVICE=1` only when a detached daemon is
+acceptable: it has no automatic restart, including after a self-update.
 Failed attempts fall back to normal reconnect behavior with a persisted
 exponential retry backoff from 5 seconds to 5 minutes. Settings → Machines and
 `bb machine retry-update <id-or-name>` can bypass the current backoff. A daemon

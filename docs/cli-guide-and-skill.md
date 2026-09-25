@@ -17,6 +17,8 @@ SDK, and app launches; see [worktrees.md](worktrees.md).
 
 The Machines settings creation drawer prepares an existing-machine command when access is ready, otherwise shows setup guidance. After access is ready, Choose a machine provider reviews provider inputs and launches through `hosts.experimental_create`/`bb machine create`. A machine belongs to no project; projects reach it later through project sources.
 
+The Linux machine installer requires a reachable systemd user bus to install a persistent user service. It retries with the current user's runtime path from `loginctl` if the caller lacks session environment. If that fails, it exits with an error; rerun from a systemd user session. `BB_INSTALL_SKIP_SERVICE=1` explicitly runs the daemon detached without automatic restart, including after self-update.
+
 `bb machine list` enumerates persistent machines and takes `--all` to include
 disposable provider sandboxes, matching the app's Show all machines reveal.
 `bb updates` and `bb skill install-cli-skills` default to persistent machines

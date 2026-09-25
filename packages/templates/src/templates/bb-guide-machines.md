@@ -346,7 +346,7 @@ The CLI refuses another host or server identity in the selected machine director
 
 The manual copy command fetches `/install.sh` using a short-lived `X-BB-Enrollment` header. The server supplies the bootstrap only for a pending, unexpired, uncancelled manual enrollment whose credential has not been consumed; downloaded responses are not cached. The command contains no bootstrap JSON or access-provider credentials.
 
-The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` without replacing an existing path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. Linux machines without a systemd user session run a detached daemon; systemd and launchd machines receive a persistent service.
+The installer accepts `--bootstrap-env <NAME>` and uses the same enrollment command. It installs a private CLI and supplies `~/.local/bin/bb` without replacing an existing path. Non-login transports can use `command -v bb` with `~/.local/bin/bb` as a fallback. On Linux, the installer retries the user systemd bus using the current user's runtime path from `loginctl` when the caller's session environment is incomplete. If the bus is still unavailable, installation fails without claiming a persistent service was installed. `BB_INSTALL_SKIP_SERVICE=1` explicitly starts a detached daemon without automatic restart, including after self-update. systemd and launchd services provide persistent restarts.
 
 Machine bootstrap v2 supplies optional server request headers. `bb machine enroll`
 persists them privately as `serverHeaders`; the launcher passes `BB_SERVER_HEADERS`

@@ -661,7 +661,7 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
         );
       }
       const result = runScript(["--bootstrap-env", "TEST_BUNDLE"], fixture, {
-        BB_INSTALL_SKIP_SERVICE: container ? "0" : "1",
+        BB_INSTALL_SKIP_SERVICE: "1",
         TEST_BUNDLE: JSON.stringify({
           hostId: "host-test",
           serverUrl: "https://machine.getbb.app",
@@ -1553,9 +1553,110 @@ fi
     expect(unit).toContain(
       `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
     );
+    expect(unit).toContain("After=network-online.target");
+    expect(unit).toContain("Wants=network-online.target");
+    expect(unit).toContain("Restart=always");
+    expect(unit).toContain("RestartSec=2");
+    expect(unit).toContain("WantedBy=default.target");
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user show-environment\n--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
     );
+  });
+
+  it("recovers the current user's systemd runtime path when the installer has no session environment", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+    const runtimeDir = join(fixture.homeDir, "runtime");
+    mkdirSync(runtimeDir);
+    writeExecutable(
+      join(fixture.binDir, "loginctl"),
+      `#!/bin/sh
+printf '%s\\n' "$*" >>"${join(fixture.dataDir, "loginctl.log")}"
+printf '%s\\n' '${runtimeDir}'
+`,
+    );
+    writeExecutable(
+      join(fixture.binDir, "systemctl"),
+      `#!/bin/sh
+printf '%s %s\\n' "$*" "\${XDG_RUNTIME_DIR:-missing}" >>"${join(fixture.dataDir, "systemctl.log")}"
+if [ "$2" = show-environment ] && { [ "\${XDG_RUNTIME_DIR:-}" != '${runtimeDir}' ] || [ -n "\${DBUS_SESSION_BUS_ADDRESS:-}" ]; }; then exit 1; fi
+if [ "$2" = restart ]; then
+  port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
+`,
+    );
+
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      XDG_RUNTIME_DIR: undefined,
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/stale/bus",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(fixture.dataDir, "loginctl.log"), "utf8")).toBe(
+      `show-user ${process.getuid?.()} --property=RuntimePath --value\n`,
+    );
+    expect(
+      readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8"),
+    ).toContain(
+      `--user enable bb-host-daemon-machine-getbb-app-host-test.service ${runtimeDir}`,
+    );
+  });
+
+  it("fails visibly when the systemd user bus cannot be reached", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+    writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
+    writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
+
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      XDG_RUNTIME_DIR: undefined,
+      DBUS_SESSION_BUS_ADDRESS: undefined,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("systemd user bus is unavailable");
+    expect(result.stderr).toContain("will not restart automatically");
+    expect(result.stdout).not.toContain(
+      "Installed and started the systemd service",
+    );
+    expect(existsSync(join(fixture.homeDir, ".config/systemd/user"))).toBe(
+      false,
+    );
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
+  });
+
+  it("stops a temporary join daemon when the systemd user bus is unavailable", () => {
+    const fixture = createFixture();
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(fixture, join(fixture.dataDir, "invocation"));
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+    writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
+    writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
+    writeExecutable(
+      join(fixture.binDir, "nohup"),
+      `#!/bin/sh\nprintf '%s\\n' "$$" >"${join(fixture.dataDir, "join.pid")}"\nexec "$@"\n`,
+    );
+
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      XDG_RUNTIME_DIR: undefined,
+      DBUS_SESSION_BUS_ADDRESS: undefined,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("systemd user bus is unavailable");
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
+    expect(() =>
+      process.kill(
+        Number(readFileSync(join(fixture.dataDir, "join.pid"), "utf8")),
+        0,
+      ),
+    ).toThrow();
   });
 
   it.each([false, true])(

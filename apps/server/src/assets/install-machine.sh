@@ -925,9 +925,26 @@ if [ "$platform" = linux ] && [ "$(id -u)" = 0 ] &&
    ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
   systemd_scope=--system
 fi
-if [ "$platform" = linux ] &&
+if [ "${BB_INSTALL_SKIP_SERVICE:-0}" != 1 ] && [ "$platform" = linux ] &&
    [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
-  BB_INSTALL_SKIP_SERVICE=1
+  user_runtime_dir=$(loginctl show-user "$(id -u)" --property=RuntimePath --value 2>/dev/null || true)
+  case "$user_runtime_dir" in
+    /*)
+      XDG_RUNTIME_DIR=$user_runtime_dir
+      export XDG_RUNTIME_DIR
+      unset DBUS_SESSION_BUS_ADDRESS
+      ;;
+  esac
+  if ! systemctl --user show-environment >/dev/null 2>&1; then
+    if [ -n "$join_pid" ]; then
+      kill "$join_pid" 2>/dev/null || true
+      wait "$join_pid" 2>/dev/null || true
+      rm -f "$data_dir/install-daemon.pid"
+    fi
+    fail_step "The systemd user bus is unavailable; the bb host-daemon service was not installed."
+    detail "Run the installer from a systemd user session, then retry. To run without a persistent service, set BB_INSTALL_SKIP_SERVICE=1; a detached daemon will not restart automatically." >&2
+    exit 1
+  fi
 fi
 
 stop_recorded_daemon() {
@@ -985,9 +1002,9 @@ if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
     complete_step "Host daemon connected"
   fi
   if [ -n "$join_pid" ]; then
-    warning_step "Service installation skipped; daemon PID $join_pid is still running."
+    warning_step "Service installation skipped; daemon PID $join_pid is still running without automatic restart."
   else
-    warning_step "Service installation skipped; the daemon is already running."
+    warning_step "Service installation skipped; the daemon is already running without automatic restart."
   fi
   exit 0
 fi
