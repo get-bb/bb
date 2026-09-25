@@ -155,7 +155,7 @@ function GitDiffFileFilterInput({
   return (
     <div className="relative mt-2">
       <span className="pointer-events-none absolute inset-y-0 left-2.25 flex w-8 items-center justify-center text-muted-foreground">
-        <Icon name="Search" className="size-3.5" />
+        <Icon name="Filter" className="size-3.5" />
       </span>
       <Input
         ref={inputRef}
@@ -333,7 +333,7 @@ export function GitDiffToolbar({
               }
               aria-pressed={fileFilter !== null}
             >
-              <Icon name="Search" />
+              <Icon name="Filter" />
             </Button>
             <Button
               type="button"
