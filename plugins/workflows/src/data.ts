@@ -898,20 +898,30 @@ export function workerOrigins(db: Db, now: number): string[] {
   ).map((row) => row.id);
 }
 
+const RETIRED_WORKER_FROM = `FROM workflow_workers workers
+    LEFT JOIN workflow_calls calls ON calls.id = workers.call_id
+    LEFT JOIN workflow_runs runs ON runs.id = workers.run_id
+    WHERE workers.archived_at IS NULL
+      AND (calls.id IS NULL OR calls.status NOT IN ('queued', 'running')
+        OR calls.child_thread_id IS NOT workers.thread_id OR runs.status NOT IN ('queued', 'running'))`;
+
 export function retiredWorkers(
   db: Db,
   now: number,
 ): Array<{ threadId: string; callId: string }> {
   return db
     .prepare(`SELECT workers.thread_id AS threadId, workers.call_id AS callId
-    FROM workflow_workers workers
-    LEFT JOIN workflow_calls calls ON calls.id = workers.call_id
-    LEFT JOIN workflow_runs runs ON runs.id = workers.run_id
-    WHERE workers.archived_at IS NULL AND workers.next_cleanup_at <= ?
-      AND (calls.id IS NULL OR calls.status NOT IN ('queued', 'running')
-        OR calls.child_thread_id IS NOT workers.thread_id OR runs.status NOT IN ('queued', 'running'))
+    ${RETIRED_WORKER_FROM} AND workers.next_cleanup_at <= ?
     ORDER BY workers.next_cleanup_at, workers.thread_id LIMIT 100`)
     .all(now) as Array<{ threadId: string; callId: string }>;
+}
+
+export function isWorkerRetired(db: Db, threadId: string): boolean {
+  return (
+    db
+      .prepare(`SELECT 1 ${RETIRED_WORKER_FROM} AND workers.thread_id = ?`)
+      .get(threadId) !== undefined
+  );
 }
 
 export function recordWorkerCleanup(

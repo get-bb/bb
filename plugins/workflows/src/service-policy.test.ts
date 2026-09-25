@@ -1534,6 +1534,131 @@ describe("workflow service policy integration", () => {
     }
   });
 
+  it("does not retire a worker that attaches while cleanup archives an earlier one", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    let releaseSpawn = () => {};
+    const spawnGate = new Promise<void>((resolve) => {
+      releaseSpawn = resolve;
+    });
+    let releaseStop = () => {};
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    let metadata: NonNullable<
+      Parameters<typeof test.bb.sdk.threads.spawn>[0]["pluginMetadata"]
+    > = {};
+    test.harness.sdk.stub(
+      "threads.spawn",
+      async (args: Parameters<typeof test.bb.sdk.threads.spawn>[0]) => {
+        metadata = args.pluginMetadata!;
+        await spawnGate;
+        return { id: "zz-live-worker" } as never;
+      },
+    );
+    test.harness.sdk.stub("threads.list", async () =>
+      metadata.workflowWorker ? ([{ id: "zz-live-worker" }] as never) : [],
+    );
+    test.harness.sdk.stub("threads.getPluginMetadata", async () => metadata);
+    test.harness.sdk.stub(
+      "threads.stop",
+      async ({ threadId }: { threadId: string }) => {
+        if (threadId === "aa-retired-worker") await stopGate;
+        return { ok: true } as never;
+      },
+    );
+    const stoppedThreads = () =>
+      test.harness.sdk
+        .callsTo("threads.stop")
+        .map(([args]) => (args as { threadId: string }).threadId);
+    const run = await test.start(source(`return await agent("live work");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(
+          test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
+        ).toEqual({ thread_id: "zz-live-worker" }),
+      );
+      expiredRunWithWorkers(test.db, "retired-run", ["aa-retired-worker"]);
+      await eventually(() =>
+        expect(stoppedThreads()).toContain("aa-retired-worker"),
+      );
+      releaseSpawn();
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          status: "running",
+          childThreadId: "zz-live-worker",
+        }),
+      );
+      releaseStop();
+      await eventually(() =>
+        expect(test.archived).toContain("aa-retired-worker"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stoppedThreads()).not.toContain("zz-live-worker");
+      expect(test.archived).not.toContain("zz-live-worker");
+      expect(getCall(test.db, run.id, 0)?.status).toBe("running");
+      test.service.onThreadIdle("zz-live-worker", "done");
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+      );
+      await eventually(() => expect(test.archived).toContain("zz-live-worker"));
+    } finally {
+      releaseSpawn();
+      releaseStop();
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("still archives an orphaned worker listed behind a slow stop", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    let releaseStop = () => {};
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    test.harness.sdk.stub(
+      "threads.stop",
+      async ({ threadId }: { threadId: string }) => {
+        if (threadId === "aa-retired-worker") await stopGate;
+        return { ok: true } as never;
+      },
+    );
+    expiredRunWithWorkers(test.db, "retired-run", ["aa-retired-worker"]);
+    ownWorker(
+      test.db,
+      "zz-orphan-worker",
+      "missing-run",
+      "missing-call",
+      "origin",
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(
+          test.harness.sdk
+            .callsTo("threads.stop")
+            .map(([args]) => (args as { threadId: string }).threadId),
+        ).toContain("aa-retired-worker"),
+      );
+      expect(test.archived).toEqual([]);
+      releaseStop();
+      await eventually(() =>
+        expect(test.archived).toEqual([
+          "aa-retired-worker",
+          "zz-orphan-worker",
+        ]),
+      );
+    } finally {
+      releaseStop();
+      controller.abort();
+      await worker;
+    }
+  });
+
   it("owns a worker returned after cancellation wins the spawn race", async () => {
     const test = setup();
     harnesses.push(test.harness);
