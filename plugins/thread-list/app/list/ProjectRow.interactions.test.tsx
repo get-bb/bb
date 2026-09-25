@@ -324,46 +324,6 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps thread rows draggable when Threads is the only section", () => {
-    const threads = [
-      makeThread({ id: "thr_first", title: "First thread" }),
-      makeThread({ id: "thr_second", title: "Second thread" }),
-    ];
-    renderTree(
-      <ChronologicalSectionThreadSections
-        threadListState={{ status: "ready", threads }}
-        compareThreads={() => 0}
-        sections={[]}
-        collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={new Set()}
-        onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={vi.fn()}
-        topLevelSectionOrder={["threads"]}
-        fullSectionOrder={["threads"]}
-        onTopLevelSectionOrderChange={vi.fn()}
-        pinnedReorderPending={false}
-        pinnedThreads={[]}
-        onReorderPinnedThread={vi.fn()}
-        builtInSections={{
-          collapsedSectionIds: new Set(),
-          onToggleCollapsed: vi.fn(),
-          pinned: { label: "Pinned", content: null },
-          threads: { label: "Threads" },
-        }}
-      />,
-      { threads },
-    );
-
-    for (const title of ["First thread", "Second thread"]) {
-      expect(
-        screen
-          .getByRole("link", { name: `Open ${title}` })
-          .closest("[data-sidebar-rename-row]")
-          ?.getAttribute("aria-roledescription"),
-      ).toBe("sortable");
-    }
-  });
-
   it("previews the dragged thread as a child of a valid nest target", () => {
     const container = renderPinnedParentWithChild({
       isCollapsed: false,

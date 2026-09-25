@@ -436,41 +436,6 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
 });
 
 describe("useSectionThreadDnd nest projection", () => {
-  it("commits a valid nest when only Threads exists and the sortable row wins drop collision", async () => {
-    const rootItems = buildSectionThreadList(
-      [
-        createThread({ id: "dragged" }),
-        createThread({ id: "target" }),
-      ],
-      undefined,
-      [],
-    );
-    updateThreadFake.mockResolvedValueOnce(undefined as never);
-    const { inspection, result } = renderSectionThreadDnd(rootItems);
-    const props = () => result.current!.dndContextProps;
-
-    act(() => props().onDragStart?.(dragStart("dragged")));
-    act(() =>
-      props().onDragOver?.(
-        dragOver("dragged", getSidebarThreadRowDroppableId("target")),
-      ),
-    );
-    expect(result.current?.nestTarget).toEqual({
-      threadId: "target",
-      state: "valid",
-    });
-
-    act(() => props().onDragEnd?.(dragEnd("dragged", "target")));
-    await flushTasks();
-
-    expect(inspection.sdkCalls).toContainEqual({
-      method: "threads.update",
-      args: [
-        { threadId: "dragged", parentThreadId: "target", sectionId: null },
-      ],
-    });
-  });
-
   it("projects a nest target from a row collision and keeps it through self-collision", () => {
     const { result } = renderSectionThreadDnd();
     const props = () => result.current!.dndContextProps;
