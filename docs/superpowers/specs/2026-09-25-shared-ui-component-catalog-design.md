@@ -17,9 +17,13 @@ a bb plugin means knowing what's available and how it's actually used —
 today there's no way to browse that.
 
 This catalog is browsable via **[Ladle](https://ladle.dev)**, a Vite-based
-component-story dev tool (same category as Storybook). This repo already
-runs it — `pnpm run storybook` in `apps/app` is an alias for `ladle serve`
-— currently for 112 app-level components, none from `packages/shared-ui`.
+component-story dev tool (same category as Storybook). Ladle discovers
+`*.stories.tsx` files and treats each named export inside one as a
+**story** — one browsable, individually renderable entry in its sidebar
+(e.g. `export const Default = () => <Button>Save</Button>` makes
+"Default" a story). This repo already runs Ladle — `pnpm run storybook`
+in `apps/app` is an alias for `ladle serve` — currently for 112 app-level
+components, none from `packages/shared-ui`.
 
 Two prior efforts touched adjacent ground and are both explicitly **not**
 the basis for this one. Both exist to feed
