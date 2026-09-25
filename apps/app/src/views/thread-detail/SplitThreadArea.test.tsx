@@ -584,6 +584,27 @@ function threadPath(threadId: string): string {
   return `/threads/${threadId}`;
 }
 
+function registerDocsPanel() {
+  setPluginSlotRegistrations(
+    "docs",
+    makePluginRegistrationSet({
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: () => <div>Docs panel</div>,
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+    }),
+  );
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location">{location.pathname}</div>;
@@ -2398,6 +2419,7 @@ describe("SplitThreadArea", () => {
   });
 
   it("closes the only plugin page into the new-thread page", async () => {
+    registerDocsPanel();
     const store = renderSplitArea({
       path: "/plugins/docs/docs",
       routeAwareContent: true,
@@ -2415,6 +2437,7 @@ describe("SplitThreadArea", () => {
   });
 
   it("shows close on a compact plugin page", async () => {
+    registerDocsPanel();
     viewportState.compact = true;
     renderSplitArea({
       path: "/plugins/docs/docs",
