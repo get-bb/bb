@@ -540,12 +540,12 @@ export function createApp(
       } catch (error) {
         deps.logger.warn({ error }, "Could not refresh machine access");
         return new Response(
-          "Could not refresh machine access. Run the command again, or generate a new one in bb.\n",
+          "echo 'Could not refresh machine access. Run the command again, or generate a new one in bb.' >&2\nexit 1\n",
           {
             status: 503,
             headers: {
               "cache-control": "no-store",
-              "content-type": "text/plain",
+              "content-type": "text/x-shellscript; charset=utf-8",
             },
           },
         );
@@ -553,12 +553,12 @@ export function createApp(
     }
     if (credential !== undefined && bootstrap === null) {
       return new Response(
-        "Enrollment is expired or unavailable. Generate a new command in bb.\n",
+        "echo 'This enrollment command has already been used, replaced, or expired. Generate a new command in bb.' >&2\nexit 1\n",
         {
           status: 403,
           headers: {
             "cache-control": "no-store",
-            "content-type": "text/plain",
+            "content-type": "text/x-shellscript; charset=utf-8",
           },
         },
       );
