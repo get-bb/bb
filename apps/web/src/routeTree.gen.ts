@@ -19,8 +19,10 @@ import { Route as ChangelogRouteImport } from "./routes/changelog";
 import { Route as BlogRouteImport } from "./routes/blog";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
+import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
+import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
@@ -89,6 +91,11 @@ const MarketplacePluginIdRoute = MarketplacePluginIdRouteImport.update({
   path: "/$pluginId",
   getParentRoute: () => MarketplaceRoute,
 } as any);
+const GuidesSlugRoute = GuidesSlugRouteImport.update({
+  id: "/guides/$slug",
+  path: "/guides/$slug",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const DownloadMacosRoute = DownloadMacosRouteImport.update({
   id: "/download/macos",
   path: "/download/macos",
@@ -97,6 +104,11 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
 const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
   id: "/download/linux",
   path: "/download/linux",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const CompareSlugRoute = CompareSlugRouteImport.update({
+  id: "/compare/$slug",
+  path: "/compare/$slug",
   getParentRoute: () => rootRouteImport,
 } as any);
 const BlogSlugRoute = BlogSlugRouteImport.update({
@@ -202,8 +214,10 @@ export interface FileRoutesByFullPath {
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
+  "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
+  "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
@@ -233,8 +247,10 @@ export interface FileRoutesByTo {
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
+  "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
+  "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
@@ -265,8 +281,10 @@ export interface FileRoutesById {
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
+  "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
+  "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace_/$pluginId": typeof MarketplacePluginIdRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
@@ -298,8 +316,10 @@ export interface FileRouteTypes {
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
     | "/blog/$slug"
+    | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
+    | "/guides/$slug"
     | "/marketplace/$pluginId"
     | "/api/account/me"
     | "/api/auth/$"
@@ -329,8 +349,10 @@ export interface FileRouteTypes {
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
     | "/blog/$slug"
+    | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
+    | "/guides/$slug"
     | "/marketplace/$pluginId"
     | "/api/account/me"
     | "/api/auth/$"
@@ -360,8 +382,10 @@ export interface FileRouteTypes {
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
     | "/blog_/$slug"
+    | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
+    | "/guides/$slug"
     | "/marketplace_/$pluginId"
     | "/api/account/me"
     | "/api/auth/$"
@@ -392,8 +416,10 @@ export interface RootRouteChildren {
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
+  CompareSlugRoute: typeof CompareSlugRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
+  GuidesSlugRoute: typeof GuidesSlugRoute;
   ApiAccountMeRoute: typeof ApiAccountMeRoute;
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute;
@@ -480,6 +506,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof MarketplacePluginIdRouteImport;
       parentRoute: typeof MarketplaceRoute;
     };
+    "/guides/$slug": {
+      id: "/guides/$slug";
+      path: "/guides/$slug";
+      fullPath: "/guides/$slug";
+      preLoaderRoute: typeof GuidesSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/download/macos": {
       id: "/download/macos";
       path: "/download/macos";
@@ -492,6 +525,13 @@ declare module "@tanstack/react-router" {
       path: "/download/linux";
       fullPath: "/download/linux";
       preLoaderRoute: typeof DownloadLinuxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/compare/$slug": {
+      id: "/compare/$slug";
+      path: "/compare/$slug";
+      fullPath: "/compare/$slug";
+      preLoaderRoute: typeof CompareSlugRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/blog_/$slug": {
@@ -645,8 +685,10 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
+  CompareSlugRoute: CompareSlugRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,
+  GuidesSlugRoute: GuidesSlugRoute,
   ApiAccountMeRoute: ApiAccountMeRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
