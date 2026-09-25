@@ -21,7 +21,7 @@ const ABSOLUTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 const MINIMUM_VISIBLE_PROCESS_DURATION_MS = 1_000;
 
 const TIMESTAMP_CLASS_NAME =
-  "inline-flex select-none items-center whitespace-nowrap text-2xs leading-none text-subtle-foreground tabular-nums";
+  "select-none whitespace-nowrap text-2xs leading-none text-subtle-foreground tabular-nums";
 
 export interface MessageTimestampProps {
   createdAt: number;

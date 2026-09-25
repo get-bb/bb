@@ -161,6 +161,9 @@ type ConversationMessageContentProps =
 interface UserConversationMessageProps {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  // bb-fork(windows): message timestamp inputs for generated messages.
+  createdAt?: number;
+  turnId?: string | null;
   messageTimestamp: ReactNode | null;
   originKind: ThreadOriginKind | null;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
@@ -344,7 +347,9 @@ function buildAddToChatAttachments(
 function UserConversationMessage({
   addToChatAttachments,
   attachmentItems,
+  createdAt,
   messageTimestamp,
+  turnId,
   originKind,
   initiator,
   mentions,
@@ -412,7 +417,8 @@ function UserConversationMessage({
       <GeneratedConversationMessage
         {...generatedSource}
         attachmentItems={attachmentItems}
-        messageTimestamp={messageTimestamp}
+        createdAt={createdAt}
+        turnId={turnId}
         mentions={bodyMentions}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -686,7 +692,9 @@ export function ConversationMessageContent(
       <UserConversationMessage
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
+        createdAt={props.createdAt}
         messageTimestamp={messageTimestamp}
+        turnId={props.turnId ?? null}
         originKind={props.originKind}
         pluginActions={props.pluginActions}
         initiator={props.initiator}
