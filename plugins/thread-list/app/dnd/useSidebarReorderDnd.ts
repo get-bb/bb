@@ -11,10 +11,6 @@ import {
   type UseReorderDndArgs,
   type UseReorderDndResult,
 } from "../ui/useReorderDnd.js";
-import {
-  SIDEBAR_TOUCH_ARM_DELAY_MS,
-  SIDEBAR_TOUCH_CHIP_DELAY_MS,
-} from "../ui/touch-interaction-timing.js";
 
 function setSidebarDraggingCursor(active: boolean): void {
   if (active) {
@@ -39,7 +35,6 @@ export class SidebarTouchSensor {
   private readonly armedChip: HTMLElement | null;
   private readonly initialCoordinates: { x: number; y: number };
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private chipTimer: ReturnType<typeof setTimeout> | null = null;
   private armed = false;
   private dragging = false;
 
@@ -62,20 +57,16 @@ export class SidebarTouchSensor {
     this.document.defaultView?.addEventListener("blur", this.handleCancel);
     this.document.defaultView?.addEventListener("resize", this.handleCancel);
     const constraint = props.options.activationConstraint;
-    const delay = constraint && "delay" in constraint ? constraint.delay : SIDEBAR_TOUCH_ARM_DELAY_MS;
+    const delay = constraint && "delay" in constraint ? constraint.delay : 500;
     this.timer = setTimeout(() => {
       this.timer = null;
       this.armed = true;
-    }, delay);
-    this.chipTimer = setTimeout(() => {
-      this.chipTimer = null;
-      if (!this.armed || this.dragging || this.activator?.dataset.sidebarActionsOpen === "true") return;
       this.activator?.setAttribute("data-sidebar-touch-armed", "true");
       if (this.armedChip) {
         const rect = this.armedChip.getBoundingClientRect();
         this.armedChip.style.transform = `translate(${this.initialCoordinates.x - rect.left - rect.width / 2}px, ${this.initialCoordinates.y - rect.top - rect.height / 2}px)`;
       }
-    }, Math.max(delay, SIDEBAR_TOUCH_CHIP_DELAY_MS));
+    }, delay);
   }
 
   private readonly handleMove = (event: TouchEvent): void => {
@@ -96,7 +87,6 @@ export class SidebarTouchSensor {
     if (!this.dragging) {
       if (distance <= TOUCH_DRAG_DISTANCE_PX) return;
       this.dragging = true;
-      if (this.chipTimer !== null) clearTimeout(this.chipTimer);
       this.activator?.removeAttribute("data-sidebar-touch-armed");
       this.props.onStart(this.initialCoordinates);
     }
@@ -122,7 +112,6 @@ export class SidebarTouchSensor {
 
   private detach(): void {
     if (this.timer !== null) clearTimeout(this.timer);
-    if (this.chipTimer !== null) clearTimeout(this.chipTimer);
     this.activator?.removeAttribute("data-sidebar-touch-armed");
     this.armedChip?.style.removeProperty("transform");
     this.document.removeEventListener("touchmove", this.handleMove);
