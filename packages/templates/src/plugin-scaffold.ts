@@ -244,7 +244,6 @@ async function assertInsidePlugin(
 interface SetPluginSdkPinArgs {
   rootDir: string;
   sdkVersion: string;
-  app: boolean;
   dryRun?: boolean;
 }
 
@@ -264,10 +263,10 @@ interface PluginSdkPinChange {
 export async function setPluginSdkPin(
   args: SetPluginSdkPinArgs,
 ): Promise<PluginSdkPinChange | null> {
-  const { rootDir, sdkVersion, app, dryRun = false } = args;
+  const { rootDir, sdkVersion, dryRun = false } = args;
   const plan = await planManifest(rootDir, sdkVersion, {
     raiseFloor: false,
-    shimmedTypePins: app ? "all" : "declared",
+    shimmedTypePins: "declared",
   });
   if (plan.text === null) return null;
   if (!dryRun) {
@@ -288,7 +287,7 @@ interface ManifestPlan {
   text: string | null;
 }
 
-type ShimmedTypePinPolicy = "none" | "declared" | "all";
+type ShimmedTypePinPolicy = "none" | "declared";
 
 async function planManifest(
   rootDir: string,
@@ -401,7 +400,7 @@ function applyShimmedTypePins(
         : inDependencies
           ? runtimeDeclared
           : null;
-    if (declared === null && policy === "declared") continue;
+    if (declared === null) continue;
     if (declared === hostVersion && !inDependencies) continue;
     changes.push({
       name,
@@ -1313,7 +1312,7 @@ reaches BB's own toaster), are provided by the BB app at runtime and never
 bundled. Every shimmed package is declared in \`devDependencies\` at the
 host's version so those imports typecheck; keep them there (never in
 \`dependencies\`, which would bundle a second copy), and \`bb plugin types\`
-repins them alongside the SDK. Ship \`dist/\` (npm tarball or committed for
+repins declared packages alongside the SDK; unused packages may be removed. Ship \`dist/\` (npm tarball or committed for
 git installs) so people installing your plugin never need npm.
 
 ## Manifest
