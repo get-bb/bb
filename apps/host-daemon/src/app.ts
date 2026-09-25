@@ -783,6 +783,7 @@ export async function createHostDaemonApp(
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
+      allowInsecureServerUrl: options.allowInsecureServerUrl,
       fetchFn: options.fetchFn,
       logger: options.logger,
       serverUrl: options.serverUrl,

@@ -53,6 +53,13 @@ interface CreateProtocolSelfUpdaterOptions {
   enabled: boolean;
   logger: HostDaemonLogger;
   serverUrl: string;
+  /**
+   * Skip the HTTPS-or-loopback check before downloading the server's
+   * bb-app package, the same opt-in the attachment fetch uses. The
+   * downloaded tarball is still verified against the server's
+   * x-bb-artifact-sha256 digest.
+   */
+  allowInsecureServerUrl?: boolean;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
   runProcess?: SelfUpdateProcessRunner;
@@ -208,7 +215,10 @@ export function createProtocolSelfUpdater(
         );
         return "skipped";
       }
-      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+      if (
+        options.allowInsecureServerUrl !== true &&
+        !usesSecureInternalFetchTransport(options.serverUrl)
+      ) {
         options.logger.error(
           { serverUrl: options.serverUrl },
           "Refusing daemon auto-update over insecure transport; install the server's bb-app package manually. Keeping the current daemon running and retrying normally.",

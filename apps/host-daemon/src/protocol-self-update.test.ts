@@ -29,6 +29,7 @@ async function createFixture(
     installFailure?: Error;
     now?: () => number;
     serverUrl?: string;
+    allowInsecureServerUrl?: boolean;
     useDefaultInstaller?: boolean;
   } = {},
 ) {
@@ -61,6 +62,9 @@ async function createFixture(
     logger: testLogger,
     now: args.now,
     serverUrl: args.serverUrl ?? "https://server.example.test",
+    ...(args.allowInsecureServerUrl === undefined
+      ? {}
+      : { allowInsecureServerUrl: args.allowInsecureServerUrl }),
   });
   return {
     dataDir,
@@ -255,6 +259,23 @@ describe("protocol self-update", () => {
       { serverUrl: "http://server.example.test" },
       expect.stringContaining("insecure transport"),
     );
+  });
+
+  it("allows auto-update over non-loopback HTTP when allowInsecureServerUrl is set", async () => {
+    const test = await createFixture({
+      allowInsecureServerUrl: true,
+      serverUrl: "http://server.example.test",
+    });
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    expect(
+      test.fetchFn.mock.calls.map(([input]) => String(input)),
+    ).toEqual([
+      "http://server.example.test/install/version",
+      "http://server.example.test/install/bb-app.tgz",
+    ]);
+    expect(test.installTarball).toHaveBeenCalledOnce();
   });
 
   it("allows auto-update over loopback HTTP", async () => {
