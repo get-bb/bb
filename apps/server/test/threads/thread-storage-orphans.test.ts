@@ -24,6 +24,58 @@ function orphanedThreadIdAt(index: number): string {
 }
 
 describe("thread storage orphan cleanup", () => {
+  it("continues removing orphaned directories after a removal fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const rootPath = path.join(session.dataDir, "thread-storage");
+      const rejectedPath = path.join(rootPath, "thr_2222222222");
+      const removablePath = path.join(rootPath, "thr_3333333333");
+      const attemptedPaths: string[] = [];
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "host.browse_directory") {
+            return {
+              ok: true,
+              result: {
+                directory: rootPath,
+                parent: session.dataDir,
+                entries: [rejectedPath, removablePath].map((entryPath) => ({
+                  kind: "directory",
+                  name: path.basename(entryPath),
+                  path: entryPath,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "host.remove_path") {
+            attemptedPaths.push(request.command.path);
+            if (request.command.path === rejectedPath) {
+              return {
+                ok: false,
+                errorCode: "invalid_path",
+                errorMessage: `Path "${rejectedPath}" must not be a symbolic link`,
+              };
+            }
+            return { ok: true, result: { ok: true } };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      try {
+        await removeOrphanedThreadStorage(harness.deps, {
+          hostId: host.id,
+          isStopped: () => false,
+        });
+        expect(attemptedPaths).toEqual([rejectedPath, removablePath]);
+      } finally {
+        responder.unregister();
+      }
+    });
+  });
+
   it("removes only thread-shaped directories that have no thread record", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

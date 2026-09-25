@@ -98,17 +98,24 @@ export async function removeOrphanedThreadStorage(
     ) {
       break;
     }
-    await callHostOnlineRpc(deps, {
-      command: {
-        type: "host.remove_path",
-        path: path.join(rootPath, threadId),
-        recursive: true,
-        rootPath,
-      },
-      hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-    });
-    removed += 1;
+    try {
+      await callHostOnlineRpc(deps, {
+        command: {
+          type: "host.remove_path",
+          path: path.join(rootPath, threadId),
+          recursive: true,
+          rootPath,
+        },
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+      });
+      removed += 1;
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, hostId, threadId },
+        "Failed to remove orphaned thread storage",
+      );
+    }
   }
   if (removed > 0) {
     deps.logger.info(
