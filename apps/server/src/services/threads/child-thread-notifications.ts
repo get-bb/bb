@@ -6,6 +6,12 @@ import type {
 import { listActiveBackgroundTaskCountsByThreadIds } from "@bb/db";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+// bb-fork(parent-notify-tail): excerpt helpers keep the tail of a trimmed child report
+import {
+  buildChildThreadNotificationExcerpt,
+  CHILD_THREAD_BATCH_FULL_OUTPUT_GUIDANCE,
+  childThreadFullOutputGuidance,
+} from "./child-thread-notification-excerpt.fork.js";
 import {
   buildParentSystemInputFromTemplateSlot,
   buildParentSystemThreadMention,
@@ -109,18 +115,12 @@ function childThreadTurnStatusLabel(turnStatus: ThreadEventTurnStatus): string {
 }
 
 function truncateChildThreadOutput(text: string, limit: number): string {
-  if (text.length <= limit) {
-    return text;
-  }
-
-  const retainedLength = Math.max(
-    0,
-    limit - CHILD_THREAD_OUTPUT_TRUNCATION_MARKER.length,
-  );
-  if (retainedLength === 0) {
-    return CHILD_THREAD_OUTPUT_TRUNCATION_MARKER.trimStart();
-  }
-  return `${text.slice(0, retainedLength).trimEnd()}${CHILD_THREAD_OUTPUT_TRUNCATION_MARKER}`;
+  // bb-fork(parent-notify-tail): keep the head and the tail so a trailing ask survives
+  return buildChildThreadNotificationExcerpt({
+    limit,
+    text,
+    truncationMarker: CHILD_THREAD_OUTPUT_TRUNCATION_MARKER,
+  });
 }
 
 function formatChildThreadCompletionOutputExcerpt(
@@ -168,11 +168,13 @@ function buildSingleChildThreadTurnStatusSegments(
         workflowClause === ""
           ? ""
           : `\n\n${CHILD_THREAD_RUNNING_WORKFLOW_GUIDANCE}`;
+      // bb-fork(parent-notify-tail): name the way to read the untrimmed message
+      const fullOutputGuidance = `\n\n${childThreadFullOutputGuidance(line.item.childThread.id)}`;
       return [
         { kind: "mention", mention: line.mention },
         {
           kind: "text",
-          text: ` completed${workflowClause}:\n\n${formatChildThreadCompletionOutputExcerpt(line.item.terminalOutput)}${workflowGuidance}`,
+          text: ` completed${workflowClause}:\n\n${formatChildThreadCompletionOutputExcerpt(line.item.terminalOutput)}${workflowGuidance}${fullOutputGuidance}`,
         },
       ];
     }
@@ -262,6 +264,11 @@ function buildChildThreadTurnStatusBatchSegments(
       text: `\n\n${CHILD_THREAD_BATCH_RUNNING_WORKFLOW_GUIDANCE}`,
     });
   }
+  // bb-fork(parent-notify-tail): batched lines carry status only, so name where the text lives
+  segments.push({
+    kind: "text",
+    text: `\n\n${CHILD_THREAD_BATCH_FULL_OUTPUT_GUIDANCE}`,
+  });
   return segments;
 }
 
