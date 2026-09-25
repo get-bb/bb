@@ -183,6 +183,7 @@ describe("createAgentRuntime interactive requests", () => {
     });
 
     expect(requests).toHaveLength(1);
+    expect(turnId).not.toBe("turn-1");
     expect(requests[0]).toMatchObject({
       threadId: "t1",
       turnId,
@@ -190,9 +191,71 @@ describe("createAgentRuntime interactive requests", () => {
       providerThreadId,
       payload: {
         kind: "approval",
-        subject: { kind: "command", command: "echo hi" },
+        subject: { kind: "command", command: "echo hi", sessionGrant: null },
+        reason: null,
+        availableDecisions: ["allow_once", "allow_for_session", "deny"],
       },
     });
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({ type: "agentMessage", text: "Denied" }),
+      }),
+    );
+    await runtime.shutdown();
+  });
+
+  it("completes the turn with Denied when the user denies the approval", async () => {
+    const requests: PendingInteractionCreate[] = [];
+    const events: ThreadEvent[] = [];
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async (request) => {
+          requests.push(request);
+          return { decision: "deny" };
+        },
+      },
+    });
+
+    await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+    await runtime.runTurn({
+      clientRequestId: "creq_222222224i",
+      threadId: "t1",
+      input: [promptTextInput({ text: "approve:command hello" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForThreadTurnCompleted({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t1",
+    });
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      text: "Denied",
+      threadId: "t1",
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "Response to: approve:command hello",
+        }),
+      }),
+    );
     await runtime.shutdown();
   });
 
@@ -277,6 +340,23 @@ describe("createAgentRuntime interactive requests", () => {
       result: { decision: "allow_once" },
     });
     expect(onInteractiveRequest).toHaveBeenCalledTimes(1);
+    expect(onInteractiveRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "command",
+            itemId: "item-1",
+            command: "git push",
+            cwd: "/tmp/project",
+            actions: [],
+            sessionGrant: null,
+          },
+          reason: "Needs approval",
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
+        },
+      }),
+    );
   });
 
   it("reaches the user through a provider-enforcing bridge end to end", async () => {

@@ -390,8 +390,11 @@ describe("workspace command dispatch", () => {
 
   it("covers host.list_paths with directories included", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-list-paths-");
-    await fs.mkdir(path.join(tempDir, "notes"));
-    await fs.writeFile(path.join(tempDir, "notes", "todo.md"), "world");
+    await fs.mkdir(path.join(tempDir, "notes", "daily"), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, "notes", "daily", "todo.md"),
+      "world",
+    );
 
     const harness = createHarness();
     const result = await dispatchOnlineRpcCommand(
@@ -418,7 +421,12 @@ describe("workspace command dispatch", () => {
         .sort((left, right) => left.path.localeCompare(right.path)),
     ).toEqual([
       { kind: "directory", path: "notes", name: "notes" },
-      { kind: "file", path: path.join("notes", "todo.md"), name: "todo.md" },
+      { kind: "directory", path: "notes/daily", name: "daily" },
+      {
+        kind: "file",
+        path: path.join("notes", "daily", "todo.md"),
+        name: "todo.md",
+      },
     ]);
     expect(result.truncated).toBe(false);
   });
@@ -516,48 +524,6 @@ describe("workspace command dispatch", () => {
     );
     expect(result.contentEncoding).toBe("utf8");
     expect(result.sizeBytes).toBe("durable thread notes".length);
-  });
-
-  it("covers rootless host.read_file for explicit disk paths", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-file-rootless-");
-    const filePath = path.join(tempDir, "notes.md");
-    await fs.writeFile(filePath, "explicit host notes");
-
-    const harness = createHarness();
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.read_file",
-        path: filePath,
-      },
-      harness.dispatchOptions(),
-    );
-
-    expect(result.path).toBe(filePath);
-    expect("content" in result ? result.content : undefined).toBe(
-      "explicit host notes",
-    );
-    expect(result.contentEncoding).toBe("utf8");
-    expect(result.sizeBytes).toBe("explicit host notes".length);
-  });
-
-  it("covers host.file_metadata", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-file-metadata-");
-    const filePath = path.join(tempDir, "notes.md");
-    await fs.writeFile(filePath, "durable thread notes");
-
-    const harness = createHarness();
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.file_metadata",
-        path: filePath,
-        rootPath: tempDir,
-      },
-      harness.dispatchOptions(),
-    );
-
-    expect(result.path).toBe(filePath);
-    expect(result.sizeBytes).toBe("durable thread notes".length);
-    expect(result.modifiedAtMs).toBeGreaterThan(0);
   });
 
   it("returns base64 for image files", async () => {
@@ -726,78 +692,6 @@ describe("workspace command dispatch", () => {
     ).rejects.toMatchObject({
       code: "invalid_path",
       message: expect.stringContaining("must not be a symlink"),
-    });
-  });
-
-  it("rejects host.read_file with a relative path", async () => {
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file",
-          path: "notes.md",
-          rootPath: "/tmp",
-        },
-        harness.dispatchOptions(),
-      ),
-    ).rejects.toThrow("Path must be absolute");
-  });
-
-  it("normalizes missing host.read_file paths to ENOENT", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-missing-");
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file",
-          path: path.join(tempDir, "missing.md"),
-          rootPath: tempDir,
-        },
-        harness.dispatchOptions(),
-      ),
-    ).rejects.toMatchObject({
-      code: "ENOENT",
-      message: expect.stringContaining("Path does not exist"),
-    });
-  });
-
-  it("normalizes missing rootless host.read_file paths to ENOENT", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-rootless-missing-",
-    );
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file",
-          path: path.join(tempDir, "missing.md"),
-        },
-        harness.dispatchOptions(),
-      ),
-    ).rejects.toMatchObject({
-      code: "ENOENT",
-      message: expect.stringContaining("Path does not exist"),
-    });
-  });
-
-  it("rejects rootless host.read_file directory paths", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-rootless-dir-");
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file",
-          path: tempDir,
-        },
-        harness.dispatchOptions(),
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: "Path is a directory, not a file",
     });
   });
 

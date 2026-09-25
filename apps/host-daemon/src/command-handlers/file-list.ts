@@ -203,7 +203,7 @@ export function finalizeListedPaths(
   };
 }
 
-export async function listPathsRecursively(
+async function listPathsRecursively(
   args: ListPathsRecursivelyArgs,
 ): Promise<ListedPath[]> {
   const entries = await fs.readdir(args.dir, { withFileTypes: true });

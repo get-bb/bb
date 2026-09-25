@@ -149,7 +149,10 @@ describe("readHostFile (no ref — disk read)", () => {
         path: "relative/file.txt",
         rootPath: "/tmp",
       }),
-    ).rejects.toBeInstanceOf(CommandDispatchError);
+    ).rejects.toMatchObject({
+      code: "invalid_path",
+      message: "Path must be absolute",
+    });
   });
 
   it("marks missing targets under an existing root as expected", async () => {

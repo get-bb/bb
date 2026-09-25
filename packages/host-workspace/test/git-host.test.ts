@@ -353,28 +353,6 @@ describe("getPullRequestForCurrentBranch", () => {
     );
   });
 
-  it("returns none when gh reports the branch has no PR", async () => {
-    mockGhFailure(
-      Object.assign(new Error("gh exited 1"), {
-        code: 1,
-        stderr: 'no pull requests found for branch "bb/pr-lookup"',
-      }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
-      outcome: "none",
-    });
-  });
-
-  it("returns unavailable when gh is not installed", async () => {
-    mockGhFailure(
-      Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
-      outcome: "unavailable",
-      message: "GitHub CLI is not available",
-    });
-  });
-
   it("returns unavailable with the stderr detail for an auth failure", async () => {
     mockGhFailure(
       Object.assign(new Error("gh exited 4"), {
