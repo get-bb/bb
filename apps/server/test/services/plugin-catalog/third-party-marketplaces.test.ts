@@ -869,7 +869,7 @@ describe("third-party marketplaces", () => {
     });
   });
 
-  it("refuses an oversize local manifest before reading it", async () => {
+  it("adds a local manifest larger than 1 MiB", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bb-marketplace-big-"));
     cleanup.push(directory);
     const padded = manifest("acme-plugins", [
@@ -881,10 +881,11 @@ describe("third-party marketplaces", () => {
     );
     const catalog = service({ fetch: marketplaceFetch({}) });
 
-    await expect(catalog.addMarketplace(`path:${directory}`)).rejects.toThrow(
-      /marketplace manifest exceeds/u,
-    );
-    expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
+    await catalog.addMarketplace(`path:${directory}`);
+    expect(getPluginMarketplace(db, "acme-plugins")?.lastError).toBeNull();
+    expect(await catalog.search("Acme Notes")).toEqual([
+      expect.objectContaining({ entryId: "notes" }),
+    ]);
   });
 
   it("binds an npm install to the exact version it confirmed", async () => {
