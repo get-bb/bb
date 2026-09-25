@@ -51,9 +51,7 @@ describe.sequential("fake provider active crash recovery integration", () => {
           thread.id,
         );
         if (disconnectedThread.status === "active") {
-          expect(disconnectedThread.runtime.displayStatus).toBe(
-            "waiting-for-host",
-          );
+          expect(disconnectedThread.runtime.displayStatus).toBe("active");
         } else {
           expect(disconnectedThread.status).toBe("error");
           expect(disconnectedThread.runtime.displayStatus).toBe("error");

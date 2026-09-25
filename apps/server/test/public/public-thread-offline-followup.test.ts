@@ -25,7 +25,7 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("offline host follow-ups", () => {
-  it("queues a follow-up for a host whose socket just dropped, while it is still shown connected", async () => {
+  it("queues a follow-up for a host whose socket just dropped", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-dropped-followup",
@@ -51,10 +51,6 @@ describe("offline host follow-ups", () => {
       });
       handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
       harness.hub.cancelPendingDaemonDisconnect(session.id);
-      const shownHost = await harness.app.request(`/api/v1/hosts/${host.id}`);
-      await expect(readJson(shownHost)).resolves.toMatchObject({
-        status: "connected",
-      });
 
       const response = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,

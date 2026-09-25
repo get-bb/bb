@@ -5,7 +5,6 @@ import {
   getProject,
   getSessionById,
   getThread,
-  listLatestClosedSessionsForHosts,
   listPublicHosts,
   type HostDaemonSessionRow,
 } from "@bb/db";
@@ -14,7 +13,6 @@ import type { Host, HostType } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
-import { isHostDisconnectHidden } from "../hosts/host-disconnect-display.js";
 import {
   destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
@@ -64,36 +62,10 @@ function getOpenDaemonSessionForHost(
   return session;
 }
 
-function listShownConnectedHostIds(
-  deps: HostLookupDeps,
-  hostIds: readonly string[],
-): Set<string> {
-  const now = Date.now();
-  const connectedHostIds = new Set<string>();
-  const unregisteredHostIds: string[] = [];
-  for (const hostId of hostIds) {
-    if (getOpenDaemonSessionForHost(deps, hostId)) {
-      connectedHostIds.add(hostId);
-    } else {
-      unregisteredHostIds.push(hostId);
-    }
-  }
-  for (const session of listLatestClosedSessionsForHosts(deps.db, {
-    hostIds: unregisteredHostIds,
-  })) {
-    if (isHostDisconnectHidden(session, now)) {
-      connectedHostIds.add(session.hostId);
-    }
-  }
-  return connectedHostIds;
-}
-
 export function toHostWithStatus(deps: HostLookupDeps, row: HostRow): Host {
   return toHostRecord(
     row,
-    listShownConnectedHostIds(deps, [row.id]).has(row.id)
-      ? "connected"
-      : "disconnected",
+    getOpenDaemonSessionForHost(deps, row.id) ? "connected" : "disconnected",
   );
 }
 
@@ -137,17 +109,8 @@ export function listPublicHostsWithStatus(
   deps: HostLookupDeps,
   options?: { includeCreating?: boolean; type?: HostType },
 ): Host[] {
-  const rows = listPublicHosts(deps.db, options);
-  const connectedHostIds = listShownConnectedHostIds(
-    deps,
-    rows.map((row) => row.id),
-  );
-
-  return rows.map((row) =>
-    toHostRecord(
-      row,
-      connectedHostIds.has(row.id) ? "connected" : "disconnected",
-    ),
+  return listPublicHosts(deps.db, options).map((row) =>
+    toHostWithStatus(deps, row),
   );
 }
 

@@ -17,9 +17,9 @@ import {
 } from "@bb/db";
 import type { Host, Project } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
-import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { ApiError } from "../../src/errors.js";
 import { NotificationHub } from "../../src/ws/hub.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import {
   listPublicHostsWithStatus,
   requireConnectedHostSession,
@@ -323,68 +323,31 @@ describe("entity lookup lifecycle errors", () => {
 });
 
 describe("host status after a lost daemon connection", () => {
-  it("shows a host whose socket just closed as connected while refusing its commands", () => {
-    const { db, host, hub } = setup();
-    try {
-      const session = openTestSession(db, host.id);
-      closeTestSession(db, {
-        closeReason: "daemon-disconnect",
-        closedAt: Date.now() - HOST_RECONNECT_GRACE_MS + 5_000,
-        sessionId: session.id,
-      });
+  it.each(["daemon-disconnect", "expired"] as const)(
+    "reports a host whose session closed (%s) as disconnected immediately",
+    (closeReason) => {
+      const { db, host, hub } = setup();
+      try {
+        const session = openTestSession(db, host.id);
+        closeTestSession(db, {
+          closeReason,
+          closedAt: Date.now() - 1_000,
+          sessionId: session.id,
+        });
 
-      expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
-        "connected",
-      );
-      expect(requireNonDestroyedHostWithStatus({ db, hub }, host.id).status).toBe(
-        "connected",
-      );
-      expect(
-        captureApiError(() => requireConnectedHostSession({ db, hub }, host.id))
-          .status,
-      ).toBe(502);
-    } finally {
-      db.$client.close();
-    }
-  });
+        expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
+          "disconnected",
+        );
+        expect(
+          requireNonDestroyedHostWithStatus({ db, hub }, host.id).status,
+        ).toBe("disconnected");
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
 
-  it("shows the host disconnected once the reconnect grace ends", () => {
-    const { db, host, hub } = setup();
-    try {
-      const session = openTestSession(db, host.id);
-      closeTestSession(db, {
-        closeReason: "daemon-disconnect",
-        closedAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1,
-        sessionId: session.id,
-      });
-
-      expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
-        "disconnected",
-      );
-    } finally {
-      db.$client.close();
-    }
-  });
-
-  it("shows a host the server expired as disconnected immediately", () => {
-    const { db, host, hub } = setup();
-    try {
-      const session = openTestSession(db, host.id);
-      closeTestSession(db, {
-        closeReason: "expired",
-        closedAt: Date.now(),
-        sessionId: session.id,
-      });
-
-      expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
-        "disconnected",
-      );
-    } finally {
-      db.$client.close();
-    }
-  });
-
-  it("keeps the host connected while its reconnecting daemon has opened a session but not registered its socket", () => {
+  it("reports a reconnecting host as connected only once its daemon socket registers", () => {
     const { db, host, hub } = setup();
     try {
       const lost = openTestSession(db, host.id);
@@ -393,7 +356,13 @@ describe("host status after a lost daemon connection", () => {
         closedAt: Date.now() - 1_000,
         sessionId: lost.id,
       });
-      openTestSession(db, host.id);
+      const reopened = openTestSession(db, host.id);
+
+      expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
+        "disconnected",
+      );
+
+      hub.registerDaemon(reopened.id, host.id, createMockHubSocket());
 
       expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
         "connected",

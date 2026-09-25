@@ -30,10 +30,7 @@ export interface OpenSessionInput {
   leaseTimeoutMs: number;
 }
 
-export function openSession(
-  db: DbConnection,
-  input: OpenSessionInput,
-) {
+export function openSession(db: DbConnection, input: OpenSessionInput) {
   const now = Date.now();
   const id = createHostDaemonSessionId();
 
@@ -75,7 +72,6 @@ export function openSession(
 
   markHostSeen(db, input.hostId, now);
 
-
   return row;
 }
 
@@ -109,8 +105,6 @@ export function closeSession(
     .where(eq(hostDaemonSessions.id, sessionId))
     .returning()
     .get();
-
-  markHostSeen(db, existing.hostId, now);
 
   notifier.notifyHost(existing.hostId, ["host-disconnected"]);
 
