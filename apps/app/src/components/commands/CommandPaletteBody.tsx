@@ -22,6 +22,8 @@ import {
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { buildSettingsPaletteActions } from "@/lib/command-palette/palette-settings-actions";
 import { buildPluginPagePaletteActions } from "@/lib/command-palette/palette-plugin-page-actions";
+import { buildServerPaletteActions } from "@/lib/command-palette/palette-server-actions";
+import { useDesktopServerTargets } from "@/hooks/useDesktopServerTargets";
 import {
   buildPluginSettingsEntries,
   type PluginSettingsCandidate,
@@ -85,10 +87,20 @@ export function CommandPaletteBody({
       }),
     [navigate, pluginSlots.navPanels],
   );
+  const serverTargets = useDesktopServerTargets();
+  const serverActions = useMemo(
+    () => buildServerPaletteActions(serverTargets),
+    [serverTargets],
+  );
 
   const availableActions = useMemo<readonly PaletteAction[]>(
-    () => [...actions, ...settingsActions, ...pluginPageActions],
-    [actions, pluginPageActions, settingsActions],
+    () => [
+      ...actions,
+      ...serverActions,
+      ...settingsActions,
+      ...pluginPageActions,
+    ],
+    [actions, pluginPageActions, serverActions, settingsActions],
   );
   const commandQuery = query.startsWith(">") ? query.slice(1) : query;
   const ranked = useMemo(

@@ -12,6 +12,7 @@ import {
   buildApplicationMenuTemplate,
   CONNECT_SERVERS_SKIPPED_MENU_LABELS,
   SET_SERVER_URL_MENU_LABEL,
+  SHOW_BUILTIN_SERVER_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
 import { BUILTIN_SERVER_NAME } from "../src/server-target.js";
@@ -46,6 +47,8 @@ function menuArgs(
     servers: [{ checked: true, id: "builtin", name: BUILTIN_SERVER_NAME }],
     setServerUrl: () => {},
     addServer: () => {},
+    showBuiltinServer: true,
+    toggleBuiltinServer: () => {},
     ...overrides,
   };
 }
@@ -269,6 +272,38 @@ describe("application menu", () => {
     );
     expect(selectServer).toHaveBeenCalledWith("custom:https://first.example");
     expect(addServer).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles the built-in server from Desktop Settings, outside the server chooser", () => {
+    const toggleBuiltinServer = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { showBuiltinServer: false, toggleBuiltinServer }),
+    );
+    const appSubmenu = template[0]?.submenu as MenuItemConstructorOptions[];
+    const desktopSettingsSubmenu = appSubmenu.find(
+      (item) => item.label === "Desktop Settings",
+    )?.submenu as MenuItemConstructorOptions[];
+    const toggle = desktopSettingsSubmenu.find(
+      (item) => item.label === SHOW_BUILTIN_SERVER_MENU_LABEL,
+    );
+
+    expect(desktopSettingsSubmenu.map((item) => item.label)).toEqual([
+      "Server",
+      SHOW_BUILTIN_SERVER_MENU_LABEL,
+    ]);
+    expect(toggle).toMatchObject({ checked: false, type: "checkbox" });
+    toggle?.click?.({} as never, undefined, {} as never);
+    expect(toggleBuiltinServer).toHaveBeenCalledTimes(1);
+    for (const serverSubmenu of [
+      findServerSubmenu(template),
+      findDesktopSettingsServerSubmenu(template),
+    ]) {
+      expect(
+        serverSubmenu.some(
+          (item) => item.label === SHOW_BUILTIN_SERVER_MENU_LABEL,
+        ),
+      ).toBe(false);
+    }
   });
 
   it("explains an empty Connect list with a disabled row when the sync was skipped", () => {
