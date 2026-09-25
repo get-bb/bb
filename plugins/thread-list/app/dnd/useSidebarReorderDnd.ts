@@ -60,13 +60,8 @@ export class SidebarTouchSensor {
       this.timer = null;
       this.armed = true;
       this.activator?.setAttribute("data-sidebar-touch-armed", "true");
-      this.document.addEventListener("click", this.suppressClick, true);
     }, delay);
   }
-
-  private readonly suppressClick = (event: MouseEvent): void => {
-    event.stopPropagation();
-  };
 
   private readonly handleMove = (event: TouchEvent): void => {
     const touch = event.touches[0];
@@ -119,9 +114,6 @@ export class SidebarTouchSensor {
     this.document.removeEventListener("visibilitychange", this.handleCancel);
     this.document.defaultView?.removeEventListener("blur", this.handleCancel);
     this.document.defaultView?.removeEventListener("resize", this.handleCancel);
-    if (this.armed) {
-      setTimeout(() => this.document.removeEventListener("click", this.suppressClick, true), 50);
-    }
   }
 
   static setup(): () => void {

@@ -113,7 +113,7 @@ describe("SidebarTouchSensor", () => {
     expect(row.dataset.sidebarTouchArmed).toBe("true");
     fireEvent.touchEnd(row, { touches: [] });
     fireEvent.click(row);
-    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onClick).toHaveBeenCalledTimes(2);
 
     fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
