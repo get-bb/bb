@@ -124,3 +124,7 @@ the fork delta small and merges cheap with these rules.
   placeholder even though the threads are intact.
 - Track the fork surface with `git diff upstream/main --stat`; the number of
   patched upstream files should shrink over time.
+- `.npmrc` is a shared root config rather than a fork-owned file: it carries the
+  fork's `virtual-store-dir-max-length` for the Windows long-path limit (see
+  [docs/windows.md](docs/windows.md)). If upstream adds its own `.npmrc`, keep
+  both settings instead of choosing a side.

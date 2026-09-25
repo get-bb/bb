@@ -57,6 +57,21 @@ function Set-ForkProtocolVersion {
   }
 }
 
+function Invoke-PnpmInstall {
+  # bb-fork(windows): the fork's .npmrc caps pnpm's virtual-store directory
+  # names, and pnpm refuses to reuse a modules dir linked with a different
+  # value until that dir is rebuilt.
+  param([string]$Label = "pnpm install")
+  & pnpm install 2>&1 | Tee-Object -Variable installOutput | Out-Host
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0 -and (($installOutput | Out-String) -match "VIRTUAL_STORE_DIR_MAX_LENGTH_DIFF")) {
+    Write-Host "Modules dir uses a different virtual-store-dir-max-length; relinking with pnpm install --force"
+    & pnpm install --force 2>&1 | Out-Host
+    $exitCode = $LASTEXITCODE
+  }
+  if ($exitCode -ne 0) { throw "$Label failed" }
+}
+
 function Resolve-Lockfile {
   $path = "pnpm-lock.yaml"
   if (-not (Test-Path $path)) { return }
@@ -64,8 +79,7 @@ function Resolve-Lockfile {
     Write-Host "Resolving $path from upstream and regenerating with pnpm install"
     Invoke-Git checkout "${Upstream}/${Branch}" -- $path
     Invoke-Git add -- $path
-    & pnpm install
-    if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
+    Invoke-PnpmInstall
     Invoke-Git add -- $path
   }
 }

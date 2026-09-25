@@ -69,6 +69,41 @@ Native Windows drive-letter and UNC paths are accepted at the app/server
 boundary on native Windows hosts. In the WSL2 flow they are still rejected so
 unsupported input fails clearly.
 
+## Long checkout paths
+
+Node.js 22.19+ resolves a package's `#imports` through a native package-scope
+lookup that cannot read a `package.json` at a path of 260 characters or more
+(Windows `MAX_PATH`) and silently reports it as missing. In a deep checkout or
+worktree this breaks every tool that loads Vite 8 before doing any work:
+
+```
+TypeError [ERR_PACKAGE_IMPORT_NOT_DEFINED]: Package import specifier
+"#module-sync-enabled" is not defined imported from
+…\node_modules\.pnpm\vite@…\node_modules\vite\dist\node\chunks\node.js
+```
+
+`vitest`, `vite build`, `pnpm exec turbo run build --filter=@bb/app`, and the
+`scripts/windows/install.ps1` build all fail this way, while `tsc`, `oxlint`,
+`oxfmt`, and `node --import tsx` keep working, because plain `node_modules`
+resolution reads long paths fine.
+
+The fork's root `.npmrc` sets `virtual-store-dir-max-length=50`, which caps the
+`node_modules/.pnpm/<pkg>@<version>` entry name (pnpm keeps the package's own
+directory name intact) and leaves room for the checkout path. Two
+consequences:
+
+- An existing checkout was linked with pnpm's default of 120 and must be
+  relinked once with `pnpm install --force`; a plain `pnpm install` fails with
+  `VIRTUAL_STORE_DIR_MAX_LENGTH_DIFF`. `scripts/windows/merge-upstream.ps1`
+  retries with `--force` when it hits that error.
+- The limit is not gone, only moved: a checkout root longer than about 158
+  characters, or a repository directory name near the 200-byte worktree cap,
+  can still exceed it. Keep dev checkouts and `BB_DATA_DIR` short;
+  `scripts/windows/check.ps1` warns when the checkout path is too long.
+
+Verify with `pnpm exec vitest --version` from any package (it fails immediately
+when the limit is hit) and `pnpm exec turbo run test --filter=@bb/templates --force`.
+
 ## Fork app behavior
 
 Two fork-owned deltas change app behavior on every platform:
