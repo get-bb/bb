@@ -213,7 +213,7 @@ function NavigationRowChrome({
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
               "group/nav-row w-full",
-              shortcut ? "pr-1" : "pr-7",
+              shortcut ? "pr-0" : "pr-7",
               Accessory && "pr-18",
               (isActive || isContextMenuOpen) &&
                 "bg-sidebar-accent text-sidebar-foreground",
