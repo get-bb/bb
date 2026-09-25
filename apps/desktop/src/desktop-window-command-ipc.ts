@@ -17,3 +17,9 @@ export const BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL =
   "bb-desktop:set-split-navigation-enabled";
 export const BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL =
   "bb-desktop:open-window-find";
+export const BB_DESKTOP_GET_SERVER_TARGETS_CHANNEL =
+  "bb-desktop:get-server-targets";
+export const BB_DESKTOP_SERVER_TARGETS_CHANGED_CHANNEL =
+  "bb-desktop:server-targets-changed";
+export const BB_DESKTOP_SELECT_SERVER_TARGET_CHANNEL =
+  "bb-desktop:select-server-target";

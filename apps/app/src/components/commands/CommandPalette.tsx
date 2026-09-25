@@ -46,6 +46,8 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { buildSettingsPaletteActions } from "@/lib/command-palette/palette-settings-actions";
 import { buildPluginPagePaletteActions } from "@/lib/command-palette/palette-plugin-page-actions";
+import { buildServerPaletteActions } from "@/lib/command-palette/palette-server-actions";
+import { useDesktopServerTargets } from "@/hooks/useDesktopServerTargets";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import {
   buildPluginSettingsEntries,
@@ -151,6 +153,11 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       }),
     [navigate, pluginSlots.navPanels],
   );
+  const serverTargets = useDesktopServerTargets();
+  const serverActions = useMemo(
+    () => buildServerPaletteActions(serverTargets),
+    [serverTargets],
+  );
   const openTargetRef = useRef<EventTarget | null>(null);
   const pendingRunRef = useRef<(() => void) | null>(null);
 
@@ -218,8 +225,13 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   );
 
   const availableActions = useMemo<readonly PaletteAction[]>(
-    () => [...actions, ...settingsActions, ...pluginPageActions],
-    [actions, pluginPageActions, settingsActions],
+    () => [
+      ...actions,
+      ...serverActions,
+      ...settingsActions,
+      ...pluginPageActions,
+    ],
+    [actions, pluginPageActions, serverActions, settingsActions],
   );
   const shortcutActions = useMemo(() => {
     const byId = new Map(availableActions.map((action) => [action.id, action]));

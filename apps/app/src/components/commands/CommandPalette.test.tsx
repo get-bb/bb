@@ -42,6 +42,7 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -191,7 +192,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
+  getBbDesktopInfo: () => window.bbDesktop ?? null,
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
@@ -398,6 +399,7 @@ const selectedOption = () =>
 afterEach(() => {
   testState.overrides = [];
   cleanup();
+  delete window.bbDesktop;
   removePluginSlotRegistrations("linear");
   removePluginSlotRegistrations("automations");
   resetPluginLogoStoreForTest();
@@ -673,6 +675,50 @@ describe("CommandPalette", () => {
       expect(row.querySelectorAll("kbd").length).toBe(compact ? 0 : 1);
     },
   );
+
+  it("switches to another desktop server", async () => {
+    const selectServerTarget = vi.fn();
+    window.bbDesktop = {
+      ...createBbDesktopApi({
+        lastCheckedAt: null,
+        latestVersion: null,
+        pendingVersion: null,
+        platform: "macos",
+        updateAvailable: false,
+        updateDownloaded: false,
+        version: "0.0.0-test",
+      }),
+      async getServerTargets() {
+        return [
+          { active: true, id: "builtin", kind: "builtin", name: "This Mac" },
+          { active: false, id: "custom:ops", kind: "custom", name: "ops" },
+        ];
+      },
+      onServerTargetsChange() {
+        return () => {};
+      },
+      selectServerTarget,
+    };
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+    fireEvent.change(searchField(), { target: { value: "server" } });
+    await waitFor(() =>
+      expect(optionTitles()).toContain("Switch to server: ops"),
+    );
+    expect(optionTitles().some((title) => title?.includes("This Mac"))).toBe(
+      false,
+    );
+
+    const option = screen
+      .getAllByRole("option")
+      .find((candidate) => candidate.textContent === "Switch to server: ops");
+    expect(option).toBeDefined();
+    if (option !== undefined) fireEvent.click(option);
+    await waitFor(() =>
+      expect(selectServerTarget).toHaveBeenCalledExactlyOnceWith("custom:ops"),
+    );
+  });
 
   it("opens on its chord and lists the commands that apply", async () => {
     renderPalette();

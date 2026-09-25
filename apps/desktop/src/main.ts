@@ -38,8 +38,10 @@ import {
 } from "@bb/domain";
 import {
   bbDesktopBrowserImportCookiesRequestSchema,
+  bbDesktopServerTargetSchema,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
+  type BbDesktopServerTarget,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -132,6 +134,10 @@ import {
 } from "./server-target.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
 import {
+  buildDesktopServerList,
+  type DesktopServerListEntry,
+} from "./server-list.js";
+import {
   createConnectServerSync,
   type ConnectAccountServer,
   type ConnectServerSync,
@@ -206,10 +212,13 @@ import {
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_SERVER_TARGETS_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
+  BB_DESKTOP_SELECT_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_SERVER_TARGETS_CHANGED_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
@@ -432,6 +441,7 @@ let movedMachineConnection: Promise<void> | null = null;
 let localServerMove: DesktopServerMove | null = null;
 let serverMovedWatcher: ServerMovedWatcher | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
+let lastBroadcastServerTargets: string | null = null;
 let existingServerDialogPreloadPath: string | null = null;
 
 function resolveDesktopServerUrl(args: ResolveDesktopServerUrlArgs): string {
@@ -741,19 +751,6 @@ function getFocusedApplicationWindow(): BrowserWindow | null {
   return null;
 }
 
-function formatCustomServerName(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.length > 0 ? parsed.host : url;
-  } catch {
-    return url;
-  }
-}
-
-function connectServerMenuId(handle: string): string {
-  return `connect:${handle}`;
-}
-
 function listMenuConnectServers(): ConnectServerRef[] {
   const servers: ConnectServerRef[] = connectAccountServers.map((server) => ({
     handle: server.handle,
@@ -770,49 +767,65 @@ function listMenuConnectServers(): ConnectServerRef[] {
   return servers;
 }
 
-function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
-  checked: boolean;
-  id: string;
-  name: string;
-}> {
-  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
-  const items = [
-    {
-      checked: target.kind === "builtin",
-      id: "builtin",
-      name: BUILTIN_SERVER_NAME,
-    },
-  ];
-  for (const server of connectServers) {
-    items.push({
-      checked:
-        target.kind === "connect" && target.server.handle === server.handle,
-      id: connectServerMenuId(server.handle),
-      name: server.name,
-    });
-  }
-  for (const customUrl of serverTargetStore?.getCustomServerUrls() ?? []) {
-    items.push({
-      checked: target.kind === "custom" && target.url === customUrl,
-      id: `custom:${customUrl}`,
-      name: formatCustomServerName(customUrl),
-    });
-  }
-  return items;
+function listDesktopServers(
+  connectServers: ConnectServerRef[] = listMenuConnectServers(),
+): DesktopServerListEntry[] {
+  return buildDesktopServerList({
+    connectServers,
+    customServers: serverTargetStore?.getCustomServers() ?? [],
+    showBuiltinServer: serverTargetStore?.getShowBuiltinServer() ?? true,
+    target: serverTargetStore?.getTarget() ?? { kind: "builtin" },
+  });
 }
 
-function buildServerMenuArgs(): ServerMenuArgs {
-  const connectServers = listMenuConnectServers();
+function toServerTargets(
+  servers: DesktopServerListEntry[],
+): BbDesktopServerTarget[] {
+  return servers.map(({ active, id, kind, name }) => ({
+    active,
+    id,
+    kind,
+    name,
+  }));
+}
+
+function broadcastServerTargets(servers: BbDesktopServerTarget[]): void {
+  const serialized = JSON.stringify(servers);
+  if (serialized === lastBroadcastServerTargets) {
+    return;
+  }
+  lastBroadcastServerTargets = serialized;
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
+      sendToApplicationRenderer(
+        browserWindow,
+        BB_DESKTOP_SERVER_TARGETS_CHANGED_CHANNEL,
+        servers,
+      );
+    }
+  }
+}
+
+function buildServerMenuArgs(
+  servers: DesktopServerListEntry[],
+): ServerMenuArgs {
   return {
     addServer() {
       void openSetServerUrlDialog(true);
     },
-    connectServersSkipReason:
-      connectServers.length === 0 ? connectServerSyncSkipReason : null,
+    connectServersSkipReason: servers.some(
+      (server) => server.kind === "connect",
+    )
+      ? null
+      : connectServerSyncSkipReason,
     selectServer(serverId) {
       void setActiveServerTarget(serverId);
     },
-    servers: buildMenuServerItems(connectServers),
+    servers: servers.map((server) => ({
+      checked: server.active,
+      id: server.id,
+      name: server.name,
+    })),
     setServerUrl() {
       void openSetServerUrlDialog();
     },
@@ -821,14 +834,15 @@ function buildServerMenuArgs(): ServerMenuArgs {
 
 function popupServerMenu(browserWindow: BrowserWindow | null): void {
   connectServerSync?.onListRequested();
-  Menu.buildFromTemplate(createServerMenuItems(buildServerMenuArgs())).popup(
-    browserWindow === null ? {} : { window: browserWindow },
-  );
+  Menu.buildFromTemplate(
+    createServerMenuItems(buildServerMenuArgs(listDesktopServers())),
+  ).popup(browserWindow === null ? {} : { window: browserWindow });
 }
 
 function refreshApplicationMenu(): void {
+  const servers = listDesktopServers();
   installApplicationMenu({
-    ...buildServerMenuArgs(),
+    ...buildServerMenuArgs(servers),
     accelerators: currentApplicationMenuAccelerators,
     isMac: process.platform === "darwin",
     createNewWindow() {
@@ -920,7 +934,12 @@ function refreshApplicationMenu(): void {
       connectServerSync?.onListRequested();
     },
     serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
+    showBuiltinServer: serverTargetStore?.getShowBuiltinServer() ?? true,
+    toggleBuiltinServer() {
+      void toggleBuiltinServer();
+    },
   });
+  broadcastServerTargets(toServerTargets(servers));
 }
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
@@ -1899,41 +1918,32 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
   if (serverTargetStore === null) {
     return;
   }
-  if (serverId.startsWith("connect:")) {
-    const handle = serverId.slice("connect:".length);
-    const server = listMenuConnectServers().find(
-      (candidate) => candidate.handle === handle,
-    );
-    if (server === undefined) {
-      refreshApplicationMenu();
-      return;
-    }
-    await serverTargetStore.setConnectServer(server);
-    await applyServerTarget();
-    return;
-  }
-  if (serverId.startsWith("custom:")) {
-    const url = serverId.slice("custom:".length);
-    if (!serverTargetStore.getCustomServerUrls().includes(url)) {
-      return;
-    }
-    await serverTargetStore.setCustomServerUrl(url);
-    await applyServerTarget();
-    return;
-  }
-  if (serverId !== "builtin" && serverId !== "custom") {
-    return;
-  }
-  if (serverId === "builtin") {
-    await selectBuiltinServer();
-    return;
-  }
-  const switched = await serverTargetStore.setTarget(serverId);
-  if (!switched) {
+  const server = listDesktopServers().find(
+    (candidate) => candidate.id === serverId,
+  );
+  if (server === undefined) {
     refreshApplicationMenu();
     return;
   }
+  if (server.connectServer !== null) {
+    await serverTargetStore.setConnectServer(server.connectServer);
+  } else if (server.customUrl !== null) {
+    await serverTargetStore.setCustomServerUrl(server.customUrl);
+  } else {
+    await selectBuiltinServer();
+    return;
+  }
   await applyServerTarget();
+}
+
+async function toggleBuiltinServer(): Promise<void> {
+  if (serverTargetStore === null) {
+    return;
+  }
+  await serverTargetStore.setShowBuiltinServer(
+    !serverTargetStore.getShowBuiltinServer(),
+  );
+  refreshApplicationMenu();
 }
 
 async function openSetServerUrlDialog(add = false): Promise<void> {
@@ -1941,7 +1951,12 @@ async function openSetServerUrlDialog(add = false): Promise<void> {
     return;
   }
   const previousUrl = add ? null : serverTargetStore.getCustomServerUrl();
+  const previousName =
+    serverTargetStore
+      .getCustomServers()
+      .find((server) => server.url === previousUrl)?.name ?? null;
   const result = await openServerUrlDialog({
+    initialName: previousName,
     initialUrl: previousUrl,
     parentWindow: getFocusedApplicationWindow(),
     preloadPath: serverUrlDialogPreloadPath,
@@ -1955,11 +1970,44 @@ async function openSetServerUrlDialog(add = false): Promise<void> {
   ) {
     return;
   }
+  if (result.kind === "set" && result.url === previousUrl) {
+    await serverTargetStore.setCustomServerName(previousUrl, result.name);
+    refreshApplicationMenu();
+    return;
+  }
+  const name = result.kind === "set" ? result.name : null;
   await serverTargetStore.setCustomServerUrl(
     result.kind === "set" ? result.url : null,
-    previousUrl ?? undefined,
+    {
+      ...(previousUrl === null ? {} : { replacedUrl: previousUrl }),
+      ...(add && name === null ? {} : { name }),
+    },
   );
+  refreshApplicationMenu();
   await applyServerTarget();
+}
+
+function registerServerTargetIpc(): void {
+  ipcMain.handle(BB_DESKTOP_GET_SERVER_TARGETS_CHANNEL, (event) => {
+    if (!applicationWindowWebContentsIds.has(event.sender.id)) {
+      throw new Error("Unexpected sender.");
+    }
+    return toServerTargets(listDesktopServers());
+  });
+  ipcMain.on(
+    BB_DESKTOP_SELECT_SERVER_TARGET_CHANNEL,
+    (event, payload: unknown) => {
+      const parsed = bbDesktopServerTargetSchema.shape.id.safeParse(payload);
+      if (
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        event.senderFrame !== event.sender.mainFrame ||
+        !parsed.success
+      ) {
+        return;
+      }
+      void setActiveServerTarget(parsed.data);
+    },
+  );
 }
 
 function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
@@ -2965,6 +3013,7 @@ async function runDesktopApp(): Promise<void> {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
+  registerServerTargetIpc();
   desktopFindViewManager = createDesktopFindViewManager({
     preloadPath: findBarPreloadPath,
   });

@@ -7,6 +7,7 @@ export const BB_DESKTOP_SERVER_URL_DIALOG_CANCEL_CHANNEL =
 
 export const serverUrlDialogSubmitRequestSchema = z
   .object({
+    name: z.string().max(1024),
     url: z.string().max(4096),
   })
   .strict();
