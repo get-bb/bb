@@ -109,6 +109,7 @@ interface ControlledClaudeQuery {
 
 interface ClaudeQueryCallOptions {
   canUseTool?: CanUseTool;
+  disallowedTools?: string[];
   env?: Record<string, string | undefined>;
   extraArgs?: Record<string, string | null>;
   hooks?: BridgeSessionHooks;
@@ -903,6 +904,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a manager.",
         cwd: "/tmp/worktree",
@@ -923,10 +925,40 @@ describe("bridge", () => {
     expect(options.systemPrompt).toBe("You are a manager.");
   });
 
+  it("withholds the native subagent tools from Claude when bb disables them", () => {
+    const base = {
+      chromeEnabled: false,
+      workflowsEnabled: true,
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      permissionMode: "default",
+      permissionScope: "workspace",
+    } satisfies Omit<BuildSessionOptionsArgs, "providerSubagentsEnabled">;
+
+    expect(
+      buildSessionOptions({ ...base, providerSubagentsEnabled: false }, {})
+        .disallowedTools,
+    ).toEqual(["Agent", "Task"]);
+    expect(
+      buildSessionOptions(
+        {
+          ...base,
+          disallowedTools: ["ExitPlanMode", "NotebookEdit", "Task"],
+          providerSubagentsEnabled: false,
+        },
+        {},
+      ).disallowedTools,
+    ).toEqual(["ExitPlanMode", "NotebookEdit", "Task", "Agent"]);
+    expect(
+      buildSessionOptions({ ...base, providerSubagentsEnabled: true }, {}),
+    ).not.toHaveProperty("disallowedTools");
+  });
+
   it("decomposes ultracode into xhigh effort plus the ultracode settings flag", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -950,6 +982,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -973,6 +1006,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -995,6 +1029,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         memoryEnabled: false,
         cwd: "/tmp/worktree",
@@ -1014,6 +1049,7 @@ describe("bridge", () => {
 
   it("passes --chrome only when Claude in Chrome is enabled", () => {
     const base = {
+      providerSubagentsEnabled: true,
       workflowsEnabled: false,
       cwd: "/tmp/worktree",
       instructionMode: "append",
@@ -1033,6 +1069,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1061,6 +1098,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1082,6 +1120,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1100,6 +1139,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1125,6 +1165,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1143,6 +1184,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1164,6 +1206,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1189,6 +1232,7 @@ describe("bridge", () => {
       buildSessionOptions(
         {
           chromeEnabled: false,
+          providerSubagentsEnabled: true,
           workflowsEnabled: false,
           baseInstructions: "You are a coder.",
           cwd: "/tmp/worktree",
@@ -1208,6 +1252,7 @@ describe("bridge", () => {
     const acceptEditsOptions = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1220,6 +1265,7 @@ describe("bridge", () => {
     const autoOptions = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1252,6 +1298,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
         baseInstructions: "You are a coder.",
@@ -1272,6 +1319,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        providerSubagentsEnabled: true,
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
@@ -3118,7 +3166,167 @@ describe("bridge", () => {
     }
   });
 
-  it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
+  it("withholds subagent tools and restarts the Claude process before the next turn when the subagents setting changes", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const threadId = "thread-subagents-setting";
+    const serverDisallowedTools = ["NotebookEdit"];
+    const subagentToolDecisions = async (toolName: string) => {
+      const hooks = getLatestQueryOptions().hooks;
+      if (!hooks) {
+        throw new Error("Expected Claude session hooks");
+      }
+      const toolUseId = `tool-${toolName.toLowerCase()}-${queries.length}`;
+      return invokeBridgeHooks(
+        hooks.PreToolUse,
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: toolName,
+          tool_input: {},
+          tool_use_id: toolUseId,
+          session_id: "session-1",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/tmp/worktree",
+        },
+        toolUseId,
+      );
+    };
+    const denial = expect.objectContaining({
+      hookSpecificOutput: expect.objectContaining({
+        permissionDecision: "deny",
+      }),
+    });
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        disallowedTools: serverDisallowedTools,
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          instructions: "test",
+          providerOptions: {
+            workflowsEnabled: false,
+            providerSubagentsEnabled: false,
+          },
+        },
+      });
+      await bridge.waitForResponse(1);
+      expect(getLatestQueryOptions().disallowedTools).toEqual([
+        ...serverDisallowedTools,
+        "Agent",
+        "Task",
+      ]);
+      for (const toolName of ["Agent", "Task"]) {
+        await expect(subagentToolDecisions(toolName)).resolves.toContainEqual(
+          denial,
+        );
+      }
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "same subagents setting" }],
+          providerOptions: { providerSubagentsEnabled: false },
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      expect(queries).toHaveLength(1);
+      queries[0]?.emit(createSuccessfulResultMessage(threadId));
+      await bridge.flushWork();
+
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "subagents turned on" }],
+          providerOptions: { providerSubagentsEnabled: true },
+        }),
+      );
+      await bridge.flushWork();
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalled();
+      expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
+      expect(getLatestQueryOptions().disallowedTools).toEqual(
+        serverDisallowedTools,
+      );
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "subagents turned on",
+      );
+      await bridge.waitForResponse(3);
+      await expect(subagentToolDecisions("Agent")).resolves.not.toContainEqual(
+        denial,
+      );
+      queries[1]?.emit(createSuccessfulResultMessage(threadId));
+      await bridge.flushWork();
+
+      bridge.sendRequest(
+        4,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "subagents turned off again" }],
+          providerOptions: { providerSubagentsEnabled: false },
+        }),
+      );
+      await bridge.flushWork();
+      expect(queries).toHaveLength(3);
+      expect(queries[1]?.close).toHaveBeenCalled();
+      expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
+      expect(getLatestQueryOptions().disallowedTools).toEqual([
+        ...serverDisallowedTools,
+        "Agent",
+        "Task",
+      ]);
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "subagents turned off again",
+      );
+      await bridge.waitForResponse(4);
+      expect(
+        bridge.messages.filter(
+          (message) => message.method === "session/replaced",
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            contextLost: false,
+            providerThreadId: threadId,
+            threadId,
+          }),
+        }),
+      );
+    } finally {
+      bridge.sendRequest(5, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries.at(-1)?.finish();
+      await bridge.waitForResponse(5);
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("applies turn model, reasoning, memory, and workflow settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -3172,7 +3380,7 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            providerSubagentsEnabled: false,
+            providerSubagentsEnabled: true,
           },
         },
       });
@@ -3189,29 +3397,6 @@ describe("bridge", () => {
         ultracode: false,
       });
 
-      for (const toolName of ["Agent", "Task"]) {
-        const toolUseId = `tool-disabled-${toolName.toLowerCase()}`;
-        const disabledSubagentOutputs = await invokeBridgeHooks(
-          hooks.PreToolUse,
-          {
-            hook_event_name: "PreToolUse",
-            tool_name: toolName,
-            tool_input: {},
-            tool_use_id: toolUseId,
-            session_id: "session-1",
-            transcript_path: "/tmp/transcript.jsonl",
-            cwd: "/tmp/worktree",
-          },
-          toolUseId,
-        );
-        expect(disabledSubagentOutputs).toContainEqual(
-          expect.objectContaining({
-            hookSpecificOutput: expect.objectContaining({
-              permissionDecision: "deny",
-            }),
-          }),
-        );
-      }
       const enabledWorkflowOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,
         {

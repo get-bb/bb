@@ -79,10 +79,12 @@ import {
 } from "./provider-maintenance.js";
 import {
   buildChromeExtraArgs,
+  buildDisallowedTools,
   buildReadonlyDenialMessage,
   buildMutableFlagSettings,
   buildSessionOptions,
   buildWorkspaceWriteDenialMessage,
+  CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES,
   toSdkEffort,
   type BuildSessionOptionsArgs,
   type PermissionEscalationWorkContext,
@@ -151,7 +153,6 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
 const CLAUDE_WORKFLOW_TOOL_NAME = "Workflow";
 
 interface BridgeEventNotification {
@@ -276,7 +277,11 @@ interface SessionConstructionConfig {
   dynamicTools: ThreadResumeParams["dynamicTools"];
   sessionOptions: Omit<
     BuildSessionOptionsArgs,
-    "memoryEnabled" | "model" | "reasoningLevel" | "workflowsEnabled"
+    | "memoryEnabled"
+    | "model"
+    | "providerSubagentsEnabled"
+    | "reasoningLevel"
+    | "workflowsEnabled"
   >;
 }
 
@@ -392,6 +397,8 @@ function requireSkillPluginsRoot(): string {
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
 const CLAUDE_CHROME_SETTING_RESTART_REASON = "Claude in Chrome setting changed";
+const CLAUDE_PROVIDER_SUBAGENTS_SETTING_RESTART_REASON =
+  "Claude Code subagents setting changed";
 
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeEventNotification | BridgeToolCallRequest
@@ -428,6 +435,39 @@ function applyChromeSetting(
   if (attachment.residentSession) {
     attachment.residentSession.restartBeforeNextTurn = {
       reason: CLAUDE_CHROME_SETTING_RESTART_REASON,
+      showRuntimeNote: false,
+    };
+  }
+}
+
+function applyProviderSubagentsSetting(
+  attachment: ThreadAttachment,
+  enabled: boolean | undefined,
+): void {
+  if (enabled === undefined) {
+    return;
+  }
+  const disallowedTools = buildDisallowedTools({
+    disallowedTools:
+      attachment.sessionConstructionConfig.sessionOptions.disallowedTools,
+    providerSubagentsEnabled: enabled,
+  });
+  if (
+    isDeepStrictEqual(
+      attachment.sessionOptions.disallowedTools ?? [],
+      disallowedTools,
+    )
+  ) {
+    return;
+  }
+  if (disallowedTools.length > 0) {
+    attachment.sessionOptions.disallowedTools = disallowedTools;
+  } else {
+    delete attachment.sessionOptions.disallowedTools;
+  }
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurn ??= {
+      reason: CLAUDE_PROVIDER_SUBAGENTS_SETTING_RESTART_REASON,
       showRuntimeNote: false,
     };
   }
@@ -2157,6 +2197,10 @@ async function handleThreadResume(
     )
   ) {
     const liveSettings = toInitialLiveSessionSettings(params);
+    applyProviderSubagentsSetting(
+      existing,
+      liveSettings.providerSubagentsEnabled,
+    );
     if (existingSession) {
       await applyLiveSessionSettings(
         existingSession,
@@ -2256,6 +2300,7 @@ async function runTurnInput(
       applyTurnEnvironment(attachment, params.config);
     }
     applyChromeSetting(attachment, params.chromeEnabled);
+    applyProviderSubagentsSetting(attachment, params.providerSubagentsEnabled);
   }
 
   const threadSession = await getWritableThreadSession(params.threadId, intent);

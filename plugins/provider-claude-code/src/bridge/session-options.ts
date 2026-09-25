@@ -23,6 +23,7 @@ export interface BuildSessionOptionsArgs {
   permissionMode: ClaudePermissionMode;
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
+  providerSubagentsEnabled: boolean;
   reasoningLevel?: ReasoningLevel;
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
@@ -49,6 +50,10 @@ const SUMMARIZED_ADAPTIVE_THINKING = {
   display: "summarized",
 } satisfies Exclude<Options["thinking"], undefined>;
 const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
+
+export const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES: ReadonlySet<string> = new Set(
+  ["Agent", "Task"],
+);
 
 export function toSdkEffort(
   reasoningLevel: ReasoningLevel,
@@ -86,6 +91,19 @@ export function buildMutableFlagSettings(args: {
       : {}),
     ultracode: args.reasoningLevel === "ultracode",
   };
+}
+
+export function buildDisallowedTools(args: {
+  disallowedTools?: readonly string[] | undefined;
+  providerSubagentsEnabled: boolean;
+}): string[] {
+  const tools = new Set(args.disallowedTools);
+  if (!args.providerSubagentsEnabled) {
+    for (const toolName of CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES) {
+      tools.add(toolName);
+    }
+  }
+  return [...tools];
 }
 
 export function buildReadonlyDenialMessage(): string {
@@ -224,6 +242,7 @@ export function buildSessionOptions(
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
   const extraArgs = buildChromeExtraArgs(params.chromeEnabled);
+  const disallowedTools = buildDisallowedTools(params);
 
   return {
     cwd: params.cwd,
@@ -245,8 +264,6 @@ export function buildSessionOptions(
     ...(additionalDirectories.length > 0
       ? { additionalDirectories: [...additionalDirectories] }
       : {}),
-    ...(params.disallowedTools && params.disallowedTools.length > 0
-      ? { disallowedTools: [...params.disallowedTools] }
-      : {}),
+    ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
   };
 }
