@@ -540,6 +540,26 @@ describe("optimisticallyInsertThread", () => {
     });
   });
 
+  it("places a new thread on its selected machine in the first cached sidebar row", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(),
+    );
+
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse(),
+      "host-selected",
+    );
+
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.environmentHostId,
+    ).toBe("host-selected");
+  });
+
   it("projects queued work into the thread list and sidebar immediately", () => {
     const { queryClient } = createQueryClientTestHarness();
     const threadListKey = threadListQueryKey({
