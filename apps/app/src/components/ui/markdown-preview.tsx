@@ -1268,8 +1268,7 @@ function buildMarkdownComponents({
       return (
         <video
           src={src}
-          aria-label={alt || "Video"}
-          title={imageAttributes.title}
+          aria-label={alt || imageAttributes.title || "Video"}
           controls
           playsInline
           preload="metadata"
