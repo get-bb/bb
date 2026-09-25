@@ -716,7 +716,7 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
-  it("delivers a stop requested while the host was offline once the same daemon reconnects", async () => {
+  it("settles a stop requested while the host is offline and stops the run when the same daemon reconnects", async () => {
     await withTestHarness(async (harness) => {
       const { host, session, thread } = seedActiveTurnThread(harness);
       handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
@@ -730,7 +730,12 @@ describe("active thread disconnect reconciliation triggers", () => {
       await harness.app.request(`/api/v1/threads/${thread.id}/stop`, {
         method: "POST",
       });
-      expect(getThread(harness.deps.db, thread.id)?.status).toBe("stopping");
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.deps.db, { threadId: thread.id })
+          .filter((row) => row.type === "turn/completed")
+          .map((row) => JSON.parse(row.data).status),
+      ).toEqual(["interrupted"]);
 
       const response = await harness.app.request("/internal/session/open", {
         method: "POST",
@@ -763,6 +768,54 @@ describe("active thread disconnect reconciliation triggers", () => {
       });
 
       await vi.waitFor(() => expect(commandTypes).toContain("thread.stop"));
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+    });
+  });
+
+  it("revives rather than stops a thread that started a new turn after its last stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, host, session, thread } = seedThreadFixture(
+        harness,
+        { thread: { status: "idle" } },
+      );
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        data: { reason: "manual-stop" },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope("turn-after-stop"),
+        providerThreadId: "provider-thread-after-stop",
+        data: { providerThreadId: "provider-thread-after-stop" },
+      });
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-revive-after-new-turn",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [{ threadId: thread.id }],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
     });
   });
 
