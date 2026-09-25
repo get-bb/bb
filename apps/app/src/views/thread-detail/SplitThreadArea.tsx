@@ -1037,8 +1037,31 @@ function StandalonePaneContent({
   if (content.kind === "new-thread") {
     return <RootComposeView />;
   }
+  const closeAction = onRequestClose ? (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+      )}
+      aria-label="Close pane"
+      onClick={onRequestClose}
+    >
+      <Icon name="ClosePluginPane" />
+    </Button>
+  ) : null;
   if (content.kind === "plugin-detail") {
-    return <PluginDetailPaneView pluginId={content.pluginId} />;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <AppPageHeader
+          center={<span className="text-sm font-normal">Extension</span>}
+          actions={closeAction}
+        />
+        <PluginDetailPaneView pluginId={content.pluginId} />
+      </div>
+    );
   }
   const panelEntry = navPanelChrome.find(
     (candidate) =>
@@ -1075,21 +1098,7 @@ function StandalonePaneContent({
                     subPath={content.subPath}
                   />
                 ) : null}
-                {onRequestClose ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
-                      CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-                    )}
-                    aria-label="Close pane"
-                    onClick={onRequestClose}
-                  >
-                    <Icon name="ClosePluginPane" />
-                  </Button>
-                ) : null}
+                {closeAction}
               </>
             }
           />

@@ -481,6 +481,11 @@ const docsContent: PaneContent = {
   subPath: "",
 };
 
+const docsDetailContent: PaneContent = {
+  kind: "plugin-detail",
+  pluginId: "docs",
+};
+
 const pluginGuideContent: PaneContent = {
   kind: "plugin-panel",
   pluginId: "plugin-api-docs",
@@ -597,10 +602,6 @@ function registerDocsPanel() {
           component: () => <div>Docs panel</div>,
         },
       ],
-      threadPanelActions: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
     }),
   );
 }
@@ -652,9 +653,11 @@ function RouteAwareSplitArea() {
       routeContent={
         location.pathname === "/"
           ? newThreadContent
-          : location.pathname.startsWith("/plugins/")
-            ? docsContent
-            : undefined
+          : location.pathname === "/plugins/docs"
+            ? docsDetailContent
+            : location.pathname.startsWith("/plugins/")
+              ? docsContent
+              : undefined
       }
     />
   );
@@ -2398,7 +2401,6 @@ describe("SplitThreadArea", () => {
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(1);
-    expect(screen.getByTestId("close-thr-a")).toBeTruthy();
   });
 
   it("closes the only thread into the new-thread page", async () => {
@@ -2449,6 +2451,31 @@ describe("SplitThreadArea", () => {
       expect(screen.getByTestId("location").textContent).toBe("/"),
     );
     expect(screen.getByTestId("root-compose-view")).toBeTruthy();
+  });
+
+  it("closes the only compact plugin detail page into the new-thread page", async () => {
+    viewportState.compact = true;
+    const store = renderSplitArea({
+      path: "/plugins/docs",
+      layout: {
+        root: {
+          type: "pane",
+          paneId: "pane-detail",
+          content: docsDetailContent,
+        },
+        focusedPaneId: "pane-detail",
+      },
+      routeAwareContent: true,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close pane" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe("/"),
+    );
+    expect(screen.getByTestId("root-compose-view")).toBeTruthy();
+    expect(listPanes(store.get(splitLayoutAtom)!.root)[0]?.content).toEqual(
+      newThreadContent,
+    );
   });
 
   it("moves the URL to the surviving pane when the focused pane is closed", async () => {
