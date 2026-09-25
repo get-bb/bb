@@ -179,14 +179,11 @@ describe("navigation plugin", () => {
     ]);
   });
 
-  it("gives New thread a customize button and every other row an options button", async () => {
+  it("gives every visible row an options button with sidebar actions", async () => {
     const view = renderNavigation();
 
-    expect(
-      screen.queryByRole("button", { name: "New thread options" }),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Customize sidebar" }));
     for (const name of [
+      "New thread options",
       "Docs panel options",
       "Tasks panel options",
       "Skills options",
@@ -209,7 +206,6 @@ describe("navigation plugin", () => {
     );
 
     expect(view.inspection.sidebarNavigationCalls).toEqual([
-      { method: "openCustomize" },
       { method: "setVisible", itemId: "__bb__/skills", isVisible: false },
       { method: "openCustomize" },
     ]);
@@ -234,12 +230,12 @@ describe("navigation plugin", () => {
     ).toBe("true");
   });
 
-  it("swaps New thread's row actions for its shortcut while the modifier is held", () => {
+  it("swaps New thread's options button for its shortcut while the modifier is held", () => {
     renderNavigation(ITEMS, false);
     expect(screen.queryByText("⌘N")).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "Customize sidebar" })
+        .getByRole("button", { name: "New thread options" })
         .parentElement?.classList.contains("hidden"),
     ).toBe(false);
     cleanup();
@@ -248,7 +244,7 @@ describe("navigation plugin", () => {
     expect(screen.getByText("⌘N")).toBeDefined();
     expect(
       screen
-        .getByRole("button", { name: "Customize sidebar" })
+        .getByRole("button", { name: "New thread options" })
         .parentElement?.classList.contains("hidden"),
     ).toBe(true);
   });

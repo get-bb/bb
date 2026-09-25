@@ -185,7 +185,6 @@ function NavigationRowChrome({
       onDisable={onDisable}
     />
   );
-  const showsCustomize = item.action.kind === "new-thread";
   const shortcut = isShortcutModifierHeld ? item.shortcut : null;
   const optionsLabel =
     item.pluginId === null
@@ -276,51 +275,30 @@ function NavigationRowChrome({
               shortcut && "hidden",
             )}
           >
-            {showsCustomize ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Customize sidebar"
-                title="Customize sidebar"
-                className={cn(
-                  "rounded-md p-0",
-                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                  SIDEBAR_CONTROL_STATE_CLASS,
-                )}
-                onClick={() => actions.openCustomize()}
-              >
-                <Icon
-                  name="FilterHorizontal"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            ) : (
-              <DropdownMenu onOpenChange={setIsDropdownOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={optionsLabel}
-                    className={cn(
-                      "rounded-md p-0",
-                      SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                      SIDEBAR_CONTROL_STATE_CLASS,
-                      isContextMenuOpen && "bg-state-active",
-                    )}
-                  >
-                    <Icon
-                      name="MoreHorizontal"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {menuItems("dropdown")}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <DropdownMenu onOpenChange={setIsDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={optionsLabel}
+                  className={cn(
+                    "rounded-md p-0",
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    SIDEBAR_CONTROL_STATE_CLASS,
+                    isContextMenuOpen && "bg-state-active",
+                  )}
+                >
+                  <Icon
+                    name="MoreHorizontal"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {menuItems("dropdown")}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </ContextMenuTrigger>
