@@ -1,3 +1,5 @@
+import { useElementWidth } from "@/hooks/useElementWidth";
+import { fitSplitWidths, minimumSplitWidth } from "@/lib/split-layout/sizing";
 import {
   Fragment,
   useCallback,
@@ -130,6 +132,14 @@ export function SidebarSplitContainer({
   tabs,
 }: SidebarSplitContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { ref: measureWidth, width } = useElementWidth();
+  const setContainerRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      containerRef.current = element;
+      return measureWidth(element);
+    },
+    [measureWidth],
+  );
   const availableTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const storageKey = sidebarSplitStorageKey(panelStateId);
   const [initialStorageValue] = useState<string | null>(() =>
@@ -373,7 +383,9 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.previousNewTabItem", () =>
+    navigateNewTabItem(-1),
+  );
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(
@@ -549,21 +561,42 @@ export function SidebarSplitContainer({
   const resize = useCallback(
     (path: SplitPath, childIndex: number, fraction: number) => {
       commitState((current) =>
-        resizeSidebarSplit(current, path, childIndex, fraction),
+        resizeSidebarSplit(
+          {
+            ...current,
+            layout: {
+              ...current.layout,
+              root: fitSplitWidths(current.layout.root, width),
+            },
+          },
+          path,
+          childIndex,
+          fraction,
+        ),
       );
     },
-    [commitState],
+    [commitState, width],
   );
   const previewResize = useCallback(
     (path: SplitPath, childIndex: number, fraction: number | null) => {
       setResizePreviewLayout(
         fraction === null
           ? null
-          : resizeSidebarSplit(stateRef.current, path, childIndex, fraction)
-              .layout,
+          : resizeSidebarSplit(
+              {
+                ...stateRef.current,
+                layout: {
+                  ...stateRef.current.layout,
+                  root: fitSplitWidths(stateRef.current.layout.root, width),
+                },
+              },
+              path,
+              childIndex,
+              fraction,
+            ).layout,
       );
     },
-    [],
+    [width],
   );
 
   const firstPane = listPanes(state.layout.root)[0];
@@ -578,7 +611,7 @@ export function SidebarSplitContainer({
     const group = getSidebarGroupForPane(state, firstPane.paneId);
     if (group === null) return null;
     return (
-      <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
+      <div ref={setContainerRef} className="flex min-h-0 flex-1 flex-col">
         {renderPane({
           group,
           isFocused: true,
@@ -599,13 +632,17 @@ export function SidebarSplitContainer({
       </div>
     );
   }
-  const presentedLayout = resizePreviewLayout ?? state.layout;
+  const sourceLayout = resizePreviewLayout ?? state.layout;
+  const presentedLayout = {
+    ...sourceLayout,
+    root: fitSplitWidths(sourceLayout.root, width),
+  };
   const paneRects = computePaneRects(presentedLayout.root);
 
   return (
     <div
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      ref={containerRef}
+      ref={setContainerRef}
       data-sidebar-split-container=""
       data-sidebar-split-root-direction={
         presentedLayout.root.type === "split"
@@ -699,6 +736,7 @@ function SidebarSplitTrackTree(props: SidebarSplitTrackTreeProps) {
           ) : null}
           <div
             className="flex min-h-0 min-w-0"
+            data-split-min-width={minimumSplitWidth(child)}
             style={{ flex: `${node.sizes[index] ?? 1} 1 0px` }}
           >
             <SidebarSplitTrackTree

@@ -51,10 +51,13 @@ function expectNormalizedSizes(layout: SplitLayout): void {
     }
     expect(node.sizes).toHaveLength(node.children.length);
     expect(node.sizes.reduce((sum, size) => sum + size, 0)).toBeCloseTo(1, 12);
-    const feasibleMinimum = Math.min(0.15, 1 / node.children.length);
+    const feasibleMinimum =
+      node.dir === "row"
+        ? Number.EPSILON
+        : Math.min(0.15, 1 / node.children.length);
     for (const size of node.sizes) {
       expect(size).toBeGreaterThanOrEqual(feasibleMinimum);
-      expect(size).toBeLessThanOrEqual(0.85);
+      expect(size).toBeLessThanOrEqual(node.dir === "row" ? 1 : 0.85);
     }
     node.children.forEach(visit);
   }
@@ -218,12 +221,12 @@ describe("split layout operations", () => {
     const high = resizeSplit(low, [], 0, 10);
 
     if (low.root.type === "split") {
-      expect(low.root.sizes[0]).toBeCloseTo(0.15, 12);
-      expect(low.root.sizes[1]).toBeCloseTo(0.85, 12);
+      expect(low.root.sizes[0]).toBeCloseTo(Number.EPSILON, 12);
+      expect(low.root.sizes[1]).toBeCloseTo(1 - Number.EPSILON, 12);
     }
     if (high.root.type === "split") {
-      expect(high.root.sizes[0]).toBeCloseTo(0.85, 12);
-      expect(high.root.sizes[1]).toBeCloseTo(0.15, 12);
+      expect(high.root.sizes[0]).toBeCloseTo(1 - Number.EPSILON, 12);
+      expect(high.root.sizes[1]).toBeCloseTo(Number.EPSILON, 12);
       expect(high.root.sizes.reduce((sum, size) => sum + size, 0)).toBe(1);
     }
     expect(resizeSplit(high, [], 1, 0.5)).toBe(high);

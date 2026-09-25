@@ -26,9 +26,9 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "@/components/secondary-panel/secondaryPanelSizing";
+  SecondaryPanelSizingProvider,
+  useSecondaryPanelMinimum,
+} from "@/components/secondary-panel/SecondaryPanelSizingProvider";
 import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
@@ -49,21 +49,36 @@ import {
 } from "./PaneContext";
 
 const MAIN_PANEL_OPEN_SIZE_PERCENT = 100;
-const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 
 interface SplitWorkspaceSecondaryPanelHostProps {
+  mainMinimumWidth: number;
   children: ReactNode;
   focusedPaneId: string;
   isPaneMaximized: boolean;
   registry: PaneSecondaryPanelRegistry;
 }
 
-export function SplitWorkspaceSecondaryPanelHost({
+export function SplitWorkspaceSecondaryPanelHost(
+  props: SplitWorkspaceSecondaryPanelHostProps,
+) {
+  return (
+    <SecondaryPanelSizingProvider
+      mainMinimumWidth={props.mainMinimumWidth}
+      dividerWidth={1}
+    >
+      <SplitWorkspaceSecondaryPanelHostContent {...props} />
+    </SecondaryPanelSizingProvider>
+  );
+}
+
+function SplitWorkspaceSecondaryPanelHostContent({
+  mainMinimumWidth,
   children,
   focusedPaneId,
   isPaneMaximized,
   registry,
 }: SplitWorkspaceSecondaryPanelHostProps) {
+  const minimumSize = useSecondaryPanelMinimum();
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
   const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
@@ -225,6 +240,7 @@ export function SplitWorkspaceSecondaryPanelHost({
         >
           <Panel
             id="split-workspace-main-panel"
+            data-split-min-width={mainMinimumWidth}
             collapsible
             collapsedSize={0}
             defaultSize={
@@ -236,7 +252,7 @@ export function SplitWorkspaceSecondaryPanelHost({
                     ? MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent
                     : MAIN_PANEL_OPEN_SIZE_PERCENT
             }
-            minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
+            minSize={minimumSize.min * 100}
             order={1}
             className={cn(
               "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
@@ -277,8 +293,8 @@ export function SplitWorkspaceSecondaryPanelHost({
                 collapsible
                 collapsedSize={0}
                 defaultSize={isOpen ? panelWidthPercent : 0}
-                minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-                maxSize={THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT}
+                minSize={(1 - minimumSize.max) * 100}
+                maxSize={100}
                 onCollapse={handleEmptyPanelCollapse}
                 onResize={handleEmptyPanelResize}
                 order={2}

@@ -38,9 +38,12 @@ import {
   subscribeCompactSidebarDrawerShowing,
 } from "@/components/ui/sidebar-mobile-drawer-visibility";
 import { PluginDetailPanelContext } from "@/components/plugin/plugin-detail-navigation";
+import {
+  SecondaryPanelSizingProvider,
+  useSecondaryPanelMinimum,
+} from "./SecondaryPanelSizingProvider";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
-const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 
 function noopToggleMainCollapse(): void {}
 
@@ -74,7 +77,19 @@ interface SecondaryPanelLayoutProps {
   compactPresentation: "shelf" | "full";
 }
 
-export function SecondaryPanelLayout({
+export function SecondaryPanelLayout(props: SecondaryPanelLayoutProps) {
+  const paneContext = useOptionalPaneContext();
+  if (paneContext?.secondaryPanelHost != null) {
+    return <SecondaryPanelLayoutContent {...props} />;
+  }
+  return (
+    <SecondaryPanelSizingProvider>
+      <SecondaryPanelLayoutContent {...props} />
+    </SecondaryPanelSizingProvider>
+  );
+}
+
+function SecondaryPanelLayoutContent({
   open,
   onToggle,
   onClose,
@@ -92,6 +107,7 @@ export function SecondaryPanelLayout({
   composerHost,
   compactPresentation: workspaceCompactPresentation,
 }: SecondaryPanelLayoutProps) {
+  const minimumSize = useSecondaryPanelMinimum();
   const paneContext = useOptionalPaneContext();
   const pluginDetails = useContext(PluginDetailPanelContext);
   const isPluginDetailOpen =
@@ -368,7 +384,7 @@ export function SecondaryPanelLayout({
                   ? FULL_PANEL_SIZE_PERCENT - persistedSecondaryWidthPercent
                   : FULL_PANEL_SIZE_PERCENT
             }
-            minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
+            minSize={minimumSize.min * 100}
             order={1}
             className={cn(
               "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",

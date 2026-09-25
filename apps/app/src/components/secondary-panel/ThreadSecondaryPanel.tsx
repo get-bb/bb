@@ -1,3 +1,4 @@
+import { useSecondaryPanelMinimum } from "./SecondaryPanelSizingProvider";
 import { usePluginDetailPanelProps } from "@/components/plugin/plugin-detail-navigation";
 import {
   type CSSProperties,
@@ -36,11 +37,7 @@ import {
   PANEL_TAB_CONTROL_CLASS,
   SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
 } from "./panelChromeClasses";
-import {
-  CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "./secondaryPanelSizing";
+import { CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT } from "./secondaryPanelSizing";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
   resolveConversationCollapseControl,
@@ -288,6 +285,7 @@ function ThreadSecondaryPanelContent({
     },
     [handleSecondaryPanelResize],
   );
+  const minimumSize = useSecondaryPanelMinimum();
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
     if (!isOpen || hostLayout?.isSuppressed) {
@@ -1095,12 +1093,8 @@ function ThreadSecondaryPanelContent({
               : persistedWidthPercent
             : 0
         }
-        minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-        maxSize={
-          isConversationCollapsed
-            ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
-            : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
-        }
+        minSize={(1 - minimumSize.max) * 100}
+        maxSize={100}
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
         onTransitionEnd={handlePanelTransitionEnd}

@@ -1,3 +1,4 @@
+import { SPLIT_MIN_HEIGHT_FRACTION, SPLIT_MAX_HEIGHT_FRACTION } from "./sizing";
 import type {
   LayoutNode,
   PaneContent,
@@ -10,13 +11,7 @@ import type {
 
 export const MAX_PANES = 8;
 
-const MIN_SIZE = 0.15;
-const MAX_SIZE = 0.85;
 const SIZE_EPSILON = 1e-12;
-
-export function clampSplitPairFraction(fraction: number): number {
-  return Math.min(MAX_SIZE, Math.max(MIN_SIZE, fraction));
-}
 
 export function listPanes(root: LayoutNode): PaneNode[] {
   if (root.type === "pane") {
@@ -338,6 +333,7 @@ function equalSizes(count: number): number[] {
 function normalizeSizes(
   sizes: readonly number[],
   childCount: number,
+  horizontal: boolean,
 ): number[] {
   if (
     sizes.length !== childCount ||
@@ -349,8 +345,12 @@ function normalizeSizes(
   if (!Number.isFinite(total) || total <= 0) {
     return equalSizes(childCount);
   }
+  if (horizontal) return sizes.map((size) => size / total);
   const normalized = sizes.map((size) =>
-    Math.min(MAX_SIZE, Math.max(MIN_SIZE, size / total)),
+    Math.min(
+      SPLIT_MAX_HEIGHT_FRACTION,
+      Math.max(SPLIT_MIN_HEIGHT_FRACTION, size / total),
+    ),
   );
 
   for (let pass = 0; pass < childCount + 1; pass += 1) {
@@ -362,7 +362,9 @@ function normalizeSizes(
     const adjustable = normalized
       .map((size, index) => ({ index, size }))
       .filter(({ size }) =>
-        difference > 0 ? size < MAX_SIZE : size > MIN_SIZE,
+        difference > 0
+          ? size < SPLIT_MAX_HEIGHT_FRACTION
+          : size > SPLIT_MIN_HEIGHT_FRACTION,
       );
     if (adjustable.length === 0) {
       return equalSizes(childCount);
@@ -372,8 +374,8 @@ function normalizeSizes(
       const size = normalized[index];
       if (size !== undefined) {
         normalized[index] = Math.min(
-          MAX_SIZE,
-          Math.max(MIN_SIZE, size + adjustment),
+          SPLIT_MAX_HEIGHT_FRACTION,
+          Math.max(SPLIT_MIN_HEIGHT_FRACTION, size + adjustment),
         );
       }
     }
@@ -382,7 +384,10 @@ function normalizeSizes(
   const finalTotal = normalized.reduce((sum, size) => sum + size, 0);
   const correctionIndex = normalized.findIndex((size) => {
     const corrected = size + (1 - finalTotal);
-    return corrected >= MIN_SIZE && corrected <= MAX_SIZE;
+    return (
+      corrected >= SPLIT_MIN_HEIGHT_FRACTION &&
+      corrected <= SPLIT_MAX_HEIGHT_FRACTION
+    );
   });
   if (correctionIndex !== -1) {
     const size = normalized[correctionIndex];
@@ -443,14 +448,24 @@ export function resizeSplit(
     ) {
       return null;
     }
-    const sizes = normalizeSizes(split.sizes, split.children.length);
+    const sizes = normalizeSizes(
+      split.sizes,
+      split.children.length,
+      split.dir === "row",
+    );
     const first = sizes[childIndex];
     const second = sizes[childIndex + 1];
     if (first === undefined || second === undefined) {
       return null;
     }
     const pairTotal = first + second;
-    const pairFraction = clampSplitPairFraction(fraction);
+    const pairFraction =
+      split.dir === "row"
+        ? Math.min(1 - Number.EPSILON, Math.max(Number.EPSILON, fraction))
+        : Math.min(
+            SPLIT_MAX_HEIGHT_FRACTION,
+            Math.max(SPLIT_MIN_HEIGHT_FRACTION, fraction),
+          );
     const nextSizes = [...sizes];
     nextSizes[childIndex] = pairTotal * pairFraction;
     nextSizes[childIndex + 1] = pairTotal * (1 - pairFraction);

@@ -1,4 +1,9 @@
-import { clampSplitPairFraction } from "@/lib/split-layout";
+import {
+  PANE_MIN_WIDTH_PX,
+  splitWidthLimits,
+  SPLIT_MIN_HEIGHT_FRACTION,
+  SPLIT_MAX_HEIGHT_FRACTION,
+} from "@/lib/split-layout/sizing";
 
 export type SplitResizeAxis = "x" | "y";
 
@@ -165,24 +170,42 @@ export function createSplitResizeSnapSession(
     clear,
     resolve: ({ end, pointer, start }) => {
       const span = end - start;
-      const unsnappedFraction = clampSplitPairFraction(
-        span > 0 ? (pointer - start) / span : 0.5,
+      const contentSpan = span - extent;
+      const minimumWidth = (element: Element | null) => {
+        if (!(element instanceof HTMLElement)) return PANE_MIN_WIDTH_PX;
+        const minimum = Number(element.dataset.splitMinWidth);
+        return Number.isFinite(minimum) && minimum > 0
+          ? minimum
+          : PANE_MIN_WIDTH_PX;
+      };
+      const limits =
+        axis === "x"
+          ? splitWidthLimits(
+              contentSpan,
+              minimumWidth(divider.previousElementSibling),
+              minimumWidth(divider.nextElementSibling),
+            )
+          : { min: SPLIT_MIN_HEIGHT_FRACTION, max: SPLIT_MAX_HEIGHT_FRACTION };
+      const clamp = (fraction: number) =>
+        Math.min(limits.max, Math.max(limits.min, fraction));
+      const unsnappedFraction = clamp(
+        contentSpan > 0 ? (pointer - start - extent / 2) / contentSpan : 0.5,
       );
       const previousPointer = lastPointer;
       lastPointer = pointer;
-      const contentSpan = span - extent;
       if (gridCoordinate === null || contentSpan <= 0) {
         releasePending = false;
         snapped = false;
         hideGuide();
         return {
-          coordinate: start + span * unsnappedFraction,
+          coordinate:
+            start + Math.max(0, contentSpan) * unsnappedFraction + extent / 2,
           fraction: unsnappedFraction,
           snapped: false,
         };
       }
 
-      const fraction = clampSplitPairFraction(
+      const fraction = clamp(
         (gridCoordinate - start - extent / 2) / contentSpan,
       );
       const coordinate = start + contentSpan * fraction + extent / 2;
@@ -230,7 +253,8 @@ export function createSplitResizeSnapSession(
         snapped = false;
         hideGuide();
         return {
-          coordinate: start + span * unsnappedFraction,
+          coordinate:
+            start + Math.max(0, contentSpan) * unsnappedFraction + extent / 2,
           fraction: unsnappedFraction,
           snapped: false,
         };

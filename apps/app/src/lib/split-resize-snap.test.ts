@@ -61,12 +61,12 @@ describe("split resize snapping", () => {
     const result = session.resolve({
       end: 900,
       pointer: 366.5 + SNAP_CAPTURE_PX,
-      start: 250,
+      start: 100,
     });
 
     expect(result).toEqual({
       coordinate: 366.5,
-      fraction: 116 / 649,
+      fraction: 266 / 799,
       snapped: true,
     });
     const guide = document.querySelector<HTMLElement>(
@@ -149,7 +149,7 @@ describe("split resize snapping", () => {
 
     expect(result.snapped).toBe(false);
     expect(result.fraction).toBeCloseTo(
-      (500 + SNAP_RELEASE_PX + 2 - 100) / 800,
+      (500 + SNAP_RELEASE_PX + 2 - 100 - 0.5) / 799,
       6,
     );
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
