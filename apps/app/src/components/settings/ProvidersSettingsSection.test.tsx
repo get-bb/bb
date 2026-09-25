@@ -45,6 +45,28 @@ function provider(id: string, displayName: string): ProviderInfo {
 afterEach(cleanup);
 
 describe("ProvidersSettingsSection", () => {
+  it("shows the server-wide fast tier setting and saves changes", () => {
+    mocks.providers = [];
+    const onChange = vi.fn();
+    render(
+      <ProvidersSettingsSection
+        disabled={false}
+        generalSettings={{ ...defaultAppSettings, allowFastServiceTier: false }}
+        onGeneralSettingsChange={onChange}
+      />,
+    );
+
+    const control = screen.getByRole("switch", {
+      name: "Allow fast service tier",
+    });
+    expect(control.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(control);
+    expect(onChange).toHaveBeenCalledWith({
+      ...defaultAppSettings,
+      allowFastServiceTier: true,
+    });
+  });
+
   it("shows reorder handles and writes the default as a user setting", () => {
     mocks.providers = [
       provider("alpha", "Alpha"),

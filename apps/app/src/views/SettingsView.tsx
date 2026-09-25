@@ -167,13 +167,11 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
-  allowFastServiceTier: boolean;
   desktopBrowserAvailable: boolean;
   generalSettingsDisabled: boolean;
   managedBranchPrefix: string;
   navigateToThreadAfterCreate: boolean;
   onManagedBranchPrefixChange: (prefix: string) => Promise<void> | void;
-  onAllowFastServiceTierChange: (enabled: boolean) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
@@ -850,13 +848,11 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
-  allowFastServiceTier,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
   navigateToThreadAfterCreate,
   onManagedBranchPrefixChange,
-  onAllowFastServiceTierChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
@@ -874,17 +870,6 @@ export function GeneralSettingsSection({
     <>
       <SettingsSection title="Threads & editing">
         <div className="space-y-5">
-          <SettingsWithControl
-            label="Allow fast service tier"
-            description="When off, all new turns use the default service tier, including queued messages and automations."
-          >
-            <Switch
-              checked={allowFastServiceTier}
-              disabled={generalSettingsDisabled}
-              onCheckedChange={onAllowFastServiceTierChange}
-              aria-label="Allow fast service tier"
-            />
-          </SettingsWithControl>
           <SettingsWithControl
             label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
           >
@@ -1287,19 +1272,12 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
-          allowFastServiceTier={generalSettings.allowFastServiceTier}
           desktopBrowserAvailable={desktopBrowserAvailable}
           generalSettingsDisabled={
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
           }
           managedBranchPrefix={generalSettings.managedBranchPrefix}
-          onAllowFastServiceTierChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
-              allowFastServiceTier: enabled,
-            })
-          }
           onManagedBranchPrefixChange={async (prefix) => {
             await updateGeneralSettingsMutation.mutateAsync({
               ...generalSettings,

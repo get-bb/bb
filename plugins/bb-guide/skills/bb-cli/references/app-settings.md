@@ -129,7 +129,8 @@ so they carry over between navigation plugins.
 ## Fast service tier
 
 - `allowFastServiceTier` defaults to true. Set it with
-  `bb settings general allowFastServiceTier <true|false|on|off>`.
+  `bb settings general allowFastServiceTier <true|false|on|off>` or use the
+  switch in Settings → Providers.
 - When disabled, new turns use the default tier even if a request, project
   default, automation, or queued message selected fast. The app hides Fast mode.
   Turn it on to choose fast again; project defaults saved while it was off

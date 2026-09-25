@@ -319,7 +319,7 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
-The "Allow fast service tier" switch in Settings → General defaults to on.
+The "Allow fast service tier" switch in Settings → Providers defaults to on.
 Turn it off with `bb settings general allowFastServiceTier false` or
 `bb.sdk.system.updateGeneralSettings`. While off, new turns use the default
 service tier, including explicit fast requests, automations, and previously

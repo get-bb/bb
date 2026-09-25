@@ -12,9 +12,7 @@ import { GeneralSettingsSection, PrivacySettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
-  allowFastServiceTier?: boolean;
   desktopBrowserAvailable?: boolean;
-  onAllowFastServiceTierChange?: (enabled: boolean) => void;
   telemetryEnabled?: boolean;
   onTelemetryEnabledChange?: (enabled: boolean) => void;
   managedBranchPrefix?: string;
@@ -23,16 +21,12 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
-        allowFastServiceTier={overrides?.allowFastServiceTier ?? true}
         desktopBrowserAvailable={overrides?.desktopBrowserAvailable ?? false}
         generalSettingsDisabled={false}
         managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
         navigateToThreadAfterCreate={false}
         onManagedBranchPrefixChange={
           overrides?.onManagedBranchPrefixChange ?? vi.fn()
-        }
-        onAllowFastServiceTierChange={
-          overrides?.onAllowFastServiceTierChange ?? vi.fn()
         }
         onNavigateToThreadAfterCreateChange={vi.fn()}
         onOpenLinksInAppBrowserChange={vi.fn()}
@@ -58,22 +52,6 @@ function renderSection(overrides?: {
     </>,
   );
 }
-
-describe("fast service tier setting", () => {
-  it("shows the saved value and sends switch changes", () => {
-    const onChange = vi.fn();
-    renderSection({
-      allowFastServiceTier: false,
-      onAllowFastServiceTierChange: onChange,
-    });
-    const control = screen.getByRole("switch", {
-      name: "Allow fast service tier",
-    });
-    expect(control.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(control);
-    expect(onChange).toHaveBeenCalledWith(true);
-  });
-});
 
 function branchPrefixInput() {
   const input = screen.getByLabelText("New branch prefix");

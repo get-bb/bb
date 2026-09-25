@@ -15,6 +15,7 @@ import {
   SettingsRow,
   SettingsRowList,
   SettingsSection,
+  SettingsWithControl,
 } from "@/components/ui/settings-section";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { getProviderIconInfo } from "@/lib/provider-icon";
@@ -264,6 +265,24 @@ export function ProvidersSettingsSection({
             ))}
           </SortableSettingsRowList>
         )}
+      </SettingsSection>
+      <SettingsSection title="Service tiers">
+        <SettingsWithControl
+          label="Allow fast service tier"
+          description="When off, all new turns use the default service tier, including queued messages and automations."
+        >
+          <Switch
+            checked={generalSettings.allowFastServiceTier}
+            disabled={disabled}
+            onCheckedChange={(enabled) =>
+              onGeneralSettingsChange({
+                ...generalSettings,
+                allowFastServiceTier: enabled,
+              })
+            }
+            aria-label="Allow fast service tier"
+          />
+        </SettingsWithControl>
       </SettingsSection>
       {providers.length === 0 ? null : (
         <SettingsSection
