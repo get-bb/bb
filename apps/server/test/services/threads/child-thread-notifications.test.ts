@@ -110,7 +110,7 @@ describe("child thread notifications", () => {
     );
   });
 
-  it("renders multiple child outcomes as status-only bullet lines", () => {
+  it("renders multiple child outcomes with a per-child excerpt", () => {
     const message = renderBatchMessage({
       items: [
         {
@@ -140,11 +140,12 @@ describe("child thread notifications", () => {
         "",
         "Child thread updates:",
         "",
-        "- @thread:thr_child_one completed.",
+        "- @thread:thr_child_one completed:",
+        "",
+        "Checkout flow is fixed.",
         "- @thread:thr_child_two failed.",
       ].join("\n"),
     );
-    expect(message).not.toContain("Checkout flow is fixed.");
     expect(message).not.toContain("Deploy script failed on preflight.");
   });
 
@@ -334,7 +335,9 @@ describe("child thread notifications", () => {
       [
         "Child thread updates:",
         "",
-        "- @thread:thr_child_one completed, with 2 workflows still running.",
+        "- @thread:thr_child_one completed, with 2 workflows still running:",
+        "",
+        "Kicked off two workflows.",
         "- @thread:thr_child_two failed.",
         "",
         "Threads with a workflow still running have not finished; they will report again when their workflow does.",
