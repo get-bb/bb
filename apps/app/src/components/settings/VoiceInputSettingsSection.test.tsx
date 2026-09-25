@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { VoiceInputSettingsSectionContent } from "./VoiceInputSettingsSection";
 
 const devices = [
@@ -71,7 +71,7 @@ describe("VoiceInputSettingsSectionContent", () => {
 
     rerender(content([]));
     expect(
-      screen.getByText("Click Load microphones to check microphone access."),
+      screen.getByRole("button", { name: "Check microphone access" }),
     ).toBeDefined();
 
     rerender(content(devices));
@@ -81,7 +81,6 @@ describe("VoiceInputSettingsSectionContent", () => {
   });
 
   it.each([
-    [null, "Click Load microphones to check microphone access."],
     ["Microphone permission denied", "Microphone permission denied"],
     ["No microphones found", "No microphones found"],
   ])(
@@ -103,4 +102,25 @@ describe("VoiceInputSettingsSectionContent", () => {
       expect(screen.getByText(message)).toBeDefined();
     },
   );
+
+  it("checks microphone access from the inline action", () => {
+    const onRefresh = vi.fn();
+    render(
+      <TooltipProvider>
+        <VoiceInputSettingsSectionContent
+          devices={[]}
+          errorMessage={null}
+          isLoading={false}
+          isSupported={true}
+          onDeviceChange={() => undefined}
+          onRefresh={onRefresh}
+          preferredDeviceId={null}
+        />
+      </TooltipProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check microphone access" }),
+    );
+    expect(onRefresh).toHaveBeenCalledExactlyOnceWith(true);
+  });
 });

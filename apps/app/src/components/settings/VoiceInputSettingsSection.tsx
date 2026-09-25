@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
@@ -67,13 +68,15 @@ function microphoneSettingDescription({
   isLoading,
   isSupported,
   preferredDeviceId,
+  onRequestAccess,
 }: {
   devices: readonly AudioInputDeviceOption[];
+  onRequestAccess: () => void;
   errorMessage: string | null;
   isLoading: boolean;
   isSupported: boolean;
   preferredDeviceId: PreferredAudioInputDeviceId;
-}): string {
+}): ReactNode {
   if (!isSupported) {
     return "This browser does not expose microphone devices.";
   }
@@ -84,7 +87,18 @@ function microphoneSettingDescription({
     return errorMessage;
   }
   if (devices.length === 0) {
-    return "Click Load microphones to check microphone access.";
+    return (
+      <>
+        <button
+          type="button"
+          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          onClick={onRequestAccess}
+        >
+          Check microphone access
+        </button>{" "}
+        to see available devices.
+      </>
+    );
   }
   if (
     preferredDeviceId !== null &&
@@ -140,6 +154,7 @@ export function VoiceInputSettingsSectionContent({
       <SettingsWithControl
         label={MICROPHONE_SETTING_LABEL}
         description={microphoneSettingDescription({
+          onRequestAccess: () => onRefresh(true),
           devices,
           errorMessage,
           isLoading,
