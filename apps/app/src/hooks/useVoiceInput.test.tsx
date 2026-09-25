@@ -14,7 +14,8 @@ import { useVoiceInput } from "./useVoiceInput";
 vi.mock("@/components/ui/app-toast", () => ({ appToast: { error: vi.fn() } }));
 vi.mock("@/lib/audio-input-device-preference", () => ({
   useAudioInputDevicePreferenceValue: () => null,
-  buildAudioInputConstraints: () => ({ audio: true }),
+  requestAudioInputStream: (mediaDevices: MediaDevices) =>
+    mediaDevices.getUserMedia({ audio: true }),
 }));
 
 class Recorder {

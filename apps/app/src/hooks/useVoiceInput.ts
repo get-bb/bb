@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
 import {
-  buildAudioInputConstraints,
+  requestAudioInputStream,
   useAudioInputDevicePreferenceValue,
 } from "@/lib/audio-input-device-preference";
 import {
@@ -261,8 +261,9 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(
-        buildAudioInputConstraints(preferredAudioInputDeviceId),
+      const stream = await requestAudioInputStream(
+        navigator.mediaDevices,
+        preferredAudioInputDeviceId,
       );
       streamRef.current = stream;
       setStream(stream);
