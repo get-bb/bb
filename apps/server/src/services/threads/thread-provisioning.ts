@@ -19,6 +19,7 @@ import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   appendClientTurnEvent,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
+  appendThreadProvisioningEventInTransaction,
   buildCwdBranchEntries,
   createClientTurnRequestId,
 } from "./thread-events.js";
@@ -47,10 +48,8 @@ import {
   saveThreadProvisionContext,
   readThreadProvisionContext,
 } from "./thread-startup-store.js";
-import {
-  applyLoggedThreadLifecycleEvent,
-  applyLoggedThreadLifecycleEventInTransaction,
-} from "./lifecycle-outcome.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
@@ -84,7 +83,6 @@ interface RequestThreadTargetReprovisionArgs {
 
 interface RequestThreadEnvironmentRestoreArgs {
   environment: EnvironmentRow;
-  execution: ResolvedThreadExecutionOptions;
   provider: {
     environmentProviderId: string;
     selection: EnvironmentProviderSelection;
@@ -133,6 +131,60 @@ function getCurrentProvisioningFailureThread(
   }
 
   return currentThread;
+}
+
+interface SettleSeededThreadProvisioningArgs {
+  context: ThreadProvisionContext;
+  environmentId: string;
+  threadId: string;
+}
+
+function settleSeededThreadProvisioning(
+  deps: ThreadProvisioningDeps,
+  args: SettleSeededThreadProvisioningArgs,
+): void {
+  const settled = deps.db.transaction(
+    (tx) => {
+      const current = getThreadProvisionContext(tx, args.threadId);
+      const outcome = applyLoggedThreadLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
+        { threadId: args.threadId, event: { type: "run.succeeded" } },
+      );
+      const completedProvisioning =
+        outcome.applied &&
+        current !== null &&
+        current.state.provisioningId === args.context.state.provisioningId &&
+        current.state.provisionEventSequence !== null;
+      if (completedProvisioning) {
+        appendThreadProvisioningEventInTransaction(tx, {
+          threadId: args.threadId,
+          environmentId: args.environmentId,
+          provisioningId: current.state.provisioningId,
+          status: "completed",
+          entries: [],
+        });
+      }
+      return { completedProvisioning, outcome };
+    },
+    { behavior: "immediate" },
+  );
+  if (!settled.outcome.applied) {
+    deps.logger.warn(
+      { threadId: args.threadId },
+      "Seed-without-run thread was no longer starting; idle settle skipped",
+    );
+    return;
+  }
+  deps.hub.notifyThread(
+    args.threadId,
+    ["status-changed"],
+    buildThreadStatusChangeMetadata(deps, settled.outcome.thread),
+  );
+  if (settled.completedProvisioning) {
+    deps.hub.notifyThread(args.threadId, ["events-appended"], {
+      eventTypes: ["system/thread-provisioning"],
+    });
+  }
 }
 
 async function startThreadIfEnvironmentReady(
@@ -193,17 +245,17 @@ async function startThreadIfEnvironmentReady(
     args.context.request.seedWithoutRun &&
     args.context.request.fork === null
   ) {
-    const outcome = applyLoggedThreadLifecycleEvent(deps, {
+    settleSeededThreadProvisioning(deps, {
+      context: args.context,
+      environmentId: args.environment.id,
       threadId: args.thread.id,
-      event: { type: "run.succeeded" },
     });
-    if (!outcome.applied) {
-      deps.logger.warn(
-        { threadId: args.thread.id },
-        "Seed-without-run thread was no longer starting; idle settle skipped",
-      );
-    }
     return;
+  }
+
+  const execution = args.context.request.execution;
+  if (execution === null) {
+    throw new Error("Thread provisioning that starts a run has no execution");
   }
 
   await requestThreadStart(deps, {
@@ -220,7 +272,7 @@ async function startThreadIfEnvironmentReady(
       ? { inputGroups: args.context.request.inputGroups }
       : {}),
     requestId: args.context.request.clientRequestId,
-    execution: args.context.request.execution,
+    execution,
     permissionEscalation: resolvePermissionEscalation({
       initiator: "user",
     }),
@@ -317,7 +369,7 @@ export function requestThreadEnvironmentRestore(
           inputs: args.provider.selection.inputs,
           selectionResolved: true,
         },
-        execution: args.execution,
+        execution: null,
         fork: null,
         input: [],
         seedWithoutRun: true,

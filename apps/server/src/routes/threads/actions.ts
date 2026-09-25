@@ -588,21 +588,15 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
-  post(routes.restoreEnvironment, async (context) => {
+  post(routes.restoreEnvironment, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadIsWritable(thread);
     const resolution = resolveThreadEnvironmentRestore(deps, { thread });
     if (!resolution.restorable) {
       throwThreadEnvironmentRestoreRefusal(resolution.refusal, thread);
     }
-    const execution = await buildExecutionOptions(
-      deps,
-      {},
-      { threadId: thread.id },
-    );
     const started = requestThreadEnvironmentRestore(deps, {
       environment: resolution.target.environment,
-      execution,
       provider: {
         environmentProviderId: resolution.target.environmentProviderId,
         selection: resolution.target.selection,

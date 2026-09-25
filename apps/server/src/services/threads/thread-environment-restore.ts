@@ -28,8 +28,8 @@ export interface ThreadEnvironmentRestoreDeps {
  *
  * `not_destroyed` is the "nothing to do" refusal — the thread still has a
  * workspace, ready or being prepared — while `unrecoverable` is the terminal
- * one: the provider that built the workspace, or the machine it stood on, is
- * no longer here to build it again.
+ * one: the branch the workspace held is unknown, or the provider that built it
+ * or the machine it stood on is no longer here to build it again.
  */
 export type ThreadEnvironmentRestoreRefusal =
   | "never_attached"
@@ -63,8 +63,9 @@ function isRestoreReadyThreadStatus(status: Thread["status"]): boolean {
  * the work was committed to, the provider that created it and the machine it
  * ran on, so provisioning can create a second workspace on that same branch and
  * attach it to the thread. That is only true while all three parts are still
- * here — hence the provider registration and machine checks rather than a bare
- * `status === "destroyed"` test.
+ * here — hence the branch, provider registration and machine checks rather
+ * than a bare `status === "destroyed"` test. A detached HEAD records no branch,
+ * and rebuilding it would start a fresh branch without its commits.
  */
 export function resolveThreadEnvironmentRestore(
   deps: ThreadEnvironmentRestoreDeps,
@@ -88,7 +89,11 @@ export function resolveThreadEnvironmentRestore(
     return { restorable: false, refusal: "not_destroyed" };
   }
   const { environmentProviderId, environmentProviderSelection } = environment;
-  if (environmentProviderId === null || environmentProviderSelection === null) {
+  if (
+    environment.branchName === null ||
+    environmentProviderId === null ||
+    environmentProviderSelection === null
+  ) {
     return { restorable: false, refusal: "unrecoverable" };
   }
   const record = getEnvironmentProvider(environmentProviderId);

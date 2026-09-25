@@ -10,6 +10,8 @@ import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { sweepProviderEnvironment } from "../../src/services/environments/environment-engine.js";
+import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
+import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -68,7 +70,10 @@ function registerProvider(options: { pluginId?: string } = {}) {
   return { createCalls, record };
 }
 
-function seedDestroyableThread(harness: TestAppHarness) {
+function seedDestroyableThread(
+  harness: TestAppHarness,
+  options: { branchName?: string | null; ranTurn?: boolean } = {},
+) {
   const { host } = seedHostSession(harness.deps, { id: "host_restore" });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
@@ -81,18 +86,21 @@ function seedDestroyableThread(harness: TestAppHarness) {
     environmentProviderId: PROVIDER_ID,
     environmentProviderPluginId: "test",
     providerOwnsPath: true,
-    branchName: BRANCH_NAME,
+    branchName:
+      options.branchName === undefined ? BRANCH_NAME : options.branchName,
   });
   const thread = seedThread(harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
     status: "idle",
   });
-  seedThreadRuntimeState(harness.deps, {
-    environmentId: environment.id,
-    providerThreadId: "prov-1",
-    threadId: thread.id,
-  });
+  if (options.ranTurn !== false) {
+    seedThreadRuntimeState(harness.deps, {
+      environmentId: environment.id,
+      providerThreadId: "prov-1",
+      threadId: thread.id,
+    });
+  }
   return { environment, host, project, thread };
 }
 
@@ -174,6 +182,69 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
         statusMessage: "Restoring Worktree…",
       });
       expect(countTurnRequests()).toBe(turnRequestsBefore);
+
+      clearAllThreadProvisionSchedules();
+      harness.db
+        .update(environments)
+        .set({ status: "ready" })
+        .where(eq(environments.id, restored?.environmentId ?? ""))
+        .run();
+      await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      const provisioning = listEvents(harness.db, {
+        threadId: thread.id,
+      }).filter((event) => event.type === "system/thread-provisioning");
+      expect(JSON.parse(provisioning.at(-1)?.data ?? "null")).toMatchObject({
+        status: "completed",
+      });
+      expect(countTurnRequests()).toBe(turnRequestsBefore);
+    });
+  });
+
+  it("restores a thread whose turn settings no longer resolve", async () => {
+    await withTestHarness(async (harness) => {
+      const { createCalls } = registerProvider();
+      const { environment, thread } = seedDestroyableThread(harness, {
+        ranTurn: false,
+      });
+      await archiveAndDestroy(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+      });
+      await unarchive(harness, thread.id);
+
+      const response = await restore(harness, thread.id);
+      expect(response.status, await response.clone().text()).toBe(200);
+      await expect.poll(() => createCalls.length).toBe(1);
+    });
+  });
+
+  it("refuses a workspace whose branch is unknown, such as a detached HEAD", async () => {
+    await withTestHarness(async (harness) => {
+      const { createCalls } = registerProvider();
+      const { environment, thread } = seedDestroyableThread(harness, {
+        branchName: null,
+      });
+      await archiveAndDestroy(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+      });
+      await unarchive(harness, thread.id);
+
+      expect(
+        threadResponseSchema.parse(
+          await readJson(
+            await harness.app.request(`/api/v1/threads/${thread.id}`),
+          ),
+        ).canRestoreEnvironment,
+      ).toBe(false);
+      const response = await restore(harness, thread.id);
+      expect(response.status).toBe(409);
+      expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+        code: "thread_environment_unavailable",
+      });
+      expect(createCalls).toHaveLength(0);
     });
   });
 

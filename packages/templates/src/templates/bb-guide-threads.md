@@ -439,7 +439,8 @@ Lifecycle:
   attaches it, leaving the conversation where it was. It starts no turn — the
   thread settles back to idle with a live workspace. Unarchive the thread first;
   the command is refused while the thread is archived, while its workspace is
-  still there, and when the environment provider or its machine is gone.
+  still there, when the workspace held no branch (a detached HEAD), and when
+  the environment provider or its machine is gone.
   Uncommitted changes in the removed workspace are not recoverable.
 
   bb thread delete <id>                    Delete permanently
