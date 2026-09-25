@@ -1,4 +1,4 @@
-name: Deploy Connect
+name: Deploy Connect (upload only)
 
 on:
   push:
@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy tunnel gate to Cloudflare Workers
+    name: Upload tunnel gate version to Cloudflare Workers
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
 
@@ -62,11 +62,38 @@ jobs:
 
       # No build step: the gate is a single worker entry (src/worker.ts) and
       # wrangler's esbuild bundles its workspace deps (@bb/connect-db,
-      # @bb/tunnel-contract) straight from source. Plain `wrangler deploy`
-      # uses the top-level (production) config -> the bb-connect worker on
-      # *.getbb.app. BETTER_AUTH_SECRET is set once by hand (it must equal
-      # bb-web's) and is intentionally NOT synced from CI.
-      - name: Deploy tunnel gate
+      # @bb/tunnel-contract) straight from source. Plain wrangler uses the
+      # top-level (production) config -> the bb-connect worker on *.getbb.app.
+      # This only uploads a version; it serves no traffic until someone deploys
+      # it by hand with `wrangler versions deploy` (docs/connect-gate-rollout.md).
+      # BETTER_AUTH_SECRET is set once by hand (it must equal bb-web's) and
+      # is intentionally NOT synced from CI.
+      - name: Upload tunnel gate version
+        id: upload
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/connect exec wrangler deploy
+        run: |
+          subject=$(git log -1 --format=%s | cut -c1-80)
+          pnpm --filter @bb/connect exec wrangler versions upload \
+            --tag "${GITHUB_SHA::10}" \
+            --message "${GITHUB_SHA::10} ${subject}" | tee "$RUNNER_TEMP/upload.log"
+          version_id=$(sed -n 's/.*Worker Version ID: \([0-9a-f-]\{36\}\).*/\1/p' "$RUNNER_TEMP/upload.log" | tail -1)
+          if [ -z "$version_id" ]; then
+            echo "::error::wrangler versions upload did not print a Worker Version ID"
+            exit 1
+          fi
+          echo "version_id=$version_id" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize
+        env:
+          VERSION_ID: ${{ steps.upload.outputs.version_id }}
+        run: |
+          {
+            echo "### Gate version uploaded, not deployed"
+            echo
+            echo "Version \`$VERSION_ID\` serves no traffic yet. Deploy it by hand from \`apps/connect\` (docs/connect-gate-rollout.md):"
+            echo
+            echo "- \`pnpm exec wrangler deployments status\` shows the version serving traffic (\`<old>\`)."
+            echo "- \`pnpm exec wrangler versions deploy $VERSION_ID@100% --yes --message \"<what changed>\"\`. Every connected tunnel reconnects once."
+            echo "- Roll back with \`pnpm exec wrangler rollback <old> -m \"<reason>\"\`."
+          } >> "$GITHUB_STEP_SUMMARY"
