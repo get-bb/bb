@@ -885,6 +885,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: ["PluginHooks", "PluginHookSignatures"],
         experimental: true,
+        firstParty: ["Machine Load Balancer"],
       },
       {
         id: "dispatch-hook",

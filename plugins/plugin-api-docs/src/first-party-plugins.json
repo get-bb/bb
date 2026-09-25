@@ -60,6 +60,11 @@
     "icon": "Coffee"
   },
   {
+    "id": "machine-load-balancer",
+    "name": "Machine Load Balancer",
+    "icon": "Laptop"
+  },
+  {
     "id": "memory",
     "name": "Memory",
     "icon": "Brain"
