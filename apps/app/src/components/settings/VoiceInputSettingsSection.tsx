@@ -84,7 +84,7 @@ function microphoneSettingDescription({
     return errorMessage;
   }
   if (devices.length === 0) {
-    return "No microphones found.";
+    return "Click Load microphones to check microphone access.";
   }
   if (
     preferredDeviceId !== null &&

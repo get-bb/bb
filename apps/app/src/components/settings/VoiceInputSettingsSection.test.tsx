@@ -70,11 +70,37 @@ describe("VoiceInputSettingsSectionContent", () => {
     ).toBeDefined();
 
     rerender(content([]));
-    expect(screen.getByText("No microphones found.")).toBeDefined();
+    expect(
+      screen.getByText("Click Load microphones to check microphone access."),
+    ).toBeDefined();
 
     rerender(content(devices));
     expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
       "Studio Display Microphone",
     );
   });
+
+  it.each([
+    [null, "Click Load microphones to check microphone access."],
+    ["Microphone permission denied", "Microphone permission denied"],
+    ["No microphones found", "No microphones found"],
+  ])(
+    "distinguishes an empty list from an access error: %s",
+    (errorMessage, message) => {
+      render(
+        <TooltipProvider>
+          <VoiceInputSettingsSectionContent
+            devices={[]}
+            errorMessage={errorMessage}
+            isLoading={false}
+            isSupported={true}
+            onDeviceChange={() => undefined}
+            onRefresh={() => undefined}
+            preferredDeviceId={null}
+          />
+        </TooltipProvider>,
+      );
+      expect(screen.getByText(message)).toBeDefined();
+    },
+  );
 });
