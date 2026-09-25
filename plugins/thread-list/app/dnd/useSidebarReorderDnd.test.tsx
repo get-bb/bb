@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, waitFor } from "@testing-library/react";
+import { DndContext, useDraggable } from "@dnd-kit/core";
 import type {
   DragCancelEvent,
   DragEndEvent,
@@ -82,6 +83,35 @@ describe("useSidebarReorderDnd", () => {
 });
 
 describe("SidebarTouchSensor", () => {
+  function DraggableRow() {
+    const { attributes, listeners, setNodeRef } = useDraggable({ id: "thread-1" });
+    return <div ref={setNodeRef} {...attributes} {...listeners}>Thread</div>;
+  }
+
+  it("keeps a slow drifting row touch as a tap and starts a longer hold as a drag", async () => {
+    const onDragStart = vi.fn();
+    const onDragEnd = vi.fn();
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({ onDragStart, onDragEnd });
+      return <DndContext {...dndContextProps}><DraggableRow /></DndContext>;
+    }
+    const { getByText } = render(<Harness />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 230)));
+    fireEvent.touchMove(row, { touches: [{ clientX: 14, clientY: 10 }] });
+    fireEvent.touchEnd(row, { touches: [] });
+    expect(onDragStart).not.toHaveBeenCalled();
+
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1), {
+      timeout: 900,
+    });
+    fireEvent.touchEnd(row, { touches: [] });
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+  });
+
   function touchMoveListenerCalls(spy: {
     mock: { calls: readonly (readonly unknown[])[] };
   }) {

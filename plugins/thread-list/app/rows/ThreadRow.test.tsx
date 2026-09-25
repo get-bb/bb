@@ -1421,6 +1421,7 @@ describe("ThreadRow", () => {
             "aria-describedby": "thread-sortable",
           },
           disabled: false,
+          isDragging: false,
           listeners: { onPointerDown },
           setActivatorNodeRef: vi.fn(),
         },
@@ -1435,9 +1436,9 @@ describe("ThreadRow", () => {
     expect(onPointerDown).not.toHaveBeenCalled();
   });
 
-  it("starts touch reordering only from the thread drag handle", () => {
+  it("starts touch reordering from the thread row", () => {
     const onTouchStart = vi.fn();
-    const slot = renderThreadRow({
+    renderThreadRow({
       options: {
         ...DEFAULT_OPTIONS,
         dragBindings: {
@@ -1450,6 +1451,7 @@ describe("ThreadRow", () => {
             "aria-describedby": "thread-sortable",
           },
           disabled: false,
+          isDragging: false,
           listeners: { onTouchStart },
           setActivatorNodeRef: vi.fn(),
         },
@@ -1457,14 +1459,8 @@ describe("ThreadRow", () => {
     });
 
     fireEvent.touchStart(screen.getByRole("link", { name: "Open Thread" }));
-    expect(onTouchStart).not.toHaveBeenCalled();
-
-    const handle = screen.getByRole("button", { name: "Reorder Thread" });
-    fireEvent.touchStart(handle);
     expect(onTouchStart).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(handle);
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Reorder Thread" })).toBeNull();
   });
 
   it("suppresses the click that follows a drag and drops the suppression afterwards", () => {

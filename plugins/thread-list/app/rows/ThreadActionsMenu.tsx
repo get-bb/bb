@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -58,6 +58,7 @@ interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
 interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
   children: ReactNode;
   disabled?: boolean;
+  dragging?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -457,6 +458,7 @@ export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
 function ThreadActionsCompactLongPressMenu({
   children,
   disabled,
+  dragging,
   thread,
   onOpenInSplit,
   onOpenChange,
@@ -469,6 +471,7 @@ function ThreadActionsCompactLongPressMenu({
     <CompactLongPressMenu
       label="Thread actions"
       disabled={disabled}
+      dragging={dragging}
       onOpenChange={handleOpenChange}
       items={
         <ThreadActionsMenuItems
@@ -489,15 +492,29 @@ function ThreadActionsCompactLongPressMenu({
 function ThreadActionsDesktopContextMenu({
   children,
   disabled,
+  dragging,
   thread,
   onOpenInSplit,
   onOpenChange,
   onRename,
   onCloseAutoFocus,
 }: ThreadActionsContextMenuProps) {
+  const [open, setOpen] = useState(false);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen && dragging) return;
+      setOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [dragging, onOpenChange],
+  );
+  useEffect(() => {
+    if (dragging && open) handleOpenChange(false);
+  }, [dragging, handleOpenChange, open]);
+
   return (
-    <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger asChild disabled={disabled}>
+    <ContextMenu open={open} onOpenChange={handleOpenChange}>
+      <ContextMenuTrigger asChild disabled={disabled || dragging}>
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent
