@@ -2632,10 +2632,11 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **New-thread machine selection (Sep 2026).**
-`PluginSidebarThreadActions.openNewThread` accepts `experimental_hostId` to
+`PluginSidebarThreadActions.openNewThread` accepts `hostId` to
 preselect a known machine with an available environment provider for a new
-environment. `environmentId` takes priority when both are present. Audit the
-name and router-state transport before stabilizing the option.
+environment. `environmentId` takes priority when both are present. The public
+name follows the requested `hostId` spelling without an experimental prefix;
+audit the selection semantics and router-state transport as the API evolves.
 
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
 
@@ -2703,7 +2704,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    fan-out. Confirm that split holds once a replaced list ships section
    drag-and-drop, where the built-in list's optimistic cache transactions
    have no plugin equivalent. `openNewThread` gained `sectionId` and
-   `environmentId`, and `experimental_hostId`, which today ride on router
+   `environmentId`, and `hostId`, which today ride on router
    state; confirm router state stays the right transport.
 7. **Action surface.** Destructive and dialog-bearing actions route through
    `useThreadActions()`, so `archive` closes panes and repairs the route, and

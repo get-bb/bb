@@ -1436,7 +1436,7 @@ export interface PluginSidebarThreadActions {
    * `sectionId` files the new thread under that section, and
    * `environmentId` reuses that environment (the "New thread in
    * environment" affordance), both exactly as bb's own list does.
-   * `experimental_hostId` selects a machine for a new environment when it
+   * `hostId` selects a machine for a new environment when it
    * is known and supports an environment provider. `environmentId` wins when
    * both are supplied.
    */
@@ -1444,7 +1444,7 @@ export interface PluginSidebarThreadActions {
     projectId?: string;
     sectionId?: string;
     environmentId?: string;
-    experimental_hostId?: string;
+    hostId?: string;
     focusPrompt?: boolean;
   }): void;
   setPinned(threadId: string, pinned: boolean): Promise<void>;

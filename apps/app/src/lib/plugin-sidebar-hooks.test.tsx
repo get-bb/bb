@@ -407,7 +407,7 @@ describe("useSidebarThreadActions", () => {
     act(() => {
       result.current.openNewThread({
         projectId: "proj_app",
-        experimental_hostId: "host_homelab",
+        hostId: "host_homelab",
         focusPrompt: true,
       });
     });
