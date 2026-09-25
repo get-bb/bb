@@ -691,7 +691,9 @@ describe("setPluginSdkPin", () => {
       sdkVersion: SDK_VERSION,
       dryRun: true,
     });
-    expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);
+    expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(
+      original,
+    );
 
     const result = await setPluginSdkPin({
       rootDir,
