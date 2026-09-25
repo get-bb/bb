@@ -1,4 +1,3 @@
-import { useSecondaryPanelMinimum } from "./SecondaryPanelSizingProvider";
 import { usePluginDetailPanelProps } from "@/components/plugin/plugin-detail-navigation";
 import {
   type CSSProperties,
@@ -37,7 +36,10 @@ import {
   PANEL_TAB_CONTROL_CLASS,
   SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
 } from "./panelChromeClasses";
-import { CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT } from "./secondaryPanelSizing";
+import {
+  CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
+  useSecondaryPanelMinimum,
+} from "./secondaryPanelSizing";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
   resolveConversationCollapseControl,

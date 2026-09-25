@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { createRef } from "react";
+import { createRef, type ReactNode } from "react";
 import {
   Panel,
   PanelGroup,
@@ -9,9 +9,10 @@ import {
 } from "react-resizable-panels";
 import { afterEach, expect, it, vi } from "vitest";
 import {
-  SecondaryPanelSizingProvider,
+  SecondaryPanelMinimumContext,
+  useSecondaryPanelSizing,
   useSecondaryPanelMinimum,
-} from "./SecondaryPanelSizingProvider";
+} from "./secondaryPanelSizing";
 
 vi.mock("react-resizable-panels", async () => {
   const { createRequire } = await import("node:module");
@@ -24,6 +25,17 @@ vi.mock("react-resizable-panels", async () => {
     ),
   );
 });
+
+function SecondaryPanelSizingProvider({ children }: { children: ReactNode }) {
+  const { ref, minimum } = useSecondaryPanelSizing();
+  return (
+    <div ref={ref}>
+      <SecondaryPanelMinimumContext.Provider value={minimum}>
+        {children}
+      </SecondaryPanelMinimumContext.Provider>
+    </div>
+  );
+}
 
 afterEach(() => {
   cleanup();

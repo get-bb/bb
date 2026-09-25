@@ -39,9 +39,9 @@ import {
 } from "@/components/ui/sidebar-mobile-drawer-visibility";
 import { PluginDetailPanelContext } from "@/components/plugin/plugin-detail-navigation";
 import {
-  SecondaryPanelSizingProvider,
-  useSecondaryPanelMinimum,
-} from "./SecondaryPanelSizingProvider";
+  SecondaryPanelMinimumContext,
+  useSecondaryPanelSizing,
+} from "./secondaryPanelSizing";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
 
@@ -77,19 +77,7 @@ interface SecondaryPanelLayoutProps {
   compactPresentation: "shelf" | "full";
 }
 
-export function SecondaryPanelLayout(props: SecondaryPanelLayoutProps) {
-  const paneContext = useOptionalPaneContext();
-  if (paneContext?.secondaryPanelHost != null) {
-    return <SecondaryPanelLayoutContent {...props} />;
-  }
-  return (
-    <SecondaryPanelSizingProvider>
-      <SecondaryPanelLayoutContent {...props} />
-    </SecondaryPanelSizingProvider>
-  );
-}
-
-function SecondaryPanelLayoutContent({
+export function SecondaryPanelLayout({
   open,
   onToggle,
   onClose,
@@ -107,7 +95,7 @@ function SecondaryPanelLayoutContent({
   composerHost,
   compactPresentation: workspaceCompactPresentation,
 }: SecondaryPanelLayoutProps) {
-  const minimumSize = useSecondaryPanelMinimum();
+  const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing();
   const paneContext = useOptionalPaneContext();
   const pluginDetails = useContext(PluginDetailPanelContext);
   const isPluginDetailOpen =
@@ -360,7 +348,7 @@ function SecondaryPanelLayoutContent({
 
   return (
     <>
-      <div className="flex min-h-0 w-full min-w-0 flex-1">
+      <div ref={sizingRef} className="flex min-h-0 w-full min-w-0 flex-1">
         <PanelGroup
           key={panelGroupKey ?? resetKey}
           ref={horizontalPanelGroupRef}
@@ -393,7 +381,9 @@ function SecondaryPanelLayoutContent({
           >
             {mainContent}
           </Panel>
-          {inlinePanel}
+          <SecondaryPanelMinimumContext.Provider value={minimumSize}>
+            {inlinePanel}
+          </SecondaryPanelMinimumContext.Provider>
         </PanelGroup>
       </div>
       {renderAsDrawer ? (

@@ -26,9 +26,9 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
-  SecondaryPanelSizingProvider,
-  useSecondaryPanelMinimum,
-} from "@/components/secondary-panel/SecondaryPanelSizingProvider";
+  SecondaryPanelMinimumContext,
+  useSecondaryPanelSizing,
+} from "@/components/secondary-panel/secondaryPanelSizing";
 import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
@@ -58,27 +58,17 @@ interface SplitWorkspaceSecondaryPanelHostProps {
   registry: PaneSecondaryPanelRegistry;
 }
 
-export function SplitWorkspaceSecondaryPanelHost(
-  props: SplitWorkspaceSecondaryPanelHostProps,
-) {
-  return (
-    <SecondaryPanelSizingProvider
-      mainMinimumWidth={props.mainMinimumWidth}
-      dividerWidth={1}
-    >
-      <SplitWorkspaceSecondaryPanelHostContent {...props} />
-    </SecondaryPanelSizingProvider>
-  );
-}
-
-function SplitWorkspaceSecondaryPanelHostContent({
+export function SplitWorkspaceSecondaryPanelHost({
   mainMinimumWidth,
   children,
   focusedPaneId,
   isPaneMaximized,
   registry,
 }: SplitWorkspaceSecondaryPanelHostProps) {
-  const minimumSize = useSecondaryPanelMinimum();
+  const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing(
+    mainMinimumWidth,
+    1,
+  );
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
   const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
@@ -201,6 +191,7 @@ function SplitWorkspaceSecondaryPanelHostContent({
   return (
     <SecondaryPanelHostLayoutContext.Provider value={hostLayout}>
       <div
+        ref={sizingRef}
         className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         style={getPanelCollapseTransitionStyle(model?.transitionsReady ?? true)}
       >
@@ -263,64 +254,66 @@ function SplitWorkspaceSecondaryPanelHostContent({
               {children}
             </div>
           </Panel>
-          {model === null ? (
-            <>
-              <PanelResizeHandle
-                id="split-workspace-empty-secondary-panel-handle"
-                disabled={!isOpen}
-                data-panel-resize-snap-handle=""
-                hitAreaMargins={{ coarse: 0, fine: 0 }}
-                tabIndex={-1}
-                className={cn(
-                  "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
-                  PANEL_RESIZE_HANDLE_LAYER_CLASS,
-                  PANEL_COLLAPSE_TRANSITION_CLASS,
-                  isOpen
-                    ? "w-px cursor-col-resize opacity-100"
-                    : "pointer-events-none w-0 opacity-0",
-                )}
-                aria-label="Resize right panel"
-              >
-                <span
-                  aria-hidden
-                  ref={emptyPanelHitTargetRef}
-                  data-panel-resize-hit-target=""
-                  className={PANEL_RESIZE_HIT_TARGET_CLASS}
-                />
-              </PanelResizeHandle>
-              <Panel
-                id="split-workspace-empty-secondary-panel"
-                collapsible
-                collapsedSize={0}
-                defaultSize={isOpen ? panelWidthPercent : 0}
-                minSize={(1 - minimumSize.max) * 100}
-                maxSize={100}
-                onCollapse={handleEmptyPanelCollapse}
-                onResize={handleEmptyPanelResize}
-                order={2}
-                className={cn(
-                  "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
-                  PANEL_COLLAPSE_TRANSITION_CLASS,
-                )}
-              >
-                <div
-                  data-testid="split-workspace-empty-panel-state"
-                  className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-4 pt-12"
+          <SecondaryPanelMinimumContext.Provider value={minimumSize}>
+            {model === null ? (
+              <>
+                <PanelResizeHandle
+                  id="split-workspace-empty-secondary-panel-handle"
+                  disabled={!isOpen}
+                  data-panel-resize-snap-handle=""
+                  hitAreaMargins={{ coarse: 0, fine: 0 }}
+                  tabIndex={-1}
+                  className={cn(
+                    "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
+                    PANEL_RESIZE_HANDLE_LAYER_CLASS,
+                    PANEL_COLLAPSE_TRANSITION_CLASS,
+                    isOpen
+                      ? "w-px cursor-col-resize opacity-100"
+                      : "pointer-events-none w-0 opacity-0",
+                  )}
+                  aria-label="Resize right panel"
                 >
-                  <EmptyStatePanel className="flex-1 rounded-lg">
-                    This pane has no right panel.
-                  </EmptyStatePanel>
-                </div>
-              </Panel>
-            </>
-          ) : (
-            <PluginComposerHostProvider
-              key={focusedPaneId}
-              value={model.composerHost}
-            >
-              {model.panel}
-            </PluginComposerHostProvider>
-          )}
+                  <span
+                    aria-hidden
+                    ref={emptyPanelHitTargetRef}
+                    data-panel-resize-hit-target=""
+                    className={PANEL_RESIZE_HIT_TARGET_CLASS}
+                  />
+                </PanelResizeHandle>
+                <Panel
+                  id="split-workspace-empty-secondary-panel"
+                  collapsible
+                  collapsedSize={0}
+                  defaultSize={isOpen ? panelWidthPercent : 0}
+                  minSize={(1 - minimumSize.max) * 100}
+                  maxSize={100}
+                  onCollapse={handleEmptyPanelCollapse}
+                  onResize={handleEmptyPanelResize}
+                  order={2}
+                  className={cn(
+                    "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+                    PANEL_COLLAPSE_TRANSITION_CLASS,
+                  )}
+                >
+                  <div
+                    data-testid="split-workspace-empty-panel-state"
+                    className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-4 pt-12"
+                  >
+                    <EmptyStatePanel className="flex-1 rounded-lg">
+                      This pane has no right panel.
+                    </EmptyStatePanel>
+                  </div>
+                </Panel>
+              </>
+            ) : (
+              <PluginComposerHostProvider
+                key={focusedPaneId}
+                value={model.composerHost}
+              >
+                {model.panel}
+              </PluginComposerHostProvider>
+            )}
+          </SecondaryPanelMinimumContext.Provider>
         </PanelGroup>
       </div>
     </SecondaryPanelHostLayoutContext.Provider>
