@@ -14,10 +14,10 @@ describe("audio input device preference", () => {
     );
   });
 
-  it("builds default and exact-device getUserMedia constraints", () => {
+  it("builds default and preferred-device getUserMedia constraints", () => {
     expect(buildAudioInputConstraints(null)).toEqual({ audio: true });
     expect(buildAudioInputConstraints("studio-mic")).toEqual({
-      audio: { deviceId: { exact: "studio-mic" } },
+      audio: { deviceId: { ideal: "studio-mic" } },
     });
   });
 });

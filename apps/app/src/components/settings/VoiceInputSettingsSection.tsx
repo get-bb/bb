@@ -57,7 +57,7 @@ function selectedMicrophoneLabel({
   }
   return (
     devices.find((device) => device.deviceId === preferredDeviceId)?.label ??
-    "Unavailable microphone"
+    SYSTEM_DEFAULT_MICROPHONE_LABEL
   );
 }
 
@@ -83,14 +83,14 @@ function microphoneSettingDescription({
   if (errorMessage !== null) {
     return errorMessage;
   }
+  if (devices.length === 0) {
+    return "No microphones found.";
+  }
   if (
     preferredDeviceId !== null &&
     devices.every((device) => device.deviceId !== preferredDeviceId)
   ) {
-    return "Selected microphone is unavailable.";
-  }
-  if (devices.length === 0) {
-    return "No microphones found.";
+    return "Preferred microphone is disconnected. Using the system default until it reconnects.";
   }
   return "Used for prompt voice input.";
 }

@@ -49,7 +49,7 @@ export function buildAudioInputConstraints(
 
   return {
     audio: {
-      deviceId: { exact: preferredDeviceId },
+      deviceId: { ideal: preferredDeviceId },
     },
   };
 }

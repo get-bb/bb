@@ -38,24 +38,43 @@ describe("VoiceInputSettingsSectionContent", () => {
     expect(sectionHeader?.classList.contains("flex-col")).toBe(false);
   });
 
-  it("keeps a stale selected microphone visible as unavailable", () => {
-    render(
+  it("falls back when the preferred microphone disconnects and restores it on reconnect", () => {
+    const content = (availableDevices: typeof devices) => (
       <TooltipProvider>
         <VoiceInputSettingsSectionContent
-          devices={devices}
+          devices={availableDevices}
           errorMessage={null}
           isLoading={false}
           isSupported={true}
           onDeviceChange={() => undefined}
           onRefresh={() => undefined}
-          preferredDeviceId="missing-mic"
+          preferredDeviceId="studio-mic"
         />
-      </TooltipProvider>,
+      </TooltipProvider>
+    );
+    const { rerender } = render(content(devices));
+    expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
+      "Studio Display Microphone",
     );
 
-    expect(screen.getByText("Unavailable microphone")).toBeDefined();
+    rerender(
+      content(devices.filter((device) => device.deviceId !== "studio-mic")),
+    );
+    expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
+      "System default",
+    );
     expect(
-      screen.getByText("Selected microphone is unavailable."),
+      screen.getByText(
+        "Preferred microphone is disconnected. Using the system default until it reconnects.",
+      ),
     ).toBeDefined();
+
+    rerender(content([]));
+    expect(screen.getByText("No microphones found.")).toBeDefined();
+
+    rerender(content(devices));
+    expect(screen.getByRole("button", { name: "Microphone" }).textContent).toBe(
+      "Studio Display Microphone",
+    );
   });
 });
