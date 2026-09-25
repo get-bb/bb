@@ -354,10 +354,10 @@ export function registerMachineCommands(
     .action(
       action(async (opts: MachineEnumerationOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hosts = selectMachines(
-          await sdk.hosts.list({ includeCreating: true }),
-          opts.all ? "all" : "persistent",
-        );
+        const hosts = await sdk.hosts.list({
+          includeCreating: true,
+          ...(opts.all ? {} : { type: "persistent" }),
+        });
         if (outputJson(opts, hosts)) return;
         if (hosts.length === 0) {
           console.log("No machines found");

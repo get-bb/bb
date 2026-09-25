@@ -408,6 +408,30 @@ describe("public host management", () => {
     });
   });
 
+  it("filters the host list by type and rejects unknown types", async () => {
+    await withTestHarness(async (harness) => {
+      const persistent = seedHost(harness.deps, { id: "host_persistent" });
+      const ephemeral = seedHost(harness.deps, { id: "host_ephemeral" });
+      updateHost(harness.db, harness.hub, ephemeral.id, { type: "ephemeral" });
+
+      const listIds = async (query: string) => {
+        const response = await harness.app.request(`${API}/hosts${query}`);
+        expect(response.status).toBe(200);
+        return z
+          .array(z.object({ id: z.string() }))
+          .parse(await readJson(response))
+          .map((host) => host.id);
+      };
+
+      expect(await listIds("")).toEqual([persistent.id, ephemeral.id]);
+      expect(await listIds("?type=persistent")).toEqual([persistent.id]);
+      expect(await listIds("?type=ephemeral")).toEqual([ephemeral.id]);
+      expect(
+        (await harness.app.request(`${API}/hosts?type=sandbox`)).status,
+      ).toBe(400);
+    });
+  });
+
   it("stores a permission ceiling for a session-gated request", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_ceiling" });

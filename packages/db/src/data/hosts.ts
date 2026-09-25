@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import {
   resolveEnvironmentHostLifecycle,
   type HostChangeKind,
+  type HostType,
   type JsonValue,
   type PermissionMode,
 } from "@bb/domain";
@@ -18,12 +19,12 @@ export interface UpsertHostInput {
   connectMachineId?: string | null;
   id?: string;
   name: string;
-  type?: "persistent" | "ephemeral";
+  type?: HostType;
   destroyedAt?: number | null;
 }
 
 export interface UpdateHostInput {
-  type?: "persistent" | "ephemeral";
+  type?: HostType;
   machineOperationId?: string | null;
   launchKey?: string | null;
   inputs?: JsonValue | null;
@@ -202,7 +203,7 @@ export function listHosts(db: DbConnection) {
 
 export function listPublicHosts(
   db: DbConnection,
-  options?: { includeCreating?: boolean },
+  options?: { includeCreating?: boolean; type?: HostType },
 ) {
   return db
     .select()
@@ -211,6 +212,7 @@ export function listPublicHosts(
       and(
         isNull(hosts.destroyedAt),
         ...(options?.includeCreating ? [] : [ne(hosts.phase, "creating")]),
+        ...(options?.type ? [eq(hosts.type, options.type)] : []),
       ),
     )
     .all();

@@ -9,7 +9,7 @@ import {
   type HostDaemonSessionRow,
 } from "@bb/db";
 import type { EnvironmentRow, HostRow } from "@bb/db";
-import type { Host } from "@bb/domain";
+import type { Host, HostType } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
@@ -111,7 +111,7 @@ function isStandardProject(project: ProjectRow): project is StandardProject {
 
 export function listPublicHostsWithStatus(
   deps: HostLookupDeps,
-  options?: { includeCreating?: boolean },
+  options?: { includeCreating?: boolean; type?: HostType },
 ): Host[] {
   const rows = listPublicHosts(deps.db, options);
 

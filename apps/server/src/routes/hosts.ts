@@ -152,6 +152,7 @@ export function registerHostRoutes(
     context.json(
       listPublicHostsWithStatus(deps, {
         includeCreating: query.includeCreating === "true",
+        type: query.type,
       }),
     ),
   );
