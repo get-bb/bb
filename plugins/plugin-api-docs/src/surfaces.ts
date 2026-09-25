@@ -807,12 +807,16 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Call its server from its UI over RPC, with arguments and results checked against a schema",
           "Publish RPC methods with experimental_discoverable and registration/method experimental_description; other plugins discover implementations and copy their published JSON Schemas using bb plugin rpc inspect",
+          "Tell which plugin called an RPC method from the handler's experimental_caller, which is a client for the app, the CLI, and agents",
           "Serve exact-path HTTP and WebSocket routes other systems can call, webhooks included",
           "Publish messages to connected bb windows with bb.realtime.publish and receive them with useRealtime; signals are ephemeral, so observe useRealtimeConnectionState and reconcile server state after reconnecting",
         ],
         apiSymbols: [
           "PluginRpc",
           "PluginRpcMethodContract",
+          "ExperimentalPluginRpcHandlersWithContext",
+          "ExperimentalPluginRpcHandlerContext",
+          "ExperimentalPluginRpcCaller",
           "PluginsArea.experimental_discoverRpc",
           "PluginHttp",
           "PluginRealtime",

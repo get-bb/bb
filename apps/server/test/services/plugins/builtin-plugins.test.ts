@@ -301,6 +301,7 @@ describe("builtin plugin reconciliation", () => {
       ["ask-user-question", "MessageQuestion"],
       ["automations", "Repeat"],
       ["concurrency-limit", "Limitation"],
+      ["bb-account", "UserRound"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
       ["plugin-api-tester", "Beaker"],

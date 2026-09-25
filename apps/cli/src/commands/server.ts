@@ -545,7 +545,7 @@ export function registerServerCommands(
   server
     .command("allow-connect")
     .description(
-      "Let bb connect start from an imported server copy (does not call a server)",
+      "Let bb account and bb connect start from an imported server copy (does not call a server)",
     )
     .option(
       "--data-dir <dir>",
@@ -563,12 +563,12 @@ export function registerServerCommands(
           return;
         }
         console.error(
-          "Stop the original bb server first. Two servers holding the same bb connect credential take each other's tunnel.",
+          "Stop the original bb server first. Two servers holding the same bb account credential take each other's tunnel and spend the same hosted quota.",
         );
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(
-            `Let bb connect start from the imported bb server in ${dataDir}?`,
+            `Let bb account and bb connect start from the imported bb server in ${dataDir}?`,
           ))
         ) {
           return;
@@ -576,7 +576,7 @@ export function registerServerCommands(
         const connectHoldRemoved = await removeServerConnectHoldFile(dataDir);
         if (outputJson(opts, { dataDir, connectHoldRemoved })) return;
         console.log(
-          `Removed the bb connect hold from ${dataDir}. bb connect starts the next time this server starts; restart bb if it's already running.`,
+          `Removed the bb connect hold from ${dataDir}. bb account and bb connect start the next time this server starts; restart bb if it's already running.`,
         );
       }),
     );

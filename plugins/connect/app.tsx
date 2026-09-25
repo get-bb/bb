@@ -4,6 +4,7 @@ import {
   UrlLink as UrlLink,
   useRealtime,
   useRpc,
+  useSdk,
 } from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
@@ -12,7 +13,14 @@ import {
 } from "@bb/connect-client";
 import type { connectRpcContract } from "./src/rpc.js";
 import type { MachineCodeErrorCode } from "./src/machine-code.js";
-import type { ConnectPairErrorCode } from "./src/redeem.js";
+import {
+  ACCOUNT_PLUGIN_ID,
+  accountErrorCode,
+  accountStatusSchema,
+  loginPollOutputSchema,
+  loginViewSchema,
+  type LoginView,
+} from "./src/account-client.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -34,10 +42,29 @@ function errorText(error: unknown): string {
 const DANGER_QUIET_CLASS =
   "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
 
+type ConnectPairErrorCode =
+  | "invalid_code"
+  | "expired_code"
+  | "already_used"
+  | "network"
+  | "unauthorized"
+  | "profile_unavailable"
+  | "superseded"
+  | "account_unavailable";
+
 interface PairErrorCopy {
   lead: string;
   linkLabel: string;
   tail: string;
+}
+
+const LOGIN_POLL_MS = 2_000;
+const LOGIN_POLL_MAX_MS = 30_000;
+
+function loginPollDelay(failures: number): number {
+  return failures === 0
+    ? LOGIN_POLL_MS
+    : Math.min(LOGIN_POLL_MS * 2 ** failures, LOGIN_POLL_MAX_MS);
 }
 
 const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
@@ -57,21 +84,54 @@ const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
     tail: " — each code works once.",
   },
   network: {
-    lead: "Couldn't reach the Connect service.",
+    lead: "Couldn't reach getbb.app.",
     linkLabel: "Open the dashboard",
     tail: " — check your connection, then try again.",
   },
+  unauthorized: {
+    lead: "getbb.app rejected the new pairing.",
+    linkLabel: "Get a new code",
+    tail: " and try again.",
+  },
+  profile_unavailable: {
+    lead: "This bb saved the pairing, but getbb.app hasn't returned your account yet.",
+    linkLabel: "Open the dashboard",
+    tail: " — bb keeps retrying, and remote access starts once it does.",
+  },
+  superseded: {
+    lead: "Another sign-in or a sign-out replaced this one.",
+    linkLabel: "Open the dashboard",
+    tail: " — check which account this bb uses under bb account.",
+  },
+  account_unavailable: {
+    lead: "The bb account plugin is off.",
+    linkLabel: "Open the dashboard",
+    tail: " — turn bb account on under Plugins, then try again.",
+  },
 };
 
+function isUnavailableError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error.status === 503 || error.status === 404)
+  );
+}
+
 function toPairErrorCode(error: unknown): ConnectPairErrorCode {
-  const message = errorText(error);
+  if (isUnavailableError(error)) return "account_unavailable";
+  const code = accountErrorCode(error);
   if (
-    message === "invalid_code" ||
-    message === "expired_code" ||
-    message === "already_used" ||
-    message === "network"
+    code === "invalid_code" ||
+    code === "expired_code" ||
+    code === "already_used" ||
+    code === "network" ||
+    code === "unauthorized" ||
+    code === "profile_unavailable" ||
+    code === "superseded"
   ) {
-    return message;
+    return code;
   }
   return "invalid_code";
 }
@@ -81,6 +141,7 @@ function asStatus(payload: unknown): ConnectStatus | null {
   const record = payload as {
     state?: unknown;
     paired?: unknown;
+    enabled?: unknown;
     handle?: unknown;
     url?: unknown;
     dashboardUrl?: unknown;
@@ -133,6 +194,7 @@ function asStatus(payload: unknown): ConnectStatus | null {
   return {
     state: record.state,
     paired: record.paired,
+    enabled: typeof record.enabled === "boolean" ? record.enabled : true,
     handle: typeof record.handle === "string" ? record.handle : null,
     url: typeof record.url === "string" ? record.url : null,
     dashboardUrl:
@@ -206,17 +268,6 @@ function StatusDot({ tone }: { tone: "ok" | "warn" | "muted" }) {
         tone === "muted" && "bg-muted-foreground/50",
       )}
     />
-  );
-}
-
-function StepNumber({ value }: { value: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-recessed text-xs font-medium text-muted-foreground"
-    >
-      {value}
-    </span>
   );
 }
 
@@ -373,7 +424,7 @@ function PairForm({
   dashboardUrl: string;
   onPaired: () => void;
 }) {
-  const rpc = useRpc<typeof connectRpcContract>();
+  const sdk = useSdk();
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [errorCode, setErrorCode] = useState<ConnectPairErrorCode | null>(null);
@@ -387,20 +438,27 @@ function PairForm({
       submittedRef.current = canonical;
       setPending(true);
       setErrorCode(null);
-      rpc.call("pair", { code: canonical }).then(
-        () => {
-          setPending(false);
-          setCode("");
-          submittedRef.current = null;
-          onPaired();
-        },
-        (rpcError: unknown) => {
-          setPending(false);
-          setErrorCode(toPairErrorCode(rpcError));
-        },
-      );
+      sdk.plugins
+        .callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "redeemCode",
+          input: { code: canonical, baseUrl: null },
+          outputSchema: accountStatusSchema,
+        })
+        .then(
+          () => {
+            setPending(false);
+            setCode("");
+            submittedRef.current = null;
+            onPaired();
+          },
+          (rpcError: unknown) => {
+            setPending(false);
+            setErrorCode(toPairErrorCode(rpcError));
+          },
+        );
     },
-    [pending, rpc, onPaired],
+    [pending, sdk, onPaired],
   );
 
   const onChange = useCallback(
@@ -433,7 +491,7 @@ function PairForm({
           placeholder="XXXX–XXXX"
           autoComplete="off"
           spellCheck={false}
-          aria-label="Connect code"
+          aria-label="Pairing code"
           aria-invalid={errorCode !== null}
           className={cn(
             "font-mono tracking-widest",
@@ -444,7 +502,7 @@ function PairForm({
           {pending ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
           ) : null}
-          Connect
+          Pair
         </Button>
       </form>
       {copy !== null ? (
@@ -463,6 +521,20 @@ function PairForm({
       ) : null}
     </div>
   );
+}
+
+function signInStartErrorText(error: unknown): string {
+  if (isUnavailableError(error)) {
+    return "The bb account plugin is off. Turn it on under Plugins, then try again.";
+  }
+  switch (accountErrorCode(error)) {
+    case "rate_limited":
+      return "Too many sign-in attempts from this network. Wait a minute, then try again.";
+    case "unavailable":
+      return "getbb.app couldn't start sign-in right now. Try again in a minute.";
+    default:
+      return "Couldn't reach getbb.app to start sign-in. Check your connection, then try again.";
+  }
 }
 
 function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
@@ -622,7 +694,7 @@ function AddMobileDeviceSectionContent({
   return (
     <div className="space-y-2.5 border-t border-border-seam pt-4">
       <div className="flex items-center">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-subtle-foreground">
+        <h3 className="text-2xs font-semibold uppercase tracking-wide text-subtle-foreground">
           Mobile app
         </h3>
         <span className="flex-1" />
@@ -689,7 +761,7 @@ function AddMobileDeviceSectionContent({
       ) : errorCode !== null ? (
         <p className="text-xs text-destructive-text">
           {errorCode === "not_paired"
-            ? "This bb is no longer paired — re-pair, then try again."
+            ? "This bb is no longer signed in to a bb account — sign in, then try again."
             : "Couldn't reach the Connect service to create a code — check your connection, then try again."}
         </p>
       ) : null}
@@ -782,7 +854,7 @@ function SharedPortsSection({
       )}
     >
       <div className="flex items-center">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-subtle-foreground">
+        <h3 className="text-2xs font-semibold uppercase tracking-wide text-subtle-foreground">
           Shared ports
         </h3>
         <span className="flex-1" />
@@ -926,18 +998,16 @@ function SharedPortsSection({
   );
 }
 
-function DisconnectDialog({
+function TurnOffDialog({
   open,
   onOpenChange,
   host,
-  dashboardHost,
   pending,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   host: string;
-  dashboardHost: string;
   pending: boolean;
   onConfirm: () => void;
 }) {
@@ -947,12 +1017,12 @@ function DisconnectDialog({
         {open ? (
           <>
             <DialogHeader>
-              <DialogTitle>Disconnect remote access?</DialogTitle>
+              <DialogTitle>Turn off remote access?</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{host}</span> will
-              stop working on all devices. Re-pairing needs a new code from your{" "}
-              {dashboardHost} dashboard.
+              stop working on all devices until you turn remote access back on.
+              This bb stays signed in to your bb account.
             </p>
             <DialogFooter>
               <Button
@@ -972,13 +1042,178 @@ function DisconnectDialog({
                 {pending ? (
                   <Icon name="Spinner" className="size-4 animate-spin" />
                 ) : null}
-                {pending ? "Disconnecting…" : "Disconnect"}
+                {pending ? "Turning off…" : "Turn off"}
               </Button>
             </DialogFooter>
           </>
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function useAccountLogin(onSignedIn: () => void) {
+  const sdk = useSdk();
+  const [login, setLogin] = useState<LoginView | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const start = useCallback(() => {
+    setStarting(true);
+    setError(null);
+    sdk.plugins
+      .callRpc({
+        pluginId: ACCOUNT_PLUGIN_ID,
+        method: "login.start",
+        input: { baseUrl: null },
+        outputSchema: loginViewSchema,
+      })
+      .then(
+        (view) => {
+          setStarting(false);
+          setLogin(view);
+        },
+        (rpcError: unknown) => {
+          setStarting(false);
+          setError(signInStartErrorText(rpcError));
+        },
+      );
+  }, [sdk]);
+
+  const pendingId = login?.state === "pending" ? login.id : null;
+  useEffect(() => {
+    if (pendingId === null) return;
+    let cancelled = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = () => {
+      sdk.plugins
+        .callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "login.poll",
+          input: { loginId: pendingId },
+          outputSchema: loginPollOutputSchema,
+        })
+        .then(
+          (result) => {
+            failures = 0;
+            if (cancelled) return;
+            if (result.login !== null) setLogin(result.login);
+            if (result.login?.state === "signed-in") onSignedIn();
+          },
+          () => {
+            failures += 1;
+          },
+        )
+        .finally(() => {
+          if (!cancelled) timer = setTimeout(poll, loginPollDelay(failures));
+        });
+    };
+    timer = setTimeout(poll, LOGIN_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [onSignedIn, pendingId, sdk]);
+
+  const cancel = useCallback(() => {
+    if (pendingId !== null) {
+      sdk.plugins
+        .callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "login.cancel",
+          input: { loginId: pendingId },
+          outputSchema: loginPollOutputSchema.pick({ login: true }),
+        })
+        .then(
+          () => {},
+          () => {},
+        );
+    }
+    setLogin(null);
+    setError(null);
+  }, [pendingId, sdk]);
+
+  return { login, starting, error, start, cancel };
+}
+
+function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
+  const { login, starting, error, start, cancel } = useAccountLogin(onSignedIn);
+
+  if (login === null) {
+    return (
+      <div className="space-y-2">
+        <Button type="button" disabled={starting} onClick={start}>
+          {starting ? (
+            <Icon name="Spinner" className="size-4 animate-spin" />
+          ) : null}
+          Sign in to your bb account
+        </Button>
+        {error !== null ? (
+          <p className="text-xs text-destructive-text">{error}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (login.state === "signed-in") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Signed in. Remote access is starting…
+      </p>
+    );
+  }
+
+  if (login.state !== "pending") {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-destructive-text">
+          {login.message ?? "Sign-in didn't finish."}
+        </p>
+        <Button type="button" variant="outline" onClick={start}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
+      <p className="text-xs text-muted-foreground">
+        Confirm this code on {hostOf(login.verificationUrl)}:
+      </p>
+      <p
+        aria-label="Sign-in code"
+        className="font-mono text-base font-semibold tracking-widest"
+      >
+        {login.userCode}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" asChild>
+          <UrlLink
+            href={login.verificationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open getbb.app
+            <Icon name="ExternalLink" className="size-3.5" />
+          </UrlLink>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={cancel}
+        >
+          Cancel
+        </Button>
+      </div>
+      <p className="flex items-center gap-2 text-xs text-subtle-foreground">
+        <Icon name="Spinner" className="size-3.5 animate-spin" />
+        Waiting for you to approve it. You can approve from any device.
+      </p>
+    </div>
   );
 }
 
@@ -990,37 +1225,33 @@ function NotPairedContent({
   onPaired: () => void;
 }) {
   const dashboardHost = hostOf(dashboardUrl);
+  const [codeOpen, setCodeOpen] = useState(false);
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Pairing gives this bb a private URL like{" "}
+        Remote access uses your bb account. Once you sign in, this bb gets a
+        private URL like{" "}
         <span className="rounded bg-surface-recessed px-1.5 py-0.5 font-mono text-xs text-foreground">
           you.{dashboardHost}
         </span>
         . Your code and data stay on this machine.
       </p>
 
-      <div className="flex gap-3">
-        <StepNumber value={1} />
-        <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-sm">
-            Get a one-time connect code from your {dashboardHost} dashboard.
-          </p>
-          <Button type="button" asChild>
-            <UrlLink href={dashboardUrl} target="_blank" rel="noreferrer">
-              Get a connect code
-              <Icon name="ExternalLink" className="size-3.5" />
-            </UrlLink>
-          </Button>
-        </div>
-      </div>
+      <AccountSignInCard onSignedIn={onPaired} />
 
-      <div className="flex gap-3">
-        <StepNumber value={2} />
-        <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-sm">Paste it here — it connects automatically.</p>
+      <div className="space-y-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="-ml-2 text-muted-foreground"
+          onClick={() => setCodeOpen((open) => !open)}
+        >
+          Have a pairing code?
+        </Button>
+        {codeOpen ? (
           <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
-        </div>
+        ) : null}
       </div>
 
       <p className="flex items-start gap-1.5 text-xs text-subtle-foreground">
@@ -1029,44 +1260,44 @@ function NotPairedContent({
           className="mt-px size-3.5 shrink-0 opacity-70"
         />
         Anyone signed in to your {dashboardHost} account gets full control of
-        this bb.
+        this bb. Manage the account under Plugins → bb account.
       </p>
     </div>
   );
 }
 
-function DisconnectControls({
+function TurnOffControls({
   status,
   note,
   onChanged,
-  onDisconnected,
+  onTurnedOff,
 }: {
   status: ConnectStatus;
   note: string;
   onChanged: () => void;
-  onDisconnected: () => void;
+  onTurnedOff: () => void;
 }) {
   const rpc = useRpc<typeof connectRpcContract>();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const disconnect = useCallback(() => {
-    setDisconnecting(true);
-    setDisconnectError(null);
-    rpc.call("disconnect").then(
+  const turnOff = useCallback(() => {
+    setPending(true);
+    setError(null);
+    rpc.call("setRemoteAccess", { enabled: false }).then(
       () => {
-        setDisconnecting(false);
+        setPending(false);
         setConfirmOpen(false);
-        onDisconnected();
+        onTurnedOff();
         onChanged();
       },
-      (error: unknown) => {
-        setDisconnecting(false);
-        setDisconnectError(errorText(error));
+      (rpcError: unknown) => {
+        setPending(false);
+        setError(errorText(rpcError));
       },
     );
-  }, [rpc, onChanged, onDisconnected]);
+  }, [rpc, onChanged, onTurnedOff]);
 
   const host = status.url !== null ? hostOf(status.url) : "this bb";
 
@@ -1082,20 +1313,19 @@ function DisconnectControls({
           className={DANGER_QUIET_CLASS}
           onClick={() => setConfirmOpen(true)}
         >
-          Disconnect
+          Turn off
         </Button>
       </div>
-      {disconnectError !== null ? (
-        <p className="text-xs text-destructive-text">{disconnectError}</p>
+      {error !== null ? (
+        <p className="text-xs text-destructive-text">{error}</p>
       ) : null}
 
-      <DisconnectDialog
+      <TurnOffDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         host={host}
-        dashboardHost={hostOf(status.dashboardUrl)}
-        pending={disconnecting}
-        onConfirm={disconnect}
+        pending={pending}
+        onConfirm={turnOff}
       />
     </>
   );
@@ -1104,14 +1334,12 @@ function DisconnectControls({
 function ConnectedContent({
   status,
   onChanged,
-  onDisconnected,
+  onTurnedOff,
 }: {
   status: ConnectStatus;
   onChanged: () => void;
-  onDisconnected: () => void;
+  onTurnedOff: () => void;
 }) {
-  const [repairOpen, setRepairOpen] = useState(false);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -1123,39 +1351,19 @@ function ConnectedContent({
             ? ` · ${status.remoteClients} viewing remotely`
             : ""}
         </span>
-        <span className="flex-1" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          onClick={() => setRepairOpen((open) => !open)}
-        >
-          Re-pair
-        </Button>
       </div>
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
-
-      {repairOpen ? (
-        <div className="space-y-2 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
-          <p className="text-xs text-muted-foreground">
-            Re-pairing replaces this bb&apos;s credential. Paste a fresh code
-            from your dashboard.
-          </p>
-          <PairForm dashboardUrl={status.dashboardUrl} onPaired={onChanged} />
-        </div>
-      ) : null}
 
       <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
 
       <SharedPortsSection shares={status.shares} dimmed={false} />
 
-      <DisconnectControls
+      <TurnOffControls
         status={status}
-        note="Disconnecting forgets this bb's credential."
+        note="Turning off keeps this bb signed in to your bb account."
         onChanged={onChanged}
-        onDisconnected={onDisconnected}
+        onTurnedOff={onTurnedOff}
       />
     </div>
   );
@@ -1164,11 +1372,11 @@ function ConnectedContent({
 function ReconnectingContent({
   status,
   onChanged,
-  onDisconnected,
+  onTurnedOff,
 }: {
   status: ConnectStatus;
   onChanged: () => void;
-  onDisconnected: () => void;
+  onTurnedOff: () => void;
 }) {
   const why = [status.lastError, retryHint(status.nextRetryAt)]
     .filter((part): part is string => part !== null && part.length > 0)
@@ -1197,12 +1405,64 @@ function ReconnectingContent({
 
       <SharedPortsSection shares={status.shares} dimmed />
 
-      <DisconnectControls
+      <TurnOffControls
         status={status}
         note="Remote devices can't reach this bb right now. Local access is unaffected."
         onChanged={onChanged}
-        onDisconnected={onDisconnected}
+        onTurnedOff={onTurnedOff}
       />
+    </div>
+  );
+}
+
+function OffContent({
+  status,
+  onChanged,
+}: {
+  status: ConnectStatus;
+  onChanged: () => void;
+}) {
+  const rpc = useRpc<typeof connectRpcContract>();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const turnOn = useCallback(() => {
+    setPending(true);
+    setError(null);
+    rpc.call("setRemoteAccess", { enabled: true }).then(
+      () => {
+        setPending(false);
+        onChanged();
+      },
+      (rpcError: unknown) => {
+        setPending(false);
+        setError(errorText(rpcError));
+      },
+    );
+  }, [rpc, onChanged]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <StatusDot tone="muted" />
+        <span className="text-sm font-semibold">Remote access is off</span>
+        <span className="flex-1" />
+        <Button type="button" size="sm" disabled={pending} onClick={turnOn}>
+          {pending ? (
+            <Icon name="Spinner" className="size-4 animate-spin" />
+          ) : null}
+          Turn on
+        </Button>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        This bb stays signed in to your bb account. Turn remote access on to
+        reach it again
+        {status.url !== null ? ` at ${hostOf(status.url)}` : ""}.
+      </p>
+      <SharedPortsSection shares={status.shares} dimmed />
+      {error !== null ? (
+        <p className="text-xs text-destructive-text">{error}</p>
+      ) : null}
     </div>
   );
 }
@@ -1241,8 +1501,8 @@ function ConnectSettingsSection() {
     }
   });
 
-  const showDisconnected = useCallback(() => {
-    setFlash("Remote access disconnected");
+  const showTurnedOff = useCallback(() => {
+    setFlash("Remote access turned off");
     if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
     flashTimerRef.current = setTimeout(() => setFlash(null), 4000);
   }, []);
@@ -1267,7 +1527,7 @@ function ConnectSettingsSection() {
 
   return (
     <div className="space-y-3">
-      {flash !== null && !status.paired ? (
+      {flash !== null && !status.enabled ? (
         <div
           role="status"
           className="flex items-center gap-2 rounded-md border border-border bg-surface-recessed px-3 py-2 text-xs text-foreground"
@@ -1281,17 +1541,19 @@ function ConnectSettingsSection() {
           dashboardUrl={status.dashboardUrl}
           onPaired={refetch}
         />
+      ) : !status.enabled ? (
+        <OffContent status={status} onChanged={refetch} />
       ) : status.state === "reconnecting" ? (
         <ReconnectingContent
           status={status}
           onChanged={refetch}
-          onDisconnected={showDisconnected}
+          onTurnedOff={showTurnedOff}
         />
       ) : (
         <ConnectedContent
           status={status}
           onChanged={refetch}
-          onDisconnected={showDisconnected}
+          onTurnedOff={showTurnedOff}
         />
       )}
     </div>

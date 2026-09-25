@@ -4,6 +4,7 @@ import type { PluginService } from "../plugins/plugin-service.js";
 import { serverAccessStatus } from "../machines/server-access.js";
 
 export const CONNECT_PLUGIN_SOURCE = "builtin:connect";
+export const BB_ACCOUNT_PLUGIN_SOURCE = "builtin:bb-account";
 const CONNECT_SERVER_ACCESS_PROVIDER_ID = "connect";
 
 const connectStatusSchema = z
@@ -50,6 +51,7 @@ export async function resolveServerMoveMode(
     "status",
     handler.value,
     null,
+    { kind: "client" },
   );
   if (!result.ok) {
     return { mode: "unavailable", message: result.error.message };

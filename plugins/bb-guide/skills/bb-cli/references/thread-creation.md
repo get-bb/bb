@@ -262,14 +262,14 @@ archive encrypted by an older bb. A rerun rolls back an interrupted import from
 `server-import-journal.json` before importing again (`--json` reports
 `rolledBackInterruptedImport: true`), and bb refuses to start a
 server on an interrupted import until then. Stop the original server before
-you start the imported one: both hold the same connect credential and would
+you start the imported one: both hold the same bb account credential and would
 take each other's tunnel.
 
 An import also writes `server-connect-hold.json`, so the imported server starts
-without its connect tunnel. After the original server is stopped,
+without its connect tunnel or bb account. After the original server is stopped,
 `bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold
-(`--json` prints `dataDir` and `connectHoldRemoved`); the tunnel starts the next
-time that server starts.
+(`--json` prints `dataDir` and `connectHoldRemoved`); both start the next time
+that server starts.
 
 The old computer's data directory keeps a `server-moved.json` lock, so bb runs
 there as a regular machine. `bb server delete-old-copy` deletes the server files

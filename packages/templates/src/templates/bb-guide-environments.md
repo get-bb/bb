@@ -176,30 +176,49 @@ Every inspection command accepts an arbitrary environment ID and supports
 prints UTF-8 content directly and labels base64 binary content; diff and patch
 truncation markers are preserved.
 
+bb account (getbb.app sign-in):
+
+  The builtin "bb account" plugin signs this bb server in to your getbb.app
+  account and holds its server credential. Remote access and hosted services
+  use it; they never see the credential.
+
+  bb account status                       Show the signed-in account
+  bb account login                        Print a getbb.app link and code to approve
+    --wait                                Wait for that sign-in to finish
+    --code <code>                         Pair with a one-time dashboard code
+    --base-url <url>                      https://getbb.app or https://vibecodethis.site
+  bb account logout                       Revoke the credential and sign out
+
+  `bb account login` returns after printing the link; approve it in any
+  browser and bb finishes signing in on its own. Every command accepts
+  `--json`. `bb account status` reports a paired bb whose account hasn't
+  loaded yet as pending; it keeps retrying. `bb account logout` says so when
+  getbb.app didn't confirm revoking the server. In a source checkout,
+  `pnpm dev` points sign-in at that worktree's local Cloud origin through
+  `BB_DEV_CONNECT_BASE_URL`; an explicit `--base-url` still wins, and a
+  development build also accepts `http://bb.localhost:<port>` there.
+
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any
-  browser. Claim a handle at https://getbb.app, copy the connect command it
-  generates, then run it here to
-  pair:
+  browser. Remote access starts once this bb is signed in to its bb account
+  (`bb account login`). A pairing command from the getbb.app dashboard still
+  works like `bb account login --code`, and also turns remote access back on:
 
-  bb connect --code <code> --server https://<handle>.getbb.app
+  bb connect --code <code> [--server https://<handle>.getbb.app]
     --code <code>          One-time pairing code from the dashboard
-    --server <url>         https://<handle>.getbb.app (from the dashboard)
+    --server <url>         Dashboard server URL; only its getbb.app or
+                           vibecodethis.site apex is used
 
-  Pairing returns immediately: the bb SERVER redeems the code, stores the
-  credential, and holds the tunnel itself — so it stays up as long as bb is
-  running and reconnects on restart (no foreground process).
+  The bb SERVER holds the tunnel itself — so it stays up as long as bb is
+  running and reconnects on restart (no foreground process). It connects with
+  the server credential bb account holds.
   Without an installed bb, pair via npm:
-  `npx -p bb-app@latest bb connect --code <code> --server <url>`.
-
-  In a source checkout, `pnpm dev` automatically points the unpaired Connect
-  settings and code-only pairing at that worktree's local Cloud origin through
-  `BB_DEV_CONNECT_BASE_URL`. Explicit `--server` and `--base-url` targets still
-  win, so the dev bb can also pair with getbb.app.
+  `npx -p bb-app@latest bb connect --code <code>`.
 
   bb connect status                       Show the server's connect status
-  bb connect off                          Disconnect and forget the pairing
+  bb connect off                          Turn remote access off, stay signed in
+  bb connect on                           Turn remote access back on
   bb connect expose <port> [--host <name-or-id>]    Share a host's HTTP port
   bb connect unexpose <port> [--host <name-or-id>]  Stop sharing on that host
   bb connect shares [--host <name-or-id>]           List that host's shares
@@ -232,9 +251,11 @@ Remote access (bb connect):
   so and points at the dashboard to revoke an unused device.
 
   Remote access is owned by the builtin "connect" plugin (Plugins → connect
-  shows the URL, QR code, mobile pairing, and shared ports). Disabling the
-  plugin (`bb plugin disable connect`) cuts off all remote access; re-enable
-  with `bb plugin enable connect`.
+  shows the URL, QR code, mobile pairing, and shared ports). `bb connect off`
+  sets its `remoteAccess` setting and keeps the account signed in;
+  `bb account logout` forgets the pairing. Disabling the plugin
+  (`bb plugin disable connect`) cuts off all remote access; re-enable with
+  `bb plugin enable connect`.
 
 Core owns environment retirement and teardown. After the last live thread is archived or deleted, the provider policy sets the retirement deadline. `bb environment show <id>` reports lifecycle phase and teardown status, attempt and failure message. Failed teardown retries automatically; checkout environments do not retire.
 
