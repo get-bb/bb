@@ -633,6 +633,44 @@ describe("AppCommandProvider", () => {
     },
   );
 
+  it.each([
+    [true, ["panel.toggle"], []],
+    [false, [], ["j"]],
+  ])(
+    "claims the panel toggle before a terminal that swallows keys (handler registered: %s)",
+    (registered, expectedCalls, expectedTerminalKeys) => {
+      renderProvider(
+        <>
+          {registered && (
+            <Handler command="panel.toggle" name="panel.toggle" result={true} />
+          )}
+          <section data-app-terminal="">
+            <textarea data-testid="terminal-input" />
+          </section>
+        </>,
+      );
+      const terminalInput = screen.getByTestId("terminal-input");
+      const terminalKeys: string[] = [];
+      terminalInput.addEventListener("keydown", (event) => {
+        terminalKeys.push(event.key);
+        event.preventDefault();
+        event.stopPropagation();
+      });
+
+      terminalInput.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          key: "j",
+        }),
+      );
+
+      expect(testState.calls).toEqual(expectedCalls);
+      expect(terminalKeys).toEqual(expectedTerminalKeys);
+    },
+  );
+
   it("suppresses main-surface commands while a drawer is actually open", () => {
     renderProvider(
       <>
