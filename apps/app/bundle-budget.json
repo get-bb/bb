@@ -27,6 +27,9 @@
     "thread drafts: saving new-thread text as a draft thread and syncing a",
     "draft thread's composer with the server. The brotli limit did not change.",
     "",
+    "On 2026-09-26 the SplitWorkspaceRoute raw limit rose 0.5 KiB for",
+    "nested worktree group alignment. No new dependencies enter the route.",
+    "",
     "Both boot limits were temporarily raised 5% on 2026-09-21 to restore",
     "headroom while reducing the measured boot payload by at least 10%.",
     "These allowances leave room for normal shell feature work and build",
@@ -110,7 +113,7 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 2341646,
+      "maxBytes": 2342158,
       "maxBrotliBytes": 630625,
       "forbiddenPackages": [
         "@pierre/diffs",

@@ -1,4 +1,5 @@
-import { useAtom } from "jotai";
+import { type RefObject, useLayoutEffect } from "react";
+import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   usePluginSlots,
   type PluginSidebarFooterItemSlot,
@@ -13,6 +14,34 @@ export const sidebarFooterHiddenAtom = createSyncedPreferenceAtom(
   "sidebar.hiddenFooterItems",
 );
 export const SIDEBAR_FOOTER_MORE_ID = "sidebar-footer-more";
+export const sidebarFooterCapacityAtom = atom<number | null>(null);
+
+export function useMeasureSidebarFooterCapacity(
+  rowRef: RefObject<HTMLElement | null>,
+  moreRef: RefObject<HTMLElement | null>,
+) {
+  const setCapacity = useSetAtom(sidebarFooterCapacityAtom);
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const more = moreRef.current;
+    if (!row || !more) return;
+    const measure = () => {
+      const width = row.getBoundingClientRect().width;
+      const controlWidth = more.getBoundingClientRect().width;
+      if (width === 0 || controlWidth === 0) return;
+      const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
+      setCapacity(
+        Math.max(0, Math.floor((width + gap) / (controlWidth + gap)) - 1),
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    observer.observe(more);
+    return () => observer.disconnect();
+  }, [rowRef, moreRef, setCapacity]);
+}
 
 export type BuiltinFooterId = "settings" | "report-bug";
 export type FooterItem = { key: string; label: string; icon: string } & (
@@ -30,6 +59,7 @@ export function useSidebarFooterPreferences() {
   const { sidebarFooterItems } = usePluginSlots();
   const [order, setOrder] = useAtom(sidebarFooterOrderAtom);
   const [hidden, setHidden] = useAtom(sidebarFooterHiddenAtom);
+  const capacity = useAtomValue(sidebarFooterCapacityAtom);
   const items: FooterItem[] = [
     {
       kind: "builtin",
@@ -58,22 +88,53 @@ export function useSidebarFooterPreferences() {
     storedOrder: order,
     getId: (item) => item.key,
   });
+  const footer = ordered
+    .filter((item) => !hidden.includes(item.key))
+    .slice(0, capacity ?? undefined);
+  const more = ordered.filter((item) => !footer.includes(item));
+  const isFull = capacity !== null && footer.length >= capacity;
   return {
     items: ordered,
     hidden,
-    setVisible(key: string, visible: boolean) {
-      setHidden((previous) =>
-        visible
-          ? previous.filter((id) => id !== key)
-          : [...new Set([...previous, key])],
-      );
+    footer,
+    more,
+    capacity,
+    isFull,
+    hideFromFooter(key: string) {
+      setHidden((previous) => [...new Set([...previous, key])]);
+    },
+    removeFromFooter(key: string) {
+      setHidden((previous) => [
+        ...new Set([...previous, ...more.map((item) => item.key), key]),
+      ]);
+    },
+    addToFooter(key: string) {
+      if (isFull) return;
+      const last = footer.at(-1)?.key;
+      const rest = normalizedOrder.filter((id) => id !== key);
+      const index = last === undefined ? 0 : rest.indexOf(last) + 1;
+      setOrder([...rest.slice(0, index), key, ...rest.slice(index)]);
+      setHidden((previous) => previous.filter((id) => id !== key));
+    },
+    setFooterShown(shown: boolean) {
+      setHidden((previous) => {
+        const keys = ordered.map((item) => item.key);
+        const others = previous.filter((id) => !keys.includes(id));
+        return shown ? others : [...others, ...keys];
+      });
     },
     move(activeId: string, overId: string) {
+      const zone =
+        [footer, more].find((items) =>
+          [activeId, overId].every((id) =>
+            items.some((item) => item.key === id),
+          ),
+        ) ?? ordered;
       const next = reorderStoredOrder({
         activeId,
         overId,
         order: normalizedOrder,
-        visibleIds: ordered.map((item) => item.key),
+        visibleIds: zone.map((item) => item.key),
       });
       if (next) setOrder(next);
     },
