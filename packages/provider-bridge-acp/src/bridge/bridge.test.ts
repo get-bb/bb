@@ -730,17 +730,11 @@ describe("acp bridge", () => {
       models: [
         {
           id: "fake/default",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
-          supportedReasoningEfforts: [
-            {
-              reasoningEffort: "medium",
-              description:
-                "Reasoning effort is managed by the connected ACP agent.",
-            },
-          ],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/gen-2",
