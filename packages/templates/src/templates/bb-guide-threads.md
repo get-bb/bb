@@ -76,6 +76,9 @@ Spawning:
   a hidden thread stay hidden too. Pass --visibility to override the inherited
   value. A hidden child still reports its turns and blockers to its parent
   thread; only source-derived forks stay silent.
+  When a hidden thread is waiting on an approval or question, the app shows it
+  in a tray so it can be answered from anywhere; `bb thread interactions pending
+  --visibility hidden` lists the same interactions.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -332,6 +335,8 @@ Ownership:
 Interactions:
 
   bb thread interactions list [id]         List a thread's pending and past interactions
+  bb thread interactions pending [--visibility any|hidden|visible] [--limit <n>]
+                                           List interactions waiting on you across threads, newest first (default any, 50; at most 200)
   bb thread interactions show <interaction-id> [id]
                                            Show one interaction (approval details, questions, or a plugin form's data)
   bb thread interactions approve <interaction-id> [id]
@@ -344,7 +349,7 @@ Interactions:
                                            Answer a provider's user question
   bb thread interactions respond <interaction-id> [id] --value '<json>'
                                            Answer a plugin form: a plugin's own request, or a request the agent raised through a provider (kind `<pluginId>/<name>`)
-    --self                                 Target current thread (every subcommand)
+    --self                                 Target current thread (every per-thread subcommand)
     --json                                 Machine-readable output (every subcommand)
 
   `show` prints a plugin form's `Data` so you can shape the `--value` JSON.

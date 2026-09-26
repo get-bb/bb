@@ -242,6 +242,8 @@ import type {
   ThreadOpenResponse,
   ThreadPaneActionRequest,
   ThreadPaneActionResponse,
+  ThreadPendingInteractionAttentionQuery,
+  ThreadPendingInteractionAttentionResponse,
   ThreadPendingInteractionsResponse,
   ThreadRunningResponse,
   QueuedMessageListQuery,
@@ -374,6 +376,7 @@ import {
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
+  threadPendingInteractionAttentionQuerySchema,
   threadSearchQuerySchema,
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
@@ -1261,6 +1264,15 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<ThreadRunningResponse>(),
+    }),
+    pendingInteractions: defineRoute({
+      path: "/threads/pending-interactions",
+      method: "get",
+      request: optionalQueryRequest<
+        EmptyInput,
+        ThreadPendingInteractionAttentionQuery
+      >(threadPendingInteractionAttentionQuerySchema),
+      response: jsonResponse<ThreadPendingInteractionAttentionResponse>(),
     }),
     search: defineRoute({
       path: "/threads/search",

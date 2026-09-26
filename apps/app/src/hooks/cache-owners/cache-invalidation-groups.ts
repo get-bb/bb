@@ -5,6 +5,7 @@ import {
   allProjectSourceBranchesQueryKeyPrefix,
   allThreadConversationOutlineQueryKeyPrefix,
   allThreadPendingInteractionsQueryKeyPrefix,
+  pendingInteractionAttentionQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allThreadTimelineQueryKeyPrefix,
@@ -160,6 +161,12 @@ export function getThreadPendingInteractionInvalidationQueryKeys({
   threadId,
 }: ThreadScopedInvalidationArgs): QueryKey[] {
   return threadId
-    ? [threadPendingInteractionsQueryKey(threadId)]
-    : [allThreadPendingInteractionsQueryKeyPrefix()];
+    ? [
+        threadPendingInteractionsQueryKey(threadId),
+        pendingInteractionAttentionQueryKeyPrefix(),
+      ]
+    : [
+        allThreadPendingInteractionsQueryKeyPrefix(),
+        pendingInteractionAttentionQueryKeyPrefix(),
+      ];
 }

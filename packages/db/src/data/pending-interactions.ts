@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import type { SQL } from "drizzle-orm";
-import type { PendingInteractionStatus } from "@bb/domain";
+import type { PendingInteractionStatus, ThreadVisibility } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { createPendingInteractionId } from "../ids.js";
-import { pendingInteractions } from "../schema.js";
+import { pendingInteractions, threads } from "../schema.js";
 
 type PendingInteractionWriteConnection = DbConnection | DbTransaction;
 type PendingInteractionReadConnection = DbConnection | DbTransaction;
@@ -35,6 +36,32 @@ export interface PendingInteractionProviderRequestIdentity {
   providerId: string;
   providerRequestId: string;
   providerThreadId: string;
+}
+
+export interface ListActivePendingInteractionAttentionArgs {
+  limit: number;
+  visibility: ThreadVisibility | null;
+}
+
+export interface PendingInteractionAttentionThreadRow {
+  id: string;
+  originPluginId: string | null;
+  projectId: string;
+  title: string | null;
+  titleFallback: string | null;
+  visibility: ThreadVisibility;
+}
+
+export interface PendingInteractionAttentionOwnerRow {
+  id: string;
+  title: string | null;
+  titleFallback: string | null;
+}
+
+export interface PendingInteractionAttentionRow {
+  interaction: PendingInteractionRow;
+  owner: PendingInteractionAttentionOwnerRow | null;
+  thread: PendingInteractionAttentionThreadRow;
 }
 
 export interface ListPendingInteractionsArgs {
@@ -222,6 +249,70 @@ export function getActivePendingInteractionForThread(
       .orderBy(desc(pendingInteractions.createdAt))
       .get() ?? null
   );
+}
+
+export function listActivePendingInteractionAttention(
+  db: PendingInteractionReadConnection,
+  args: ListActivePendingInteractionAttentionArgs,
+): PendingInteractionAttentionRow[] {
+  const owner = alias(threads, "attention_owner");
+  const rows = db
+    .select({
+      interaction: pendingInteractions,
+      threadId: threads.id,
+      threadProjectId: threads.projectId,
+      threadTitle: threads.title,
+      threadTitleFallback: threads.titleFallback,
+      threadVisibility: threads.visibility,
+      threadOriginPluginId: threads.originPluginId,
+      ownerId: owner.id,
+      ownerTitle: owner.title,
+      ownerTitleFallback: owner.titleFallback,
+    })
+    .from(pendingInteractions)
+    .innerJoin(threads, eq(threads.id, pendingInteractions.threadId))
+    .leftJoin(
+      owner,
+      and(
+        eq(
+          owner.id,
+          sql`coalesce(${threads.parentThreadId}, ${threads.lifecycleOwnerThreadId})`,
+        ),
+        isNull(owner.deletedAt),
+      ),
+    )
+    .where(
+      and(
+        inArray(pendingInteractions.status, ["pending", "resolving"]),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        args.visibility === null
+          ? undefined
+          : eq(threads.visibility, args.visibility),
+      ),
+    )
+    .orderBy(desc(pendingInteractions.createdAt))
+    .limit(args.limit)
+    .all();
+  return rows.map((row) => ({
+    interaction: row.interaction,
+    thread: {
+      id: row.threadId,
+      originPluginId: row.threadOriginPluginId,
+      projectId: row.threadProjectId,
+      title: row.threadTitle,
+      titleFallback: row.threadTitleFallback,
+      visibility: row.threadVisibility,
+    },
+    owner:
+      row.ownerId === null
+        ? null
+        : {
+            id: row.ownerId,
+            title: row.ownerTitle,
+            titleFallback: row.ownerTitleFallback,
+          },
+  }));
 }
 
 export function listPendingInteractionsByThread(

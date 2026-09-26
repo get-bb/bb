@@ -65,6 +65,7 @@ import {
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
   threadTabsQueryKey,
+  pendingInteractionAttentionQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   terminalsQueryKey,
   threadsQueryKey,
@@ -343,6 +344,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries,
       dirtyThreadTimelineQueries,
       dirtyProjectPromptHistoryQueries,
+      dirtyPendingInteractionAttentionQueries,
     ],
   },
   "events-appended": {
@@ -401,6 +403,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries,
       dirtyThreadDetailQueries,
       dirtyProjectPromptHistoryQueries,
+      dirtyPendingInteractionAttentionQueries,
     ],
   },
   "pin-state-changed": {
@@ -844,6 +847,10 @@ function dirtyThreadTabsQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return threadId ? [threadTabsQueryKey(threadId)] : [];
+}
+
+function dirtyPendingInteractionAttentionQueries(): QueryKey[] {
+  return [pendingInteractionAttentionQueryKeyPrefix()];
 }
 
 function dirtyThreadSearchQueries(): QueryKey[] {

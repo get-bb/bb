@@ -79,6 +79,11 @@ vi.mock("@/components/plugin/PluginPanelHeader", () => ({
   PluginPanelHeaderActions: () => null,
 }));
 
+vi.mock("@/components/notifications/BackgroundAttentionTray", () => ({
+  BackgroundAttentionTray: () => null,
+  useBackgroundAttentionEntries: () => [],
+}));
+
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
