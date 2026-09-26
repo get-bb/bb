@@ -140,10 +140,12 @@ export function ThreadRowActionsCustomize({
                     reorderDisabled={slot === null || enabled.length < 2}
                     onChange={(value) => {
                       if (value === slot) return;
-                      focusSlot.current = index;
-                      setEnabled((current) =>
-                        assignRowActionSlot(current, index, value),
-                      );
+                      const next = assignRowActionSlot(enabled, index, value);
+                      focusSlot.current =
+                        value === null
+                          ? index
+                          : getRowActionSlots(next).indexOf(value);
+                      setEnabled(next);
                     }}
                   />
                 ))}

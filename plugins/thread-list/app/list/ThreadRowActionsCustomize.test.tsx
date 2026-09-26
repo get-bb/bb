@@ -50,12 +50,12 @@ it("fills, replaces, swaps, and clears slots", () => {
 });
 
 it.each([
-  { initial: ["archive"], slot: 0, pick: "Pin", focused: "pin" },
-  { initial: ["pin", "archive", "rename"], slot: 0, pick: "Rename", focused: "rename" },
-  { initial: ["pin", "archive", "rename"], slot: 1, pick: "None", focused: "none" },
+  { initial: ["archive"], slot: 0, pick: "Pin", focusedSlot: 1, focused: "pin" },
+  { initial: ["pin", "archive", "rename"], slot: 0, pick: "Rename", focusedSlot: 0, focused: "rename" },
+  { initial: ["pin", "archive", "rename"], slot: 1, pick: "None", focusedSlot: 1, focused: "pin" },
 ] as const)(
-  "keeps focus on slot $slot after picking $pick",
-  async ({ initial, slot, pick, focused }) => {
+  "moves focus to slot $focusedSlot after picking $pick in slot $slot",
+  async ({ initial, slot, pick, focusedSlot, focused }) => {
     const store = createStore();
     store.set(threadRowActionsAtom, [...initial]);
     render(
@@ -63,15 +63,15 @@ it.each([
         <ThreadRowActionsCustomize onDone={() => {}} variant="card" />
       </Provider>,
     );
-    const slotButton = () =>
+    const slotButton = (index: number) =>
       document.querySelector<HTMLElement>(
-        `[data-sidebar-customize-launch="${slot}"]`,
+        `[data-sidebar-customize-launch="${index}"]`,
       );
-    fireEvent.click(slotButton()!);
+    fireEvent.click(slotButton(slot)!);
     fireEvent.click(await screen.findByRole("menuitemradio", { name: pick }));
     await waitFor(() => {
-      expect(document.activeElement).toBe(slotButton());
-      expect(slotButton()?.dataset.rowActionSlot).toBe(focused);
+      expect(document.activeElement).toBe(slotButton(focusedSlot));
+      expect(slotButton(focusedSlot)?.dataset.rowActionSlot).toBe(focused);
     });
   },
 );
