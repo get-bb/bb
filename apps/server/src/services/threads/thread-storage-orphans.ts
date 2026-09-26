@@ -1,5 +1,11 @@
 import path from "node:path";
-import { getHost, listExistingThreadIds } from "@bb/db";
+import { performance } from "node:perf_hooks";
+import {
+  getDatabaseMaintenanceActivity,
+  getHost,
+  isDatabaseMaintenanceIdle,
+  listExistingThreadIds,
+} from "@bb/db";
 import { isRawThreadId } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -10,18 +16,52 @@ import { isServerMoveFrozen } from "../server-move/freeze-state.js";
 
 const THREAD_ID_LOOKUP_BATCH_SIZE = 1_000;
 
-export function installThreadStorageOrphanCleanup(
-  deps: LoggedWorkSessionDeps,
-): { stop(): void } {
-  const runningHosts = new Set<string>();
-  let stopped = false;
+export const THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS = 60_000;
+export const THREAD_STORAGE_ORPHAN_PASS_LIMITS: ThreadStorageOrphanPassLimits =
+  {
+    elapsedBudgetMs: 10_000,
+    maxRemovals: 100,
+  };
 
-  function request(hostId: string): void {
-    if (stopped || runningHosts.has(hostId)) return;
-    runningHosts.add(hostId);
+export interface ThreadStorageOrphanPassLimits {
+  elapsedBudgetMs: number;
+  maxRemovals: number;
+}
+
+interface HostOrphanQueue {
+  parked: boolean;
+  rootPath: string;
+  sessionId: string;
+  threadIds: string[];
+}
+
+const runningHostIds = new Set<string>();
+const orphanQueueByHostId = new Map<string, HostOrphanQueue>();
+
+export function runThreadStorageOrphanSweep(deps: LoggedWorkSessionDeps): void {
+  const activity = getDatabaseMaintenanceActivity(deps.db);
+  if (!isDatabaseMaintenanceIdle(activity)) {
+    deps.logger.debug(
+      { activity },
+      "Thread storage orphan cleanup skipped while app work is active",
+    );
+    return;
+  }
+  for (const hostId of deps.hub.listConnectedHostIds()) {
+    const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+    const queue = orphanQueueByHostId.get(hostId);
+    if (
+      sessionId === null ||
+      runningHostIds.has(hostId) ||
+      (queue?.sessionId === sessionId &&
+        (queue.parked || queue.threadIds.length === 0))
+    ) {
+      continue;
+    }
+    runningHostIds.add(hostId);
     void removeOrphanedThreadStorage(deps, {
       hostId,
-      isStopped: () => stopped,
+      limits: THREAD_STORAGE_ORPHAN_PASS_LIMITS,
     })
       .catch((error) => {
         deps.logger.warn(
@@ -30,33 +70,14 @@ export function installThreadStorageOrphanCleanup(
         );
       })
       .finally(() => {
-        runningHosts.delete(hostId);
+        runningHostIds.delete(hostId);
       });
   }
-
-  const unsubscribe = deps.hub.onChangedMessage((message) => {
-    if (
-      message.entity === "host" &&
-      message.changes.includes("host-connected")
-    ) {
-      request(message.id);
-    }
-  });
-  for (const hostId of deps.hub.listConnectedHostIds()) {
-    request(hostId);
-  }
-
-  return {
-    stop() {
-      stopped = true;
-      unsubscribe();
-    },
-  };
 }
 
 export async function removeOrphanedThreadStorage(
   deps: LoggedWorkSessionDeps,
-  args: { hostId: string; isStopped: () => boolean },
+  args: { hostId: string; limits: ThreadStorageOrphanPassLimits },
 ): Promise<void> {
   const { hostId } = args;
   if (
@@ -67,10 +88,72 @@ export async function removeOrphanedThreadStorage(
     return;
   }
   const session = requireConnectedHostSession(deps, hostId);
-  const rootPath = path.join(session.dataDir, "thread-storage");
+  let queue = orphanQueueByHostId.get(hostId);
+  if (queue === undefined || queue.sessionId !== session.id) {
+    queue = await listOrphanedThreadStorage(deps, {
+      dataDir: session.dataDir,
+      hostId,
+      sessionId: session.id,
+    });
+    orphanQueueByHostId.set(hostId, queue);
+  }
+  if (queue.parked) return;
+  const startedAt = performance.now();
+  let attempted = 0;
+  let removed = 0;
+  while (
+    attempted < args.limits.maxRemovals &&
+    performance.now() - startedAt < args.limits.elapsedBudgetMs &&
+    !isServerMoveFrozen(deps.db) &&
+    deps.hub.getDaemonSessionIdForHost(hostId) === session.id &&
+    isDatabaseMaintenanceIdle(getDatabaseMaintenanceActivity(deps.db))
+  ) {
+    const threadId = queue.threadIds.shift();
+    if (threadId === undefined) break;
+    attempted += 1;
+    try {
+      await callHostOnlineRpc(deps, {
+        command: {
+          type: "host.remove_path",
+          path: path.join(queue.rootPath, threadId),
+          recursive: true,
+          rootPath: queue.rootPath,
+        },
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+      });
+      removed += 1;
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, hostId, threadId },
+        "Failed to remove orphaned thread storage",
+      );
+      if (
+        !(error instanceof ApiError) ||
+        error.body.code === "command_timeout" ||
+        error.body.code === "host_unavailable"
+      ) {
+        queue.parked = true;
+        break;
+      }
+    }
+  }
+  if (removed > 0) {
+    deps.logger.info(
+      { hostId, removed, remaining: queue.threadIds.length },
+      "Removed thread storage with no thread record",
+    );
+  }
+}
+
+async function listOrphanedThreadStorage(
+  deps: LoggedWorkSessionDeps,
+  args: { dataDir: string; hostId: string; sessionId: string },
+): Promise<HostOrphanQueue> {
+  const rootPath = path.join(args.dataDir, "thread-storage");
   const listing = await callHostOnlineRpc(deps, {
     command: { type: "host.browse_directory", path: rootPath },
-    hostId,
+    hostId: args.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
   });
   const storedThreadIds = listing.entries
@@ -90,46 +173,12 @@ export async function removeOrphanedThreadStorage(
     }
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
-  let removed = 0;
-  for (const threadId of storedThreadIds) {
-    if (existingThreadIds.has(threadId)) continue;
-    if (
-      args.isStopped() ||
-      isServerMoveFrozen(deps.db) ||
-      deps.hub.getDaemonSessionIdForHost(hostId) !== session.id
-    ) {
-      break;
-    }
-    try {
-      await callHostOnlineRpc(deps, {
-        command: {
-          type: "host.remove_path",
-          path: path.join(rootPath, threadId),
-          recursive: true,
-          rootPath,
-        },
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-      });
-      removed += 1;
-    } catch (error) {
-      deps.logger.warn(
-        { err: error, hostId, threadId },
-        "Failed to remove orphaned thread storage",
-      );
-      if (
-        !(error instanceof ApiError) ||
-        error.body.code === "command_timeout" ||
-        error.body.code === "host_unavailable"
-      ) {
-        break;
-      }
-    }
-  }
-  if (removed > 0) {
-    deps.logger.info(
-      { hostId, removed },
-      "Removed thread storage with no thread record",
-    );
-  }
+  return {
+    parked: false,
+    rootPath,
+    sessionId: args.sessionId,
+    threadIds: storedThreadIds.filter(
+      (threadId) => !existingThreadIds.has(threadId),
+    ),
+  };
 }

@@ -26,7 +26,6 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { installProviderModelCatalogPrewarm } from "./services/providers/provider-model-catalog-prewarm.js";
-import { installThreadStorageOrphanCleanup } from "./services/threads/thread-storage-orphans.js";
 import {
   createProviderRegistryService,
   type ProviderRegistryService,
@@ -319,10 +318,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     pendingServerMove === null
       ? installProviderModelCatalogPrewarm(sweepDeps)
       : null;
-  const threadStorageOrphanCleanup =
-    pendingServerMove === null
-      ? installThreadStorageOrphanCleanup(sweepDeps)
-      : null;
   if (pendingServerMove === null) {
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
@@ -395,7 +390,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       serverMove.dispose();
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
-      threadStorageOrphanCleanup?.stop();
       eventLoopStallMonitor.stop();
       if (sweepInterval !== null) {
         clearInterval(sweepInterval);
