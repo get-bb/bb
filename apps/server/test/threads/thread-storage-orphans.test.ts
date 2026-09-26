@@ -10,6 +10,7 @@ import {
   installThreadStorageOrphanCleanup,
   removeOrphanedThreadStorage,
 } from "../../src/services/threads/thread-storage-orphans.js";
+import { advanceUntilSettled } from "../helpers/fake-timers.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import {
   seedEnvironment,
@@ -130,6 +131,56 @@ describe("thread storage orphan cleanup", () => {
         });
         expect(attemptedPaths).toEqual([rejectedPath, removablePath]);
       } finally {
+        responder.unregister();
+      }
+    });
+  });
+
+  it("stops the pass when a removal times out instead of starting the next one", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const rootPath = path.join(session.dataDir, "thread-storage");
+      const slowPath = path.join(rootPath, "thr_4444444444");
+      const laterPath = path.join(rootPath, "thr_5555555555");
+      const attemptedPaths: string[] = [];
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "host.browse_directory") {
+            return {
+              ok: true,
+              result: {
+                directory: rootPath,
+                parent: session.dataDir,
+                entries: [slowPath, laterPath].map((entryPath) => ({
+                  kind: "directory",
+                  name: path.basename(entryPath),
+                  path: entryPath,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "host.remove_path") {
+            attemptedPaths.push(request.command.path);
+            return new Promise(() => {});
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        await advanceUntilSettled(
+          removeOrphanedThreadStorage(harness.deps, {
+            hostId: host.id,
+            isStopped: () => false,
+          }),
+          1_000,
+        );
+        expect(attemptedPaths).toEqual([slowPath]);
+      } finally {
+        vi.useRealTimers();
         responder.unregister();
       }
     });

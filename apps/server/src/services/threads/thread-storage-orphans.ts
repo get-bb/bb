@@ -2,6 +2,7 @@ import path from "node:path";
 import { getHost, listExistingThreadIds } from "@bb/db";
 import { isRawThreadId } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
+import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import { requireConnectedHostSession } from "../lib/entity-lookup.js";
@@ -116,6 +117,13 @@ export async function removeOrphanedThreadStorage(
         { err: error, hostId, threadId },
         "Failed to remove orphaned thread storage",
       );
+      if (
+        !(error instanceof ApiError) ||
+        error.body.code === "command_timeout" ||
+        error.body.code === "host_unavailable"
+      ) {
+        break;
+      }
     }
   }
   if (removed > 0) {
