@@ -187,3 +187,49 @@ describe("ThreadTimelinePanelContent", () => {
     expect(screen.queryByText("Working...")).toBeNull();
   });
 });
+
+it("shows a pending provider start without claiming the agent is working", () => {
+  mocks.displayStatus = "active";
+  mocks.threadStatus = "active";
+  render(
+    <ThreadTimelinePanelContent
+      threadId="thr-test"
+      timeline={baseTimeline({
+        timelineRows: [
+          {
+            id: "thr_2egcsfutda:user-seed:1",
+            threadId: "thr_2egcsfutda",
+            turnId: null,
+            sourceSeqStart: 1,
+            sourceSeqEnd: 1,
+            startedAt: 1790371517101,
+            createdAt: 1790371517101,
+            kind: "conversation",
+            role: "user",
+            text: "continue",
+            mentions: [],
+            attachments: {
+              webImages: 0,
+              localImages: 0,
+              localFiles: 0,
+              imageUrls: [],
+              localImagePaths: [],
+              localFilePaths: [],
+            },
+            initiator: "user",
+            senderThreadId: null,
+            systemMessageKind: "unlabeled",
+            systemMessageSubject: null,
+            turnRequest: {
+              isGrouped: false,
+              kind: "message",
+              status: "pending",
+            },
+          },
+        ],
+      })}
+    />,
+  );
+  expect(screen.getByText("Waiting for provider to start…")).not.toBeNull();
+  expect(screen.queryByText("Working...")).toBeNull();
+});

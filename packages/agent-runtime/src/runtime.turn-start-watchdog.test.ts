@@ -75,6 +75,8 @@ describe("turn-start watchdog", () => {
       ),
     );
     expect(watchdogEvent.threadId).toBe("t1");
+    expect(runtime.getActiveTurnId("t1")).toBeNull();
+    expect(runtime.getLiveThreadIds()).toContain("t1");
     expect(events.some((event) => event.type === "turn/started")).toBe(false);
 
     await wait(120);
@@ -85,6 +87,9 @@ describe("turn-start watchdog", () => {
           event.code === "provider_turn_start_timeout",
       ),
     ).toHaveLength(1);
+    await runtime.stopThread({ threadId: "t1" });
+    expect(runtime.getLiveThreadIds()).not.toContain("t1");
+    expect(events.some((event) => event.type === "turn/started")).toBe(false);
   });
 
   it("stays silent when the turn starts within the threshold", async () => {

@@ -5,6 +5,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { useThread } from "@/hooks/queries/thread-queries";
+import { pendingTurnStartLabel } from "@/lib/pending-turn-start";
 import { BbHttpError } from "@/lib/sdk";
 import {
   ThreadTimelineSurface,
@@ -71,7 +72,9 @@ export function ThreadTimelinePanelContent({
       ? "Waiting for reconnection"
       : isProvisioningDisplayStatus
         ? "Provisioning thread..."
-        : backgroundOnlyIndicatorLabel;
+        : displayStatus === "active"
+          ? pendingTurnStartLabel(resolvedTimeline.timelineRows)
+          : backgroundOnlyIndicatorLabel;
   const showOngoingIndicator =
     threadQuery.data?.status !== "stopping" &&
     (isProvisioningDisplayStatus ||

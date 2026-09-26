@@ -1,3 +1,4 @@
+import { preserveFailedTurnStartQueue } from "./thread-turn-starting.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
@@ -17,6 +18,8 @@ import {
 } from "drizzle-orm";
 import {
   deleteThread,
+  clearQueuedThreadMessageWaitingOn,
+  listQueuedThreadMessagesWaitingOnKind,
   environments,
   events,
   getEnvironment,
@@ -861,6 +864,9 @@ function settleThreadCommandFailure(
   });
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
+    postCommitActions.push({
+      run: (deps) => preserveFailedTurnStartQueue(deps, thread.id),
+    });
   }
   if (isParentNotifiableChildThread(thread)) {
     const parentThreadId = thread.parentThreadId;
@@ -1848,6 +1854,7 @@ function interruptActiveThreads(
       eventTypes.unshift("turn/completed");
     }
     const thread = getThread(deps.db, result.threadId);
+    preserveFailedTurnStartQueue(deps, result.threadId);
     deps.hub.notifyThread(
       result.threadId,
       ["events-appended", "status-changed"],
@@ -1974,6 +1981,18 @@ export function finalizeStoppedThreadInTransaction(
     return;
   }
 
+  if (finalizedThread.status === "idle") {
+    for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
+      threadId: args.threadId,
+      kind: "turn-starting",
+    })) {
+      clearQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
+        id: row.id,
+        threadId: args.threadId,
+      });
+    }
+  }
+
   if (finalizedThread.deletedAt === null) {
     deps.pendingInteractions.interruptPendingInteractionsForThreadIdsInTransaction(
       deps,
@@ -2096,6 +2115,10 @@ export async function reconcileDaemonReportedThreads(
       .all();
 
     for (const thread of erroredThreads) {
+      if (getActiveTurnId(deps, thread.id) === null) {
+        preserveFailedTurnStartQueue(deps, thread.id);
+        continue;
+      }
       applyLoggedThreadLifecycleEvent(deps, {
         event: { type: "run.started" },
         threadId: thread.id,
