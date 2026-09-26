@@ -255,6 +255,26 @@ describe("threadDetailPromptSubmission", () => {
         isFollowUpSubmitting: false,
         isQueueMutationPending: false,
         queuedMessageCount: 0,
+        runtimeDisplayStatus: "waiting-for-host",
+        submitModeKind: "queue",
+      }),
+    ).toBe(true);
+    expect(
+      canSubmitFollowUpShortcut({
+        hasPromptDraftInput: false,
+        isFollowUpSubmitting: false,
+        isQueueMutationPending: false,
+        queuedMessageCount: 1,
+        runtimeDisplayStatus: "waiting-for-host",
+        submitModeKind: "queue",
+      }),
+    ).toBe(false);
+    expect(
+      canSubmitFollowUpShortcut({
+        hasPromptDraftInput: true,
+        isFollowUpSubmitting: false,
+        isQueueMutationPending: false,
+        queuedMessageCount: 0,
         runtimeDisplayStatus: "active",
         submitModeKind: "queue",
       }),

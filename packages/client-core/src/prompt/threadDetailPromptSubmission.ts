@@ -198,7 +198,11 @@ export function canSubmitFollowUpShortcut({
       runtimeDisplayStatus === "starting") &&
     submitModeKind === "queue";
   if (hasPromptDraftInput) {
-    return canSteerActiveWork;
+    return (
+      canSteerActiveWork ||
+      (runtimeDisplayStatus === "waiting-for-host" &&
+        submitModeKind === "queue")
+    );
   }
   return (
     queuedMessageCount > 0 &&
