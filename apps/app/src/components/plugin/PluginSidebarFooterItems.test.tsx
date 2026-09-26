@@ -125,45 +125,72 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterItems", () => {
-  it("replaces, restores, and swaps icon slots without losing unloaded plugin preferences", async () => {
+  it("hides and restores footer icons from the customize grid without losing unloaded plugin preferences", () => {
     const store = createStore();
     store.set(sidebarFooterHiddenAtom, [
       "builtin:report-bug",
       "plugin:unloaded/action",
     ]);
     renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
-    const choose = async (slot: string, action: string) => {
-      fireEvent.click(screen.getByRole("button", { name: slot }));
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: action }),
-      );
-    };
-    await choose("Footer action 1: Settings", "Report a bug");
+    const hideSettings = screen.getByRole("button", {
+      name: "Hide Settings from footer",
+    });
+    expect(document.activeElement).toBe(hideSettings);
+    fireEvent.click(hideSettings);
     expect(
-      screen.getByRole("button", { name: "Footer action 1: Report a bug" }),
-    ).toBeDefined();
+      screen.getByRole("button", { name: "Show Settings in footer" }),
+    ).toBe(hideSettings);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Report a bug in footer" }),
+    );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
       "builtin:settings",
     ]);
-    await choose("Footer action 2: None", "Settings");
-    expect(
-      screen.getByRole("button", { name: "Footer action 2: Settings" }),
-    ).toBeDefined();
-    await choose("Footer action 1: Report a bug", "Settings");
-    expect(
-      screen.getByRole("button", { name: "Footer action 1: Settings" }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Footer action 2: Report a bug" }),
-    ).toBeDefined();
-    await choose("Footer action 1: Settings", "None");
-    expect(
-      screen.getByRole("button", { name: "Footer action 1: Report a bug" }),
-    ).toBeDefined();
+  });
+
+  it("hides the whole footer from More and shows it again", async () => {
+    setPluginSlotRegistrations(
+      "example",
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          app.experimental_sidebarFooter.register({
+            kind: "action",
+            id: "action",
+            label: "Run action",
+            icon: "Zap",
+            onActivate: vi.fn(),
+          });
+        }),
+      ),
+    );
+    const store = createStore();
+    store.set(sidebarFooterHiddenAtom, ["plugin:unloaded/action"]);
+    renderWithProviders(<FooterHarness />, store);
+    const openMore = () =>
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "More footer actions" }),
+        { button: 0, ctrlKey: false, pointerType: "mouse" },
+      );
+    openMore();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide footer" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Run action" })).toBeNull(),
+    );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
-      "builtin:settings",
+      "plugin:example/action",
+    ]);
+    openMore();
+    expect(
+      await screen.findByRole("menuitem", { name: "Run action" }),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Show footer" }));
+    await screen.findByRole("button", { name: "Run action" });
+    expect(store.get(sidebarFooterHiddenAtom)).toEqual([
+      "plugin:unloaded/action",
     ]);
   });
 
@@ -477,7 +504,9 @@ describe("PluginSidebarFooterItems", () => {
       { button: 2, pointerType: "mouse" },
     );
     expect(screen.getByLabelText("Current path").textContent).toBe("/");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Hide" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from footer" }),
+    );
     await waitFor(() => expect(screen.queryByText("Usage detail")).toBeNull());
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:usage-plugin/usage",

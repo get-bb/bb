@@ -38,13 +38,15 @@ export function useSidebarFooterPreferences() {
       label: "Settings",
       icon: "Settings",
     },
-    ...sidebarFooterItems.map((slot): FooterItem => ({
-      kind: "plugin",
-      key: footerPreferenceKey(slot),
-      label: slot.label,
-      icon: slot.icon,
-      slot,
-    })),
+    ...sidebarFooterItems.map(
+      (slot): FooterItem => ({
+        kind: "plugin",
+        key: footerPreferenceKey(slot),
+        label: slot.label,
+        icon: slot.icon,
+        slot,
+      }),
+    ),
     {
       kind: "builtin",
       id: "report-bug",
@@ -61,40 +63,13 @@ export function useSidebarFooterPreferences() {
   return {
     items: ordered,
     hidden,
-    setVisible(key: string, visible: boolean) {
+    setVisible(keys: string | readonly string[], visible: boolean) {
+      const targets = typeof keys === "string" ? [keys] : keys;
       setHidden((previous) =>
         visible
-          ? previous.filter((id) => id !== key)
-          : [...new Set([...previous, key])],
+          ? previous.filter((id) => !targets.includes(id))
+          : [...new Set([...previous, ...targets])],
       );
-    },
-    assign(activeKey: string | null, nextKey: string | null) {
-      if (activeKey === nextKey) return;
-      if (nextKey === null) {
-        if (activeKey)
-          setHidden((previous) => [...new Set([...previous, activeKey])]);
-        return;
-      }
-      const nextOrder = [...normalizedOrder];
-      const nextIndex = nextOrder.indexOf(nextKey);
-      if (nextIndex === -1) return;
-      if (activeKey === null) {
-        if (!hidden.includes(nextKey)) return;
-        nextOrder.splice(nextIndex, 1);
-        nextOrder.push(nextKey);
-      } else {
-        const activeIndex = nextOrder.indexOf(activeKey);
-        if (activeIndex === -1) return;
-        nextOrder[activeIndex] = nextKey;
-        nextOrder[nextIndex] = activeKey;
-      }
-      setOrder(nextOrder);
-      setHidden((previous) => {
-        const next = previous.filter((key) => key !== nextKey);
-        return activeKey && previous.includes(nextKey)
-          ? [...new Set([...next, activeKey])]
-          : next;
-      });
     },
     move(activeId: string, overId: string) {
       const next = reorderStoredOrder({

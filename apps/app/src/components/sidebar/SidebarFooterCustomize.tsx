@@ -1,16 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { closestCenter, DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { FooterItemIcon } from "@/components/plugin/PluginSidebarFooterItems";
@@ -24,9 +17,6 @@ import { useSidebarSortable } from "./sortableMotion";
 
 export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
   const preferences = useSidebarFooterPreferences();
-  const shown = preferences.items.filter(
-    (item) => !preferences.hidden.includes(item.key),
-  );
   const containerRef = useRef<HTMLDivElement>(null);
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     axis: "free",
@@ -39,7 +29,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
   });
   useEffect(() => {
     containerRef.current
-      ?.querySelector<HTMLButtonElement>("[data-footer-action-slot]")
+      ?.querySelector<HTMLButtonElement>("[data-footer-visibility-toggle]")
       ?.focus();
   }, []);
 
@@ -70,151 +60,89 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
           Done
         </Button>
       </div>
-      <div
-        role="group"
-        aria-label="Footer action slots"
-        className="flex flex-wrap items-center gap-1 rounded-md bg-sidebar-accent p-2"
+      <ul
+        aria-label="Footer icons"
+        className="flex flex-wrap items-center gap-2 rounded-md bg-sidebar-accent p-2"
         onClickCapture={onClickCapture}
       >
         <DndContext {...dndContextProps}>
           <SortableContext
-            items={shown.map((item) => item.key)}
+            items={preferences.items.map((item) => item.key)}
             strategy={rectSortingStrategy}
           >
-            {shown.map((item, index) => (
-              <FooterActionSlot
+            {preferences.items.map((item) => (
+              <FooterIconTile
                 key={item.key}
                 item={item}
-                index={index}
-                items={preferences.items}
-                reorderDisabled={shown.length < 2}
-                onChange={(key) => preferences.assign(item.key, key)}
+                shown={!preferences.hidden.includes(item.key)}
+                reorderDisabled={preferences.items.length < 2}
+                onVisibleChange={(visible) =>
+                  preferences.setVisible(item.key, visible)
+                }
               />
             ))}
-            {shown.length < preferences.items.length && (
-              <FooterActionSlot
-                item={null}
-                index={shown.length}
-                items={preferences.items}
-                reorderDisabled
-                onChange={(key) => preferences.assign(null, key)}
-              />
-            )}
           </SortableContext>
         </DndContext>
-        <span
-          aria-hidden="true"
-          className={cn(
-            SIDEBAR_FOOTER_ACTION_CLASS,
-            "flex items-center justify-center",
-          )}
-        >
-          <Icon name="MoreHorizontal" />
-        </span>
-      </div>
+      </ul>
       <p className="px-2 pb-1 pt-2 text-xs text-muted-foreground">
-        Click an icon to choose an action. Drag to reorder.
+        Drag icons to reorder.
       </p>
     </div>
   );
 }
 
-function FooterActionSlot({
+function FooterIconTile({
   item,
-  index,
-  items,
+  shown,
   reorderDisabled,
-  onChange,
+  onVisibleChange,
 }: {
-  item: FooterItem | null;
-  index: number;
-  items: readonly FooterItem[];
+  item: FooterItem;
+  shown: boolean;
   reorderDisabled: boolean;
-  onChange: (key: string | null) => void;
+  onVisibleChange: (visible: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
-    id: item?.key ?? "empty-footer-slot",
+    id: item.key,
     disabled: reorderDisabled,
   });
-  const label = `Footer action ${index + 1}: ${item?.label ?? "None"}`;
+  const toggleLabel = shown
+    ? `Hide ${item.label} from footer`
+    : `Show ${item.label} in footer`;
   return (
-    <Tooltip>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <span ref={setNodeRef} style={style} className="flex">
-            <TooltipTrigger asChild>
-              <button
-                ref={(element) => {
-                  buttonRef.current = element;
-                  dragBindings.setActivatorNodeRef(element);
-                }}
-                type="button"
-                aria-label={label}
-                aria-haspopup="menu"
-                aria-expanded={open}
-                data-footer-action-slot={item?.key ?? "none"}
-                className={cn(
-                  SIDEBAR_FOOTER_ACTION_CLASS,
-                  "flex cursor-pointer touch-none items-center justify-center rounded-md border outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                  item
-                    ? "border-sidebar-foreground/15"
-                    : "border-dashed border-sidebar-foreground/25",
-                  !reorderDisabled && "active:cursor-grabbing",
-                )}
-                {...dragBindings.listeners}
-                onKeyDown={undefined}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => setOpen(true)}
-              >
-                {item && <FooterItemIcon item={item} />}
-              </button>
-            </TooltipTrigger>
-          </span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          mobileTitle="Choose footer action"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            const target = buttonRef.current?.isConnected
-              ? buttonRef.current
-              : document.querySelector<HTMLButtonElement>(
-                  "[data-footer-action-slot]",
-                );
-            target?.focus();
-          }}
-        >
-          {items.map((option) => (
-            <DropdownMenuItem
-              key={option.key}
-              role="menuitemradio"
-              aria-checked={item?.key === option.key}
-              onSelect={() => onChange(option.key)}
-            >
-              <FooterItemIcon item={option} />
-              {option.label}
-              {item?.key === option.key && (
-                <Icon name="Check" className="ml-auto" />
-              )}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            role="menuitemradio"
-            aria-checked={item === null}
-            onSelect={() => onChange(null)}
+    <li ref={setNodeRef} style={style} className="relative flex">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            ref={dragBindings.setActivatorNodeRef}
+            aria-hidden="true"
+            data-footer-icon={item.key}
+            className={cn(
+              SIDEBAR_FOOTER_ACTION_CLASS,
+              "flex touch-none items-center justify-center rounded-md border",
+              shown
+                ? "border-sidebar-foreground/15"
+                : "border-dashed border-sidebar-foreground/25 opacity-50",
+              !reorderDisabled && "cursor-grab active:cursor-grabbing",
+            )}
+            {...dragBindings.listeners}
+            onKeyDown={undefined}
           >
-            <Icon name="X" />
-            None
-            {item === null && <Icon name="Check" className="ml-auto" />}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <TooltipContent side="top" hidden={open}>
-        {label}
-      </TooltipContent>
-    </Tooltip>
+            <FooterItemIcon item={item} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{item.label}</TooltipContent>
+      </Tooltip>
+      <button
+        type="button"
+        aria-label={toggleLabel}
+        data-footer-visibility-toggle={item.key}
+        className="absolute -right-1.5 -top-1.5 flex size-4 cursor-pointer items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground outline-none after:absolute after:-inset-1.5 after:content-[''] hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => onVisibleChange(!shown)}
+      >
+        <Icon name={shown ? "Minus" : "Plus"} className="size-3" />
+      </button>
+    </li>
   );
 }

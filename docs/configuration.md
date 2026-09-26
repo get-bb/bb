@@ -929,15 +929,15 @@ same operations to its app client.
 
 ### Sidebar footer
 
-The footer’s More menu is always available. Choose Customize footer to show,
-hide, and drag-reorder built-in and registered plugin actions using an inline
-icon preview. Click an icon to choose its action, choose None to move it into
-More, or use the empty slot to add an action. Choosing an action already shown
-swaps the two icons. The same
-preferences are available in Settings → Appearance → Sidebar footer. Right-click
-an action and choose Hide to move it into More. Actions that do not fit the
-available width also move into More, without changing saved visibility; they
-return when space permits. Every overflow action remains usable.
+The footer’s More menu is always available. It lists hidden actions and
+actions that do not fit the available width, plus Customize footer and Hide
+footer. Hide footer moves every action into More, leaving only the More button;
+the same menu item then reads Show footer. Customize footer shows every footer
+icon inline with a minus badge on shown icons and a plus badge on hidden ones;
+drag icons to reorder. Right-click an action and choose Hide from footer, or
+Customize footer. Settings → Appearance → Sidebar footer edits the same
+preferences. Width overflow never changes saved visibility, and every action in
+More remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain

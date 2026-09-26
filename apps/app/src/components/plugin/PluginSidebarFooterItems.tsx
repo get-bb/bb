@@ -241,6 +241,7 @@ export function PluginSidebarFooterItems({
   const shown = items.filter((item) => !preferences.hidden.includes(item.key));
   const visible = capacity === null ? shown : shown.slice(0, capacity);
   const hidden = items.filter((item) => !visible.includes(item));
+  const footerHidden = shown.length === 0;
   useEffect(() => {
     for (const item of items) {
       if (
@@ -379,7 +380,7 @@ export function PluginSidebarFooterItems({
                     onSelect={() => preferences.setVisible(item.key, false)}
                   >
                     <Icon name="EyeOff" />
-                    Hide
+                    Hide from footer
                   </ContextMenuItem>
                   <ContextMenuItem onSelect={customize}>
                     <Icon name="SlidersHorizontal" />
@@ -425,6 +426,19 @@ export function PluginSidebarFooterItems({
                   <Icon name="SlidersHorizontal" />
                   Customize footer
                 </DropdownMenuItem>
+                {items.length > 0 && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      preferences.setVisible(
+                        items.map((item) => item.key),
+                        footerHidden,
+                      )
+                    }
+                  >
+                    <Icon name={footerHidden ? "Eye" : "EyeOff"} />
+                    {footerHidden ? "Show footer" : "Hide footer"}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
