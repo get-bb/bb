@@ -237,14 +237,16 @@ Changes apply to new turns, setup commands and terminals.
 Sidebar footer actions use `sidebar.footerOrder` and `sidebar.hiddenFooterItems`.
 Both are string lists shared across clients. Keys are `builtin:settings`,
 `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
-More is always available and holds hidden actions and actions that do not fit
-the current width, without changing saved visibility. More → Customize footer
-shows every footer icon with a minus (hide) or plus (show) badge; drag to
-reorder. More → Hide footer hides every action, and Show footer restores them.
+The footer shows at most five icons. More is always available and holds hidden
+actions plus actions past the cap or the current width; width overflow never
+changes saved visibility. More → Customize footer replaces the footer row with
+Footer and More menu zones: minus removes an icon, plus adds a More item while
+the footer has room, and drag reorders within a zone. More → Hide footer hides
+every action, and Show footer restores the first five.
 Right-click an action for Hide from footer or Customize footer.
 Settings → Appearance → Sidebar footer edits the same preferences. CLI example:
 `bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'`.
-Use `bb settings ui reset sidebar.hiddenFooterItems` to show everything again.
+Use `bb settings ui reset sidebar.hiddenFooterItems` to restore the default footer.
 
 Disable anonymous usage telemetry with `bb settings general telemetryEnabled false`
 or Settings → General → Privacy & diagnostics → Share anonymous usage data. This server-wide preference

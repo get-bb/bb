@@ -233,12 +233,11 @@ export function PluginSidebarFooterItems({
     observer.observe(more);
     return () => observer.disconnect();
   }, []);
-  const items = preferences.items.filter(
-    (item) =>
-      item.kind === "plugin" ||
-      builtInActions.some((action) => action.id === item.id),
-  );
-  const shown = items.filter((item) => !preferences.hidden.includes(item.key));
+  const isAvailable = (item: FooterItem) =>
+    item.kind === "plugin" ||
+    builtInActions.some((action) => action.id === item.id);
+  const items = preferences.items.filter(isAvailable);
+  const shown = preferences.footer.filter(isAvailable);
   const visible = capacity === null ? shown : shown.slice(0, capacity);
   const hidden = items.filter((item) => !visible.includes(item));
   const footerHidden = shown.length === 0;
@@ -377,7 +376,7 @@ export function PluginSidebarFooterItems({
                   }}
                 >
                   <ContextMenuItem
-                    onSelect={() => preferences.setVisible(item.key, false)}
+                    onSelect={() => preferences.hideFromFooter(item.key)}
                   >
                     <Icon name="EyeOff" />
                     Hide from footer
@@ -428,12 +427,7 @@ export function PluginSidebarFooterItems({
                 </DropdownMenuItem>
                 {items.length > 0 && (
                   <DropdownMenuItem
-                    onSelect={() =>
-                      preferences.setVisible(
-                        items.map((item) => item.key),
-                        footerHidden,
-                      )
-                    }
+                    onSelect={() => preferences.setFooterShown(footerHidden)}
                   >
                     <Icon name={footerHidden ? "Eye" : "EyeOff"} />
                     {footerHidden ? "Show footer" : "Hide footer"}

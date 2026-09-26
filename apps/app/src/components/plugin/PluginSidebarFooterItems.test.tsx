@@ -125,27 +125,70 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterItems", () => {
-  it("hides and restores footer icons from the customize grid without losing unloaded plugin preferences", () => {
+  it("caps the footer and moves icons between the footer and More in the customize editor", () => {
+    setPluginSlotRegistrations(
+      "example",
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          for (const id of ["one", "two", "three", "four"]) {
+            app.experimental_sidebarFooter.register({
+              kind: "action",
+              id,
+              label: `Action ${id}`,
+              icon: "Zap",
+              onActivate: vi.fn(),
+            });
+          }
+        }),
+      ),
+    );
     const store = createStore();
-    store.set(sidebarFooterHiddenAtom, [
-      "builtin:report-bug",
-      "plugin:unloaded/action",
-    ]);
+    store.set(sidebarFooterHiddenAtom, ["plugin:unloaded/action"]);
     renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
-    const hideSettings = screen.getByRole("button", {
-      name: "Hide Settings from footer",
+    const footerIcons = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>("[data-footer-icon]"),
+        (element) => element.dataset.footerIcon,
+      );
+    expect(footerIcons()).toEqual([
+      "builtin:settings",
+      "plugin:example/one",
+      "plugin:example/two",
+      "plugin:example/three",
+      "plugin:example/four",
+    ]);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Remove Settings from footer" }),
+    );
+    const addBug = screen.getByRole("button", {
+      name: "Add Report a bug to footer",
     });
-    expect(document.activeElement).toBe(hideSettings);
-    fireEvent.click(hideSettings);
-    expect(
-      screen.getByRole("button", { name: "Show Settings in footer" }),
-    ).toBe(hideSettings);
+    expect(addBug).toHaveProperty("disabled", true);
+    screen.getByText("Footer is full. Remove an icon to add another.");
+
     fireEvent.click(
-      screen.getByRole("button", { name: "Show Report a bug in footer" }),
+      screen.getByRole("button", { name: "Remove Action two from footer" }),
     );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
+      "plugin:example/two",
+      "builtin:report-bug",
+    ]);
+    expect(footerIcons()).toHaveLength(4);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Report a bug to footer" }),
+    );
+    expect(footerIcons()).toEqual([
       "builtin:settings",
+      "plugin:example/one",
+      "plugin:example/three",
+      "plugin:example/four",
+      "builtin:report-bug",
+    ]);
+    expect(store.get(sidebarFooterHiddenAtom)).toEqual([
+      "plugin:unloaded/action",
+      "plugin:example/two",
     ]);
   });
 
@@ -181,7 +224,9 @@ describe("PluginSidebarFooterItems", () => {
     );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
+      "builtin:settings",
       "plugin:example/action",
+      "builtin:report-bug",
     ]);
     openMore();
     expect(

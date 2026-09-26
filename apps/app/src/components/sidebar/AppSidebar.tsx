@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { useNavigate } from "react-router-dom";
@@ -169,6 +170,7 @@ export function AppSidebar({
     customizeFocusReturnRef.current = resolveCustomizeFocusReturnTarget(
       sidebarRef.current,
     );
+    setFooterCustomizing(false);
     setNavigationCustomizing(true);
   }, []);
   const activateVisibleThreadShortcut = useCallback(
@@ -224,24 +226,31 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        {isFooterCustomizing && (
+        {isFooterCustomizing ? (
           <div className="max-h-[50svh] overflow-y-auto">
             <SidebarFooterCustomize
               onDone={() => {
-                setFooterCustomizing(false);
+                flushSync(() => setFooterCustomizing(false));
                 document.getElementById(SIDEBAR_FOOTER_MORE_ID)?.focus();
               }}
             />
           </div>
+        ) : (
+          <PluginSidebarFooterDisclosure
+            item={pluginSidebarFooter.activeItem}
+            onDismiss={pluginSidebarFooter.dismiss}
+          />
         )}
-        <PluginSidebarFooterDisclosure
-          item={pluginSidebarFooter.activeItem}
-          onDismiss={pluginSidebarFooter.dismiss}
-        />
-        <SidebarMenu className="flex-row items-center gap-1">
+        <SidebarMenu
+          className={cn(
+            "flex-row items-center gap-1",
+            isFooterCustomizing && "hidden",
+          )}
+        >
           <PluginSidebarFooterItems
             onCustomize={() => {
               pluginSidebarFooter.dismiss();
+              setNavigationCustomizing(false);
               setFooterCustomizing(true);
             }}
             activeDisclosureKey={pluginSidebarFooter.activeKey}

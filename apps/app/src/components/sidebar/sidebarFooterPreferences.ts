@@ -13,6 +13,7 @@ export const sidebarFooterHiddenAtom = createSyncedPreferenceAtom(
   "sidebar.hiddenFooterItems",
 );
 export const SIDEBAR_FOOTER_MORE_ID = "sidebar-footer-more";
+export const SIDEBAR_FOOTER_MAX_ICONS = 5;
 
 export type BuiltinFooterId = "settings" | "report-bug";
 export type FooterItem = { key: string; label: string; icon: string } & (
@@ -38,15 +39,13 @@ export function useSidebarFooterPreferences() {
       label: "Settings",
       icon: "Settings",
     },
-    ...sidebarFooterItems.map(
-      (slot): FooterItem => ({
-        kind: "plugin",
-        key: footerPreferenceKey(slot),
-        label: slot.label,
-        icon: slot.icon,
-        slot,
-      }),
-    ),
+    ...sidebarFooterItems.map((slot): FooterItem => ({
+      kind: "plugin",
+      key: footerPreferenceKey(slot),
+      label: slot.label,
+      icon: slot.icon,
+      slot,
+    })),
     {
       kind: "builtin",
       id: "report-bug",
@@ -60,23 +59,53 @@ export function useSidebarFooterPreferences() {
     storedOrder: order,
     getId: (item) => item.key,
   });
+  const footer = ordered
+    .filter((item) => !hidden.includes(item.key))
+    .slice(0, SIDEBAR_FOOTER_MAX_ICONS);
+  const more = ordered.filter((item) => !footer.includes(item));
+  const moreKeys = more.map((item) => item.key);
+  const hideKeys = (keys: readonly string[]) =>
+    setHidden((previous) => [...new Set([...previous, ...keys])]);
   return {
     items: ordered,
     hidden,
-    setVisible(keys: string | readonly string[], visible: boolean) {
-      const targets = typeof keys === "string" ? [keys] : keys;
-      setHidden((previous) =>
-        visible
-          ? previous.filter((id) => !targets.includes(id))
-          : [...new Set([...previous, ...targets])],
+    footer,
+    more,
+    isFull: footer.length >= SIDEBAR_FOOTER_MAX_ICONS,
+    hideFromFooter(key: string) {
+      hideKeys([key, ...moreKeys]);
+    },
+    addToFooter(key: string) {
+      if (footer.length >= SIDEBAR_FOOTER_MAX_ICONS) return;
+      const last = footer.at(-1)?.key;
+      const rest = normalizedOrder.filter((id) => id !== key);
+      const index = last === undefined ? 0 : rest.indexOf(last) + 1;
+      setOrder([...rest.slice(0, index), key, ...rest.slice(index)]);
+      setHidden(
+        [...new Set([...hidden, ...moreKeys])].filter((id) => id !== key),
       );
     },
+    setFooterShown(shown: boolean) {
+      setHidden((previous) => {
+        const keys = ordered.map((item) => item.key);
+        const others = previous.filter((id) => !keys.includes(id));
+        return shown
+          ? [...others, ...keys.slice(SIDEBAR_FOOTER_MAX_ICONS)]
+          : [...others, ...keys];
+      });
+    },
     move(activeId: string, overId: string) {
+      const zone =
+        [footer, more].find((items) =>
+          [activeId, overId].every((id) =>
+            items.some((item) => item.key === id),
+          ),
+        ) ?? ordered;
       const next = reorderStoredOrder({
         activeId,
         overId,
         order: normalizedOrder,
-        visibleIds: ordered.map((item) => item.key),
+        visibleIds: zone.map((item) => item.key),
       });
       if (next) setOrder(next);
     },
