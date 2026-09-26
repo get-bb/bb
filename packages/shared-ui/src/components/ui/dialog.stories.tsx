@@ -11,6 +11,7 @@ import {
 } from "./dialog.js";
 import { Button } from "./button.js";
 import { Input } from "./input.js";
+import { Label } from "./label.js";
 import {
   Select,
   SelectContent,
@@ -75,8 +76,11 @@ function FormDialogDemo() {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-sm text-muted-foreground">Name</label>
+            <Label htmlFor="new-preset-name" className="text-sm text-muted-foreground">
+              Name
+            </Label>
             <Input
+              id="new-preset-name"
               autoFocus
               value={name}
               placeholder="e.g. Sonnet · high"

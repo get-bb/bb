@@ -44,7 +44,7 @@ export default {
     "../../packages/shared-ui/src/components/ui/*.stories.tsx",
     "../../plugins/automations/*.stories.tsx",
     "../../plugins/workflows/**/*.stories.tsx",
-    "!../../plugins/workflows/node_modules/**",
+    "!../../plugins/**/node_modules/**",
     "../../plugins/provider-usage/*.stories.tsx",
   ],
   defaultStory: "",

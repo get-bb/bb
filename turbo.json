@@ -322,7 +322,14 @@
       "passThroughEnv": ["*"]
     },
     "storybook:build": {
-      "dependsOn": ["@bb/templates#generate:templates"],
+      "dependsOn": ["topo", "@bb/templates#generate:templates"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/shared-ui/src/components/ui/*.stories.tsx",
+        "$TURBO_ROOT$/plugins/automations/*.stories.tsx",
+        "$TURBO_ROOT$/plugins/workflows/**/*.stories.tsx",
+        "$TURBO_ROOT$/plugins/provider-usage/*.stories.tsx"
+      ],
       "outputs": ["build/**"]
     },
     "@bb/host-daemon#dev": {
