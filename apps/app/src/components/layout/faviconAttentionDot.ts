@@ -13,6 +13,7 @@ type FaviconSidebarThread = ThreadReadState &
   >;
 
 interface ShouldShowFaviconAttentionDotArgs {
+  backgroundThreadNeedsAttention: boolean;
   currentThreadHasPendingInteraction: boolean;
   currentThreadId?: string | null;
   isThreadView: boolean;
@@ -40,6 +41,7 @@ function isPendingDelegatedChildOfCurrentThread(
 }
 
 export function shouldShowFaviconAttentionDot({
+  backgroundThreadNeedsAttention,
   currentThreadHasPendingInteraction,
   currentThreadId,
   isThreadView,
@@ -53,14 +55,18 @@ export function shouldShowFaviconAttentionDot({
         isPendingDelegatedChildOfCurrentThread(candidate, currentThreadId),
       );
     return (
+      backgroundThreadNeedsAttention ||
       currentThreadHasPendingInteraction ||
       childNeedsAttention ||
       Boolean(thread && !isThreadRead(thread))
     );
   }
 
-  return sidebarThreads.some(
-    (candidate) =>
-      isPendingSidebarThread(candidate) || isUnreadSidebarThread(candidate),
+  return (
+    backgroundThreadNeedsAttention ||
+    sidebarThreads.some(
+      (candidate) =>
+        isPendingSidebarThread(candidate) || isUnreadSidebarThread(candidate),
+    )
   );
 }

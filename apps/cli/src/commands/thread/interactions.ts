@@ -46,6 +46,48 @@ interface ThreadInteractionTargetOptions {
   json?: boolean;
 }
 
+interface ThreadInteractionPendingOptions {
+  json?: boolean;
+  limit?: string;
+  visibility?: string;
+}
+
+const PENDING_INTERACTION_VISIBILITIES = ["any", "hidden", "visible"] as const;
+const PENDING_INTERACTION_MAX_LIMIT = 200;
+
+type PendingInteractionVisibility =
+  (typeof PENDING_INTERACTION_VISIBILITIES)[number];
+
+function parsePendingInteractionVisibility(
+  value: string | undefined,
+): PendingInteractionVisibility | undefined {
+  if (value === undefined) return undefined;
+  const visibility = PENDING_INTERACTION_VISIBILITIES.find(
+    (candidate) => candidate === value,
+  );
+  if (visibility === undefined) {
+    throw new Error("--visibility must be one of: any, hidden, visible.");
+  }
+  return visibility;
+}
+
+function parsePendingInteractionLimit(
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > PENDING_INTERACTION_MAX_LIMIT
+  ) {
+    throw new Error(
+      `--limit must be an integer from 1 to ${PENDING_INTERACTION_MAX_LIMIT}.`,
+    );
+  }
+  return limit;
+}
+
 interface ThreadInteractionGrantOptions extends ThreadInteractionTargetOptions {
   scope?: string;
 }
@@ -762,6 +804,54 @@ export function registerInteractionCommands(
           );
         },
       ),
+    );
+
+  interactions
+    .command("pending")
+    .description(
+      "List interactions waiting on you across threads, including hidden threads",
+    )
+    .option(
+      "--visibility <visibility>",
+      "Threads to include: any, hidden, or visible (default any)",
+    )
+    .option("--limit <n>", "Maximum rows, 1-200 (default 50)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: ThreadInteractionPendingOptions) => {
+        const visibility = parsePendingInteractionVisibility(opts.visibility);
+        const limit = parsePendingInteractionLimit(opts.limit);
+        const sdk = createCliBbSdk(getUrl());
+
+        const entries = await sdk.threads.experimental_listPendingInteractions({
+          ...(visibility === undefined ? {} : { visibility }),
+          ...(limit === undefined ? {} : { limit }),
+        });
+
+        if (outputJson(opts, entries)) {
+          return;
+        }
+        if (entries.length === 0) {
+          console.log("No interactions are waiting");
+          return;
+        }
+
+        printBorderlessTable(
+          {
+            head: ["Thread", "ID", "Kind", "Summary"],
+            colWidths: [26, 20, 12, 60],
+            trimTrailingWhitespace: true,
+          },
+          entries.map((entry) => [
+            entry.thread.visibility === "hidden"
+              ? `${entry.thread.id} (hidden)`
+              : entry.thread.id,
+            entry.interaction.id,
+            formatInteractionKind(entry.interaction),
+            formatPendingInteractionSummary({ interaction: entry.interaction }),
+          ]),
+        );
+      }),
     );
 
   interactions

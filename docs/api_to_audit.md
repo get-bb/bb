@@ -412,6 +412,22 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
 - **The single server-wide lock.** One slow handler delays every dispatch in the
   server, up to its box.
 
+## `bb.sdk.threads.experimental_listPendingInteractions`
+
+`bb.sdk.threads.experimental_listPendingInteractions({ visibility?, limit?, signal? })`
+returns active interactions (status `pending` or `resolving`) across threads,
+newest first, from `GET /threads/pending-interactions`. Each entry carries the
+interaction, its thread (`id`, `projectId`, `title`, `titleFallback`,
+`visibility`, `originPluginId`) and an `owner`: the parent thread, else the
+lifecycle owner, or `null`. `visibility` is `any` (default), `hidden` or
+`visible`; `limit` defaults to 50 and must be 1–200. Archived and deleted
+threads are excluded. The app's background attention tray reads
+`visibility: "hidden"`, and `bb thread interactions pending` wraps it.
+
+Audit the owner rule (parent before lifecycle owner), whether callers need
+paging past 200, and whether the entry should carry the owner's project before
+stabilizing.
+
 ## `interaction.pending` (`bb.events.on`)
 
 **What it does.** This announcement fires after core commits a pending

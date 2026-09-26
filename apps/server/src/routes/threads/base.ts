@@ -23,12 +23,15 @@ import { toEnvironmentResponse } from "../../services/environments/environment-r
 import {
   threadIncludeOptionSchema,
   THREAD_COUNT_ROOT_PARENT,
+  THREAD_PENDING_INTERACTION_ATTENTION_DEFAULT_LIMIT,
+  THREAD_PENDING_INTERACTION_ATTENTION_MAX_LIMIT,
   publicApiRoutes,
   typedRoutes,
   type ThreadGetQuery,
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
   type ThreadCountResponse,
+  type ThreadPendingInteractionAttentionResponse,
   type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
@@ -257,6 +260,29 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   get(routes.running, (context) => {
     return context.json(
       listRunningThreadsWithIntendedHosts(deps) satisfies ThreadRunningResponse,
+    );
+  });
+
+  get(routes.pendingInteractions, (context, query) => {
+    const limit =
+      query.limit === undefined
+        ? THREAD_PENDING_INTERACTION_ATTENTION_DEFAULT_LIMIT
+        : Number(query.limit);
+    if (limit < 1 || limit > THREAD_PENDING_INTERACTION_ATTENTION_MAX_LIMIT) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `limit must be between 1 and ${THREAD_PENDING_INTERACTION_ATTENTION_MAX_LIMIT}`,
+      );
+    }
+    return context.json(
+      deps.pendingInteractions.listPendingInteractionAttention({
+        limit,
+        visibility:
+          query.visibility === undefined || query.visibility === "any"
+            ? null
+            : query.visibility,
+      }) satisfies ThreadPendingInteractionAttentionResponse,
     );
   });
 

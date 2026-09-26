@@ -402,13 +402,20 @@ export {
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
+  listActivePendingInteractionAttention,
   listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
   setPendingInteractionResolved,
 } from "./pending-interactions.js";
-export type { PendingInteractionRow } from "./pending-interactions.js";
+export type {
+  ListActivePendingInteractionAttentionArgs,
+  PendingInteractionAttentionOwnerRow,
+  PendingInteractionAttentionRow,
+  PendingInteractionAttentionThreadRow,
+  PendingInteractionRow,
+} from "./pending-interactions.js";
 
 export {
   openSession,

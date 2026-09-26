@@ -21,6 +21,7 @@ function makeSidebarThread(
 }
 
 const BASE_ARGS = {
+  backgroundThreadNeedsAttention: false,
   currentThreadHasPendingInteraction: false,
   isThreadView: false,
   thread: null,
@@ -28,6 +29,27 @@ const BASE_ARGS = {
 };
 
 describe("shouldShowFaviconAttentionDot", () => {
+  it("shows the dot outside a thread when a hidden thread is waiting on the user", () => {
+    expect(
+      shouldShowFaviconAttentionDot({
+        ...BASE_ARGS,
+        backgroundThreadNeedsAttention: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows the dot on a read thread when a hidden thread is waiting on the user", () => {
+    expect(
+      shouldShowFaviconAttentionDot({
+        ...BASE_ARGS,
+        backgroundThreadNeedsAttention: true,
+        currentThreadId: "thr_current",
+        isThreadView: true,
+        thread: { lastReadAt: 30, latestAttentionAt: 20 },
+      }),
+    ).toBe(true);
+  });
+
   it("ignores unread side-chat threads hidden from the sidebar", () => {
     expect(
       shouldShowFaviconAttentionDot({

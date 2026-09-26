@@ -99,6 +99,11 @@ vi.mock("@/hooks/usePluginSafeModeCommands", () => ({
   usePluginSafeModeCommands: () => undefined,
 }));
 
+vi.mock("@/components/notifications/BackgroundAttentionTray", () => ({
+  BackgroundAttentionTray: () => null,
+  useBackgroundAttentionEntries: () => [],
+}));
+
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>

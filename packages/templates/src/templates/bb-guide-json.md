@@ -70,6 +70,9 @@ Fields beyond those shown exist; these are the ones scripts use.
   bb thread queue list <id> --json, bb thread interactions list <id> --json, bb thread history <id> --json
     bare arrays
 
+  bb thread interactions pending --json
+    [{interaction, thread: {id, projectId, title, titleFallback, visibility, originPluginId}, owner: {id, title, titleFallback} | null}]
+
   bb project list --json
     [{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}]}]    (bare array)
 

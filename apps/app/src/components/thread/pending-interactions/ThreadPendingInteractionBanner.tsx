@@ -41,6 +41,7 @@ import { usePluginIconUrl } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ThreadPendingInteractionBannerProps {
+  initiallyExpanded?: boolean;
   interaction: PendingInteraction;
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
@@ -52,6 +53,7 @@ type ApprovalBannerSubject = Extract<
 >["subject"];
 
 interface ApprovalPendingInteractionBannerProps {
+  initiallyExpanded: boolean;
   interaction: PendingInteraction;
   payload: ApprovalPendingInteractionPayload;
   subject: ApprovalBannerSubject;
@@ -103,6 +105,7 @@ export function ThreadPendingInteractionBanner(
 }
 
 function PendingInteractionBanner({
+  initiallyExpanded = false,
   interaction,
   sourceThread,
   threadId,
@@ -111,6 +114,7 @@ function PendingInteractionBanner({
   if (request.family === "approval") {
     return (
       <ApprovalPendingInteractionBanner
+        initiallyExpanded={initiallyExpanded}
         interaction={interaction}
         payload={request.payload}
         subject={request.subject}
@@ -132,6 +136,7 @@ function PendingInteractionBanner({
     case "plan_review":
       return (
         <PlanReviewRequestBanner
+          initiallyExpanded={initiallyExpanded}
           interaction={interaction}
           request={request}
           sourceThread={sourceThread}
@@ -163,6 +168,7 @@ function PendingInteractionBanner({
 }
 
 interface PlanReviewRequestBannerProps {
+  initiallyExpanded: boolean;
   interaction: PendingInteraction;
   request: Extract<InteractionRequestView, { kind: "plan_review" }>;
   sourceThread?: PendingInteractionSourceThread;
@@ -205,6 +211,7 @@ function useApprovalDecisionSubmission({
 }
 
 function PlanReviewRequestBanner({
+  initiallyExpanded,
   interaction,
   request,
   sourceThread,
@@ -222,7 +229,7 @@ function PlanReviewRequestBanner({
     <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
-      initiallyExpanded={false}
+      initiallyExpanded={initiallyExpanded}
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"
@@ -271,6 +278,7 @@ function unwrapBacktickedCommand(command: string): string {
 }
 
 function ApprovalPendingInteractionBanner({
+  initiallyExpanded,
   interaction,
   payload,
   subject,
@@ -292,7 +300,7 @@ function ApprovalPendingInteractionBanner({
     <PendingInteractionShell
       label="Approval needed"
       title={view.title}
-      initiallyExpanded={false}
+      initiallyExpanded={initiallyExpanded}
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"

@@ -214,6 +214,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb thread clear-goal`
 - `bb thread interactions`
 - `bb thread interactions list`
+- `bb thread interactions pending`
 - `bb thread interactions show`
 - `bb thread interactions approve`
 - `bb thread interactions grant`

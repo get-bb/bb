@@ -68,6 +68,8 @@ import type {
   ThreadEventWaitQuery,
   ThreadGetQuery,
   ThreadListQuery,
+  ThreadPendingInteractionAttentionQuery,
+  ThreadPendingInteractionAttentionResponse,
   ThreadSearchQuery,
   ThreadStorageFilesQuery,
   ThreadStoragePathsQuery,
@@ -161,6 +163,14 @@ export type ThreadCountResult = ThreadCountResponse;
  * distinct idle threads can momentarily under-report.
  */
 export type ThreadRunningResult = ThreadRunningResponse;
+export type ThreadPendingInteractionAttentionResult =
+  ThreadPendingInteractionAttentionResponse;
+
+export interface ThreadPendingInteractionAttentionArgs {
+  limit?: number;
+  signal?: AbortSignal;
+  visibility?: "any" | "hidden" | "visible";
+}
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
 export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
@@ -581,6 +591,9 @@ export interface ThreadsArea {
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
+  experimental_listPendingInteractions(
+    args?: ThreadPendingInteractionAttentionArgs,
+  ): Promise<ThreadPendingInteractionAttentionResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
@@ -642,6 +655,17 @@ export interface ThreadsArea {
    */
   updateDraft(args: ThreadUpdateDraftArgs): Promise<ThreadMutationResult>;
   wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
+}
+
+function pendingInteractionAttentionQuery(
+  input: ThreadPendingInteractionAttentionArgs | undefined,
+): ThreadPendingInteractionAttentionQuery {
+  return {
+    ...(input?.visibility === undefined
+      ? {}
+      : { visibility: input.visibility }),
+    ...(input?.limit === undefined ? {} : { limit: String(input.limit) }),
+  };
 }
 
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
@@ -1138,6 +1162,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads.running.$get(
           {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async experimental_listPendingInteractions(input) {
+      return transport.readJson(
+        transport.api.v1.threads["pending-interactions"].$get(
+          { query: pendingInteractionAttentionQuery(input) },
           ...signalRequestArgs(input?.signal),
         ),
       );

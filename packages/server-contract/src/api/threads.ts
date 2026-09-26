@@ -907,6 +907,46 @@ export const threadRunningEntrySchema = z.object({
 export const threadRunningResponseSchema = z.array(threadRunningEntrySchema);
 export type ThreadRunningResponse = z.infer<typeof threadRunningResponseSchema>;
 
+export const THREAD_PENDING_INTERACTION_ATTENTION_DEFAULT_LIMIT = 50;
+export const THREAD_PENDING_INTERACTION_ATTENTION_MAX_LIMIT = 200;
+
+export const threadPendingInteractionAttentionQuerySchema = z.object({
+  visibility: z.enum(["hidden", "visible", "any"]).optional(),
+  limit: z.string().regex(/^\d+$/).optional(),
+});
+export type ThreadPendingInteractionAttentionQuery = z.infer<
+  typeof threadPendingInteractionAttentionQuerySchema
+>;
+
+export const threadPendingInteractionAttentionEntrySchema = z.object({
+  interaction: pendingInteractionSchema,
+  thread: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string().nullable(),
+    titleFallback: z.string().nullable(),
+    visibility: threadVisibilitySchema,
+    originPluginId: z.string().nullable(),
+  }),
+  owner: z
+    .object({
+      id: z.string(),
+      title: z.string().nullable(),
+      titleFallback: z.string().nullable(),
+    })
+    .nullable(),
+});
+export type ThreadPendingInteractionAttentionEntry = z.infer<
+  typeof threadPendingInteractionAttentionEntrySchema
+>;
+
+export const threadPendingInteractionAttentionResponseSchema = z.array(
+  threadPendingInteractionAttentionEntrySchema,
+);
+export type ThreadPendingInteractionAttentionResponse = z.infer<
+  typeof threadPendingInteractionAttentionResponseSchema
+>;
+
 export const threadSearchQuerySchema = z.object({
   query: z.string().trim().min(2),
   limitPerGroup: z.string().regex(/^\d+$/).optional(),

@@ -27,6 +27,10 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
+import {
+  BackgroundAttentionTray,
+  useBackgroundAttentionEntries,
+} from "@/components/notifications/BackgroundAttentionTray";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
   resolveAutomationBreadcrumbs,
@@ -656,7 +660,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   const currentThreadHasPendingInteraction =
     getLatestPendingInteraction(currentThreadPendingInteractionsQuery.data) !==
     null;
+  const backgroundAttentionEntries = useBackgroundAttentionEntries(
+    threadId ?? null,
+  );
   const faviconBadge = shouldShowFaviconAttentionDot({
+    backgroundThreadNeedsAttention: backgroundAttentionEntries.length > 0,
     currentThreadHasPendingInteraction,
     currentThreadId: threadId,
     isThreadView,
@@ -821,6 +829,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 projectId={projectId ?? null}
               />
               <NotificationCenter />
+              <BackgroundAttentionTray currentThreadId={threadId ?? null} />
               <ProjectPathDialog
                 target={quickCreateProject.projectPathDialog.target}
                 pending={quickCreateProject.isCreating}

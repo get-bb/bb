@@ -8,11 +8,14 @@ import {
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
+  listActivePendingInteractionAttention,
   listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
   setPendingInteractionResolving,
+  type ListActivePendingInteractionAttentionArgs,
+  type PendingInteractionAttentionRow,
   type PendingInteractionRow,
   type DbNotifier,
   type DbTransaction,
@@ -297,6 +300,13 @@ type PendingInteractionLifecycleArgs = CreateLifecycleDeps;
 
 export type ThreadInteractionSettledListener = (threadId: string) => void;
 
+export interface PendingInteractionAttentionEntry extends Omit<
+  PendingInteractionAttentionRow,
+  "interaction"
+> {
+  interaction: PendingInteraction;
+}
+
 function buildInteractionChangeMetadata({
   db,
   hasPendingInteraction,
@@ -377,6 +387,23 @@ export class PendingInteractionLifecycle {
     listener: ThreadInteractionSettledListener,
   ): void {
     this.interactionSettledListener = listener;
+  }
+
+  listPendingInteractionAttention(
+    args: ListActivePendingInteractionAttentionArgs,
+  ): PendingInteractionAttentionEntry[] {
+    const entries: PendingInteractionAttentionEntry[] = [];
+    for (const row of listActivePendingInteractionAttention(
+      this.deps.db,
+      args,
+    )) {
+      const [interaction] = this.parseListRows([row.interaction]);
+      if (interaction === undefined) {
+        continue;
+      }
+      entries.push({ interaction, owner: row.owner, thread: row.thread });
+    }
+    return entries;
   }
 
   listPendingThreadInteractions(threadId: string): PendingInteraction[] {
