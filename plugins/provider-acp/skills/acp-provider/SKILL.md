@@ -20,6 +20,15 @@ models selectable through BB's model field. Grok Build advertises models and
 `thought_level` options over ACP, so the picker follows the connected agent
 (including `xhigh` on grok-4.6).
 
+BB reuses the initial model's advertised reasoning choices and probes other
+models within a five-second budget, trying configured priority models first.
+Models not reached, or without recognized choices, show no reasoning selector;
+BB leaves their agent reasoning setting unchanged. An empty
+`supportedReasoningEfforts` in `bb provider models <provider-id> --json` means
+BB has no selectable reasoning levels for that model, not that the model cannot
+reason. Refresh the catalog after changing the agent's default or priority
+models. This does not require omp's proposed `_meta.thoughtLevels` extension.
+
 OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
 expose compatible compaction. Check the actual agent's capabilities before
 attempting provider-specific recovery.

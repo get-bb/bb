@@ -115,6 +115,10 @@ appears automatically. Discover and select one with:
   bb thread spawn --provider acp-opencode --model <provider/model>
 
 bb applies the selected model to the ACP session before the first prompt.
+Native reasoning discovery is bounded to five seconds and reuses the initial
+model's advertised choices. Models without discovered choices have an empty
+supportedReasoningEfforts array in the CLI/SDK catalog and no reasoning picker;
+bb leaves their agent reasoning setting unchanged instead of sending Medium.
 
 OpenCode Go quotas appear in Provider usage for the selected machine after
 signing in to Go in OpenCode on that machine. Inspect the same five-hour,

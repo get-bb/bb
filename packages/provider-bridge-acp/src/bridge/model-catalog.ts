@@ -7,14 +7,6 @@ interface RawAgentModel {
   displayName: string;
 }
 
-export const ACP_NATIVE_REASONING_EFFORTS: AvailableModel["supportedReasoningEfforts"] =
-  [
-    {
-      reasoningEffort: "medium",
-      description: "Reasoning effort is managed by the connected ACP agent.",
-    },
-  ];
-
 export interface AcpNativeReasoningSupport {
   supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"];
   defaultReasoningEffort: ReasoningLevel;
@@ -183,8 +175,7 @@ export function buildAcpNativeReasoningSupport(
   );
   if (supportedReasoningEfforts.length === 0) {
     return {
-      supportedReasoningEfforts:
-        thoughtLevelOption === undefined ? ACP_NATIVE_REASONING_EFFORTS : [],
+      supportedReasoningEfforts: [],
       defaultReasoningEffort: "medium",
     };
   }
@@ -216,7 +207,7 @@ export function buildModelCatalogFromConfigOptions(
     const isDefault =
       currentValue !== undefined ? option.value === currentValue : index === 0;
     const reasoning = reasoningByModel?.get(option.value) ?? {
-      supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+      supportedReasoningEfforts: [],
       defaultReasoningEffort: "medium" as ReasoningLevel,
     };
     return {
@@ -254,7 +245,7 @@ export function buildModelCatalogFromSessionModels(
       model: model.modelId,
       displayName: model.name ?? model.modelId,
       description: model.description ?? "",
-      supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+      supportedReasoningEfforts: [],
       defaultReasoningEffort: "medium",
       isDefault,
     };
