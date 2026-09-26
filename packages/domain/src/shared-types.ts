@@ -531,7 +531,7 @@ export type PromptMode = z.infer<typeof promptModeSchema>;
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
-  reasoningLevel: reasoningLevelSchema,
+  reasoningLevel: reasoningLevelSchema.optional(),
   promptMode: promptModeSchema.optional(),
   providerOptions: jsonObjectSchema,
 });

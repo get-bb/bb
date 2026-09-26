@@ -472,6 +472,28 @@ export function useThreadCreationOptions(
     [providers],
   );
 
+  const needsSelectedModelDiscovery =
+    modelCatalogIsVerified &&
+    [
+      ...(executionOptionsQuery.data?.models ?? []),
+      ...(executionOptionsQuery.data?.selectedOnlyModels ?? []),
+    ].some(
+      (model) =>
+        model.model === rawSelectedModel &&
+        model.supportedReasoningEfforts.length === 0,
+    );
+  const selectedModelQuery = useSystemExecutionOptions({
+    enabled: executionOptionsQueryEnabled && needsSelectedModelDiscovery,
+    ...executionOptionsRouting,
+    providerId: effectiveProviderId,
+    selectedModel: rawSelectedModel || undefined,
+  });
+  const selectedCatalog =
+    !selectedModelQuery.isPlaceholderData &&
+    selectedModelQuery.data?.modelLoadError === null
+      ? selectedModelQuery.data
+      : executionOptionsQuery.data;
+
   const activeProviderCapabilities = selectedProviderInfo?.capabilities;
   const selectedProviderComposerActions =
     selectedProviderInfo?.composerActions ?? EMPTY_COMPOSER_ACTIONS;
@@ -551,9 +573,8 @@ export function useThreadCreationOptions(
   } = useMemo(
     () =>
       resolveModelCatalogSelection({
-        models: executionOptionsQuery.data?.models ?? [],
-        selectedOnlyModels:
-          executionOptionsQuery.data?.selectedOnlyModels ?? [],
+        models: selectedCatalog?.models ?? [],
+        selectedOnlyModels: selectedCatalog?.selectedOnlyModels ?? [],
         selectedModel: rawSelectedModel,
         preferredReasoningLevel,
         provider: selectedProviderInfo,
@@ -561,8 +582,8 @@ export function useThreadCreationOptions(
         formatModelLabel,
       }),
     [
-      executionOptionsQuery.data?.models,
-      executionOptionsQuery.data?.selectedOnlyModels,
+      selectedCatalog?.models,
+      selectedCatalog?.selectedOnlyModels,
       modelCatalogIsVerified,
       preferredReasoningLevel,
       rawSelectedModel,

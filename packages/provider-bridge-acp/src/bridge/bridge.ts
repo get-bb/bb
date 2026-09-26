@@ -124,7 +124,6 @@ import {
   type CursorMcpApproval,
 } from "./cursor-mcp-approval.js";
 import {
-  ACP_NATIVE_REASONING_EFFORTS,
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
@@ -300,10 +299,7 @@ function rememberGrokContextWindow(
   }
 }
 
-function emitGrokContextWindow(
-  session: AcpThreadSession,
-  used: number,
-): void {
+function emitGrokContextWindow(session: AcpThreadSession, used: number): void {
   if (
     session.dialect.id !== "grok" ||
     session.grokContextWindowSize === undefined
@@ -527,7 +523,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   model: ACP_DEFAULT_MODEL_ID,
   displayName: "Agent default",
   description: "Model selection is managed by the connected ACP agent.",
-  supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+  supportedReasoningEfforts: [],
   defaultReasoningEffort: "medium",
   isDefault: true,
 };
@@ -574,12 +570,8 @@ function applyReasoningCliToModel(
       };
 }
 
-function modelHasOnlyAgentManagedReasoning(model: AvailableModel): boolean {
-  return (
-    model.supportedReasoningEfforts.length === 1 &&
-    model.supportedReasoningEfforts[0]?.reasoningEffort === "medium" &&
-    model.defaultReasoningEffort === "medium"
-  );
+function modelHasNoAdvertisedReasoning(model: AvailableModel): boolean {
+  return model.supportedReasoningEfforts.length === 0;
 }
 
 function applyNativeReasoningHintToModel(
@@ -587,8 +579,7 @@ function applyNativeReasoningHintToModel(
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ): AvailableModel {
   const reasoningSupport = reasoningSupportFromCli(nativeReasoning);
-  return reasoningSupport === undefined ||
-    !modelHasOnlyAgentManagedReasoning(model)
+  return reasoningSupport === undefined || !modelHasNoAdvertisedReasoning(model)
     ? model
     : {
         ...model,
@@ -817,6 +808,7 @@ async function loadSessionDiscoveredModels(
   agent: AcpAgentCommandParam,
   reasoningProbePriorityModelIds: readonly string[],
   parameterizedModelPicker: boolean,
+  selectedModel: string | undefined,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify({
     agent,
@@ -824,6 +816,7 @@ async function loadSessionDiscoveredModels(
     parameterizedModelPicker,
   });
   if (
+    selectedModel === undefined &&
     cachedSessionDiscoveredModels?.key === key &&
     Date.now() - cachedSessionDiscoveredModels.fetchedAt <
       SESSION_MODEL_DISCOVERY_TTL_MS
@@ -848,16 +841,22 @@ async function loadSessionDiscoveredModels(
     onExit: () => {},
   });
 
+  const discoveryDeadline =
+    Date.now() + ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS;
+  const initialTimeoutMs =
+    selectedModel === undefined
+      ? MODEL_LIST_TIMEOUT_MS
+      : ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
       connection.kill();
       reject(
         new Error(
-          `ACP-native model discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+          `ACP-native model discovery timed out after ${initialTimeoutMs}ms`,
         ),
       );
-    }, MODEL_LIST_TIMEOUT_MS);
+    }, initialTimeoutMs);
   });
 
   try {
@@ -893,11 +892,13 @@ async function loadSessionDiscoveredModels(
     }
 
     if (configOptionModels.length === 0) {
-      cachedSessionDiscoveredModels = {
-        key,
-        models: sessionModels,
-        fetchedAt: Date.now(),
-      };
+      if (selectedModel === undefined) {
+        cachedSessionDiscoveredModels = {
+          key,
+          models: sessionModels,
+          fetchedAt: Date.now(),
+        };
+      }
       return sessionModels;
     }
 
@@ -905,17 +906,21 @@ async function loadSessionDiscoveredModels(
       connection,
       sessionId: newSession.sessionId,
       modelOption,
+      configOptions: newSession.configOptions,
       reasoningProbePriorityModelIds,
+      selectedModel,
+      timeoutMs:
+        selectedModel === undefined
+          ? ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS
+          : Math.max(1, discoveryDeadline - Date.now()),
     });
     const models = buildModelCatalogFromConfigOptions(
       modelOption,
       reasoningByModel,
     );
-    cachedSessionDiscoveredModels = {
-      key,
-      models,
-      fetchedAt: Date.now(),
-    };
+    if (selectedModel === undefined) {
+      cachedSessionDiscoveredModels = { key, models, fetchedAt: Date.now() };
+    }
     return models;
   } catch (error) {
     process.stderr.write(
@@ -936,7 +941,10 @@ async function discoverAcpNativeReasoningByModel(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   modelOption: AcpConfigOption | undefined;
+  configOptions: readonly AcpConfigOption[] | undefined;
   reasoningProbePriorityModelIds: readonly string[];
+  selectedModel: string | undefined;
+  timeoutMs: number;
 }): Promise<ReadonlyMap<string, AcpNativeReasoningSupport>> {
   const modelOptions = args.modelOption?.options ?? [];
   if (!args.modelOption || modelOptions.length === 0) {
@@ -946,22 +954,34 @@ async function discoverAcpNativeReasoningByModel(args: {
   const modelByValue = new Map(
     modelOptions.map((model) => [model.value, model] as const),
   );
+  const supportByModel = new Map<string, AcpNativeReasoningSupport>();
+  const currentValue = modelOption.currentValue;
+  if (currentValue !== undefined && modelByValue.has(currentValue)) {
+    supportByModel.set(
+      currentValue,
+      buildAcpNativeReasoningSupport(
+        findAcpThoughtLevelConfigOption(args.configOptions),
+      ),
+    );
+  }
   const modelsToProbe: typeof modelOptions = [];
-  const addedModels = new Set<string>();
-  for (const value of args.reasoningProbePriorityModelIds) {
+  const addedModels = new Set(supportByModel.keys());
+  for (const value of args.selectedModel === undefined
+    ? args.reasoningProbePriorityModelIds
+    : [args.selectedModel]) {
     const model = modelByValue.get(value);
     if (model && !addedModels.has(model.value)) {
       modelsToProbe.push(model);
       addedModels.add(model.value);
     }
   }
-  for (const model of modelOptions) {
+  for (const model of args.selectedModel === undefined ? modelOptions : []) {
     if (!addedModels.has(model.value)) {
       modelsToProbe.push(model);
     }
   }
 
-  const supportByModel = new Map<string, AcpNativeReasoningSupport>();
+  if (modelsToProbe.length === 0) return supportByModel;
   let timedOut = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<
@@ -971,13 +991,14 @@ async function discoverAcpNativeReasoningByModel(args: {
       timedOut = true;
       args.connection.kill();
       resolve(supportByModel);
-    }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
+    }, args.timeoutMs);
   });
 
   try {
     return await Promise.race([
       (async () => {
         for (const model of modelsToProbe) {
+          if (timedOut) break;
           try {
             const configState = await args.connection.request({
               method: "session/set_config_option",
@@ -988,6 +1009,7 @@ async function discoverAcpNativeReasoningByModel(args: {
               },
               resultSchema: acpConfigStateResultSchema,
             });
+            if (timedOut) break;
             supportByModel.set(
               model.value,
               buildAcpNativeReasoningSupport(
@@ -2364,6 +2386,7 @@ async function handleModelList(
   id: string | number,
   params: AcpModelListParams,
   dialectId: string | undefined,
+  selectedModel: string | undefined,
 ): Promise<void> {
   function sendModels(models: readonly AvailableModel[]): void {
     sendResult(
@@ -2395,6 +2418,7 @@ async function handleModelList(
           params.agent,
           params.reasoningProbePriorityModelIds,
           params.parameterizedModelPicker,
+          selectedModel,
         )
       : null;
   if (sessionDiscoveredModels) {
@@ -2522,6 +2546,7 @@ async function handleRequest(
           modelPicker,
         ),
         decodeDialectId(request.params.providerOptions),
+        request.params.selectedModel,
       );
       return;
     }
