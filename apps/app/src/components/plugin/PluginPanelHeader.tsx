@@ -49,10 +49,12 @@ export function PluginPanelHeaderActions({
   panel,
   paneId,
   subPath,
+  paneActions,
 }: {
   panel: PluginNavPanelSlot;
   paneId?: string;
   subPath: string;
+  paneActions?: ReactNode;
 }) {
   const paneContext = useOptionalPaneContext();
   const HeaderContent = panel.headerContent;
@@ -80,6 +82,7 @@ export function PluginPanelHeaderActions({
           </PluginContext.Provider>
         </HeaderContentBoundary>
       )}
+      {paneActions}
       <div data-plugin-right-panel-toggle-portal={panelStateId} />
     </div>
   );

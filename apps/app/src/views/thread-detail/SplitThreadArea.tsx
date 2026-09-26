@@ -1054,6 +1054,21 @@ function StandalonePaneContent({
       subPath={content.subPath}
     />
   );
+  const paneActions = onRequestClose ? (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+      )}
+      aria-label="Close pane"
+      onClick={onRequestClose}
+    >
+      <Icon name="ClosePluginPane" />
+    </Button>
+  ) : null;
   return (
     <PluginPagePanelHost
       flushPageInsets
@@ -1067,30 +1082,16 @@ function StandalonePaneContent({
           <AppPageHeader
             center={<PluginPanelHeaderCenter chrome={panelChrome} />}
             actions={
-              <>
-                {panel ? (
-                  <PluginPanelHeaderActions
-                    panel={panel}
-                    paneId={paneId}
-                    subPath={content.subPath}
-                  />
-                ) : null}
-                {onRequestClose ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
-                      CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-                    )}
-                    aria-label="Close pane"
-                    onClick={onRequestClose}
-                  >
-                    <Icon name="ClosePluginPane" />
-                  </Button>
-                ) : null}
-              </>
+              panel ? (
+                <PluginPanelHeaderActions
+                  panel={panel}
+                  paneId={paneId}
+                  subPath={content.subPath}
+                  paneActions={paneActions}
+                />
+              ) : (
+                paneActions
+              )
             }
           />
           <div className="flex min-h-0 flex-1 flex-col p-4 md:p-5">{body}</div>
@@ -1157,14 +1158,8 @@ function NonThreadPaneContent({
     }
     if (event.button === 0) beginPaneDrag?.(event, label);
   };
-  const actions = (
+  const paneActions = (
     <>
-      {panel ? (
-        <PluginPanelHeaderActions
-          panel={panel}
-          subPath={content.kind === "plugin-panel" ? content.subPath : ""}
-        />
-      ) : null}
       <PaneMaximizeButton />
       {onRequestClose ? (
         <Button
@@ -1187,6 +1182,19 @@ function NonThreadPaneContent({
           />
         </Button>
       ) : null}
+    </>
+  );
+  const actions = (
+    <>
+      {panel ? (
+        <PluginPanelHeaderActions
+          panel={panel}
+          subPath={content.kind === "plugin-panel" ? content.subPath : ""}
+          paneActions={paneActions}
+        />
+      ) : (
+        paneActions
+      )}
       {reservesWindowPanelToggle && showsWindowPanelToggle ? (
         <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
       ) : null}
