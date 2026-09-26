@@ -66,10 +66,9 @@ describe("RootComposeCompactHome", () => {
     renderCompactHome();
 
     const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
-    const bottomSpacer = viewport.lastElementChild;
-    if (!(bottomSpacer instanceof HTMLElement)) {
-      throw new Error("Expected a trailing composer spacer");
-    }
+    const bottomSpacer = screen.getByTestId(
+      "root-compose-compact-bottom-spacer",
+    );
     expect(viewport.style.top).toBe("310px");
     expect(bottomSpacer.style.height).toBe("188px");
   });
@@ -93,12 +92,39 @@ describe("RootComposeCompactHome", () => {
   it("pads the list tail so the last row can clear the composer", () => {
     renderCompactHome();
 
-    const viewport = screen.getByTestId("root-compose-compact-scroll-viewport");
-    const bottomSpacer = viewport.lastElementChild;
-    if (!(bottomSpacer instanceof HTMLElement)) {
-      throw new Error("Expected a trailing composer spacer");
-    }
+    const bottomSpacer = screen.getByTestId(
+      "root-compose-compact-bottom-spacer",
+    );
     expect(bottomSpacer.style.height).toBe("0px");
+  });
+
+  it("rests a list that fits on the composer instead of the band top", () => {
+    renderCompactHome();
+
+    const content = screen.getByTestId("root-compose-compact-scroll-content");
+    expect(content.className).toContain("min-h-full");
+    expect(content.className).toContain("justify-end");
+    expect(content.lastElementChild).toBe(
+      screen.getByTestId("root-compose-compact-bottom-spacer"),
+    );
+  });
+
+  it("drops the composer fade when nothing scrolls behind it", () => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(534);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(534);
+
+    renderCompactHome();
+
+    expect(screen.getByTestId("root-compose-compact-fade").hidden).toBe(true);
+  });
+
+  it("keeps the composer fade while rows overflow behind it", () => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(873);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(534);
+
+    renderCompactHome();
+
+    expect(screen.getByTestId("root-compose-compact-fade").hidden).toBe(false);
   });
 
   it("renders a strong fade so rows dissolve into the composer", () => {
