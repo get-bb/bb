@@ -443,6 +443,9 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     expect(visibleRowKeys()).toEqual([...HOST_KEYS, "docs/main"]);
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
     expect(
+      screen.getByRole("button", { name: "Customize sidebar" }),
+    ).not.toBeNull();
+    expect(
       screen.queryByRole("button", { name: "Customize sidebar navigation" }),
     ).toBeNull();
     expect(
@@ -984,6 +987,9 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     });
 
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Customize sidebar" }),
+    ).not.toBeNull();
     await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
     );
@@ -1095,6 +1101,9 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     });
 
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Customize sidebar" }),
+    ).not.toBeNull();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
@@ -1622,36 +1631,60 @@ describe("Navigation plugin in the sidebar navigation region", () => {
 
     expect(visibleRowKeys()).toEqual(HOST_KEYS);
     expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Customize sidebar" }),
+    ).not.toBeNull();
   });
 
-  it("shows More only while something is hidden", async () => {
-    renderNavigation({
-      storedOrder: HOST_KEYS,
-      storedVisibleKeys: HOST_KEYS,
-    });
+  it.each([false, true])(
+    "replaces More with direct customization when every row is visible (compact: %s)",
+    async (compactViewport) => {
+      renderNavigation({ compactViewport });
 
-    expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
-    await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "New thread" }),
-    );
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "Show New thread in sidebar" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      expect(await openMoreMenu()).toEqual([
+        "Search threads",
+        "Customize sidebar",
+      ]);
+      await openCustomizeFromMore();
+      fireEvent.click(
+        screen.getByRole("checkbox", {
+          name: "Show Search threads in sidebar",
+        }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: compactViewport ? "Back to sidebar" : "Done",
+        }),
+      );
 
-    expect(visibleRowKeys()).toEqual(HOST_KEYS.slice(1));
-    expect(screen.getByTestId("sidebar-navigation-more-row")).not.toBeNull();
+      expect(visibleRowKeys()).toEqual(HOST_KEYS);
+      expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
+      const customize = screen.getByRole("button", {
+        name: "Customize sidebar",
+      });
+      expect(
+        customize.querySelector('[data-icon="FilterHorizontal"]'),
+      ).not.toBeNull();
+      fireEvent.click(customize);
+      await screen.findByRole("list", { name: "Sidebar navigation" });
+      fireEvent.click(
+        screen.getByRole("checkbox", {
+          name: "Show Search threads in sidebar",
+        }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: compactViewport ? "Back to sidebar" : "Done",
+        }),
+      );
 
-    await openMoreMenu();
-    await openCustomizeFromMore();
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "Show New thread in sidebar" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-
-    expect(visibleRowKeys()).toEqual(HOST_KEYS);
-    expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
-  });
+      expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
+      expect(await openMoreMenu()).toEqual([
+        "Search threads",
+        "Customize sidebar",
+      ]);
+    },
+  );
 
   it("applies one persisted mixed order to direct rows and the menu", async () => {
     const labels = ["One", "Two", "Three", "Four"];
