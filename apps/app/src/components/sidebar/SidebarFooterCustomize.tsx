@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { closestCenter, DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   DropdownMenu,
@@ -139,75 +140,81 @@ function FooterActionSlot({
   });
   const label = `Footer action ${index + 1}: ${item?.label ?? "None"}`;
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <span ref={setNodeRef} style={style} className="flex">
-          <button
-            ref={(element) => {
-              buttonRef.current = element;
-              dragBindings.setActivatorNodeRef(element);
-            }}
-            type="button"
-            aria-label={label}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            title={label}
-            data-footer-action-slot={item?.key ?? "none"}
-            className={cn(
-              SIDEBAR_FOOTER_ACTION_CLASS,
-              "flex touch-none items-center justify-center border focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-              item
-                ? "border-sidebar-foreground/15"
-                : "border-dashed border-sidebar-foreground/25",
-              !reorderDisabled && "active:cursor-grabbing",
-            )}
-            {...dragBindings.listeners}
-            onKeyDown={undefined}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => setOpen(true)}
-          >
-            {item && <FooterItemIcon item={item} />}
-          </button>
-        </span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        mobileTitle="Choose footer action"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          const target = buttonRef.current?.isConnected
-            ? buttonRef.current
-            : document.querySelector<HTMLButtonElement>(
-                "[data-footer-action-slot]",
-              );
-          target?.focus();
-        }}
-      >
-        {items.map((option) => (
-          <DropdownMenuItem
-            key={option.key}
-            role="menuitemradio"
-            aria-checked={item?.key === option.key}
-            onSelect={() => onChange(option.key)}
-          >
-            <FooterItemIcon item={option} />
-            {option.label}
-            {item?.key === option.key && (
-              <Icon name="Check" className="ml-auto" />
-            )}
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          role="menuitemradio"
-          aria-checked={item === null}
-          onSelect={() => onChange(null)}
+    <Tooltip>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <span ref={setNodeRef} style={style} className="flex">
+            <TooltipTrigger asChild>
+              <button
+                ref={(element) => {
+                  buttonRef.current = element;
+                  dragBindings.setActivatorNodeRef(element);
+                }}
+                type="button"
+                aria-label={label}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                data-footer-action-slot={item?.key ?? "none"}
+                className={cn(
+                  SIDEBAR_FOOTER_ACTION_CLASS,
+                  "flex touch-none items-center justify-center border focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  item
+                    ? "border-sidebar-foreground/15"
+                    : "border-dashed border-sidebar-foreground/25",
+                  !reorderDisabled && "active:cursor-grabbing",
+                )}
+                {...dragBindings.listeners}
+                onKeyDown={undefined}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => setOpen(true)}
+              >
+                {item && <FooterItemIcon item={item} />}
+              </button>
+            </TooltipTrigger>
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          mobileTitle="Choose footer action"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const target = buttonRef.current?.isConnected
+              ? buttonRef.current
+              : document.querySelector<HTMLButtonElement>(
+                  "[data-footer-action-slot]",
+                );
+            target?.focus();
+          }}
         >
-          <Icon name="X" />
-          None
-          {item === null && <Icon name="Check" className="ml-auto" />}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {items.map((option) => (
+            <DropdownMenuItem
+              key={option.key}
+              role="menuitemradio"
+              aria-checked={item?.key === option.key}
+              onSelect={() => onChange(option.key)}
+            >
+              <FooterItemIcon item={option} />
+              {option.label}
+              {item?.key === option.key && (
+                <Icon name="Check" className="ml-auto" />
+              )}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            role="menuitemradio"
+            aria-checked={item === null}
+            onSelect={() => onChange(null)}
+          >
+            <Icon name="X" />
+            None
+            {item === null && <Icon name="Check" className="ml-auto" />}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <TooltipContent side="top" hidden={open}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
