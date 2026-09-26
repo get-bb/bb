@@ -38,6 +38,7 @@ interface PaginatedTimelineRowsResult {
   hasOlderRows: boolean;
   olderCursor: TimelinePaginationCursor | null;
   olderRowsSourceSeqEnd: number | null;
+  olderRowUpdates?: TimelineRow[];
   returnedSegmentCount: number;
   rows: TimelineRow[];
 }
@@ -103,6 +104,39 @@ function buildTimelineLogicalSegments(
   return populated;
 }
 
+function timelineRowChangesFrom(
+  row: TimelineRow,
+  sequence: number,
+): TimelineRow {
+  if (row.kind === "turn" && row.children !== null) {
+    return {
+      ...row,
+      children: timelineRowsChangedFrom(row.children, sequence),
+    };
+  }
+  if (row.kind === "work" && row.workKind === "delegation") {
+    return {
+      ...row,
+      childRows: timelineRowsChangedFrom(row.childRows, sequence),
+    };
+  }
+  return row;
+}
+
+function timelineRowsChangedFrom(
+  rows: readonly TimelineRow[],
+  sequence: number,
+): TimelineRow[] {
+  const firstChangedIndex = rows.findIndex(
+    (row) => row.sourceSeqEnd >= sequence,
+  );
+  return firstChangedIndex === -1
+    ? []
+    : rows
+        .slice(firstChangedIndex)
+        .map((row) => timelineRowChangesFrom(row, sequence));
+}
+
 export function paginateTimelineRows(
   args: PaginateTimelineRowsArgs,
 ): PaginatedTimelineRowsResult {
@@ -119,19 +153,36 @@ export function paginateTimelineRows(
       return [returned];
     });
   };
-  const olderRowsSourceSeqEnd = (
+  const omittedRows = (
     omittedContentSourceSeqEnd: number | null,
-  ): number | null =>
-    rows
-      .filter(
-        (row) =>
-          row.sourceSeqStart < args.ownedSequenceEnd &&
-          !returnedRows.has(row.id),
-      )
-      .reduce<number | null>(
-        (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
-        omittedContentSourceSeqEnd,
-      );
+    windowStart: number,
+  ): Pick<
+    PaginatedTimelineRowsResult,
+    "olderRowUpdates" | "olderRowsSourceSeqEnd"
+  > => {
+    const omitted = rows.filter(
+      (row) =>
+        row.sourceSeqStart < args.ownedSequenceEnd && !returnedRows.has(row.id),
+    );
+    const changed =
+      page.kind === "latest"
+        ? omitted.filter((row) => row.sourceSeqEnd >= windowStart)
+        : [];
+    const updates = changed.map((row) =>
+      timelineRowChangesFrom(row, windowStart),
+    );
+    const reported =
+      Buffer.byteLength(JSON.stringify(updates)) > args.maxBytes ? [] : changed;
+    return {
+      olderRowsSourceSeqEnd: omitted
+        .filter((row) => !reported.includes(row))
+        .reduce<number | null>(
+          (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
+          omittedContentSourceSeqEnd,
+        ),
+      ...(reported.length > 0 ? { olderRowUpdates: updates } : {}),
+    };
+  };
   if (selectedSegments.length === 0) {
     const hasOlderRows = knownHasOlderSegments ?? false;
     return {
@@ -139,7 +190,7 @@ export function paginateTimelineRows(
       olderCursor: hasOlderRows
         ? timelineWindowCursor(args.ownedSequenceStart)
         : null,
-      olderRowsSourceSeqEnd: olderRowsSourceSeqEnd(null),
+      ...omittedRows(null, args.ownedSequenceStart),
       returnedSegmentCount: 0,
       rows: [],
     };
@@ -171,9 +222,7 @@ export function paginateTimelineRows(
         olderCursor: hasOlderRows
           ? timelineWindowCursor(segment.sequenceStart)
           : null,
-        olderRowsSourceSeqEnd: olderRowsSourceSeqEnd(
-          contents.olderRowsSourceSeqEnd,
-        ),
+        ...omittedRows(contents.olderRowsSourceSeqEnd, segment.sequenceStart),
         contentCursor:
           contents.start > 0
             ? {
@@ -201,6 +250,6 @@ export function paginateTimelineRows(
     olderCursor: hasOlderRows
       ? timelineWindowCursor(selectedSegments[0]!.sequenceStart)
       : null,
-    olderRowsSourceSeqEnd: olderRowsSourceSeqEnd(null),
+    ...omittedRows(null, selectedSegments[0]!.sequenceStart),
   };
 }
