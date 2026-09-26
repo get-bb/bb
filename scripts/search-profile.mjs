@@ -415,7 +415,12 @@ async function compare(baseArg, headArg) {
   await json(join(output, "mention-plugin/package.json"), {
     name: "search-profile-mentions",
     version: "1.0.0",
-    bb: { name: "Search profiling", server: "./server.js" },
+    bb: {
+      name: "Search profiling",
+      description: "Deterministic mention providers for search measurements",
+      branding: { icon: "Search" },
+      server: "./server.js",
+    },
   });
   await writeFile(
     join(output, "mention-plugin/server.js"),
