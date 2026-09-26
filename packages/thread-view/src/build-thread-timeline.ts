@@ -26,7 +26,7 @@ import {
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
-  EventProjectionCommandMessage,
+  SettledItemMessage,
   EventProjectionErrorMessage,
   EventProjectionFileEditChange,
   EventProjectionMessage,
@@ -85,7 +85,8 @@ interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOp
 }
 
 interface BuildThreadTimelineFromEventsArgs {
-  settledCommands?: readonly EventProjectionCommandMessage[];
+  settledItems?: readonly SettledItemMessage[];
+  settledToolFlushSequences?: readonly number[];
   acceptedClientRequestContext: AcceptedClientRequestContext;
   contextWindowEvents: ThreadEventWithMeta[];
   headStateEvents?: ThreadEventWithMeta[];
@@ -117,7 +118,8 @@ interface BuildThreadTimelineTurnDetailsFromEventsOptions {
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsArgs {
-  settledCommands?: readonly EventProjectionCommandMessage[];
+  settledItems?: readonly SettledItemMessage[];
+  settledToolFlushSequences?: readonly number[];
   events: ThreadEventWithMeta[];
   options: BuildThreadTimelineTurnDetailsFromEventsOptions;
 }
@@ -1160,7 +1162,8 @@ export function buildThreadTimelineFromEvents(
     : args.events;
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
-    settledCommands: args.settledCommands,
+    settledItems: args.settledItems,
+    settledToolFlushSequences: args.settledToolFlushSequences,
     includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
@@ -1248,7 +1251,8 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
   const projection = buildEventProjectionEntries(args.events, {
-    settledCommands: args.settledCommands,
+    settledItems: args.settledItems,
+    settledToolFlushSequences: args.settledToolFlushSequences,
     includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,

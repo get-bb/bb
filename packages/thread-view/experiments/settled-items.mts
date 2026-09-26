@@ -18,8 +18,8 @@ import {
   threadEventTypeSchema,
 } from "@bb/domain";
 import { buildThreadTimelineFromEvents } from "../src/build-thread-timeline.ts";
-import { findSettledCommandCandidates } from "../src/settled-command-prototype.ts";
-import { decodeSettledCommand } from "../src/settled-command.ts";
+import { findSettledItemCandidates } from "../src/settled-item-prototype.ts";
+import { decodeSettledItemRecord } from "../src/settled-item.ts";
 import type { ThreadEventWithMeta } from "../src/build-event-projection.ts";
 
 const require = createRequire(
@@ -27,7 +27,9 @@ const require = createRequire(
 );
 const Database = require("better-sqlite3");
 const argumentsList = process.argv.slice(2);
-const benchmarkOnly = argumentsList.includes("--benchmark");
+const verifyCandidatesOnly = argumentsList.includes("--verify-candidates-only");
+const benchmarkOnly =
+  argumentsList.includes("--benchmark") || verifyCandidatesOnly;
 const threadListPath = argumentsList
   .find((arg) => arg.startsWith("--threads="))
   ?.slice("--threads=".length);
@@ -57,7 +59,7 @@ const threadLimit =
     : z.coerce.number().int().positive().parse(limitArg);
 if (!inputArg || !outputArg || !artifactsArg)
   throw new Error(
-    "Usage: node --import tsx packages/thread-view/experiments/settled-commands.mts SANITIZED_BASELINE NEW_COPY ARTIFACT_DIRECTORY [THREAD_LIMIT] [--benchmark]",
+    "Usage: node --import tsx packages/thread-view/experiments/settled-items.mts SANITIZED_BASELINE NEW_COPY ARTIFACT_DIRECTORY [THREAD_LIMIT] [--benchmark]",
   );
 const input = resolve(inputArg),
   output = resolve(outputArg),
@@ -166,18 +168,20 @@ const threads = z
   .slice(0, threadLimit);
 function split(rows: Row[]) {
   const events: ThreadEventWithMeta[] = [],
-    settledCommands = [];
+    settledItems = [];
+  const settledToolFlushSequences: number[] = [];
   for (const row of rows) {
     if (row.type === "item/summary") {
-      const message = decodeSettledCommand(row.data);
+      const { message, toolFlushSequences } = decodeSettledItemRecord(row.data);
+      settledToolFlushSequences.push(...(toolFlushSequences ?? []));
       if (
         message.threadId !== row.threadId ||
-        message.sourceSeqStart !== row.sequence ||
+        message.sourceSeqStart < row.sequence ||
         message.scope.kind !== row.scopeKind ||
         (message.scope.kind === "turn" && message.scope.turnId !== row.turnId)
       )
         throw new Error("Summary scope or position mismatch");
-      settledCommands.push(message);
+      settledItems.push(message);
     } else {
       const data = z
         .record(z.string(), z.unknown())
@@ -199,7 +203,7 @@ function split(rows: Row[]) {
       });
     }
   }
-  return { events, settledCommands };
+  return { events, settledItems, settledToolFlushSequences };
 }
 const modes = [
   { completedTurnDisplay: "flat", includeNestedRows: true },
@@ -215,13 +219,14 @@ const move = compacted.prepare(
 const apply = compacted.transaction(
   (
     threadId: string,
-    candidates: ReturnType<typeof findSettledCommandCandidates>,
+    candidates: ReturnType<typeof findSettledItemCandidates>,
   ) => {
     for (const candidate of candidates) {
       for (const id of candidate.removedIds)
         if (remove.run(id, threadId).changes !== 1)
           throw new Error("Missing deletion");
       if (
+        candidate.data !== null &&
         move.run(
           candidate.sequence,
           candidate.data,
@@ -237,7 +242,7 @@ Date.now = () => 1789593600000;
 const mismatches: string[] = [];
 const summary = {
   totalThreads: threads.length,
-  benchmarkTrials: benchmarkOnly ? trials : 0,
+  benchmarkTrials: benchmarkOnly && !verifyCandidatesOnly ? trials : 0,
   checkedThreads: 0,
   checkedViews: 0,
   originalRows: 0,
@@ -251,7 +256,7 @@ writeFileSync(artifacts + "/cases.jsonl", "", { mode: 0o600 });
 for (const thread of threads) {
   const baseRows = z.array(rowSchema).parse(baseQuery.all(thread.id));
   const decoded = split(baseRows);
-  const candidates = findSettledCommandCandidates(decoded.events, {
+  const candidates = findSettledItemCandidates(decoded.events, {
     threadName: thread.name,
     threadStatus: thread.status,
   });
@@ -264,9 +269,34 @@ for (const thread of threads) {
         .filter((row) => row.type === "item/summary")
         .map((row) => [row.id, row]),
     );
-    if (summaries.size !== candidates.length)
+    if (
+      summaries.size !==
+      candidates.filter((candidate) => candidate.data !== null).length
+    )
       throw new Error("Candidate count mismatch for " + thread.id);
+    const afterById = new Map(afterRows.map((row) => [row.id, row]));
+    const beforeById = new Map(baseRows.map((row) => [row.id, row]));
+    if (
+      baseRows.length - afterRows.length !==
+      candidates.reduce(
+        (sum, candidate) => sum + candidate.removedIds.length,
+        0,
+      )
+    )
+      throw new Error("Deletion count mismatch for " + thread.id);
     for (const candidate of candidates) {
+      if (candidate.removedIds.some((id) => afterById.has(id)))
+        throw new Error("Expected deletion still present");
+      if (candidate.data === null) {
+        if (
+          !isDeepStrictEqual(
+            afterById.get(candidate.ownerId),
+            beforeById.get(candidate.ownerId),
+          )
+        )
+          throw new Error("Empty completion changed");
+        continue;
+      }
       const actual = summaries.get(candidate.ownerId);
       if (
         !actual ||
@@ -287,7 +317,7 @@ for (const thread of threads) {
   };
   let matched = true;
   const timings = [];
-  for (const mode of modes) {
+  for (const mode of verifyCandidatesOnly ? [] : modes) {
     const options = {
       ...mode,
       threadStatus: thread.status,
@@ -371,7 +401,7 @@ for (const thread of threads) {
   if (!matched) summary.mismatches.push(thread.id);
   summary.originalRows += baseRows.length;
   summary.removedRows += baseRows.length - afterRows.length;
-  summary.summaries += compactDecoded.settledCommands.length;
+  summary.summaries += compactDecoded.settledItems.length;
   summary.summaryPayloadBytes += afterRows.reduce(
     (n, row) =>
       n + (row.type === "item/summary" ? Buffer.byteLength(row.data) : 0),
@@ -385,7 +415,7 @@ for (const thread of threads) {
       matched,
       beforeRows: baseRows.length,
       afterRows: afterRows.length,
-      summaries: compactDecoded.settledCommands.length,
+      summaries: compactDecoded.settledItems.length,
       timings,
     }) + "\n",
   );
