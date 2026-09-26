@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -9,30 +10,54 @@ import {
 } from "vitest";
 
 const state = vi.hoisted(() => ({
-  keychain: "",
+  fileReads: [] as string[],
+  files: {} as Record<string, string | null>,
+  keychainReads: [] as string[],
+  keychains: {} as Record<string, string | null>,
   file: "",
 }));
 
 vi.mock("node:child_process", () => ({
   execFile: (
     _file: string,
-    _args: readonly string[],
+    args: readonly string[],
     _options: object,
     callback: (
       error: Error | null,
       result: { stdout: string; stderr: string },
     ) => void,
-  ) => callback(null, { stdout: state.keychain, stderr: "" }),
+  ) => {
+    const service = args[args.indexOf("-s") + 1] ?? "";
+    state.keychainReads.push(service);
+    const value = state.keychains[service];
+    if (value == null) {
+      callback(new Error("not found"), { stdout: "", stderr: "" });
+      return;
+    }
+    callback(null, { stdout: value, stderr: "" });
+  },
+}));
+
+vi.mock("node:os", () => ({
+  default: {
+    homedir: () => "/test-home",
+    userInfo: () => ({ username: "test-user" }),
+  },
 }));
 
 vi.mock("node:fs/promises", () => ({
   default: {
-    readFile: (file: string) =>
-      Promise.resolve(
-        file.endsWith(".credentials.json")
-          ? state.file
-          : JSON.stringify({ oauthAccount: { emailAddress: null } }),
-      ),
+    readFile: (file: string) => {
+      state.fileReads.push(file);
+      const value = state.files[file];
+      if (value === null) return Promise.reject(new Error("not found"));
+      return Promise.resolve(
+        value ??
+          (file.endsWith(".credentials.json")
+            ? state.file
+            : JSON.stringify({ oauthAccount: { emailAddress: null } })),
+      );
+    },
   },
 }));
 
@@ -62,6 +87,10 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
   const credentials = JSON.stringify({
     claudeAiOauth: {
@@ -72,7 +101,13 @@ beforeEach(() => {
     },
   });
   state.file = credentials;
-  state.keychain = Buffer.from(credentials, "utf8").toString("hex");
+  state.fileReads = [];
+  state.files = {};
+  state.keychainReads = [];
+  state.keychains = {
+    "Claude Code-credentials": Buffer.from(credentials, "utf8").toString("hex"),
+  };
+  vi.stubEnv("CLAUDE_CONFIG_DIR", "");
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -94,7 +129,7 @@ describe("Claude Code credential loading", () => {
   });
 
   it("uses the credential file when the Keychain value is invalid", async () => {
-    state.keychain = "invalid-keychain-value";
+    state.keychains["Claude Code-credentials"] = "invalid-keychain-value";
 
     const result = await getClaudeProviderUsage();
 
@@ -102,6 +137,66 @@ describe("Claude Code credential loading", () => {
       supported: true,
       usage: expect.objectContaining({ status: "ok" }),
     });
+  });
+
+  it("loads the custom profile Keychain service and account", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "/test-home/custom-claude");
+    state.keychains = {
+      "Claude Code-credentials": JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "stale-default-token",
+          expiresAt: 1,
+          subscriptionType: "pro",
+          rateLimitTier: null,
+        },
+      }),
+      "Claude Code-credentials-aa6e28bf": Buffer.from(
+        state.file,
+        "utf8",
+      ).toString("hex"),
+    };
+    state.files["/test-home/custom-claude/.claude.json"] = JSON.stringify({
+      oauthAccount: {
+        emailAddress: "custom@example.com",
+        accountUuid: "00000000-0000-4000-8000-000000000001",
+      },
+    });
+
+    const result = await getClaudeProviderUsage();
+
+    expect(result).toEqual({
+      supported: true,
+      usage: expect.objectContaining({
+        status: "ok",
+        accountEmail: "custom@example.com",
+        accountKey: "anthropic:account:00000000-0000-4000-8000-000000000001",
+      }),
+    });
+    expect(state.keychainReads).toEqual(["Claude Code-credentials-aa6e28bf"]);
+    expect(state.fileReads).toEqual(["/test-home/custom-claude/.claude.json"]);
+  });
+
+  it("uses custom profile files before the default Keychain fallback", async () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "custom-claude");
+    state.keychains = {
+      "Claude Code-credentials": "invalid-default-profile",
+    };
+    state.files["/test-home/custom-claude/.credentials.json"] = state.file;
+
+    const result = await getClaudeProviderUsage();
+
+    expect(result).toEqual({
+      supported: true,
+      usage: expect.objectContaining({ status: "ok" }),
+    });
+    expect(state.keychainReads).toEqual([
+      "Claude Code-credentials-aa6e28bf",
+      "Claude Code-credentials-aa6e28bf",
+    ]);
+    expect(state.fileReads).toContain(
+      "/test-home/custom-claude/.credentials.json",
+    );
+    expect(state.keychainReads).not.toContain("Claude Code-credentials");
   });
 
   it("distinguishes usage-check throttling from an exhausted Claude limit", async () => {

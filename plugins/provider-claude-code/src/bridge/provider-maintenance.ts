@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -31,6 +32,13 @@ const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
 const CLAUDE_NPM_PACKAGE = "@anthropic-ai/claude-code";
 const CLAUDE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
+
+interface ClaudeConfig {
+  accountPath: string;
+  credentialsPath: string;
+  keychainService: string;
+  usesCustomDirectory: boolean;
+}
 
 const claudeCredentialsSchema = z.object({
   claudeAiOauth: z.object({
@@ -236,18 +244,48 @@ function buildClaudeProviderInstallationRun(
   };
 }
 
-async function readKeychainCredentials(): Promise<string | null> {
+function resolveStoredPath(homeDir: string, storedPath: string): string {
+  if (storedPath === "~") return homeDir;
+  if (storedPath.startsWith("~/")) {
+    return path.join(homeDir, storedPath.slice(2));
+  }
+  return path.resolve(homeDir, storedPath);
+}
+
+function resolveClaudeConfig(): ClaudeConfig {
+  const homeDir = os.homedir();
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  const usesCustomDirectory = Boolean(configured);
+  const configDir = configured
+    ? resolveStoredPath(homeDir, configured)
+    : path.join(homeDir, ".claude");
+  const suffix = usesCustomDirectory
+    ? `-${createHash("sha256").update(configDir).digest("hex").slice(0, 8)}`
+    : "";
+  return {
+    accountPath: usesCustomDirectory
+      ? path.join(configDir, ".claude.json")
+      : path.join(homeDir, ".claude.json"),
+    credentialsPath: path.join(configDir, ".credentials.json"),
+    keychainService: `${CLAUDE_KEYCHAIN_SERVICE}${suffix}`,
+    usesCustomDirectory,
+  };
+}
+
+async function readKeychainCredentials(
+  service: string,
+): Promise<string | null> {
   if (process.platform !== "darwin") return null;
   const argumentSets = [
     [
       "find-generic-password",
       "-s",
-      CLAUDE_KEYCHAIN_SERVICE,
+      service,
       "-a",
       os.userInfo().username,
       "-w",
     ],
-    ["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
+    ["find-generic-password", "-s", service, "-w"],
   ];
   for (const args of argumentSets) {
     try {
@@ -276,29 +314,32 @@ function parseCredentials(raw: string): ClaudeCredentials | null {
 }
 
 async function readCredentials(): Promise<ClaudeCredentials | null> {
-  const keychainCredentials = await readKeychainCredentials();
+  const config = resolveClaudeConfig();
+  const keychainCredentials = await readKeychainCredentials(
+    config.keychainService,
+  );
   if (keychainCredentials !== null) {
     const parsed = parseCredentials(keychainCredentials);
     if (parsed !== null) return parsed;
   }
   try {
-    return parseCredentials(
-      await fs.readFile(
-        path.join(os.homedir(), ".claude", ".credentials.json"),
-        "utf8",
-      ),
+    const parsed = parseCredentials(
+      await fs.readFile(config.credentialsPath, "utf8"),
     );
-  } catch {
-    return null;
+    if (parsed !== null) return parsed;
+  } catch {}
+  if (config.usesCustomDirectory && keychainCredentials === null) {
+    const fallback = await readKeychainCredentials(CLAUDE_KEYCHAIN_SERVICE);
+    if (fallback !== null) return parseCredentials(fallback);
   }
+  return null;
 }
 
 async function readAccount() {
+  const config = resolveClaudeConfig();
   try {
     const parsed = claudeAccountSchema.safeParse(
-      JSON.parse(
-        await fs.readFile(path.join(os.homedir(), ".claude.json"), "utf8"),
-      ),
+      JSON.parse(await fs.readFile(config.accountPath, "utf8")),
     );
     return parsed.success ? (parsed.data.oauthAccount ?? null) : null;
   } catch {
