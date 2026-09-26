@@ -2813,7 +2813,9 @@ describe("Account Pool plugin", () => {
         );
         await response.text();
         expect(response.status).toBe(
-          refreshStatus === 503 ? 503 : statuses.at(-1),
+          refreshStatus === 503 || statuses.at(-1) === 401
+            ? 503
+            : statuses.at(-1),
         );
         expect(refreshCalls).toBe(1);
         expect(authorizations).toEqual(
@@ -3085,7 +3087,7 @@ describe("Account Pool plugin", () => {
         const responses = await Promise.all(requests);
         await Promise.all(responses.map((response) => response.text()));
         expect(responses.map((response) => response.status)).toEqual(
-          cancelReporter ? [499, 200] : [401, 429],
+          cancelReporter ? [499, 200] : [503, 503],
         );
         expect(attempts).toBe(cancelReporter ? 3 : 2);
       } finally {
@@ -3192,7 +3194,7 @@ describe("Account Pool plugin", () => {
       await second.text();
       gate.resolve();
       const late = await first;
-      expect(late.status).toBe(401);
+      expect(late.status).toBe(503);
       await late.text();
       const accounts = z
         .array(accountSummarySchema)
@@ -3209,6 +3211,146 @@ describe("Account Pool plugin", () => {
       const response = await first;
       if (!response.bodyUsed) await response.text();
     }
+  });
+
+  describe.each<{ provider: "claude" | "codex"; route: string }>([
+    { provider: "claude", route: "/v1/messages" },
+    { provider: "codex", route: "/v1/responses" },
+  ])("$provider upstream credential rejection", ({ provider, route }) => {
+    it.each([401, 403])(
+      "holds a freshly refreshed token rejected with HTTP %s without marking an account error",
+      async (status) => {
+        let now = 1_800_000_000_000;
+        let outage = true;
+        let refreshCalls = 0;
+        const authorizations: Array<string | null> = [];
+        const fixture = await createOAuthRequestFixture(
+          provider,
+          async (input, init) => {
+            if (String(input).endsWith("/oauth/token")) {
+              refreshCalls += 1;
+              return Response.json({
+                access_token: `oauth-new-${refreshCalls}`,
+                expires_in: 3600,
+              });
+            }
+            authorizations.push(
+              new Headers(init?.headers).get("authorization"),
+            );
+            if (!outage) return Response.json({ result: "recovered" });
+            return Response.json(
+              {
+                error: {
+                  message:
+                    "Incorrect API key provided: sk-svcac***fvMA. You can find your API key at https://platform.openai.com/account/api-keys.",
+                  type: "invalid_request_error",
+                  code: "invalid_api_key",
+                },
+              },
+              { status },
+            );
+          },
+          () => now,
+        );
+        const send = async () => {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            route,
+            { headers: authHeaders(fixture.key), body: "{}" },
+          );
+          return { status: response.status, body: await response.text() };
+        };
+        const accountState = async () =>
+          z
+            .array(accountSummarySchema)
+            .parse(
+              await fixture.host.harness.behavior.callRpc("account.list", null),
+            )[0];
+
+        const rejected = await send();
+        expect(rejected.status).toBe(503);
+        expect(rejected.body).toContain("invalid_api_key");
+        expect(authorizations).toEqual([
+          "Bearer oauth-old",
+          "Bearer oauth-new-1",
+        ]);
+        expect(refreshCalls).toBe(1);
+        expect(await accountState()).toMatchObject({ error: null });
+
+        now += 30_000;
+        const held = await send();
+        expect(held.status).toBe(503);
+        expect(authorizations).toHaveLength(2);
+        expect(refreshCalls).toBe(1);
+
+        now += 31_000;
+        outage = false;
+        const recovered = await send();
+        expect(recovered.status).toBe(200);
+        expect(authorizations.at(-1)).toBe("Bearer oauth-new-1");
+        expect(refreshCalls).toBe(1);
+        expect(await accountState()).toMatchObject({ error: null });
+      },
+    );
+
+    it("clears a stored credential error through a manual refresh", async () => {
+      let refreshStatus = 400;
+      let refreshCalls = 0;
+      const fixture = await createOAuthRequestFixture(
+        provider,
+        async (input, init) => {
+          if (String(input).endsWith("/oauth/token")) {
+            refreshCalls += 1;
+            return refreshStatus === 200
+              ? Response.json({ access_token: "oauth-new", expires_in: 3600 })
+              : Response.json({ error: "invalid_grant" }, { status: 400 });
+          }
+          return Response.json(
+            {},
+            {
+              status:
+                new Headers(init?.headers).get("authorization") ===
+                "Bearer oauth-old"
+                  ? 401
+                  : 200,
+            },
+          );
+        },
+        () => 1_800_000_000_000,
+      );
+      const send = async () => {
+        const response = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          route,
+          { headers: authHeaders(fixture.key), body: "{}" },
+        );
+        await response.text();
+        return response.status;
+      };
+      const refresh = async () =>
+        z
+          .object({ account: accountSummarySchema.nullable() })
+          .parse(
+            await fixture.host.harness.behavior.callRpc(
+              "account.refreshUsage",
+              { accountId: fixture.account.id },
+            ),
+          ).account;
+
+      expect(await send()).toBe(401);
+      expect(await send()).toBe(429);
+      expect(refreshCalls).toBe(1);
+
+      const stillRejected = await refresh();
+      expect(refreshCalls).toBe(2);
+      expect(stillRejected?.error).toBe("OAuth refresh failed with HTTP 400.");
+
+      refreshStatus = 200;
+      const recovered = await refresh();
+      expect(refreshCalls).toBe(3);
+      expect(recovered?.error).toBeNull();
+      expect(await send()).toBe(200);
+    });
   });
 
   it("honors a newer token's rejected cooldown when an older 401 arrives late", async () => {
@@ -5943,12 +6085,7 @@ describe("sequential pool recovery", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     releaseUsage();
     expect(await statuses).toEqual([200, 200]);
-    expect(calls).toEqual([
-      "/usage",
-      "/usage",
-      "/v1/messages",
-      "/v1/messages",
-    ]);
+    expect(calls).toEqual(["/usage", "/usage", "/v1/messages", "/v1/messages"]);
   });
 
   it("applies reordered failover atomically without moving current conversations", async () => {

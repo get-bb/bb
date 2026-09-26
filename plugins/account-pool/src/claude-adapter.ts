@@ -10,6 +10,7 @@ import {
   filterRequestHeaders,
   mountedUpstreamUrl,
   oauthSecretDueForRefresh,
+  parseOAuthRefreshResponse,
 } from "./provider-adapter.js";
 import {
   epochMilliseconds,
@@ -106,14 +107,13 @@ export function createClaudeAdapter(options: {
     async refreshSecret(context) {
       const secret = oauthSecretDueForRefresh(context);
       if (secret === null) return { secret: context.secret, refreshed: false };
-      const parsed = refreshResponseSchema.parse(
-        JSON.parse(
-          await fetchOAuthRefresh(context, options.refreshUrl, {
-            grant_type: "refresh_token",
-            refresh_token: secret.refreshToken,
-            client_id: OAUTH_CLIENT_ID,
-          }),
-        ),
+      const parsed = parseOAuthRefreshResponse(
+        await fetchOAuthRefresh(context, options.refreshUrl, {
+          grant_type: "refresh_token",
+          refresh_token: secret.refreshToken,
+          client_id: OAUTH_CLIENT_ID,
+        }),
+        refreshResponseSchema,
       );
       const rawExpiresAt =
         parsed.expires_at ??

@@ -624,7 +624,8 @@ export function registerPoolCli(
             }),
         }),
         "account refresh": cliCommand({
-          summary: "Refresh one account's observed usage",
+          summary:
+            "Refresh one account's observed usage; retries an errored OAuth login and clears the error on success",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
           run: (input) =>
@@ -642,7 +643,9 @@ export function registerPoolCli(
                 exitCode: 0,
                 stdout: input.options.json
                   ? json({ ok: true, account })
-                  : `Refreshed usage for ${id}.\n`,
+                  : account.error === null
+                    ? `Refreshed usage for ${id}.\n`
+                    : `Account ${id} is still in error: ${account.error}\n`,
               };
             }),
         }),
