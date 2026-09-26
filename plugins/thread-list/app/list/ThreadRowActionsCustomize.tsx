@@ -139,13 +139,14 @@ export function ThreadRowActionsCustomize({
                     value={slot}
                     reorderDisabled={slot === null || enabled.length < 2}
                     onChange={(value) => {
-                      if (value === slot) return;
+                      if (value === slot) return false;
                       const next = assignRowActionSlot(enabled, index, value);
                       focusSlot.current =
                         value === null
                           ? index
                           : getRowActionSlots(next).indexOf(value);
                       setEnabled(next);
+                      return true;
                     }}
                   />
                 ))}
@@ -202,10 +203,11 @@ function RowActionSlotPicker({
   index: number;
   value: RowActionSlot;
   reorderDisabled: boolean;
-  onChange: (value: RowActionSlot) => void;
+  onChange: (value: RowActionSlot) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const focusHandedOff = useRef(false);
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
     id: value ?? `empty-${index}`,
     disabled: reorderDisabled,
@@ -254,6 +256,10 @@ function RowActionSlotPicker({
         className="min-w-44"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
+          if (focusHandedOff.current) {
+            focusHandedOff.current = false;
+            return;
+          }
           buttonRef.current?.focus();
         }}
       >
@@ -263,7 +269,9 @@ function RowActionSlotPicker({
             icon={THREAD_ROW_ACTIONS[id].icon}
             label={THREAD_ROW_ACTIONS[id].title}
             selected={value === id}
-            onSelect={() => onChange(id)}
+            onSelect={() => {
+              focusHandedOff.current = onChange(id);
+            }}
           />
         ))}
         <DropdownMenuSeparator />
@@ -271,7 +279,9 @@ function RowActionSlotPicker({
           icon="X"
           label="None"
           selected={value === null}
-          onSelect={() => onChange(null)}
+          onSelect={() => {
+            focusHandedOff.current = onChange(null);
+          }}
         />
       </DropdownMenuContent>
     </DropdownMenu>
