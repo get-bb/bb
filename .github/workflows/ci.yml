@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      search-profile-base:
+        description: Commit to compare with this revision using the search profiling fixture
+        type: string
+        default: ""
 
 env:
   PRIMARY_NODE_VERSION: "22.x"
@@ -20,6 +25,45 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  search-profile:
+    if: github.event_name == 'workflow_dispatch' && inputs.search-profile-base != ''
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: search-profile
+      - name: Compare search timings and collect CPU profiles
+        env:
+          SEARCH_PROFILE_BASE: ${{ inputs.search-profile-base }}
+          SEARCH_PROFILE_HEAD: ${{ github.sha }}
+        run: |
+          mkdir -p .search-profile
+          cp scripts/search-profile.mjs .search-profile/runner.mjs
+          node .search-profile/runner.mjs compare "$SEARCH_PROFILE_BASE" "$SEARCH_PROFILE_HEAD"
+      - name: Preserve measurements and profiles
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: search-profile-${{ github.sha }}
+          include-hidden-files: true
+          retention-days: 90
+          path: |
+            .search-profile/runner.mjs
+            .search-profile/manifest.json
+            .search-profile/results/**
+            .search-profile/profiles/**
+            .search-profile/logs/**
+            .search-profile/*.tgz
+            .search-profile/summary.md
+
   checks:
     name: Checks (ubuntu-latest, Node 22.x)
     runs-on: blacksmith-4vcpu-ubuntu-2404
