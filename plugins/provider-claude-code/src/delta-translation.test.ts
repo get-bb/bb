@@ -212,8 +212,87 @@ describe("claude turn and checkpoint lifecycle", () => {
     );
   });
 
+  it.each(["result", "error"])(
+    "keeps separate user checkpoints for consecutive failures via %s",
+    (failure) => {
+      const harness = createClaudeDeltaHarness();
+      const context = { threadId: "bb-checkpoint" };
+      for (const [requestId, uuid] of [
+        ["creq_23456789af", "user-message-1"],
+        ["creq_23456789bg", "user-message-2"],
+      ]) {
+        harness.acceptInput(requestId, context.threadId);
+        harness.translate(
+          {
+            type: "user",
+            uuid,
+            message: { role: "user", content: "Please keep going" },
+            parent_tool_use_id: null,
+            isReplay: true,
+            session_id: "sess-1",
+          },
+          context,
+        );
+        const events = harness.translate(
+          failure === "error"
+            ? {
+                jsonrpc: "2.0",
+                method: "error",
+                params: { message: "early failure" },
+              }
+            : {
+                type: "result",
+                subtype: "error_during_execution",
+                is_error: true,
+                session_id: "sess-1",
+              },
+          context,
+        );
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "turn/completed",
+            status: "failed",
+            providerCheckpointId: uuid,
+          }),
+        );
+      }
+    },
+  );
+
+  it.each([
+    { isSynthetic: true },
+    { parent_tool_use_id: "subagent-tool" },
+    { uuid: undefined },
+  ])("does not use a non-checkpoint user echo as a fallback: %j", (fields) => {
+    const harness = createClaudeDeltaHarness();
+    harness.acceptInput("creq_23456789af");
+    harness.translate({
+      type: "user",
+      uuid: "user-message-1",
+      message: { role: "user", content: "echo" },
+      session_id: "sess-1",
+      ...fields,
+    });
+    const events = harness.translate({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      session_id: "sess-1",
+    });
+    const completion = events.find((event) => event.type === "turn/completed");
+    expect(completion).toMatchObject({ status: "failed" });
+    expect(completion).not.toHaveProperty("providerCheckpointId");
+  });
+
   it("records the latest Claude assistant message as the turn checkpoint", () => {
     const harness = createClaudeDeltaHarness();
+    harness.acceptInput("creq_23456789af");
+    harness.translate({
+      type: "user",
+      uuid: "user-message-1",
+      message: { role: "user", content: "Start" },
+      session_id: "sess-1",
+    });
     harness.translate({
       type: "assistant",
       uuid: "assistant-message-42",

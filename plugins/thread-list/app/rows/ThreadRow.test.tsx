@@ -26,6 +26,11 @@ import {
 } from "./sidebarRowClasses.js";
 import type { ThreadSectionMoveDestination } from "./ThreadSectionMoveProvider.js";
 import type { ThreadRowOptions } from "./ThreadRow.js";
+import {
+  preferenceValueAtom,
+  resetPreferencesSyncForTest,
+} from "../preferences/preferences-sync.js";
+import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.js";
 
 installTestPluginRuntime();
 const { ThreadSectionMoveProvider } = await import(
@@ -66,6 +71,7 @@ interface HarnessProps {
   isActive?: boolean;
   options?: ThreadRowOptions;
   onRowEvent?: () => void;
+  onCustomizeRowActions?: (threadId: string) => void;
   sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
@@ -75,6 +81,7 @@ function ThreadRowHarness({
   isActive = false,
   options = DEFAULT_OPTIONS,
   onRowEvent,
+  onCustomizeRowActions,
   sectionDestinations,
 }: HarnessProps) {
   const row = (
@@ -88,15 +95,17 @@ function ThreadRowHarness({
   );
   return (
     <TooltipProvider>
-      <div onPointerDown={onRowEvent} onKeyDown={onRowEvent} onClick={onRowEvent}>
-        {sectionDestinations ? (
-          <ThreadSectionMoveProvider destinations={sectionDestinations}>
-            {row}
-          </ThreadSectionMoveProvider>
-        ) : (
-          row
-        )}
-      </div>
+      <CustomizeRowActionsContext.Provider value={onCustomizeRowActions ?? null}>
+        <div onPointerDown={onRowEvent} onKeyDown={onRowEvent} onClick={onRowEvent}>
+          {sectionDestinations ? (
+            <ThreadSectionMoveProvider destinations={sectionDestinations}>
+              {row}
+            </ThreadSectionMoveProvider>
+          ) : (
+            row
+          )}
+        </div>
+      </CustomizeRowActionsContext.Provider>
     </TooltipProvider>
   );
 }
@@ -202,6 +211,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
+  resetPreferencesSyncForTest();
   getDefaultStore().set(sidebarShowProviderIconsAtom, false);
 });
 
@@ -327,6 +337,57 @@ describe("ThreadRow", () => {
     ]);
   });
 
+  it("shows the configured row actions in order and reserves their width", () => {
+    getDefaultStore().set(preferenceValueAtom("rowActions"), [
+      "pin",
+      "copyLink",
+      "archive",
+    ]);
+    const slot = renderThreadRow();
+    const controls = document.querySelector("[data-sidebar-row-controls]");
+    expect(
+      Array.from(controls?.querySelectorAll("button") ?? []).map((button) =>
+        button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Pin", "Copy thread link", "Archive thread", "Thread actions"]);
+    expect(
+      document
+        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+    ).toBe("calc(var(--spacing) * 22.5)");
+    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+    expect(slot.inspection.sidebarActionCalls).toEqual([
+      { method: "setPinned", threadId: "thr_test", pinned: true },
+    ]);
+  });
+
+  it("shows only the actions menu when every row action is turned off", () => {
+    getDefaultStore().set(preferenceValueAtom("rowActions"), []);
+    renderThreadRow();
+    expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Thread actions" })).toBeTruthy();
+    expect(
+      document
+        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+    ).toBe("calc(var(--spacing) * 0)");
+  });
+
+  it.each([[[]], [["pin", "copyLink", "archive"]]] as const)(
+    "reserves one action for an archived row whatever the row actions (%j)",
+    (rowActions) => {
+      getDefaultStore().set(preferenceValueAtom("rowActions"), [...rowActions]);
+      renderThreadRow({
+        thread: createThread({ archivedAt: 1, isArchived: true }),
+      });
+      expect(
+        document
+          .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+          ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+      ).toBe("calc(var(--spacing) * 7.5)");
+    },
+  );
+
   it.each([
     { item: "Mark read", thread: createThread(), call: { method: "setRead", threadId: "thr_test", read: true } },
     { item: "Mark unread", thread: createThread({ lastReadAt: 5, latestAttentionAt: 1 }), call: { method: "setRead", threadId: "thr_test", read: false } },
@@ -340,6 +401,74 @@ describe("ThreadRow", () => {
     await waitFor(() =>
       expect(slot.inspection.sidebarActionCalls).toEqual([call]),
     );
+  });
+
+  it("drops split and move from the row when they are unavailable", async () => {
+    const { visibleThreadRowActions } = await import("./ThreadActionsMenu.js");
+    expect(
+      visibleThreadRowActions(["split", "move", "archive"], { split: false, move: false }),
+    ).toEqual(["archive"]);
+    expect(
+      visibleThreadRowActions(["split", "move", "archive"], { split: true, move: true }),
+    ).toEqual(["split", "move", "archive"]);
+  });
+
+  it("offers Move only on rows that can move", () => {
+    const destinations = [
+      { label: "Planning", sectionId: "sec_planning" },
+      { label: "Threads", sectionId: null },
+    ];
+    getDefaultStore().set(preferenceValueAtom("rowActions"), ["move", "archive"]);
+    renderThreadRow({ sectionDestinations: destinations });
+    expect(screen.getByRole("button", { name: "Move to section" })).toBeTruthy();
+    cleanup();
+    renderThreadRow({
+      thread: createThread({ parentThreadId: "thr_parent" }),
+      sectionDestinations: destinations,
+    });
+    expect(screen.queryByRole("button", { name: "Move to section" })).toBeNull();
+    expect(
+      document
+        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+    ).toBe("calc(var(--spacing) * 7.5)");
+  });
+
+  it("orders the actions menu like the row actions, with customize before archive", async () => {
+    const customize = vi.fn();
+    renderThreadRow({
+      onCustomizeRowActions: customize,
+      sectionDestinations: [
+        { label: "Planning", sectionId: "sec_planning" },
+        { label: "Threads", sectionId: null },
+      ],
+    });
+    openActionsMenu();
+    const menu = await screen.findByRole("menu");
+    expect(
+      Array.from(menu.children).map((element) =>
+        element.getAttribute("role") === "separator"
+          ? "---"
+          : element.textContent?.trim(),
+      ),
+    ).toEqual([
+      "Open in split",
+      "---",
+      "Copy thread link",
+      "Mark read",
+      "Pin",
+      "Move to section",
+      "Rename",
+      "---",
+      "Customize row actions",
+      "---",
+      "Archive",
+      "Delete",
+    ]);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Customize row actions" }),
+    );
+    expect(customize).toHaveBeenCalledWith("thr_test");
   });
 
   it("asks the host to confirm deletion from the menu", async () => {
@@ -1022,7 +1151,16 @@ describe("ThreadRow", () => {
       expect(
         titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
       ).toBe(false);
-      expect(titleContainer?.classList.contains("pr-7.5")).toBe(true);
+      expect(
+        titleContainer?.classList.contains(
+          "pr-(--bb-sidebar-hover-actions-inset)",
+        ),
+      ).toBe(true);
+      expect(
+        titleContainer?.style.getPropertyValue(
+          "--bb-sidebar-hover-actions-inset",
+        ),
+      ).toBe("calc(var(--spacing) * 7.5)");
       expect(
         titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
       ).toBe(true);

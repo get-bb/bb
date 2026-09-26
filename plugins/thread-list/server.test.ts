@@ -93,6 +93,49 @@ describe("thread-list preferences rpc", () => {
     await expect(bb.storage.kv.get("preference:hiddenGroups")).resolves.toBeUndefined();
   });
 
+  it("defaults row actions to archive, dedupes them, and rejects unknown or too many actions", async () => {
+    const { bb, harness } = setup();
+    await plugin(bb);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { rowActions: string[] };
+    };
+    expect(listed.preferences.rowActions).toEqual(["archive"]);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["pin", "archive", "pin"],
+      }),
+    ).resolves.toEqual({ key: "rowActions", value: ["pin", "archive"] });
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["archive", "delete"],
+      }),
+    ).rejects.toThrow(/Invalid value for rowActions/);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["archive", "pin", "read", "rename"],
+      }),
+    ).rejects.toThrow(/at most 3 row actions/);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["archive", "pin", "read", "pin"],
+      }),
+    ).resolves.toEqual({ key: "rowActions", value: ["archive", "pin", "read"] });
+  });
+
+  it("drops unknown stored row actions instead of resetting the rest", async () => {
+    const { bb, harness } = setup();
+    await bb.storage.kv.set("preference:rowActions", ["pin", "futureAction", "archive"]);
+    await plugin(bb);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { rowActions: string[] };
+    };
+    expect(listed.preferences.rowActions).toEqual(["pin", "archive"]);
+  });
+
   it("falls back to the default when a stored value no longer parses", async () => {
     const { bb, harness } = setup();
     await bb.storage.kv.set("preference:chronologicalSort", "by-vibes");

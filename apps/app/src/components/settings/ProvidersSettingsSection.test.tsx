@@ -45,6 +45,28 @@ function provider(id: string, displayName: string): ProviderInfo {
 afterEach(cleanup);
 
 describe("ProvidersSettingsSection", () => {
+  it("shows the server-wide fast tier setting and saves changes", () => {
+    mocks.providers = [];
+    const onChange = vi.fn();
+    render(
+      <ProvidersSettingsSection
+        disabled={false}
+        generalSettings={{ ...defaultAppSettings, allowFastServiceTier: false }}
+        onGeneralSettingsChange={onChange}
+      />,
+    );
+
+    const control = screen.getByRole("switch", {
+      name: "Allow fast service tier",
+    });
+    expect(control.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(control);
+    expect(onChange).toHaveBeenCalledWith({
+      ...defaultAppSettings,
+      allowFastServiceTier: true,
+    });
+  });
+
   it("shows reorder handles and writes the default as a user setting", () => {
     mocks.providers = [
       provider("alpha", "Alpha"),
@@ -138,6 +160,24 @@ describe("ProvidersSettingsSection", () => {
     const codexSwitch = screen.getByRole("switch", {
       name: "Collapse finished Codex turns",
     });
+    const configuration = screen
+      .getByRole("heading", { name: "Configuration" })
+      .closest("section");
+    if (configuration === null)
+      throw new Error("Configuration section missing");
+    expect(
+      within(configuration).getByText("Collapse finished turns"),
+    ).toBeTruthy();
+    expect(
+      within(configuration).getByRole("switch", {
+        name: "Allow fast service tier",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(configuration).getByRole("switch", {
+        name: "Collapse finished Codex turns",
+      }),
+    ).toBe(codexSwitch);
     expect(claudeSwitch.getAttribute("aria-checked")).toBe("false");
     expect(codexSwitch.getAttribute("aria-checked")).toBe("false");
 

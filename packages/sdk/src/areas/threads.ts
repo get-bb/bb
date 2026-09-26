@@ -75,6 +75,7 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
+  UpdateThreadDraftRequest,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -245,6 +246,10 @@ export interface ThreadForkArgs extends Omit<
 }
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
+  threadId: string;
+}
+
+export interface ThreadUpdateDraftArgs extends UpdateThreadDraftRequest {
   threadId: string;
 }
 
@@ -630,6 +635,12 @@ export interface ThreadsArea {
   unarchive(args: ThreadActionArgs): Promise<ThreadUnarchiveResult>;
   unpin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
   update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
+  /**
+   * Replace the thread's saved, unsent draft message. An empty `input` clears
+   * it. On a `pending` thread the draft also becomes the thread's fallback
+   * title. Sending a message does not clear the draft; clear it explicitly.
+   */
+  updateDraft(args: ThreadUpdateDraftArgs): Promise<ThreadMutationResult>;
   wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
 }
 
@@ -1464,6 +1475,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].$patch({
           param: { id: input.threadId },
           json: updateJson(input),
+        }),
+      );
+    },
+    async updateDraft(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].draft.$put({
+          param: { id: input.threadId },
+          json: { input: input.input },
         }),
       );
     },

@@ -508,7 +508,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ComposerPlusMenuItem",
           "ExperimentalComposerSubmitOptions",
         ],
-        firstParty: ["Drafts", "Send later"],
+        firstParty: ["Send later"],
       },
       {
         id: "provider-picker",
@@ -895,7 +895,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginDispatchEnvironmentIntent",
           "MessageDispatchHookDecision",
         ],
-        firstParty: ["Concurrency limit", "Drafts"],
+        firstParty: ["Concurrency limit"],
         experimental: true,
       },
       {

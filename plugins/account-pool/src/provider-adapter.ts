@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import type {
   Account,
   AccountPoolConfig,
@@ -149,14 +150,10 @@ export async function fetchOAuthRefresh(
         context.now(),
       );
       void response.body?.cancel().catch(() => undefined);
-      if (
-        response.status === 408 ||
-        response.status === 429 ||
-        response.status >= 500
-      ) {
-        throw new TransientOAuthRefreshError(message, retryAfterMs);
+      if (response.status === 400 || response.status === 401) {
+        throw new Error(message);
       }
-      throw new Error(message);
+      throw new TransientOAuthRefreshError(message, retryAfterMs);
     }
     try {
       return await Promise.race([response.text(), timedOut]);
@@ -169,6 +166,26 @@ export async function fetchOAuthRefresh(
   } finally {
     signal.removeEventListener("abort", onTimeout);
   }
+}
+
+export function parseOAuthRefreshResponse<T>(
+  text: string,
+  schema: z.ZodType<T>,
+): T {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = undefined;
+  }
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new TransientOAuthRefreshError(
+      "OAuth refresh returned an unreadable response.",
+      0,
+    );
+  }
+  return parsed.data;
 }
 
 export function filterRequestHeaders(

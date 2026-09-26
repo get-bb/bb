@@ -293,9 +293,10 @@
   }
 
   /* Row content beside a hover-actions overlay that grows past its rest slot
-   * (the thread row's archive button sits left of the menu trigger). Reserve
-   * one action width under the same row states that reveal the overlay, so the
-   * title truncates instead of running under the button. */
+   * (the thread row's quick actions sit left of the menu trigger). Reserve
+   * their width, one action unless the row sets the inset variable, under the
+   * same row states that reveal the overlay, so the title truncates instead of
+   * running under the buttons. */
   .bb-sidebar-hover-actions-inset {
     transition-property: padding;
     transition-duration: 0ms;
@@ -307,7 +308,10 @@
       .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"]
     )
     .bb-sidebar-hover-actions-inset {
-    padding-right: calc(var(--spacing) * 7.5);
+    padding-right: var(
+      --bb-sidebar-hover-actions-inset,
+      calc(var(--spacing) * 7.5)
+    );
   }
 
   .bb-sidebar-hover-actions-fade {

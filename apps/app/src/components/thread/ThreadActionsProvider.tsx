@@ -91,6 +91,7 @@ interface DeleteThreadActionRequest {
 
 interface ThreadActionContext {
   childThreadCount: number;
+  unarchivedDescendantCount: number;
 }
 
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
@@ -215,6 +216,7 @@ export function ThreadActionsProvider({
 
         return {
           childThreadCount: childSummary?.nonDeletedChildCount ?? 0,
+          unarchivedDescendantCount: childSummary?.unarchivedDescendantCount ?? 0,
         };
       } catch (error) {
         if (signal.aborted) return null;
@@ -413,11 +415,14 @@ export function ThreadActionsProvider({
       if (threadActionContextAbortRef.current === controller) {
         threadActionContextAbortRef.current = null;
       }
-      if (context.childThreadCount === 0) {
+      if (context.unarchivedDescendantCount === 0) {
         performArchive({ thread });
         return;
       }
-      openArchiveDialog({ thread, childThreadCount: context.childThreadCount });
+      openArchiveDialog({
+        thread,
+        childThreadCount: context.unarchivedDescendantCount,
+      });
     },
     [
       claimThreadActionContextAbortController,

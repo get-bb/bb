@@ -24,6 +24,7 @@ export function makeThreadResponse(
     canRestoreEnvironment: false,
     canSpawnChild: true,
     queuedMessageCount: 0,
+    draft: null,
     ...overrides,
     runtime: thread.runtime,
   };

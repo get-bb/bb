@@ -61,6 +61,13 @@ eligible account, the pool first refreshes the OAuth accounts it considers
 exhausted, at most once every 30 seconds per account, so a plan upgrade or an
 early reset takes effect on the next turn. Use
 `bb pool account refresh <id>` to request an immediate refresh for one account.
+For an OAuth account in error, `refresh` also forces a new token with the stored
+refresh token and clears the error when that succeeds, so a spurious error does
+not require logging in again.
+An account enters error only when its OAuth refresh token is rejected (HTTP 400
+or 401 from the token endpoint) or an API key is rejected. A 401 or 403 on a
+freshly refreshed OAuth token is treated as an upstream failure instead: the
+request gets HTTP 503, and that token is held out of routing for one minute.
 Account tables add columns for observed model-family buckets; JSON status
 exposes their utilization, reset, status, observation time, and source under
 `familyWeekly`. Selection skips an account whose requested family is spent

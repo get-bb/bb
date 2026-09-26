@@ -49,6 +49,8 @@ interface QueueListOptions extends JsonOptions {
 }
 
 interface QueueCreateOptions extends JsonOptions {
+  file?: string[];
+  image?: string[];
   messageFile?: string;
   model?: string;
 }
@@ -101,14 +103,6 @@ function printHumanJson(value: unknown): void {
 
 const MAX_QUEUE_TEXT_WIDTH = 40;
 
-/**
- * The queue as a table rather than raw JSON.
- *
- * `Waiting on` and `Send at` are the two columns that make a queued row
- * legible: without them a queued message and one blocked behind a rate-limit
- * window look identical, which is exactly the confusion the typed waits exist
- * to remove.
- */
 function printQueueTable(rows: ThreadQueuedMessagesResult): void {
   const now = Date.now();
   const table = rows.map((row) => [
@@ -150,10 +144,6 @@ function queuedMessagePreview(content: PromptInput[]): string {
   return text.trim() === "" ? "(no text)" : text;
 }
 
-/**
- * Wait holders are a prefixed set, so a typo fails here with the shape spelled
- * out rather than as an opaque 400 from the list route.
- */
 function parseWaitHolder(value: string): QueuedMessageWaitHolder {
   const parsed = queuedMessageWaitHolderSchema.safeParse(value.trim());
   if (parsed.success) return parsed.data;
@@ -330,9 +320,6 @@ export function registerOrganizationCommands(
     .action(
       action(async (threadId: string | undefined, opts: QueueListOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        // A thread argument keeps the thread-scoped route, which is the one
-        // that returns queue ORDER; the cross-thread route answers "what is
-        // queued anywhere" and is ordered by age instead.
         const result =
           threadId === undefined
             ? await sdk.threads.queue.list({
@@ -351,11 +338,23 @@ export function registerOrganizationCommands(
     );
   queue
     .command("create <threadId> [message]")
-    .description("Create a queued text message")
+    .description("Create a queued message with text and attachments")
     .option("--model <model>", "Model override for the queued message")
     .option(
       "--message-file <path>",
       `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
+    .option(
+      "--file <path>",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
+      collectOption,
+      [],
+    )
+    .option(
+      "--image <path>",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
+      collectOption,
+      [],
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -371,11 +370,20 @@ export function registerOrganizationCommands(
             inline: inlineMessage,
             inlineLabel: "<message>",
           });
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.create({
+          const sdk = createCliBbSdk(getUrl());
+          const input = await uploadClientAttachmentInputs({
+            input: buildPromptInputs({
+              message,
+              files: opts.file,
+              images: opts.image,
+            }),
+            resolveProjectId: async () =>
+              (await sdk.threads.get({ threadId })).projectId,
+            sdk,
+          });
+          const result = await sdk.threads.queuedMessages.create({
             threadId,
-            input: [{ type: "text", text: message, mentions: [] }],
+            input,
             ...(opts.model ? { model: opts.model } : {}),
           });
           if (outputJson(opts, result)) return;

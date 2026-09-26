@@ -1,4 +1,4 @@
-import { getProjectExecutionDefaults, getThread } from "@bb/db";
+import { getAppSettings, getProjectExecutionDefaults, getThread } from "@bb/db";
 import type {
   CallerExecutionInputSource,
   PermissionMode,
@@ -327,14 +327,16 @@ export async function resolveExistingThreadExecutionPlan(
     reasoningLevel,
   );
 
-  const serviceTier = resolveFieldWithDefault<ServiceTier>(
-    [
-      args.input.serviceTier?.value,
-      lastExecution?.serviceTier,
-      projectExecution?.serviceTier,
-    ],
-    DEFAULT_SERVICE_TIER,
-  );
+  const serviceTier = getAppSettings(deps.db).allowFastServiceTier
+    ? resolveFieldWithDefault<ServiceTier>(
+        [
+          args.input.serviceTier?.value,
+          lastExecution?.serviceTier,
+          projectExecution?.serviceTier,
+        ],
+        DEFAULT_SERVICE_TIER,
+      )
+    : DEFAULT_SERVICE_TIER;
 
   const resolvedExecution = {
     model,

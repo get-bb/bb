@@ -28,8 +28,8 @@ describe("buildForkThreadRequest", () => {
       model: "gpt-5",
       permissionMode: "accept-edits",
       pluginSubmission: {
-        pluginId: "drafts",
-        data: { kind: "draft" },
+        pluginId: "example-plugin",
+        data: { kind: "hold" },
       },
       projectId: "proj_test",
       providerId: "codex",
@@ -48,8 +48,8 @@ describe("buildForkThreadRequest", () => {
       originKind: "fork",
       permissionMode: "accept-edits",
       pluginSubmission: {
-        pluginId: "drafts",
-        data: { kind: "draft" },
+        pluginId: "example-plugin",
+        data: { kind: "hold" },
       },
       projectId: "proj_test",
       providerId: "codex",

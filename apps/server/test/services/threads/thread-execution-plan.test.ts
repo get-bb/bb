@@ -1,4 +1,9 @@
-import { updateHost, upsertProjectExecutionDefaults } from "@bb/db";
+import {
+  getAppSettings,
+  setAppSettings,
+  updateHost,
+  upsertProjectExecutionDefaults,
+} from "@bb/db";
 import type { PermissionMode } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,6 +26,58 @@ import {
 } from "../../helpers/test-app.js";
 
 describe("thread execution plan input sources", () => {
+  it("uses the default tier for explicit and inherited fast selections when fast is disabled", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-fast-tier-setting",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "fast",
+      });
+      const resolve = (
+        input: ReturnType<typeof buildExistingThreadExecutionInput>,
+      ) =>
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input,
+          threadId: thread.id,
+        });
+
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("fast");
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        allowFastServiceTier: false,
+      });
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("default");
+      expect(
+        (await resolve({ serviceTier: { source: "explicit", value: "fast" } }))
+          .resolvedExecution.serviceTier,
+      ).toBe("default");
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        allowFastServiceTier: true,
+      });
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("fast");
+    });
+  });
+
   it("treats supplied execution fields as explicit when legacy callers omit sources", () => {
     expect(
       buildExistingThreadExecutionInput({

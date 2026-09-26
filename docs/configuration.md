@@ -319,6 +319,14 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
+The "Allow fast service tier" switch in Settings → Providers defaults to on.
+Turn it off with `bb settings general allowFastServiceTier false` or
+`bb.sdk.system.updateGeneralSettings`. While off, new turns use the default
+service tier, including explicit fast requests, automations, and previously
+queued messages. The app hides Fast mode. Turn the setting on to choose fast
+again; completed turns and project defaults saved while it was off retain the
+default tier.
+
 The "New branch prefix" field in Settings → General sets the text bb
 puts in front of every branch name it creates for a managed worktree or a new
 checkout branch. It defaults to `bb/`, which produces
@@ -926,6 +934,29 @@ bb thread-list prefs reset hiddenGroups
 keys you want to keep hidden. `reset` restores the default empty list and shows
 every group. The plugin's `setPreference` and `resetPreference` RPCs expose the
 same operations to its app client.
+
+### Thread row actions
+
+**Customize row actions**, in a thread row's actions menu, picks
+the quick-action buttons a thread row shows on hover, left of its actions menu.
+It previews a thread row with three action slots; click a slot to pick an
+action for it or Hide to empty it. Picking an action that is already in another slot swaps
+the two. Drag a filled slot onto another to reorder them. Hiding every slot
+leaves only the actions menu.
+Archived rows keep their unarchive button regardless of this setting.
+
+The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
+accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
+`archive`, in display order. Duplicates are deduplicated. `split` is skipped
+where a split is unavailable, and `move` is skipped for threads that cannot
+move to another section. `move` opens a menu of sections.
+
+```sh
+bb thread-list prefs get rowActions
+bb thread-list prefs set rowActions '["pin","copyLink","archive"]'
+bb thread-list prefs set rowActions '[]'
+bb thread-list prefs reset rowActions
+```
 
 ### Sidebar footer
 

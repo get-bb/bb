@@ -38,12 +38,9 @@ export function ComposerSendMenu({
     includePluginContributions ? (view?.scope.kind ?? null) : null,
   ).filter(
     ({ pluginId, customizationId, item }) =>
-      (pluginId === "drafts" &&
-        customizationId === "drafts" &&
-        item.id === "drafts") ||
-      (pluginId === "scheduled-send" &&
-        customizationId === "send-later" &&
-        item.id === "send-later"),
+      pluginId === "scheduled-send" &&
+      customizationId === "send-later" &&
+      item.id === "send-later",
   );
   const [open, setOpen] = useState(false);
 

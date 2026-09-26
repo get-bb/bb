@@ -15,6 +15,7 @@ import {
   SettingsRow,
   SettingsRowList,
   SettingsSection,
+  SettingsWithControl,
 } from "@/components/ui/settings-section";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { getProviderIconInfo } from "@/lib/provider-icon";
@@ -265,24 +266,49 @@ export function ProvidersSettingsSection({
           </SortableSettingsRowList>
         )}
       </SettingsSection>
-      {providers.length === 0 ? null : (
-        <SettingsSection
-          title="Collapse finished turns"
-          description="When a turn finishes, fold its work into one Worked for row and keep the final answer visible. Turn a provider off to keep every step of its finished turns visible."
+      <SettingsSection title="Configuration">
+        <SettingsWithControl
+          label="Allow fast service tier"
+          description="Turn this off to use the default service tier for all new turns, including those from queued messages and automations."
         >
-          <SettingsRowList>
-            {providers.map((provider) => (
-              <CompletedTurnDisplayRow
-                key={provider.id}
-                disabled={disabled}
-                generalSettings={generalSettings}
-                onGeneralSettingsChange={onGeneralSettingsChange}
-                provider={provider}
-              />
-            ))}
-          </SettingsRowList>
-        </SettingsSection>
-      )}
+          <Switch
+            checked={generalSettings.allowFastServiceTier}
+            disabled={disabled}
+            onCheckedChange={(enabled) =>
+              onGeneralSettingsChange({
+                ...generalSettings,
+                allowFastServiceTier: enabled,
+              })
+            }
+            aria-label="Allow fast service tier"
+          />
+        </SettingsWithControl>
+        {providers.length === 0 ? null : (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">
+                Collapse finished turns
+              </h3>
+              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                When a turn finishes, fold its work into one Worked for row and
+                keep the final answer visible. Turn a provider off to keep every
+                step of its finished turns visible.
+              </p>
+            </div>
+            <SettingsRowList>
+              {providers.map((provider) => (
+                <CompletedTurnDisplayRow
+                  key={provider.id}
+                  disabled={disabled}
+                  generalSettings={generalSettings}
+                  onGeneralSettingsChange={onGeneralSettingsChange}
+                  provider={provider}
+                />
+              ))}
+            </SettingsRowList>
+          </div>
+        )}
+      </SettingsSection>
     </>
   );
 }

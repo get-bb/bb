@@ -9,6 +9,10 @@ import {
   runProjectAttachmentPrune,
 } from "../projects/attachment-maintenance.js";
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
+import {
+  runThreadStorageOrphanSweep,
+  THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
+} from "../threads/thread-storage-orphans.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
@@ -610,6 +614,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "project-attachment-orphan-prune",
     run: runProjectAttachmentPrune,
+  },
+  {
+    cadenceMs: THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
+    category: "orphan-cleanup",
+    name: "thread-storage-orphan-cleanup",
+    run: runThreadStorageOrphanSweep,
   },
 ];
 

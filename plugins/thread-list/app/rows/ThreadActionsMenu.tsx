@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -34,7 +40,16 @@ import { ActionMenuItem, ActionMenuSeparator } from "../ui/action-menu-items.js"
 import { CompactLongPressMenu } from "../ui/compact-long-press-menu.js";
 import { copyToClipboardWithToast } from "../ui/clipboard.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
+import {
+  THREAD_ROW_ACTION_IDS,
+  type ThreadRowActionId,
+} from "../../shared/preferences.js";
+import {
+  useThreadSectionMove,
+  type ThreadSectionMoveContextValue,
+} from "./ThreadSectionMoveProvider.js";
+import { THREAD_ROW_ACTIONS } from "./threadRowActions.js";
+import { useCustomizeThreadRowActions } from "../list/customizeRowActionsContext.js";
 
 interface ThreadActionsMenuBaseProps {
   thread: SidebarThread;
@@ -63,6 +78,14 @@ interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
 }
 
 type ThreadActionsMenuSurface = "context" | "dropdown";
+type SidebarThreadActions = ReturnType<
+  typeof experimental_useSidebarThreadActions
+>;
+
+interface ThreadRowActionHandlers {
+  actions: SidebarThreadActions;
+  unarchiveThread: (threadId: string) => Promise<boolean>;
+}
 type ThreadActionsCompactStep = "actions" | "move";
 
 interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
@@ -92,38 +115,32 @@ export function getThreadUrl(thread: SidebarThread): string {
   return new URL(thread.href, window.location.origin).toString();
 }
 
-function ThreadSectionMoveMenu({
-  drawerStep = false,
-  isDrawer,
-  onBack,
-  onOpenDrawerStep,
+export function canMoveThreadToSection(
+  sectionMove: ThreadSectionMoveContextValue | null,
+  thread: SidebarThread,
+): sectionMove is ThreadSectionMoveContextValue {
+  return (
+    sectionMove !== null &&
+    thread.parentThreadId === null &&
+    thread.archivedAt === null &&
+    sectionMove.destinations.some(
+      (destination) =>
+        thread.pinnedAt !== null || thread.sectionId !== destination.sectionId,
+    )
+  );
+}
+
+function ThreadSectionMoveItems({
+  sectionMove,
   surface,
   thread,
 }: {
-  drawerStep?: boolean;
-  isDrawer: boolean;
-  onBack?: () => void;
-  onOpenDrawerStep?: () => void;
+  sectionMove: ThreadSectionMoveContextValue;
   surface: ThreadActionsMenuSurface;
   thread: SidebarThread;
 }) {
-  const sectionMove = useThreadSectionMove();
-  if (
-    !sectionMove ||
-    thread.parentThreadId !== null ||
-    thread.archivedAt !== null
-  ) {
-    return null;
-  }
-
-  const hasValidDestination = sectionMove.destinations.some(
-    (destination) =>
-      thread.pinnedAt !== null || thread.sectionId !== destination.sectionId,
-  );
-  if (!hasValidDestination) return null;
-
   const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
-  const items = sectionMove.destinations.map((destination) => {
+  return sectionMove.destinations.map((destination) => {
     const isCurrent =
       thread.pinnedAt === null && thread.sectionId === destination.sectionId;
     return (
@@ -141,6 +158,33 @@ function ThreadSectionMoveMenu({
       </Item>
     );
   });
+}
+
+function ThreadSectionMoveMenu({
+  drawerStep = false,
+  isDrawer,
+  onBack,
+  onOpenDrawerStep,
+  surface,
+  thread,
+}: {
+  drawerStep?: boolean;
+  isDrawer: boolean;
+  onBack?: () => void;
+  onOpenDrawerStep?: () => void;
+  surface: ThreadActionsMenuSurface;
+  thread: SidebarThread;
+}) {
+  const sectionMove = useThreadSectionMove();
+  if (!canMoveThreadToSection(sectionMove, thread)) return null;
+
+  const items = (
+    <ThreadSectionMoveItems
+      sectionMove={sectionMove}
+      surface={surface}
+      thread={thread}
+    />
+  );
 
   if (isDrawer) {
     if (!drawerStep) {
@@ -151,8 +195,10 @@ function ThreadSectionMoveMenu({
             onOpenDrawerStep?.();
           }}
         >
-          <Icon name="SectionMove" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">Move to section</span>
+          <Icon name={THREAD_ROW_ACTIONS.move.icon} aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">
+            {THREAD_ROW_ACTIONS.move.label}
+          </span>
           <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
         </DropdownMenuItem>
       );
@@ -169,7 +215,7 @@ function ThreadSectionMoveMenu({
           Back
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>Move to section</DropdownMenuLabel>
+        <DropdownMenuLabel>{THREAD_ROW_ACTIONS.move.label}</DropdownMenuLabel>
         {items}
       </>
     );
@@ -184,8 +230,8 @@ function ThreadSectionMoveMenu({
   return (
     <Sub>
       <SubTrigger>
-        <Icon name="SectionMove" aria-hidden="true" />
-        Move to section
+        <Icon name={THREAD_ROW_ACTIONS.move.icon} aria-hidden="true" />
+        {THREAD_ROW_ACTIONS.move.label}
       </SubTrigger>
       <SubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
         {items}
@@ -203,15 +249,12 @@ function ThreadActionsMenuItems({
   responsiveActions = [],
   surface,
 }: ThreadActionsMenuItemsProps) {
+  const customizeRowActions = useCustomizeThreadRowActions();
   const actions = experimental_useSidebarThreadActions();
   const unarchiveThread = useUnarchiveThread();
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
   const showSeparators = !isDrawer;
-  const isRead = !thread.isUnread;
-  const isArchived = thread.archivedAt != null;
-  const isPinned = thread.pinnedAt !== null;
-  const threadUrl = getThreadUrl(thread);
 
   if (isDrawer && compactStep === "move") {
     return (
@@ -224,6 +267,16 @@ function ThreadActionsMenuItems({
       />
     );
   }
+
+  const separator = showSeparators ? (
+    <ActionMenuSeparator surface={surface} />
+  ) : null;
+  const menuVariant: ThreadRowActionVariant = {
+    kind: "menu",
+    surface,
+    isDrawer,
+    onOpenDrawerStep: () => onCompactStepChange?.("move"),
+  };
 
   return (
     <>
@@ -241,82 +294,39 @@ function ThreadActionsMenuItems({
               {action.label}
             </ActionMenuItem>
           ))}
-          {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
+          {separator}
         </>
       ) : null}
-      {onOpenInSplit ? (
-        <>
-          <ActionMenuItem
-            surface={surface}
-            icon="Columns2"
-            onSelect={() => {
-              onOpenInSplit();
-            }}
-          >
-            Open in split
-          </ActionMenuItem>
-          {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
-        </>
-      ) : null}
-      <ActionMenuItem
-        surface={surface}
-        icon="Copy"
-        onSelect={() => {
-          void copyToClipboardWithToast(threadUrl, {
-            successMessage: "Thread link copied",
-            errorMessage: "Failed to copy thread link",
-          });
-        }}
-      >
-        Copy thread link
-      </ActionMenuItem>
-      <ActionMenuItem
-        surface={surface}
-        icon={isRead ? "Mail" : "MailOpen"}
-        onSelect={() => {
-          void actions.setRead(thread.id, !isRead);
-        }}
-      >
-        {isRead ? "Mark unread" : "Mark read"}
-      </ActionMenuItem>
-      <ActionMenuItem
-        surface={surface}
-        icon={isPinned ? "PinOff" : "Pin"}
-        onSelect={() => {
-          void actions.setPinned(thread.id, !isPinned).catch(() => undefined);
-        }}
-      >
-        {isPinned ? "Unpin" : "Pin"}
-      </ActionMenuItem>
-      <ThreadSectionMoveMenu
-        isDrawer={isDrawer}
-        onOpenDrawerStep={() => onCompactStepChange?.("move")}
-        surface={surface}
-        thread={thread}
-      />
-      <ActionMenuItem
-        surface={surface}
-        icon="Edit"
-        onSelect={() => {
-          onRename();
-        }}
-      >
-        Rename
-      </ActionMenuItem>
-      {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
-      <ActionMenuItem
-        surface={surface}
-        icon={isArchived ? "ArchiveRestore" : "Archive"}
-        onSelect={() => {
-          if (isArchived) {
-            void unarchiveThread(thread.id);
-            return;
-          }
-          actions.archive(thread.id);
-        }}
-      >
-        {isArchived ? "Unarchive" : "Archive"}
-      </ActionMenuItem>
+      {THREAD_ROW_ACTION_IDS.map((id) => (
+        <Fragment key={id}>
+          {id === "archive" ? (
+            <>
+              {separator}
+              {customizeRowActions ? (
+                <>
+                  <ActionMenuItem
+                    surface={surface}
+                    icon="FilterHorizontal"
+                    onSelect={() => customizeRowActions(thread.id)}
+                  >
+                    Customize row actions
+                  </ActionMenuItem>
+                  {separator}
+                </>
+              ) : null}
+            </>
+          ) : null}
+          <ThreadRowAction
+            id={id}
+            thread={thread}
+            handlers={{ actions, unarchiveThread }}
+            onOpenInSplit={onOpenInSplit}
+            onRename={onRename}
+            variant={menuVariant}
+          />
+          {id === "split" && onOpenInSplit ? separator : null}
+        </Fragment>
+      ))}
       <ActionMenuItem
         surface={surface}
         icon="Trash2"
@@ -330,6 +340,150 @@ function ThreadActionsMenuItems({
         Delete
       </ActionMenuItem>
     </>
+  );
+}
+
+type ThreadRowActionVariant =
+  | {
+      kind: "menu";
+      surface: ThreadActionsMenuSurface;
+      isDrawer: boolean;
+      onOpenDrawerStep: () => void;
+    }
+  | {
+      kind: "button";
+      className?: string;
+      onMenuOpenChange?: (open: boolean) => void;
+    };
+
+interface ThreadRowActionModel {
+  icon: IconName;
+  label: string;
+  run: () => void;
+}
+
+function threadRowActionModel(
+  id: ThreadRowActionId,
+  thread: SidebarThread,
+  { actions, unarchiveThread }: ThreadRowActionHandlers,
+  onOpenInSplit: (() => void) | undefined,
+  onRename: () => void,
+): ThreadRowActionModel | null {
+  const isRead = !thread.isUnread;
+  const isPinned = thread.pinnedAt !== null;
+  const isArchived = thread.archivedAt != null;
+  switch (id) {
+    case "split":
+      return onOpenInSplit
+        ? { ...THREAD_ROW_ACTIONS.split, run: onOpenInSplit }
+        : null;
+    case "copyLink":
+      return {
+        ...THREAD_ROW_ACTIONS.copyLink,
+        run: () => {
+          void copyToClipboardWithToast(getThreadUrl(thread), {
+            successMessage: "Thread link copied",
+            errorMessage: "Failed to copy thread link",
+          });
+        },
+      };
+    case "read":
+      return {
+        icon: isRead ? "Mail" : "MailOpen",
+        label: isRead ? "Mark unread" : "Mark read",
+        run: () => {
+          void actions.setRead(thread.id, !isRead);
+        },
+      };
+    case "pin":
+      return {
+        icon: isPinned ? "PinOff" : "Pin",
+        label: isPinned ? "Unpin" : "Pin",
+        run: () => {
+          void actions.setPinned(thread.id, !isPinned).catch(() => undefined);
+        },
+      };
+    case "move":
+      return null;
+    case "rename":
+      return { ...THREAD_ROW_ACTIONS.rename, run: onRename };
+    case "archive":
+      return {
+        icon: isArchived ? "ArchiveRestore" : "Archive",
+        label: isArchived ? "Unarchive" : "Archive",
+        run: () => {
+          if (isArchived) {
+            void unarchiveThread(thread.id);
+            return;
+          }
+          actions.archive(thread.id);
+        },
+      };
+  }
+}
+
+export function ThreadRowAction({
+  id,
+  thread,
+  handlers,
+  onOpenInSplit,
+  onRename,
+  variant,
+}: {
+  id: ThreadRowActionId;
+  thread: SidebarThread;
+  handlers: ThreadRowActionHandlers;
+  onOpenInSplit?: () => void;
+  onRename: () => void;
+  variant: ThreadRowActionVariant;
+}) {
+  if (id === "move") {
+    return variant.kind === "menu" ? (
+      <ThreadSectionMoveMenu
+        isDrawer={variant.isDrawer}
+        onOpenDrawerStep={variant.onOpenDrawerStep}
+        surface={variant.surface}
+        thread={thread}
+      />
+    ) : (
+      <ThreadMoveQuickAction
+        thread={thread}
+        className={variant.className}
+        onOpenChange={variant.onMenuOpenChange}
+      />
+    );
+  }
+  if (variant.kind === "button" && id === "archive") {
+    return (
+      <ThreadArchiveQuickAction thread={thread} className={variant.className} />
+    );
+  }
+  const model = threadRowActionModel(
+    id,
+    thread,
+    handlers,
+    onOpenInSplit,
+    onRename,
+  );
+  if (!model) return null;
+  if (variant.kind === "menu") {
+    return (
+      <ActionMenuItem
+        surface={variant.surface}
+        icon={model.icon}
+        onSelect={model.run}
+      >
+        {model.label}
+      </ActionMenuItem>
+    );
+  }
+  return (
+    <ThreadQuickActionButton
+      icon={model.icon}
+      label={model.label}
+      className={variant.className}
+      onSelect={model.run}
+    />
   );
 }
 
@@ -397,6 +551,133 @@ export function ThreadArchiveQuickAction({
   );
 }
 
+function ThreadQuickActionButton({
+  icon,
+  label,
+  className,
+  onSelect,
+}: {
+  icon: IconName;
+  label: string;
+  className?: string;
+  onSelect: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn("rounded-md p-0", className)}
+          aria-label={label}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSelect();
+          }}
+        >
+          <Icon name={icon} className={COARSE_POINTER_ICON_SIZE_CLASS} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function visibleThreadRowActions(
+  actionIds: readonly ThreadRowActionId[],
+  available: { split: boolean; move: boolean },
+): ThreadRowActionId[] {
+  return actionIds.filter(
+    (id) =>
+      (id !== "split" || available.split) && (id !== "move" || available.move),
+  );
+}
+
+function ThreadMoveQuickAction({
+  thread,
+  className,
+  onOpenChange,
+}: {
+  thread: SidebarThread;
+  className?: string;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const sectionMove = useThreadSectionMove();
+  if (!canMoveThreadToSection(sectionMove, thread)) return null;
+  const { icon, label } = THREAD_ROW_ACTIONS.move;
+  return (
+    <DropdownMenu onOpenChange={onOpenChange}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "rounded-md p-0",
+                "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+                className,
+              )}
+              aria-label={label}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <Icon name={icon} className={COARSE_POINTER_ICON_SIZE_CLASS} />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto"
+      >
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        <ThreadSectionMoveItems
+          sectionMove={sectionMove}
+          surface="dropdown"
+          thread={thread}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function ThreadRowQuickActions({
+  actionIds,
+  actions,
+  thread,
+  className,
+  onOpenInSplit,
+  onRename,
+  onMenuOpenChange,
+}: {
+  actionIds: readonly ThreadRowActionId[];
+  actions: SidebarThreadActions;
+  thread: SidebarThread;
+  className?: string;
+  onOpenInSplit: () => void;
+  onRename: () => void;
+  onMenuOpenChange?: (open: boolean) => void;
+}) {
+  const unarchiveThread = useUnarchiveThread();
+  return actionIds.map((id) => (
+    <ThreadRowAction
+      key={id}
+      id={id}
+      thread={thread}
+      handlers={{ actions, unarchiveThread }}
+      onOpenInSplit={onOpenInSplit}
+      onRename={onRename}
+      variant={{ kind: "button", className, onMenuOpenChange }}
+    />
+  ));
+}
+
 export function ThreadActionsMenu({
   thread,
   onOpenInSplit,
@@ -422,6 +703,7 @@ export function ThreadActionsMenu({
             triggerClassName,
           )}
           aria-label="Thread actions"
+          data-thread-actions-trigger=""
           onClick={(event) => {
             event.stopPropagation();
           }}

@@ -1,4 +1,7 @@
-import { copyProjectAttachmentOwnership } from "./project-attachments.js";
+import {
+  acquireProjectAttachmentOwnership,
+  copyProjectAttachmentOwnership,
+} from "./project-attachments.js";
 import {
   and,
   asc,
@@ -18,6 +21,7 @@ import {
 } from "drizzle-orm";
 import type {
   JsonObject,
+  PromptInput,
   ReasoningLevel,
   ThreadChangeKind,
   ThreadLifecycleEvent,
@@ -29,6 +33,7 @@ import type {
 } from "@bb/domain";
 import {
   evaluateThreadLifecycleEvent,
+  projectAttachmentPaths,
   threadSearchSourceKindSchema,
 } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -273,6 +278,7 @@ export interface CreateThreadInput {
   pluginMetadata?: { pluginId: string; metadata: JsonObject } | null;
   startupContext?: string;
   visibility?: ThreadVisibility;
+  draft?: PromptInput[] | null;
 }
 
 export class InvalidLifecycleOwnerError extends Error {
@@ -332,6 +338,7 @@ export function createThread(
           originKind,
           originPluginId: input.originPluginId ?? null,
           visibility,
+          draft: serializeThreadDraft(input.draft ?? null),
           lastReadAt: now,
           latestAttentionAt: now,
           createdAt: now,
@@ -339,6 +346,11 @@ export function createThread(
         })
         .returning()
         .get();
+      acquireProjectAttachmentOwnership(
+        tx,
+        createdThread.id,
+        projectAttachmentPaths(input.draft ?? []),
+      );
       if (
         createdThread.originKind === "fork" &&
         createdThread.sourceThreadId !== null
@@ -1550,6 +1562,21 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .all();
 }
 
+export function listExistingThreadIds(
+  db: DbQueryConnection,
+  threadIds: string[],
+): string[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(inArray(threads.id, threadIds))
+    .all()
+    .map((row) => row.id);
+}
+
 export function listHostThreadIds(
   db: DbConnection,
   args: ListHostThreadIdsArgs,
@@ -1882,6 +1909,71 @@ export function setThreadExecutionOverride(
     .where(eq(threads.id, input.threadId))
     .returning()
     .get();
+  return updated ?? null;
+}
+
+export function getThreadDraft(
+  db: DbQueryConnection,
+  threadId: string,
+): string | null {
+  return (
+    db
+      .select({ draft: threads.draft })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .get()?.draft ?? null
+  );
+}
+
+function serializeThreadDraft(draft: PromptInput[] | null): string | null {
+  return draft === null || draft.length === 0 ? null : JSON.stringify(draft);
+}
+
+export interface SetThreadDraftInput {
+  threadId: string;
+  draft: PromptInput[] | null;
+  titleFallback: string | null;
+}
+
+export function setThreadDraft(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: SetThreadDraftInput,
+) {
+  const now = Date.now();
+  const updated = db.transaction(
+    (tx) => {
+      const row = tx
+        .update(threads)
+        .set({
+          draft: serializeThreadDraft(input.draft),
+          titleFallback: input.titleFallback,
+          updatedAt: now,
+        })
+        .where(eq(threads.id, input.threadId))
+        .returning()
+        .get();
+      if (!row) return null;
+      acquireProjectAttachmentOwnership(
+        tx,
+        row.id,
+        projectAttachmentPaths(input.draft ?? []),
+      );
+      upsertThreadTitleSearchSegments(tx, {
+        threadId: row.id,
+        title: row.title,
+        titleFallback: row.titleFallback,
+        updatedAt: now,
+      });
+      return row;
+    },
+    { behavior: "immediate" },
+  );
+  if (updated) {
+    notifier.notifyThread(updated.id, ["draft-changed"], {
+      projectId: updated.projectId,
+    });
+  }
   return updated ?? null;
 }
 

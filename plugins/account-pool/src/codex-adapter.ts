@@ -18,6 +18,7 @@ import {
   filterRequestHeaders,
   mountedUpstreamUrl,
   oauthSecretDueForRefresh,
+  parseOAuthRefreshResponse,
 } from "./provider-adapter.js";
 import { epochMilliseconds } from "./quota.js";
 
@@ -314,14 +315,13 @@ export function createCodexAdapter(options: {
     async refreshSecret(context) {
       const secret = oauthSecretDueForRefresh(context);
       if (secret === null) return { secret: context.secret, refreshed: false };
-      const parsed = refreshResponseSchema.parse(
-        JSON.parse(
-          await fetchOAuthRefresh(context, options.refreshUrl, {
-            client_id: CODEX_OAUTH_CLIENT_ID,
-            grant_type: "refresh_token",
-            refresh_token: secret.refreshToken,
-          }),
-        ),
+      const parsed = parseOAuthRefreshResponse(
+        await fetchOAuthRefresh(context, options.refreshUrl, {
+          client_id: CODEX_OAUTH_CLIENT_ID,
+          grant_type: "refresh_token",
+          refresh_token: secret.refreshToken,
+        }),
+        refreshResponseSchema,
       );
       const refreshed: AccountSecret = {
         kind: "oauth",

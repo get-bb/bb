@@ -51,6 +51,7 @@ Spawning:
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --draft                        Save the prompt as the thread's draft instead of sending it
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                 CLI-local absolute path, file: URL, or uploaded image path
     --origin-kind <kind>           Create a fork thread
@@ -353,7 +354,7 @@ Interactions:
 Queued messages:
 
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
-  bb thread queue create <thread-id> <message>
+  bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -387,6 +388,20 @@ Queued messages:
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
   passed is rejected, as is a bare date, which has no time of day. Several
   queued rows on one thread are normal: two scheduled sends coexist.
+
+Drafts:
+
+  bb thread draft show <thread-id>
+  bb thread draft set <thread-id> <message> [--file <path>] [--image <path>]
+  bb thread draft clear <thread-id>
+
+  A draft is a thread's saved, unsent message. `bb thread spawn --draft`
+  creates a draft thread: it stays `pending`, nothing is provisioned, and the
+  prompt is its draft. The app saves a draft thread when you leave the
+  new-thread composer with text in it, and shows the draft in that thread's
+  composer. Send a message with `bb thread tell` to start the thread. Sending
+  does not clear the draft; `draft clear` does, and the app clears it when the
+  composer sends.
 
 Persisted panel tabs:
 

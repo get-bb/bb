@@ -10,7 +10,6 @@
     "plugins/concurrency-limit",
     "plugins/custom-instructions",
     "plugins/docs",
-    "plugins/drafts",
     "plugins/environment-modal-sandbox",
     "plugins/environment-personal-workspace",
     "plugins/github",

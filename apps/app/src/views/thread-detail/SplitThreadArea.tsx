@@ -417,6 +417,17 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       if (current === null) {
         return;
       }
+      if (countPanes(current.root) === 1) {
+        const pane = findPane(current.root, paneId);
+        if (pane === null || pane.content.kind === "new-thread") return;
+        store.set(
+          splitLayoutAtom,
+          replacePaneContent(current, paneId, { kind: "new-thread" }),
+        );
+        setMaximizedPaneId(null);
+        navigate(paneContentRoute({ kind: "new-thread" }), { replace: true });
+        return;
+      }
       const next = removePane(current, paneId);
       if (next === current) {
         return;
@@ -591,6 +602,11 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       <StandalonePaneContent
         content={currentContent}
         paneId={layout?.focusedPaneId}
+        onRequestClose={
+          currentContent.kind === "new-thread" || layout === null
+            ? null
+            : () => closePane(layout.focusedPaneId)
+        }
       />
     ) : null;
   }
@@ -619,7 +635,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           isSplitPane={false}
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
-          onClosePane={null}
+          onClosePane={firstPane.content.kind === "new-thread" ? null : closePane}
           isMaximized={false}
           onToggleMaximizePane={null}
           isBoundedPane={false}
@@ -1008,13 +1024,15 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
 function StandalonePaneContent({
   content,
   paneId,
+  onRequestClose,
 }: {
   content: PaneContent;
   paneId?: string;
+  onRequestClose: (() => void) | null;
 }) {
   const navPanelChrome = usePluginNavPanelChrome();
   if (content.kind === "thread") {
-    return <ThreadDetailView surface="page" />;
+    return <ThreadDetailView surface="page" onRequestClose={onRequestClose} />;
   }
   if (content.kind === "new-thread") {
     return <RootComposeView />;
@@ -1036,6 +1054,21 @@ function StandalonePaneContent({
       subPath={content.subPath}
     />
   );
+  const paneActions = onRequestClose ? (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+      )}
+      aria-label="Close pane"
+      onClick={onRequestClose}
+    >
+      <Icon name="ClosePluginPane" />
+    </Button>
+  ) : null;
   return (
     <PluginPagePanelHost
       flushPageInsets
@@ -1054,8 +1087,11 @@ function StandalonePaneContent({
                   panel={panel}
                   paneId={paneId}
                   subPath={content.subPath}
+                  paneActions={paneActions}
                 />
-              ) : undefined
+              ) : (
+                paneActions
+              )
             }
           />
           <div className="flex min-h-0 flex-1 flex-col p-4 md:p-5">{body}</div>
@@ -1122,14 +1158,8 @@ function NonThreadPaneContent({
     }
     if (event.button === 0) beginPaneDrag?.(event, label);
   };
-  const actions = (
+  const paneActions = (
     <>
-      {panel ? (
-        <PluginPanelHeaderActions
-          panel={panel}
-          subPath={content.kind === "plugin-panel" ? content.subPath : ""}
-        />
-      ) : null}
       <PaneMaximizeButton />
       {onRequestClose ? (
         <Button
@@ -1152,6 +1182,19 @@ function NonThreadPaneContent({
           />
         </Button>
       ) : null}
+    </>
+  );
+  const actions = (
+    <>
+      {panel ? (
+        <PluginPanelHeaderActions
+          panel={panel}
+          subPath={content.kind === "plugin-panel" ? content.subPath : ""}
+          paneActions={paneActions}
+        />
+      ) : (
+        paneActions
+      )}
       {reservesWindowPanelToggle && showsWindowPanelToggle ? (
         <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
       ) : null}

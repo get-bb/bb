@@ -258,6 +258,7 @@ export class DemoWorld {
       case "child-summary":
         return json({
           nonDeletedChildCount: 0,
+          unarchivedDescendantCount: 0,
         } satisfies ThreadChildSummaryResponse);
       default:
         return null;
