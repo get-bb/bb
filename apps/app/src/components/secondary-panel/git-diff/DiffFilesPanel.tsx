@@ -11,6 +11,7 @@ import {
   type RetryDiffPatchPath,
   useEnvironmentDiffPatches,
 } from "@/hooks/queries/use-environment-diff-patches";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFileCard } from "./DiffFileCard";
 import {
@@ -19,6 +20,7 @@ import {
   resolveCardCollapsed,
   resolveDiffFileCardInitialState,
 } from "./diffFilesStore";
+import { filterDiffFilesByPath } from "./gitDiffPanelHelpers";
 
 const DIFF_FILES_OVERSCAN = 4;
 const DIFF_FILES_GAP_PX = 8;
@@ -28,6 +30,7 @@ interface DiffFilesPanelProps {
   target: WorkspaceDiffTarget;
   diffIdentity: string;
   files: DiffFileEntry[];
+  fileFilter: string;
   initialPatches: DiffPatchEntry[];
   filesUpdatedAt: number;
   presentation: DiffPresentation;
@@ -47,6 +50,7 @@ export function DiffFilesPanel({
   target,
   diffIdentity,
   files,
+  fileFilter,
   initialPatches,
   filesUpdatedAt,
   presentation,
@@ -80,11 +84,16 @@ export function DiffFilesPanel({
     prunePaths(files.map((file) => file.path));
   }, [files, prunePaths]);
 
+  const visibleFiles = useMemo(
+    () => filterDiffFilesByPath(files, fileFilter),
+    [files, fileFilter],
+  );
+
   const virtualizer = useVirtualizer({
-    count: files.length,
+    count: visibleFiles.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => {
-      const entry = files[index];
+      const entry = visibleFiles[index];
       if (!entry) {
         return 0;
       }
@@ -94,7 +103,7 @@ export function DiffFilesPanel({
       }).collapsed;
       return estimateCardHeight({ entry, collapsed }) + DIFF_FILES_GAP_PX;
     },
-    getItemKey: (index) => files[index]?.path ?? index,
+    getItemKey: (index) => visibleFiles[index]?.path ?? index,
     overscan: DIFF_FILES_OVERSCAN,
   });
 
@@ -108,7 +117,7 @@ export function DiffFilesPanel({
     const visible: string[] = [];
     const overscan: string[] = [];
     for (const item of virtualItems) {
-      const entry = files[item.index];
+      const entry = visibleFiles[item.index];
       if (!entry || entry.loadMode !== "auto") {
         continue;
       }
@@ -119,7 +128,7 @@ export function DiffFilesPanel({
       }
     }
     return { visiblePaths: visible, overscanPaths: overscan };
-  }, [virtualItems, files, startIndex, endIndex]);
+  }, [virtualItems, visibleFiles, startIndex, endIndex]);
 
   const visibleKey = visiblePaths.join("\n");
   const overscanKey = overscanPaths.join("\n");
@@ -135,13 +144,29 @@ export function DiffFilesPanel({
     if (!scrollToPath || isPlaceholderData) {
       return;
     }
-    const index = files.findIndex((file) => file.path === scrollToPath);
+    const index = visibleFiles.findIndex((file) => file.path === scrollToPath);
     if (index < 0) {
       return;
     }
     virtualizer.scrollToIndex(index, { align: "start" });
     onScrolledToPath?.();
-  }, [scrollToPath, files, isPlaceholderData, virtualizer, onScrolledToPath]);
+  }, [
+    scrollToPath,
+    visibleFiles,
+    isPlaceholderData,
+    virtualizer,
+    onScrolledToPath,
+  ]);
+
+  if (visibleFiles.length === 0) {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+        <EmptyStatePanel className="rounded-lg">
+          No changed files match “{fileFilter.trim()}”.
+        </EmptyStatePanel>
+      </div>
+    );
+  }
 
   return (
     <div ref={scrollRef} className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
@@ -150,7 +175,7 @@ export function DiffFilesPanel({
         style={{ height: virtualizer.getTotalSize() }}
       >
         {virtualItems.map((item) => {
-          const entry = files[item.index];
+          const entry = visibleFiles[item.index];
           if (!entry) {
             return null;
           }

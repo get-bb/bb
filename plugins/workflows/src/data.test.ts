@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachCallThread,
+  isWorkerRetired,
   retiredWorkers,
   recordWorkerCleanup,
   workerOrigins,
@@ -205,6 +206,67 @@ describe("workflow durable data", () => {
     expect(retiredWorkers(db, Date.now())).toEqual([
       { threadId: "unattached-worker", callId: call.id },
     ]);
+  });
+
+  it("rechecks one worker's retirement against its current call and run", () => {
+    const expectRetired = (threadId: string, retired: boolean) => {
+      expect(isWorkerRetired(db, threadId)).toBe(retired);
+      expect(
+        retiredWorkers(db, Number.MAX_SAFE_INTEGER).some(
+          (worker) => worker.threadId === threadId,
+        ),
+      ).toBe(retired);
+    };
+    const run = newRun();
+    markRunning(run.id);
+    const startWork = (cacheKey: string, callIndex: number) =>
+      startCall(db, {
+        runId: run.id,
+        callIndex,
+        cacheKey,
+        prompt: "work",
+        options: {
+          title: null,
+          phase: null,
+          outputSchema: null,
+          selection: null,
+        },
+        selection: resolvedSelection,
+        replay: null,
+      });
+
+    const live = startWork("live", 0);
+    ownWorker(db, "live-worker", run.id, live.id, run.originThreadId);
+    expectRetired("live-worker", true);
+    expect(attachCallThread(db, live.id, "live-worker")).toBe(true);
+    expectRetired("live-worker", false);
+
+    const retried = startWork("retried", 1);
+    ownWorker(db, "first-attempt", run.id, retried.id, run.originThreadId);
+    expect(attachCallThread(db, retried.id, "first-attempt")).toBe(true);
+    db.prepare(
+      `UPDATE workflow_calls SET child_thread_id = 'second-attempt' WHERE id = ?`,
+    ).run(retried.id);
+    expectRetired("first-attempt", true);
+
+    settleCall(db, {
+      id: live.id,
+      status: "succeeded",
+      result: null,
+      error: null,
+    });
+    expectRetired("live-worker", true);
+    recordWorkerCleanup(db, "live-worker", true);
+    expectRetired("live-worker", false);
+
+    const cancelled = startWork("cancelled", 2);
+    ownWorker(db, "cancelled-worker", run.id, cancelled.id, run.originThreadId);
+    expect(attachCallThread(db, cancelled.id, "cancelled-worker")).toBe(true);
+    expectRetired("cancelled-worker", false);
+    cancelRun(db, run.id);
+    expectRetired("cancelled-worker", true);
+
+    expectRetired("unknown-worker", false);
   });
 
   it("records replay safety without a concurrency barrier", () => {

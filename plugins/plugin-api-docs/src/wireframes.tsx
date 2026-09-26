@@ -44,46 +44,6 @@ export function useSurfaceMap(): SurfaceMapState {
   return state;
 }
 
-export const APP_SHELL_MARKS = [
-  "sidebar-navigation",
-  "nav-panel",
-  "thread-row-status",
-  "thread-list",
-  "sidebar-footer",
-  "thread-header",
-  "timeline-renderers",
-  "message-directives",
-  "message-actions",
-  "pending-interaction",
-  "code-renderers",
-  "browser-toolbar",
-  "thread-panel",
-  "file-opener",
-  "app-overlay",
-  "content-scripts",
-] as const;
-
-export const COMMAND_PALETTE_MARKS = ["command-palette-actions"] as const;
-
-export const COMPOSER_MARKS = [
-  "composer-banners",
-  "composer-state",
-  "mention-provider",
-  "composer-rich-text",
-  "composer-plus-menu",
-  "provider-picker",
-  "composer-actions",
-] as const;
-
-export const COMPOSE_MARKS = ["homepage-section", "new-thread-panel"] as const;
-
-export const EXTENSIONS_MARKS = ["plugin-status"] as const;
-
-export const SETTINGS_MARKS = [
-  "declarative-settings",
-  "settings-section",
-] as const;
-
 function useEngagement(id: string) {
   const { activeId, expandedId } = useSurfaceMap();
   return {

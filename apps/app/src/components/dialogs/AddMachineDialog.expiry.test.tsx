@@ -55,4 +55,19 @@ describe("MachineLaunchCommand", () => {
     screen.getByRole("button", { name: "Generate a new command" }).click();
     expect(onRegenerate).toHaveBeenCalledTimes(1);
   });
+
+  it("stops offering a copy after the server withdraws the command", () => {
+    render(
+      <MachineLaunchCommand
+        command={COMMAND}
+        expiresAt={15 * 60_000}
+        unavailable
+        onRegenerate={() => {}}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toBe("Command used");
+    expect(
+      screen.getByRole("button", { name: "Copy" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
 });

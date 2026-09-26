@@ -1,5 +1,5 @@
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
-import type { Host } from "@bb/domain";
+import type { Host, HostType } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
   CreateMachineRequest,
@@ -75,6 +75,7 @@ export interface HostProviderCliInstallArgs extends HostProviderCliInstallReques
 
 export interface HostListArgs {
   includeCreating?: boolean;
+  type?: HostType;
   signal?: AbortSignal;
 }
 
@@ -270,6 +271,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
                 : {
                     includeCreating: input.includeCreating ? "true" : "false",
                   }),
+              ...(input?.type === undefined ? {} : { type: input.type }),
             },
           },
           ...signalRequestArgs(input?.signal),

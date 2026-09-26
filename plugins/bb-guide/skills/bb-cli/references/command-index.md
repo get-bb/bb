@@ -193,6 +193,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb thread update`
 - `bb thread archive`
 - `bb thread unarchive`
+- `bb thread restore-environment`
 - `bb thread pin`
 - `bb thread unpin`
 - `bb thread delete`
@@ -284,6 +285,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb plugin rpc call`
 - `bb plugin enable`
 - `bb plugin disable`
+- `bb plugin safe-mode`
 - `bb plugin config`
 - `bb plugin token`
 - `bb plugin run`

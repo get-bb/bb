@@ -15,6 +15,7 @@ import {
   type GitDiffDisplayMode,
   type GitDiffSelectionOption,
 } from "./GitDiffToolbar";
+import { filterDiffFilesByPath } from "./git-diff/gitDiffPanelHelpers";
 import {
   parseGitDiffFiles,
   summarizeGitDiffFile,
@@ -689,16 +690,29 @@ function InteractiveDiffPanel({
         ),
     [diffs],
   );
+  const [fileFilter, setFileFilter] = useState<string | null>(null);
+  const visibleFiles = useMemo(
+    () =>
+      filterDiffFilesByPath(
+        parsed.map((entry) => ({
+          ...entry,
+          path: entry.fileDiff.name,
+          previousPath: entry.fileDiff.prevName ?? null,
+        })),
+        fileFilter ?? "",
+      ),
+    [parsed, fileFilter],
+  );
   const aggregateStats = useMemo(() => {
     let insertions = 0;
     let deletions = 0;
-    for (const entry of parsed) {
+    for (const entry of visibleFiles) {
       const fileStats = summarizeGitDiffFile(entry.fileDiff);
       insertions += fileStats.insertions;
       deletions += fileStats.deletions;
     }
-    return { filesCount: parsed.length, insertions, deletions };
-  }, [parsed]);
+    return { filesCount: visibleFiles.length, insertions, deletions };
+  }, [visibleFiles]);
   const [selection, setSelection] = useState("working");
   const [displayMode, setDisplayMode] = useState<GitDiffDisplayMode>("unified");
   const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
@@ -771,7 +785,10 @@ function InteractiveDiffPanel({
         onSelectionChange={setSelection}
         isSelectorDisabled={false}
         stats={aggregateStats}
+        totalFilesCount={parsed.length}
         isTruncated={false}
+        fileFilter={fileFilter}
+        onFileFilterChange={setFileFilter}
         areAllFilesCollapsed={allCollapsed}
         isCollapseAllDisabled={parsed.length === 0}
         onToggleAllCollapsed={toggleAllCollapsed}
@@ -782,7 +799,7 @@ function InteractiveDiffPanel({
       />
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-3">
         <div className="space-y-2">
-          {parsed.map(({ fileKey, fileDiff }) => (
+          {visibleFiles.map(({ fileKey, fileDiff }) => (
             <GitDiffCard
               key={fileKey}
               fileDiff={fileDiff}

@@ -107,6 +107,7 @@ async function createStores() {
 
 const CONNECT_MOVE: DesktopServerMove = {
   moveId: "move-1",
+  oldCopyKept: true,
   target: {
     kind: "connect",
     server: {
@@ -120,6 +121,7 @@ const CONNECT_MOVE: DesktopServerMove = {
 
 const DIRECT_MOVE: DesktopServerMove = {
   moveId: "move-2",
+  oldCopyKept: true,
   target: { kind: "custom", url: "https://studio.tailnet.ts.net:38886" },
   toHostName: "Studio desktop",
 };
@@ -143,6 +145,7 @@ describe("readServerMovedLock", () => {
       readServerMovedLock({ dataDir, logWarning: vi.fn() }),
     ).resolves.toEqual({
       moveId: "move-1",
+      oldCopyKept: true,
       target: {
         kind: "connect",
         server: {
@@ -248,15 +251,16 @@ describe("applyServerMove", () => {
     });
     expect(stores.notices).toEqual([
       {
-        detail:
-          "bb now opens the server on Studio desktop. This computer stays connected to it as a regular machine.",
+        detail: "bb now opens there. This computer stays connected.",
         message: "Your bb server moved to Studio desktop",
       },
     ]);
 
+    await stores.targetStore.setTarget("builtin");
     await expect(
       applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: false, switched: false });
+    ).resolves.toEqual({ noticeShown: false, switched: true });
+    expect(stores.targetStore.getTarget()).toMatchObject({ kind: "connect" });
     expect(stores.notices).toHaveLength(1);
   });
 
@@ -309,18 +313,6 @@ describe("applyServerMove", () => {
       kind: "custom",
       url: "https://work.example.com",
     });
-  });
-
-  it("leaves the locked builtin server again without a second notice", async () => {
-    const stores = await createStores();
-    await applyServerMove({ move: CONNECT_MOVE, ...stores });
-    await stores.targetStore.setTarget("builtin");
-
-    await expect(
-      applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: false, switched: true });
-    expect(stores.targetStore.getTarget().kind).toBe("connect");
-    expect(stores.notices).toHaveLength(1);
   });
 
   it("switches and notifies again for a later move", async () => {
@@ -525,9 +517,14 @@ describe("createServerMovedWatcher", () => {
     harness.watcher.start();
     await harness.timers.flush();
 
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+    try {
+      await vi.waitFor(() => {
+        expect(harness.confirmMove).toHaveBeenCalledOnce();
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("debounces lock events into one committed move", async () => {
@@ -579,7 +576,9 @@ describe("createServerMovedWatcher", () => {
     await writeServerMovedFile(harness.dataDir, movedFile());
     harness.watcher.start();
     await harness.timers.flush();
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(harness.confirmMove).toHaveBeenCalledOnce();
+    });
 
     await writeServerMovedFile(
       harness.dataDir,
@@ -596,11 +595,13 @@ describe("createServerMovedWatcher", () => {
     expect(harness.timers.pendingCount()).toBe(1);
     await harness.timers.flush();
 
-    expect(harness.confirmMove).toHaveBeenCalledTimes(2);
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith({
-      ...CONNECT_MOVE,
-      moveId: "move-3",
+    await vi.waitFor(() => {
+      expect(harness.onMove).toHaveBeenCalledExactlyOnceWith({
+        ...CONNECT_MOVE,
+        moveId: "move-3",
+      });
     });
+    expect(harness.confirmMove).toHaveBeenCalledTimes(2);
     harness.watcher.stop();
   });
 

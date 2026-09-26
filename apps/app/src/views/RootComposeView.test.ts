@@ -24,6 +24,8 @@ import {
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
   hasSingleUseRootComposeTargetState,
+  readNewEnvironmentHostIdFromLocationState,
+  readRootComposeEnvironmentTargetFromLocationState,
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
@@ -41,6 +43,7 @@ import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtur
 import {
   buildReuseThreadOptions,
   resolveHostEnvironmentProvider,
+  resolveNewThreadHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "./root-compose-environment-selection";
 
@@ -87,6 +90,42 @@ describe("resolveHostEnvironmentProvider", () => {
       resolveHostEnvironmentProvider({
         currentProvider: null,
         providers: [],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("resolveNewThreadHostEnvironmentProvider", () => {
+  const checkout = makeProjectProvider("project-checkout");
+  const worktree = makeProjectProvider("git-worktree");
+
+  it("keeps the selected provider when the requested machine supports it", () => {
+    expect(
+      resolveNewThreadHostEnvironmentProvider({
+        currentProviderId: worktree.id,
+        providers: [checkout, worktree],
+      }),
+    ).toBe(worktree);
+  });
+
+  it("falls back to a usable provider and rejects a machine without one", () => {
+    const unavailableWorktree = {
+      ...worktree,
+      availability: {
+        status: "unavailable" as const,
+        message: "Not installed",
+      },
+    };
+    expect(
+      resolveNewThreadHostEnvironmentProvider({
+        currentProviderId: worktree.id,
+        providers: [checkout, unavailableWorktree],
+      }),
+    ).toBe(checkout);
+    expect(
+      resolveNewThreadHostEnvironmentProvider({
+        currentProviderId: worktree.id,
+        providers: [unavailableWorktree],
       }),
     ).toBeNull();
   });
@@ -777,6 +816,33 @@ describe("hasSingleUseRootComposeTargetState", () => {
     expect(hasSingleUseRootComposeTargetState({ focusPrompt: true })).toBe(
       true,
     );
+  });
+
+  it("treats a machine target as single-use navigation state", () => {
+    expect(
+      hasSingleUseRootComposeTargetState({
+        newEnvironmentHostId: "host_homelab",
+      }),
+    ).toBe(true);
+    expect(
+      readNewEnvironmentHostIdFromLocationState({
+        newEnvironmentHostId: "host_homelab",
+      }),
+    ).toBe("host_homelab");
+    expect(
+      readNewEnvironmentHostIdFromLocationState({
+        newEnvironmentHostId: " ",
+      }),
+    ).toBeNull();
+  });
+
+  it("prioritizes environment reuse over a new-environment machine", () => {
+    expect(
+      readRootComposeEnvironmentTargetFromLocationState({
+        reuseEnvironmentId: "env_existing",
+        newEnvironmentHostId: "host_homelab",
+      }),
+    ).toEqual({ kind: "reuse", environmentId: "env_existing" });
   });
 
   it("ignores non-target state", () => {

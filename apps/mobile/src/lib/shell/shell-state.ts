@@ -9,7 +9,7 @@ export type ShellLoadPhase =
 export type ShellScreenState =
   | { kind: "loading"; message: string }
   | { kind: "no-profile" }
-  | { kind: "webview" }
+  | { kind: "webview"; serverErrorStatus: number | null }
   | {
       kind: "error";
       title: string;
@@ -67,16 +67,10 @@ export function resolveShellScreenState(
         action: "retry",
       };
     case "http-error":
-      return {
-        kind: "error",
-        title: "The server answered with an error",
-        detail: `HTTP ${input.load.status}`,
-        action: "retry",
-      };
+      return { kind: "webview", serverErrorStatus: input.load.status };
     case "loading":
-      return { kind: "webview" };
     case "ready":
-      return { kind: "webview" };
+      return { kind: "webview", serverErrorStatus: null };
   }
 }
 

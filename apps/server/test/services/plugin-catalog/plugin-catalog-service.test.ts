@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   createConnection,
   getPluginMarketplace,
+  listPluginMarketplaceIcons,
   markInstalledPluginRemoved,
   migrate,
   upsertPluginMarketplace,
@@ -1226,25 +1227,45 @@ describe("plugin catalog service", () => {
   });
 
   describe("catalog limits and trust", () => {
-    it("refuses a manifest that lists more than the entry limit", async () => {
-      const oversize = manifest(
-        Array.from({ length: 257 }, (_unused, index) =>
-          remoteEntry({ id: `widgets-${index}` }),
+    it("refreshes and searches a catalog with more than 1024 entries", async () => {
+      const largeManifest = manifest(
+        Array.from({ length: 1025 }, (_unused, index) =>
+          remoteEntry({ id: `widgets-${index}`, icon: "Zap" }),
         ),
       );
       const catalog = service({
-        fetch: async () => jsonResponse(oversize),
+        fetch: async () => jsonResponse(largeManifest),
       });
 
-      await expect(refreshCuratedMarketplace(catalog, 1_000)).rejects.toThrow(
-        /at most 256 plugins/u,
-      );
-      expect(getPluginMarketplace(db, "bb-community")?.lastError).toMatch(
-        /at most 256 plugins/u,
-      );
+      await refreshCuratedMarketplace(catalog, 1_000);
+      expect(getPluginMarketplace(db, "bb-community")?.lastError).toBeNull();
+      expect(await catalog.search("widgets")).toHaveLength(1025);
+      expect(await catalog.search("widgets-1024")).toEqual([
+        expect.objectContaining({ entryId: "widgets-1024" }),
+      ]);
     });
 
-    it("refuses a catalog whose icons pass the total byte budget", async () => {
+    it("refreshes a remote manifest larger than 1 MiB", async () => {
+      const largeManifest = manifest(
+        Array.from({ length: 600 }, (_unused, index) =>
+          remoteEntry({
+            id: `widgets-${index}`,
+            icon: "Zap",
+            description: "x".repeat(2_000),
+          }),
+        ),
+      );
+      expect(JSON.stringify(largeManifest).length).toBeGreaterThan(1_048_576);
+      const catalog = service({
+        fetch: async () => jsonResponse(largeManifest),
+      });
+
+      await refreshCuratedMarketplace(catalog, 1_000);
+      expect(getPluginMarketplace(db, "bb-community")?.lastError).toBeNull();
+      expect(await catalog.search("widgets")).toHaveLength(600);
+    });
+
+    it("stores catalog icons totaling more than 8 MiB", async () => {
       const bigSvg = Buffer.from(
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>${"a".repeat(200 * 1024)}</title><path d="M0 0h16v16H0z"/></svg>`,
       );
@@ -1264,9 +1285,12 @@ describe("plugin catalog service", () => {
               }),
       });
 
-      await expect(refreshCuratedMarketplace(catalog, 1_000)).rejects.toThrow(
-        /exceed the 8388608 byte total limit/u,
-      );
+      await refreshCuratedMarketplace(catalog, 1_000);
+      const icons = listPluginMarketplaceIcons(db, "bb-community");
+      expect(icons).toHaveLength(64);
+      expect(
+        icons.reduce((total, icon) => total + icon.bytes.byteLength, 0),
+      ).toBeGreaterThan(8 * 1024 * 1024);
     });
 
     it("fetches entry icons concurrently", async () => {

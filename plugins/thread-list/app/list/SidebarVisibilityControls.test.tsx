@@ -92,7 +92,7 @@ describe("thread overflow submenus", () => {
     expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
   });
 
-  it("closes both compact drawers when a thread is selected", () => {
+  it("replaces the compact More drawer with a section and returns to More", () => {
     vi.useFakeTimers();
     render(
       <CompactViewportOverrideProvider isCompactViewport>
@@ -103,15 +103,26 @@ describe("thread overflow submenus", () => {
           onCustomize={() => {}}
         >
           {(close) => (
-            <SidebarOverflowItem
-              item={{ id: "review", title: "Review" }}
-              onClose={close}
-              onAddToSidebar={() => {}}
-            >
-              {(closeSection) => (
-                <button onClick={closeSection}>Review thread</button>
-              )}
-            </SidebarOverflowItem>
+            <>
+              <SidebarOverflowItem
+                item={{ id: "review", title: "Review" }}
+                onClose={close}
+                onAddToSidebar={() => {}}
+              >
+                {(closeSection) => (
+                  <button onClick={closeSection}>Review thread</button>
+                )}
+              </SidebarOverflowItem>
+              <SidebarOverflowItem
+                item={{ id: "planning", title: "Planning" }}
+                onClose={close}
+                onAddToSidebar={() => {}}
+              >
+                {(closeSection) => (
+                  <button onClick={closeSection}>Planning thread</button>
+                )}
+              </SidebarOverflowItem>
+            </>
           )}
         </SidebarMore>
       </CompactViewportOverrideProvider>,
@@ -121,13 +132,38 @@ describe("thread overflow submenus", () => {
     act(() => vi.advanceTimersByTime(120));
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     act(() => vi.advanceTimersByTime(120));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Planning" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "Customize list" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Review thread" }),
+    ).not.toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    expect(screen.getByRole("button", { name: "Planning" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Planning" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { name: "Planning thread" }),
+    ).not.toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
     fireEvent.click(screen.getByRole("button", { name: "Review thread" }));
 
+    const trigger = screen.getByRole("button", { name: "More sections" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(
-      screen
-        .getByRole("button", { name: "More sections" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
+      screen.getByRole("button", { name: "Review thread", hidden: true }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Planning", hidden: true }),
+    ).toBeNull();
+
+    fireEvent.click(trigger);
+    act(() => vi.advanceTimersByTime(120));
+    expect(screen.getByRole("button", { name: "Planning" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
   });
 });

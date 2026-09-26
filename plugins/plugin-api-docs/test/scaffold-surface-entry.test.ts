@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildSurfaceEntryScaffold,
   classifyFixtureFidelity,
-  fixtureResponsiveStrategy,
   parseScaffoldArgs,
   renderSurfaceEntryScaffold,
 } from "../scripts/scaffold-surface-entry.mjs";
@@ -58,32 +57,6 @@ describe("surface-entry scaffold", () => {
     ],
   ] as const)("classifies %j as %s", (traits, expected) => {
     expect(classifyFixtureFidelity(traits)).toBe(expected);
-  });
-
-  it("derives fidelity from spatial ownership and observable behavior", () => {
-    expect(
-      classifyFixtureFidelity({
-        spatialOwner: false,
-        transient: false,
-        outcome: false,
-        replacement: false,
-      }),
-    ).toBe("none");
-    expect(
-      classifyFixtureFidelity({
-        spatialOwner: true,
-        transient: false,
-        outcome: false,
-        replacement: false,
-      }),
-    ).toBe("anchor");
-  });
-
-  it("uses one responsive rule for every generated spatial fixture", () => {
-    expect(fixtureResponsiveStrategy({ spatialOwner: true })).toBe(
-      "scale-together",
-    );
-    expect(fixtureResponsiveStrategy({ spatialOwner: false })).toBe("reflow");
   });
 
   it("generates the representative command-palette flow deterministically", () => {

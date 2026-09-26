@@ -154,9 +154,7 @@ function flattenMobileRecentNodes({
   items: readonly ProjectThreadItem[];
   rows: MobileRecentThreadRow[];
 }): void {
-  for (const item of items) {
-    if (item.kind !== "thread") continue;
-    const { node } = item;
+  for (const { node } of items) {
     const hasChildren = node.children.length > 0;
     const isCollapsed = hasChildren && collapsedThreadIds.has(node.thread.id);
     rows.push({

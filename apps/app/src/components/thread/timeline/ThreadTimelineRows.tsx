@@ -1361,7 +1361,7 @@ function leadingIconForWorkRow(
   return workRowGlyph(row, (glyph): glyph is string => glyph.length > 0);
 }
 
-export function systemOperationLeadingIcon(
+function systemOperationLeadingIcon(
   operationKind: TimelineSystemOperationKind,
   parentChangeAction: TimelineParentChange["action"] | null,
 ): IconName | undefined {
@@ -1497,12 +1497,7 @@ function TimelineRowView({
           scopeActive,
         })}
       >
-        <span
-          className={cn(
-            "inline-flex min-w-0 max-w-full gap-1.5",
-            row.kind === "system" ? "items-baseline" : "items-center",
-          )}
-        >
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
           <TimelineLeadingIcon
             icon={staticLeadingIcon}
             iconUrl={staticLeadingIconUrl}

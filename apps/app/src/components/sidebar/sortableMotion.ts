@@ -11,8 +11,6 @@ const SIDEBAR_SORTABLE_TRANSITION = {
   easing: "cubic-bezier(0.2, 0, 0, 1)",
 };
 
-export const SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION = null;
-
 export interface SidebarSortableDragBindings {
   attributes: DraggableAttributes;
   disabled: boolean;

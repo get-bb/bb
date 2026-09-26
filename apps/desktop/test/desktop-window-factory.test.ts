@@ -414,126 +414,65 @@ describe("desktop window factory", () => {
     expect(result).toEqual({ action: "deny" });
   });
 
-  it("uses the native window frame on Linux", async () => {
-    const tempDir = await createTempDir();
-    const createdWindows: FakeDesktopWindow[] = [];
-    const browserWindowCreator: DesktopBrowserWindowCreator = {
-      create(options) {
-        const browserWindow = new FakeDesktopWindow({ options });
-        createdWindows.push(browserWindow);
-        return browserWindow;
-      },
-    };
-    const factory = createDesktopWindowFactory({
-      browserWindowCreator,
-      createWindowStateKey() {
-        return "linux-window";
-      },
-      displayWorkAreas: [
-        {
-          height: 900,
-          width: 1440,
-          x: 0,
-          y: 0,
-        },
-      ],
-      icon: undefined,
-      isMac: false,
-      isLinuxTransparent: false,
+  it.each([
+    {
+      name: "keeps the native frame",
       isLinuxFrameless: false,
-      isQuitting() {
-        return false;
-      },
-      openExternalUrl() {},
-      preloadPath: "/tmp/preload.cjs",
-      userDataPath: tempDir.path,
-    });
-
-    await factory.createWindow({ initialUrl: null, stateKey: null });
-
-    expect(createdWindows[0]?.options).not.toHaveProperty("frame");
-    expect(createdWindows[0]?.options).not.toHaveProperty("titleBarStyle");
-    expect(createdWindows[0]?.options).not.toHaveProperty(
-      "trafficLightPosition",
-    );
-  });
-
-  it("enables transparent Linux windows when requested", async () => {
-    const tempDir = await createTempDir();
-    const createdWindows: FakeDesktopWindow[] = [];
-    const browserWindowCreator: DesktopBrowserWindowCreator = {
-      create(options) {
-        const browserWindow = new FakeDesktopWindow({ options });
-        createdWindows.push(browserWindow);
-        return browserWindow;
-      },
-    };
-    const factory = createDesktopWindowFactory({
-      browserWindowCreator,
-      createWindowStateKey() {
-        return "transparent-linux-window";
-      },
-      displayWorkAreas: [{ height: 900, width: 1440, x: 0, y: 0 }],
-      icon: undefined,
+      isLinuxTransparent: false,
+      present: {},
+      absent: ["frame", "titleBarStyle", "trafficLightPosition"],
+    },
+    {
+      name: "enables transparency when requested",
+      isLinuxFrameless: false,
       isLinuxTransparent: true,
-      isMac: false,
-      isLinuxFrameless: false,
-      isQuitting() {
-        return false;
-      },
-      openExternalUrl() {},
-      preloadPath: "/tmp/preload.cjs",
-      userDataPath: tempDir.path,
-    });
-
-    await factory.createWindow({ initialUrl: null, stateKey: null });
-
-    expect(createdWindows[0]?.options.transparent).toBe(true);
-    expect(createdWindows[0]?.options.backgroundColor).toBe("#00000000");
-    expect(createdWindows[0]?.options).not.toHaveProperty("frame");
-  });
-
-  it("removes the native window frame when requested on Linux", async () => {
-    const tempDir = await createTempDir();
-    const createdWindows: FakeDesktopWindow[] = [];
-    const browserWindowCreator: DesktopBrowserWindowCreator = {
-      create(options) {
-        const browserWindow = new FakeDesktopWindow({ options });
-        createdWindows.push(browserWindow);
-        return browserWindow;
-      },
-    };
-    const factory = createDesktopWindowFactory({
-      browserWindowCreator,
-      createWindowStateKey() {
-        return "frameless-linux-window";
-      },
-      displayWorkAreas: [
-        {
-          height: 900,
-          width: 1440,
-          x: 0,
-          y: 0,
-        },
-      ],
-      icon: undefined,
-      isMac: false,
-      isLinuxTransparent: false,
+      present: { transparent: true, backgroundColor: "#00000000" },
+      absent: ["frame"],
+    },
+    {
+      name: "removes the native frame when requested",
       isLinuxFrameless: true,
-      isQuitting() {
-        return false;
-      },
-      openExternalUrl() {},
-      preloadPath: "/tmp/preload.cjs",
-      userDataPath: tempDir.path,
-    });
+      isLinuxTransparent: false,
+      present: { frame: false },
+      absent: ["titleBarStyle", "trafficLightPosition"],
+    },
+  ])(
+    "$name for Linux windows",
+    async ({ isLinuxFrameless, isLinuxTransparent, present, absent }) => {
+      const tempDir = await createTempDir();
+      const createdWindows: FakeDesktopWindow[] = [];
+      const browserWindowCreator: DesktopBrowserWindowCreator = {
+        create(options) {
+          const browserWindow = new FakeDesktopWindow({ options });
+          createdWindows.push(browserWindow);
+          return browserWindow;
+        },
+      };
+      const factory = createDesktopWindowFactory({
+        browserWindowCreator,
+        createWindowStateKey() {
+          return "linux-window";
+        },
+        displayWorkAreas: [{ height: 900, width: 1440, x: 0, y: 0 }],
+        icon: undefined,
+        isMac: false,
+        isLinuxTransparent,
+        isLinuxFrameless,
+        isQuitting() {
+          return false;
+        },
+        openExternalUrl() {},
+        preloadPath: "/tmp/preload.cjs",
+        userDataPath: tempDir.path,
+      });
 
-    await factory.createWindow({ initialUrl: null, stateKey: null });
+      await factory.createWindow({ initialUrl: null, stateKey: null });
 
-    expect(createdWindows[0]?.options.frame).toBe(false);
-    expect(createdWindows[0]?.options).not.toHaveProperty("titleBarStyle");
-    expect(createdWindows[0]?.options).not.toHaveProperty(
-      "trafficLightPosition",
-    );
-  });
+      const options = createdWindows[0]?.options;
+      expect(options).toMatchObject(present);
+      for (const key of absent) {
+        expect(options).not.toHaveProperty(key);
+      }
+    },
+  );
 });

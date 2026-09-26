@@ -189,13 +189,14 @@ function renderTimeline({
         {scrollIntoViewRowId ? (
           <ScrollRowIntoViewControl rowId={scrollIntoViewRowId} />
         ) : null}
-        {virtualized ? (
-          <div data-timeline-row-list="top-level">
-            <div data-timeline-virtual-spacer="">{rows}</div>
+        <div data-timeline-row-list="top-level">
+          <div
+            data-timeline-items=""
+            data-timeline-virtual-spacer={virtualized ? "" : undefined}
+          >
+            {rows}
           </div>
-        ) : (
-          rows
-        )}
+        </div>
       </BottomAnchoredScrollBody>
     );
   };

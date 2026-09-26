@@ -1,3 +1,4 @@
+import { serveDaemonFileStream } from "../../services/hosts/daemon-file-stream.js";
 import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
@@ -276,21 +277,30 @@ async function serveThreadStorageRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
-  ifNoneMatch: string | undefined,
+  request: Request,
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
-
-  return serveDaemonFileContent(
+  return serveDaemonFileStream(
     deps,
     {
       hostId: target.hostId,
-      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
       path: path.join(target.storagePath, filePath.relativePath),
       rootPath: target.storagePath,
     },
-    (result) =>
-      createRawFilePreviewResponse(result, filePath.relativePath, ifNoneMatch),
+    request,
+    (metadata) => {
+      assertHtmlPreviewSize(filePath.relativePath, metadata.sizeBytes);
+      const headers = new Headers({
+        "x-content-type-options": RAW_FILE_CONTENT_TYPE_OPTIONS,
+      });
+      if (isHtmlPreviewPath(filePath.relativePath)) {
+        headers.set("cache-control", RAW_FILE_NO_STORE_CACHE_CONTROL);
+        headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
+        headers.set("content-type", RAW_FILE_HTML_CONTENT_TYPE);
+      }
+      return headers;
+    },
   );
 }
 
@@ -730,7 +740,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       context.req.param("id"),
       context.req.param("filePath"),
-      context.req.header("if-none-match"),
+      context.req.raw,
     ),
   );
 

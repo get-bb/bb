@@ -1,5 +1,9 @@
 import { advanceThreadPruning } from "../src/data/thread-pruning.js";
-import { findEnvironmentPathClaim } from "../src/data/environments.js";
+import {
+  findEnvironmentPathClaim,
+  listProviderLifecycleEnvironments,
+  releaseFinishedEnvironmentPreparationOwners,
+} from "../src/data/environments.js";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
 import {
@@ -39,7 +43,6 @@ import {
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
-  pruneDestroyedEnvironments,
 } from "../src/data/sweeps.js";
 import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../src/retained-event-output.js";
 import {
@@ -56,7 +59,6 @@ import {
 import { listEnvironments } from "../src/data/environments.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
-import { createEnvironment } from "../src/data/environments.js";
 import {
   createThread,
   listRunningThreads,
@@ -864,62 +866,37 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the environment index for bounded event detaches", () => {
-    const { db, host, logger, project, thread } = setup();
-    const now = Date.now();
-    const environment = createEnvironment(db, noopNotifier, {
-      providerOwnsPath: false,
-      hostId: host.id,
-      projectId: project.id,
-      status: "destroyed",
+  it("skips removed environments in the provider lifecycle sweep", () => {
+    const { db } = setup();
+    const captured = captureStatements(db, () => {
+      expect(listProviderLifecycleEnvironments(db, "git-worktree")).toEqual([]);
     });
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({ text: "environment prune query plan" }),
-        environmentId: environment.id,
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: threadScope(),
-        sequence: 1,
-        threadId: thread.id,
-        type: "system/manager/user_message",
-      },
-    ]);
-    const updatedBefore = now - 5_000;
-    db.$client
-      .prepare("UPDATE environments SET updated_at = ? WHERE id = ?")
-      .run(now - 10_000, environment.id);
-    logger.clear();
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toContain("USING INDEX environments_provider_lifecycle_idx");
+    expect(details).not.toContain("SCAN environments");
+    db.$client.close();
+  });
 
-    expect(
-      pruneDestroyedEnvironments(db, noopNotifier, {
-        eventBatchSize: 50,
-        limit: 1,
-        updatedBefore,
-      }),
-    ).toEqual({ deleted: 0, detachedEvents: 1 });
-
+  it("releases preparation owners through the owner index", () => {
+    const { db, logger } = setup();
+    releaseFinishedEnvironmentPreparationOwners(db);
     const debugLog = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
-        fields.operation === "all" &&
-        fields.sql.startsWith("SELECT rowid, octet_length(data)"),
+        fields.operation === "run" &&
+        fields.sql.startsWith('update "environments" set "owner_thread_id"'),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog,
-      indexName: "events_environment_idx",
-      params: [environment.id, 50],
+      indexName: "environments_owner_thread_idx",
+      params: [null, "removed"],
     });
-    expect(
-      queryPlanDetails({
-        db,
-        params: [environment.id, 50],
-        sql: debugLog.fields.sql,
-      }),
-    ).not.toContain("USE TEMP B-TREE");
-
     db.$client.close();
   });
 

@@ -35,7 +35,10 @@ import {
   callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../services/hosts/online-rpc.js";
-import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
+import {
+  handleHostRemoved,
+  settleRemovedHostWork,
+} from "../internal/session-owner-side-effects.js";
 import {
   submitMachine,
   requestMachineRemoval,
@@ -48,6 +51,7 @@ import {
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
 import { manualHostCommand } from "../services/machines/manual-provider.js";
 import { prepareReconnect } from "../services/machines/reconnect.js";
+import { emitPluginHostDeleted } from "../services/plugins/plugin-thread-events.js";
 
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -148,6 +152,7 @@ export function registerHostRoutes(
     context.json(
       listPublicHostsWithStatus(deps, {
         includeCreating: query.includeCreating === "true",
+        type: query.type,
       }),
     ),
   );
@@ -282,13 +287,8 @@ export function registerHostRoutes(
     }
 
     if (host.machineProviderId !== null) {
-      if (!requestMachineRemoval(deps, hostId)) {
-        throw new ApiError(
-          409,
-          "machine_has_live_threads",
-          "Archive or delete every thread on this machine before removing it",
-        );
-      }
+      requestMachineRemoval(deps, hostId);
+      settleRemovedHostWork(deps, { hostId });
       await sweepProviderMachine(deps, hostId);
       return context.json({ ok: true });
     }
@@ -301,8 +301,12 @@ export function registerHostRoutes(
     if (sessionId) {
       handleHostRemoved(deps, { hostId, sessionId });
     }
-    updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
+    settleRemovedHostWork(deps, { hostId });
+    const destroyed = updateHost(deps.db, deps.hub, hostId, {
+      destroyedAt: Date.now(),
+    });
     deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
+    if (destroyed !== null) emitPluginHostDeleted(destroyed);
     if (host.connectMachineId !== null) {
       await revokeConnectMachineCredential(
         deps,

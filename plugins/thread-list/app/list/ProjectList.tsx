@@ -967,6 +967,7 @@ interface MachineModeSectionsProps
       onRename: () => void;
       onCloseAutoFocus: (event: Event) => void;
     },
+    hostId?: string,
   ) => ReactNode;
   isSectionDisplayOptionsOpen: (sectionId: SidebarSectionId) => boolean;
   selectedThreadId?: string;
@@ -1002,10 +1003,15 @@ function MachineSidebarSection({
       disabled={props.disabled || rename.isEditing}
       labelEditor={rename.editor}
       onRename={rename.startEditing}
-      actions={renderActions(props.id, props.label, {
-        onRename: rename.startEditingFromMenu,
-        onCloseAutoFocus: rename.onCloseAutoFocus,
-      })}
+      actions={renderActions(
+        props.id,
+        props.label,
+        {
+          onRename: rename.startEditingFromMenu,
+          onCloseAutoFocus: rename.onCloseAutoFocus,
+        },
+        hostId,
+      )}
     />
   );
 }
@@ -1288,7 +1294,12 @@ export function MachineModeSections({
                 id={sectionId}
                 label={section.label}
                 disabled={reorderDisabled}
-                actions={renderSectionDisplayOptions(sectionId, section.label)}
+                actions={renderSectionDisplayOptions(
+                  sectionId,
+                  section.label,
+                  undefined,
+                  hostsById.has(section.key) ? section.key : undefined,
+                )}
                 actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
                 actionsMobileAlways
                 collapsedActivity={section.activity}
@@ -1378,11 +1389,12 @@ function ProjectListComponent({
     [sdk],
   );
   const openRootComposeForProject = useCallback(
-    (projectId: string | null, sectionId?: string) => {
+    (projectId: string | null, sectionId?: string, hostId?: string) => {
       onProjectSelect?.();
       sidebarActions.openNewThread({
         ...(projectId !== null ? { projectId } : {}),
         ...(sectionId ? { sectionId } : {}),
+        ...(hostId ? { hostId } : {}),
         focusPrompt: true,
       });
     },
@@ -1525,13 +1537,18 @@ function ProjectListComponent({
       onRename: () => void;
       onCloseAutoFocus: (event: Event) => void;
     },
+    hostId?: string,
   ) => {
     const menuId = `displayOptions:${sectionId}` as const;
     return (
       <SidebarHeaderControls
         label={label}
         sectionId={sectionId}
-        onNewThread={handleCreateProjectlessThread}
+        onNewThread={
+          hostId
+            ? () => openRootComposeForProject(personalProjectId, undefined, hostId)
+            : handleCreateProjectlessThread
+        }
         open={openSidebarMenu === menuId}
         onOpenChange={(open) => setSidebarMenuOpen(menuId, open)}
         onCloseAutoFocus={renameActions?.onCloseAutoFocus}

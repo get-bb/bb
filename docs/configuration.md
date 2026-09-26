@@ -238,7 +238,10 @@ Codex transcribes recordings up to 20 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
-`bb.voiceInput.audioInputDeviceId`; it does not change which service
+`bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
+back to the system default when it is disconnected, then uses the saved
+preference again when it reconnects. Select System default to follow system
+microphone changes; it does not change which service
 transcribes.
 
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.
@@ -799,20 +802,23 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
 | `sidebar.pluginPanelOrder`           | Navigation entry order                                                                    |
 | `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                       |
-| `sidebar.navigationProvider`         | Plugin key; defaults to `navigation/navigation`                                           |
+| `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
-| `sidebar.threadListProvider`         | Plugin key; defaults to `thread-list/thread-list`                                         |
+| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
 
-The sidebar thread list uses an explicit plugin selection and defaults to the bundled
-Thread list plugin (`thread-list/thread-list`). Existing `__automatic__` and
-`__builtin__` selections resolve to that default; other plugin selections are preserved.
-Use `bb settings ui reset sidebar.threadListProvider` to restore the default, or
+The sidebar thread list defaults to `__automatic__`: the first installed thread list
+plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
+bundled plugin when there is none. Installing a thread list plugin therefore switches
+to it. Legacy `__builtin__` selections resolve to the bundled plugin; other plugin
+selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
-The sidebar navigation also uses an explicit plugin selection and defaults to the
-bundled Navigation plugin (`navigation/navigation`). Existing `__automatic__` and
-`__builtin__` selections resolve to that default. Order and visibility stay in
+The sidebar navigation works the same way: `sidebar.navigationProvider` defaults to
+`__automatic__`, which prefers an installed navigation plugin over the bundled
+Navigation plugin (`navigation/navigation`), and legacy `__builtin__` selections
+resolve to the bundled plugin. Order and visibility stay in
 `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, shared by every
 navigation plugin.
 
@@ -1174,6 +1180,11 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
+The default-off `legacyJitiPluginLoader` experiment restores the previous JITI
+plugin server loader. Toggling it leaves running plugin instances unchanged;
+the selected loader applies on the next install, reload, enable, update, or
+server restart. Set it with `bb settings experiment legacyJitiPluginLoader
+<true|false>`.
 The `mobileApp` experiment turns on pairing for the bb mobile app: the
 **Add mobile device** card under Settings → Remote access and the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It
@@ -1740,7 +1751,12 @@ takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
 
-### Thread list lifecycle filter
+### Thread list provider icons and lifecycle filter
+
+The Thread list plugin's `showProviderIcons` preference defaults to `false`.
+Organize → Rows → Provider icons or
+`bb thread-list prefs set showProviderIcons true` shows the agent provider
+icon before each thread title. Unknown provider ids have no icon.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with

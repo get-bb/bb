@@ -10,6 +10,7 @@ interface FakeWebSocketOptions {
 interface FakeTunnelSocket {
   readyState: number;
   emit(eventName: string, ...args: unknown[]): boolean;
+  close(code?: number, reason?: string): void;
   terminate(): void;
 }
 
@@ -23,12 +24,17 @@ vi.mock("ws", async (importOriginal) => {
   const { EventEmitter } = await import("node:events");
 
   class FakeWebSocket extends EventEmitter {
+    static readonly OPEN = 1;
     readyState = 0;
 
     constructor(_url: unknown, options: FakeWebSocketOptions) {
       super();
       fakeWebSockets.instances.push(this);
       fakeWebSockets.options.push(options);
+    }
+
+    close(): void {
+      this.readyState = 2;
     }
 
     terminate(): void {
@@ -168,6 +174,31 @@ describe("ConnectTunnel socket lifecycle", () => {
     }
   });
 
+  it("closes an open tunnel cleanly on stop so the gate treats it as offline at once", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      const socket = fakeWebSockets.instances[0]!;
+      socket.readyState = 1;
+      socket.emit("open");
+      const close = vi.spyOn(socket, "close");
+      const terminate = vi.spyOn(socket, "terminate");
+
+      tunnel.stop();
+
+      expect(close).toHaveBeenCalledWith(1000, "tunnel closed by bb");
+      expect(terminate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(terminate).toHaveBeenCalledOnce();
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
   it("retries when the handshake never completes within the deadline", async () => {
     vi.useFakeTimers();
     const { fakeHost, tunnel } = createTunnelFixture();
@@ -177,7 +208,9 @@ describe("ConnectTunnel socket lifecycle", () => {
       const socket = fakeWebSockets.instances[0]!;
       const terminate = vi.spyOn(socket, "terminate");
 
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(terminate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
 
       expect(terminate).toHaveBeenCalledOnce();
       expect(tunnel.status().lastError).toContain("handshake timed out");
@@ -185,6 +218,85 @@ describe("ConnectTunnel socket lifecycle", () => {
       expect(nextRetryAt).not.toBeNull();
 
       await vi.advanceTimersByTimeAsync(nextRetryAt! - Date.now());
+      expect(fakeWebSockets.instances).toHaveLength(2);
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("backs off for minutes when another bb takes over the tunnel", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      const socket = fakeWebSockets.instances[0]!;
+      socket.readyState = 1;
+      socket.emit("open");
+
+      socket.emit(
+        "close",
+        1000,
+        Buffer.from("replaced by a new tunnel connection"),
+      );
+
+      expect(tunnel.status().lastError).toContain("another bb connected");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fakeWebSockets.instances).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(fakeWebSockets.instances).toHaveLength(2);
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("keeps a healthy tunnel's status when a replaced socket from a reconnect closes late", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      const replaced = fakeWebSockets.instances[0]!;
+      replaced.readyState = 1;
+      replaced.emit("open");
+      tunnel.stop();
+      await tunnel.start();
+      const current = fakeWebSockets.instances[1]!;
+      current.readyState = 1;
+      current.emit("open");
+
+      replaced.emit(
+        "close",
+        1000,
+        Buffer.from("replaced by a new tunnel connection"),
+      );
+
+      expect(tunnel.status().lastError).toBeNull();
+      expect(tunnel.status().nextRetryAt).toBeNull();
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("redials within seconds after an ordinary close", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      const socket = fakeWebSockets.instances[0]!;
+      socket.readyState = 1;
+      socket.emit("open");
+
+      socket.emit("close", 1006, Buffer.from(""));
+
+      await vi.advanceTimersByTimeAsync(2_000);
       expect(fakeWebSockets.instances).toHaveLength(2);
     } finally {
       tunnel.stop();

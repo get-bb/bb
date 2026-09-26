@@ -24,10 +24,10 @@ const localViewTestCases: LocalViewTestCase[] = [
   {
     label: "error",
     viewModel: {
+      actions: [],
       details: "The local service failed to start.",
       kind: "error",
       logText: "Failed to bind port",
-      retryable: false,
       title: "Could not open bb",
     },
   },
@@ -62,11 +62,11 @@ describe("local desktop views", () => {
   it("renders startup error logs without terminal control sequences", () => {
     const html = decodeLocalViewHtml({
       viewModel: {
+        actions: [],
         details: "The local service failed to start.",
         kind: "error",
         logText:
           "\x1b[2K  \x1b[2m○\x1b[0m  Starting server\r\x1b[2K  \x1b[32m✓\x1b[0m  Server listening\nError: listen EADDRINUSE",
-        retryable: false,
         title: "Could not open bb",
       },
     });
@@ -79,28 +79,32 @@ describe("local desktop views", () => {
     expect(html).not.toContain("\r");
   });
 
-  it("renders an on-screen retry control only for recoverable startup errors", () => {
-    const retryableHtml = decodeLocalViewHtml({
+  it("renders one button per startup action and none without actions", () => {
+    const actionHtml = decodeLocalViewHtml({
       viewModel: {
-        details: "The saved server did not answer.",
+        actions: [
+          { id: "retry", label: "Try again" },
+          { id: "choose-server", label: "Choose server…" },
+        ],
+        details: "bb Connect did not accept this app.",
         kind: "error",
         logText: "",
-        retryable: true,
-        title: "Could not reach bb",
+        title: "Could not open Studio desktop",
       },
     });
     const fatalHtml = decodeLocalViewHtml({
       viewModel: {
+        actions: [],
         details: "The desktop process could not continue.",
         kind: "error",
         logText: "",
-        retryable: false,
         title: "Could not open bb",
       },
     });
 
-    expect(retryableHtml).toContain('data-testid="bb-startup-retry"');
-    expect(retryableHtml).toContain(">Try again</button>");
-    expect(fatalHtml).not.toContain('data-testid="bb-startup-retry"');
+    expect(actionHtml).toContain(
+      '<div class="actions"><button type="button" data-startup-action="retry">Try again</button><button type="button" data-startup-action="choose-server">Choose server…</button></div>',
+    );
+    expect(fatalHtml).not.toContain("<button");
   });
 });

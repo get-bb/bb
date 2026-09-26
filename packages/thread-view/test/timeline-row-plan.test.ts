@@ -151,9 +151,45 @@ describe("timeline row planning", () => {
       options: {
         ...options,
         sourceSeqStart: expected.sourceSeqStart,
-        sourceSeqEnd: expected.sourceSeqEnd,
+        turnId: expected.turnId,
       },
     });
     expect(details).toEqual({ kind: "matched", rows: expected.children });
+  });
+
+  it("expands each group of a split turn from its first message", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events = [
+      event.turnStarted(),
+      event.commandStarted({ itemId: "long", command: "build" }),
+      event.assistantCompleted({ itemId: "first", text: "First." }),
+      event.assistantCompleted({ itemId: "second", text: "Second." }),
+      event.commandCompleted({ itemId: "short", command: "lint" }),
+      event.commandOutputDelta({ itemId: "long", delta: "built\n" }),
+      event.commandCompleted({ itemId: "long", command: "build" }),
+      event.assistantCompleted({ itemId: "final", text: "Done." }),
+      event.turnCompleted(),
+    ];
+    const groups = timeline(events, true).rows.filter(
+      (row) => row.kind === "turn",
+    );
+    expect(groups.map((row) => [row.sourceSeqStart, row.sourceSeqEnd])).toEqual(
+      [
+        [2, 7],
+        [4, 5],
+      ],
+    );
+
+    for (const group of groups) {
+      const details = buildThreadTimelineTurnDetailsFromEvents({
+        events: fromRows(events),
+        options: {
+          ...options,
+          sourceSeqStart: group.sourceSeqStart,
+          turnId: group.turnId,
+        },
+      });
+      expect(details).toEqual({ kind: "matched", rows: group.children });
+    }
   });
 });

@@ -7,6 +7,23 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 const app = await loadPluginApp(() => import("./app"));
 
 describe("GitHub app navigation", () => {
+  it("registers the GitHub nav panel with header content and the PR thread tab", () => {
+    expect(app.navPanels).toHaveLength(1);
+    expect(app.navPanels[0]).toMatchObject({
+      id: "github",
+      title: "GitHub",
+      icon: "Github",
+      path: "github",
+    });
+    expect(typeof app.navPanels[0]?.headerContent).toBe("function");
+    expect(app.threadPanelActions).toHaveLength(1);
+    expect(app.threadPanelActions[0]).toMatchObject({
+      id: "pull",
+      title: "GitHub PR",
+      icon: "Github",
+    });
+  });
+
   it("opens issue details in the URL-backed page instead of a fixed tab", async () => {
     const panel = app.navPanels[0]!;
     expect(panel.fixedTabs).toBeUndefined();

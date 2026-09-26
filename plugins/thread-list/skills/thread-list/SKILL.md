@@ -6,7 +6,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `threadLifecycles`, `organizationMode`,
+`bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group), `rowActions`,
@@ -44,3 +44,8 @@ leaves only the menu. For example,
 `bb thread-list prefs set rowActions '["pin","archive"]'`. In the app, a thread
 row's actions menu has Customize row actions, which previews the row's three
 action slots; each slot picks an action or None, and filled slots drag to reorder.
+
+Organize → Rows → Provider icons toggles the icon before each thread title.
+`showProviderIcons` defaults to `false`; use
+`bb thread-list prefs set showProviderIcons true` to show them. Unknown
+provider ids have no icon.

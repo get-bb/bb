@@ -261,6 +261,25 @@ describe("thread-scoped browser CDP", () => {
     expect(commands).toEqual([{ tabId: "a", method: "Runtime.evaluate" }]);
   });
 
+  it("reveals the tab for Page.bringToFront instead of focusing it natively", async () => {
+    const { bridge, scopeA, commands, nativeCommands } = await openBridge();
+    const client = await connect(
+      bridge.grant(scopeA, Date.now() + 60_000).endpoint,
+    );
+    const attached = await client.call("Target.attachToTarget", {
+      targetId: desktopBrowserCdpTargetId(scopeA, "a"),
+      flatten: true,
+    });
+    const { sessionId } = z
+      .object({ sessionId: z.string() })
+      .parse(attached.result);
+    expect(await client.call("Page.bringToFront", {}, sessionId)).toMatchObject(
+      { result: {} },
+    );
+    expect(commands).toEqual([{ tabId: "a", method: "activate" }]);
+    expect(nativeCommands).toEqual([]);
+  });
+
   it("supports Puppeteer tab-to-page auto-attach and honors target filters", async () => {
     const { bridge, scopeA } = await openBridge();
     const client = await connect(

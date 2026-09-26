@@ -284,3 +284,7 @@ describe("parseOperationMessage operation titles", () => {
     });
   });
 });
+
+it("explains an intentional machine removal without suggesting a daemon failure", () => {
+  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe("Stopped because the machine was removed");
+});

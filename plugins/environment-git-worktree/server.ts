@@ -3,7 +3,11 @@ import {
   type BbPluginApi,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
-import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
+import type {
+  PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderCreateResult,
+  PluginEnvironmentProviderProgress,
+} from "@get-bb/plugin-sdk/environment-provider";
 import { reportHostProgress } from "bb-environment-provider-host/progress";
 import { z } from "zod";
 import {
@@ -11,6 +15,7 @@ import {
   worktreeBaseBranchSchema,
   worktreeHostContract,
   worktreeHostSignals,
+  type WorktreeBaseBranch,
 } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
@@ -33,6 +38,16 @@ export const worktreeInputsSchema = z
   ])
   .default({ branch: { kind: "default" } });
 export type WorktreeInputs = z.infer<typeof worktreeInputsSchema>;
+type WorktreeOperation = Pick<
+  PluginEnvironmentProviderCreateContext<{ gitCheckout: true }>,
+  | "attempt"
+  | "experimental_claimPath"
+  | "host"
+  | "pathKey"
+  | "projectCheckout"
+  | "report"
+  | "signal"
+>;
 
 export const worktreeRpcContract = defineRpcContract({
   defaultBaseBranch: {
@@ -82,6 +97,80 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     if (report !== undefined) reportHostProgress(report, event.payload);
   });
 
+  async function adoptExistingWorktree(
+    context: WorktreeOperation,
+    path: string,
+  ): Promise<PluginEnvironmentProviderCreateResult> {
+    const resolved = await host.call(
+      "resolveExistingWorktree",
+      { sourcePath: context.projectCheckout.path, path },
+      {
+        hostId: context.host.id,
+        signal: context.signal,
+        timeoutMs: CREATE_TIMEOUT_MS,
+      },
+    );
+    if (resolved.status === "failed") {
+      return { status: "failed", message: resolved.message };
+    }
+    if (!(await context.experimental_claimPath(resolved.path))) {
+      return {
+        status: "failed",
+        message: `${resolved.path} is already in use by another environment.`,
+      };
+    }
+    return {
+      status: "created",
+      path: resolved.path,
+      ownsPath: false,
+      resource: ADOPTED_RESOURCE,
+    };
+  }
+
+  async function createManagedWorktree(
+    context: WorktreeOperation,
+    branch: {
+      branchName: string;
+      baseBranch: WorktreeBaseBranch;
+      branchMode: "reset" | "reuse-existing";
+    },
+  ): Promise<PluginEnvironmentProviderCreateResult> {
+    const operationId = `create#${context.pathKey}#${context.attempt}`;
+    reports.set(operationId, context.report);
+    try {
+      const result = await host.call(
+        "create",
+        {
+          operationId,
+          sourcePath: context.projectCheckout.path,
+          pathKey: context.pathKey,
+          ...branch,
+        },
+        {
+          hostId: context.host.id,
+          signal: context.signal,
+          timeoutMs: CREATE_TIMEOUT_MS,
+        },
+      );
+      if (result.status === "failed") {
+        return { status: "failed", message: result.message };
+      }
+      return {
+        status: "created",
+        path: result.path,
+        ownsPath: true,
+        ...(result.baseBranch === null
+          ? {}
+          : { mergeBaseBranch: result.baseBranch }),
+      };
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+      return { status: "failed", message: errorMessage(error) };
+    } finally {
+      reports.delete(operationId);
+    }
+  }
+
   bb.experimental_environments.register({
     id: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
     displayName: "Worktree",
@@ -93,75 +182,32 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     experimental_existingPath: (inputs) =>
       "kind" in inputs ? inputs.path : null,
     async create(context) {
-      const hostId = context.host.id;
       if ("kind" in context.inputs) {
-        const resolved = await host.call(
-          "resolveExistingWorktree",
-          {
-            sourcePath: context.projectCheckout.path,
-            path: context.inputs.path,
-          },
-          { hostId, signal: context.signal, timeoutMs: CREATE_TIMEOUT_MS },
-        );
-        if (resolved.status === "failed") {
-          return { status: "failed", message: resolved.message };
-        }
-        if (!(await context.experimental_claimPath(resolved.path))) {
-          return {
-            status: "failed",
-            message: `${resolved.path} is already in use by another environment.`,
-          };
-        }
-        return {
-          status: "created",
-          path: resolved.path,
-          ownsPath: false,
-          resource: ADOPTED_RESOURCE,
-        };
+        return adoptExistingWorktree(context, context.inputs.path);
       }
-      const operationId = `create#${context.pathKey}#${context.attempt}`;
-      reports.set(operationId, context.report);
-      try {
-        const result = await host.call(
-          "create",
-          {
-            operationId,
-            sourcePath: context.projectCheckout.path,
-            pathKey: context.pathKey,
-            branchName: context.rebuild
-              ? (context.previous?.environment.branchName ??
-                context.suggestedBranchName)
-              : context.suggestedBranchName,
-            baseBranch: context.inputs.branch,
-            branchMode: context.rebuild ? "reuse-existing" : "reset",
-          },
-          { hostId, signal: context.signal, timeoutMs: CREATE_TIMEOUT_MS },
-        );
-        if (result.status === "failed") {
-          return {
-            status: "failed",
-
-            message: result.message,
-          };
-        }
-        return {
-          status: "created",
-          path: result.path,
-          ownsPath: true,
-          ...(result.baseBranch === null
-            ? {}
-            : { mergeBaseBranch: result.baseBranch }),
-        };
-      } catch (error) {
-        if (context.signal.aborted) throw error;
+      return createManagedWorktree(context, {
+        branchName: context.suggestedBranchName,
+        baseBranch: context.inputs.branch,
+        branchMode: "reset",
+      });
+    },
+    async restore(context) {
+      if ("kind" in context.inputs) {
+        return adoptExistingWorktree(context, context.inputs.path);
+      }
+      const branchName = context.previous.environment.branchName;
+      if (branchName === null) {
         return {
           status: "failed",
-
-          message: errorMessage(error),
+          message:
+            "The removed worktree had no branch checked out, so there is no branch to restore it on.",
         };
-      } finally {
-        reports.delete(operationId);
       }
+      return createManagedWorktree(context, {
+        branchName,
+        baseBranch: context.inputs.branch,
+        branchMode: "reuse-existing",
+      });
     },
     async remove(context) {
       if (isAdoptedResource(context.resource)) {

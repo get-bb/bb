@@ -1,3 +1,4 @@
+import { machineRemovalLabels } from "./machine-removal-display";
 import type { Host } from "@bb/domain";
 import type {
   EnvironmentDisplayInfo,
@@ -100,7 +101,13 @@ function getEnvironmentWorkspaceLabel({
   locality,
 }: EnvironmentWorkspaceLabelWithLocalityArgs): string {
   if (display.lifecycle === "provisioning") return "Provisioning";
-  if (display.lifecycle === "destroyed") return "Destroyed";
+  if (display.lifecycle === "removed") return "Unavailable — machine removed";
+  if (
+    display.lifecycle === "removing" ||
+    display.lifecycle === "cleanup-failed"
+  )
+    return machineRemovalLabels[display.lifecycle];
+  if (display.lifecycle === "destroyed") return "Environment unavailable";
   return (
     getEnvironmentProviderDisplayName(providerLookup) ??
     (locality === "remote" ? "Remote" : "Local")
@@ -122,10 +129,20 @@ export function getEnvironmentWorkspaceSummaryDisplay({
       providerName: null,
     };
   }
-  if (display.lifecycle === "destroyed") {
+  if (
+    display.lifecycle === "destroyed" ||
+    display.lifecycle === "removed" ||
+    display.lifecycle === "removing" ||
+    display.lifecycle === "cleanup-failed"
+  ) {
+    const label = getEnvironmentWorkspaceLabel({
+      display,
+      providerLookup,
+      locality: "remote",
+    });
     return {
-      label: "Destroyed",
-      compactLabel: "Destroyed",
+      label,
+      compactLabel: label,
       icon: getEnvironmentLabelIconName(providerLookup),
       providerName: getEnvironmentProviderDisplayName(providerLookup),
     };

@@ -228,14 +228,14 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     expect(
       getSummaryDisplay({
         display: makeDisplay({
-          modeLabel: "Destroyed",
-          compactModeLabel: "Destroyed",
+          modeLabel: "Environment unavailable",
+          compactModeLabel: "Environment unavailable",
           lifecycle: "destroyed",
         }),
         providerLookup: worktreeProviderLookup,
         hasMultipleMachines: true,
       }),
-    ).toMatchObject({ label: "Destroyed", compactLabel: "Destroyed" });
+    ).toMatchObject({ label: "Environment unavailable", compactLabel: "Environment unavailable" });
   });
   it.each([
     {

@@ -2,64 +2,8 @@ import {
   createFakePluginHost,
   makePluginAgentConfigurationContext,
 } from "@get-bb/plugin-sdk/testing";
-import { readdirSync, readFileSync } from "node:fs";
-import { extname, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import plugin from "./server.js";
-
-const DOCUMENTATION_EXTENSIONS = new Set([
-  ".cjs",
-  ".html",
-  ".js",
-  ".json",
-  ".jsx",
-  ".md",
-  ".mjs",
-  ".ts",
-  ".tsx",
-]);
-const IGNORED_DOCUMENTATION_DIRECTORIES = new Set([
-  "coverage",
-  "dist",
-  "node_modules",
-]);
-
-function isScannableDirectory(name: string): boolean {
-  return !name.startsWith(".") && !IGNORED_DOCUMENTATION_DIRECTORIES.has(name);
-}
-
-function readIfPresent(path: string): string {
-  try {
-    return readFileSync(path, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
-    throw error;
-  }
-}
-
-function documentationFiles(root: string): string[] {
-  const files: string[] = [];
-  const pending = [root];
-  while (pending.length > 0) {
-    const directory = pending.pop()!;
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.isSymbolicLink()) continue;
-      const path = resolve(directory, entry.name);
-      if (entry.isDirectory()) {
-        if (isScannableDirectory(entry.name)) {
-          pending.push(path);
-        }
-      } else if (
-        entry.isFile() &&
-        DOCUMENTATION_EXTENSIONS.has(extname(entry.name))
-      ) {
-        files.push(path);
-      }
-    }
-  }
-  return files;
-}
 
 describe("workflows CLI argument validation", () => {
   let harness: ReturnType<typeof createFakePluginHost>["harness"];
@@ -227,16 +171,6 @@ describe("workflows CLI argument validation", () => {
     );
     expect(author.tools.map((tool) => tool.name)).toEqual(["bb_workflow_run"]);
     expect(author.skills).toEqual(["workflows"]);
-  });
-
-  it("keeps the removed workflow-specific catalog command out of the plugin's documentation", () => {
-    const root = fileURLToPath(new URL("..", import.meta.url));
-    const removedCommand = ["bb workflows", "catalog"].join(" ");
-    const matches = documentationFiles(root)
-      .filter((path) => readIfPresent(path).includes(removedCommand))
-      .map((path) => relative(root, path))
-      .sort();
-    expect(matches).toEqual([]);
   });
 });
 

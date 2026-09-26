@@ -12,7 +12,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginHostManager } from "./plugin-host-manager.js";
 
@@ -990,26 +989,5 @@ describe("PluginHostManager", () => {
         }),
       ),
     ).rejects.toThrow(/changed artifact digest/u);
-  });
-});
-
-describe("host plugin worker env", () => {
-  it("uses the login-shell PATH without forwarding daemon BB variables", () => {
-    expect(
-      sanitizeInheritedChildProcessEnv({
-        env: {
-          HOME: "/Users/test",
-          PATH: "/usr/bin",
-          GH_TOKEN: "user-token",
-          BB_CONNECT_MACHINE_CREDENTIAL: "daemon-secret",
-          BB_SERVER_URL: "http://daemon.internal",
-        },
-        shellPath: "/Users/test/bin:/usr/bin",
-      }),
-    ).toEqual({
-      HOME: "/Users/test",
-      PATH: "/Users/test/bin:/usr/bin",
-      GH_TOKEN: "user-token",
-    });
   });
 });

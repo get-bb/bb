@@ -1121,8 +1121,42 @@ describe("pi delta translation equivalence", () => {
       toolName: "edit",
       args: {
         path: "src/app.ts",
-        edits: [{ oldText: "before", newText: "after" }],
+        edits: [
+          { oldText: "before", newText: "after" },
+          { oldText: "second before", newText: "second after" },
+        ],
       },
+    } as AgentSessionEvent);
+
+    const started = events.find(
+      (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
+        event.type === "item/started",
+    );
+    expect(started?.item).toMatchObject({
+      type: "fileChange",
+      status: "pending",
+    });
+    if (!started || started.item.type !== "fileChange") return;
+    expect(started.item.changes[0]).toMatchObject({
+      path: "src/app.ts",
+      kind: "update",
+    });
+    expect(started.item.changes).toHaveLength(2);
+    expect(started.item.changes[0]?.diff).toContain("+after");
+    expect(started.item.changes[0]?.diff).toContain("-before");
+    expect(started.item.changes[1]?.diff).toContain("+second after");
+    expect(started.item.changes[1]?.diff).toContain("-second before");
+  });
+
+  it("falls back to an update without a diff for unrecognized edit batches", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-unknown-batch",
+      toolName: "edit",
+      args: { path: "src/app.ts", edits: [{ old: "before", replacement: "after" }] },
     } as AgentSessionEvent);
 
     const started = events.find(
@@ -1134,6 +1168,8 @@ describe("pi delta translation equivalence", () => {
       status: "pending",
       changes: [{ path: "src/app.ts", kind: "update" }],
     });
+    if (!started || started.item.type !== "fileChange") return;
+    expect(started.item.changes[0]?.diff).toBeUndefined();
   });
 
   it("tool_execution_start with content-only write args marks the change as an add", () => {

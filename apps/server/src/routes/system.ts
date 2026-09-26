@@ -309,6 +309,9 @@ export function registerSystemRoutes(
           : diagnosticValue,
     });
     setAppSettings(deps.db, updatedSettings);
+    if (current.telemetryEnabled && !updatedSettings.telemetryEnabled) {
+      deps.telemetry.capture({ name: "telemetry_disabled" });
+    }
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());

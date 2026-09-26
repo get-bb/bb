@@ -741,6 +741,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
   db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");
+  db.$client.exec("DROP INDEX IF EXISTS environments_provider_lifecycle_idx");
   if (
     db.$client
       .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")

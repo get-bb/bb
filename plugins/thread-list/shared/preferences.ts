@@ -69,6 +69,12 @@ function definePreference<Schema extends z.ZodTypeAny>(
 }
 
 export const preferenceDefinitions = {
+  showProviderIcons: definePreference(
+    z.boolean(),
+    false,
+    "Show each thread's agent provider icon before its title.",
+    null,
+  ),
   threadLifecycles: definePreference(
     z
       .array(z.enum(["active", "archived"]))

@@ -119,6 +119,7 @@ export async function handleHostSessionOpened(
         reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
       });
       interruptActiveThreadsForHost(deps, {
+        includeStopping: false,
         hostId: args.hostId,
         reason: "host-daemon-restarted",
       });
@@ -196,17 +197,25 @@ export function handleHostRemoved(
   deps.terminalSessions.handleDaemonSessionClosed({
     sessionId: args.sessionId,
   });
+  settleRemovedHostWork(deps, { hostId: args.hostId });
+}
+
+export function settleRemovedHostWork(
+  deps: Omit<DaemonSocketClosedDeps, "sharedPorts">,
+  args: { hostId: string },
+): void {
   interruptPendingInteractionsForHostThreads(deps, {
     hostId: args.hostId,
-    reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
+    reason: "The machine was removed",
   });
   interruptEnvironmentProvisioningForHost(deps, {
     hostId: args.hostId,
     reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
   });
   interruptActiveThreadsForHost(deps, {
+    includeStopping: true,
     hostId: args.hostId,
-    reason: "host-daemon-restarted",
+    reason: "host-removed",
   });
   settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
@@ -267,6 +276,7 @@ function completeDaemonActiveWorkDisconnectGrace(
   }
 
   interruptActiveThreadsForHost(deps, {
+    includeStopping: false,
     hostId: args.hostId,
     reason: "host-daemon-restarted",
     cause: "host-connection-lost",

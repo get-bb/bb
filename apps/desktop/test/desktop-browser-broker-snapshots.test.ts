@@ -42,6 +42,8 @@ function createFakeWindow() {
       send: vi.fn(),
     },
     isDestroyed: () => false,
+    isFocused: () => true,
+    once: () => undefined,
     focus: () => undefined,
     show: () => undefined,
     restore: () => undefined,

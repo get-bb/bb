@@ -30,10 +30,7 @@ export function buildMachineThreadGroups(
 
   const groups: MachineThreadGroup[] = [];
   for (const host of hosts) {
-    const hostThreads = threadsByKey.get(host.id);
-    if (!hostThreads) {
-      continue;
-    }
+    const hostThreads = threadsByKey.get(host.id) ?? [];
     threadsByKey.delete(host.id);
     groups.push({ key: host.id, label: host.name, threads: hostThreads });
   }

@@ -453,6 +453,34 @@ const hostReadFileCommandSchema = z
     }
   });
 
+export const HOST_FILE_CHUNK_MAX_BYTES = 1024 * 1024;
+
+const hostReadFileChunkCommandSchema = z
+  .object({
+    type: z.literal("host.read_file_chunk"),
+    path: z.string().min(1),
+    rootPath: z.string().min(1),
+    offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    length: z.number().int().nonnegative().max(HOST_FILE_CHUNK_MAX_BYTES),
+    revision: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
+  })
+  .strict();
+
+const hostReadFileChunkResultSchema = z
+  .object({
+    path: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    modifiedAtMs: z.number().finite(),
+    mimeType: z.string().nullable(),
+    revision: z.string().regex(/^[a-f0-9]{64}$/u),
+    offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    content: z.string().max(4 * Math.ceil(HOST_FILE_CHUNK_MAX_BYTES / 3)),
+  })
+  .strict();
+
 const hostReadFileRelativeDotfilePolicySchema = z.enum(["allow", "deny"]);
 export type HostReadFileRelativeDotfilePolicy = z.infer<
   typeof hostReadFileRelativeDotfilePolicySchema
@@ -1801,6 +1829,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.read_file",
     schema: hostReadFileCommandSchema,
     resultSchema: hostReadFileResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.read_file_chunk": defineHostDaemonCommandDescriptor({
+    type: "host.read_file_chunk",
+    schema: hostReadFileChunkCommandSchema,
+    resultSchema: hostReadFileChunkResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

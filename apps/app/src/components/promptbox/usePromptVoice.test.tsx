@@ -6,6 +6,7 @@ import { transcribeVoiceInput } from "@/lib/api";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { PromptBoxHandle } from "./PromptBoxInternal";
 import { usePromptVoice } from "./usePromptVoice";
+import type { PromptDraftState } from "@bb/client-core";
 
 vi.mock("@/lib/api", () => ({
   transcribeVoiceInput: vi.fn(),
@@ -79,5 +80,33 @@ describe("usePromptVoice", () => {
     finishTransition?.();
     await expect(transcription).resolves.toBe("Transcript");
     expect(insertTextAtCursor).not.toHaveBeenCalled();
+  });
+
+  it("appends a completed transcript to the originating draft after unmount", () => {
+    vi.mocked(useVoiceInput).mockReturnValue({
+      ...voiceInput,
+      isRecording: false,
+      isProcessing: true,
+      isListening: false,
+    });
+    const promptBoxRef = { current: null };
+    let draft: PromptDraftState = {
+      text: "Existing",
+      mentions: [],
+      attachments: [],
+    };
+    const getCurrent = vi.fn(() => draft);
+    const setDraft = vi.fn((next: PromptDraftState) => {
+      draft = next;
+    });
+    renderHook(() => usePromptVoice(promptBoxRef, { getCurrent, setDraft }));
+    const options = vi.mocked(useVoiceInput).mock.calls[0]?.[0];
+    draft = { ...draft, text: "Existing and later edits" };
+    options?.onTranscript("new words");
+    expect(draft).toEqual({
+      text: "Existing and later edits new words",
+      mentions: [],
+      attachments: [],
+    });
   });
 });

@@ -584,6 +584,11 @@
         "UPDATE_TRANSCRIPT_EXPECTATIONS"
       ]
     },
+    "@bb/desktop#test": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      "passThroughEnv": ["DISPLAY"]
+    },
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
     // dist), so the SDK build is a dependency.
     "@bb/templates#test": {

@@ -5,6 +5,7 @@ import {
   type InstructionMode,
   type PromptInput,
   type ReasoningLevel,
+  type ServiceTier,
   type RuntimePermissionPolicy,
   buildShellEnvOverrides,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -70,6 +71,7 @@ function buildClaudeCodeConfig(
 export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
+  serviceTier?: ServiceTier | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   claudeCodePermissionMode?: "plan" | undefined;
@@ -132,6 +134,7 @@ function buildInternalSessionParams(
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
+    serviceTier: args.options.serviceTier ?? "default",
     workflowsEnabled: args.options.workflowsEnabled,
     chromeEnabled: args.options.chromeEnabled,
     memoryEnabled: args.options.memoryEnabled,
@@ -157,6 +160,7 @@ const claudeProviderOptionsSchema = z
 type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
+  serviceTier?: ServiceTier | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   providerOptions?: Record<string, unknown> | undefined;
@@ -240,6 +244,9 @@ export function buildClaudeTurnParams(
     ...(args.options.model ? { model: args.options.model } : {}),
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }
+      : {}),
+    ...(args.options.serviceTier !== undefined
+      ? { serviceTier: args.options.serviceTier }
       : {}),
     workflowsEnabled: providerOptions.workflowsEnabled,
     chromeEnabled: providerOptions.chromeEnabled,

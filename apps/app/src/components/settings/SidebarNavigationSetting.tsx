@@ -1,4 +1,7 @@
-import { sidebarNavigationProviderAtom } from "@/components/sidebar/sidebarNavigationProvider";
+import {
+  BUNDLED_NAVIGATION_PROVIDER,
+  sidebarNavigationProviderAtom,
+} from "@/components/sidebar/sidebarNavigationProvider";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { ReplacementProviderSetting } from "./ReplacementProviderSetting";
 
@@ -9,7 +12,7 @@ export function SidebarNavigationSetting() {
       label="Navigation"
       triggerAriaLabel="Sidebar navigation"
       description="Choose who arranges the host-owned sidebar destinations on this device."
-      allowAutomatic={false}
+      bundledProvider={BUNDLED_NAVIGATION_PROVIDER}
       preferenceAtom={sidebarNavigationProviderAtom}
       slots={experimentalSidebarNavigations}
     />

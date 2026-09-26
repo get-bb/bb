@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import type { PromptInput } from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
 import {
-  claimQueuedThreadMessage,
+  claimQueuedThreadMessageGroup,
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   getQueuedThreadMessage,
@@ -146,7 +146,11 @@ describe("queued message waits", () => {
       sendAt: null,
     });
 
-    expect(claimQueuedThreadMessage(db, noopNotifier, row.id)).not.toBeNull();
+    expect(
+      claimQueuedThreadMessageGroup(db, noopNotifier, row.id, {
+        kind: "explicit-send",
+      }),
+    ).not.toBeNull();
 
     expect(
       setQueuedThreadMessageWaitingOn(db, noopNotifier, {
@@ -267,7 +271,9 @@ describe("listDueScheduledQueuedThreadMessages", () => {
       waitingOn: { kind: "time" },
       sendAt: 1_000,
     });
-    claimQueuedThreadMessage(db, noopNotifier, row.id);
+    claimQueuedThreadMessageGroup(db, noopNotifier, row.id, {
+      kind: "explicit-send",
+    });
 
     expect(listDueScheduledQueuedThreadMessages(db, 5_000)).toEqual([]);
   });
@@ -330,7 +336,9 @@ describe("wait lookups", () => {
       ),
     ).toEqual([mine.id]);
 
-    claimQueuedThreadMessage(db, noopNotifier, mine.id);
+    claimQueuedThreadMessageGroup(db, noopNotifier, mine.id, {
+      kind: "explicit-send",
+    });
     expect(listQueuedThreadMessagesByWaitHolder(db, "plugin:limiter")).toEqual(
       [],
     );

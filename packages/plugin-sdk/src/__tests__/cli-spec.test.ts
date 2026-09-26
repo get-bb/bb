@@ -338,6 +338,38 @@ describe("defineCli errors", () => {
     expect(result.stderr).toContain("--limit requires a value");
     expect(result.stderr).toContain("--limit=<value>");
   });
+
+  it("exits with the spec's usage error code for every usage failure", async () => {
+    const cli = defineCli({
+      name: "retry",
+      summary: "retry",
+      usageErrorExitCode: 2,
+      commands: {
+        "queue cancel": cliCommand({
+          summary: "Cancel",
+          positionals: [{ name: "id", description: "Id", required: true }],
+          options: { json: { type: "boolean", description: "Emit JSON" } },
+          run: () => ({ exitCode: 0 }),
+        }),
+      },
+    });
+
+    for (const argv of [
+      [],
+      ["--json"],
+      ["queue"],
+      ["queue", "cancle"],
+      ["queue", "cancel"],
+      ["queue", "cancel", "a", "b"],
+      ["queue", "cancel", "a", "--jsno"],
+    ]) {
+      const result = await run(cli, argv);
+      expect(result.exitCode, argv.join(" ")).toBe(2);
+    }
+    await expect(run(cli, ["queue", "cancel", "a"])).resolves.toMatchObject({
+      exitCode: 0,
+    });
+  });
 });
 
 describe("defineCli parsing", () => {

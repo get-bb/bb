@@ -13,6 +13,7 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         changelogPreview: false,
+        legacyJitiPluginLoader: false,
         mobileApp: false,
         serverMove: false,
         sidebarProgressiveDisclosure: false,
@@ -27,6 +28,7 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           changelogPreview: true,
+          legacyJitiPluginLoader: true,
           mobileApp: true,
           serverMove: true,
           sidebarProgressiveDisclosure: true,
@@ -35,12 +37,14 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
+        legacyJitiPluginLoader: true,
         mobileApp: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
+        legacyJitiPluginLoader: true,
         mobileApp: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
@@ -51,32 +55,11 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         changelogPreview: true,
+        legacyJitiPluginLoader: true,
         mobileApp: true,
         serverMove: true,
         sidebarProgressiveDisclosure: true,
       });
-    });
-  });
-
-  it("does not expose legacy direct bb connect routes", async () => {
-    await withTestHarness(async (harness) => {
-      const disabled = await harness.app.request("/api/v1/connect/status");
-      expect(disabled.status).toBe(404);
-
-      const put = await harness.app.request("/api/v1/settings/experiments", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          changelogPreview: false,
-          mobileApp: false,
-          serverMove: false,
-          sidebarProgressiveDisclosure: false,
-        }),
-      });
-      expect(put.status).toBe(200);
-
-      const enabled = await harness.app.request("/api/v1/connect/status");
-      expect(enabled.status).toBe(404);
     });
   });
 

@@ -181,6 +181,27 @@ it("retrieves the enrollment command after asynchronous access preparation", asy
   rendered.unmount();
 });
 
+it("marks a previously available command as used when the server withdraws it", async () => {
+  const rendered = setup(() => {
+    vi.mocked(sdk.hosts.experimental_getEnrollmentCommand)
+      .mockResolvedValueOnce({
+        command: "single-use enrollment command",
+        expiresAt: Date.now() + 60_000,
+      })
+      .mockResolvedValue(null);
+    vi.mocked(sdk.hosts.get).mockResolvedValue({
+      ...reservedHost,
+      connectMachineId: null,
+    });
+  });
+  await screen.findByText("single-use enrollment command");
+  await screen.findByText("Command used", {}, { timeout: 3_000 });
+  expect(
+    screen.getByRole("button", { name: "Copy" }).hasAttribute("disabled"),
+  ).toBe(true);
+  rendered.unmount();
+});
+
 it("accepts a connection before an enrollment command is returned", async () => {
   const rendered = setup(() => {
     vi.mocked(sdk.hosts.experimental_getEnrollmentCommand).mockResolvedValue(

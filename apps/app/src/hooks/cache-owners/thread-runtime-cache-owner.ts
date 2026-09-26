@@ -1,6 +1,7 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import type {
+  Environment,
   PromptHistoryEntry,
   ResolvedThreadExecutionOptions,
   ThreadListEntry,
@@ -45,6 +46,7 @@ import {
   type ThreadListCacheData,
 } from "./thread-list-cache-data";
 import {
+  environmentQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKeyPrefix,
   threadPromptHistoryQueryKey,
@@ -890,7 +892,27 @@ export function applyCreateThreadResult({
   thread,
 }: CreateThreadSuccessArgs): void {
   queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
-  optimisticallyInsertThread(queryClient, thread);
+  const environmentId =
+    request.environment.type === "reuse"
+      ? request.environment.environmentId
+      : thread.environmentId;
+  const cachedHostId =
+    environmentId === null
+      ? null
+      : (queryClient.getQueryData<Environment>(environmentQueryKey(environmentId))
+          ?.hostId ?? null);
+  const selectedHostId =
+    request.environment.type === "provider" &&
+    request.environment.machine?.type === "existing"
+      ? request.environment.machine.hostId
+      : request.environment.type === "host"
+        ? (request.environment.hostId ?? null)
+        : null;
+  optimisticallyInsertThread(
+    queryClient,
+    thread,
+    cachedHostId ?? selectedHostId,
+  );
   prependProjectPromptHistory(
     queryClient,
     request.projectId,

@@ -58,6 +58,7 @@ import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcom
 import { buildExecutionOptions } from "./thread-commands.js";
 import { getActiveTurnId, isManualCompactionActive } from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
   requestThreadProvision,
   scheduleThreadProvisioningAdvance,
@@ -298,6 +299,7 @@ async function runDispatchAttempt(
   // recover from, rather than the 409 that used to make a stop a dead end for
   // everything the user lined up behind it.
   ensureThreadIsWritable(thread, true);
+  assertThreadHostAcceptsWork(deps.db, thread);
   if (args.trigger === "user" && args.source.kind === "inline") {
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.

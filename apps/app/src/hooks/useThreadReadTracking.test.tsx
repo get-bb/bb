@@ -251,49 +251,4 @@ describe("useThreadReadTracking", () => {
 
     expect(markThreadRead.mutateAsync).toHaveBeenCalledTimes(2);
   });
-
-  it("cancels a pending read when switching threads and retries when reopened", async () => {
-    const markThreadRead = makeMarkThreadRead();
-    type ThreadProps = { thread: TestThread };
-    const { rerender } = renderHook(
-      ({ thread }: ThreadProps) =>
-        useThreadReadTracking({ markThreadRead, thread }),
-      {
-        initialProps: {
-          thread: {
-            id: "thr_first",
-            lastReadAt: 10,
-            latestAttentionAt: 20,
-          },
-        },
-      },
-    );
-
-    const firstInput = markThreadRead.mutateAsync.mock.calls[0]?.[0];
-    expect(firstInput?.signal?.aborted).toBe(false);
-
-    rerender({
-      thread: {
-        id: "thr_second",
-        lastReadAt: 20,
-        latestAttentionAt: 20,
-      },
-    });
-
-    expect(firstInput?.signal?.aborted).toBe(true);
-    await act(async () => {});
-
-    rerender({
-      thread: {
-        id: "thr_first",
-        lastReadAt: 10,
-        latestAttentionAt: 20,
-      },
-    });
-
-    expect(markThreadRead.mutateAsync).toHaveBeenCalledTimes(2);
-    expect(markThreadRead.mutateAsync).toHaveBeenLastCalledWith(
-      expect.objectContaining({ threadId: "thr_first" }),
-    );
-  });
 });

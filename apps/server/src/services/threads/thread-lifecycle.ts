@@ -298,6 +298,7 @@ interface InterruptActiveThreadsArgs {
 }
 
 interface InterruptActiveThreadsForHostArgs {
+  includeStopping: boolean;
   cause?: "host-connection-lost";
   hostId: string;
   reason: SystemThreadInterruptedReason;
@@ -378,6 +379,7 @@ function lifecycleEventForInterruptedThread(
   reason: RuntimeThreadInterruptionReason,
 ): ThreadLifecycleEvent {
   switch (reason) {
+    case "host-removed":
     case "manual-stop":
       return { type: "stop.settled" };
     case "host-daemon-restarted":
@@ -393,6 +395,8 @@ function pendingInteractionStopReason(
   reason: RuntimeThreadInterruptionReason,
 ): string {
   switch (reason) {
+    case "host-removed":
+      return "Thread stopped because the machine was removed";
     case "manual-stop":
       return "Thread stopped by user request";
     case "host-daemon-restarted":
@@ -410,6 +414,7 @@ function threadCommandFailureMessageForInterruption(
   reason: RuntimeThreadInterruptionReason,
 ): string | null {
   switch (reason) {
+    case "host-removed":
     case "manual-stop":
       return null;
     case "host-daemon-restarted":
@@ -427,6 +432,8 @@ function threadCommandFailureDetailForInterruption(
   reason: RuntimeThreadInterruptionReason,
 ): string {
   switch (reason) {
+    case "host-removed":
+      return "Thread stopped because the machine was removed";
     case "manual-stop":
       return "Thread stopped by user request";
     case "host-daemon-restarted":
@@ -1020,6 +1027,20 @@ export function settleThreadStopCommandResult(
   }
 
   if (args.command.intent === "release") {
+    const thread = getThread(args.deps.db, args.command.threadId);
+    if (
+      args.report.ok &&
+      args.report.result.activeTurnRetained !== true &&
+      (thread?.status === "idle" || thread?.status === "error")
+    ) {
+      args.deps.pendingInteractions.interruptPendingInteractionsForThreadIdsInTransaction(
+        args.deps,
+        {
+          threadIds: [thread.id],
+          reason: pendingInteractionStopReason("manual-stop"),
+        },
+      );
+    }
     return emptyCommandResultSideEffects();
   }
 
@@ -1567,6 +1588,15 @@ async function stopThreadUntilSettled(
           command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
           hostId: args.hostId,
         });
+        if (interrupted.failure !== null) {
+          const afterInterrupt = getThread(deps.db, threadId);
+          if (
+            afterInterrupt?.status === "idle" ||
+            afterInterrupt?.status === "error"
+          ) {
+            continue;
+          }
+        }
         return interrupted.failure;
       }
       const settled = getThread(deps.db, threadId);
@@ -1782,6 +1812,15 @@ function interruptActiveThreads(
 
       appendThreadEventsInTransaction(tx, eventArgs);
       for (const thread of args.threads) {
+        if (
+          effectiveReason === "host-removed" &&
+          getThread(tx, thread.threadId)?.status === "active"
+        ) {
+          applyLoggedThreadLifecycleEventInTransaction(
+            { db: tx, logger: deps.logger },
+            { event: { type: "stop.requested" }, threadId: thread.threadId },
+          );
+        }
         applyLoggedThreadLifecycleEventInTransaction(
           { db: tx, logger: deps.logger },
           { event: lifecycleEvent, threadId: thread.threadId },
@@ -1839,7 +1878,10 @@ export function interruptActiveThreadsForHost(
     .where(
       and(
         eq(environments.hostId, args.hostId),
-        eq(threads.status, "active"),
+        inArray(
+          threads.status,
+          args.includeStopping ? ["active", "stopping"] : ["active"],
+        ),
         isNull(threads.deletedAt),
       ),
     )

@@ -57,7 +57,7 @@ describe("buildMachineThreadGroups", () => {
     ]);
   });
 
-  it("skips machines that have no threads and omits the no-machine group when empty", () => {
+  it("shows machines that have no threads and omits the no-machine group when empty", () => {
     const hosts = [
       createHost({ id: "host_a", name: "Laptop" }),
       createHost({ id: "host_b", name: "Desktop" }),
@@ -68,7 +68,10 @@ describe("buildMachineThreadGroups", () => {
 
     const groups = buildMachineThreadGroups(threads, hosts);
 
-    expect(groups.map((group) => group.key)).toEqual(["host_b"]);
+    expect(groups.map((group) => ({ key: group.key, threads: group.threads }))).toEqual([
+      { key: "host_a", threads: [] },
+      { key: "host_b", threads },
+    ]);
   });
 
   it("falls back to id-ordered unknown groups when the host list is empty", () => {

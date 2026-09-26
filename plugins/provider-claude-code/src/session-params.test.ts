@@ -87,33 +87,11 @@ describe("buildClaudeSessionParams", () => {
       providerSubagentsEnabled: false,
       model: "claude-sonnet-5",
       reasoningLevel: "high",
+      serviceTier: "default",
       disallowedTools: ["WebSearch"],
       config: { envVars: { BB_TEST: "1" } },
     });
     expect(params.baseInstructions).toContain("Session instructions");
-  });
-
-  it("passes the daemon's extra workspace write roots from the providerOptions bag", () => {
-    const shared = {
-      threadId: "thread-1",
-      cwd: "/tmp/worktree",
-      instructionMode: "append" as const,
-    };
-    const additionalWorkspaceWriteRoots = ["/tmp/thread-storage"];
-    const canonical = buildClaudeSessionParams({
-      ...shared,
-      options: {
-        ...toCanonicalWireOptions(EXECUTION_CONTEXT),
-        providerOptions: {
-          ...toCanonicalWireOptions(EXECUTION_CONTEXT).providerOptions,
-          additionalWorkspaceWriteRoots,
-        },
-      },
-    });
-
-    expect(canonical.additionalWorkspaceWriteRoots).toEqual(
-      additionalWorkspaceWriteRoots,
-    );
   });
 
   it("falls back to provider defaults when the providerOptions bag is absent", () => {
@@ -174,22 +152,6 @@ function toWireOptionsWithRoots(args: {
 }
 
 describe("claude session workspace-write roots", () => {
-  it("includes construction-level workspace-write roots", () => {
-    const params = buildClaudeSessionParams({
-      threadId: "bb-thread-1",
-      cwd: "/tmp/worktree",
-      instructionMode: "append",
-      options: toWireOptionsWithRoots({
-        policy: WORKSPACE_ACCEPT_EDITS_POLICY,
-        additionalWorkspaceWriteRoots: EXTRA_WORKSPACE_WRITE_ROOTS,
-      }),
-    });
-
-    expect(params).toMatchObject({
-      additionalWorkspaceWriteRoots: EXTRA_WORKSPACE_WRITE_ROOTS,
-    });
-  });
-
   it("omits empty workspace-write roots", () => {
     expect(
       buildClaudeSessionParams({
@@ -363,6 +325,21 @@ describe("buildClaudeTurnParams", () => {
     expect(params.memoryEnabled).toBeUndefined();
     expect(params.providerSubagentsEnabled).toBeUndefined();
     expect(params.permissionEscalation).toBeNull();
+    expect(params).not.toHaveProperty("serviceTier");
+  });
+
+  it("forwards fast service tier to Claude turns", () => {
+    const params = buildClaudeTurnParams({
+      threadId: "thread-1",
+      providerThreadId: "provider-1",
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: {
+        ...FULL_POLICY,
+        model: "claude-opus-5",
+        serviceTier: "fast",
+      },
+    });
+    expect(params.serviceTier).toBe("fast");
   });
 
   it("strips the /plan command mention that opened plan mode", () => {

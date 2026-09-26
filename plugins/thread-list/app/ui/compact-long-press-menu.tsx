@@ -26,6 +26,7 @@ const claimedPressEvents = new WeakSet<Event>();
 interface CompactLongPressMenuProps {
   children: ReactNode;
   disabled?: boolean;
+  dragging?: boolean;
   items: ReactNode;
   label: string;
   onOpenChange?: (open: boolean) => void;
@@ -34,6 +35,7 @@ interface CompactLongPressMenuProps {
 export function CompactLongPressMenu({
   children,
   disabled = false,
+  dragging = false,
   items,
   label,
   onOpenChange,
@@ -57,19 +59,26 @@ export function CompactLongPressMenu({
   useEffect(() => clearPress, [clearPress]);
 
   useEffect(() => {
-    if (disabled) {
+    if (disabled || dragging) {
       clearPress();
       suppressClickRef.current = false;
     }
-  }, [clearPress, disabled]);
+  }, [clearPress, disabled, dragging]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
+      if (nextOpen && dragging) return;
       setOpen(nextOpen);
       onOpenChange?.(nextOpen);
     },
-    [onOpenChange],
+    [dragging, onOpenChange],
   );
+
+  useEffect(() => {
+    if (!dragging) return;
+    clearPress();
+    if (open) handleOpenChange(false);
+  }, [clearPress, dragging, handleOpenChange, open]);
 
   const openMenu = useCallback(() => {
     clearPress();
@@ -80,7 +89,7 @@ export function CompactLongPressMenu({
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       suppressClickRef.current = false;
-      if (disabled) {
+      if (disabled || dragging) {
         return;
       }
       if (event.pointerType !== "touch" && event.pointerType !== "pen") {
@@ -109,7 +118,7 @@ export function CompactLongPressMenu({
         openMenu();
       }, LONG_PRESS_MS);
     },
-    [clearPress, disabled, openMenu],
+    [clearPress, disabled, dragging, openMenu],
   );
 
   const handlePointerMove = useCallback(
@@ -139,6 +148,10 @@ export function CompactLongPressMenu({
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
+      if (dragging) {
+        event.preventDefault();
+        return;
+      }
       if (disabled || event.defaultPrevented) {
         return;
       }
@@ -148,7 +161,7 @@ export function CompactLongPressMenu({
       }
       openMenu();
     },
-    [disabled, openMenu],
+    [disabled, dragging, openMenu],
   );
 
   const handleClickCapture = useCallback(

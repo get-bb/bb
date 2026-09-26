@@ -137,9 +137,7 @@ function toWorkspaceArgs(
   return { ...workspace, baseBranch: { kind: "default" } };
 }
 
-export function requireEnvironmentMergeBaseBranch(
-  environment: Environment,
-): string {
+function requireEnvironmentMergeBaseBranch(environment: Environment): string {
   const mergeBaseBranch = resolveEnvironmentMergeBaseBranch(environment);
   if (!mergeBaseBranch) {
     throw new Error(`Environment ${environment.id} has no merge base branch`);
@@ -516,6 +514,16 @@ export async function unarchiveThread(
     param: { id: threadId },
   });
   await expectStatus(response, 200, `unarchive thread ${threadId}`);
+}
+
+export async function restoreThreadEnvironment(
+  api: PublicApiClient,
+  threadId: string,
+): Promise<void> {
+  const response = await api.threads[":id"]["restore-environment"].$post({
+    param: { id: threadId },
+  });
+  await expectStatus(response, 200, `restore thread ${threadId} environment`);
 }
 
 export async function updateThread(

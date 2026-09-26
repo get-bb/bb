@@ -8,7 +8,12 @@ import {
   sha256Hex,
 } from "@bb/connect-db";
 import { refreshAccountSessionCookies } from "./account-session.js";
-import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
+import {
+  TUNNEL_OFFLINE_HEADER,
+  TUNNEL_RESTART_REASON,
+  TunnelDO,
+  type Env,
+} from "./tunnel-do.js";
 import {
   invalidateSessionCookie,
   parseCookie,
@@ -194,6 +199,46 @@ function machinePage(
   );
 }
 
+const REPLAYABLE_TUNNEL_METHODS = new Set(["GET", "HEAD"]);
+const TUNNEL_DO_RETRY_DELAYS_MS = [50, 250];
+
+const UNREACHABLE_OBJECT_ERROR = "Network connection lost.";
+
+function isRetryableTunnelDoError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message.includes(TUNNEL_RESTART_REASON)) return true;
+  return (
+    "retryable" in error &&
+    error.retryable === true &&
+    !("overloaded" in error && error.overloaded === true) &&
+    !error.message.includes(UNREACHABLE_OBJECT_ERROR)
+  );
+}
+
+async function fetchTunnelDo(
+  env: Pick<Env, "TUNNEL_DO">,
+  routingKey: string,
+  request: Request,
+): Promise<Response> {
+  const replayable = REPLAYABLE_TUNNEL_METHODS.has(request.method);
+  for (let attempt = 0; ; attempt += 1) {
+    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
+    try {
+      return await stub.fetch(replayable ? new Request(request) : request);
+    } catch (error) {
+      const delayMs = TUNNEL_DO_RETRY_DELAYS_MS[attempt];
+      if (
+        !replayable ||
+        delayMs === undefined ||
+        !isRetryableTunnelDoError(error)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 export function requestForTunnelDo(
   request: Request,
   target: string | null,
@@ -293,7 +338,8 @@ export default {
 
     const routingKey =
       resolved.kind === "machine" ? resolved.routingKey : label;
-    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
+    const tunnelDo = (doRequest: Request) =>
+      fetchTunnelDo(env, routingKey, doRequest);
 
     if (isTunnelDial) {
       if (target !== null) return text("bb connect: not found\n", 404);
@@ -322,9 +368,7 @@ export default {
       }
       const headers = new Headers(request.headers);
       stripCloudDevHeader(headers);
-      return stub.fetch(
-        new Request(new Request(forward, request), { headers }),
-      );
+      return tunnelDo(new Request(new Request(forward, request), { headers }));
     }
 
     if (url.pathname.startsWith("/__"))
@@ -340,7 +384,7 @@ export default {
       url.pathname === "/install/bb-app.tgz";
     if (request.method === "GET" && isPublicInstallPath) {
       if (target !== null) return text("bb connect: not found\n", 404);
-      return stub.fetch(requestForTunnelDo(request, null));
+      return tunnelDo(requestForTunnelDo(request, null));
     }
 
     const isMachinePath =
@@ -366,7 +410,7 @@ export default {
         return text("bb connect: machine cannot manage hosts\n", 403);
       }
       ctx.waitUntil(markMachineSeen(verified.machineId, db));
-      return stub.fetch(
+      return tunnelDo(
         requestForTunnelDo(request, null, "machine", verified.machineId),
       );
     }
@@ -402,17 +446,17 @@ export default {
 
     const doRequest = requestForTunnelDo(request, target, "session");
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      return stub.fetch(doRequest);
+      return tunnelDo(doRequest);
     }
     const cached = await serveWithCache(
       request,
       cacheNamespace(routingKey, target),
       ctx,
       (init) => {
-        if (init === undefined) return stub.fetch(doRequest);
+        if (init === undefined) return tunnelDo(doRequest);
         const headers = new Headers(doRequest.headers);
         headers.set("if-none-match", init.ifNoneMatch);
-        return stub.fetch(new Request(doRequest, { headers }));
+        return tunnelDo(new Request(doRequest, { headers }));
       },
     );
     let response = cached.response;

@@ -280,15 +280,7 @@ export function settleJsonRpcResponse(args: SettleJsonRpcResponseArgs): void {
   pending.resolve(args.response.result);
 }
 
-export function sendJsonRpc(
-  child: ChildProcess,
-  message: JsonRpcMessage | ProviderRequestCommandPlan,
-): void {
-  const line = JSON.stringify(toJsonRpcMessage(message));
-  writeJsonRpcLine(child, line);
-}
-
-export function toJsonRpcMessage(
+function toJsonRpcMessage(
   message: JsonRpcMessage | ProviderRequestCommandPlan,
 ): JsonRpcMessage {
   if ("jsonrpc" in message) {
@@ -334,7 +326,7 @@ export function sendJsonRpcRequest<TResult>(
         reject(error);
       },
     });
-    sendJsonRpc(args.child, withId);
+    writeJsonRpcLine(args.child, JSON.stringify(withId));
   });
 }
 

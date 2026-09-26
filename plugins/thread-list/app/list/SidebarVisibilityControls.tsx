@@ -1,11 +1,12 @@
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,6 +38,16 @@ import { CONTEXT_SELECTION_SURFACE_CLASS } from "../ui/context-selection.js";
 
 const OVERFLOW_ROW_BUTTON_CLASS =
   "w-full justify-start gap-2 rounded-sm px-2 text-xs font-normal hover:bg-state-hover focus-visible:bg-state-hover";
+
+interface CompactOverflowPage {
+  id: string;
+  title: string;
+}
+
+const CompactOverflowContext = createContext<{
+  page: CompactOverflowPage | null;
+  setPage: (page: CompactOverflowPage | null) => void;
+} | null>(null);
 
 export interface SidebarVisibilityItem {
   id: string;
@@ -94,15 +105,17 @@ export function SidebarMore({
   testIdPrefix?: string;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const close = useCallback(() => setIsMenuOpen(false), []);
+  const [page, setPage] = useState<CompactOverflowPage | null>(null);
+  const compact = useIsCompactViewport();
+  const changeOpen = useCallback((open: boolean) => {
+    setIsMenuOpen(open);
+    if (open) setPage(null);
+  }, []);
+  const close = useCallback(() => changeOpen(false), [changeOpen]);
 
   return (
     <div data-testid={`${testIdPrefix}-more-row`}>
-      <DropdownMenu
-        modal={false}
-        open={isMenuOpen}
-        onOpenChange={setIsMenuOpen}
-      >
+      <DropdownMenu modal={false} open={isMenuOpen} onOpenChange={changeOpen}>
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <div>
@@ -148,35 +161,64 @@ export function SidebarMore({
           side="right"
           align="start"
           sideOffset={8}
-          mobileTitle="More"
+          mobileTitle={compact && page ? page.title : "More"}
           aria-label={ariaLabel}
           className="flex max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))] w-56 flex-col overflow-hidden p-1 max-md:min-h-0 max-md:flex-1"
         >
           <div
             role="group"
             aria-label={listLabel}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-          >
-            {children(close)}
-          </div>
-          <div
-            role="separator"
-            className="-mx-1 my-1 h-px shrink-0 bg-border"
-          />
-          <DropdownMenuItem
             className={cn(
-              OVERFLOW_ROW_BUTTON_CLASS,
-              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-              "shrink-0",
+              "min-h-0 flex-1 overscroll-contain",
+              compact && page
+                ? "flex flex-col overflow-hidden"
+                : "overflow-y-auto",
             )}
-            data-testid={`${testIdPrefix}-customize-trigger`}
-            onSelect={() => {
-              close();
-              onCustomize();
-            }}
           >
-            <SidebarCustomizeActionContent label={customizeLabel} />
-          </DropdownMenuItem>
+            {compact && page ? (
+              <>
+                <DropdownMenuItem
+                  className="shrink-0"
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setPage(null);
+                  }}
+                >
+                  <Icon name="ChevronLeft" aria-hidden="true" />
+                  Back
+                </DropdownMenuItem>
+                <div
+                  role="separator"
+                  className="my-1 h-px shrink-0 bg-border"
+                />
+              </>
+            ) : null}
+            <CompactOverflowContext.Provider value={{ page, setPage }}>
+              {children(close)}
+            </CompactOverflowContext.Provider>
+          </div>
+          {compact && page ? null : (
+            <>
+              <div
+                role="separator"
+                className="-mx-1 my-1 h-px shrink-0 bg-border"
+              />
+              <DropdownMenuItem
+                className={cn(
+                  OVERFLOW_ROW_BUTTON_CLASS,
+                  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+                  "shrink-0",
+                )}
+                data-testid={`${testIdPrefix}-customize-trigger`}
+                onSelect={() => {
+                  close();
+                  onCustomize();
+                }}
+              >
+                <SidebarCustomizeActionContent label={customizeLabel} />
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -203,11 +245,7 @@ export function SidebarOverflowItem({
   selected?: boolean;
 }) {
   const compact = useIsCompactViewport();
-  const [isCompactOpen, setIsCompactOpen] = useState(false);
-  const closeCompact = useCallback(() => {
-    setIsCompactOpen(false);
-    onClose();
-  }, [onClose]);
+  const compactOverflow = useContext(CompactOverflowContext);
   const content = (close: () => void) => (
     <div data-sidebar-overflow="true" className="flex min-h-0 flex-col">
       {empty ? (
@@ -243,7 +281,7 @@ export function SidebarOverflowItem({
           OVERFLOW_ROW_BUTTON_CLASS,
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
           "shrink-0",
-          !empty && "mt-1 border-t",
+          !empty && "mt-1",
         )}
         onClick={() => {
           close();
@@ -270,32 +308,33 @@ export function SidebarOverflowItem({
   );
 
   if (compact) {
+    if (
+      !compactOverflow ||
+      (compactOverflow.page && compactOverflow.page.id !== item.id)
+    ) {
+      return null;
+    }
+    if (compactOverflow.page) {
+      return content(onClose);
+    }
     return (
-      <Popover open={isCompactOpen} onOpenChange={setIsCompactOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              OVERFLOW_ROW_BUTTON_CLASS,
-              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-              selected && CONTEXT_SELECTION_SURFACE_CLASS,
-            )}
-            disabled={item.disabled}
-            data-sidebar-overflow-item={item.id}
-            data-selected={selected ? "true" : undefined}
-          >
-            {label}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          mobileTitle={item.title}
-          aria-label={item.title}
-          className="flex min-h-0 flex-col p-1 [&>div]:min-h-0 [&>div]:flex-1"
-        >
-          {content(closeCompact)}
-        </PopoverContent>
-      </Popover>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          OVERFLOW_ROW_BUTTON_CLASS,
+          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+          selected && CONTEXT_SELECTION_SURFACE_CLASS,
+        )}
+        disabled={item.disabled}
+        data-sidebar-overflow-item={item.id}
+        data-selected={selected ? "true" : undefined}
+        onClick={() =>
+          compactOverflow.setPage({ id: item.id, title: item.title })
+        }
+      >
+        {label}
+      </Button>
     );
   }
 

@@ -41,6 +41,7 @@ export type ServerMovedTarget =
 
 export interface DesktopServerMove {
   moveId: string;
+  oldCopyKept: boolean;
   target: ServerMovedTarget;
   toHostName: string;
 }
@@ -291,6 +292,7 @@ export async function readServerMovedLock(
   }
   return {
     moveId: file.moveId,
+    oldCopyKept: file.oldCopyEntries.length > 0,
     target: resolved.target,
     toHostName: file.toHostName,
   };
@@ -300,7 +302,7 @@ export function formatServerMovedNotice(
   move: DesktopServerMove,
 ): ServerMovedNotice {
   return {
-    detail: `bb now opens the server on ${move.toHostName}. This computer stays connected to it as a regular machine.`,
+    detail: "bb now opens there. This computer stays connected.",
     message: `Your bb server moved to ${move.toHostName}`,
   };
 }
@@ -340,6 +342,20 @@ export function createServerMoveNoticeStore(
   };
 }
 
+export async function openServerMoveTarget(args: {
+  move: DesktopServerMove;
+  targetStore: Pick<
+    ServerTargetStore,
+    "setConnectServer" | "setCustomServerUrl"
+  >;
+}): Promise<void> {
+  if (args.move.target.kind === "connect") {
+    await args.targetStore.setConnectServer(args.move.target.server);
+  } else {
+    await args.targetStore.setCustomServerUrl(args.move.target.url);
+  }
+}
+
 export async function applyServerMove(
   args: ApplyServerMoveArgs,
 ): Promise<ApplyServerMoveResult> {
@@ -347,11 +363,10 @@ export async function applyServerMove(
   const switched =
     !alreadyNoticed || args.targetStore.getTarget().kind === "builtin";
   if (switched) {
-    if (args.move.target.kind === "connect") {
-      await args.targetStore.setConnectServer(args.move.target.server);
-    } else {
-      await args.targetStore.setCustomServerUrl(args.move.target.url);
-    }
+    await openServerMoveTarget({
+      move: args.move,
+      targetStore: args.targetStore,
+    });
   }
   if (alreadyNoticed) {
     return { noticeShown: false, switched };

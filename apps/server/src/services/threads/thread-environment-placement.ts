@@ -876,7 +876,9 @@ function threadProvisionContextEnvironment(
     return null;
   }
   const environment = getEnvironment(deps.db, environmentId);
-  return environment === null ? null : toEnvironmentResponse(environment);
+  return environment === null
+    ? null
+    : toEnvironmentResponse(deps.db, environment);
 }
 export async function refreshAttachedEnvironmentBranch(
   deps: ThreadProvisioningDeps,
@@ -1149,8 +1151,10 @@ export function prepareProviderEnvironment(
   const changed =
     row !== null &&
     (row.environmentProviderId !== record.provider.id ||
-      JSON.stringify(row.environmentProviderSelection) !==
-        JSON.stringify(selected));
+      row.hostId !== context.host.id ||
+      (row.status !== "ready" &&
+        JSON.stringify(row.environmentProviderSelection) !==
+          JSON.stringify(selected)));
   if (
     row !== null &&
     !changed &&

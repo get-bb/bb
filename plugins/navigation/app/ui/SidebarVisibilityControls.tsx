@@ -144,6 +144,12 @@ export function SidebarMore({
           sideOffset={8}
           mobileTitle="More"
           aria-label={ariaLabel}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            if (event.currentTarget instanceof HTMLElement) {
+              event.currentTarget.focus();
+            }
+          }}
           className="flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-56 flex-col overflow-hidden p-1 max-md:min-h-0 max-md:flex-1"
         >
           <div

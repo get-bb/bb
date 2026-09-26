@@ -1,7 +1,22 @@
 import { stripVTControlCharacters } from "node:util";
 import { escapeHtmlText } from "@bb/text-utils";
+import { z } from "zod";
 
-export const STARTUP_RETRY_CHANNEL = "bb-desktop:retry-startup";
+export const STARTUP_ACTION_CHANNEL = "bb-desktop:startup-action";
+
+export const startupActionIdSchema = z.enum([
+  "choose-server",
+  "open-moved-server",
+  "reconnect-connect",
+  "retry",
+]);
+
+export type StartupActionId = z.infer<typeof startupActionIdSchema>;
+
+export interface StartupAction {
+  id: StartupActionId;
+  label: string;
+}
 
 export type LocalViewModel = LoadingViewModel | StartupErrorViewModel;
 
@@ -12,10 +27,10 @@ interface LoadingViewModel {
 }
 
 interface StartupErrorViewModel {
+  actions: StartupAction[];
   details: string;
   kind: "error";
   logText: string;
-  retryable: boolean;
   title: string;
 }
 
@@ -41,14 +56,19 @@ function renderErrorView(viewModel: StartupErrorViewModel): string {
   const logText = formatPlainLogText(viewModel.logText);
   const logs =
     logText.trim().length > 0 ? `<pre>${escapeHtmlText(logText)}</pre>` : "";
-  const retry = viewModel.retryable
-    ? '<button type="button" data-testid="bb-startup-retry">Try again</button>'
-    : "";
+  const buttons = viewModel.actions
+    .map(
+      (action) =>
+        `<button type="button" data-startup-action="${action.id}">${escapeHtmlText(action.label)}</button>`,
+    )
+    .join("");
+  const actions =
+    buttons.length > 0 ? `<div class="actions">${buttons}</div>` : "";
   return `
     <main class="shell shell-error">
       <h1>${escapeHtmlText(viewModel.title)}</h1>
       <p>${escapeHtmlText(viewModel.details)}</p>
-      ${retry}
+      ${actions}
       ${logs}
     </main>
   `;
@@ -141,8 +161,19 @@ function renderLocalView(viewModel: LocalViewModel): string {
       font: inherit;
       font-size: 14px;
       font-weight: 600;
-      margin: 18px 0 0;
       padding: 8px 14px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 18px 0 0;
+    }
+
+    .actions button + button {
+      background: color-mix(in srgb, CanvasText 10%, transparent);
+      color: CanvasText;
     }
 
     pre {

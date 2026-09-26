@@ -1255,6 +1255,7 @@ export interface PluginSidebarThreadsState {
   } | null;
   status: "loading" | "ready" | "error";
   threads: readonly PluginSidebarThread[];
+  experimental_hosts?: readonly { id: string; name: string }[];
   projects: readonly PluginSidebarProject[];
   /** Every section, in the server's order (creation order). */
   sections: readonly PluginSidebarSection[];
@@ -1436,11 +1437,15 @@ export interface PluginSidebarThreadActions {
    * `sectionId` files the new thread under that section, and
    * `environmentId` reuses that environment (the "New thread in
    * environment" affordance), both exactly as bb's own list does.
+   * `hostId` selects a machine for a new environment when it
+   * is known and supports an environment provider. `environmentId` wins when
+   * both are supplied.
    */
   openNewThread(options?: {
     projectId?: string;
     sectionId?: string;
     environmentId?: string;
+    hostId?: string;
     focusPrompt?: boolean;
   }): void;
   setPinned(threadId: string, pinned: boolean): Promise<void>;
@@ -1552,12 +1557,13 @@ export interface PluginSidebarThreadSplit {
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. Registering activates the replacement while the plugin is
- * enabled. If multiple plugins register one, the first in deterministic slot
- * order is active by default; removing it reveals the next. The user can pin
- * BB's list or a specific provider under Settings → Appearance. A plugin can
- * also use its own setting and render `Original` conditionally.
- * An absent or crashing replacement falls back to BB's list rather than
+ * scroll area. bb ships its own list as the bundled Thread list plugin
+ * (`thread-list/thread-list`). Registering activates the replacement while the
+ * plugin is enabled: by default the first registered list other than the
+ * bundled one, in deterministic slot order, is active, falling back to the
+ * bundled list; removing it reveals the next. The user can pin a specific
+ * provider, including the bundled one, under Settings → Appearance → Sidebar.
+ * A missing pinned provider or a crashing list shows a placeholder rather than
  * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
@@ -1577,11 +1583,12 @@ export interface PluginThreadListRegistration {
 
 /**
  * Replace the navigation controls above the sidebar thread list. Exclusive:
- * the user picks one provider under Settings → Appearance → Navigation, and
  * bb ships its own rows as the bundled Navigation plugin
- * (`navigation/navigation`, the default). A picked provider that is disabled
- * or removed falls back to Navigation; a crashing provider is replaced by a
- * placeholder with a Reload button.
+ * (`navigation/navigation`). By default the first registered provider other
+ * than Navigation is active, falling back to Navigation; the user can pin one
+ * provider under Settings → Appearance → Navigation. A pinned provider that is
+ * disabled or removed falls back to Navigation; a crashing provider is
+ * replaced by a placeholder with a Reload button.
  */
 export interface ExperimentalSidebarNavigationRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */

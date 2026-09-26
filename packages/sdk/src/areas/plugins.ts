@@ -20,6 +20,9 @@ import {
   pluginApplyUpdateResultSchema,
   pluginInstallRequestSchema,
   pluginRemoveResponseSchema,
+  pluginSafeModeRequestSchema,
+  pluginSafeModeResponseSchema,
+  pluginSafeModeUpdateResponseSchema,
   pluginSettingsResponseSchema,
   pluginSettingsUpdateRequestSchema,
   pluginSourceDetailSchema,
@@ -39,6 +42,8 @@ import {
   type PluginListResponse,
   type PluginReloadResponse,
   type PluginRemoveResponse,
+  type PluginSafeModeResponse,
+  type PluginSafeModeUpdateResponse,
   type PluginSettingsResponse,
   type PluginSourceDetail,
   type PluginSourceSelection,
@@ -177,6 +182,14 @@ export interface PluginListUpdateResultsArgs {
   signal?: AbortSignal;
 }
 
+export interface PluginGetSafeModeArgs {
+  signal?: AbortSignal;
+}
+
+export interface PluginSetSafeModeArgs {
+  enabled: boolean;
+}
+
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
@@ -184,6 +197,8 @@ export type PluginInstallResult = InstalledPlugin;
 export type PluginListResult = PluginListResponse;
 export type PluginReloadResult = PluginReloadResponse;
 export type PluginRemoveResult = PluginRemoveResponse;
+export type PluginSafeModeResult = PluginSafeModeResponse;
+export type PluginSetSafeModeResult = PluginSafeModeUpdateResponse;
 export type PluginTokenResult = PluginTokenResponse;
 export type PluginUpdateSettingsResult = PluginSettingsResponse;
 export type PluginGetSourceResult = PluginSourceDetail;
@@ -226,6 +241,12 @@ export interface PluginsArea {
   experimental_discoverRpc(
     args?: PluginRpcDiscoveryQuery,
   ): Promise<PublishedPluginRpcMethod[]>;
+  experimental_getSafeMode(
+    args?: PluginGetSafeModeArgs,
+  ): Promise<PluginSafeModeResult>;
+  experimental_setSafeMode(
+    args: PluginSetSafeModeArgs,
+  ): Promise<PluginSetSafeModeResult>;
   applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
@@ -412,6 +433,23 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         { ...jsonInit("POST", body), signal: input.signal },
       );
       return response.results;
+    },
+    async experimental_getSafeMode(input = {}) {
+      return requestParsed(
+        "/api/v1/plugins/safe-mode",
+        pluginSafeModeResponseSchema,
+        { signal: input.signal },
+      );
+    },
+    async experimental_setSafeMode(input) {
+      const body = pluginSafeModeRequestSchema.parse({
+        enabled: input.enabled,
+      });
+      return requestParsed(
+        "/api/v1/plugins/safe-mode",
+        pluginSafeModeUpdateResponseSchema,
+        jsonInit("PUT", body),
+      );
     },
     catalog,
     marketplaces,

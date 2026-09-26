@@ -3,6 +3,7 @@ import type { EnvironmentRow } from "@bb/db";
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
+import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import {
   assertUsableHostId,
@@ -161,19 +162,10 @@ export function resolveReuseThreadRequestEnvironment(
   projectId: string,
   allowUnmanagedPersonalProjectReuseEnvironmentId: string | undefined,
 ): ResolvedReuseThreadRequestEnvironment {
-  const reusedEnvironment = requireEnvironment(
+  let reusedEnvironment = requireEnvironment(
     deps.db,
     environment.environmentId,
   );
-  if (reusedEnvironment.ownerThreadId !== null) {
-    throw new ApiError(
-      409,
-      "workspace_busy",
-      reusedEnvironment.path === null
-        ? "Environment is still being prepared"
-        : "Cannot checkout branch while another thread is using this workspace",
-    );
-  }
   if (reusedEnvironment.projectId !== projectId) {
     throw new ApiError(
       409,
@@ -187,6 +179,21 @@ export function resolveReuseThreadRequestEnvironment(
     allowUnmanagedPersonalProjectReuseEnvironmentId,
   );
   assertUsableHostId(deps, { hostId: reusedEnvironment.hostId });
+  assertEnvironmentPathAvailable(deps, {
+    hostId: reusedEnvironment.hostId,
+    path: reusedEnvironment.path ?? reusedEnvironment.claimPath,
+    threadId: null,
+  });
+  reusedEnvironment = requireEnvironment(deps.db, environment.environmentId);
+  if (reusedEnvironment.ownerThreadId !== null) {
+    throw new ApiError(
+      409,
+      "workspace_busy",
+      reusedEnvironment.path === null
+        ? "Environment is still being prepared"
+        : "Cannot checkout branch while another thread is using this workspace",
+    );
+  }
   return {
     environment: reusedEnvironment,
     type: "reuse",

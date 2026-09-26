@@ -2,6 +2,7 @@ import { WebSocket as NodeWebSocket } from "ws";
 import {
   PROTOCOL_VERSION,
   TUNNEL_PROTOCOL_QUERY_PARAM,
+  TUNNEL_REPLACED_CLOSE_REASON,
 } from "@bb/tunnel-contract";
 import {
   humanizeTransportError,
@@ -35,7 +36,10 @@ import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus, ShareListing } from "./types.js";
 
 const DISCONNECT_TIMEOUT_MS = 5_000;
-const TUNNEL_HANDSHAKE_TIMEOUT_MS = 15_000;
+const TUNNEL_HANDSHAKE_TIMEOUT_MS = 10_000;
+const TUNNEL_CLOSE_GRACE_MS = 1_000;
+const TUNNEL_CLEAN_CLOSE_CODE = 1000;
+const TUNNEL_REPLACED_RETRY_MS = 5 * 60_000;
 
 async function notifyCloudOfDisconnect(
   credential: ConnectCredential,
@@ -279,7 +283,13 @@ export class ConnectTunnel {
     this.session?.dispose();
     this.session = undefined;
     this.remoteClients = 0;
-    this.tunnel?.terminate();
+    const tunnel = this.tunnel;
+    if (tunnel !== undefined && tunnel.readyState === NodeWebSocket.OPEN) {
+      tunnel.close(TUNNEL_CLEAN_CLOSE_CODE, "tunnel closed by bb");
+      setTimeout(() => tunnel.terminate(), TUNNEL_CLOSE_GRACE_MS).unref?.();
+    } else {
+      tunnel?.terminate();
+    }
     this.tunnel = undefined;
     this.connected = false;
     this.backoff.reset();
@@ -405,7 +415,10 @@ export class ConnectTunnel {
     let retryScheduled = false;
     let handshakeDeadline: ReturnType<typeof setTimeout> | undefined;
 
-    const scheduleReconnect = (detail: string): void => {
+    const scheduleReconnect = (
+      detail: string,
+      delayOverrideMs?: number,
+    ): void => {
       if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
         return;
       }
@@ -416,7 +429,8 @@ export class ConnectTunnel {
       this.session = undefined;
       this.remoteClients = 0;
       const stable = connectedAt ? Date.now() - connectedAt : 0;
-      const delay = this.backoff.nextDelayAfterClose(stable);
+      const backoffDelay = this.backoff.nextDelayAfterClose(stable);
+      const delay = delayOverrideMs ?? backoffDelay;
       if (this.lastError === null) {
         this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
       }
@@ -487,6 +501,16 @@ export class ConnectTunnel {
       );
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
+      if (
+        code === TUNNEL_CLEAN_CLOSE_CODE &&
+        reason.toString() === TUNNEL_REPLACED_CLOSE_REASON
+      ) {
+        if (retryScheduled || this.stopped || this.tunnel !== tunnel) return;
+        this.lastError =
+          "another bb connected with this server's identity and took over bb connect";
+        scheduleReconnect(this.lastError, TUNNEL_REPLACED_RETRY_MS);
+        return;
+      }
       scheduleReconnect(
         `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
       );

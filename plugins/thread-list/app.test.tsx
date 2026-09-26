@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import {
@@ -255,6 +255,50 @@ describe("thread-list plugin", () => {
     expect(
       within(noMachine as HTMLElement).getByText("Personal thread"),
     ).not.toBeNull();
+  });
+
+  it("opens the composer on the machine named by its section", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    const { inspection } = renderList({ organizationMode: "machine" });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New thread in Laptop" }),
+    );
+
+    expect(inspection.sidebarActionCalls).toContainEqual({
+      method: "openNewThread",
+      options: {
+        projectId: PERSONAL_PROJECT_ID,
+        hostId: "host_laptop",
+        focusPrompt: true,
+      },
+    });
+  });
+
+  it("shows a machine section before it has any threads", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    renderList(
+      { organizationMode: "machine" },
+      {
+        sidebarThreads: {
+          projects: PROJECTS,
+          sections: SECTIONS,
+          threads: THREADS,
+          experimental_hosts: [
+            { id: "host_laptop", name: "Laptop" },
+            { id: "host_empty", name: "Studio Mac" },
+          ],
+        },
+      },
+    );
+
+    await screen.findByText("Pinned thread");
+    expect(sectionHeaders()).toEqual([
+      "Pinned",
+      "Laptop",
+      "Studio Mac",
+      "No machine",
+    ]);
   });
 
   it("groups threads by project in project mode", async () => {

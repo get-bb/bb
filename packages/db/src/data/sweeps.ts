@@ -1,19 +1,11 @@
-import {
-  and,
-  asc,
-  eq,
-  inArray,
-  lt,
-  sql,
-} from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
-import type { DbNotifier } from "../notifier.js";
 import {
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   RETAINED_EVENT_OUTPUT_TARGETS,
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
-import { environments, events, maintenanceScanCursors } from "../schema.js";
+import { events, maintenanceScanCursors } from "../schema.js";
 import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import {
   insertPreparedRetainedEventOutput,
@@ -22,18 +14,13 @@ import {
   type PreparedCompletedEventOutputData,
 } from "./retained-event-outputs.js";
 
-export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
-
 export const CLOSED_SESSION_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION = 1;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT = -1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
-export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
-const DESTROYED_ENVIRONMENT_EVENT_DETACH_DATA_BUDGET_BYTES = 256 * 1024;
 export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 25;
 export const DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT = 250;
-export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
 export const MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES =
   8 * 1024 * 1024;
 
@@ -154,17 +141,6 @@ export interface PruneClosedSessionsArgs {
 
 export interface PruneClosedSessionsResult {
   deleted: number;
-}
-
-export interface PruneDestroyedEnvironmentsArgs {
-  updatedBefore: number;
-  eventBatchSize: number;
-  limit: number;
-}
-
-export interface PruneDestroyedEnvironmentsResult {
-  deleted: number;
-  detachedEvents: number;
 }
 
 export interface MigrateNextCompletedEventItemOutputArgs extends RetainedEventOutputTarget {
@@ -725,85 +701,4 @@ function migrateNextCompletedEventOutput(
     scanRows,
     threadId: candidate.thread_id,
   };
-}
-
-export function pruneDestroyedEnvironments(
-  db: DbConnection,
-  notifier: DbNotifier,
-  args: PruneDestroyedEnvironmentsArgs,
-): PruneDestroyedEnvironmentsResult {
-  if (args.limit <= 0 || args.eventBatchSize <= 0) {
-    return { deleted: 0, detachedEvents: 0 };
-  }
-
-  const staleEnvironmentIds = db
-    .select({ id: environments.id })
-    .from(environments)
-    .where(
-      and(
-        eq(environments.status, "destroyed"),
-        sql`(${environments.environmentProviderId} is null or ${environments.teardownStatus} = 'removed')`,
-        lt(environments.updatedAt, args.updatedBefore),
-      ),
-    )
-    .orderBy(asc(environments.updatedAt), asc(environments.id))
-    .limit(args.limit)
-    .all()
-    .map((environment) => environment.id);
-
-  let deleted = 0;
-  let detachedEvents = 0;
-  for (const environmentId of staleEnvironmentIds) {
-    const result = db.transaction(
-      (tx) => {
-        const candidates = tx.all<{ rowid: number; dataBytes: number }>(sql`
-          SELECT rowid, octet_length(data) AS dataBytes
-          FROM events INDEXED BY events_environment_idx
-          WHERE environment_id = ${environmentId}
-          ORDER BY rowid
-          LIMIT ${args.eventBatchSize}
-        `);
-        const rowids: number[] = [];
-        let dataBytes = 0;
-        for (const candidate of candidates) {
-          if (
-            rowids.length > 0 &&
-            dataBytes + candidate.dataBytes >
-              DESTROYED_ENVIRONMENT_EVENT_DETACH_DATA_BUDGET_BYTES
-          ) {
-            break;
-          }
-          rowids.push(candidate.rowid);
-          dataBytes += candidate.dataBytes;
-        }
-        const detached =
-          rowids.length === 0
-            ? 0
-            : tx.run(sql`
-          UPDATE events
-          SET environment_id = NULL
-          WHERE rowid IN (${sql.join(
-            rowids.map((rowid) => sql`${rowid}`),
-            sql`, `,
-          )})
-        `).changes;
-        if (detached > 0) {
-          return { deleted: 0, detachedEvents: detached };
-        }
-        const deleteResult = tx
-          .delete(environments)
-          .where(eq(environments.id, environmentId))
-          .run();
-        return { deleted: deleteResult.changes, detachedEvents: 0 };
-      },
-      { behavior: "immediate" },
-    );
-    detachedEvents += result.detachedEvents;
-    if (result.deleted > 0) {
-      notifier.notifyEnvironment(environmentId, ["environment-deleted"]);
-      deleted += result.deleted;
-    }
-  }
-
-  return { deleted, detachedEvents };
 }

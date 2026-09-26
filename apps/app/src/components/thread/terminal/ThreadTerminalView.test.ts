@@ -1,4 +1,5 @@
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
 import { describe, expect, it, vi } from "vitest";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
@@ -17,7 +18,6 @@ import {
   startTerminalTouchFocusGesture,
   TERMINAL_ALLOW_PROPOSED_API,
   TERMINAL_FONT_FAMILY,
-  TERMINAL_UNICODE_VERSION,
   resolveTerminalFontFamily,
   writeTerminalOutput,
   updateTerminalTouchFocusGesture,
@@ -341,14 +341,14 @@ describe("terminal output encoding", () => {
     terminal.dispose();
   });
 
-  it("enables the proposed xterm API required by the Unicode addon", () => {
-    expect(TERMINAL_ALLOW_PROPOSED_API).toBe(true);
-    expect(TERMINAL_UNICODE_VERSION).toBe("11");
-  });
-
-  it("prefers installed Nerd Font families before system monospace fallbacks", () => {
-    expect(TERMINAL_FONT_FAMILY).toContain("Nerd Font");
-    expect(TERMINAL_FONT_FAMILY).toContain("ui-monospace");
+  it("allows the proposed xterm API that the Unicode 11 addon requires", () => {
+    const terminal = new Terminal({
+      allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
+    });
+    terminal.loadAddon(new Unicode11Addon());
+    terminal.unicode.activeVersion = "11";
+    expect(terminal.unicode.activeVersion).toBe("11");
+    terminal.dispose();
   });
 });
 

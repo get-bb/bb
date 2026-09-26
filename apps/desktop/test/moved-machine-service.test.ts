@@ -17,6 +17,7 @@ const tempDirs: string[] = [];
 
 const MOVE: DesktopServerMove = {
   moveId: "move-1",
+  oldCopyKept: true,
   target: {
     kind: "connect",
     server: {

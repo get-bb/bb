@@ -24,7 +24,7 @@ export type DevLaunchMode = "vite" | "worktree";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
-export function createDevTurboCommand(): DevCommand {
+function createDevTurboCommand(): DevCommand {
   return {
     args: [
       "exec",

@@ -173,7 +173,7 @@ describe("plugin SDK Markdown", () => {
             };
       const props = {
         content:
-          "[Sibling](sibling.md#L2-L4) ![Chart](../chart%20one.svg) [Parent](../summary.md) [Missing](missing.md) [Web](https://example.com)",
+          '[Sibling](sibling.md#L2-L4) ![Chart](../chart%20one.svg) [Parent](../summary.md) [Missing](missing.md) [Web](https://example.com)\n\n<video src="../clip.mp4" controls title="Clip"></video>',
         experimental_document: { target, rootPath, threadId: "thr_document" },
       };
       render(
@@ -201,6 +201,9 @@ describe("plugin SDK Markdown", () => {
         screen.getByRole("img", { name: "Chart" }).getAttribute("src"),
       ).toBe(
         `/api/v1/threads/thr_document/${kind === "workspace" ? "worktree" : kind}/files/reports/chart%20one.svg`,
+      );
+      expect(screen.getByLabelText("Clip").getAttribute("src")).toBe(
+        `/api/v1/threads/thr_document/${kind === "workspace" ? "worktree" : kind}/files/reports/clip.mp4`,
       );
       fireEvent.click(screen.getByRole("link", { name: "Parent" }));
       expect(openFilePreview).toHaveBeenLastCalledWith({

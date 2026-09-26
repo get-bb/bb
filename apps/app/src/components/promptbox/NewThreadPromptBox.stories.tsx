@@ -497,8 +497,8 @@ function ClaudeProviderRow() {
           ...baseExecution,
           provider: { ...baseExecution.provider, selectedId: "claude-code" },
           model: {
-            active: { model: "claude-sonnet-5" },
-            selected: "claude-sonnet-5",
+            active: { model: "claude-opus-4-8[1m]" },
+            selected: "claude-opus-4-8[1m]",
             options: [
               { value: "claude-fable-5", label: "Claude Fable 5" },
               { value: "claude-opus-4-8[1m]", label: "Claude Opus 4.8 (1M)" },
@@ -509,7 +509,7 @@ function ClaudeProviderRow() {
             loadFailed: false,
             onChange: noop,
           },
-          serviceTier: { ...baseExecution.serviceTier!, supported: false },
+          serviceTier: { ...baseExecution.serviceTier!, supported: true },
         }}
       />
     </PromptStage>
@@ -676,7 +676,10 @@ export function Overview() {
         >
           <CustomModelAfterLoadErrorRow />
         </StoryRow>
-        <StoryRow label="claude-code provider" hint="no fast mode toggle">
+        <StoryRow
+          label="claude-code provider"
+          hint="Fast mode on supported Opus models"
+        >
           <ClaudeProviderRow />
         </StoryRow>
         <StoryRow label="full access" hint='permission tone="warning"'>

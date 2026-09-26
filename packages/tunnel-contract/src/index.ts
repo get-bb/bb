@@ -4,6 +4,8 @@ export const TUNNEL_PROTOCOL_QUERY_PARAM = "v";
 
 export const HEARTBEAT_REQUEST = "bbt:hb";
 export const HEARTBEAT_RESPONSE = "bbt:hb-ack";
+export const TUNNEL_REPLACED_CLOSE_REASON =
+  "replaced by a new tunnel connection";
 
 export const MAX_CHUNK_BYTES = 1024 * 1024;
 

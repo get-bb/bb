@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  createConnection,
+  migrate,
+  noopNotifier,
+  updateHost,
+  upsertHost,
+  type EnvironmentRow,
+} from "@bb/db";
+import {
   resolveEnvironmentWorkspaceDisplayKind,
   toEnvironmentResponse,
+  toEnvironmentResponses,
 } from "../../../src/services/environments/environment-response.js";
-import type { EnvironmentRow } from "@bb/db";
+
+function setupDb() {
+  const db = createConnection(":memory:");
+  migrate(db);
+  upsertHost(db, noopNotifier, { id: "host_1", name: "Host" });
+  return db;
+}
 
 function makeRow(overrides: Partial<EnvironmentRow> = {}): EnvironmentRow {
   return {
@@ -97,22 +112,42 @@ describe("toEnvironmentResponse", () => {
     "derives workspaceProvisionType %s as %s",
     (environmentProviderId, expected) => {
       expect(
-        toEnvironmentResponse(makeRow({ environmentProviderId })),
+        toEnvironmentResponse(setupDb(), makeRow({ environmentProviderId })),
       ).toMatchObject({ workspaceProvisionType: expected });
     },
   );
 
   it("publishes the row's ownership fact as the deprecated managed flag", () => {
     expect(
-      toEnvironmentResponse(makeRow({ providerOwnsPath: true })).managed,
+      toEnvironmentResponse(setupDb(), makeRow({ providerOwnsPath: true }))
+        .managed,
     ).toBe(true);
     expect(
-      toEnvironmentResponse(makeRow({ providerOwnsPath: false })).managed,
+      toEnvironmentResponse(setupDb(), makeRow({ providerOwnsPath: false }))
+        .managed,
     ).toBe(false);
   });
 
+  it.each([
+    [{}, "active"],
+    [{ phase: "removing" }, "removing"],
+    [{ phase: "removing", teardownStatus: "failed" }, "cleanup-failed"],
+    [{ phase: "destroyed" }, "removed"],
+    [{ destroyedAt: 1 }, "removed"],
+  ] as const)(
+    "reports host %o as hostLifecycle %s in single and batched reads",
+    (hostUpdate, expected) => {
+      const db = setupDb();
+      updateHost(db, noopNotifier, "host_1", hostUpdate);
+      expect(toEnvironmentResponse(db, makeRow()).hostLifecycle).toBe(expected);
+      expect(
+        toEnvironmentResponses(db, [makeRow()]).map((row) => row.hostLifecycle),
+      ).toEqual([expected]);
+    },
+  );
+
   it("does not leak the row's internal ownership column", () => {
-    expect(toEnvironmentResponse(makeRow())).not.toHaveProperty(
+    expect(toEnvironmentResponse(setupDb(), makeRow())).not.toHaveProperty(
       "providerOwnsPath",
     );
   });

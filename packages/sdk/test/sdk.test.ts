@@ -42,6 +42,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: false,
     workspaceProvisionType: null,
     createdAt: 1,

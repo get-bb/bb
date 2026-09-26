@@ -30,9 +30,9 @@ function modelOf(call: ExperimentalFakeHostRpcCall): unknown {
 }
 
 describe("Codex AI service", () => {
-  it("retries with the next model after a retryable failure", async () => {
+  it("retries with GPT-5.6 Luna after a rate limit", async () => {
     const codex = setup((call) =>
-      modelOf(call) === "gpt-5.6-luna"
+      modelOf(call) === "gpt-6-luna"
         ? { ok: false, code: "rate_limited", message: "Slow down" }
         : { ok: true, text: "Fix login bug" },
     );
@@ -41,10 +41,10 @@ describe("Codex AI service", () => {
     await expect(codex.complete("Write a title", { signal })).resolves.toBe(
       "Fix login bug",
     );
-    expect(codex.calls.map(modelOf)).toEqual(["gpt-5.6-luna", "gpt-5.4-mini"]);
+    expect(codex.calls.map(modelOf)).toEqual(["gpt-6-luna", "gpt-5.6-luna"]);
     expect(codex.calls.map((call) => call.input)).toEqual([
+      { model: "gpt-6-luna", prompt: "Write a title", timeoutMs: 5_000 },
       { model: "gpt-5.6-luna", prompt: "Write a title", timeoutMs: 5_000 },
-      { model: "gpt-5.4-mini", prompt: "Write a title", timeoutMs: 5_000 },
     ]);
     expect(codex.calls.every((call) => call.signal === signal)).toBe(true);
   });

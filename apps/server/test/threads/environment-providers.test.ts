@@ -463,7 +463,7 @@ describe("machine and environment provider composition", () => {
     });
   });
 
-  it("creates the environment before its machine and mirrors machine failure", async () => {
+  it("creates the environment before its machine and cleans up after machine failure", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "composition-environment-first",
@@ -575,7 +575,7 @@ describe("machine and environment provider composition", () => {
       await expect
         .poll(() => getPreparingEnvironment(harness.db, thread.id))
         .toMatchObject({
-          status: "error",
+          status: "destroyed",
           statusMessage: "Cloud quota exceeded",
         });
     });
@@ -752,12 +752,14 @@ describe("shared machine preparation retention", () => {
             );
             release.resolve();
             await expect
-              .poll(() => getPreparingEnvironment(harness.db, next.id)?.status)
+              .poll(() => getThread(harness.db, next.id)?.status)
               .toBe("error");
-            await advanceThreadProvisioning(harness.deps, {
-              threadId: next.id,
-            });
-            expect(getThread(harness.db, next.id)?.status).toBe("error");
+            await expect
+              .poll(
+                () =>
+                  getPreparingEnvironment(harness.db, next.id)?.teardownStatus,
+              )
+              .toBe("removed");
           }
           await sweepProviderMachine(harness.deps, host.id);
           expect(remove).toHaveBeenCalledTimes(1);
@@ -2805,6 +2807,7 @@ describe("a provider-produced environment over its life", () => {
       setPluginThreadEventEmitter({
         emitThreadEvents: () => {},
         emitTerminalInput: () => {},
+        emitHostDeleted: () => {},
         emitThreadCreated: () => {},
         emitThreadActive: () => {},
         emitThreadIdle: () => {},

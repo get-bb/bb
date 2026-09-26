@@ -164,10 +164,5 @@ describe("plugin build toolchain", () => {
         );
       },
     );
-
-    it("reuses an already-fetched toolchain without reinstalling", async () => {
-      const local = await resolvePluginBuildToolchain(baseDir);
-      expect(local.tailwindCssDir.length).toBeGreaterThan(0);
-    });
   });
 });

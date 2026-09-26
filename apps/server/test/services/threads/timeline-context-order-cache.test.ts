@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { THREAD_CONTEXT_CLEAR_OPERATION } from "@bb/domain";
 import {
-  THREAD_CONTEXT_CLEAR_OPERATION,
-  type ThreadEventType,
-} from "@bb/domain";
-import {
+  advanceThreadPruning,
   deleteThreadEventSuffixInTransaction,
   getLatestCompletedThreadContextClearSequence,
   getLatestThreadSequence,
-  pruneThreadEventsBeforeSequence,
 } from "@bb/db";
 import {
   clearTimelineOrderingContextCache,
@@ -341,12 +338,13 @@ describe("timeline grouping context cache", () => {
   it("matches a cold computation over randomized appends, rewrites and prunes", () => {
     let comparisons = 0;
     let changedContexts = 0;
+    let prunedRows = 0;
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const random = createRandom(seed);
       withTestThread((testThread) => {
         let previousBoundary: number | null = null;
         for (let step = 0; step < 40; step += 1) {
-          applyRandomStep(testThread, random, step);
+          prunedRows += applyRandomStep(testThread, random, step);
           const latest = getLatestThreadSequence(testThread.db, {
             threadId: testThread.thread.id,
           });
@@ -376,25 +374,19 @@ describe("timeline grouping context cache", () => {
     }
     expect(comparisons).toBeGreaterThan(SEEDS * 100);
     expect(changedContexts).toBeGreaterThan(SEEDS * 10);
+    expect(prunedRows).toBeGreaterThan(0);
   }, 60_000);
 });
 
 const RANDOM_TURN_IDS = ["turn-a", "turn-b", "turn-c"] as const;
 const RANDOM_CALL_IDS = ["call-a", "call-b"] as const;
 const RANDOM_REQUEST_IDS = ["request-a", "request-b", "request-c"] as const;
-const RANDOM_PRUNED_TYPES = [
-  "turn/started",
-  "turn/completed",
-  "client/turn/requested",
-  "turn/input/accepted",
-  "item/started",
-  "item/agentMessage/delta",
-] as const satisfies readonly ThreadEventType[];
 
 function randomRow(random: Random): RowSpec {
   const turnId = pick(random, RANDOM_TURN_IDS);
   const choice = random();
-  if (choice < 0.3) return delta(turnId, pick(random, ["x", "y\n"]));
+  if (choice < 0.26) return delta(turnId, pick(random, ["x", "y\n"]));
+  if (choice < 0.3) return { data: {}, turnId, type: "turn/diff/updated" };
   if (choice < 0.36) return reasoningDelta(turnId);
   if (choice < 0.46) {
     return rootToolCall(
@@ -435,7 +427,11 @@ function randomRow(random: Random): RowSpec {
   };
 }
 
-function applyRandomStep(testThread: TestThread, random: Random, step: number) {
+function applyRandomStep(
+  testThread: TestThread,
+  random: Random,
+  step: number,
+): number {
   const threadId = testThread.thread.id;
   const latest = getLatestThreadSequence(testThread.db, { threadId });
   const choice = random();
@@ -452,15 +448,10 @@ function applyRandomStep(testThread: TestThread, random: Random, step: number) {
         threadId,
       });
     });
-    return;
+    return 0;
   }
   if (step > 3 && choice < 0.14) {
-    pruneThreadEventsBeforeSequence(testThread.db, {
-      sequenceCutoff: randomInteger(random, 1, latest),
-      threadId,
-      types: [pick(random, RANDOM_PRUNED_TYPES)],
-    });
-    return;
+    return advanceThreadPruning(testThread.db, { threadId }).removed;
   }
   appendRows(
     testThread,
@@ -468,4 +459,5 @@ function applyRandomStep(testThread: TestThread, random: Random, step: number) {
       randomRow(random),
     ),
   );
+  return 0;
 }

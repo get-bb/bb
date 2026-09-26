@@ -1023,13 +1023,32 @@ if [ "$platform" = darwin ]; then
   escaped_bb_app_npm_prefix=$(xml_escape "$bb_app_npm_prefix")
   escaped_server=$(xml_escape "$server_url")
   escaped_data_dir=$(xml_escape "$data_dir")
-  legacy_service_file="$service_dir/app.getbb.host-daemon.$legacy_service_slug.plist"
-  if [ -f "$legacy_service_file" ] && \
-     grep -F -- '<string>--host-daemon-port</string>' "$legacy_service_file" >/dev/null 2>&1 && \
-     grep -F -- "<string>$host_daemon_port</string>" "$legacy_service_file" >/dev/null 2>&1 && \
-     grep -F -- "<key>BB_DATA_DIR</key><string>$escaped_data_dir</string>" "$legacy_service_file" >/dev/null 2>&1; then
-    launchctl bootout "gui/$(id -u)" "$legacy_service_file" >/dev/null 2>&1 || true
-    rm -f "$legacy_service_file"
+  for existing_service_file in "$service_dir"/app.getbb.host-daemon.*.plist; do
+    [ -e "$existing_service_file" ] || continue
+    [ "$existing_service_file" != "$service_file" ] || continue
+    if grep -F -- "<key>BB_DATA_DIR</key><string>$escaped_data_dir</string>" "$existing_service_file" >/dev/null 2>&1; then
+      if [ -L "$existing_service_file" ]; then
+        fail_step "Refusing to replace a symlinked bb launch agent: $existing_service_file"
+        exit 1
+      fi
+      existing_service_label=${existing_service_file##*/}
+      existing_service_label=${existing_service_label%.plist}
+      if ! grep -F -- "<key>Label</key><string>$existing_service_label</string>" "$existing_service_file" >/dev/null 2>&1; then
+        fail_step "Refusing to replace a bb launch agent with an unexpected label: $existing_service_file"
+        exit 1
+      fi
+      launchctl bootout "gui/$(id -u)" "$existing_service_file" >/dev/null 2>&1 || true
+      if launchctl print "gui/$(id -u)/$existing_service_label" >/dev/null 2>&1; then
+        fail_step "Could not stop the existing bb launch agent $existing_service_label."
+        detail "The agent file was kept at $existing_service_file." >&2
+        exit 1
+      fi
+      rm -f "$existing_service_file"
+    fi
+  done
+  if [ -L "$service_file" ]; then
+    fail_step "Refusing to replace a symlinked bb launch agent: $service_file"
+    exit 1
   fi
   cat >"$service_file" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1068,7 +1087,10 @@ EOF
   fi
   if ! wait_for_daemon_connection "the launch agent"; then
     fail_step "The bb host-daemon launch agent started but did not connect to $server_url."
-    detail "See $data_dir/logs/launchd.log for the daemon error." >&2
+    if [ -d "$data_dir/daemon.lock.lock" ]; then
+      detail "Another daemon may be using $data_dir. Check for another bb launch agent using this data directory." >&2
+    fi
+    detail "See $data_dir/logs/host-daemon-stdio.log for the startup error and $data_dir/logs/launchd.log for launch agent output." >&2
     exit 1
   fi
   complete_step "Installed and started the launch agent"

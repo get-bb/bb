@@ -12,6 +12,7 @@ import {
   hasWorker,
   ownWorker,
   workerOrigins,
+  isWorkerRetired,
   retiredWorkers,
   recordWorkerCleanup,
   activeChildThreadsForRun,
@@ -523,7 +524,11 @@ export function createWorkflowService(
 
   async function cleanupWorkers(): Promise<void> {
     for (const worker of retiredWorkers(db, Date.now())) {
-      if (spawningCalls.has(worker.callId)) continue;
+      if (
+        spawningCalls.has(worker.callId) ||
+        !isWorkerRetired(db, worker.threadId)
+      )
+        continue;
       recordWorkerCleanup(
         db,
         worker.threadId,

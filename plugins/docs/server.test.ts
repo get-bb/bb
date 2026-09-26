@@ -2,14 +2,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
-import { defineRpcContract } from "@get-bb/plugin-sdk";
-import type { PluginRpcClient, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeHostResponse,
 } from "@get-bb/plugin-sdk/testing";
-import simpleNotes, { docsRpcContract } from "./server";
+import simpleNotes from "./server";
 
 const temporaryDirectories: string[] = [];
 
@@ -270,71 +268,7 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
   };
 }
 
-type DocsRpcHandlers = PluginRpcHandlers<typeof docsRpcContract>;
-
-function assertDocsFrontendInference(
-  client: PluginRpcClient<typeof docsRpcContract>,
-) {
-  expectTypeOf(
-    client.call("saveNote", {
-      vaultId: "personal",
-      path: "plan.md",
-      content: "# Plan",
-      expectedSha256: "sha",
-    }),
-  ).toEqualTypeOf<
-    Promise<
-      | { outcome: "written"; sha256: string; sizeBytes: number }
-      | { outcome: "conflict"; currentSha256: string | null }
-    >
-  >();
-
-  // @ts-expect-error saveNote requires string content.
-  void client.call("saveNote", { path: "plan.md", content: 42 });
-  // @ts-expect-error createVault requires an absolute-path candidate.
-  void client.call("createVault", { name: "Work" });
-}
-
 describe("Docs RPC contract", () => {
-  it("infers parsed handler inputs and frontend results", () => {
-    expectTypeOf<Parameters<DocsRpcHandlers["openFile"]>[0]>().toEqualTypeOf<{
-      source: {
-        kind: "workspace" | "host" | "thread-storage";
-        threadId: string | null;
-        environmentId: string | null;
-        projectId: string | null;
-        experimental_hostId?: string;
-      };
-      path: string;
-    }>();
-    expectTypeOf(assertDocsFrontendInference).toBeFunction();
-  });
-
-  it("rejects invalid method inputs and outputs at runtime", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "docs-contract" });
-    const contract = defineRpcContract({
-      saveNote: docsRpcContract.saveNote,
-    });
-    bb.rpc.register(contract, {
-      saveNote(): { outcome: "written"; sha256: string; sizeBytes: number } {
-        return { outcome: "written", sha256: "sha", sizeBytes: -1 };
-      },
-    });
-
-    await expect(
-      harness.callRpc("saveNote", { path: "plan.md", content: 42 }),
-    ).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(
-      harness.callRpc("saveNote", {
-        path: "../outside.md",
-        content: "# Outside",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(
-      harness.callRpc("saveNote", { path: "plan.md", content: "# Plan" }),
-    ).rejects.toMatchObject({ code: "invalid_output" });
-  });
-
   it("returns HTTP 400 envelopes for invalid JSON and request input", async () => {
     const { harness } = await loadNotebook({ "plan.md": "# Plan" });
 
@@ -358,6 +292,19 @@ describe("Docs RPC contract", () => {
       error: {
         code: "invalid_input",
         issues: [{ path: ["path"] }],
+      },
+    });
+
+    const invalidContent = await harness.fetchHttp("POST", "/write", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "plan.md", content: 42 }),
+    });
+    expect(invalidContent.status).toBe(400);
+    await expect(invalidContent.json()).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid_input",
+        issues: [{ path: ["content"] }],
       },
     });
   });

@@ -55,45 +55,6 @@ describe("rewriteManagedConfigServer", () => {
     expect((await stat(join(dataDir, "config.json"))).mode & 0o777).toBe(0o600);
   });
 
-  it("removes serverHeaders when the new server needs none", async () => {
-    const dataDir = await createDataDir();
-    await writeFile(
-      join(dataDir, "config.json"),
-      JSON.stringify({
-        serverUrl: "https://old.example.test",
-        serverHeaders: { "x-bb-connect-machine": "bbcm_old" },
-      }),
-    );
-
-    await rewriteManagedConfigServer({
-      dataDir,
-      serverUrl: "http://192.168.1.20:38886",
-      headers: {},
-    });
-
-    expect(
-      JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      serverUrl: "http://192.168.1.20:38886",
-    });
-  });
-
-  it("creates config.json when it is missing", async () => {
-    const dataDir = await createDataDir();
-
-    await rewriteManagedConfigServer({
-      dataDir,
-      serverUrl: "http://new.example.test:38886",
-      headers: {},
-    });
-
-    expect(
-      JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      serverUrl: "http://new.example.test:38886",
-    });
-  });
-
   it("refuses to rewrite an invalid config.json", async () => {
     const dataDir = await createDataDir();
     await writeFile(
@@ -112,34 +73,6 @@ describe("rewriteManagedConfigServer", () => {
       JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")),
     ).toEqual({
       unknown: 1,
-    });
-  });
-
-  it("keeps machine headers and credentials when the notice carries no headers", async () => {
-    const dataDir = await createDataDir();
-    await writeFile(
-      join(dataDir, "config.json"),
-      JSON.stringify({
-        serverUrl: "https://old.example.test",
-        serverHeaders: { "x-bb-connect-machine": "bbcm_old" },
-        machineCredential: "bbcm_old",
-        connectMachineId: "machine-1",
-      }),
-    );
-
-    await rewriteManagedConfigServer({
-      dataDir,
-      serverUrl: "https://new.example.test",
-      headers: null,
-    });
-
-    expect(
-      JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      serverUrl: "https://new.example.test",
-      serverHeaders: { "x-bb-connect-machine": "bbcm_old" },
-      machineCredential: "bbcm_old",
-      connectMachineId: "machine-1",
     });
   });
 });

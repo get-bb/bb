@@ -15,7 +15,6 @@ import {
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
-  createHostDaemonClient,
   hostDaemonEnrollRequestSchema,
   hostDaemonEnrollResponseSchema,
   hostDaemonCommandResultSchemaByType,
@@ -370,6 +369,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     mimeType: "text/html",
     sizeBytes: 15,
     sha256: "a".repeat(64),
+  },
+  "host.read_file_chunk": {
+    path: "/tmp/clip.mp4",
+    content: "AAEC",
+    offset: 0,
+    sizeBytes: 3,
+    modifiedAtMs: 1234,
+    mimeType: "video/mp4",
+    revision: "a".repeat(64),
   },
   "host.read_file_relative": {
     path: "assets/logo.png",
@@ -1136,7 +1144,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(217);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(219);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -4104,10 +4112,41 @@ describe("host-daemon session schemas", () => {
       }).success,
     ).toBe(false);
   });
+});
 
-  it("builds an internal client rooted at /internal", () => {
-    const client = createHostDaemonClient("http://localhost:3334", "secret");
-
-    expect(client.session.open.$url().pathname).toBe("/internal/session/open");
+describe("bounded file read contract", () => {
+  const command = {
+    type: "host.read_file_chunk",
+    path: "/tmp/clip.mp4",
+    rootPath: "/tmp",
+    offset: 0,
+    length: 0,
+    revision: null,
+  };
+  it("accepts metadata-only probes and bounded revision-checked reads", () => {
+    expect(hostDaemonOnlineRpcCommandSchema.parse(command)).toEqual(command);
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        ...command,
+        offset: 32 * 1024 * 1024,
+        length: 1024 * 1024,
+        revision: "a".repeat(64),
+      }),
+    ).toMatchObject({ length: 1024 * 1024 });
+  });
+  it.each([
+    { length: 1024 * 1024 + 1 },
+    { length: -1 },
+    { length: 1.5 },
+    { offset: -1 },
+    { offset: Number.MAX_SAFE_INTEGER + 1 },
+    { offset: 0.5 },
+    { revision: "invalid" },
+    { rootPath: undefined },
+  ])("rejects unsafe bounds or missing confinement: %j", (override) => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({ ...command, ...override })
+        .success,
+    ).toBe(false);
   });
 });

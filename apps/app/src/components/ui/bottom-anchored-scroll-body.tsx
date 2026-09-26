@@ -69,6 +69,7 @@ const TIMELINE_VIRTUAL_SPACER_SELECTOR =
 const DIRECT_TIMELINE_ROW_SELECTOR = [
   `:scope > ${TIMELINE_ROW_ID_SELECTOR}`,
   `${TIMELINE_VIRTUAL_SPACER_SELECTOR} > ${TIMELINE_ROW_ID_SELECTOR}`,
+  `:scope > [data-timeline-items] > ${TIMELINE_ROW_ID_SELECTOR}`,
 ].join(", ");
 const SCROLL_INTENT_KEYS = new Set([
   "ArrowDown",

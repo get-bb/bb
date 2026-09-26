@@ -4,7 +4,6 @@ import { threadScope, turnScope } from "@bb/domain";
 import type { DeltaItemShape, ThreadDelta } from "../thread-delta.js";
 import {
   createDeltaAssembler,
-  diffCumulativeText,
   type DeltaAssembler,
 } from "./delta-assembler.js";
 import { createBridgeDeltaEventCollector } from "../testing/bridge-delta-assembly.js";
@@ -487,11 +486,19 @@ describe("delta assembler", () => {
         delta: "FIRST\n",
       }),
     ]);
+    expect(first[0]).not.toHaveProperty("reset");
     expect(
       assemble(assembler, {
         kind: "command.outputSnapshot",
         key: { providerItemId: "tc-1" },
         text: "FIRST\n",
+      }),
+    ).toEqual([]);
+    expect(
+      assemble(assembler, {
+        kind: "command.outputSnapshot",
+        key: { providerItemId: "tc-1" },
+        text: "",
       }),
     ).toEqual([]);
     const appended = assemble(assembler, {
@@ -897,37 +904,6 @@ describe("delta assembler", () => {
     expect(turnIdOf(a[0])).not.toBe(turnIdOf(b[0]));
     expect(assembler.getOpenTurnId("thr_a")).toBe(turnIdOf(a[0]));
     expect(assembler.getOpenTurnId("thr_b")).toBe(turnIdOf(b[0]));
-  });
-});
-
-describe("diffCumulativeText", () => {
-  it("returns the full text on the first snapshot", () => {
-    expect(diffCumulativeText({ nextText: "A\n" })).toEqual({
-      delta: "A\n",
-      nextText: "A\n",
-      reset: false,
-    });
-  });
-
-  it("returns only the appended suffix", () => {
-    expect(
-      diffCumulativeText({ previousText: "A\n", nextText: "A\nB\n" }),
-    ).toEqual({ delta: "B\n", nextText: "A\nB\n", reset: false });
-  });
-
-  it("returns null for identical or empty snapshots", () => {
-    expect(diffCumulativeText({ previousText: "A\n", nextText: "A\n" })).toBe(
-      null,
-    );
-    expect(diffCumulativeText({ previousText: "A\n", nextText: "" })).toBe(
-      null,
-    );
-  });
-
-  it("flags a reset when the snapshot restarted", () => {
-    expect(
-      diffCumulativeText({ previousText: "A\nB\n", nextText: "C\n" }),
-    ).toEqual({ delta: "C\n", nextText: "C\n", reset: true });
   });
 });
 

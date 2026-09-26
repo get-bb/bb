@@ -155,6 +155,7 @@ Listing:
   bb thread list                           List threads
     --project <id>                         Filter by project
     --environment <id>                     Filter by environment
+    --machine <id-or-name>                 Filter by the machine the environment is on (alias --host)
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
     --section <id>                         Filter by section
@@ -428,6 +429,22 @@ Lifecycle:
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread
+
+  bb thread restore-environment [id]       Restore a destroyed workspace
+    --self                                 Restore current thread
+
+  Archiving a thread retires its environment, and a managed workspace is removed
+  from disk once the provider's grace window passes. Sending to a thread whose
+  workspace is gone fails; `restore-environment` asks the environment provider
+  to build it again and attaches it, leaving the conversation where it was.
+  Each provider decides what that means: a worktree is re-created on the branch
+  it held, a project checkout switches back to that branch, and a personal
+  workspace cannot be restored. It starts no turn — the thread settles back to
+  idle with a live workspace (check `canRestoreEnvironment` on `bb thread show
+  --json`). Unarchive the thread first; the command is refused while the thread
+  is archived, while its workspace is still there, and when the provider does
+  not restore, is gone, or its machine is gone. Uncommitted changes in the
+  removed workspace are not recoverable.
 
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation

@@ -13,7 +13,10 @@ import {
 import type { AppDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
-import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
+import {
+  advanceEnvironmentProvisioning,
+  cancelProviderEnvironmentCreation,
+} from "../environments/environment-engine.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
@@ -146,6 +149,12 @@ export function failThreadProvisioning(
     event: { type: "run.failed" },
     threadId: args.thread.id,
   });
+  void cancelProviderEnvironmentCreation(deps, args.thread.id).catch((error) =>
+    deps.logger.warn(
+      { threadId: args.thread.id, error },
+      "Failed environment preparation cleanup will retry",
+    ),
+  );
 }
 
 export async function ensureThreadProvisionEnvironmentReady(

@@ -19,7 +19,7 @@ function harness() {
       state: "pending",
       bootstrap,
     })),
-    waitForConnection: vi.fn(async () => ({ hostId: "host_1" })),
+    waitForConnection: vi.fn(async () => ({ hostId: "host_1", hostName: "Host 1" })),
   };
   const api = createMachineBootstrapApi(enrollments);
   const exec = vi.fn<MachineExecutor["exec"]>(async () => ({

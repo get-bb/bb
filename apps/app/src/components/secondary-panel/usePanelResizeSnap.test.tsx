@@ -16,6 +16,7 @@ import {
   type ImperativePanelHandle,
 } from "react-resizable-panels";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { splitWidthLimits } from "@/lib/split-layout/sizing";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
 
 vi.mock("react-resizable-panels", async () => {
@@ -58,7 +59,8 @@ function rect(left: number, width: number): DOMRect {
   return new DOMRect(left, 0, width, 600);
 }
 
-function setup(secondarySize = 50) {
+function setup(secondarySize = 50, width = 800) {
+  const limits = splitWidthLimits(width);
   const group = createRef<ImperativePanelGroupHandle>();
   const onResize = vi.fn();
   const onDragging = vi.fn();
@@ -80,7 +82,7 @@ function setup(secondarySize = 50) {
       >
         <Panel
           id="leading"
-          minSize={30}
+          minSize={limits.min * 100}
           defaultSize={100 - secondarySize}
           data-testid="previous"
         />
@@ -95,8 +97,8 @@ function setup(secondarySize = 50) {
         <Panel
           ref={panel}
           id="trailing"
-          minSize={24}
-          maxSize={70}
+          minSize={(1 - limits.max) * 100}
+          maxSize={limits.max * 100}
           defaultSize={secondarySize}
           data-testid="next"
         />
@@ -113,15 +115,15 @@ function setup(secondarySize = 50) {
   });
   const next = screen.getByTestId("next");
   const grid = screen.getByTestId("grid");
-  grid.getBoundingClientRect = () => rect(100, 800);
+  grid.getBoundingClientRect = () => rect(100, width);
   previous.getBoundingClientRect = () =>
-    rect(100, (group.current?.getLayout()[0] ?? 0) * 8);
+    rect(100, ((group.current?.getLayout()[0] ?? 0) * width) / 100);
   divider.getBoundingClientRect = () =>
     rect(previous.getBoundingClientRect().right, 0);
   next.getBoundingClientRect = () =>
     rect(
       divider.getBoundingClientRect().right,
-      (group.current?.getLayout()[1] ?? 0) * 8,
+      ((group.current?.getLayout()[1] ?? 0) * width) / 100,
     );
   const down = () =>
     fireEvent.pointerDown(divider, {
@@ -184,12 +186,14 @@ describe("usePanelResizeSnap", () => {
   });
 
   it.each([
-    { secondary: 70, outside: 100, inside: 420, leading: 40 },
-    { secondary: 24, outside: 1000, inside: 628, leading: 66 },
+    { width: 800, secondary: 70, outside: 100, inside: 420, leading: 40 },
+    { width: 800, secondary: 30, outside: 1000, inside: 628, leading: 66 },
+    { width: 2400, secondary: 90, outside: 100, inside: 388, leading: 12 },
+    { width: 400, secondary: 50, outside: 100, inside: 200, leading: 50 },
   ])(
     "keeps the $secondary% limit and follows the pointer back inside",
-    ({ secondary, outside, inside, leading }) => {
-      const h = setup(secondary);
+    ({ width, secondary, outside, inside, leading }) => {
+      const h = setup(secondary, width);
       h.down();
       h.move(outside);
       advanceFrame();

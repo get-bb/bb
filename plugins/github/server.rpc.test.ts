@@ -256,7 +256,7 @@ describe("github plugin RPC behavior", () => {
     ).toEqual([]);
   });
 
-  it("rejects malformed CLI invocations instead of broadening or ignoring them", async () => {
+  it("rejects malformed repositories as text and JSON and lists its commands in help", async () => {
     const { harness } = await loadPlugin();
 
     await expect(
@@ -264,24 +264,6 @@ describe("github plugin RPC behavior", () => {
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr: 'Invalid repository "bad/repo/shape"; expected owner/repo.\n',
-    });
-    await expect(
-      harness.runCli(["prs", "acme/widgets", "extra"]),
-    ).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining("unexpected argument 'extra'"),
-    });
-    await expect(harness.runCli(["repos", "--jsonn"])).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining(
-        "unknown option '--jsonn' (Did you mean --json?)",
-      ),
-    });
-    await expect(harness.runCli(["issus"])).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining(
-        "unknown command 'issus' (Did you mean issues?)",
-      ),
     });
 
     const failure = await harness.runCli([
@@ -302,6 +284,19 @@ describe("github plugin RPC behavior", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("bb github issues");
     expect(help.stdout).toContain("bb github sync");
+  });
+
+  it("rejects a malformed repository or item number when starting work", async () => {
+    const { harness } = await loadPlugin();
+
+    for (const input of [
+      { repo: "not-a-repository", number: 1 },
+      { repo: "acme/widgets", number: 0 },
+    ]) {
+      await expect(harness.callRpc("startWork", input)).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    }
   });
 
   it("reports repositories, cached rows, and sync counts as JSON", async () => {

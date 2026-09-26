@@ -194,8 +194,16 @@ const piFileEditArgsSchema = z
     oldText: z.string().optional(),
     newText: z.string().optional(),
     content: z.string().optional(),
+    edits: z.unknown().optional(),
   })
   .passthrough();
+
+const piFileEditBatchSchema = z.array(
+  z.object({
+    oldText: z.string(),
+    newText: z.string(),
+  }),
+);
 
 type PiAssistantMessage = z.infer<typeof piAssistantMessageSchema>;
 type PiAssistantErrorMessage = PiAssistantMessage & {
@@ -244,12 +252,28 @@ function classifyPiToolUse(
     if (!parsed.data.path) {
       return { type: "tool", tool: toolName, args: parsed.data };
     }
+    const path = parsed.data.path;
+    const parsedEdits = piFileEditBatchSchema.safeParse(parsed.data.edits);
+    if (
+      parsedEdits.success && parsedEdits.data.length > 0
+    ) {
+      return {
+        type: "fileChange",
+        changes: parsedEdits.data.map((edit) => ({
+          path,
+          kind: "update",
+          oldText: edit.oldText,
+          newText: edit.newText,
+        })),
+      };
+    }
+
     const newText = parsed.data.newText ?? parsed.data.content;
     return {
       type: "fileChange",
       changes: [
         {
-          path: parsed.data.path,
+          path,
           kind:
             toolName === "edit" || parsed.data.oldText !== undefined
               ? "update"

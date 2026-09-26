@@ -20,6 +20,7 @@ const appSettingsKeys = appSettingsKeySchema.options;
 
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
 const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
+const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 
 function parseStoredValue(text: string): unknown {
@@ -141,4 +142,17 @@ export function setAiServiceSelection(
   const selections = { ...getAiServiceSelections(db), [task]: selection };
   writeValue(db, AI_SERVICE_SELECTIONS_KEY, selections, Date.now());
   return selections;
+}
+
+export function getPluginSafeMode(db: DbConnection): boolean {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, PLUGIN_SAFE_MODE_KEY))
+    .get();
+  return row !== undefined && parseStoredValue(row.value) === true;
+}
+
+export function setPluginSafeMode(db: DbConnection, enabled: boolean): void {
+  writeValue(db, PLUGIN_SAFE_MODE_KEY, enabled, Date.now());
 }

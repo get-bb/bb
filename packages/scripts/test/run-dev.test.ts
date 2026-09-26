@@ -8,7 +8,6 @@ import {
   toDevProcessEnv,
 } from "@bb/config/runtime";
 import {
-  createDevTurboCommand,
   createStartWorktreeCommand,
   resolveDevLaunchMode,
   toDevLaunchProcessEnv,
@@ -233,26 +232,6 @@ describe("run-dev", () => {
     expect(env.BB_ACCOUNT_POOL_PARENT_TOKEN).toBe("parent-hub-token");
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("parent-hub-token");
     expect(env.BB_SERVER_URL).toBe(config.serverUrl);
-  });
-
-  it("runs the same persistent dev tasks as pnpm dev", () => {
-    expect(createDevTurboCommand()).toEqual({
-      args: [
-        "exec",
-        "turbo",
-        "run",
-        "dev",
-        "--filter=@bb/app",
-        "--filter=@bb/server",
-        "--filter=@bb/host-daemon",
-        "--ui",
-        "tui",
-        "--concurrency",
-        "20",
-        "--no-update-notifier",
-      ],
-      command: "pnpm",
-    });
   });
 
   it("runs the production-style source launcher for worktree start", () => {

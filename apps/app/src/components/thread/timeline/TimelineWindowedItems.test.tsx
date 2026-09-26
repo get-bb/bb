@@ -133,7 +133,7 @@ afterEach(() => {
 });
 
 describe("TimelineWindowedItems", () => {
-  it("seeds exact heights while the lazy windowing implementation loads", () => {
+  it("captures exact heights before the scrollport becomes usable", () => {
     const measurements = new Map<string, number>();
 
     render(
@@ -156,6 +156,64 @@ describe("TimelineWindowedItems", () => {
 
     expect(measurements.get("row-0")).toBe(32);
     expect(measurements.get("row-99")).toBe(32);
+  });
+
+  it("preserves visible row identity when crossing the windowing threshold in either direction", async () => {
+    Object.defineProperty(scrollElement, "clientHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(scrollElement, "offsetHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    const measurements = new Map<string, number>();
+    const getScrollElement = () => scrollElement;
+    const list = (count: number) => (
+      <TimelineWindowedItemsLoader
+        estimateItemHeight={() => 100}
+        gap={0}
+        getScrollElement={getScrollElement}
+        itemKeys={ITEM_KEYS.slice(0, count)}
+        measurements={measurements}
+        renderItem={(index, state) => (
+          <div
+            key={ITEM_KEYS[index]}
+            ref={state.itemRef}
+            data-index={state.itemIndex}
+            data-timeline-windowed-realized={String(state.isRealized)}
+            style={state.itemStyle}
+          >
+            <input data-testid={`input-${index}`} defaultValue="draft" />
+          </div>
+        )}
+      />
+    );
+    const view = render(list(19), { container: scrollElement });
+    const inputs = screen.getAllByTestId(/^input-/);
+    fireEvent.change(inputs[0]!, { target: { value: "unsaved edit" } });
+
+    view.rerender(list(20));
+    await waitFor(() =>
+      expect(screen.getAllByTestId(/^input-/)).toHaveLength(20),
+    );
+    inputs.forEach((input, index) => {
+      expect(screen.getByTestId(`input-${index}`)).toBe(input);
+    });
+    expect(screen.getByDisplayValue("unsaved edit")).toBe(inputs[0]);
+    expect(
+      scrollElement.querySelector<HTMLElement>("[data-timeline-virtual-spacer]")
+        ?.style.height,
+    ).toBe("640px");
+
+    view.rerender(list(19));
+    inputs.forEach((input, index) => {
+      expect(screen.getByTestId(`input-${index}`)).toBe(input);
+    });
+    expect(screen.getByDisplayValue("unsaved edit")).toBe(inputs[0]);
+    expect(
+      scrollElement.querySelector("[data-timeline-virtual-spacer]"),
+    ).toBeNull();
   });
 
   it("mounts only the visible TanStack range and removes offscreen wrappers", async () => {
@@ -203,7 +261,7 @@ describe("TimelineWindowedItems", () => {
     expect(screen.getByTestId("content-80")).toBeTruthy();
   });
 
-  it("defers rich transient rows during a fast traversal until scroll idle", async () => {
+  it("keeps visible content mounted during a programmatic scroll jump", async () => {
     vi.useFakeTimers();
     renderWindowedItems();
     await act(async () => {});
@@ -216,12 +274,14 @@ describe("TimelineWindowedItems", () => {
       scrollElement.querySelectorAll(
         '[data-timeline-windowed-realized="false"]',
       ).length,
-    ).toBeGreaterThan(0);
+    ).toBe(0);
+    const content = screen.getByTestId("content-50");
+    expect(content).toBeTruthy();
 
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
-    expect(screen.getByTestId("content-50")).toBeTruthy();
+    expect(screen.getByTestId("content-50")).toBe(content);
   });
 
   it("seeds its size model from measurements retained by the thread", async () => {

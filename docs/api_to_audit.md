@@ -33,6 +33,12 @@ model or default binding policy.
 
 Before stabilization, audit schema export fidelity (especially refinements and transforms), descriptor size and reference limits, lifecycle races, and cross-plugin copied-schema compatibility. Verify `bb plugin rpc list|inspect` is sufficient to implement a consumer without a shared contract package. Method names carry optional versions; there is no negotiation.
 
+## Plugin safe mode
+
+`bb.sdk.plugins.experimental_getSafeMode()` returns `{ enabled }`, and `bb.sdk.plugins.experimental_setSafeMode({ enabled })` turns safe mode on or off and returns `{ enabled, problems }`, where `problems` names each plugin that did not start when safe mode ended. The server persists the flag. Plugins included with bb keep running: rows with `builtin` provenance, plus rows from an auto-installed bundled source that kept catalog provenance. Every other installed plugin, including official store plugins, stays unloaded with status `disabled` and detail `safe mode is on`. Each plugin's own `enabled` flag is untouched, so turning safe mode off reloads exactly the plugins that were enabled. While safe mode is on, enabling a stopped plugin keeps it unloaded, reloading it reports a failure, and installing or updating it is refused so install handlers and update validation never run against an unloaded plugin. The same toggle backs `bb plugin safe-mode [on|off]` and the command palette.
+
+Before stabilization, audit whether official store plugins should count as included, whether a plugin calling `experimental_setSafeMode` should be allowed to stop itself and others, whether the toggle should run asynchronously for installs with many slow plugins, and whether startup needs an out-of-band override (env var or flag) for a plugin that breaks the server before the toggle is reachable.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's
@@ -553,15 +559,31 @@ listing never blocks on the answer. Core invokes it again for the selected
 provider and machine during thread creation. Its context contains project,
 host, projectCheckout, and gitRemote; its named types intentionally have no
 experimental prefix.
+The optional `restore(context)` method, unprefixed like `availability` because
+the whole registration is experimental, is the only way core
+rebuilds a destroyed environment, and runs only when a user restores an
+unarchived, settled thread (`POST /threads/:id/restore-environment`,
+`bb thread restore-environment`). Its context carries the creation inputs and
+`previous: { environment, resource }` for the removed environment; the provider
+decides what restoring means. Git worktree re-creates the worktree on the
+recorded branch, project checkout switches back to the recorded branch, and
+personal workspace does not restore. Without the method, the thread reports
+`canRestoreEnvironment: false` and sends fail with
+`thread_environment_unavailable`. `create` no longer receives `rebuild` or
+`previous` in its type; core still passes `rebuild: false` and
+`previous: null` at runtime for plugins built against the older contract.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
 removal serialization; retry caps and timing defaults; resource privacy and the
 16 KiB boundary; create-timeout aborts; and the read-only lifecycle projection.
 The pathKey gives create and remove stable resource identity. Confirm these
-extensions before stabilizing. Rebuilds
-receive previous.environment and previous.resource, null after completed
-removal. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
+extensions before stabilizing. Restores receive previous.environment and
+previous.resource, null after completed removal; decide whether restore should
+stay a separate method or become a create mode, whether a provider needs a way
+to decline before the button is offered (git worktree currently fails after
+the click when no branch was recorded), and when to stop passing the retired
+`rebuild`/`previous` create fields. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
 per-thread/null; nullable retirement and create timeout disable those policies.
 EnvironmentStatus remains provisioning/ready/error/destroyed;
 retiring and teardown are lifecycle phases, not restored statuses.
@@ -2291,9 +2313,10 @@ its customize editor in the region and keeps the provider mounted but hidden.
 
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
-bb's own rows ship as the bundled Navigation plugin, the default provider
-(`sidebar.navigationProvider` is `navigation/navigation`; legacy
-`__automatic__` and `__builtin__` resolve to it). A picked provider that is
+bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
+defaults to `__automatic__`, which uses the first other registered navigation
+plugin in slot snapshot order and falls back to the bundled plugin; legacy
+`__builtin__` resolves to the bundled plugin. A picked provider that is
 disabled or removed falls back to the bundled plugin once plugin frontends
 have loaded. The host keeps a placeholder for loading (skeleton rows at the
 provider's remembered height), missing (the bundled plugin is also off), and
@@ -2309,8 +2332,9 @@ mounted.
    `experimental_Original` never recurse or remount the thread list and
    footer. Remove `experimental_Original` once released plugins (Compact Nav
    0.1.x) no longer render it.
-3. **Arbitration.** Confirm an explicit provider choice with no Automatic
-   option is right when several navigation replacements exist.
+3. **Arbitration.** Confirm Automatic preferring installed navigation over
+   the bundled plugin, in plugin-id order, is right when several navigation
+   replacements exist.
 4. **Customize handoff.** Confirm providers accept the host editor replacing
    their region, and that focus returns to the control that opened it from a
    button, a dropdown item, and a context-menu item.
@@ -2400,12 +2424,14 @@ and navigation from `bb.onInstall`; later choices are the user's.
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
 one list at a time fills the scroll area. Automatic activation is the default.
-If several are registered, the first in the slot snapshot wins (plugin ids are
-sorted, then each plugin's registration order is preserved); removing the
-automatic winner reveals the next. The user can override that behavior under
-Settings → Appearance by pinning a specific provider; the choice is stored per
-client. bb ships its own list as the bundled `thread-list` plugin and has no
-separate built-in list, so there is no `Original` prop on this slot.
+bb ships its own list as the bundled `thread-list` plugin, and Automatic prefers
+any other registered list: the first in the slot snapshot wins (plugin ids are
+sorted, then each plugin's registration order is preserved), falling back to
+the bundled plugin; removing the automatic winner reveals the next. The user can
+override that behavior under Settings → Appearance by pinning a specific
+provider, including the bundled one; the choice is the synced
+`sidebar.threadListProvider` preference. bb has no separate built-in list, so
+there is no `Original` prop on this slot.
 
 Placeholders keep the sidebar usable: while plugin frontends boot the region
 shows skeleton rows; with no provider it shows "No thread list plugin is
@@ -2416,9 +2442,10 @@ place of a whole sidebar would strand the user) plus one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm automatic/pinned is the right long-term
-   selection model and alphabetical plugin-id order is an acceptable default
-   tie-breaker when multiple replacements are enabled.
+1. **Arbitration.** Confirm automatic/pinned, with installed lists preferred
+   over the bundled one, is the right long-term selection model and
+   alphabetical plugin-id order is an acceptable default tie-breaker when
+   multiple replacements are enabled.
 2. **Fallback discoverability.** Confirm one toast plus the placeholder's
    Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
@@ -2620,6 +2647,13 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
+**New-thread machine selection (Sep 2026).**
+`PluginSidebarThreadActions.openNewThread` accepts `hostId` to
+preselect a known machine with an available environment provider for a new
+environment. `environmentId` takes priority when both are present. The public
+name follows the requested `hostId` spelling without an experimental prefix;
+audit the selection semantics and router-state transport as the API evolves.
+
 **Kept experimental (2026-08-22).** zero consumers; items 4 (a paged/windowed read at 10k threads) and 5 (the draft indicator gap) are unresolvable without one and both change the contract.
 
 **Archive selection (Sep 2026).** `experimental_useSidebarThreads` accepts
@@ -2629,6 +2663,13 @@ otherwise it exposes archive loading/error state, pagination flags, and
 `fetchNextPage`. Archive reads share the host query and realtime cache. Audit
 archive-only loading/errors, combined views, pagination retries, and archived
 row actions before stabilizing these additions.
+
+**Machine list (Sep 2026).** `PluginSidebarThreadsState.experimental_hosts`
+contains the current machines in host query order, including those with no
+threads. Older hosts may omit the field; consumers can fall back to hosts
+present on thread rows. It shares the host query and realtime cache. Audit empty machine
+sections, machine removal, rename updates, and loading behavior before
+stabilizing this field.
 
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
@@ -2686,8 +2727,8 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    fan-out. Confirm that split holds once a replaced list ships section
    drag-and-drop, where the built-in list's optimistic cache transactions
    have no plugin equivalent. `openNewThread` gained `sectionId` and
-   `environmentId`, which today ride on router state; confirm router state
-   stays the right transport.
+   `environmentId`, and `hostId`, which today ride on router
+   state; confirm router state stays the right transport.
 7. **Action surface.** Destructive and dialog-bearing actions route through
    `useThreadActions()`, so `archive` closes panes and repairs the route, and
    `requestDelete` opens bb's confirmation rather than deleting silently.
@@ -2705,17 +2746,17 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
 10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
-   drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
-   on `isAvailable`, and read `layout` to paint where the thread already sits.
-   The host owns every rule — the drag engages only after the pointer leaves the
-   sidebar, an edge drop splits, a center drop replaces, an open thread focuses
-   its pane, and the pane cap turns a split into a replace — so a plugin cannot
-   reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
-   list with its own pointer-drag (reorder, swipe) still composes with the
-   host's engage threshold; `splitProps` staying an open object is the right
-   forward-compatible shape, or it should narrow to a named handler; and
-   exposing the full `panes` array does not leak more layout state than a row
-   needs.
+    drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
+    on `isAvailable`, and read `layout` to paint where the thread already sits.
+    The host owns every rule — the drag engages only after the pointer leaves the
+    sidebar, an edge drop splits, a center drop replaces, an open thread focuses
+    its pane, and the pane cap turns a split into a replace — so a plugin cannot
+    reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
+    list with its own pointer-drag (reorder, swipe) still composes with the
+    host's engage threshold; `splitProps` staying an open object is the right
+    forward-compatible shape, or it should narrow to a named handler; and
+    exposing the full `panes` array does not leak more layout state than a row
+    needs.
 
 ## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 
@@ -3183,6 +3224,18 @@ Follow-ups before the suspend callback cancel preparation after work stopping se
 After callback invocation, core completes pause and resumes for queued work. Reconnection
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
+
+## Host deletion notifications
+
+`PluginEvents.on("experimental_host.deleted", handler)` delivers `{host}` once after a
+machine is removed: from `DELETE /hosts/:id` for manually added machines, and after a
+machine provider finishes removal for provider machines. `host` is the public host DTO
+at removal time (status `disconnected`); `bb.sdk.hosts.get` returns 404 for it afterwards.
+Delivery is fire-and-forget like every other event: a plugin that is not loaded at
+removal time never sees it, so per-host state must also be reconciled against a 404
+from `bb.sdk.hosts.get`. Connect does both to prune shared ports of removed machines.
+Stabilization requires deciding whether hosts deserve their own event map instead of
+`PluginThreadEventPayloads`, covering removal paths added later, and a second consumer.
 
 ## `bb.experimental_machines.getResource`
 

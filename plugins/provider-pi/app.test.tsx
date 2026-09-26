@@ -38,7 +38,7 @@ describe("pi extension ui interaction", () => {
       { submit },
     );
     fireEvent.click(view.getByText("Allow once"));
-    fireEvent.click(view.getByText("Submit"));
+    fireEvent.click(view.getByText("Submit answer"));
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("Allow once"));
   });
 
@@ -48,11 +48,11 @@ describe("pi extension ui interaction", () => {
       method: "select",
       options: ["A", "B"],
     });
-    expect((view.getByText("Submit") as HTMLButtonElement).disabled).toBe(true);
+    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled)
+      .toBe(true);
     fireEvent.click(view.getByText("B"));
-    expect((view.getByText("Submit") as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled)
+      .toBe(false);
   });
 
   it("submits a boolean for a confirm dialog", async () => {
@@ -104,7 +104,7 @@ describe("pi extension ui interaction", () => {
       { submit },
     );
     fireEvent.click(view.getByText("Allow once"));
-    fireEvent.click(view.getByText("Submit"));
+    fireEvent.click(view.getByText("Submit answer"));
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("Allow once"));
   });
 
@@ -120,7 +120,7 @@ describe("pi extension ui interaction", () => {
       },
     );
     fireEvent.click(view.getByText("A"));
-    fireEvent.click(view.getByText("Submit"));
+    fireEvent.click(view.getByText("Submit answer"));
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("A"));
   });
 

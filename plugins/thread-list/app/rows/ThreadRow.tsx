@@ -34,6 +34,8 @@ import {
 import {
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreadSplit,
+  experimental_useProviders,
+  experimental_ProviderIcon as ProviderIcon,
   ThreadTitle,
   useSidebarSplitLayout,
   useSidebarThreadDraft,
@@ -44,7 +46,10 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { useSidebarProjectName } from "../model/use-sidebar-data.js";
-import { threadRowActionsAtom } from "../preferences/atoms.js";
+import {
+  sidebarShowProviderIconsAtom,
+  threadRowActionsAtom,
+} from "../preferences/atoms.js";
 import { AppCommandShortcutPill } from "../ui/AppCommandShortcutPill.js";
 import { SidebarStickyTier } from "../ui/sidebar.js";
 import {
@@ -74,6 +79,7 @@ import type {
   ThreadRowNestDrop,
 } from "./sidebarThreadRowDroppable.js";
 import type { SidebarSortableDragBindings } from "./sortableMotion.js";
+import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
 import {
   ThreadActionsContextMenu,
@@ -324,6 +330,11 @@ function ThreadRowComponent({
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const actions = experimental_useSidebarThreadActions();
+  const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
+  const { providers } = experimental_useProviders();
+  const provider = showProviderIcons
+    ? providers.find((candidate) => candidate.id === thread.providerId)
+    : undefined;
   const shortcut = useSidebarThreadShortcut(thread.id);
   const pluginThreadRowStatus = useSidebarThreadRowStatus(thread.id);
   const { hasUnsubmittedDraft: hasComposerDraft } = useSidebarThreadDraft(
@@ -458,6 +469,7 @@ function ThreadRowComponent({
     !showActive &&
       "has-[[data-state=open]]:bg-sidebar-accent has-[[data-sidebar-rename-anchor]:focus-visible]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
+    "data-[sidebar-touch-armed=true]:!bg-transparent",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
@@ -500,6 +512,7 @@ function ThreadRowComponent({
       <span
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
+          "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
             !isEditing &&
             (reserveActionSpace
@@ -553,16 +566,44 @@ function ThreadRowComponent({
               {editor}
             </span>
           ) : (
-            <span
-              className={cn(
-                "bb-thread-title",
-                crossProjectLabel !== null && "min-w-0 truncate",
-              )}
-              title={labelTitle}
-              onDoubleClick={startTitleEditing}
-            >
-              <ThreadTitle threadId={thread.id} />
-            </span>
+            <>
+              {provider ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      data-sidebar-thread-provider={provider.id}
+                      role="img"
+                      aria-label={provider.displayName}
+                      className="pointer-events-auto relative z-[31] flex size-4 shrink-0 items-center justify-center mr-1.5 text-muted-foreground"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        rowLinkRef.current?.click();
+                      }}
+                    >
+                      <ProviderIcon
+                        providerKind="agent"
+                        provider={provider}
+                        className="size-4"
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {provider.displayName}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+              <span
+                className={cn(
+                  "bb-thread-title",
+                  crossProjectLabel !== null && "min-w-0 truncate",
+                )}
+                title={labelTitle}
+                onDoubleClick={startTitleEditing}
+              >
+                <ThreadTitle threadId={thread.id} />
+              </span>
+            </>
           )}
         </span>
         {crossProjectLabel !== null ? (
@@ -597,10 +638,17 @@ function ThreadRowComponent({
           />
         ) : null}
       </span>
+      {rowDragBindings && !rowDragBindings.disabled ? (
+        <SidebarThreadDragChip
+          title={labelTitle}
+          visualOnly
+          className="hidden group-data-[sidebar-touch-armed=true]/thread-row:flex"
+        />
+      ) : null}
       <span
         data-sidebar-thread-trailing=""
         className={cn(
-          "flex shrink-0 items-center gap-0.5",
+          "flex shrink-0 items-center gap-0.5 group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           isEditing && "hidden",
         )}
       >
@@ -739,6 +787,7 @@ function ThreadRowComponent({
       onRename={rename.startEditingFromMenu}
       onCloseAutoFocus={rename.onCloseAutoFocus}
       disabled={isEditing}
+      dragging={rowDragBindings?.isDragging ?? false}
     >
       {row}
     </ThreadActionsContextMenu>

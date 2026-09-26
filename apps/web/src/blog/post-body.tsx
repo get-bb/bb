@@ -10,6 +10,8 @@ function Block({ block }: { block: PostBlock }): ReactNode {
   switch (block.kind) {
     case "heading":
       return <h2>{block.text}</h2>;
+    case "subheading":
+      return <h3>{block.text}</h3>;
     case "paragraph":
       return (
         <p>
@@ -44,6 +46,17 @@ function Block({ block }: { block: PostBlock }): ReactNode {
           caption={block.caption}
           href={block.href}
         />
+      );
+    case "video":
+      return (
+        <figure className="post-figure">
+          <video controls playsInline preload="metadata" poster={block.poster}>
+            <source src={block.src} type="video/mp4" />
+          </video>
+          <figcaption>
+            <ChangelogInline text={block.caption} />
+          </figcaption>
+        </figure>
       );
     case "tweet":
       return <TweetEmbed href={block.href} id={block.id} />;
