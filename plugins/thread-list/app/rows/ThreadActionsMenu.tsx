@@ -375,11 +375,11 @@ function threadRowActionModel(
   switch (id) {
     case "split":
       return onOpenInSplit
-        ? { ...THREAD_ROW_ACTIONS.split), run: onOpenInSplit }
+        ? { ...THREAD_ROW_ACTIONS.split, run: onOpenInSplit }
         : null;
     case "copyLink":
       return {
-        ...THREAD_ROW_ACTIONS.copyLink),
+        ...THREAD_ROW_ACTIONS.copyLink,
         run: () => {
           void copyToClipboardWithToast(getThreadUrl(thread), {
             successMessage: "Thread link copied",
@@ -406,7 +406,7 @@ function threadRowActionModel(
     case "move":
       return null;
     case "rename":
-      return { ...THREAD_ROW_ACTIONS.rename), run: onRename };
+      return { ...THREAD_ROW_ACTIONS.rename, run: onRename };
     case "archive":
       return {
         icon: isArchived ? "ArchiveRestore" : "Archive",
