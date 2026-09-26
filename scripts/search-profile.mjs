@@ -279,8 +279,16 @@ async function measure(label, revision, round, profile = false) {
         profile,
       );
       for (let i = 0; i < 300; i++) {
-        const host = await request(`${url}/api/v1/hosts/${enrollment.hostId}`);
-        if (host.status === "connected") break;
+        const hosts = await request(`${url}/api/v1/hosts`);
+        if (
+          hosts.some(
+            (host) =>
+              host.id === enrollment.hostId && host.status === "connected",
+          )
+        )
+          break;
+        if (daemon.child.exitCode !== null)
+          throw new Error("Fixture daemon exited before connecting");
         if (i === 299) throw new Error("Fixture daemon did not connect");
         await sleep(100);
       }
