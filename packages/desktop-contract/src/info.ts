@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopWindowFindRequest } from "./find.js";
+import type {
+  BbDesktopServerTarget,
+  BbDesktopServerTargetsChangeHandler,
+} from "./servers.js";
 import { bbDesktopVersionFeedPlatformSchema } from "./version-feed.js";
 import type { AppCommandId } from "@bb/domain";
 
@@ -56,6 +60,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   getWindowState?(): Promise<BbDesktopWindowState>;
+  getServerTargets?(): Promise<BbDesktopServerTarget[]>;
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
   onWindowStateChange?(
@@ -68,10 +73,14 @@ export interface BbDesktopApi extends BbDesktopInfo {
   onCloseWindowRequest?(
     listener: BbDesktopCloseWindowRequestHandler,
   ): BbDesktopInfoUnsubscribe;
+  onServerTargetsChange?(
+    listener: BbDesktopServerTargetsChangeHandler,
+  ): BbDesktopInfoUnsubscribe;
   openWindowFind?(request: BbDesktopWindowFindRequest): void;
   openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
+  selectServerTarget?(id: string): void;
   setSplitNavigationEnabled?(
     enabled: boolean,
     directionalCommands?: readonly AppCommandId[],

@@ -20,6 +20,7 @@ import {
   type BbDesktopBrowserControlState,
   type BbDesktopBrowserRevealRequest,
   bbDesktopInfoSchema,
+  bbDesktopServerTargetsSchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
@@ -39,6 +40,7 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopOpenNewTabHandler,
+  type BbDesktopServerTargetsChangeHandler,
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
@@ -90,10 +92,13 @@ import {
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_SERVER_TARGETS_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
+  BB_DESKTOP_SELECT_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_SERVER_TARGETS_CHANGED_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
@@ -220,6 +225,7 @@ function notifyZoomChangeIfChanged(): void {
     listener(zoomFactor);
   }
 }
+const serverTargetsListeners = new Set<BbDesktopServerTargetsChangeHandler>();
 
 function addListener<T>(listeners: Set<T>, listener: T): () => void {
   listeners.add(listener);
@@ -411,6 +417,11 @@ const bbDesktopApi: BbDesktopApi = {
   getWindowState() {
     return invokeDesktopWindowState();
   },
+  async getServerTargets() {
+    return bbDesktopServerTargetsSchema.parse(
+      await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_TARGETS_CHANNEL),
+    );
+  },
   installUpdate() {
     return invokeInstallUpdate();
   },
@@ -437,6 +448,9 @@ const bbDesktopApi: BbDesktopApi = {
   onCloseWindowRequest(listener): BbDesktopInfoUnsubscribe {
     return addListener(closeWindowRequestListeners, listener);
   },
+  onServerTargetsChange(listener): BbDesktopInfoUnsubscribe {
+    return addListener(serverTargetsListeners, listener);
+  },
   openWindowFind(request): void {
     ipcRenderer.send(BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL, {
       topOffset: Math.round(request.topOffset * webFrame.getZoomFactor()),
@@ -450,6 +464,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
+  },
+  selectServerTarget(id: string): void {
+    ipcRenderer.send(BB_DESKTOP_SELECT_SERVER_TARGET_CHANNEL, id);
   },
   setSplitNavigationEnabled(
     enabled: boolean,
@@ -487,6 +504,12 @@ forwardParsed(
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   appCommandIdSchema,
   appCommandListeners,
+);
+
+forwardParsed(
+  BB_DESKTOP_SERVER_TARGETS_CHANGED_CHANNEL,
+  bbDesktopServerTargetsSchema,
+  serverTargetsListeners,
 );
 
 ipcRenderer.on(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, () => {
