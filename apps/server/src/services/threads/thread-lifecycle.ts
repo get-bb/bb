@@ -1862,6 +1862,10 @@ function interruptActiveThreads(
         childThread: thread,
         parentThreadId: thread.parentThreadId,
         turnStatus: "interrupted",
+        interruption: {
+          reason: args.reason,
+          ...(args.cause ? { cause: args.cause } : {}),
+        },
       });
     }
   }
@@ -2012,8 +2016,7 @@ export function finalizeStoppedThreadInTransaction(
       finalizedThread.storageDeletedAt === null
     )
       return;
-    if (providerEnvironmentHasPendingWork(deps.db, finalizedThread.id))
-      return;
+    if (providerEnvironmentHasPendingWork(deps.db, finalizedThread.id)) return;
     deleteThread(deps.db, deps.hub, finalizedThread.id);
     if (finalizedThread.environmentId !== null)
       refreshProviderRetirement(deps, finalizedThread.environmentId);

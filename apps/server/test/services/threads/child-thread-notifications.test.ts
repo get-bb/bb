@@ -80,7 +80,7 @@ describe("child thread notifications", () => {
     expect(message).not.toContain("Deploy script failed on preflight.");
   });
 
-  it("omits output and preserves manual-stop safety guidance for a single interrupted outcome", () => {
+  it("omits terminal output for a single interrupted outcome", () => {
     const message = renderBatchMessage({
       items: [
         {

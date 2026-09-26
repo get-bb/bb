@@ -131,6 +131,7 @@ describe("Family B emit-site discriminator stamping", () => {
           kind: "thread",
           threadId: child.id,
           threadName: "Worker child",
+          outcomes: [{ threadId: child.id, status: turnStatus }],
         });
       });
     });
@@ -169,6 +170,10 @@ describe("Family B emit-site discriminator stamping", () => {
       expect(stamped.systemMessageSubject).toEqual({
         kind: "thread-batch",
         count: 2,
+        outcomes: [
+          { threadId: childA.id, status: "completed" },
+          { threadId: childB.id, status: "interrupted" },
+        ],
       });
     });
   });

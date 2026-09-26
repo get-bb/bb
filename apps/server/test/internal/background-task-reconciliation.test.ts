@@ -613,8 +613,21 @@ describe("active thread disconnect reconciliation triggers", () => {
           kind: "thread",
           threadId: child.id,
           threadName: "Worker child",
+          outcomes: [
+            {
+              threadId: child.id,
+              status: "interrupted",
+              interruption: {
+                reason: "host-daemon-restarted",
+                cause: "host-connection-lost",
+              },
+            },
+          ],
         },
       });
+      expect(JSON.stringify(parentNotices[0]!.content)).toContain(
+        "because its host connection was lost",
+      );
     });
   });
 
@@ -667,8 +680,21 @@ describe("active thread disconnect reconciliation triggers", () => {
           kind: "thread",
           threadId: child.id,
           threadName: "Worker child",
+          outcomes: [
+            {
+              threadId: child.id,
+              status: "interrupted",
+              interruption: {
+                reason: "host-daemon-restarted",
+                cause: "host-connection-lost",
+              },
+            },
+          ],
         },
       });
+      expect(JSON.stringify(parentNotices[0]?.input)).toContain(
+        "because its host connection was lost",
+      );
     });
   });
 
