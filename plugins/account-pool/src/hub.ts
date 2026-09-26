@@ -114,7 +114,10 @@ interface RefreshBackoff {
   error: TransientOAuthRefreshError;
 }
 
-type SecretUse = { kind: "normal" } | { kind: "rejected"; accessToken: string };
+type SecretUse =
+  | { kind: "normal" }
+  | { kind: "usage" }
+  | { kind: "rejected"; accessToken: string };
 
 type SecretFlight =
   | { kind: "refresh"; use: SecretUse; result: Promise<AccountSecret> }
@@ -329,11 +332,17 @@ export class AccountPoolHub {
       .refreshUsage({
         account,
         freshSecret: () =>
-          this.freshSecret(account, adapter, { kind: "normal" }),
+          this.freshSecret(account, adapter, { kind: "usage" }),
         accounts: this.options.accounts,
         quotas: this.options.quotas,
         fetch: this.options.fetch,
         now: this.options.now,
+      })
+      .then((accepted) => {
+        const quota = this.options.quotas.get(account.id);
+        if (!accepted || quota.error === null) return;
+        this.options.quotas.put({ ...quota, error: null });
+        this.options.onAccountsChanged();
       })
       .catch(() => undefined)
       .finally(() => this.usageRefreshes.delete(account.id));
@@ -952,7 +961,7 @@ export class AccountPoolHub {
         )
           continue;
         if (
-          use.kind === "normal" ||
+          use.kind !== "rejected" ||
           secret.kind !== "oauth" ||
           secret.accessToken !== use.accessToken ||
           (existing.use.kind === "rejected" &&
@@ -989,7 +998,7 @@ export class AccountPoolHub {
               };
             }
             const error = this.options.quotas.get(account.id).error;
-            if (error !== null) throw new Error(error);
+            if (error !== null && use.kind !== "usage") throw new Error(error);
             if (
               backoff !== undefined &&
               this.options.now() < backoff.retryAt &&

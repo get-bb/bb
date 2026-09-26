@@ -341,7 +341,7 @@ export function createCodexAdapter(options: {
         secret.kind !== "oauth" ||
         context.account.codexAccountId === undefined
       )
-        return;
+        return false;
       const response = await context.fetch(options.usageUrl, {
         headers: {
           authorization: `Bearer ${secret.accessToken}`,
@@ -353,12 +353,12 @@ export function createCodexAdapter(options: {
       });
       if (!response.ok) {
         await response.body?.cancel();
-        return;
+        return false;
       }
       const parsed = usageResponseSchema.safeParse(
         await response.json().catch(() => null),
       );
-      if (!parsed.success) return;
+      if (!parsed.success) return true;
       if (parsed.data.plan_type != null) {
         await context.accounts.setSubscriptionType(
           context.account.id,
@@ -372,6 +372,7 @@ export function createCodexAdapter(options: {
         context.now(),
       );
       if (quota !== null) context.quotas.put(quota);
+      return true;
     },
     errorResponse(status, message, headers) {
       return Response.json(

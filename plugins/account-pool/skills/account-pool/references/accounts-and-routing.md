@@ -59,7 +59,9 @@ an existing Claude Code login. The CLI Codex import path reads
 enable and every five minutes while an account is idle. When a request finds no
 eligible account, the pool first refreshes the OAuth accounts it considers
 exhausted, at most once every 30 seconds per account, so a plan upgrade or an
-early reset takes effect on the next turn. Use
+early reset takes effect on the next turn. An OAuth account in error returns
+to routing once a quota refresh succeeds, so an account rejected during a
+provider outage recovers within five minutes of the outage ending. Use
 `bb pool account refresh <id>` to request an immediate refresh for one account.
 Account tables add columns for observed model-family buckets; JSON status
 exposes their utilization, reset, status, observation time, and source under

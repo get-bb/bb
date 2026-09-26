@@ -5494,6 +5494,59 @@ describe("Account Pool plugin", () => {
     expect(authAccounts[0]?.error).toContain("bad account");
   });
 
+  it("returns an account rejected during an outage once usage accepts its credentials", async () => {
+    let outage = true;
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      if (request.url === "/oauth/token") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({ access_token: "oauth-new", expires_in: 3600 }),
+        );
+        return;
+      }
+      response.writeHead(outage ? 401 : 200, {
+        "content-type": "application/json",
+      });
+      response.end(
+        outage ? '{"error":{"message":"Incorrect API key provided"}}' : "{}",
+      );
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      source: "import",
+      options: {
+        importCredentials: async () => importedCredentials(),
+        refreshUrl: `${upstream.url}/oauth/token`,
+        usageUrl: `${upstream.url}/usage`,
+      },
+    });
+    const send = async () => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body: "{}" },
+      );
+      await response.text();
+      return response.status;
+    };
+    const refreshUsage = async () =>
+      z.object({ account: accountSummarySchema.nullable() }).parse(
+        await fixture.host.harness.behavior.callRpc("account.refreshUsage", {
+          accountId: fixture.account.id,
+        }),
+      ).account?.status;
+
+    expect(await send()).toBe(401);
+    expect(await refreshUsage()).toBe("error");
+    expect(await send()).toBe(429);
+
+    outage = false;
+    expect(await refreshUsage()).toBe("ready");
+    expect(await send()).toBe(200);
+  });
+
   it("suppresses env and health only for the provider whose routing is off", async () => {
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",

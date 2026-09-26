@@ -80,7 +80,7 @@ export interface ProviderAdapter {
   refreshSecret(
     context: AdapterSecretContext,
   ): Promise<{ secret: AccountSecret; refreshed: boolean }>;
-  refreshUsage(context: AdapterUsageContext): Promise<void>;
+  refreshUsage(context: AdapterUsageContext): Promise<boolean>;
   errorResponse(
     status: number,
     message: string,

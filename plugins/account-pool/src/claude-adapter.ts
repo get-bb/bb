@@ -131,9 +131,9 @@ export function createClaudeAdapter(options: {
       return { secret: refreshed, refreshed: true };
     },
     async refreshUsage(context) {
-      if (context.account.kind !== "oauth") return;
+      if (context.account.kind !== "oauth") return false;
       const secret = await context.freshSecret();
-      if (secret.kind !== "oauth") return;
+      if (secret.kind !== "oauth") return false;
       const response = await context.fetch(options.usageUrl, {
         headers: {
           authorization: `Bearer ${secret.accessToken}`,
@@ -156,7 +156,7 @@ export function createClaudeAdapter(options: {
       } else {
         await response.body?.cancel();
       }
-      if (context.account.accountUuid !== null) return;
+      if (context.account.accountUuid !== null) return response.ok;
       const profile = await context.fetch(options.profileUrl, {
         headers: {
           authorization: `Bearer ${secret.accessToken}`,
@@ -167,7 +167,7 @@ export function createClaudeAdapter(options: {
       });
       if (!profile.ok) {
         await profile.body?.cancel();
-        return;
+        return response.ok;
       }
       const parsed = profileResponseSchema.safeParse(
         await profile.json().catch(() => null),
@@ -178,6 +178,7 @@ export function createClaudeAdapter(options: {
       if (accountUuid !== null) {
         await context.accounts.setAccountUuid(context.account.id, accountUuid);
       }
+      return response.ok;
     },
     errorResponse(status, message, headers) {
       const type =
