@@ -82,7 +82,11 @@ function renderWithProviders(ui: ReactNode, store = createStore()) {
   );
 }
 
-function FooterHarness() {
+function FooterHarness({
+  onCustomize = () => {},
+}: {
+  onCustomize?: () => void;
+}) {
   const disclosure = usePluginSidebarFooterDisclosure();
   return (
     <>
@@ -92,6 +96,7 @@ function FooterHarness() {
       />
       <SidebarMenu>
         <PluginSidebarFooterItems
+          onCustomize={onCustomize}
           activeDisclosureKey={disclosure.activeKey}
           onDisclosureCommand={disclosure.handleCommand}
         />
@@ -399,16 +404,26 @@ describe("PluginSidebarFooterItems", () => {
       collectPluginAppRegistrations(definition),
     );
     const store = createStore();
+    const onCustomize = vi.fn();
     renderWithProviders(
       <>
-        <FooterHarness />
+        <FooterHarness onCustomize={onCustomize} />
         <SidebarFooterSettings />
       </>,
       store,
     );
     expect(
-      screen.queryByRole("button", { name: "More footer actions" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "More footer actions" }),
+    ).toBeDefined();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More footer actions" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Customize footer" }),
+    );
+    expect(onCustomize).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Current path").textContent).toBe("/");
     fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
     expect(screen.getByText("Usage detail")).toBeDefined();
     fireEvent.contextMenu(
@@ -444,8 +459,8 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "Provider usage" }),
     ).toBeDefined();
     expect(
-      screen.queryByRole("button", { name: "More footer actions" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "More footer actions" }),
+    ).toBeDefined();
   });
 
   it("keeps hidden actions callable and preserves preferences across plugin reloads", async () => {
@@ -479,8 +494,8 @@ describe("PluginSidebarFooterItems", () => {
     expect(run).toHaveBeenCalledTimes(1);
     act(() => removePluginSlotRegistrations("example"));
     expect(
-      screen.queryByRole("button", { name: "More footer actions" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "More footer actions" }),
+    ).toBeDefined();
     act(() =>
       setPluginSlotRegistrations(
         "new-plugin",
@@ -534,6 +549,7 @@ describe("PluginSidebarFooterItems", () => {
     const view = renderWithProviders(
       <SidebarMenu>
         <PluginSidebarFooterItems
+          onCustomize={vi.fn()}
           activeDisclosureKey={null}
           onDisclosureCommand={vi.fn()}
           builtInActions={[

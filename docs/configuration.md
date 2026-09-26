@@ -929,9 +929,12 @@ same operations to its app client.
 
 ### Sidebar footer
 
-Settings → Appearance → Sidebar footer lets users reorder and hide built-in and
-registered plugin actions. Right-click an action and choose Hide to move it into
-More. More appears only when registered actions are hidden; they remain usable.
+The footer’s More menu is always available. Choose Customize footer to show,
+hide, and drag-reorder built-in and registered plugin actions inline. The same
+preferences are available in Settings → Appearance → Sidebar footer. Right-click
+an action and choose Hide to move it into More. Actions that do not fit the
+available width also move into More, without changing saved visibility; they
+return when space permits. Every overflow action remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain

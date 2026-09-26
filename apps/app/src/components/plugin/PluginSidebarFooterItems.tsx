@@ -11,17 +11,18 @@ import { Link, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar.js";
 import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   usePluginSlots,
   type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
-import {
-  getSettingsRoutePath,
-  getPluginConfigurationRoutePath,
-} from "@/lib/route-paths";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 
 import {
   ContextMenu,
@@ -190,6 +191,7 @@ export function PluginSidebarFooterItems({
   activeDisclosureKey,
   onDisclosureCommand,
   onNavigate,
+  onCustomize,
   builtInActions = [],
 }: {
   activeDisclosureKey: string | null;
@@ -199,17 +201,43 @@ export function PluginSidebarFooterItems({
     sequence?: number,
   ) => void;
   onNavigate?: () => void;
+  onCustomize: () => void;
   builtInActions?: readonly BuiltinFooterAction[];
 }) {
   const navigate = useNavigate();
   const preferences = useSidebarFooterPreferences();
   const previousHidden = useRef(preferences.hidden);
+  const menuRef = useRef<HTMLUListElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const [capacity, setCapacity] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const more = moreRef.current;
+    if (!menu || !more) return;
+    const measure = () => {
+      const width = menu.getBoundingClientRect().width;
+      const controlWidth = more.getBoundingClientRect().width;
+      if (width === 0 || controlWidth === 0) return;
+      const gap = Number.parseFloat(getComputedStyle(menu).columnGap) || 0;
+      setCapacity(
+        Math.max(0, Math.floor((width + gap) / (controlWidth + gap)) - 1),
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(menu);
+    observer.observe(more);
+    return () => observer.disconnect();
+  }, []);
   const items = preferences.items.filter(
     (item) =>
       item.kind === "plugin" ||
       builtInActions.some((action) => action.id === item.id),
   );
-  const hidden = items.filter((item) => preferences.hidden.includes(item.key));
+  const shown = items.filter((item) => !preferences.hidden.includes(item.key));
+  const visible = capacity === null ? shown : shown.slice(0, capacity);
+  const hidden = items.filter((item) => !visible.includes(item));
   useEffect(() => {
     for (const item of items) {
       if (
@@ -250,10 +278,6 @@ export function PluginSidebarFooterItems({
         }),
     );
   }
-  function customize() {
-    onNavigate?.();
-    void navigate(getSettingsRoutePath("appearance"));
-  }
   return (
     <>
       {items.map((item) =>
@@ -265,127 +289,130 @@ export function PluginSidebarFooterItems({
           />
         ) : null,
       )}
-      {items
-        .filter((item) => !preferences.hidden.includes(item.key))
-        .map((item) => {
-          const builtin =
-            item.kind === "builtin"
-              ? builtInActions.find((action) => action.id === item.id)
-              : undefined;
-          const active =
-            item.kind === "plugin" &&
-            footerItemKey(item.slot) === activeDisclosureKey;
-          const label = builtin?.ariaLabel ?? item.label;
-          return (
-            <ContextMenu key={item.key}>
-              <ContextMenuTrigger asChild>
-                <SidebarMenuItem
-                  className="min-w-0"
-                  data-footer-item={item.key}
-                >
-                  <SidebarMenuButton
-                    asChild={builtin?.href !== undefined}
-                    id={
-                      item.kind === "plugin"
-                        ? footerTriggerId(item.slot)
-                        : `sidebar-footer-${item.id}`
-                    }
-                    aria-label={label}
-                    aria-keyshortcuts={builtin?.ariaKeyShortcuts}
-                    tooltip={{ children: label, hidden: false, side: "top" }}
-                    className={cn(
-                      SIDEBAR_FOOTER_ACTION_CLASS,
-                      active &&
-                        "bg-sidebar-accent text-sidebar-accent-foreground [&>[data-icon-root]]:opacity-100",
-                    )}
-                    data-testid={
-                      item.kind === "plugin"
-                        ? item.slot.source === "sidebarFooterAction"
-                          ? `plugin-sidebar-footer-action-${item.slot.pluginId}-${item.slot.id}`
-                          : `plugin-sidebar-footer-item-${item.slot.pluginId}-${item.slot.id}`
-                        : undefined
-                    }
-                    {...(item.kind === "plugin" &&
-                    item.slot.kind === "disclosure"
-                      ? {
-                          "aria-expanded": active,
-                          "aria-controls": footerDisclosureId(item.slot),
-                        }
-                      : {})}
-                    onClick={
-                      builtin?.href === undefined
-                        ? () => activate(item)
-                        : undefined
-                    }
+      <SidebarMenuItem className="min-w-0 flex-1">
+        <SidebarMenu ref={menuRef} className="flex-row items-center gap-1">
+          {visible.map((item) => {
+            const builtin =
+              item.kind === "builtin"
+                ? builtInActions.find((action) => action.id === item.id)
+                : undefined;
+            const active =
+              item.kind === "plugin" &&
+              footerItemKey(item.slot) === activeDisclosureKey;
+            const label = builtin?.ariaLabel ?? item.label;
+            return (
+              <ContextMenu key={item.key}>
+                <ContextMenuTrigger asChild>
+                  <SidebarMenuItem
+                    className="min-w-0 shrink-0"
+                    data-footer-item={item.key}
                   >
-                    {builtin?.href !== undefined ? (
-                      <Link to={builtin.href} onClick={onNavigate}>
-                        <FooterItemIcon item={item} />
-                        <span className="sr-only">{item.label}</span>
-                      </Link>
-                    ) : (
-                      <>
-                        <FooterItemIcon item={item} />
-                        <span className="sr-only">{item.label}</span>
-                      </>
-                    )}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </ContextMenuTrigger>
-              <ContextMenuContent
-                onPointerUpCapture={(event) => {
-                  if (event.button !== 0) event.preventDefault();
-                }}
-              >
-                <ContextMenuItem
-                  onSelect={() => preferences.setVisible(item.key, false)}
+                    <SidebarMenuButton
+                      asChild={builtin?.href !== undefined}
+                      id={
+                        item.kind === "plugin"
+                          ? footerTriggerId(item.slot)
+                          : `sidebar-footer-${item.id}`
+                      }
+                      aria-label={label}
+                      aria-keyshortcuts={builtin?.ariaKeyShortcuts}
+                      tooltip={{ children: label, hidden: false, side: "top" }}
+                      className={cn(
+                        SIDEBAR_FOOTER_ACTION_CLASS,
+                        active &&
+                          "bg-sidebar-accent text-sidebar-accent-foreground [&>[data-icon-root]]:opacity-100",
+                      )}
+                      data-testid={
+                        item.kind === "plugin"
+                          ? item.slot.source === "sidebarFooterAction"
+                            ? `plugin-sidebar-footer-action-${item.slot.pluginId}-${item.slot.id}`
+                            : `plugin-sidebar-footer-item-${item.slot.pluginId}-${item.slot.id}`
+                          : undefined
+                      }
+                      {...(item.kind === "plugin" &&
+                      item.slot.kind === "disclosure"
+                        ? {
+                            "aria-expanded": active,
+                            "aria-controls": footerDisclosureId(item.slot),
+                          }
+                        : {})}
+                      onClick={
+                        builtin?.href === undefined
+                          ? () => activate(item)
+                          : undefined
+                      }
+                    >
+                      {builtin?.href !== undefined ? (
+                        <Link to={builtin.href} onClick={onNavigate}>
+                          <FooterItemIcon item={item} />
+                          <span className="sr-only">{item.label}</span>
+                        </Link>
+                      ) : (
+                        <>
+                          <FooterItemIcon item={item} />
+                          <span className="sr-only">{item.label}</span>
+                        </>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </ContextMenuTrigger>
+                <ContextMenuContent
+                  onPointerUpCapture={(event) => {
+                    if (event.button !== 0) event.preventDefault();
+                  }}
                 >
-                  <Icon name="EyeOff" />
-                  Hide
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={customize}>
+                  <ContextMenuItem
+                    onSelect={() => preferences.setVisible(item.key, false)}
+                  >
+                    <Icon name="EyeOff" />
+                    Hide
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={onCustomize}>
+                    <Icon name="SlidersHorizontal" />
+                    Customize footer
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
+          })}
+          <SidebarMenuItem className="min-w-0 shrink-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  ref={moreRef}
+                  id={SIDEBAR_FOOTER_MORE_ID}
+                  aria-label="More footer actions"
+                  tooltip={{ children: "More", hidden: false, side: "top" }}
+                  className={SIDEBAR_FOOTER_ACTION_CLASS}
+                >
+                  <Icon name="MoreHorizontal" />
+                  <span className="sr-only">More</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                align="start"
+                mobileTitle="More footer actions"
+              >
+                {hidden.map((item) => (
+                  <DropdownMenuItem
+                    key={item.key}
+                    onSelect={() => activate(item)}
+                  >
+                    <FooterItemIcon item={item} />
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+                {hidden.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onSelect={onCustomize}>
+                  <Icon name="SlidersHorizontal" />
                   Customize footer
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          );
-        })}
-      {hidden.length > 0 ? (
-        <SidebarMenuItem className="min-w-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton
-                id={SIDEBAR_FOOTER_MORE_ID}
-                aria-label="More footer actions"
-                tooltip={{ children: "More", hidden: false, side: "top" }}
-                className={SIDEBAR_FOOTER_ACTION_CLASS}
-              >
-                <Icon name="MoreHorizontal" />
-                <span className="sr-only">More</span>
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="top"
-              align="start"
-              mobileTitle="More footer actions"
-            >
-              {hidden.map((item) => (
-                <DropdownMenuItem
-                  key={item.key}
-                  onSelect={() => activate(item)}
-                >
-                  <FooterItemIcon item={item} />
-                  {item.label}
                 </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={customize}>
-                Customize footer
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuItem>
-      ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarMenuItem>
     </>
   );
 }
