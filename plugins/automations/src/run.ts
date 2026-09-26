@@ -1,8 +1,8 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   closeAutomationRun,
-  disableAutomationsForDeletedThread,
+  disableAutomationsForUnavailableThread,
   getAutomation,
   listRunningAutomationRuns,
   listRunningAutomationRunsByThread,
@@ -21,7 +21,7 @@ import type {
   ScriptWorkingDirectoryResolver,
 } from "./working-directory.js";
 
-type RunFailureHandler = (error: unknown) => void;
+type RunFailureHandler = (error: unknown, transient: boolean) => void;
 type AgentThreadsSdk = {
   get(
     args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
@@ -73,6 +73,38 @@ function isThreadGoneError(error: unknown): boolean {
   return threadGoneErrorSchema.safeParse(error).success;
 }
 
+export function isTransientDispatchError(error: unknown): boolean {
+  const parsed = z
+    .object({
+      status: z.number().optional(),
+      code: z.string().optional(),
+    })
+    .safeParse(error);
+  if (!parsed.success) return false;
+  const { status, code } = parsed.data;
+  return (
+    (status !== undefined &&
+      (status >= 500 || status === 408 || status === 429)) ||
+    (code !== undefined &&
+      /^(ECONN|ENET|EHOST|ETIMEDOUT|EAI_AGAIN)/u.test(code))
+  );
+}
+
+export function isTransientTurnFailure(
+  failure: PluginTurnFailedEvent,
+): boolean {
+  const info = failure.errorInfo;
+  return (
+    (failure.inputAccepted && failure.turnId === null) ||
+    (info !== null &&
+      (info.category === "connection-failed" ||
+        info.category === "stream-disconnected" ||
+        info.category === "overloaded" ||
+        info.category === "rate-limit" ||
+        (info.httpStatusCode !== null && info.httpStatusCode >= 500)))
+  );
+}
+
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -93,7 +125,9 @@ function isThreadReusable(thread: SdkThread): boolean {
   return (
     thread.deletedAt === null &&
     thread.archivedAt === null &&
-    (thread.status === "idle" || thread.status === "active")
+    (thread.status === "idle" ||
+      thread.status === "active" ||
+      thread.status === "error")
   );
 }
 
@@ -171,7 +205,7 @@ function settleDispatchFailure(
       now: Date.now(),
     });
   } else {
-    args.onFailure(error);
+    args.onFailure(error, isTransientDispatchError(error));
   }
   bb.log.error(
     `Failed to dispatch automation ${args.automation.id}: ${message}`,
@@ -193,16 +227,21 @@ async function reuseTargetThreadForRun(
     closeRunForUnusableTargetThread(bb, db, {
       ...args,
       detail: errorMessage(error),
+      reason: "missing",
     });
     return;
   }
 
-  if (!isThreadReusable(thread)) {
+  if (thread.deletedAt !== null || thread.archivedAt !== null) {
     closeRunForUnusableTargetThread(bb, db, {
       ...args,
-      detail: "missing, deleted, archived, or not runnable",
+      detail: thread.deletedAt !== null ? "deleted" : "archived",
+      reason: thread.deletedAt !== null ? "deleted" : "archived",
     });
     return;
+  }
+  if (!isThreadReusable(thread)) {
+    throw new Error(`Target thread ${args.targetThreadId} is ${thread.status}`);
   }
 
   setAutomationRunThread(db, {
@@ -235,11 +274,16 @@ async function reuseTargetThreadForRun(
 function closeRunForUnusableTargetThread(
   bb: Pick<BbPluginApi, "log">,
   db: Db,
-  args: AgentRunArgs & { targetThreadId: string; detail: string },
+  args: AgentRunArgs & {
+    targetThreadId: string;
+    detail: string;
+    reason: "missing" | "deleted" | "archived";
+  },
 ): void {
   const now = Date.now();
-  disableAutomationsForDeletedThread(db, {
+  disableAutomationsForUnavailableThread(db, {
     threadId: args.targetThreadId,
+    reason: args.reason,
     now,
   });
   closeAutomationRun(db, {
@@ -309,7 +353,7 @@ export async function executeScriptRun(
       now: Date.now(),
     });
   } catch (error) {
-    args.onFailure(error);
+    args.onFailure(error, false);
     bb.log.error(
       `Failed to run script for automation ${args.automation.id}: ${errorMessage(error)}`,
     );
@@ -324,7 +368,12 @@ export async function executeScriptRun(
 export function closeAutomationRunForSettledThread(
   bb: Pick<BbPluginApi, "realtime">,
   db: Db,
-  args: { threadId: string; status: "idle" | "failed"; error?: string | null },
+  args: {
+    threadId: string;
+    status: "idle" | "failed";
+    error?: string | null;
+    transient?: boolean;
+  },
 ): void {
   const runs = listRunningAutomationRunsByThread(db, args.threadId);
   const now = Date.now();
@@ -334,6 +383,7 @@ export function closeAutomationRunForSettledThread(
       runId: run.id,
       status: args.status === "idle" ? "succeeded" : "failed",
       error: args.status === "idle" ? null : (args.error ?? "Turn failed"),
+      transient: args.transient,
       threadId: args.threadId,
       now,
     });
@@ -452,8 +502,9 @@ export function disableAutomationsForDeletedThreadEvent(
   db: Db,
   threadId: string,
 ): void {
-  const disabled = disableAutomationsForDeletedThread(db, {
+  const disabled = disableAutomationsForUnavailableThread(db, {
     threadId,
+    reason: "deleted",
     now: Date.now(),
   });
   for (const automation of disabled) {
