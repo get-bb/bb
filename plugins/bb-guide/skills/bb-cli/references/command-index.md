@@ -60,7 +60,9 @@ This index lists every command path that the core CLI registers, including alias
 
 - `bb provider`
 - `bb provider list`
-- `bb provider models [providerId] [--selected-model <model-id>]`: discover the selected model's reasoning choices and include selected-only entries.
+- `bb provider models`
+
+Use `--selected-model <model-id>` to discover its reasoning choices and include selected-only entries.
 
 ## manager
 
