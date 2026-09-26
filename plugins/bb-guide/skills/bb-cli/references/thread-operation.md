@@ -42,6 +42,13 @@
   scheduled tell neither sends nor runs. Both report `delivery: "queued"` and
   dispatch on the sweep after the requested time. The SDK equivalent is `sendAt`
   (epoch ms) on `threads.spawn` / `threads.send`.
+- `bb thread queue create <thread-id> "..." --image /absolute/screenshot.png`
+  queues text and images together. Creation and update accept repeatable
+  `--image` and `--file`: absolute paths and `file:` URLs upload from the CLI
+  machine to the thread's project before queueing, while relative uploaded
+  attachment tokens pass through unchanged. This also works for remote execution
+  hosts. Inspect with `queue list --json`, edit with `queue update`, and cancel
+  with `queue delete`.
 - `bb thread queue list` shows a Sender for agent threads and system notices.
   SDK queue rows and `--json` include `initiator` and nullable `senderThreadId`.
 - A send that cannot run right now does not fail: it joins the thread's queue
