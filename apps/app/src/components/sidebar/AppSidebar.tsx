@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { useNavigate } from "react-router-dom";
@@ -45,6 +46,8 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
+import { SidebarFooterCustomize } from "./SidebarFooterCustomize";
+import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
@@ -67,6 +70,7 @@ export function AppSidebar({
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, openMobile } = useSidebar();
+  const [isFooterCustomizing, setFooterCustomizing] = useState(false);
   const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
   const customizeFocusReturnRef = useRef<HTMLElement | null>(null);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
@@ -159,12 +163,14 @@ export function AppSidebar({
   useEffect(() => {
     if (isCompactViewport && (!openMobile || isHiddenHostedBody)) {
       setNavigationCustomizing(false);
+      setFooterCustomizing(false);
     }
   }, [isCompactViewport, isHiddenHostedBody, openMobile]);
   const openNavigationCustomize = useCallback(() => {
     customizeFocusReturnRef.current = resolveCustomizeFocusReturnTarget(
       sidebarRef.current,
     );
+    setFooterCustomizing(false);
     setNavigationCustomizing(true);
   }, []);
   const activateVisibleThreadShortcut = useCallback(
@@ -220,12 +226,33 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        <PluginSidebarFooterDisclosure
-          item={pluginSidebarFooter.activeItem}
-          onDismiss={pluginSidebarFooter.dismiss}
-        />
-        <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
+        {isFooterCustomizing ? (
+          <div className="max-h-[50svh] overflow-y-auto">
+            <SidebarFooterCustomize
+              onDone={() => {
+                flushSync(() => setFooterCustomizing(false));
+                document.getElementById(SIDEBAR_FOOTER_MORE_ID)?.focus();
+              }}
+            />
+          </div>
+        ) : (
+          <PluginSidebarFooterDisclosure
+            item={pluginSidebarFooter.activeItem}
+            onDismiss={pluginSidebarFooter.dismiss}
+          />
+        )}
+        <SidebarMenu
+          className={cn(
+            "flex-row items-center gap-1",
+            isFooterCustomizing && "hidden",
+          )}
+        >
           <PluginSidebarFooterItems
+            onCustomize={() => {
+              pluginSidebarFooter.dismiss();
+              setNavigationCustomizing(false);
+              setFooterCustomizing(true);
+            }}
             activeDisclosureKey={pluginSidebarFooter.activeKey}
             onDisclosureCommand={pluginSidebarFooter.handleCommand}
             onNavigate={closeOnMobile}
@@ -251,7 +278,6 @@ export function AppSidebar({
               },
             ]}
           />
-          <li aria-hidden="true" className="min-w-0 flex-1" />
           <SidebarPluginAttentionGlyph
             className={SIDEBAR_FOOTER_ACTION_CLASS}
             onNavigate={closeOnMobile}

@@ -549,6 +549,54 @@ describe("ProjectRow interactions", () => {
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
   });
 
+  it("aligns a nested environment group with its parent guide", () => {
+    const environment = makeSidebarEnvironment({
+      id: "env_nested",
+      name: "Nested workspace",
+      providerId: "git-worktree",
+      isWorktree: true,
+    });
+    const { container } = renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [
+        makeThread({ id: "thr_parent", title: "Parent" }),
+        makeThread({
+          id: "thr_child_a",
+          parentThreadId: "thr_parent",
+          environment,
+        }),
+        makeThread({
+          id: "thr_child_b",
+          parentThreadId: "thr_parent",
+          environment,
+        }),
+      ],
+    });
+
+    const group = screen
+      .getByRole("button", { name: "Collapse Nested workspace threads" })
+      .closest("[data-sidebar-sticky-group]");
+    const header = group?.querySelector<HTMLElement>(
+      ".bb-sidebar-hover-actions-row",
+    );
+    const child = group?.querySelector<HTMLElement>(
+      '[data-sidebar-thread-id="thr_child_a"]',
+    );
+    const guide = group?.querySelector<HTMLElement>(
+      ":scope > div.relative > span.bg-border-hairline",
+    );
+
+    expect(
+      container.querySelector('[data-sidebar-thread-id="thr_parent"]'),
+    ).not.toBeNull();
+    expect(header?.style.paddingLeft).toBe("8px");
+    expect(guide?.style.left).toBe("16px");
+    expect(
+      child?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
+        .paddingLeft,
+    ).toBe("32px");
+  });
+
   it("shows generic runtime activity before a named workflow rollup", () => {
     renderProjectRow(
       vi.fn(),
