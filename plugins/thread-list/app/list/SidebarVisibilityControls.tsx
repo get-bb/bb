@@ -128,7 +128,7 @@ export function SidebarMore({
                   className={cn(
                     PROJECT_LIST_ACTION_BUTTON_CLASS,
                     SIDEBAR_DISCLOSURE_ACTION_CLASS,
-                    "w-full hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground max-md:pointer-coarse:[&_[data-sidebar-more-activity]_[data-icon-root]]:size-4",
+                    "w-full hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
                     selected && SIDEBAR_ROW_SELECTED_STATE_CLASS,
                     isMenuOpen && "bg-sidebar-accent",
                   )}
@@ -139,7 +139,6 @@ export function SidebarMore({
                   <span className="min-w-0 truncate text-left">More</span>
                   {activity ? (
                     <span
-                      data-sidebar-more-activity=""
                       className={cn(
                         "ml-auto inline-flex shrink-0 items-center justify-center",
                         COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
