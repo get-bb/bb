@@ -112,12 +112,18 @@ export function computeBundleStats(
   for (const [name, sourceSuffix] of Object.entries(measuredRouteClosures)) {
     const routeChunk = chunks.find(
       (chunk) =>
-        chunk.facadeModuleId !== null &&
-        chunk.facadeModuleId.endsWith(sourceSuffix),
+        chunk.facadeModuleId?.endsWith(sourceSuffix) ||
+        chunk.moduleIds.some((id) => id.endsWith(sourceSuffix)),
     );
     if (routeChunk === undefined) {
       warn(
-        `no chunk has facadeModuleId ending in ${sourceSuffix}; the ${name} route closure is not recorded`,
+        `no chunk contains ${sourceSuffix}; the ${name} route closure is not recorded`,
+      );
+      continue;
+    }
+    if (bootFileNames.has(routeChunk.fileName)) {
+      warn(
+        `${name} is in the boot payload (${routeChunk.fileName}); its lazy route closure is not recorded`,
       );
       continue;
     }

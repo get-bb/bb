@@ -86,6 +86,66 @@ describe("computeBundleStats", () => {
     expect(stats?.routeClosures).toEqual({});
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  it("measures grouped routes whose entry no longer has a facade", () => {
+    const grouped = chunks.map((entry) =>
+      entry.facadeModuleId?.endsWith("/SplitWorkspaceRoute.tsx")
+        ? {
+            ...entry,
+            facadeModuleId: null,
+            moduleIds: [entry.facadeModuleId],
+          }
+        : entry,
+    );
+    const stats = computeBundleStats(
+      grouped,
+      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      vi.fn(),
+    );
+    expect(
+      stats?.routeClosures.SplitWorkspaceRoute?.chunks.map((c) => c.fileName),
+    ).toEqual(["assets/SplitWorkspaceRoute.js", "assets/route-only.js"]);
+  });
+
+  it.each(["assets/index.js", "assets/boot-shared.js"])(
+    "rejects a route absorbed into the boot chunk %s",
+    async (bootChunk) => {
+      const eager = chunks
+        .filter((entry) => entry.fileName !== "assets/SplitWorkspaceRoute.js")
+        .map((entry) =>
+          entry.fileName === bootChunk
+            ? {
+                ...entry,
+                moduleIds: [
+                  ...entry.moduleIds,
+                  "/repo/apps/app/src/views/SplitWorkspaceRoute.tsx",
+                ],
+              }
+            : entry,
+        );
+      const warn = vi.fn();
+      const stats = computeBundleStats(
+        eager,
+        { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+        warn,
+      );
+      expect(stats?.routeClosures).toEqual({});
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("boot payload"),
+      );
+
+      const fixture = await writeFixture(passingBudget);
+      await writeFile(
+        resolve(fixture.budgetDir, "bundle-stats.json"),
+        JSON.stringify(stats),
+      );
+      const result = await runCheck(fixture);
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(
+        'has no "SplitWorkspaceRoute" route closure',
+      );
+    },
+  );
 });
 
 interface Fixture {

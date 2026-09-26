@@ -41,6 +41,12 @@ export const sharedViteConfig = {
               priority: 1,
               minSize: 12 * 1024,
             },
+            {
+              name: "workspace",
+              test: /\/src\/views\/SplitWorkspaceRoute\.tsx$/,
+              priority: 0,
+              minSize: 12 * 1024,
+            },
           ],
         },
       },
