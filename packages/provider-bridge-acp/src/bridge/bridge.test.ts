@@ -2622,6 +2622,16 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("thread/compacted")).toEqual([]);
   });
 
+  it("settles a plain prompt with only an ACP stopReason and no activity", async () => {
+    const { providerThreadId } = await startThread();
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "/compact", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect(threadEventsOfType("item/started")).toEqual([]);
+  });
+
   it("completes a no-op compaction turn without reporting a compacted context", async () => {
     const { providerThreadId } = await startThread({
       dialectId: "omp",

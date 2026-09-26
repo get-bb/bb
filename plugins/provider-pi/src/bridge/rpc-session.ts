@@ -333,9 +333,11 @@ export class PiRpcSession {
     }
     this.isProcessing = true;
     const tracked = this.trackPendingInputConsumption("followUp");
+    const pendingRun: PendingRunSettlement = { resolve: () => undefined };
     const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
-      this.pendingRunSettlements.push({ resolve });
+      pendingRun.resolve = resolve;
     });
+    this.pendingRunSettlements.push(pendingRun);
     const settled = this.dispatchWithTransientAuthRetry(
       child,
       {
@@ -345,19 +347,32 @@ export class PiRpcSession {
         streamingBehavior: "followUp",
       },
       NO_REQUEST_TIMEOUT,
-    ).then(
-      async (): Promise<PiPromptRunOutcome | null> => {
+    )
+      .then(async (): Promise<PiPromptRunOutcome | null> => {
         if (tracked.pending.queuedText !== null) {
-          this.dropRunSettlement();
+          this.dropRunSettlement(pendingRun);
           return null;
         }
         this.resolvePendingInputConsumption(tracked.pending);
+        const state = await Promise.race([
+          this.getState().catch(() => null),
+          settlement.then(() => null),
+        ]);
+        await this.deliveryChain;
+        if (
+          state?.isStreaming === false &&
+          state.isCompacting === false &&
+          this.dropRunSettlement(pendingRun)
+        ) {
+          this.isProcessing = false;
+          pendingRun.resolve({});
+        }
         const outcome = await settlement;
         return outcome;
-      },
-      (error: unknown): PiPromptRunOutcome | null => {
+      })
+      .catch((error: unknown): PiPromptRunOutcome | null => {
         this.isProcessing = false;
-        this.dropRunSettlement();
+        this.dropRunSettlement(pendingRun);
         const queued = tracked.pending.queuedText !== null;
         this.rejectPendingInputConsumption(tracked.pending, asError(error));
         this.rejectPendingInputConsumptions(
@@ -365,8 +380,7 @@ export class PiRpcSession {
         );
         this.onDone(error);
         return queued ? null : { error };
-      },
-    );
+      });
     return { consumed: tracked.promise, settled };
   }
 
@@ -605,8 +619,11 @@ export class PiRpcSession {
     pending.resolve({});
   }
 
-  private dropRunSettlement(): void {
-    this.pendingRunSettlements.pop();
+  private dropRunSettlement(pending: PendingRunSettlement): boolean {
+    const index = this.pendingRunSettlements.indexOf(pending);
+    if (index === -1) return false;
+    this.pendingRunSettlements.splice(index, 1);
+    return true;
   }
 
   private async refreshLeafId(
