@@ -1037,6 +1037,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     nodeDepth,
     variant,
   });
+  const depthAdjustment = rowDepth > 0 ? 1 : 0;
+  const groupDepth = rowDepth - depthAdjustment;
   const parentLineDepth =
     nodeDepth > 0
       ? getThreadRowDepth({
@@ -1096,7 +1098,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           environmentId={environmentId}
           environmentProviderId={environmentProviderId}
           representativeThread={representativeThread}
-          rowDepth={rowDepth}
+          rowDepth={groupDepth}
           stickyLevel={getThreadNodeStickyLevel({
             depthOffset,
             node: representativeNode,
@@ -1111,7 +1113,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
         />
         {!isCollapsed ? (
           <div className="relative space-y-px">
-            <ThreadTreeGroupLine parentRowDepth={rowDepth} />
+            <ThreadTreeGroupLine parentRowDepth={groupDepth} />
             <SidebarWindowedItems
               itemKeys={itemKeys}
               estimateRows={estimateRows}
@@ -1128,7 +1130,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
                     projectId={projectId}
                     item={nodeItems[index]}
                     sectionDnd={sectionDnd}
-                    depthOffset={depthOffset + 1}
+                    depthOffset={depthOffset + 1 - depthAdjustment}
                     isEnvGrouped
                     selectedThreadId={selectedThreadId}
                     collapsedThreadIds={collapsedThreadIds}
