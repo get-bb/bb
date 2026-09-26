@@ -127,6 +127,12 @@ export function computeBundleStats(
       );
       continue;
     }
+    if (bootFileNames.has(routeChunk.fileName)) {
+      warn(
+        `${name} is in the boot payload (${routeChunk.fileName}); its lazy route closure is not recorded`,
+      );
+      continue;
+    }
     routeClosures[name] = {
       entry: routeChunk.fileName,
       chunks: describeChunks(staticClosure(routeChunk.fileName, bootFileNames)),
