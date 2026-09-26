@@ -527,6 +527,58 @@ interface ProjectModeSectionsProps
   threadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
 }
 
+export function ProjectCollapseControls({
+  projectIds,
+  sectionIds,
+}: {
+  projectIds: readonly string[];
+  sectionIds: readonly CollapsibleSidebarSectionId[];
+}) {
+  const [collapsedProjects, setCollapsedProjects] = useAtom(
+    collapsedProjectIdsAtom,
+  );
+  const [collapsedSections, setCollapsedSections] = useAtom(
+    collapsedSidebarSectionIdsAtom,
+  );
+  const allCollapsed =
+    projectIds.every((id) => collapsedProjects.includes(id)) &&
+    sectionIds.every((id) => collapsedSections.includes(id));
+
+  return (
+    <div className="flex justify-end px-3 py-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label={
+          allCollapsed ? "Expand all projects" : "Collapse all projects"
+        }
+        onClick={() => {
+          if (allCollapsed) {
+            const projectSet = new Set(projectIds);
+            const sectionSet = new Set(sectionIds);
+            setCollapsedProjects((current) =>
+              current.filter((id) => !projectSet.has(id)),
+            );
+            setCollapsedSections((current) =>
+              current.filter((id) => !sectionSet.has(id)),
+            );
+          } else {
+            setCollapsedProjects((current) => [
+              ...new Set([...current, ...projectIds]),
+            ]);
+            setCollapsedSections((current) => [
+              ...new Set([...current, ...sectionIds]),
+            ]);
+          }
+        }}
+      >
+        {allCollapsed ? "Expand all" : "Collapse all"}
+      </Button>
+    </div>
+  );
+}
+
 function ProjectModeSections({
   collapsedEnvironmentIds,
   collapsedSectionIds,
@@ -791,6 +843,10 @@ function ProjectModeSections({
       label="Projects"
       selectedThreadId={selectedThreadId}
     >
+      <ProjectCollapseControls
+        projectIds={projects.map((project) => project.id)}
+        sectionIds={order.filter(isCollapsibleSidebarSectionId)}
+      />
       <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
         {(sectionId, consumeClickSuppression) => {
           const builtInSection = renderBuiltInSidebarSection({

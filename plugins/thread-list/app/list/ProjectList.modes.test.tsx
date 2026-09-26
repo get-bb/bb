@@ -30,6 +30,7 @@ import {
   type PluginSdkTestFakes,
 } from "@get-bb/plugin-sdk/testing/app";
 import {
+  collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   sidebarCollapsedMachinesAtom,
   sidebarHiddenGroupsAtom,
@@ -55,12 +56,13 @@ vi.mock("../model/machine-thread-groups.js", async (importOriginal) => {
 });
 
 installTestPluginRuntime();
-const { ActiveSidebarModeSections, MachineModeSections } = await import(
-  "./ProjectList.js"
-);
-const { useSidebarModeSectionOrder } = await import(
-  "./useSidebarModeSectionOrder.js"
-);
+const {
+  ActiveSidebarModeSections,
+  MachineModeSections,
+  ProjectCollapseControls,
+} = await import("./ProjectList.js");
+const { useSidebarModeSectionOrder } =
+  await import("./useSidebarModeSectionOrder.js");
 
 const mockBuildMachineThreadGroups = vi.mocked(buildMachineThreadGroups);
 
@@ -249,6 +251,36 @@ afterEach(() => {
 });
 
 describe("sidebar organization mode sections", () => {
+  it("collapses and expands every project and main section", () => {
+    const store = createStore();
+    store.set(collapsedProjectIdsAtom, []);
+    store.set(collapsedSidebarSectionIdsAtom, []);
+    render(
+      <JotaiProvider store={store}>
+        <TooltipProvider>
+          <ProjectCollapseControls
+            projectIds={["a", "b"]}
+            sectionIds={["pinned", "threads"]}
+          />
+        </TooltipProvider>
+      </JotaiProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse all projects" }),
+    );
+    expect(store.get(collapsedProjectIdsAtom)).toEqual(["a", "b"]);
+    expect(store.get(collapsedSidebarSectionIdsAtom)).toEqual([
+      "pinned",
+      "threads",
+    ]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand all projects" }),
+    );
+    expect(store.get(collapsedProjectIdsAtom)).toEqual([]);
+    expect(store.get(collapsedSidebarSectionIdsAtom)).toEqual([]);
+  });
   it("does not mount inactive ordering or machine-grouping work", async () => {
     const store = createStore();
     store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);
