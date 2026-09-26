@@ -237,12 +237,12 @@ Changes apply to new turns, setup commands and terminals.
 Sidebar footer actions use `sidebar.footerOrder` and `sidebar.hiddenFooterItems`.
 Both are string lists shared across clients. Keys are `builtin:settings`,
 `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
-The footer shows at most five icons. More is always available and holds hidden
-actions plus actions past the cap or the current width; width overflow never
-changes saved visibility. More → Customize footer replaces the footer row with
-Footer and More menu zones: minus removes an icon, plus adds a More item while
-the footer has room, and drag reorders within a zone. More → Hide footer hides
-every action, and Show footer restores the first five.
+The footer shows as many icons as fit the sidebar's width. More is always
+available and holds hidden actions plus actions that don't fit; width overflow
+never changes saved visibility. More → Customize footer replaces the footer row
+with Footer and More menu zones: minus removes an icon, plus adds a More item
+while the footer has room, and drag reorders within a zone. More → Hide footer
+hides every action, and Show footer shows them again.
 Right-click an action for Hide from footer or Customize footer.
 Settings → Appearance → Sidebar footer edits the same preferences. CLI example:
 `bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'`.

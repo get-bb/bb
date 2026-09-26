@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useSetAtom } from "jotai";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -40,6 +41,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import {
   useSidebarFooterPreferences,
+  sidebarFooterCapacityAtom,
   SIDEBAR_FOOTER_MORE_ID,
   type FooterItem,
   type BuiltinFooterId,
@@ -212,7 +214,7 @@ export function PluginSidebarFooterItems({
   const customizeAfterClose = useRef(false);
   const menuRef = useRef<HTMLUListElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
-  const [capacity, setCapacity] = useState<number | null>(null);
+  const setCapacity = useSetAtom(sidebarFooterCapacityAtom);
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const more = moreRef.current;
@@ -232,15 +234,16 @@ export function PluginSidebarFooterItems({
     observer.observe(menu);
     observer.observe(more);
     return () => observer.disconnect();
-  }, []);
+  }, [setCapacity]);
   const isAvailable = (item: FooterItem) =>
     item.kind === "plugin" ||
     builtInActions.some((action) => action.id === item.id);
   const items = preferences.items.filter(isAvailable);
-  const shown = preferences.footer.filter(isAvailable);
-  const visible = capacity === null ? shown : shown.slice(0, capacity);
+  const visible = preferences.footer.filter(isAvailable);
   const hidden = items.filter((item) => !visible.includes(item));
-  const footerHidden = shown.length === 0;
+  const footerHidden = preferences.items.every((item) =>
+    preferences.hidden.includes(item.key),
+  );
   useEffect(() => {
     for (const item of items) {
       if (

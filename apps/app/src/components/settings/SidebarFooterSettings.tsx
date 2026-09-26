@@ -11,7 +11,6 @@ import { useReorderDnd } from "@/components/ui/useReorderDnd";
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import {
   useSidebarFooterPreferences,
-  SIDEBAR_FOOTER_MAX_ICONS,
   type FooterItem,
 } from "@/components/sidebar/sidebarFooterPreferences";
 import { FooterItemIcon } from "@/components/plugin/PluginSidebarFooterItems";
@@ -30,7 +29,7 @@ export function SidebarFooterSettings() {
   return (
     <SettingsWithControl
       label="Sidebar footer"
-      description={`Drag to reorder. The footer shows up to ${SIDEBAR_FOOTER_MAX_ICONS} icons; the rest stay in its More menu.`}
+      description="Drag to reorder. Icons that don't fit the sidebar's width stay in the footer's More menu."
       controlPlacement="below"
     >
       <div

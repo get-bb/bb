@@ -929,14 +929,14 @@ same operations to its app client.
 
 ### Sidebar footer
 
-The footer shows at most five icons, followed by an always-available More
-menu. More lists hidden actions and actions past the five-icon cap or the
-available width, plus Customize footer and Hide footer. Hide footer moves every
-action into More, leaving only the More button; the same menu item then reads
-Show footer, which restores the first five. Customize footer replaces the
+The footer shows as many icons as fit the sidebar's width, followed by an
+always-available More menu. More lists hidden actions and actions that don't
+fit, plus Customize footer and Hide footer. Hide footer moves every action into
+More, leaving only the More button; the same menu item then reads Show footer,
+which shows them again. Customize footer replaces the
 footer row with an editor split into Footer and More menu zones: remove an icon
 with its minus badge, add a More item with its plus button (disabled while the
-footer is full), and drag within either zone to reorder. Customize footer and
+footer has no room), and drag within either zone to reorder. Customize footer and
 Customize sidebar close each other. Right-click an action and choose Hide from
 footer, or Customize footer. Settings → Appearance → Sidebar footer edits the
 same preferences. Width overflow never changes saved visibility, and every

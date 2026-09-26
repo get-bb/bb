@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import {
+  sidebarFooterCapacityAtom,
   sidebarFooterOrderAtom,
   sidebarFooterHiddenAtom,
 } from "@/components/sidebar/sidebarFooterPreferences";
@@ -125,7 +126,7 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterItems", () => {
-  it("caps the footer and moves icons between the footer and More in the customize editor", () => {
+  it("fills the footer to its measured capacity and moves icons between the footer and More", () => {
     setPluginSlotRegistrations(
       "example",
       collectPluginAppRegistrations(
@@ -144,6 +145,7 @@ describe("PluginSidebarFooterItems", () => {
     );
     const store = createStore();
     store.set(sidebarFooterHiddenAtom, ["plugin:unloaded/action"]);
+    store.set(sidebarFooterCapacityAtom, 5);
     renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
     const footerIcons = () =>
       Array.from(
@@ -157,13 +159,13 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/three",
       "plugin:example/four",
     ]);
+    screen.getByText("5 of 5");
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Remove Settings from footer" }),
     );
-    const addBug = screen.getByRole("button", {
-      name: "Add Report a bug to footer",
-    });
-    expect(addBug).toHaveProperty("disabled", true);
+    expect(
+      screen.getByRole("button", { name: "Add Report a bug to footer" }),
+    ).toHaveProperty("disabled", true);
     screen.getByText("Footer is full. Remove an icon to add another.");
 
     fireEvent.click(
@@ -172,13 +174,7 @@ describe("PluginSidebarFooterItems", () => {
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
       "plugin:example/two",
-      "builtin:report-bug",
     ]);
-    expect(footerIcons()).toHaveLength(4);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Add Report a bug to footer" }),
-    );
     expect(footerIcons()).toEqual([
       "builtin:settings",
       "plugin:example/one",
@@ -186,9 +182,25 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/four",
       "builtin:report-bug",
     ]);
+    expect(
+      screen.getByRole("button", { name: "Add Action two to footer" }),
+    ).toHaveProperty("disabled", true);
+
+    act(() => store.set(sidebarFooterCapacityAtom, 7));
+    screen.getByText("5 of 7");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Action two to footer" }),
+    );
+    expect(footerIcons()).toEqual([
+      "builtin:settings",
+      "plugin:example/one",
+      "plugin:example/three",
+      "plugin:example/four",
+      "builtin:report-bug",
+      "plugin:example/two",
+    ]);
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
-      "plugin:example/two",
     ]);
   });
 

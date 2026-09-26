@@ -13,7 +13,6 @@ import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { FooterItemIcon } from "@/components/plugin/PluginSidebarFooterItems";
 import {
   type FooterItem,
-  SIDEBAR_FOOTER_MAX_ICONS,
   useSidebarFooterPreferences,
 } from "./sidebarFooterPreferences";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
@@ -42,12 +41,15 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       ?.querySelector<HTMLButtonElement>("[data-footer-placement-toggle]")
       ?.focus();
   }, []);
-  const emptySlots = SIDEBAR_FOOTER_MAX_ICONS - preferences.footer.length;
+  const emptySlots = Math.max(
+    0,
+    (preferences.capacity ?? 0) - preferences.footer.length,
+  );
 
   return (
     <div
       ref={containerRef}
-      className="rounded-lg border border-sidebar-border/40 bg-sidebar-accent/40 p-1"
+      className="rounded-lg bg-sidebar-accent/40 py-1"
       data-testid="sidebar-footer-customize-inline"
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -55,7 +57,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
         onDone();
       }}
     >
-      <div className="flex items-center gap-1 pb-1">
+      <div className="flex items-center gap-1 px-1 pb-1">
         <div
           className={cn("min-w-0 flex-1 px-2 py-1", CHROME_SECTION_LABEL_CLASS)}
         >
@@ -73,12 +75,16 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       </div>
       <ZoneLabel
         label="Footer"
-        detail={`${preferences.footer.length} of ${SIDEBAR_FOOTER_MAX_ICONS}`}
+        detail={
+          preferences.capacity === null
+            ? undefined
+            : `${preferences.footer.length} of ${preferences.capacity}`
+        }
       />
-      <div className="flex items-center gap-2 rounded-md bg-sidebar-accent p-2">
+      <div className="flex items-center gap-1 overflow-hidden bg-sidebar-accent py-2">
         <ul
           aria-label="Footer icons"
-          className="flex min-w-0 flex-1 items-center gap-2"
+          className="flex min-w-0 items-center gap-1"
           onClickCapture={footerDnd.onClickCapture}
         >
           <DndContext {...footerDnd.dndContextProps}>
@@ -125,7 +131,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       ) : (
         <ul
           aria-label="More menu items"
-          className="space-y-0.5"
+          className="space-y-0.5 px-1"
           onClickCapture={moreDnd.onClickCapture}
         >
           <DndContext {...moreDnd.dndContextProps}>
@@ -203,7 +209,7 @@ function FooterIconTile({
         type="button"
         aria-label={`Remove ${item.label} from footer`}
         data-footer-placement-toggle={item.key}
-        className={cn(BADGE_CLASS, "absolute -right-1.5 -top-1.5")}
+        className={cn(BADGE_CLASS, "absolute -right-1 -top-1")}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={onRemove}
       >
