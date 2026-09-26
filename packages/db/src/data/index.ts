@@ -101,6 +101,8 @@ export {
   applyThreadLifecycleEventInTransaction,
   requireThreadLifecycleEventApplied,
   searchThreadsWithPendingInteractionState,
+  searchThreadMatchRows,
+  hydrateThreadSearchResults,
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
 } from "./threads.js";
@@ -110,6 +112,7 @@ export type {
   ReorderPinnedThreadResult,
   RunningThreadRow,
   ThreadSearchResultGroup,
+  ThreadSearchMatchRow,
   ThreadWithPendingInteractionState,
   ThreadExecutionOverride,
   UpdateThreadInput,

@@ -1,3 +1,4 @@
+import { searchThreads } from "../../services/threads/thread-search.js";
 import { countUnarchivedThreadDescendants } from "../../services/threads/thread-archive.js";
 import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
@@ -13,7 +14,6 @@ import {
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   listLifecycleThreadTree,
-  searchThreadsWithPendingInteractionState,
   updateThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
@@ -301,7 +301,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.search, (context, query) => {
+  get(routes.search, async (context, query) => {
     const searchQuery = query.query.trim();
     if (countNonWhitespaceChars(searchQuery) < 2) {
       throw new ApiError(
@@ -313,10 +313,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const limitPerGroup = parseSearchLimitPerGroup(query.limitPerGroup);
     return context.json(
       buildThreadSearchResponse(deps, {
-        ...searchThreadsWithPendingInteractionState(deps.db, {
-          query: searchQuery,
-          limitPerGroup,
-        }),
+        ...(await searchThreads(
+          deps.db,
+          {
+            query: searchQuery,
+            limitPerGroup,
+          },
+          context.req.raw.signal,
+        )),
       }) satisfies ThreadSearchResponse,
     );
   });

@@ -7,6 +7,7 @@ import { isLoopbackHostname } from "@bb/config/loopback";
 import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
 import { getAppSettings, listRunningThreads } from "@bb/db";
+import { closeThreadSearch } from "./services/threads/thread-search.js";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
@@ -394,6 +395,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      await closeThreadSearch(db);
       serverMove.dispose();
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();

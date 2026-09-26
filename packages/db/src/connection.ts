@@ -16,6 +16,7 @@ export interface SlowDbQueryLogger {
 }
 
 export interface CreateConnectionOptions {
+  readonly?: boolean;
   slowQueryLogger?: SlowDbQueryLogger;
   slowQueryThresholdMs?: number;
 }
@@ -156,10 +157,12 @@ export function createConnection(
   source: string | Buffer = "bb.db",
   options: CreateConnectionOptions = {},
 ) {
-  const sqlite = new Database(source);
+  const sqlite = new Database(source, { readonly: options.readonly ?? false });
 
-  sqlite.pragma("auto_vacuum = INCREMENTAL");
-  sqlite.pragma("journal_mode = WAL");
+  if (!options.readonly) {
+    sqlite.pragma("auto_vacuum = INCREMENTAL");
+    sqlite.pragma("journal_mode = WAL");
+  }
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("synchronous = NORMAL");
   sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
