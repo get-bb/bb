@@ -455,8 +455,8 @@ jobs:
           fi
           exit "$guard_exit"
 
-      - name: Build
-        run: pnpm exec turbo run build ${{ fromJSON(needs.plan.outputs.selection).buildFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+      - name: Build and story catalog build
+        run: pnpm exec turbo run build storybook:build ${{ fromJSON(needs.plan.outputs.selection).buildFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       # Guards the JavaScript that blocks first paint in the web app, and the
       # thread route's static closure that blocks first thread paint. Heavy
