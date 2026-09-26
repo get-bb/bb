@@ -1,3 +1,4 @@
+import { pendingTurnStartLabel } from "@/lib/pending-turn-start";
 import {
   useCallback,
   useEffect,
@@ -3010,7 +3011,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               ongoingIndicatorLabel:
                 thread.runtime.displayStatus === "host-reconnecting"
                   ? "Waiting for reconnection"
-                  : undefined,
+                  : thread.runtime.displayStatus === "active"
+                    ? pendingTurnStartLabel(timelineRows)
+                    : undefined,
               timelineRows,
               isStopping: thread.status === "stopping",
               stoppingAnchorAt: thread.updatedAt,

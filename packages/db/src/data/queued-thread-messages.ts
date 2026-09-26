@@ -1757,7 +1757,7 @@ export interface SetQueuedThreadMessageFailureReasonArgs {
  */
 export function setQueuedThreadMessageFailureReason(
   db: DbConnection,
-  notifier: DbNotifier,
+  notifier: Pick<DbNotifier, "notifyThread">,
   args: SetQueuedThreadMessageFailureReasonArgs,
 ): QueuedThreadMessageRow | null {
   const updated = db.transaction(
@@ -1848,7 +1848,7 @@ export function listRetryableFailedQueuedThreadMessages(
  * for a clock either.
  */
 export function clearQueuedThreadMessageWaitingOn(
-  db: DbConnection,
+  db: DbQueryConnection,
   notifier: DbNotifier,
   args: ClearQueuedThreadMessageWaitingOnArgs,
 ): QueuedThreadMessageRow | null {

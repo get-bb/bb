@@ -1,3 +1,4 @@
+import { preserveFailedTurnStartQueue } from "./thread-turn-starting.js";
 import {
   applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
@@ -70,6 +71,9 @@ export function applyLoggedThreadLifecycleEvent(
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = applyThreadLifecycleEvent(deps.db, args);
   if (outcome.applied) {
+    if (outcome.thread.status === "error") {
+      preserveFailedTurnStartQueue(deps, args.threadId);
+    }
     deps.hub.notifyThread(
       args.threadId,
       ["status-changed"],
