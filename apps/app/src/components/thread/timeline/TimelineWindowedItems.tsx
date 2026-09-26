@@ -23,6 +23,12 @@ const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 const GET_NO_SCROLL_ELEMENT = () => null;
+let lastUsableScrollRootHeight = 0;
+
+function estimateInitialScrollRootHeight(): number {
+  if (lastUsableScrollRootHeight > 0) return lastUsableScrollRootHeight;
+  return typeof window === "undefined" ? 0 : window.innerHeight;
+}
 
 function measureBorderBox(
   element: HTMLElement,
@@ -59,6 +65,7 @@ export function TimelineWindowedItems({
   const configured =
     itemKeys.length >= minItemCount && getScrollElement !== null;
   const [scrollRootUsable, setScrollRootUsable] = useState(true);
+  const [, setScrollRootRevision] = useState(0);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);
   const containerElementRef = useRef<HTMLDivElement>(null);
@@ -101,8 +108,12 @@ export function TimelineWindowedItems({
       entry: ResizeObserverEntry | undefined,
     ): number => {
       const index = Number(element.dataset.index);
-      const height = measureBorderBox(element, entry);
       const key = Number.isInteger(index) ? itemKeys[index] : undefined;
+      if (entry === undefined && key !== undefined) {
+        const retained = measurements.get(key);
+        if (retained !== undefined) return retained;
+      }
+      const height = measureBorderBox(element, entry);
       if (
         key !== undefined &&
         height > 0 &&
@@ -137,6 +148,7 @@ export function TimelineWindowedItems({
     getItemKey,
     getScrollElement: resolvedGetScrollElement,
     initialOffset,
+    initialRect: { width: 0, height: estimateInitialScrollRootHeight() },
     measureElement,
     overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
@@ -168,15 +180,17 @@ export function TimelineWindowedItems({
     const updateRootUsability = () => {
       const scrollElement = resolvedGetScrollElement();
       if (scrollElement !== null) {
-        setScrollRootUsable(scrollElement.clientHeight > 0);
+        const height = scrollElement.clientHeight;
+        if (height > 0) lastUsableScrollRootHeight = height;
+        setScrollRootUsable(height > 0);
       }
     };
     const scrollElement = resolvedGetScrollElement();
     if (scrollElement === null) {
-      setScrollRootUsable(false);
       const frame = requestAnimationFrame(() => {
         updateRootUsability();
         updateScrollGeometry();
+        setScrollRootRevision((revision) => revision + 1);
       });
       return () => cancelAnimationFrame(frame);
     }

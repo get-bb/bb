@@ -149,6 +149,7 @@ describe("ExpandablePanel deferred body realization", () => {
   });
 
   it("keeps the preview, its height and the in-flight window until the body's commit", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
         return this.textContent?.length ?? 0;
@@ -169,6 +170,9 @@ describe("ExpandablePanel deferred body realization", () => {
     }
     const previewHeight = `${"Collapsed summary".length}px`;
     const bodyHeight = `${"Expanded body".length}px`;
+    expect(region.style.height).toBe("");
+    expect(region.style.transitionDuration).toBe("0s");
+    fireResize();
     expect(region.style.height).toBe(previewHeight);
 
     let toggleCommit: {

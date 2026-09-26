@@ -140,6 +140,7 @@ import {
 } from "@/components/ui/markdown-message-directives.js";
 import {
   TimelineWindowedItemsLoader,
+  getRetainedTimelineMeasurements,
   TimelineWindowingMeasurementsContext,
   TimelineWindowingScrollRootContext,
   type TimelineWindowedItemRenderState,
@@ -1916,7 +1917,12 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
 
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const getViewRows = useTimelineViewRowsCache();
-  const [windowingMeasurements] = useState(() => new Map<string, number>());
+  const measurementsOwnerKey =
+    props.threadId ?? props.timelineRows[0]?.threadId ?? "";
+  const windowingMeasurements = useMemo(
+    () => getRetainedTimelineMeasurements(measurementsOwnerKey),
+    [measurementsOwnerKey],
+  );
   const rows = useMemo(
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],

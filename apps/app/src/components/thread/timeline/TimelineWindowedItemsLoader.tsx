@@ -4,6 +4,27 @@ import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 
 export const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
 const MAX_MEASUREMENTS = 2_000;
+const MAX_RETAINED_MEASUREMENT_OWNERS = 16;
+const retainedMeasurements = new Map<string, Map<string, number>>();
+
+export function getRetainedTimelineMeasurements(
+  ownerKey: string,
+): Map<string, number> {
+  const existing = retainedMeasurements.get(ownerKey);
+  if (existing !== undefined) {
+    retainedMeasurements.delete(ownerKey);
+    retainedMeasurements.set(ownerKey, existing);
+    return existing;
+  }
+  const created = new Map<string, number>();
+  retainedMeasurements.set(ownerKey, created);
+  while (retainedMeasurements.size > MAX_RETAINED_MEASUREMENT_OWNERS) {
+    const oldestKey = retainedMeasurements.keys().next().value;
+    if (oldestKey === undefined) break;
+    retainedMeasurements.delete(oldestKey);
+  }
+  return created;
+}
 
 export function recordTimelineMeasurement(
   measurements: Map<string, number>,

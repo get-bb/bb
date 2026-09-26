@@ -1,37 +1,48 @@
-import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { CompletedTurnDisplay, ThreadStatus } from "@bb/domain";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 const DEFAULT_MAX_ENTRIES = 128;
-const DEFAULT_MAX_CACHEABLE_ROWS = 200;
+const DEFAULT_MAX_CACHEABLE_ROWS = 2_000;
+const DEFAULT_MAX_TOTAL_ROWS = 12_000;
 
 interface ThreadTimelineCacheOptions {
   maxEntries?: number;
   maxCacheableRows?: number;
+  maxTotalRows?: number;
 }
 
-interface ThreadTimelineCache {
-  getOrBuild(
-    threadId: string,
-    key: string,
-    build: () => ThreadTimelineResponse,
-  ): ThreadTimelineResponse;
+interface CacheableTimelineResponse {
+  rows: readonly unknown[];
+}
+
+interface ThreadTimelineCache<T extends CacheableTimelineResponse> {
+  getOrBuild(threadId: string, key: string, build: () => T): T;
   invalidateThread(threadId: string): void;
   readonly size: number;
 }
 
-interface ThreadTimelineCacheEntry {
-  response: ThreadTimelineResponse;
+interface ThreadTimelineCacheEntry<T> {
+  response: T;
+  rowCount: number;
   threadId: string;
 }
 
-export function createThreadTimelineCache(
-  options: ThreadTimelineCacheOptions = {},
-): ThreadTimelineCache {
+export function createThreadTimelineCache<
+  T extends CacheableTimelineResponse,
+>(options: ThreadTimelineCacheOptions = {}): ThreadTimelineCache<T> {
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const maxCacheableRows =
     options.maxCacheableRows ?? DEFAULT_MAX_CACHEABLE_ROWS;
-  const entries = new Map<string, ThreadTimelineCacheEntry>();
+  const maxTotalRows = options.maxTotalRows ?? DEFAULT_MAX_TOTAL_ROWS;
+  const entries = new Map<string, ThreadTimelineCacheEntry<T>>();
+  let totalRows = 0;
+
+  const remove = (key: string): void => {
+    const entry = entries.get(key);
+    if (entry === undefined) return;
+    entries.delete(key);
+    totalRows -= entry.rowCount;
+  };
 
   return {
     getOrBuild(threadId, key, build) {
@@ -43,14 +54,16 @@ export function createThreadTimelineCache(
       }
 
       const value = build();
-      if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, { response: value, threadId });
-        while (entries.size > maxEntries) {
+      const rowCount = value.rows.length;
+      if (rowCount <= maxCacheableRows) {
+        entries.set(key, { response: value, rowCount, threadId });
+        totalRows += rowCount;
+        while (entries.size > maxEntries || totalRows > maxTotalRows) {
           const oldest = entries.keys().next().value;
-          if (oldest === undefined) {
+          if (oldest === undefined || oldest === key) {
             break;
           }
-          entries.delete(oldest);
+          remove(oldest);
         }
       }
       return value;
@@ -58,7 +71,7 @@ export function createThreadTimelineCache(
     invalidateThread(threadId) {
       for (const [key, entry] of entries) {
         if (entry.threadId === threadId) {
-          entries.delete(key);
+          remove(key);
         }
       }
     },

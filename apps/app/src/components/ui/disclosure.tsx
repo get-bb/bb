@@ -157,6 +157,7 @@ function AnimatedExpandablePanelContent({
       performance.now() + EXPANDABLE_PANEL_TRANSITION_MS;
   }, [isBodyExpanded]);
 
+  const isFirstHeightEffectRef = useRef(true);
   useBrowserLayoutEffect(() => {
     const region = regionRef.current;
     const target = contentRef.current;
@@ -183,9 +184,15 @@ function AnimatedExpandablePanelContent({
       region.style.height = `${heightPx}px`;
     };
 
-    writeHeightSync(readHeightSync(undefined));
+    const canObserveResize = typeof ResizeObserver !== "undefined";
+    if (isFirstHeightEffectRef.current && canObserveResize) {
+      region.style.transitionDuration = "0s";
+    } else {
+      writeHeightSync(readHeightSync(undefined));
+    }
+    isFirstHeightEffectRef.current = false;
 
-    if (typeof ResizeObserver === "undefined") {
+    if (!canObserveResize) {
       return;
     }
 
@@ -193,7 +200,7 @@ function AnimatedExpandablePanelContent({
       read: readHeightSync,
       write: writeHeightSync,
     });
-  }, [collapsedContent, isBodyExpanded, renderedBody]);
+  }, [isBodyExpanded]);
 
   return (
     <div
