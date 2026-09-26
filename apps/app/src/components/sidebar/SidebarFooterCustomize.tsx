@@ -77,14 +77,6 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
           Done
         </Button>
       </div>
-      <ZoneLabel
-        label="Footer"
-        detail={
-          preferences.capacity === null
-            ? undefined
-            : `${preferences.footer.length} of ${preferences.capacity}`
-        }
-      />
       <div
         ref={footerRowRef}
         className="flex items-center gap-1 overflow-hidden bg-sidebar-accent py-2"
@@ -162,12 +154,9 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ZoneLabel({ label, detail }: { label: string; detail?: string }) {
+function ZoneLabel({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2 text-xs text-muted-foreground">
-      <span>{label}</span>
-      {detail !== undefined && <span className="tabular-nums">{detail}</span>}
-    </div>
+    <div className="px-2 pb-1 pt-2 text-xs text-muted-foreground">{label}</div>
   );
 }
 

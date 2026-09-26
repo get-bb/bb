@@ -159,7 +159,6 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/three",
       "plugin:example/four",
     ]);
-    screen.getByText("5 of 5");
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Remove Settings from footer" }),
     );
@@ -186,7 +185,9 @@ describe("PluginSidebarFooterItems", () => {
     ).toHaveProperty("disabled", true);
 
     act(() => store.set(sidebarFooterCapacityAtom, 7));
-    screen.getByText("5 of 7");
+    expect(
+      screen.getByRole("button", { name: "Add Action two to footer" }),
+    ).toHaveProperty("disabled", false);
     fireEvent.click(
       screen.getByRole("button", { name: "Add Action two to footer" }),
     );
