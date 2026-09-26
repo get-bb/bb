@@ -1812,6 +1812,7 @@ describe("public terminal routes", () => {
     );
     await handleHostSessionOpened(fixture.harness.deps, {
       activeThreads: [],
+      undeliveredEventThreadIds: [],
       hostId: fixture.host.id,
       openedSession: replacementSession,
       previousSession: fixture.session,

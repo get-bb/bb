@@ -320,6 +320,7 @@ interface ReconcileDaemonReportedThreadsArgs {
   activeThreadIds: readonly string[];
   hostId: string;
   sameDaemonInstance: boolean;
+  undeliveredEventThreadIds: readonly string[];
 }
 
 interface DispatchSettledArchivedThreadProviderArchiveCommandArgs {
@@ -2125,6 +2126,10 @@ export async function reconcileDaemonReportedThreads(
     }
   }
 
+  const threadIdsStillReporting = [
+    ...args.activeThreadIds,
+    ...args.undeliveredEventThreadIds,
+  ];
   const activeButMissing = deps.db
     .select({ environmentId: environments.id, id: threads.id })
     .from(threads)
@@ -2134,8 +2139,8 @@ export async function reconcileDaemonReportedThreads(
         eq(environments.hostId, args.hostId),
         eq(threads.status, "active"),
         isNull(threads.deletedAt),
-        args.activeThreadIds.length > 0
-          ? notInArray(threads.id, [...args.activeThreadIds])
+        threadIdsStillReporting.length > 0
+          ? notInArray(threads.id, threadIdsStillReporting)
           : undefined,
       ),
     )

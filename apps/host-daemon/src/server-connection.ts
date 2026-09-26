@@ -346,6 +346,8 @@ export class ServerConnection {
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
         activeThreads: this.options.getActiveThreads?.() ?? [],
+        undeliveredEventThreadIds:
+          this.options.getUndeliveredEventThreadIds?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });
       this.session = session;

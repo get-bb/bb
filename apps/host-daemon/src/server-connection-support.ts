@@ -83,6 +83,7 @@ export interface ServerConnectionOptions {
   getActiveThreads?: () =>
     | HostDaemonActiveThread[]
     | Promise<HostDaemonActiveThread[]>;
+  getUndeliveredEventThreadIds?: () => string[];
   getLoadedEnvironments?: () =>
     | HostDaemonLoadedEnvironment[]
     | Promise<HostDaemonLoadedEnvironment[]>;

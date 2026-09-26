@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  groupHostDaemonEvents,
   hostDaemonServerWsMessageSchema,
 } from "@bb/host-daemon-contract";
 import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
@@ -713,6 +714,79 @@ describe("active thread disconnect reconciliation triggers", () => {
       expect(JSON.stringify(parentNotices[0]?.input)).toContain(
         "because its host connection was lost",
       );
+    });
+  });
+
+  it("finishes a turn that ended while the host was away once the reconnected daemon delivers its held events", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedActiveTurnThread(harness);
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-held-events",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+          undeliveredEventThreadIds: [thread.id],
+        }),
+      });
+      expect(response.status).toBe(201);
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+
+      const { sessionId } = (await response.json()) as { sessionId: string };
+      const providerThreadId = "provider-turn-live-1";
+      const eventsResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness, { hostId: host.id }),
+          body: JSON.stringify({
+            sessionId,
+            eventGroups: groupHostDaemonEvents([
+              {
+                threadId: thread.id,
+                event: {
+                  type: "item/completed",
+                  threadId: thread.id,
+                  providerThreadId,
+                  scope: turnScope("turn-live-1"),
+                  item: {
+                    id: "msg-final",
+                    type: "agentMessage",
+                    text: "done",
+                  },
+                },
+              },
+              {
+                threadId: thread.id,
+                event: {
+                  type: "turn/completed",
+                  threadId: thread.id,
+                  providerThreadId,
+                  scope: turnScope("turn-live-1"),
+                  status: "completed",
+                },
+              },
+            ]),
+          }),
+        },
+      );
+
+      expect(eventsResponse.status).toBe(200);
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.deps.db, { threadId: thread.id }).map(
+          (row) => row.type,
+        ),
+      ).toEqual(["turn/started", "item/completed", "turn/completed"]);
     });
   });
 
