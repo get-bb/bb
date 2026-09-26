@@ -200,6 +200,76 @@ describe("MarkdownPreview message directives", () => {
     expect(screen.getByText('::inline-vis{file="still-streaming')).toBeTruthy();
   });
 
+  it("mounts a leaf directive glued to trailing prose on the same line", () => {
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    render(
+      <MarkdownPreview
+        content={'::inline-vis{file="demo.html"}Next I will load the thread.'}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    const mount = screen.getByTestId("inline-vis");
+    expect(mount.getAttribute("data-file")).toBe("demo.html");
+    expect(mount.getAttribute("data-source")).toBe(
+      '::inline-vis{file="demo.html"}',
+    );
+    expect(screen.getByText("Next I will load the thread.")).toBeTruthy();
+  });
+
+  it("mounts a glued directive with a space and preserves trailing formatting", () => {
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    const { container } = render(
+      <MarkdownPreview
+        content={'::inline-vis{file="demo.html"} Next **bold** tail'}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("inline-vis")).toBeTruthy();
+    expect(screen.getByText("bold").tagName).toBe("STRONG");
+    expect(container.textContent).toContain("Next");
+    expect(container.textContent).toContain("tail");
+  });
+
+  it("leaves glued unknown and incomplete directives literal", () => {
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    render(
+      <MarkdownPreview
+        content={[
+          '::not-registered{a="1"}trailing',
+          "",
+          '::inline-vis{file="still-streaming',
+          "",
+          "::inline-vis is the directive name",
+        ].join("\n")}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId("inline-vis")).toBeNull();
+    expect(screen.getByText('::not-registered{a="1"}trailing')).toBeTruthy();
+    expect(screen.getByText("::inline-vis is the directive name")).toBeTruthy();
+  });
+
   it("renders incidental prose colons literally without dropping text", () => {
     const registry = buildMessageDirectiveRegistry([
       slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),

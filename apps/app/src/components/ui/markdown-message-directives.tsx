@@ -4,7 +4,13 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import type { Nodes, Parent, RootContent } from "mdast";
+import type {
+  Nodes,
+  Paragraph,
+  Parent,
+  PhrasingContent,
+  RootContent,
+} from "mdast";
 import type {} from "mdast-util-to-hast";
 import type {
   BbNavigate,
@@ -215,6 +221,104 @@ function asDirectiveNode(node: unknown): DirectiveNode | null {
   return null;
 }
 
+const GLUED_LEAF_DIRECTIVE_NAME_PATTERN = /^::([A-Za-z0-9_-]+)/;
+
+function parseDirectiveAttributeBody(body: string): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  const pattern =
+    /([A-Za-z0-9_-]+)\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(body)) !== null) {
+    const key = match[1]!;
+    const raw = match[2]!;
+    if (raw.startsWith('"')) {
+      try {
+        attributes[key] = JSON.parse(raw) as string;
+      } catch {
+        attributes[key] = raw.slice(1, -1);
+      }
+    } else if (raw.startsWith("'")) {
+      attributes[key] = raw
+        .slice(1, -1)
+        .replace(/\\'/g, "'")
+        .replace(/\\\\/g, "\\");
+    } else {
+      attributes[key] = raw;
+    }
+  }
+  return attributes;
+}
+
+interface GluedLeafDirective {
+  attributes: Record<string, string>;
+  directiveEnd: number;
+  name: string;
+}
+
+function findQuotedBraceEnd(text: string, openIndex: number): number {
+  let quote: string | null = null;
+  for (let i = openIndex + 1; i < text.length; i += 1) {
+    const char = text[i]!;
+    if (quote !== null) {
+      if (char === "\\") {
+        i += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "}") {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function parseGluedLeafDirective(text: string): GluedLeafDirective | null {
+  const nameMatch = GLUED_LEAF_DIRECTIVE_NAME_PATTERN.exec(text);
+  if (nameMatch === null) {
+    return null;
+  }
+  const name = nameMatch[1]!;
+  let pos = nameMatch[0].length;
+  if (text[pos] === "[") {
+    let depth = 0;
+    let end = -1;
+    for (let i = pos; i < text.length; i += 1) {
+      const char = text[i]!;
+      if (char === "\\") {
+        i += 1;
+      } else if (char === "[") {
+        depth += 1;
+      } else if (char === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end === -1) {
+      return null;
+    }
+    pos = end + 1;
+  }
+  if (text[pos] !== "{") {
+    return null;
+  }
+  const close = findQuotedBraceEnd(text, pos);
+  if (close === -1) {
+    return null;
+  }
+  return {
+    attributes: parseDirectiveAttributeBody(text.slice(pos + 1, close)),
+    directiveEnd: close + 1,
+    name,
+  };
+}
+
 export function remarkMessageDirectives(args: {
   indexBase: number;
   limit: number;
@@ -262,6 +366,68 @@ export function remarkMessageDirectives(args: {
       });
       parent.children.splice(index, 1, messageDirectiveMountNode(mountIndex));
       return index;
+    });
+    visit(tree, (node, index, parent: Parent | undefined) => {
+      if (
+        node?.type !== "paragraph" ||
+        parent === undefined ||
+        index === undefined
+      ) {
+        return;
+      }
+      const paragraph = node as Parent;
+      const first = paragraph.children[0];
+      if (first?.type !== "text" || typeof first.value !== "string") {
+        return;
+      }
+      const leadingTrimmed = first.value.replace(/^[ \t]+/, "");
+      if (!leadingTrimmed.startsWith("::")) {
+        return;
+      }
+      const parsed = parseGluedLeafDirective(leadingTrimmed);
+      if (parsed === null || parsed.name.length === 0) {
+        return;
+      }
+      const entry = registry.get(parsed.name);
+      if (
+        entry === undefined ||
+        entry.status === "collision" ||
+        mounts.length >= limit
+      ) {
+        return;
+      }
+      const trailing = leadingTrimmed.slice(parsed.directiveEnd);
+      const hasTrailingContent =
+        trailing.trim().length > 0 || paragraph.children.length > 1;
+      if (!hasTrailingContent) {
+        return;
+      }
+      const mountIndex = indexBase + mounts.length;
+      const source = reconstructDirectiveSource(parsed.name, parsed.attributes);
+      mounts.push({
+        attributes: parsed.attributes,
+        index: mountIndex,
+        slot: entry.slot,
+        source,
+      });
+      const trimmedTrailing = trailing.replace(/^[ \t]+/, "");
+      const remainder: PhrasingContent[] = [];
+      if (trimmedTrailing.length > 0) {
+        remainder.push({ type: "text", value: trimmedTrailing });
+      }
+      const paragraphChildren = (paragraph as Paragraph).children;
+      for (let i = 1; i < paragraphChildren.length; i += 1) {
+        remainder.push(paragraphChildren[i]!);
+      }
+      if (remainder.length === 0) {
+        parent.children.splice(index, 1, messageDirectiveMountNode(mountIndex));
+        return index;
+      }
+      parent.children.splice(index, 1, messageDirectiveMountNode(mountIndex), {
+        type: "paragraph",
+        children: remainder,
+      });
+      return index + 1;
     });
   };
 }
