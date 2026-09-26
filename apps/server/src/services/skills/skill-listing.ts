@@ -163,11 +163,13 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
   })
     .map(({ runtimeSource }): SkillSummary | null => {
       if (runtimeSource.kind !== "tree") return null;
-      const rootPath = path.join(
-        resolveDataDirSkillsRootPath(deps.config.dataDir),
-        runtimeSource.name,
-      );
-      const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
+      const rootPath = deps.skillTreeRegistry.resolve(runtimeSource.treeHash);
+      if (rootPath === undefined) return null;
+      const skillsRootPath = resolveDataDirSkillsRootPath(deps.config.dataDir);
+      const logicalPath = path
+        .relative(skillsRootPath, path.join(rootPath, runtimeSource.entryPath))
+        .split(path.sep)
+        .join("/");
       return {
         id: skillId("bb-data-dir", logicalPath),
         name: runtimeSource.name,
@@ -253,14 +255,16 @@ function isServerOwnedSkill(deps: AppDeps, skill: SkillSummary): boolean {
     return true;
   }
   if (skill.scope === "bb-user") {
+    const skillsRootPath = resolveDataDirSkillsRootPath(deps.config.dataDir);
     return (
-      path.dirname(skillDirectoryPath) ===
-      resolveDataDirSkillsRootPath(deps.config.dataDir)
+      skillDirectoryPath !== skillsRootPath &&
+      isPathWithinRoot(skillDirectoryPath, skillsRootPath)
     );
   }
   return (
     skill.scope === "bb-builtin" &&
-    path.dirname(skillDirectoryPath) === deps.config.builtinSkillsRootPath
+    skillDirectoryPath !== deps.config.builtinSkillsRootPath &&
+    isPathWithinRoot(skillDirectoryPath, deps.config.builtinSkillsRootPath)
   );
 }
 
@@ -580,8 +584,8 @@ export async function deleteProjectSkill(
     if (
       realRootPath === null ||
       realSkillPath === null ||
-      realSkillPath !==
-        path.join(realRootPath, path.basename(skillDirectoryPath))
+      realSkillPath === realRootPath ||
+      !isPathWithinRoot(realSkillPath, realRootPath)
     ) {
       throw new ApiError(404, "not_found", "Skill not found");
     }
