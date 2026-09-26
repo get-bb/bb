@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGit } from "@bb/host-workspace";
-import { listWorkspacePaths } from "./file-list.js";
+import {
+  invalidateWorkspacePathListings,
+  listWorkspacePaths,
+} from "./file-list.js";
 import { listHostPaths } from "./host-files.js";
 
 const roots: string[] = [];
@@ -30,6 +33,7 @@ function listingArgs(root: string) {
     includeDirectories: true,
     includeHidden: true,
     respectGitIgnore: true,
+    maxAgeMs: 0,
     excludeNames: [],
   };
 }
@@ -50,6 +54,25 @@ afterEach(async () => {
 });
 
 describe("workspace path discovery", () => {
+  it("refreshes cached suggestions after invalidation and expiry", async () => {
+    const root = await createRoot();
+    await initRepo(root);
+    await write(root, "first.txt");
+    const args = { ...listingArgs(root), maxAgeMs: 2_000 };
+    await listWorkspacePaths(args);
+    await write(root, "second.txt");
+    await write(root, ".gitignore", "first.txt\n");
+    invalidateWorkspacePathListings(root);
+    expect((await listWorkspacePaths(args)).map((entry) => entry.path)).toEqual(
+      [".gitignore", "second.txt"],
+    );
+    await write(root, "third.txt");
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 2_001);
+    expect((await listWorkspacePaths(args)).map((entry) => entry.path)).toEqual(
+      [".gitignore", "second.txt", "third.txt"],
+    );
+  });
+
   it("reuses discovery across successive file suggestion queries", async () => {
     const root = await createRoot();
     await write(root, "alpha.md");

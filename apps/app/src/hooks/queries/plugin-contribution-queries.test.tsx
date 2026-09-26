@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -110,6 +111,67 @@ describe("usePluginContributions", () => {
 });
 
 describe("usePluginMentionSearch", () => {
+  it("publishes fast provider results while a slow provider is still pending", async () => {
+    const slow = createDeferredPromise<Response>();
+    const group = (providerId: string) => ({
+      pluginId: "fixture",
+      providerId,
+      label: providerId,
+      items: [
+        {
+          itemId: `${providerId}:one`,
+          title: providerId,
+          subtitle: null,
+          icon: null,
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string) =>
+        input.includes("providerId=slow")
+          ? slow.promise
+          : Promise.resolve(
+              new Response(JSON.stringify({ groups: [group("fast")] })),
+            ),
+      ),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        usePluginMentionSearch(
+          { trigger: "@", query: "one", projectId: null, threadId: null },
+          {
+            enabled: true,
+            providers: [
+              {
+                pluginId: "fixture",
+                id: "slow",
+                label: "Slow",
+                triggers: ["@"],
+              },
+              {
+                pluginId: "fixture",
+                id: "fast",
+                label: "Fast",
+                triggers: ["@"],
+              },
+            ],
+          },
+        ),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toEqual([group("fast")]));
+    expect(result.current.isFetching).toBe(true);
+    await act(async () =>
+      slow.resolve(new Response(JSON.stringify({ groups: [group("slow")] }))),
+    );
+    await waitFor(() =>
+      expect(result.current.data).toEqual([group("slow"), group("fast")]),
+    );
+    expect(result.current.isFetching).toBe(false);
+  });
+
   it("includes the active trigger in the search request", async () => {
     const fetchMock = mockFetchJsonOnce({
       ok: true,
@@ -140,7 +202,17 @@ describe("usePluginMentionSearch", () => {
             projectId: "proj_1",
             threadId: null,
           },
-          { enabled: true },
+          {
+            enabled: true,
+            providers: [
+              {
+                pluginId: "github",
+                id: "issue",
+                label: "GitHub issues",
+                triggers: ["#"],
+              },
+            ],
+          },
         ),
       { wrapper },
     );
@@ -163,7 +235,7 @@ describe("usePluginMentionSearch", () => {
       ]);
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/mentions/search?q=42&trigger=%23&projectId=proj_1",
+      "/api/v1/plugins/mentions/search?q=42&trigger=%23&pluginId=github&providerId=issue&projectId=proj_1",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });

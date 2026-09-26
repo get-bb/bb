@@ -477,11 +477,23 @@ export function registerPluginRoutes(
         400,
       );
     }
+    const pluginId = context.req.query("pluginId")?.trim() ?? "";
+    const providerId = context.req.query("providerId")?.trim() ?? "";
+    if (Boolean(pluginId) !== Boolean(providerId)) {
+      return context.json(
+        {
+          ok: false,
+          error: "pluginId and providerId must be supplied together",
+        },
+        400,
+      );
+    }
     const groups = await plugins.searchMentions({
       trigger,
       query,
       projectId: projectId !== null && projectId.length > 0 ? projectId : null,
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,
+      provider: pluginId && providerId ? { pluginId, providerId } : null,
     });
     return context.json({ ok: true, groups });
   });

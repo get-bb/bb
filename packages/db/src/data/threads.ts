@@ -994,10 +994,77 @@ function buildThreadSearchSnippet(args: {
   };
 }
 
-function listThreadSearchMatchRows(
+interface SearchThreadCandidate {
+  threadId: string;
+  archived: number;
+  threadUpdatedAt: number;
+}
+
+function singleTokenSearchThreads(
+  db: DbConnection,
+  matchQuery: string,
+  limit: number,
+): SQL | null {
+  const threads = db.all<SearchThreadCandidate>(sql`
+    SELECT matched.threadId, t.archived_at IS NOT NULL AS archived,
+      t.updated_at AS threadUpdatedAt
+    FROM (
+      SELECT DISTINCT s.thread_id AS threadId
+      FROM thread_search_segments_fts
+      JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
+      WHERE thread_search_segments_fts MATCH ${matchQuery}
+    ) AS matched
+    JOIN threads AS t ON t.id = matched.threadId
+    WHERE t.deleted_at IS NULL AND t.visibility = 'visible'
+  `);
+  if (threads.length === 0) return null;
+  const byId = new Map(threads.map((thread) => [thread.threadId, thread]));
+  const totals = [0, 0];
+  for (const thread of threads) totals[thread.archived] += 1;
+  const found = [0, 0];
+  const candidates = new Map<string, SearchThreadCandidate & { rank: number }>();
+  let cutoff: number | null = null;
+  const ranked = db.$client.prepare<[string], { threadId: string; rank: number }>(`
+    SELECT s.thread_id AS threadId, thread_search_segments_fts.rank AS rank
+    FROM thread_search_segments_fts
+    JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
+    WHERE thread_search_segments_fts MATCH ?
+    ORDER BY rank
+  `);
+  for (const row of ranked.iterate(matchQuery)) {
+    if (cutoff !== null && row.rank > cutoff) break;
+    const thread = byId.get(row.threadId);
+    if (thread === undefined || candidates.has(row.threadId)) continue;
+    candidates.set(row.threadId, { ...thread, rank: row.rank });
+    found[thread.archived] += 1;
+    if (found[0] >= Math.min(totals[0], limit) && found[1] >= Math.min(totals[1], limit)) {
+      cutoff = row.rank;
+    }
+  }
+  const ordered = [...candidates.values()].sort((left, right) =>
+    left.rank - right.rank ||
+    right.threadUpdatedAt - left.threadUpdatedAt ||
+    (left.threadId < right.threadId ? 1 : left.threadId > right.threadId ? -1 : 0),
+  );
+  const values: SQL[] = [];
+  const orders = [0, 0];
+  for (const thread of ordered) {
+    const threadOrder = ++orders[thread.archived];
+    if (threadOrder > limit) continue;
+    values.push(sql`(${thread.threadId}, ${thread.archived}, ${threadOrder}, ${totals[thread.archived]})`);
+  }
+  return sql`SELECT column1 AS threadId, column2 AS archived,
+    column3 AS threadOrder, column4 AS total
+    FROM (VALUES ${sql.join(values, sql`, `)})`;
+}
+
+function limitedSearchThreads(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
-): ThreadSearchMatchRow[] {
+): SQL | null {
+  if (args.tokenMatchQueries.length === 1) {
+    return singleTokenSearchThreads(db, args.anyTokenMatchQuery, args.limitPerGroup);
+  }
   const tokenMatchSelects = args.tokenMatchQueries.map(
     (matchQuery, tokenIndex) => sql`
       SELECT
@@ -1010,9 +1077,7 @@ function listThreadSearchMatchRows(
       GROUP BY s.thread_id
     `,
   );
-  const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
-
-  return db.all<ThreadSearchMatchRow>(sql`
+  return sql`
     WITH token_matches AS (
       ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
     ),
@@ -1040,11 +1105,25 @@ function listThreadSearchMatchRows(
         COUNT(*) OVER (PARTITION BY archived) AS total
       FROM ranked_threads
     ),
-    limited_threads AS (
+    selected_threads AS (
       SELECT threadId, archived, threadOrder, total
       FROM ordered_threads
       WHERE threadOrder <= ${args.limitPerGroup}
-    ),
+    )
+    SELECT * FROM selected_threads
+  `;
+}
+
+function listThreadSearchMatchRows(
+  db: DbConnection,
+  args: ListThreadSearchMatchRowsArgs,
+): ThreadSearchMatchRow[] {
+  const limitedThreads = limitedSearchThreads(db, args);
+  if (limitedThreads === null) return [];
+  const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
+
+  return db.all<ThreadSearchMatchRow>(sql`
+    WITH limited_threads AS (${limitedThreads}),
     ranked_segments AS (
       SELECT
         limited_threads.archived AS archived,
@@ -1163,11 +1242,11 @@ export function searchThreadsWithPendingInteractionState(
     THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   );
 
-  const rows = listThreadSearchMatchRows(db, {
+  const rows = db.$client.transaction(() => listThreadSearchMatchRows(db, {
     anyTokenMatchQuery,
     limitPerGroup,
     tokenMatchQueries,
-  });
+  })).deferred();
 
   return {
     active: hydrateThreadSearchGroup(db, {

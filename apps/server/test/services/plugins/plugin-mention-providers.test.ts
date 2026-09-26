@@ -269,7 +269,9 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const body = await response.json();
     expect(body.groups).toHaveLength(1);
     expect(body.groups[0].providerId).toBe("issues");
-    const entry = harness.pluginService.list().find((plugin) => plugin.id === "mentions");
+    const entry = harness.pluginService
+      .list()
+      .find((plugin) => plugin.id === "mentions");
     expect(entry?.handlerStats.errorCount).toBe(0);
   });
 
@@ -740,6 +742,7 @@ describe("mention search time box", () => {
       query: "o",
       projectId: null,
       threadId: null,
+      provider: null,
     });
     expect(groups).toEqual([
       {

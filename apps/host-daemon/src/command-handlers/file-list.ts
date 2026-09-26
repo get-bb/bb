@@ -58,9 +58,45 @@ interface ListWorkspacePathsArgs extends PathListInclusion {
   includeHidden: boolean;
   excludeNames: readonly string[];
   respectGitIgnore: boolean;
+  maxAgeMs: number;
 }
 
-const pendingListings = new Map<string, Promise<ListedPath[]>>();
+interface WorkspacePathListing {
+  root: string;
+  promise: Promise<ListedPath[]>;
+  expiresAt: number | null;
+  pathCount: number;
+}
+
+const workspaceListings = new Map<string, WorkspacePathListing>();
+const MAX_CACHED_LISTINGS = 32;
+const MAX_CACHED_PATHS = 100_000;
+
+export function invalidateWorkspacePathListings(root: string): void {
+  for (const [key, entry] of workspaceListings) {
+    if (
+      entry.root === root ||
+      entry.root.startsWith(`${root}${path.sep}`) ||
+      root.startsWith(`${entry.root}${path.sep}`)
+    ) {
+      workspaceListings.delete(key);
+    }
+  }
+}
+
+function trimWorkspaceListings(): void {
+  let pathCount = 0;
+  for (const entry of workspaceListings.values()) pathCount += entry.pathCount;
+  for (const [key, entry] of workspaceListings) {
+    if (
+      workspaceListings.size <= MAX_CACHED_LISTINGS &&
+      pathCount <= MAX_CACHED_PATHS
+    )
+      break;
+    workspaceListings.delete(key);
+    pathCount -= entry.pathCount;
+  }
+}
 
 export function listWorkspacePaths(
   args: ListWorkspacePathsArgs,
@@ -73,13 +109,43 @@ export function listWorkspacePaths(
     args.includeFiles,
     args.includeDirectories,
   ]);
-  const existing = pendingListings.get(key);
-  if (existing) return existing;
-  const listing = discoverWorkspacePaths(args).finally(() => {
-    pendingListings.delete(key);
-  });
-  pendingListings.set(key, listing);
-  return listing;
+  const existing = workspaceListings.get(key);
+  if (
+    existing &&
+    (existing.expiresAt === null ||
+      (args.maxAgeMs > 0 && existing.expiresAt > Date.now()))
+  ) {
+    workspaceListings.delete(key);
+    workspaceListings.set(key, existing);
+    return existing.promise;
+  }
+  const entry: WorkspacePathListing = {
+    root: args.root,
+    expiresAt: null,
+    pathCount: 0,
+    promise: discoverWorkspacePaths(args).then(
+      (paths) => {
+        if (workspaceListings.get(key) === entry) {
+          if (args.maxAgeMs > 0 && paths.length <= MAX_CACHED_PATHS) {
+            entry.expiresAt = Date.now() + args.maxAgeMs;
+            entry.pathCount = paths.length;
+            trimWorkspaceListings();
+          } else {
+            workspaceListings.delete(key);
+          }
+        }
+        return paths;
+      },
+      (error: unknown) => {
+        if (workspaceListings.get(key) === entry) workspaceListings.delete(key);
+        throw error;
+      },
+    ),
+  };
+  workspaceListings.delete(key);
+  workspaceListings.set(key, entry);
+  trimWorkspaceListings();
+  return entry.promise;
 }
 
 async function discoverWorkspacePaths(

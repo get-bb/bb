@@ -17,6 +17,7 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
+import { invalidateWorkspacePathListings } from "./command-handlers/file-list.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -257,6 +258,7 @@ export class WatchManager {
           });
         },
         onWatchError: (error) => {
+          invalidateWorkspacePathListings(workspace.path);
           this.options.onWorkspaceStatusWatchError?.({ error });
         },
       });
@@ -306,6 +308,7 @@ export class WatchManager {
     changeKinds: readonly WorkspaceStatusWatchChangeKind[];
     entry: WorkspaceWatchEntry;
   }): void {
+    invalidateWorkspacePathListings(args.entry.workspace.path);
     if (
       this.workspaceEntries.get(args.entry.target.environmentId) !== args.entry
     ) {
@@ -484,6 +487,7 @@ export class WatchManager {
           this.threadStorageTargets.get(threadId) ?? null,
         onChange: (event) => {
           if (event.kind === "thread-storage-changed") {
+            invalidateWorkspacePathListings(threadStorageRootPath);
             this.options.onThreadStorageChanged?.({
               environmentId: event.environmentId,
               threadId: event.threadId,

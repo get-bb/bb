@@ -418,6 +418,7 @@ export interface PluginService {
     query: string;
     projectId: string | null;
     threadId: string | null;
+    provider: { pluginId: string; providerId: string } | null;
   }): Promise<PluginMentionSearchGroup[]>;
   resolveMention(args: {
     pluginId: string;
@@ -2302,7 +2303,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (entries.length === 0) return [];
       const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
       for (const [id, plugin] of entries) {
+        if (args.provider !== null && args.provider.pluginId !== id) continue;
         for (const record of [...plugin.handle.mentionProviders]) {
+          if (args.provider !== null && args.provider.providerId !== record.id)
+            continue;
           if (!record.triggers.includes(args.trigger)) continue;
           tasks.push(
             (async () => {

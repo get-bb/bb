@@ -553,30 +553,24 @@ function rankPlainQueryMatches<T>(
   items: readonly NormalizedPathItem<T>[],
   query: string,
 ): RankedPathMatch<T>[] {
-  const tiebreakers: Tiebreaker<NormalizedPathItem<T>>[] = [
-    byPathStartAsc,
-    byPathLengthAsc,
-  ];
   const matcher = new Fzf<readonly NormalizedPathItem<T>[]>(items, {
     selector: (item: NormalizedPathItem<T>) => item.path,
     casing: "smart-case",
     forward: true,
-    tiebreakers,
+    sort: false,
   });
 
   const matches: FzfResultItem<NormalizedPathItem<T>>[] = matcher.find(query);
 
-  return matches
-    .map((match) => ({
-      item: match.item.item,
-      path: match.item.path,
-      positions: [...match.positions].sort((left, right) => left - right),
-      score:
-        getRankedScore(PathIntentRank.PlainFzf, match.score) +
-        getPathRelevanceBonus(match.item.path, query),
-      start: match.start,
-    }))
-    .sort(compareRankedMatches);
+  return matches.map((match) => ({
+    item: match.item.item,
+    path: match.item.path,
+    positions: [...match.positions].sort((left, right) => left - right),
+    score:
+      getRankedScore(PathIntentRank.PlainFzf, match.score) +
+      getPathRelevanceBonus(match.item.path, query),
+    start: match.start,
+  }));
 }
 
 function rankPathQueryMatches<T>(

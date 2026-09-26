@@ -413,7 +413,7 @@ describe("thread search data", () => {
     }
   });
 
-  it("limits and counts each group from one partitioned scan", () => {
+  it("keeps exact group totals and newest tied results at the limit", () => {
     const { db, project } = setup();
     try {
       const activeIds: string[] = [];
@@ -425,6 +425,7 @@ describe("thread search data", () => {
           title: `partitionneedle active ${index}`,
         });
         activeIds.push(activeThread.id);
+        db.$client.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(index, activeThread.id);
         const archivedThread = createThread(db, noopNotifier, {
           projectId: project.id,
           providerId: "codex",
@@ -432,6 +433,7 @@ describe("thread search data", () => {
         });
         archiveThread(db, noopNotifier, archivedThread.id);
         archivedIds.push(archivedThread.id);
+        db.$client.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(index, archivedThread.id);
       }
 
       const results = searchThreadsWithPendingInteractionState(db, {
@@ -443,6 +445,8 @@ describe("thread search data", () => {
       expect(results.archived.total).toBe(4);
       expect(results.active.results).toHaveLength(2);
       expect(results.archived.results).toHaveLength(2);
+      expect(results.active.results.map((result) => result.thread.id)).toEqual(activeIds.slice(-2).reverse());
+      expect(results.archived.results.map((result) => result.thread.id)).toEqual(archivedIds.slice(-2).reverse());
       for (const result of results.active.results) {
         expect(activeIds).toContain(result.thread.id);
         expect(result.thread.archivedAt).toBeNull();
