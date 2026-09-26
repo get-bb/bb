@@ -515,8 +515,16 @@ export type EventProjectionMessage =
   | EventProjectionErrorMessage;
 
 export interface BuildEventProjectionMessagesOptions {
+  settledItems?: readonly SettledItemMessage[];
+  settledToolFlushSequences?: readonly number[];
   includeDiagnosticOperations?: boolean;
   threadStatus?: Thread["status"];
   threadName: string;
   providerDisplayName?: string;
 }
+
+export type SettledItemMessage =
+  | EventProjectionCommandMessage
+  | EventProjectionAssistantTextMessage
+  | EventProjectionFileEditMessage
+  | (EventProjectionOperationMessage & { opType: "reasoning" });

@@ -12,6 +12,7 @@ export type {
   EventProjectionApprovalLifecycleStatus,
   EventProjectionAssistantTextMessage,
   EventProjectionCommandMessage,
+  SettledItemMessage,
   EventProjectionDelegationMessage,
   EventProjectionErrorMessage,
   EventProjectionExtensionMessage,
