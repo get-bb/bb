@@ -157,6 +157,7 @@ export function DispatchControl({
 }: DispatchControlProps) {
   const rpc = useRpc<DelegationRpcContract>();
   const tasksRpc = useTasksRpc();
+  const navigate = useBbNavigate();
   const [dispatching, setDispatching] = useState(false);
   const [lastPresetId, setLastPresetId] = useState(loadLastPresetId);
   const [createDialogKey, setCreateDialogKey] = useState<number | null>(null);
@@ -164,7 +165,8 @@ export function DispatchControl({
   const dispatch = async (presetId: string) => {
     setDispatching(true);
     try {
-      await rpc.call("delegate", { taskId, presetId });
+      const { threadId } = await rpc.call("delegate", { taskId, presetId });
+      navigate.toThread(threadId);
     } catch (error) {
       onError(errorMessage(error));
     } finally {
