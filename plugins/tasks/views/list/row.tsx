@@ -99,7 +99,9 @@ interface TaskRowProps {
   showProject: boolean;
   labelsById: Map<string, Label>;
   projectLabels: readonly Label[];
+  projects: readonly Project[];
   onEdit: EditFn;
+  onMoveToProject: (task: Task, projectId: string) => void;
   onOpen: () => void;
   pending: boolean;
 }
@@ -111,14 +113,22 @@ export function TaskRow({
   showProject,
   labelsById,
   projectLabels,
+  projects,
   onEdit,
+  onMoveToProject,
   onOpen,
   pending,
 }: TaskRowProps) {
   const [openMenu, setOpenMenu] = useState<"status" | "priority" | null>(null);
 
   return (
-    <TaskContextMenu task={task} onEdit={onEdit} projectLabels={projectLabels}>
+    <TaskContextMenu
+      task={task}
+      onEdit={onEdit}
+      projectLabels={projectLabels}
+      projects={projects}
+      onMoveToProject={onMoveToProject}
+    >
       <div
         data-task-key={task.key}
         aria-busy={pending || undefined}

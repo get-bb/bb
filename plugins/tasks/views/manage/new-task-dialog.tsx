@@ -49,10 +49,32 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { CheckboxField, DEFAULT_COLOR } from "./shared.js";
+import {
+  clearNewTaskDraft,
+  hasDraftContent,
+  loadNewTaskDraft,
+  storeNewTaskDraft,
+  type NewTaskDraft,
+} from "./new-task-draft.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
 
 const CHIP_TRIGGER =
   "h-7 w-auto gap-1.5 rounded-md px-2 text-xs text-muted-foreground";
+
+function blankDraft(
+  projectId: string | null,
+  defaultStatus: TaskStatus | undefined,
+): NewTaskDraft {
+  return {
+    projectId,
+    title: "",
+    description: "",
+    status: defaultStatus ?? "todo",
+    priority: "none",
+    labelIds: [],
+    dueDate: "",
+  };
+}
 
 interface NewTaskDialogProps {
   open: boolean;
@@ -71,13 +93,9 @@ export function NewTaskDialog({
   const navigation = useTasksNavigation();
   const projects = useProjects();
 
-  const [selectedProjectId, setSelectedProjectId] = useState(projectId);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<TaskStatus>(defaultStatus ?? "todo");
-  const [priority, setPriority] = useState<TaskPriority>("none");
-  const [labelIds, setLabelIds] = useState<string[]>([]);
-  const [dueDate, setDueDate] = useState("");
+  const [draft, setDraft] = useState(() =>
+    blankDraft(projectId, defaultStatus),
+  );
   const [createMore, setCreateMore] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,15 +106,23 @@ export function NewTaskDialog({
   const titleRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const updateDraft = (
+    change: (current: NewTaskDraft) => Partial<NewTaskDraft>,
+  ) =>
+    setDraft((current) => {
+      const next = { ...current, ...change(current) };
+      storeNewTaskDraft(next);
+      return next;
+    });
+
   useEffect(() => {
     if (!open) return;
-    setSelectedProjectId(projectId);
-    setTitle("");
-    setDescription("");
-    setStatus(defaultStatus ?? "todo");
-    setPriority("none");
-    setLabelIds([]);
-    setDueDate("");
+    const restored = loadNewTaskDraft();
+    setDraft(
+      restored
+        ? { ...restored, projectId: restored.projectId ?? projectId }
+        : blankDraft(projectId, defaultStatus),
+    );
     setLabelQuery("");
     setPendingFiles([]);
     setCreatedTask(null);
@@ -104,7 +130,13 @@ export function NewTaskDialog({
     // oxlint-disable-next-line react/exhaustive-deps
   }, [open]);
 
+  const { title, description, status, priority, labelIds, dueDate } = draft;
   const projectList = projects.data ?? [];
+  const selectedProjectId =
+    projects.data &&
+    !projects.data.some((entry) => entry.id === draft.projectId)
+      ? null
+      : draft.projectId;
   const effectiveProjectId =
     selectedProjectId ?? projectId ?? projectList[0]?.id ?? null;
   const project =
@@ -120,17 +152,23 @@ export function NewTaskDialog({
     [effectiveProjectId],
   );
 
-  const changeProject = (id: string) => {
-    setSelectedProjectId(id);
-    setLabelIds([]);
-  };
+  const changeProject = (id: string) =>
+    updateDraft(() => ({ projectId: id, labelIds: [] }));
 
   const toggleLabel = (labelId: string) =>
-    setLabelIds((current) =>
-      current.includes(labelId)
-        ? current.filter((id) => id !== labelId)
-        : [...current, labelId],
-    );
+    updateDraft((current) => ({
+      labelIds: current.labelIds.includes(labelId)
+        ? current.labelIds.filter((id) => id !== labelId)
+        : [...current.labelIds, labelId],
+    }));
+
+  const discardDraft = () => {
+    clearNewTaskDraft();
+    setDraft(blankDraft(projectId, defaultStatus));
+    setPendingFiles([]);
+    setError(null);
+    titleRef.current?.focus();
+  };
 
   const createLabelFromQuery = async () => {
     const name = labelQuery.trim();
@@ -143,7 +181,9 @@ export function NewTaskDialog({
         color: DEFAULT_COLOR,
       });
       labels.refresh();
-      setLabelIds((current) => [...current, label.id]);
+      updateDraft((current) => ({
+        labelIds: [...current.labelIds, label.id],
+      }));
       setLabelQuery("");
     } catch (createError) {
       setError(errorMessage(createError));
@@ -208,6 +248,7 @@ export function NewTaskDialog({
         setError(result.error.message);
         return;
       }
+      clearNewTaskDraft();
       const staged = pendingFiles.filter((entry) => entry.status === "staged");
       const failed = await uploadStagedAttachments(staged, {
         taskId: result.task.id,
@@ -218,10 +259,13 @@ export function NewTaskDialog({
         return;
       }
       if (createMore) {
-        setTitle("");
-        setDescription("");
-        setLabelIds([]);
-        setDueDate("");
+        setDraft((current) => ({
+          ...current,
+          title: "",
+          description: "",
+          labelIds: [],
+          dueDate: "",
+        }));
         setPendingFiles([]);
         titleRef.current?.focus();
       } else {
@@ -245,7 +289,7 @@ export function NewTaskDialog({
   return (
     <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent
-        className="max-w-xl gap-0 p-0"
+        className="flex max-h-[85dvh] min-h-0 max-w-xl flex-col gap-0 p-0"
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
@@ -261,7 +305,7 @@ export function NewTaskDialog({
           stageMore(files);
         }}
       >
-        <DialogTitle className="flex items-center gap-2 px-4 pt-4 text-xs font-normal text-muted-foreground">
+        <DialogTitle className="flex shrink-0 items-center gap-2 px-4 pt-4 text-xs font-normal text-muted-foreground">
           {project ? (
             <span
               aria-hidden
@@ -276,7 +320,7 @@ export function NewTaskDialog({
           Create a task with a title, description, attributes, and attachments.
         </DialogDescription>
         {createdTask ? (
-          <div className="px-4 pt-2">
+          <div className="min-h-0 flex-auto overflow-y-auto px-4 pt-2">
             <p role="alert" className="text-sm">
               Task <span className="font-medium">{createdTask.key}</span> was
               created, but {failedCount} attachment
@@ -302,12 +346,20 @@ export function NewTaskDialog({
             </div>
           </div>
         ) : null}
-        <div className={cn("px-4 pt-2", createdTask && "hidden")}>
+        <div
+          className={cn(
+            "flex min-h-0 flex-auto flex-col px-4 pt-2",
+            createdTask && "hidden",
+          )}
+        >
           <input
             ref={titleRef}
             autoFocus
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              updateDraft(() => ({ title: next }));
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
@@ -317,18 +369,20 @@ export function NewTaskDialog({
             }}
             placeholder="Task title"
             aria-label="Task title"
-            className="w-full bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
+            className="w-full shrink-0 bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
           />
           <TasksEditor
             variant="comment"
             value={description}
-            onChange={setDescription}
+            onChange={(markdown) =>
+              updateDraft(() => ({ description: markdown }))
+            }
             placeholder="Description — rich text, round-trips as markdown for agents"
-            className="mt-2 min-h-16"
+            className="mt-2 min-h-16 flex-auto overflow-y-auto"
             onAttachFiles={stageMore}
           />
           {pendingFiles.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto">
               {pendingFiles.map((entry) => (
                 <AttachmentChip
                   key={entry.id}
@@ -340,14 +394,14 @@ export function NewTaskDialog({
             </div>
           ) : null}
           {hasOversized ? (
-            <p className="mt-2 text-xs text-destructive">
+            <p className="mt-2 shrink-0 text-xs text-destructive">
               Remove attachments over the 25 MB limit before creating the task.
             </p>
           ) : null}
         </div>
         <div
           className={cn(
-            "flex flex-wrap items-center gap-1.5 px-4 pt-3",
+            "flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-3",
             createdTask && "hidden",
           )}
         >
@@ -378,7 +432,9 @@ export function NewTaskDialog({
           </Select>
           <Select
             value={status}
-            onValueChange={(value) => setStatus(value as TaskStatus)}
+            onValueChange={(value) =>
+              updateDraft(() => ({ status: value as TaskStatus }))
+            }
           >
             <SelectTrigger aria-label="Status" className={CHIP_TRIGGER}>
               <SelectValue />
@@ -393,7 +449,9 @@ export function NewTaskDialog({
           </Select>
           <Select
             value={priority}
-            onValueChange={(value) => setPriority(value as TaskPriority)}
+            onValueChange={(value) =>
+              updateDraft(() => ({ priority: value as TaskPriority }))
+            }
           >
             <SelectTrigger aria-label="Priority" className={CHIP_TRIGGER}>
               <SelectValue />
@@ -490,17 +548,20 @@ export function NewTaskDialog({
           <input
             type="date"
             value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              updateDraft(() => ({ dueDate: next }));
+            }}
             aria-label="Due date"
             className="h-7 rounded-md border border-input bg-transparent px-2 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         {error ? (
-          <p role="alert" className="px-4 pt-2 text-xs text-destructive">
+          <p role="alert" className="shrink-0 px-4 pt-2 text-xs text-destructive">
             {error}
           </p>
         ) : null}
-        <DialogFooter className="mt-4 flex-row items-center border-t border-border-hairline px-4 py-3 sm:justify-between">
+        <DialogFooter className="mt-4 shrink-0 flex-row items-center border-t border-border-hairline px-4 py-3 sm:justify-between">
           {createdTask ? (
             <>
               <span />
@@ -516,6 +577,17 @@ export function NewTaskDialog({
                 label="Create more"
               />
               <div className="flex items-center gap-1.5">
+                {hasDraftContent(draft) ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={submitting}
+                    className="text-muted-foreground"
+                    onClick={discardDraft}
+                  >
+                    Discard draft
+                  </Button>
+                ) : null}
                 <button
                   type="button"
                   title="Attach files"

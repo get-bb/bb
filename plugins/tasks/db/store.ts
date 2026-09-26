@@ -30,6 +30,7 @@ import type {
   Label,
   ListTasksFilters,
   ListTasksPage,
+  MoveTaskToProjectResult,
   Preset,
   PresetEnvironmentKind,
   Project,
@@ -723,12 +724,20 @@ export function createTasksStore(db: PluginDatabase) {
     `${taskSelect} WHERE p.prefix = ? COLLATE NOCASE AND t.number = ?`,
   );
 
+  const getTaskByAliasRow = db.prepare<[string, number], TaskRow>(
+    `${taskSelect}
+     JOIN task_key_aliases a ON a.task_id = t.id
+     WHERE a.prefix = ? AND a.number = ?`,
+  );
+
   function getTaskByKey(key: string): Task | undefined {
     const match = /^([A-Za-z][A-Za-z0-9]{0,9})-(\d+)$/.exec(key.trim());
     if (!match) return undefined;
     const [, prefix, number] = match;
     if (prefix === undefined || number === undefined) return undefined;
-    const row = getTaskByKeyRow.get(prefix, Number(number));
+    const row =
+      getTaskByKeyRow.get(prefix, Number(number)) ??
+      getTaskByAliasRow.get(prefix, Number(number));
     return row ? taskFromRow(row) : undefined;
   }
 
@@ -1148,6 +1157,107 @@ export function createTasksStore(db: PluginDatabase) {
 
   function updateTask(id: string, input: UpdateTaskInput): Task {
     return updateTaskTransaction(id, input);
+  }
+
+  const moveTaskToProjectTransaction = db.transaction(
+    (id: string, projectId: string): MoveTaskToProjectResult => {
+      const root = requireTask(id);
+      const target = requireProject(projectId);
+      if (root.projectId === target.id) return { task: root, moved: [] };
+      const source = requireProject(root.projectId);
+      const moving = [root, ...listSubtasks(root.id)];
+
+      const allocated = db
+        .prepare<[number, string, number]>(
+          `
+          UPDATE projects
+          SET next_task_number = next_task_number + ?
+          WHERE id = ? AND next_task_number = ?
+        `,
+        )
+        .run(moving.length, target.id, target.nextTaskNumber);
+      if (allocated.changes !== 1) {
+        throw new Error(`Could not allocate task numbers for ${target.id}`);
+      }
+
+      const nextPosition = db.prepare<
+        [string, Task["status"]],
+        { position: number }
+      >(
+        `
+        SELECT COALESCE(MAX(position), 0) + ${POSITION_STEP} AS position
+        FROM tasks WHERE project_id = ? AND status = ?
+      `,
+      );
+      const recordAlias = db.prepare<[string, number, string]>(
+        `
+        INSERT INTO task_key_aliases (prefix, number, task_id) VALUES (?, ?, ?)
+        ON CONFLICT (prefix, number) DO UPDATE SET task_id = excluded.task_id
+      `,
+      );
+      const dropAlias = db.prepare<[string, number]>(
+        "DELETE FROM task_key_aliases WHERE prefix = ? AND number = ?",
+      );
+      const moveRow = db.prepare<
+        [string, number, number, string | null, string, string]
+      >(
+        `
+        UPDATE tasks
+        SET project_id = ?, number = ?, position = ?, parent_task_id = ?,
+          updated_at = ?
+        WHERE id = ?
+      `,
+      );
+      const targetLabelByName = db.prepare<[string, string], LabelRow>(
+        "SELECT * FROM labels WHERE project_id = ? AND name = ?",
+      );
+      const clearTaskLabels = db.prepare<[string]>(
+        "DELETE FROM task_labels WHERE task_id = ?",
+      );
+      const insertTaskLabel = db.prepare<[string, string]>(
+        `
+        INSERT INTO task_labels (task_id, label_id) VALUES (?, ?)
+        ON CONFLICT (task_id, label_id) DO NOTHING
+      `,
+      );
+
+      const updatedAt = nowIso();
+      const moved = moving.map((task, index) => {
+        const number = target.nextTaskNumber + index;
+        const sourceLabels = listLabelsForTask(task.id);
+        recordAlias.run(source.prefix, task.number, task.id);
+        dropAlias.run(target.prefix, number);
+        moveRow.run(
+          target.id,
+          number,
+          nextPosition.get(target.id, task.status)?.position ?? POSITION_STEP,
+          task.id === root.id ? null : root.id,
+          updatedAt,
+          task.id,
+        );
+        clearTaskLabels.run(task.id);
+        for (const label of sourceLabels) {
+          const row = targetLabelByName.get(target.id, label.name);
+          const targetLabel = row
+            ? labelFromRow(row)
+            : createLabel({
+                projectId: target.id,
+                name: label.name,
+                color: label.color,
+              });
+          insertTaskLabel.run(task.id, targetLabel.id);
+        }
+        return { previousKey: task.key, task: requireTask(task.id) };
+      });
+      return { task: requireTask(root.id), moved };
+    },
+  );
+
+  function moveTaskToProject(
+    id: string,
+    projectId: string,
+  ): MoveTaskToProjectResult {
+    return moveTaskToProjectTransaction(id, projectId);
   }
 
   function renormalizeColumn(
@@ -1827,6 +1937,7 @@ export function createTasksStore(db: PluginDatabase) {
     listTasks,
     listSubtasks,
     updateTask,
+    moveTaskToProject,
     updatePosition,
     deleteTask,
     createLabel,

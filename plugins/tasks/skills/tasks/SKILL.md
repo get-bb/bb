@@ -74,6 +74,10 @@ For task dispatch and execution presets, read
    with `bb tasks update ABC-12 --no-parent`; the two parent flags cannot be
    combined.
 
+   Move a task and its sub-tasks to another tracker project with
+   `bb tasks move ABC-12 --project XYZ`. The task gets a new key in that
+   project; the old key keeps resolving, so use the new key from then on.
+
    If the work cannot proceed, leave the status accurate and comment with the
    specific blocker, what you tried, and what would unblock it. Do not mark a
    blocked task complete.

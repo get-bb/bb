@@ -1039,6 +1039,196 @@ describe("Tasks RPC domain API", () => {
     }
   });
 
+  it("moves a task and its sub-tasks to another project, keeping old keys resolvable", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const ops = store.tasks.createProject({
+      name: "Ops",
+      prefix: "OPS",
+      color: "orange",
+    });
+    const home = store.tasks.createProject({
+      name: "Home",
+      prefix: "HOME",
+      color: "purple",
+    });
+    const opsUrgent = store.tasks.createLabel({
+      projectId: ops.id,
+      name: "Urgent",
+      color: "red",
+    });
+    const opsInfra = store.tasks.createLabel({
+      projectId: ops.id,
+      name: "Infra",
+      color: "gray",
+    });
+    const homeUrgent = store.tasks.createLabel({
+      projectId: home.id,
+      name: "urgent",
+      color: "pink",
+    });
+    store.tasks.createTask({ projectId: home.id, title: "Existing" });
+    const existingDone = store.tasks.createTask({
+      projectId: home.id,
+      title: "Existing done",
+      status: "done",
+    });
+    const parent = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Parent",
+      status: "done",
+    });
+    const child = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Child",
+      parentTaskId: parent.id,
+    });
+    store.tasks.addTaskLabel(parent.id, opsUrgent.id);
+    store.tasks.addTaskLabel(parent.id, opsInfra.id);
+    store.tasks.addTaskLabel(child.id, opsInfra.id);
+
+    const result = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: parent.id,
+        projectId: home.id,
+        authorName: "Jem",
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.task).toMatchObject({
+      id: parent.id,
+      projectId: home.id,
+      key: "HOME-3",
+      parentTaskId: null,
+      status: "done",
+    });
+    expect(result.task.position).toBeGreaterThan(existingDone.position);
+
+    const movedChild = store.tasks.getTask(child.id);
+    expect(movedChild).toMatchObject({
+      projectId: home.id,
+      key: "HOME-4",
+      parentTaskId: parent.id,
+    });
+    expect(store.tasks.getProject(home.id)?.nextTaskNumber).toBe(5);
+
+    const homeInfra = store.tasks
+      .listLabels(home.id)
+      .find((label) => label.name === "Infra");
+    expect(homeInfra).toMatchObject({ color: "gray" });
+    expect([...result.task.labelIds].sort()).toEqual(
+      [homeUrgent.id, homeInfra!.id].sort(),
+    );
+    expect(store.tasks.listTaskLabels(child.id)).toEqual([
+      { taskId: child.id, labelId: homeInfra!.id },
+    ]);
+
+    for (const [taskKey, id] of [
+      ["OPS-1", parent.id],
+      ["ops-2", child.id],
+      ["HOME-3", parent.id],
+    ] as const) {
+      const found = tasksRpcContract.getTaskByKey.output.parse(
+        await harness.callRpc("getTaskByKey", { taskKey }),
+      );
+      expect(found.task?.id).toBe(id);
+    }
+
+    expect(store.tasks.listComments(parent.id).at(-1)).toMatchObject({
+      kind: "system",
+      body: "Moved from OPS-1 to HOME-3 by Jem",
+    });
+    expect(store.tasks.listComments(child.id).at(-1)).toMatchObject({
+      kind: "system",
+      body: "Moved from OPS-2 to HOME-4 by Jem",
+    });
+    expect(harness.realtimeSignals).toEqual(
+      expect.arrayContaining([
+        {
+          channel: "tasks:changed",
+          payload: { taskId: parent.id, projectId: ops.id },
+        },
+        {
+          channel: "tasks:changed",
+          payload: { taskId: parent.id, projectId: home.id },
+        },
+      ]),
+    );
+    await harness.dispose();
+  });
+
+  it("detaches a sub-task moved on its own and lets live keys win over aliases", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const ops = store.tasks.createProject({
+      name: "Ops",
+      prefix: "OPS",
+      color: "orange",
+    });
+    const home = store.tasks.createProject({
+      name: "Home",
+      prefix: "HOME",
+      color: "purple",
+    });
+    const parent = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Parent",
+    });
+    const child = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Child",
+      parentTaskId: parent.id,
+    });
+
+    const moved = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: child.id,
+        projectId: home.id,
+      }),
+    );
+    expect(moved).toMatchObject({
+      ok: true,
+      task: { key: "HOME-1", parentTaskId: null },
+    });
+    expect(store.tasks.listSubtasks(parent.id)).toEqual([]);
+
+    const signalsBeforeNoop = harness.realtimeSignals.length;
+    const noop = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: child.id,
+        projectId: home.id,
+      }),
+    );
+    expect(noop).toMatchObject({ ok: true, task: { key: "HOME-1" } });
+    expect(harness.realtimeSignals).toHaveLength(signalsBeforeNoop);
+
+    store.tasks.updateProject(ops.id, { prefix: "OPX" });
+    const reused = store.tasks.createProject({
+      name: "New ops",
+      prefix: "OPS",
+      color: "blue",
+    });
+    store.tasks.createTask({ projectId: reused.id, title: "Fresh one" });
+    const fresh = store.tasks.createTask({
+      projectId: reused.id,
+      title: "Fresh two",
+    });
+    expect(store.tasks.getTaskByKey("OPS-2")?.id).toBe(fresh.id);
+
+    const back = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: child.id,
+        projectId: reused.id,
+      }),
+    );
+    expect(back).toMatchObject({ ok: true, task: { key: "OPS-3" } });
+    expect(store.tasks.getTaskByKey("HOME-1")?.id).toBe(child.id);
+    expect(store.tasks.getTaskByKey("OPS-2")?.id).toBe(fresh.id);
+    await harness.dispose();
+  });
+
   it("returns a typed error when a task would exceed one sub-task level", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     registerTasksApi(bb, createStore(bb));

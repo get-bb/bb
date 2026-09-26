@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   TASK_STATUSES,
   type Label,
+  type Project,
   type Task,
   type TaskPriority,
   type TaskStatus,
@@ -244,11 +245,15 @@ export function TaskContextMenu({
   task,
   onEdit,
   projectLabels,
+  projects,
+  onMoveToProject,
   children,
 }: {
   task: Task;
   onEdit: EditFn;
   projectLabels: readonly Label[];
+  projects: readonly Project[];
+  onMoveToProject: (task: Task, projectId: string) => void;
   children: ReactNode;
 }) {
   const toggleLabel = (labelId: string) => {
@@ -376,6 +381,49 @@ export function TaskContextMenu({
                   />
                   {label.name}
                 </ContextMenuCheckboxItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        ) : null}
+
+        {projects.length > 1 ? (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <Icon name="ArrowUpRight" className="size-3.5" />
+              <span>Move to project</span>
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent className="min-w-48">
+              {projects.map((project) => (
+                <ContextMenuItem
+                  key={project.id}
+                  aria-current={
+                    project.id === task.projectId ? "true" : undefined
+                  }
+                  onSelect={() => {
+                    if (project.id !== task.projectId) {
+                      onMoveToProject(task, project.id);
+                    }
+                  }}
+                >
+                  <span className="flex flex-1 items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="size-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: project.color }}
+                    />
+                    {project.name}
+                    {project.id === task.projectId ? (
+                      <span className="sr-only"> (current)</span>
+                    ) : null}
+                  </span>
+                  {project.id === task.projectId ? (
+                    <Icon name="Check" aria-hidden className="size-3.5" />
+                  ) : (
+                    <span className="text-2xs text-subtle-foreground">
+                      {project.prefix}
+                    </span>
+                  )}
+                </ContextMenuItem>
               ))}
             </ContextMenuSubContent>
           </ContextMenuSub>

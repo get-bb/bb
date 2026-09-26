@@ -239,6 +239,15 @@ const MIGRATIONS = [
     ALTER TABLE presets ADD COLUMN service_tier TEXT
       CHECK (service_tier IN ('default', 'fast'));
   `,
+  `
+    CREATE TABLE task_key_aliases (
+      prefix TEXT NOT NULL COLLATE NOCASE,
+      number INTEGER NOT NULL CHECK (number >= 1),
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      PRIMARY KEY (prefix, number)
+    );
+    CREATE INDEX idx_task_key_aliases_task ON task_key_aliases(task_id);
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {
