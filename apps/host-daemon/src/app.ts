@@ -106,6 +106,7 @@ interface CreateHostDaemonAppOptions {
   logger: HostDaemonLogger;
   serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
+  allowInsecureServerUrl?: boolean;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -278,6 +279,7 @@ export async function createHostDaemonApp(
     hostKey: options.hostKey,
     logger: options.logger,
     serverHeaders: options.serverHeaders,
+    allowInsecureServerUrl: options.allowInsecureServerUrl,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
@@ -781,6 +783,7 @@ export async function createHostDaemonApp(
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
+      allowInsecureServerUrl: options.allowInsecureServerUrl,
       fetchFn: options.fetchFn,
       logger: options.logger,
       serverUrl: options.serverUrl,

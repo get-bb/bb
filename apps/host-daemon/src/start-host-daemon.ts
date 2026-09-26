@@ -38,6 +38,7 @@ interface StartHostDaemonOptions {
   bridgeBundleDir?: string;
   serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
+  allowInsecureServerUrl?: boolean;
 }
 
 export async function startHostDaemon(
@@ -168,6 +169,7 @@ export async function startHostDaemon(
       hostKey,
       serverHeaders: options.serverHeaders,
       autoUpdate: options.autoUpdate,
+      allowInsecureServerUrl: options.allowInsecureServerUrl,
       bridgeBundleDir: options.bridgeBundleDir,
       hostId: identity.hostId,
       hostName: identity.hostName,
