@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon } from "@bb/shared-ui/icon";
@@ -33,7 +30,6 @@ export function SidebarVisibilityCustomize({
   title,
   variant,
   visibleIds,
-  visibilityLabel = "sidebar",
 }: {
   items: readonly SidebarVisibilityItem[];
   listLabel: string;
@@ -49,7 +45,6 @@ export function SidebarVisibilityCustomize({
   title: string;
   variant: "compact" | "card";
   visibleIds: readonly string[];
-  visibilityLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const doneButtonRef = useRef<HTMLButtonElement>(null);
@@ -107,7 +102,6 @@ export function SidebarVisibilityCustomize({
                   : undefined
               }
               onCheckedChange={(checked) => onVisibleChange(item.id, checked)}
-              visibilityLabel={visibilityLabel}
               testIdPrefix={testIdPrefix}
             />
           ))}
@@ -189,7 +183,6 @@ function SidebarCustomizeItem({
   onCheckedChange,
   reorderDisabled,
   testIdPrefix,
-  visibilityLabel,
 }: {
   checked: boolean;
   item: SidebarVisibilityItem;
@@ -197,7 +190,6 @@ function SidebarCustomizeItem({
   onCheckedChange: (checked: boolean) => void;
   reorderDisabled: boolean;
   testIdPrefix: string;
-  visibilityLabel: string;
 }) {
   const checkboxId = useId();
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
@@ -275,7 +267,7 @@ function SidebarCustomizeItem({
         <Checkbox
           id={checkboxId}
           checked={checked}
-          aria-label={`Show ${item.title} in ${visibilityLabel}`}
+          aria-label={`Show ${item.title} in sidebar`}
           onCheckedChange={(nextChecked) =>
             onCheckedChange(nextChecked === true)
           }

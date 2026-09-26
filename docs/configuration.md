@@ -930,7 +930,10 @@ same operations to its app client.
 ### Sidebar footer
 
 The footer’s More menu is always available. Choose Customize footer to show,
-hide, and drag-reorder built-in and registered plugin actions inline. The same
+hide, and drag-reorder built-in and registered plugin actions using an inline
+icon preview. Click an icon to choose its action, choose None to move it into
+More, or use the empty slot to add an action. Choosing an action already shown
+swaps the two icons. The same
 preferences are available in Settings → Appearance → Sidebar footer. Right-click
 an action and choose Hide to move it into More. Actions that do not fit the
 available width also move into More, without changing saved visibility; they

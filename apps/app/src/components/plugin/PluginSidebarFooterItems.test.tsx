@@ -12,6 +12,7 @@ import {
   sidebarFooterOrderAtom,
   sidebarFooterHiddenAtom,
 } from "@/components/sidebar/sidebarFooterPreferences";
+import { SidebarFooterCustomize } from "@/components/sidebar/SidebarFooterCustomize";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
 import type { ReactNode } from "react";
 import type {
@@ -124,6 +125,48 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterItems", () => {
+  it("replaces, restores, and swaps icon slots without losing unloaded plugin preferences", async () => {
+    const store = createStore();
+    store.set(sidebarFooterHiddenAtom, [
+      "builtin:report-bug",
+      "plugin:unloaded/action",
+    ]);
+    renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
+    const choose = async (slot: string, action: string) => {
+      fireEvent.click(screen.getByRole("button", { name: slot }));
+      fireEvent.click(
+        await screen.findByRole("menuitemradio", { name: action }),
+      );
+    };
+    await choose("Footer action 1: Settings", "Report a bug");
+    expect(
+      screen.getByRole("button", { name: "Footer action 1: Report a bug" }),
+    ).toBeDefined();
+    expect(store.get(sidebarFooterHiddenAtom)).toEqual([
+      "plugin:unloaded/action",
+      "builtin:settings",
+    ]);
+    await choose("Footer action 2: None", "Settings");
+    expect(
+      screen.getByRole("button", { name: "Footer action 2: Settings" }),
+    ).toBeDefined();
+    await choose("Footer action 1: Report a bug", "Settings");
+    expect(
+      screen.getByRole("button", { name: "Footer action 1: Settings" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Footer action 2: Report a bug" }),
+    ).toBeDefined();
+    await choose("Footer action 1: Settings", "None");
+    expect(
+      screen.getByRole("button", { name: "Footer action 1: Report a bug" }),
+    ).toBeDefined();
+    expect(store.get(sidebarFooterHiddenAtom)).toEqual([
+      "plugin:unloaded/action",
+      "builtin:settings",
+    ]);
+  });
+
   it("prefers branding.icon over the logo and contribution icon", () => {
     setPluginLogoUrls(
       new Map([

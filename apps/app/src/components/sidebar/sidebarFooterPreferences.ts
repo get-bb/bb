@@ -68,6 +68,34 @@ export function useSidebarFooterPreferences() {
           : [...new Set([...previous, key])],
       );
     },
+    assign(activeKey: string | null, nextKey: string | null) {
+      if (activeKey === nextKey) return;
+      if (nextKey === null) {
+        if (activeKey)
+          setHidden((previous) => [...new Set([...previous, activeKey])]);
+        return;
+      }
+      const nextOrder = [...normalizedOrder];
+      const nextIndex = nextOrder.indexOf(nextKey);
+      if (nextIndex === -1) return;
+      if (activeKey === null) {
+        if (!hidden.includes(nextKey)) return;
+        nextOrder.splice(nextIndex, 1);
+        nextOrder.push(nextKey);
+      } else {
+        const activeIndex = nextOrder.indexOf(activeKey);
+        if (activeIndex === -1) return;
+        nextOrder[activeIndex] = nextKey;
+        nextOrder[nextIndex] = activeKey;
+      }
+      setOrder(nextOrder);
+      setHidden((previous) => {
+        const next = previous.filter((key) => key !== nextKey);
+        return activeKey && previous.includes(nextKey)
+          ? [...new Set([...next, activeKey])]
+          : next;
+      });
+    },
     move(activeId: string, overId: string) {
       const next = reorderStoredOrder({
         activeId,

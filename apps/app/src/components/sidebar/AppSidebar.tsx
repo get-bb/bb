@@ -16,7 +16,6 @@ import { useThreadListReplacement } from "./threadListProvider";
 import {
   PluginSidebarFooterDisclosure,
   PluginSidebarFooterItems,
-  FooterItemIcon,
   usePluginSidebarFooterDisclosure,
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
@@ -46,11 +45,8 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
-import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
-import {
-  SIDEBAR_FOOTER_MORE_ID,
-  useSidebarFooterPreferences,
-} from "./sidebarFooterPreferences";
+import { SidebarFooterCustomize } from "./SidebarFooterCustomize";
+import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
@@ -74,7 +70,6 @@ export function AppSidebar({
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, openMobile } = useSidebar();
   const [isFooterCustomizing, setFooterCustomizing] = useState(false);
-  const footerPreferences = useSidebarFooterPreferences();
   const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
   const customizeFocusReturnRef = useRef<HTMLElement | null>(null);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
@@ -231,22 +226,7 @@ export function AppSidebar({
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {isFooterCustomizing && (
           <div className="max-h-[50svh] overflow-y-auto">
-            <SidebarVisibilityCustomize
-              title="Customize footer"
-              listLabel="Footer actions"
-              visibilityLabel="footer"
-              testIdPrefix="sidebar-footer"
-              variant="card"
-              items={footerPreferences.items.map((item) => ({
-                id: item.key,
-                title: item.label,
-                icon: <FooterItemIcon item={item} />,
-              }))}
-              visibleIds={footerPreferences.items
-                .filter((item) => !footerPreferences.hidden.includes(item.key))
-                .map((item) => item.key)}
-              onVisibleChange={footerPreferences.setVisible}
-              onReorder={footerPreferences.move}
+            <SidebarFooterCustomize
               onDone={() => {
                 setFooterCustomizing(false);
                 document.getElementById(SIDEBAR_FOOTER_MORE_ID)?.focus();

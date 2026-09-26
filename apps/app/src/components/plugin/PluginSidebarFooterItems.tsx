@@ -207,6 +207,7 @@ export function PluginSidebarFooterItems({
   const navigate = useNavigate();
   const preferences = useSidebarFooterPreferences();
   const previousHidden = useRef(preferences.hidden);
+  const customizeAfterClose = useRef(false);
   const menuRef = useRef<HTMLUListElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
   const [capacity, setCapacity] = useState<number | null>(null);
@@ -251,6 +252,16 @@ export function PluginSidebarFooterItems({
     }
     previousHidden.current = preferences.hidden;
   }, [items, preferences.hidden, onDisclosureCommand]);
+
+  function customize() {
+    customizeAfterClose.current = true;
+  }
+  function handleCloseAutoFocus(event: Event) {
+    if (!customizeAfterClose.current) return;
+    event.preventDefault();
+    customizeAfterClose.current = false;
+    onCustomize();
+  }
 
   function activate(item: FooterItem) {
     if (item.kind === "builtin") {
@@ -357,6 +368,7 @@ export function PluginSidebarFooterItems({
                   </SidebarMenuItem>
                 </ContextMenuTrigger>
                 <ContextMenuContent
+                  onCloseAutoFocus={handleCloseAutoFocus}
                   onPointerUpCapture={(event) => {
                     if (event.button !== 0) event.preventDefault();
                   }}
@@ -367,7 +379,7 @@ export function PluginSidebarFooterItems({
                     <Icon name="EyeOff" />
                     Hide
                   </ContextMenuItem>
-                  <ContextMenuItem onSelect={onCustomize}>
+                  <ContextMenuItem onSelect={customize}>
                     <Icon name="SlidersHorizontal" />
                     Customize footer
                   </ContextMenuItem>

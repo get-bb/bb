@@ -237,7 +237,9 @@ Changes apply to new turns, setup commands and terminals.
 Sidebar footer actions use `sidebar.footerOrder` and `sidebar.hiddenFooterItems`.
 Both are string lists shared across clients. Keys are `builtin:settings`,
 `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
-More → Customize footer restores visibility and drag-reorders actions inline;
+More → Customize footer edits icon slots inline: click to choose an action or
+None, use the empty slot to add one, and drag icons to reorder. Selecting an
+action already shown swaps the two icons;
 Settings → Appearance → Sidebar footer edits the same preferences. More is always
 available, and also holds actions that do not fit the current width without
 changing saved visibility. Right-click Hide moves an action into More. CLI example:
