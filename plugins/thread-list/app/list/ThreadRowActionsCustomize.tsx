@@ -276,7 +276,7 @@ function RowActionSlotPicker({
         ))}
         <DropdownMenuSeparator />
         <RowActionOption
-          icon="X"
+          icon="EyeOff"
           label="Hide"
           selected={value === null}
           onSelect={() => {
