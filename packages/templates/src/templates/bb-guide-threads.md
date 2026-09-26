@@ -360,13 +360,6 @@ Queued messages:
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
   bb thread queue delete <thread-id> <message-id>
 
-  Queue creation and updates accept repeatable `--image` and `--file` flags.
-  Absolute paths and `file:` URLs upload bytes from the CLI machine to the
-  thread's project before submitting text and attachments together. Relative
-  uploaded attachment tokens pass through unchanged, including for remote hosts.
-  In the SDK, use `projects.attachments.upload`, then include the returned path
-  as a `localImage` or `localFile` in `threads.queuedMessages.create`'s `input`.
-
   The `Sender` column identifies agent threads and system notices; user messages
   leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
 
