@@ -3,6 +3,7 @@ import {
   definePluginApp,
   UrlLink as UrlLink,
   useRealtime,
+  useRealtimeConnectionState,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -1209,6 +1210,8 @@ function ReconnectingContent({
 
 function ConnectSettingsSection() {
   const rpc = useRpc<typeof connectRpcContract>();
+  const connectionState = useRealtimeConnectionState();
+  const previousConnectionState = useRef(connectionState);
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -1232,6 +1235,14 @@ function ConnectSettingsSection() {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    const previous = previousConnectionState.current;
+    previousConnectionState.current = connectionState;
+    if (connectionState === "connected" && previous !== "connected") {
+      refetch();
+    }
+  }, [connectionState, refetch]);
 
   useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
     const next = asStatus(payload);

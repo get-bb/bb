@@ -519,3 +519,65 @@ describe("connect settings section", () => {
     await slot.findByText("Remote access disconnected");
   });
 });
+
+describe("Connect settings realtime recovery", () => {
+  it("refreshes missed status changes after each realtime reconnect", async () => {
+    let currentStatus = connected({ state: "reconnecting" });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: { status: () => currentStatus },
+      },
+    );
+    await slot.findByText("Reconnecting…");
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(1);
+
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    currentStatus = connected();
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(1);
+    await slot.behavior.setRealtimeConnectionState("connected");
+
+    await slot.findByText("Connected");
+    expect(slot.queryByText("Reconnecting…")).toBeNull();
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(2);
+
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    currentStatus = connected({ state: "reconnecting" });
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Reconnecting…");
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(3);
+  });
+
+  it("retries an initial failed status load when realtime connects", async () => {
+    let reachable = false;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        realtimeConnectionState: "connecting",
+        rpc: {
+          status: () => {
+            if (!reachable) throw new Error("offline");
+            return connected();
+          },
+        },
+      },
+    );
+    await slot.findByText("Failed to load remote-access status: offline");
+
+    reachable = true;
+    await slot.behavior.setRealtimeConnectionState("connected");
+
+    await slot.findByText("Connected");
+    expect(slot.queryByText(/Failed to load/)).toBeNull();
+  });
+});
