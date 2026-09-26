@@ -75,6 +75,7 @@ import type {
   BuildEventProjectionMessagesOptions,
   BuildEventProjectionOptions,
   EventProjectionMessage,
+  EventProjectionCommandMessage,
   EventProjectionWorkflowMessage,
   EventProjection,
 } from "./event-projection-types.js";
@@ -979,7 +980,11 @@ function buildFlatProjectionData(
   }
 
   finalizeProjectionState({ state, options: args.options });
-  const messages = sortEventProjectionMessagesBySource(state.messages);
+  const messages = sortEventProjectionMessagesBySource(
+    args.options?.settledCommands?.length
+      ? [...state.messages, ...args.options.settledCommands]
+      : state.messages,
+  );
   const callMessageById = buildCallMessageById(messages);
   enrichBackgroundAgentModels(messages, callMessageById);
   return {
@@ -1042,7 +1047,7 @@ export function buildEventProjectionEntries(
   events: ThreadEventWithMeta[] | undefined,
   options: BuildEventProjectionOptions,
 ): EventProjection {
-  if (!events || events.length === 0) {
+  if ((!events || events.length === 0) && !options.settledCommands?.length) {
     return {
       state: {
         activeThinking: null,
@@ -1053,7 +1058,7 @@ export function buildEventProjectionEntries(
     };
   }
 
-  const orderedEvents = getOrderedThreadEvents(events);
+  const orderedEvents = getOrderedThreadEvents(events ?? []);
   const flatProjection = buildFlatProjectionData({
     acceptedClientRequestContext:
       options.acceptedClientRequestContext ??
@@ -1076,7 +1081,7 @@ export function buildEventProjection(
   events: ThreadEventWithMeta[] | undefined,
   options: BuildEventProjectionOptions,
 ): EventProjection {
-  if (!events || events.length === 0) {
+  if ((!events || events.length === 0) && !options.settledCommands?.length) {
     return {
       state: {
         activeThinking: null,
@@ -1087,6 +1092,23 @@ export function buildEventProjection(
     };
   }
 
-  const orderedEvents = getOrderedThreadEvents(events);
+  const orderedEvents = getOrderedThreadEvents(events ?? []);
   return buildFullEventProjection(orderedEvents, options);
+}
+
+export function buildSettledCommandMessages(
+  events: ThreadEventWithMeta[],
+  options: Omit<BuildEventProjectionMessagesOptions, "settledCommands">,
+): EventProjectionCommandMessage[] {
+  return buildFlatProjectionData({
+    acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    events: getOrderedThreadEvents(events),
+    includeActiveThinking: false,
+    options,
+  }).messages.filter(
+    (message): message is EventProjectionCommandMessage =>
+      message.kind === "command" &&
+      message.status !== "pending" &&
+      message.completedAt !== null,
+  );
 }

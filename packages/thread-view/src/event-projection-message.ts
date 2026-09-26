@@ -515,6 +515,7 @@ export type EventProjectionMessage =
   | EventProjectionErrorMessage;
 
 export interface BuildEventProjectionMessagesOptions {
+  settledCommands?: readonly EventProjectionCommandMessage[];
   includeDiagnosticOperations?: boolean;
   threadStatus?: Thread["status"];
   threadName: string;
