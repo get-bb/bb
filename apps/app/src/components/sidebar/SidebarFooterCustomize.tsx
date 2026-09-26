@@ -157,7 +157,7 @@ function FooterActionSlot({
                 data-footer-action-slot={item?.key ?? "none"}
                 className={cn(
                   SIDEBAR_FOOTER_ACTION_CLASS,
-                  "flex touch-none items-center justify-center border focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  "flex cursor-pointer touch-none items-center justify-center rounded-md border outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                   item
                     ? "border-sidebar-foreground/15"
                     : "border-dashed border-sidebar-foreground/25",
