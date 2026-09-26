@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, expect, it } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
@@ -48,3 +48,30 @@ it("fills, replaces, swaps, and clears slots", () => {
   expect(assignRowActionSlot(["pin", "archive"], 1, null)).toEqual(["archive"]);
   expect(assignRowActionSlot(["archive"], 0, null)).toEqual(["archive"]);
 });
+
+it.each([
+  { initial: ["archive"], slot: 0, pick: "Pin", focused: "pin" },
+  { initial: ["pin", "archive", "rename"], slot: 0, pick: "Rename", focused: "rename" },
+  { initial: ["pin", "archive", "rename"], slot: 1, pick: "None", focused: "none" },
+] as const)(
+  "keeps focus on slot $slot after picking $pick",
+  async ({ initial, slot, pick, focused }) => {
+    const store = createStore();
+    store.set(threadRowActionsAtom, [...initial]);
+    render(
+      <Provider store={store}>
+        <ThreadRowActionsCustomize onDone={() => {}} variant="card" />
+      </Provider>,
+    );
+    const slotButton = () =>
+      document.querySelector<HTMLElement>(
+        `[data-sidebar-customize-launch="${slot}"]`,
+      );
+    fireEvent.click(slotButton()!);
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: pick }));
+    await waitFor(() => {
+      expect(document.activeElement).toBe(slotButton());
+      expect(slotButton()?.dataset.rowActionSlot).toBe(focused);
+    });
+  },
+);

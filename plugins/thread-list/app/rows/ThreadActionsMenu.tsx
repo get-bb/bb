@@ -50,7 +50,7 @@ import {
   type ThreadSectionMoveContextValue,
 } from "./ThreadSectionMoveProvider.js";
 import { THREAD_ROW_ACTIONS } from "./threadRowActions.js";
-import { useCustomizeThreadRowActions } from "../list/ThreadListVisibility.js";
+import { useCustomizeThreadRowActions } from "../list/customizeRowActionsContext.js";
 
 interface ThreadActionsMenuBaseProps {
   thread: SidebarThread;
@@ -78,6 +78,14 @@ interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
 }
 
 type ThreadActionsMenuSurface = "context" | "dropdown";
+type SidebarThreadActions = ReturnType<
+  typeof experimental_useSidebarThreadActions
+>;
+
+interface ThreadRowActionHandlers {
+  actions: SidebarThreadActions;
+  unarchiveThread: (threadId: string) => Promise<boolean>;
+}
 type ThreadActionsCompactStep = "actions" | "move";
 
 interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
@@ -243,6 +251,7 @@ function ThreadActionsMenuItems({
 }: ThreadActionsMenuItemsProps) {
   const customizeRowActions = useCustomizeThreadRowActions();
   const actions = experimental_useSidebarThreadActions();
+  const unarchiveThread = useUnarchiveThread();
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
   const showSeparators = !isDrawer;
@@ -310,6 +319,7 @@ function ThreadActionsMenuItems({
           <ThreadRowAction
             id={id}
             thread={thread}
+            handlers={{ actions, unarchiveThread }}
             onOpenInSplit={onOpenInSplit}
             onRename={onRename}
             variant={menuVariant}
@@ -352,14 +362,13 @@ interface ThreadRowActionModel {
   run: () => void;
 }
 
-function useThreadRowActionModel(
+function threadRowActionModel(
   id: ThreadRowActionId,
   thread: SidebarThread,
+  { actions, unarchiveThread }: ThreadRowActionHandlers,
   onOpenInSplit: (() => void) | undefined,
   onRename: () => void,
 ): ThreadRowActionModel | null {
-  const actions = experimental_useSidebarThreadActions();
-  const unarchiveThread = useUnarchiveThread();
   const isRead = !thread.isUnread;
   const isPinned = thread.pinnedAt !== null;
   const isArchived = thread.archivedAt != null;
@@ -420,17 +429,18 @@ function withTitle(action: { icon: IconName; title: string }) {
 export function ThreadRowAction({
   id,
   thread,
+  handlers,
   onOpenInSplit,
   onRename,
   variant,
 }: {
   id: ThreadRowActionId;
   thread: SidebarThread;
+  handlers: ThreadRowActionHandlers;
   onOpenInSplit?: () => void;
   onRename: () => void;
   variant: ThreadRowActionVariant;
 }) {
-  const model = useThreadRowActionModel(id, thread, onOpenInSplit, onRename);
   if (id === "move") {
     return variant.kind === "menu" ? (
       <ThreadSectionMoveMenu
@@ -452,6 +462,13 @@ export function ThreadRowAction({
       <ThreadArchiveQuickAction thread={thread} className={variant.className} />
     );
   }
+  const model = threadRowActionModel(
+    id,
+    thread,
+    handlers,
+    onOpenInSplit,
+    onRename,
+  );
   if (!model) return null;
   if (variant.kind === "menu") {
     return (
@@ -636,6 +653,7 @@ function ThreadMoveQuickAction({
 
 export function ThreadRowQuickActions({
   actionIds,
+  actions,
   thread,
   className,
   onOpenInSplit,
@@ -643,17 +661,20 @@ export function ThreadRowQuickActions({
   onMenuOpenChange,
 }: {
   actionIds: readonly ThreadRowActionId[];
+  actions: SidebarThreadActions;
   thread: SidebarThread;
   className?: string;
   onOpenInSplit: () => void;
   onRename: () => void;
   onMenuOpenChange?: (open: boolean) => void;
 }) {
+  const unarchiveThread = useUnarchiveThread();
   return actionIds.map((id) => (
     <ThreadRowAction
       key={id}
       id={id}
       thread={thread}
+      handlers={{ actions, unarchiveThread }}
       onOpenInSplit={onOpenInSplit}
       onRename={onRename}
       variant={{ kind: "button", className, onMenuOpenChange }}
@@ -686,6 +707,7 @@ export function ThreadActionsMenu({
             triggerClassName,
           )}
           aria-label="Thread actions"
+          data-thread-actions-trigger=""
           onClick={(event) => {
             event.stopPropagation();
           }}

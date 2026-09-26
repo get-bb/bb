@@ -12,6 +12,7 @@ import {
   getPreferenceDefault,
   isPreferenceKey,
   parsePreferenceValue,
+  parseStoredPreferenceValue,
   PREFERENCE_KEYS,
   PREFERENCES_CHANGED_CHANNEL,
   preferenceDefinitions,
@@ -62,7 +63,7 @@ export function createPreferenceStore(bb: BbPluginApi) {
   ): Promise<PreferenceValue<Key>> {
     const stored = await bb.storage.kv.get<unknown>(kvKey(key));
     if (stored === undefined) return getPreferenceDefault(key);
-    const parsed = parsePreferenceValue(key, stored);
+    const parsed = parseStoredPreferenceValue(key, stored);
     if (parsed.success) return parsed.value;
     bb.log.warn(
       `stored preference ${key} is invalid (${parsed.message}); using the default`,

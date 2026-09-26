@@ -224,6 +224,24 @@ export function parsePreferenceValue<Key extends PreferenceKey>(
   };
 }
 
+export function parseStoredPreferenceValue<Key extends PreferenceKey>(
+  key: Key,
+  value: unknown,
+): PreferenceParseResult<Key> {
+  return parsePreferenceValue(
+    key,
+    key === "rowActions" ? knownRowActions(value) : value,
+  );
+}
+
+function knownRowActions(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  const known = value.filter(
+    (id) => threadRowActionIdSchema.safeParse(id).success,
+  );
+  return [...new Set(known)].slice(0, THREAD_ROW_ACTION_LIMIT);
+}
+
 export function describePreference(key: PreferenceKey): string {
   return preferenceDefinitions[key].description;
 }

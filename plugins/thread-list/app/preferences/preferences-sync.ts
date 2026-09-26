@@ -4,7 +4,7 @@ type PreferencesStore = ReturnType<typeof getDefaultStore>;
 import {
   defaultPreferences,
   getPreferenceDefault,
-  parsePreferenceValue,
+  parseStoredPreferenceValue,
   PREFERENCE_KEYS,
   preferencesChangedSignalSchema,
   type PreferenceKey,
@@ -117,7 +117,7 @@ function readMirror(storage: Storage | null): Partial<PreferenceValues> | null {
   for (const key of PREFERENCE_KEYS) {
     const candidate = (parsed as Record<string, unknown>)[key];
     if (candidate === undefined) continue;
-    const result = parsePreferenceValue(key, candidate);
+    const result = parseStoredPreferenceValue(key, candidate);
     if (result.success) {
       (values as Record<PreferenceKey, unknown>)[key] = result.value;
     }
@@ -186,7 +186,7 @@ export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
   const values: Partial<PreferenceValues> = {};
   if (typeof preferences === "object" && preferences !== null) {
     for (const key of PREFERENCE_KEYS) {
-      const result = parsePreferenceValue(
+      const result = parseStoredPreferenceValue(
         key,
         (preferences as Record<string, unknown>)[key],
       );
@@ -204,7 +204,7 @@ export function applyRemotePreferenceSignal(payload: unknown): void {
   const parsed = preferencesChangedSignalSchema.safeParse(payload);
   if (!parsed.success) return;
   const { key, value } = parsed.data;
-  const result = parsePreferenceValue(key, value);
+  const result = parseStoredPreferenceValue(key, value);
   if (!result.success) return;
   applyValues({ [key]: result.value } as Partial<PreferenceValues>);
   writeMirror(mirrorStorage());

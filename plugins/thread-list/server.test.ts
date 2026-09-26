@@ -119,6 +119,16 @@ describe("thread-list preferences rpc", () => {
     ).resolves.toEqual({ key: "rowActions", value: ["archive", "pin", "read"] });
   });
 
+  it("drops unknown stored row actions instead of resetting the rest", async () => {
+    const { bb, harness } = setup();
+    await bb.storage.kv.set("preference:rowActions", ["pin", "futureAction", "archive"]);
+    await plugin(bb);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { rowActions: string[] };
+    };
+    expect(listed.preferences.rowActions).toEqual(["pin", "archive"]);
+  });
+
   it("falls back to the default when a stored value no longer parses", async () => {
     const { bb, harness } = setup();
     await bb.storage.kv.set("preference:chronologicalSort", "by-vibes");

@@ -28,6 +28,7 @@ import {
   preferenceValueAtom,
   resetPreferencesSyncForTest,
 } from "../preferences/preferences-sync.js";
+import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.js";
 
 installTestPluginRuntime();
 const { ThreadSectionMoveProvider } = await import(
@@ -68,6 +69,7 @@ interface HarnessProps {
   isActive?: boolean;
   options?: ThreadRowOptions;
   onRowEvent?: () => void;
+  onCustomizeRowActions?: (threadId: string) => void;
   sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
@@ -77,6 +79,7 @@ function ThreadRowHarness({
   isActive = false,
   options = DEFAULT_OPTIONS,
   onRowEvent,
+  onCustomizeRowActions,
   sectionDestinations,
 }: HarnessProps) {
   const row = (
@@ -90,15 +93,17 @@ function ThreadRowHarness({
   );
   return (
     <TooltipProvider>
-      <div onPointerDown={onRowEvent} onKeyDown={onRowEvent} onClick={onRowEvent}>
-        {sectionDestinations ? (
-          <ThreadSectionMoveProvider destinations={sectionDestinations}>
-            {row}
-          </ThreadSectionMoveProvider>
-        ) : (
-          row
-        )}
-      </div>
+      <CustomizeRowActionsContext.Provider value={onCustomizeRowActions ?? null}>
+        <div onPointerDown={onRowEvent} onKeyDown={onRowEvent} onClick={onRowEvent}>
+          {sectionDestinations ? (
+            <ThreadSectionMoveProvider destinations={sectionDestinations}>
+              {row}
+            </ThreadSectionMoveProvider>
+          ) : (
+            row
+          )}
+        </div>
+      </CustomizeRowActionsContext.Provider>
     </TooltipProvider>
   );
 }
@@ -353,6 +358,74 @@ describe("ThreadRow", () => {
     await waitFor(() =>
       expect(slot.inspection.sidebarActionCalls).toEqual([call]),
     );
+  });
+
+  it("drops split and move from the row when they are unavailable", async () => {
+    const { visibleThreadRowActions } = await import("./ThreadActionsMenu.js");
+    expect(
+      visibleThreadRowActions(["split", "move", "archive"], { split: false, move: false }),
+    ).toEqual(["archive"]);
+    expect(
+      visibleThreadRowActions(["split", "move", "archive"], { split: true, move: true }),
+    ).toEqual(["split", "move", "archive"]);
+  });
+
+  it("offers Move only on rows that can move", () => {
+    const destinations = [
+      { label: "Planning", sectionId: "sec_planning" },
+      { label: "Threads", sectionId: null },
+    ];
+    getDefaultStore().set(preferenceValueAtom("rowActions"), ["move", "archive"]);
+    renderThreadRow({ sectionDestinations: destinations });
+    expect(screen.getByRole("button", { name: "Move to section" })).toBeTruthy();
+    cleanup();
+    renderThreadRow({
+      thread: createThread({ parentThreadId: "thr_parent" }),
+      sectionDestinations: destinations,
+    });
+    expect(screen.queryByRole("button", { name: "Move to section" })).toBeNull();
+    expect(
+      document
+        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+    ).toBe("calc(var(--spacing) * 7.5)");
+  });
+
+  it("orders the actions menu like the row actions, with customize before archive", async () => {
+    const customize = vi.fn();
+    renderThreadRow({
+      onCustomizeRowActions: customize,
+      sectionDestinations: [
+        { label: "Planning", sectionId: "sec_planning" },
+        { label: "Threads", sectionId: null },
+      ],
+    });
+    openActionsMenu();
+    const menu = await screen.findByRole("menu");
+    expect(
+      Array.from(menu.children).map((element) =>
+        element.getAttribute("role") === "separator"
+          ? "---"
+          : element.textContent?.trim(),
+      ),
+    ).toEqual([
+      "Open in split",
+      "---",
+      "Copy thread link",
+      "Mark read",
+      "Pin",
+      "Move to section",
+      "Rename",
+      "---",
+      "Customize row actions",
+      "---",
+      "Archive",
+      "Delete",
+    ]);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Customize row actions" }),
+    );
+    expect(customize).toHaveBeenCalledWith("thr_test");
   });
 
   it("asks the host to confirm deletion from the menu", async () => {

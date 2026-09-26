@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -71,6 +71,21 @@ export function ThreadRowActionsCustomize({
 }) {
   const [enabled, setEnabled] = useAtom(threadRowActionsAtom);
   const slots = getRowActionSlots(enabled);
+  const groupRef = useRef<HTMLDivElement>(null);
+  const focusSlot = useRef<number | null>(null);
+  useEffect(() => {
+    const index = focusSlot.current;
+    if (index === null) return;
+    focusSlot.current = null;
+    const frame = requestAnimationFrame(() => {
+      groupRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-sidebar-customize-launch="${index}"]`,
+        )
+        ?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [enabled]);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const activeId = event.active.id;
@@ -106,6 +121,7 @@ export function ThreadRowActionsCustomize({
         <div className="flex h-7 items-center gap-2 rounded-md bg-sidebar-accent pl-2 max-md:pointer-coarse:h-9">
           <FakeThreadRowTitle width="w-full" />
           <div
+            ref={groupRef}
             role="group"
             aria-label="Row actions"
             className="flex shrink-0 items-center gap-0.5"
@@ -122,11 +138,13 @@ export function ThreadRowActionsCustomize({
                     index={index}
                     value={slot}
                     reorderDisabled={slot === null || enabled.length < 2}
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      if (value === slot) return;
+                      focusSlot.current = index;
                       setEnabled((current) =>
                         assignRowActionSlot(current, index, value),
-                      )
-                    }
+                      );
+                    }}
                   />
                 ))}
               </SortableContext>

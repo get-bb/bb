@@ -33,6 +33,7 @@ import {
   type SidebarVisibilityItem,
 } from "./SidebarVisibilityControls.js";
 import { ThreadRowActionsCustomize } from "./ThreadRowActionsCustomize.js";
+import { CustomizeRowActionsContext } from "./customizeRowActionsContext.js";
 
 export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
   id: SidebarSectionId;
@@ -46,7 +47,6 @@ interface ThreadListVisibilityState {
   hide: (id: string) => void;
   restore: (id: string) => void;
   customize: () => void;
-  customizeRowActions: (threadId: string) => void;
   label: string;
   selectedThreadId?: string;
 }
@@ -70,9 +70,9 @@ export function ThreadListVisibility({
   children: ReactNode;
 }) {
   const [hidden, setHidden] = useAtom(sidebarHiddenGroupsAtom);
-  const [customizing, setCustomizing] = useState<
-    "list" | "rowActions" | null
-  >(null);
+  const [customizing, setCustomizing] = useState<"list" | "rowActions" | null>(
+    null,
+  );
   const compact = useIsCompactViewport();
   const container = useRef<HTMLDivElement>(null);
   const focusTarget = useRef<string | null>(null);
@@ -133,12 +133,13 @@ export function ThreadListVisibility({
           container.current?.querySelectorAll<HTMLElement>(
             "[data-sidebar-thread-id]",
           ) ?? [],
-        ).find((element) => element.dataset.sidebarThreadId === origin.threadId);
-        let row = link?.parentElement ?? null;
-        while (row && !row.querySelector('button[aria-label="Thread actions"]'))
-          row = row.parentElement;
+        ).find(
+          (element) => element.dataset.sidebarThreadId === origin.threadId,
+        );
         const target =
-          row?.querySelector<HTMLElement>('button[aria-label="Thread actions"]') ??
+          link
+            ?.closest("[data-sidebar-rename-row]")
+            ?.querySelector<HTMLElement>("[data-thread-actions-trigger]") ??
           link ??
           container.current;
         target?.focus({ preventScroll: true });
@@ -146,20 +147,20 @@ export function ThreadListVisibility({
     });
     return () => cancelAnimationFrame(frame);
   }, [customizing]);
+  const customizeRowActions = (threadId: string) => {
+    rowActionsOrigin.current = {
+      threadId,
+      scrollTop:
+        container.current?.closest<HTMLElement>(SIDEBAR_CONTENT_SELECTOR)
+          ?.scrollTop ?? 0,
+    };
+    setCustomizing("rowActions");
+  };
   const value: ThreadListVisibilityState = {
     hiddenGroups: orderedGroups.filter((group) => hiddenIds.has(group.id)),
     label,
     selectedThreadId,
     customize: () => setCustomizing("list"),
-    customizeRowActions: (threadId) => {
-      rowActionsOrigin.current = {
-        threadId,
-        scrollTop:
-          container.current?.closest<HTMLElement>(SIDEBAR_CONTENT_SELECTOR)
-            ?.scrollTop ?? 0,
-      };
-      setCustomizing("rowActions");
-    },
     hide: (id) => {
       focusTarget.current = "more";
       setVisible(id, false);
@@ -171,50 +172,46 @@ export function ThreadListVisibility({
   };
   return (
     <VisibilityContext.Provider value={value}>
-      <div ref={container} tabIndex={-1} className="min-w-0 outline-none">
-        {customizing === "rowActions" ? (
-          <ThreadRowActionsCustomize
-            onDone={() => setCustomizing(null)}
-            variant={compact ? "compact" : "card"}
-          />
-        ) : customizing === "list" ? (
-          <SidebarVisibilityCustomize
-            items={orderedGroups}
-            visibleIds={orderedGroups
-              .filter((group) => !hiddenIds.has(group.id))
-              .map((group) => group.id)}
-            onVisibleChange={setVisible}
-            onReorder={(activeId, overId) => {
-              const groupIds = orderedGroups.map((group) => group.id);
-              const next = reorderStoredOrder({
-                activeId,
-                overId,
-                order: groupIds,
-                visibleIds: groupIds,
-              });
-              if (next) onOrderChange(next);
-            }}
-            onDone={() => {
-              focusTarget.current = "more";
-              setCustomizing(null);
-            }}
-            title="Customize list"
-            listLabel={label}
-            variant={compact ? "compact" : "card"}
-            testIdPrefix="sidebar-thread-list"
-          />
-        ) : (
-          children
-        )}
-      </div>
+      <CustomizeRowActionsContext.Provider value={customizeRowActions}>
+        <div ref={container} tabIndex={-1} className="min-w-0 outline-none">
+          {customizing === "rowActions" ? (
+            <ThreadRowActionsCustomize
+              onDone={() => setCustomizing(null)}
+              variant={compact ? "compact" : "card"}
+            />
+          ) : customizing === "list" ? (
+            <SidebarVisibilityCustomize
+              items={orderedGroups}
+              visibleIds={orderedGroups
+                .filter((group) => !hiddenIds.has(group.id))
+                .map((group) => group.id)}
+              onVisibleChange={setVisible}
+              onReorder={(activeId, overId) => {
+                const groupIds = orderedGroups.map((group) => group.id);
+                const next = reorderStoredOrder({
+                  activeId,
+                  overId,
+                  order: groupIds,
+                  visibleIds: groupIds,
+                });
+                if (next) onOrderChange(next);
+              }}
+              onDone={() => {
+                focusTarget.current = "more";
+                setCustomizing(null);
+              }}
+              title="Customize list"
+              listLabel={label}
+              variant={compact ? "compact" : "card"}
+              testIdPrefix="sidebar-thread-list"
+            />
+          ) : (
+            children
+          )}
+        </div>
+      </CustomizeRowActionsContext.Provider>
     </VisibilityContext.Provider>
   );
-}
-
-export function useCustomizeThreadRowActions():
-  | ((threadId: string) => void)
-  | null {
-  return useContext(VisibilityContext)?.customizeRowActions ?? null;
 }
 
 export function ThreadListVisibilityGroupScope({

@@ -688,6 +688,7 @@ function ThreadRowComponent({
                   primaryAction={
                     <ThreadRowQuickActions
                       actionIds={rowActionIds}
+                      actions={actions}
                       thread={thread}
                       className={SIDEBAR_CONTROL_BUTTON_CLASS}
                       onOpenInSplit={openInSplit}
