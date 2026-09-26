@@ -562,6 +562,7 @@ describe("PluginSidebarFooterItems", () => {
     expect(screen.getByLabelText("Current path").textContent).toBe("/");
     fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
     expect(screen.getByText("Usage detail")).toBeDefined();
+    act(() => store.set(sidebarFooterCapacityAtom, 2));
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "Provider usage" }),
     );
@@ -577,6 +578,7 @@ describe("PluginSidebarFooterItems", () => {
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:usage-plugin/usage",
     ]);
+    act(() => store.set(sidebarFooterCapacityAtom, null));
     expect(screen.queryByRole("button", { name: "Provider usage" })).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "More footer actions" }),
