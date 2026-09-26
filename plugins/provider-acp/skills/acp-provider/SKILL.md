@@ -20,9 +20,9 @@ models selectable through BB's model field. Grok Build advertises models and
 `thought_level` options over ACP, so the picker follows the connected agent
 (including `xhigh` on grok-4.6).
 
-OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
-expose compatible compaction. Check the actual agent's capabilities before
-attempting provider-specific recovery.
+OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
+does not expose compatible compaction. Check the actual agent's capabilities
+before attempting provider-specific recovery.
 
 OpenCode Go subscription usage is available in Provider usage when the selected
 machine has OpenCode installed and a Go subscription. Sign in to Go in OpenCode
