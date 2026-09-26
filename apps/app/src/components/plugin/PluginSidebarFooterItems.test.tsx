@@ -126,7 +126,7 @@ afterEach(() => {
 });
 
 describe("PluginSidebarFooterItems", () => {
-  it("fills the footer to its measured capacity and moves icons between the footer and More", () => {
+  it("fills the footer to its measured capacity and keeps overflow in More when an icon is removed", () => {
     setPluginSlotRegistrations(
       "example",
       collectPluginAppRegistrations(
@@ -171,6 +171,7 @@ describe("PluginSidebarFooterItems", () => {
     );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
+      "builtin:report-bug",
       "plugin:example/two",
     ]);
     expect(footerIcons()).toEqual([
@@ -178,16 +179,8 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/one",
       "plugin:example/three",
       "plugin:example/four",
-      "builtin:report-bug",
     ]);
-    expect(
-      screen.getByRole("button", { name: "Add Action two to footer" }),
-    ).toHaveProperty("disabled", true);
 
-    act(() => store.set(sidebarFooterCapacityAtom, 7));
-    expect(
-      screen.getByRole("button", { name: "Add Action two to footer" }),
-    ).toHaveProperty("disabled", false);
     fireEvent.click(
       screen.getByRole("button", { name: "Add Action two to footer" }),
     );
@@ -196,8 +189,24 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/one",
       "plugin:example/three",
       "plugin:example/four",
-      "builtin:report-bug",
       "plugin:example/two",
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Add Report a bug to footer" }),
+    ).toHaveProperty("disabled", true);
+
+    act(() => store.set(sidebarFooterCapacityAtom, 7));
+    expect(footerIcons()).toHaveLength(5);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Report a bug to footer" }),
+    );
+    expect(footerIcons()).toEqual([
+      "builtin:settings",
+      "plugin:example/one",
+      "plugin:example/three",
+      "plugin:example/four",
+      "plugin:example/two",
+      "builtin:report-bug",
     ]);
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
