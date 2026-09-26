@@ -160,6 +160,24 @@ describe("ProvidersSettingsSection", () => {
     const codexSwitch = screen.getByRole("switch", {
       name: "Collapse finished Codex turns",
     });
+    const configuration = screen
+      .getByRole("heading", { name: "Configuration" })
+      .closest("section");
+    if (configuration === null)
+      throw new Error("Configuration section missing");
+    expect(
+      within(configuration).getByText("Collapse finished turns"),
+    ).toBeTruthy();
+    expect(
+      within(configuration).getByRole("switch", {
+        name: "Allow fast service tier",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(configuration).getByRole("switch", {
+        name: "Collapse finished Codex turns",
+      }),
+    ).toBe(codexSwitch);
     expect(claudeSwitch.getAttribute("aria-checked")).toBe("false");
     expect(codexSwitch.getAttribute("aria-checked")).toBe("false");
 
