@@ -34,13 +34,13 @@ flowchart LR
     idle -->|"run.preparing ⟨notArchived, notDeleted⟩"| starting
     idle -->|"run.started ⟨notArchived, notDeleted⟩"| active
     starting -->|"run.started ⟨notArchived, notDeleted⟩"| active
-    starting -->|"run.succeeded"| idle
+    starting -->|"run.succeeded<br/>run.interrupted"| idle
     starting -->|"run.failed ⟨notDeleted⟩"| error
     starting -->|"stop.requested"| stopping
-    active -->|"run.succeeded"| idle
+    active -->|"run.succeeded<br/>run.interrupted"| idle
     active -->|"run.failed ⟨notDeleted⟩"| error
     active -->|"stop.requested"| stopping
-    stopping -->|"stop.settled<br/>run.succeeded"| idle
+    stopping -->|"stop.settled<br/>run.succeeded<br/>run.interrupted"| idle
     stopping -->|"run.failed ⟨notDeleted⟩"| error
     error -->|"run.preparing ⟨notArchived, notDeleted⟩"| starting
     error -->|"run.started ⟨notArchived, notDeleted⟩"| active
