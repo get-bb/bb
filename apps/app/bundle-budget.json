@@ -8,6 +8,10 @@
     "Chunks behind a dynamic import are deliberately not counted. Moving code",
     "behind React.lazy or import() is the fix this budget exists to encourage.",
     "",
+    "On 2026-09-26 the SplitWorkspaceRoute raw limit rose 1 KiB for",
+    "independent mention-provider queries (about 0.3 KiB) and the existing",
+    "0.3 KiB overage. The measured brotli payload shrank; its limit is unchanged.",
+    "",
     "On 2026-09-25 the SplitWorkspaceRoute limits rose by 2 KiB raw and",
     "256 bytes brotli for sanitized HTML video support in thread Markdown.",
     "",
@@ -106,7 +110,7 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 2340622,
+      "maxBytes": 2341646,
       "maxBrotliBytes": 630625,
       "forbiddenPackages": [
         "@pierre/diffs",
