@@ -101,6 +101,9 @@ export function useSidebarFooterPreferences() {
     capacity,
     isFull,
     hideFromFooter(key: string) {
+      setHidden((previous) => [...new Set([...previous, key])]);
+    },
+    removeFromFooter(key: string) {
       setHidden((previous) => [
         ...new Set([...previous, ...more.map((item) => item.key), key]),
       ]);

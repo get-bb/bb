@@ -935,12 +935,13 @@ fit, plus Customize footer and Hide footer. Hide footer moves every action into
 More, leaving only the More button; the same menu item then reads Show footer,
 which shows them again. Customize footer replaces the
 footer row with an editor split into Footer and More menu zones: remove an icon
-with its minus badge, add a More item with its plus button (disabled while the
-footer has no room), and drag within either zone to reorder. Customize footer and
+with its minus badge (its slot stays empty and current overflow stays hidden in
+More), add a More item with its plus button (disabled while the footer has no
+room), and drag within either zone to reorder. Customize footer and
 Customize sidebar close each other. Right-click an action and choose Hide from
 footer, or Customize footer. Settings → Appearance → Sidebar footer edits the
-same preferences. Width overflow never changes saved visibility, and every
-action in More remains usable.
+same preferences. Apart from the minus badge, width overflow never changes saved
+visibility, and every action in More remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain

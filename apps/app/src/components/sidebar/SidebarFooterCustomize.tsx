@@ -96,7 +96,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
                   key={item.key}
                   item={item}
                   reorderDisabled={preferences.footer.length < 2}
-                  onRemove={() => preferences.hideFromFooter(item.key)}
+                  onRemove={() => preferences.removeFromFooter(item.key)}
                 />
               ))}
             </SortableContext>
