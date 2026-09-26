@@ -41,6 +41,7 @@ function formatNetworkUrls(serverUrl) {
 export default {
   stories: [
     "src/**/*.stories.tsx",
+    "../../packages/shared-ui/src/components/ui/*.stories.tsx",
     "../../plugins/automations/*.stories.tsx",
     "../../plugins/workflows/**/*.stories.tsx",
     "../../plugins/provider-usage/*.stories.tsx",

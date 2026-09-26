@@ -321,6 +321,10 @@
       "persistent": true,
       "passThroughEnv": ["*"]
     },
+    "storybook:build": {
+      "dependsOn": ["@bb/templates#generate:templates"],
+      "outputs": ["build/**"]
+    },
     "@bb/host-daemon#dev": {
       // The source daemon injects apps/cli/bin/bb into agent shells. Build its
       // gitignored runtime before the daemon starts so a sandboxed thread never
