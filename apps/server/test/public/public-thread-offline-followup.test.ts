@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import {
   listQueuedThreadCommands,
   registerTestHostRpcCapture,
@@ -14,6 +15,7 @@ import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
   seedHost,
+  seedHostSession,
   seedProjectWithSource,
   seedSession,
   seedThread,
@@ -23,6 +25,59 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("offline host follow-ups", () => {
+  it("queues a follow-up for a host whose socket just dropped", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-dropped-followup",
+        name: "M5",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/dropped-followup",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-dropped-followup",
+      });
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Sent during a drop", mentions: [] }],
+            mode: "steer-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        sendMessageResponseSchema.parse(await readJson(response)),
+      ).toMatchObject({
+        delivery: "queued",
+        queuedMessage: { waitingOn: { kind: "host-offline", hostName: "M5" } },
+      });
+    });
+  });
+
   it.each([
     {
       mode: "steer-if-active",
@@ -47,7 +102,7 @@ describe("offline host follow-ups", () => {
         hostId: host.id,
         projectId: project.id,
         path: "/tmp/offline-followup",
-        });
+      });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,

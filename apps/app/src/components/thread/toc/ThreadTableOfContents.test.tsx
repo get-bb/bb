@@ -234,7 +234,6 @@ function threadWithRuntime(
     updatedAt: 1,
     runtime: {
       displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
     },
     ...thread,
   });

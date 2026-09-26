@@ -46,6 +46,7 @@ describe("internal session protocol version", () => {
               localApiPort: 38_888,
               protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
               activeThreads: [],
+              undeliveredEventThreadIds: [],
               loadedEnvironments: [],
             }),
           },
@@ -87,6 +88,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         }),
       });
@@ -119,6 +121,7 @@ describe("internal session protocol version", () => {
             localApiPort: 38888,
             protocolVersion,
             activeThreads: [],
+            undeliveredEventThreadIds: [],
             loadedEnvironments: [],
           },
         });
@@ -167,6 +170,7 @@ describe("internal session protocol version", () => {
             localApiPort: 38_888,
             protocolVersion: 188,
             activeThreads: [],
+            undeliveredEventThreadIds: [],
             loadedEnvironments: [],
           }),
         },
@@ -202,6 +206,7 @@ describe("internal session protocol version", () => {
             dataDir: "/tmp/host-protocol-data",
             protocolVersion: preLocalApiPortProtocolVersion,
             activeThreads: [],
+            undeliveredEventThreadIds: [],
             loadedEnvironments: [],
           }),
         },
@@ -230,6 +235,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });
@@ -266,6 +272,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });
@@ -284,6 +291,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });
@@ -302,6 +310,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });

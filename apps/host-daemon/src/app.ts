@@ -792,6 +792,7 @@ export async function createHostDaemonApp(
       machineEnvironment.replace(environment.entries),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
+    getUndeliveredEventThreadIds: () => eventSink.listUndeliveredThreadIds(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
       const response = await router.handleOnlineRpcRequest(message);

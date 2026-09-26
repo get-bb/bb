@@ -1199,7 +1199,6 @@ describe("ThreadDetailPromptArea", () => {
       thread: makeThread({
         runtime: {
           displayStatus: "idle",
-          hostReconnectGraceExpiresAt: null,
         },
         status: "idle",
       }),
@@ -1226,7 +1225,6 @@ describe("ThreadDetailPromptArea", () => {
       thread: makeThread({
         runtime: {
           displayStatus: "provisioning",
-          hostReconnectGraceExpiresAt: null,
         },
         status: "starting",
       }),
@@ -2391,7 +2389,7 @@ describe("ThreadDetailPromptArea", () => {
         environmentId: "env_1",
         id: "thr_source",
         projectId: "proj_source",
-        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "active" },
         status: "active",
         title: "Source thread",
         titleFallback: null,

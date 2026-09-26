@@ -718,7 +718,6 @@ function applyOptimisticAcceptedTurnThreadState({
     runtime: {
       ...thread.runtime,
       displayStatus:
-        thread.runtime.displayStatus === "host-reconnecting" ||
         thread.runtime.displayStatus === "waiting-for-host"
           ? thread.runtime.displayStatus
           : "active",

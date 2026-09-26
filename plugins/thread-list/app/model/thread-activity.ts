@@ -15,7 +15,6 @@ const RUNNING_RUNTIME_STATUSES: Record<
   boolean
 > = {
   active: true,
-  "host-reconnecting": true,
   provisioning: true,
   starting: true,
   stopping: true,

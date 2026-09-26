@@ -2,12 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TerminalSession } from "@bb/server-contract";
 import {
-  useCloseTerminal,
-  useCloseEnvironmentTerminal,
-  useCloseThreadTerminal,
-  useCreateTerminal,
-  useCreateEnvironmentTerminal,
-  useCreateThreadTerminal,
   useEnvironmentTerminals,
   useRenameTerminal,
   useRenameEnvironmentTerminal,
@@ -17,17 +11,13 @@ import {
 } from "@/hooks/queries/thread-terminal-queries";
 import {
   useActiveFixedRightTerminalId,
-  useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
 } from "@/lib/fixed-panel-tabs";
 import {
   applyTerminalSessionClose,
   applyTerminalSessionUpsert,
 } from "@/hooks/cache-owners/terminal-cache-owner";
-import {
-  shouldCloseUnretainedDisconnectedTerminalSession,
-  shouldShowRetainedTerminalSession,
-} from "@/lib/terminal-session-visibility";
+import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
 import type { TerminalCreateTarget } from "@bb/server-contract";
 
@@ -58,14 +48,10 @@ export interface ThreadTerminalController {
   canCreateTerminal: boolean;
   handleActiveTerminalSessionChange: (session: TerminalSession) => void;
   handleActiveTerminalTitleChange: ThreadTerminalTitleChangeHandler;
-  handleActiveTerminalUserInput: ThreadTerminalActionHandler;
-  handleCreateTerminal: ThreadTerminalActionHandler;
   handleSelectTerminal: ThreadTerminalIdHandler;
   hasTerminalQueryError: boolean;
-  isCreateTerminalPending: boolean;
   isPanelOpen: boolean;
   shouldMountTerminalView: boolean;
-  shouldRetainActiveTerminalView: boolean;
   terminalBodyMessage: string;
 }
 
@@ -74,27 +60,9 @@ interface TerminalTitleRenameRequest {
   title: string;
 }
 
-type ThreadTerminalActionHandler = () => void;
 type ThreadTerminalIdHandler = (terminalId: string) => void;
 type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
-type TerminalCloseMode = "force" | "if-clean";
-
-export function shouldAutoCloseCleanTerminalSession({
-  dirtyTerminalIds,
-  session,
-  uiCreatedTerminalIds,
-}: {
-  dirtyTerminalIds: ReadonlySet<string>;
-  session: TerminalSession;
-  uiCreatedTerminalIds: ReadonlySet<string>;
-}): boolean {
-  return (
-    session.lastUserInputAt === null &&
-    uiCreatedTerminalIds.has(session.id) &&
-    !dirtyTerminalIds.has(session.id)
-  );
-}
 
 export function shouldMountTerminalViewForPanel({
   hasPanelOpened,
@@ -106,16 +74,6 @@ export function shouldMountTerminalViewForPanel({
   isPanelPersistedOpen: boolean;
 }): boolean {
   return isPanelOpen || (isPanelPersistedOpen && hasPanelOpened);
-}
-
-export function shouldAutoCloseCleanTerminalSessionsForPanel({
-  isPanelOpen,
-  isPanelPersistedOpen,
-}: {
-  isPanelOpen: boolean;
-  isPanelPersistedOpen: boolean;
-}): boolean {
-  return !isPanelOpen && !isPanelPersistedOpen;
 }
 
 export function pickActiveTerminalId(
@@ -169,21 +127,10 @@ export function useThreadTerminalController({
     syncThreadId,
     fixedPanelTarget,
   );
-  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
-    fixedPanelStateId,
-    syncThreadId,
-  );
-  const uiCreatedTerminalIdsRef = useRef<Set<string>>(new Set());
-  const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());
-  const closingCleanTerminalIdsRef = useRef<Set<string>>(new Set());
-  const closingDisconnectedTerminalIdsRef = useRef<Set<string>>(new Set());
   const latestRequestedTitleRenameRef =
     useRef<TerminalTitleRenameRequest | null>(null);
   const pendingTitleRenameTimeoutRef =
     useRef<TerminalTitleRenameTimeout | null>(null);
-  const [retainedTerminalViewId, setRetainedTerminalViewId] = useState<
-    string | null
-  >(null);
   const [hasPanelOpened, setHasPanelOpened] = useState(isPanelOpen);
   if (isPanelOpen && !hasPanelOpened) {
     setHasPanelOpened(true);
@@ -222,33 +169,9 @@ export function useThreadTerminalController({
       : terminalTargetKind === "environment"
         ? environmentTerminalsQuery
         : globalTerminalsQuery;
-  const createThreadTerminal = useCreateThreadTerminal();
-  const createEnvironmentTerminal = useCreateEnvironmentTerminal();
-  const createTerminal = useCreateTerminal();
-  const closeThreadTerminal = useCloseThreadTerminal();
-  const closeEnvironmentTerminal = useCloseEnvironmentTerminal();
-  const closeTerminalMutation = useCloseTerminal();
   const renameThreadTerminal = useRenameThreadTerminal();
   const renameEnvironmentTerminal = useRenameEnvironmentTerminal();
   const renameTerminal = useRenameTerminal();
-  const isCreateTerminalPending =
-    terminalTargetKind === "thread"
-      ? createThreadTerminal.isPending
-      : terminalTargetKind === "environment"
-        ? createEnvironmentTerminal.isPending
-        : createTerminal.isPending;
-  const isCloseTerminalPending =
-    terminalTargetKind === "thread"
-      ? closeThreadTerminal.isPending
-      : terminalTargetKind === "environment"
-        ? closeEnvironmentTerminal.isPending
-        : closeTerminalMutation.isPending;
-  const closingTerminalVariables =
-    terminalTargetKind === "thread"
-      ? closeThreadTerminal.variables
-      : terminalTargetKind === "environment"
-        ? closeEnvironmentTerminal.variables
-        : closeTerminalMutation.variables;
   const sessions = useMemo(() => {
     const currentSessions =
       terminalsQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
@@ -264,14 +187,8 @@ export function useThreadTerminalController({
     );
   }, [target, terminalsQuery.data?.sessions]);
   const visibleSessions = useMemo(
-    () =>
-      sessions.filter((session) =>
-        shouldShowRetainedTerminalSession({
-          retainedTerminalId: retainedTerminalViewId,
-          session,
-        }),
-      ),
-    [retainedTerminalViewId, sessions],
+    () => sessions.filter(isVisibleTerminalSession),
+    [sessions],
   );
   const activeTerminalId = useMemo(
     () =>
@@ -289,33 +206,6 @@ export function useThreadTerminalController({
   );
   const activeSession =
     visibleSessions.find((session) => session.id === activeTerminalId) ?? null;
-  const shouldRetainActiveTerminalView =
-    activeSession?.status === "disconnected" &&
-    activeSession.id === retainedTerminalViewId;
-
-  useEffect(() => {
-    if (!shouldMountTerminalView) {
-      setRetainedTerminalViewId(null);
-      return;
-    }
-    if (activeSession?.status === "running") {
-      setRetainedTerminalViewId(activeSession.id);
-      return;
-    }
-    if (
-      retainedTerminalViewId !== null &&
-      activeTerminalId !== retainedTerminalViewId
-    ) {
-      setRetainedTerminalViewId(null);
-    }
-  }, [
-    activeSession?.id,
-    activeSession?.status,
-    activeTerminalId,
-    retainedTerminalViewId,
-    shouldMountTerminalView,
-  ]);
-
   useEffect(() => {
     if (!isPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
       return;
@@ -346,218 +236,6 @@ export function useThreadTerminalController({
     };
   }, []);
 
-  const startTerminal = useCallback(() => {
-    if (!canCreateTerminal || isCreateTerminalPending) {
-      return;
-    }
-    const request = {
-      cols: DEFAULT_TERMINAL_COLS,
-      rows: DEFAULT_TERMINAL_ROWS,
-    };
-    const created =
-      target.kind === "thread"
-        ? createThreadTerminal.mutateAsync({
-            ...request,
-            threadId: target.threadId,
-          })
-        : target.kind === "environment"
-          ? createEnvironmentTerminal.mutateAsync({
-              ...request,
-              environmentId: target.environmentId,
-            })
-          : createTerminal.mutateAsync({
-              ...request,
-              target: {
-                kind: "host_path",
-                hostId: target.hostId,
-                cwd: target.cwd,
-              },
-            });
-    void created
-      .then((session) => {
-        uiCreatedTerminalIdsRef.current.add(session.id);
-        setActiveFixedTerminal(session.id);
-      })
-      .catch(() => undefined);
-  }, [
-    canCreateTerminal,
-    createTerminal,
-    createEnvironmentTerminal,
-    createThreadTerminal,
-    isCreateTerminalPending,
-    setActiveFixedTerminal,
-    target,
-  ]);
-
-  const closeTerminal = useCallback(
-    ({
-      mode,
-      onSettled,
-      onSuccess,
-      terminalId,
-    }: {
-      mode: TerminalCloseMode;
-      onSettled?: () => void;
-      onSuccess?: (session: TerminalSession) => void;
-      terminalId: string;
-    }) => {
-      const options = {
-        onSettled: () => {
-          onSettled?.();
-        },
-        onSuccess,
-      };
-      if (terminalTargetKind === "thread") {
-        closeThreadTerminal.mutate(
-          { mode, threadId: terminalTargetId, terminalId },
-          options,
-        );
-        return;
-      }
-      if (terminalTargetKind === "environment") {
-        closeEnvironmentTerminal.mutate(
-          { mode, environmentId: terminalTargetId, terminalId },
-          options,
-        );
-        return;
-      }
-      closeTerminalMutation.mutate({ mode, terminalId }, options);
-    },
-    [
-      closeEnvironmentTerminal,
-      closeTerminalMutation,
-      closeThreadTerminal,
-      terminalTargetId,
-      terminalTargetKind,
-    ],
-  );
-
-  useEffect(() => {
-    if (!isPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
-      return;
-    }
-    for (const session of sessions) {
-      if (
-        !shouldCloseUnretainedDisconnectedTerminalSession({
-          retainedTerminalId: retainedTerminalViewId,
-          session,
-        }) ||
-        closingDisconnectedTerminalIdsRef.current.has(session.id)
-      ) {
-        continue;
-      }
-      closingDisconnectedTerminalIdsRef.current.add(session.id);
-      closeTerminal({
-        mode: "force",
-        terminalId: session.id,
-        onSuccess: (closedSession) => {
-          if (closedSession.status !== "exited") {
-            return;
-          }
-          uiCreatedTerminalIdsRef.current.delete(closedSession.id);
-          dirtyTerminalIdsRef.current.delete(closedSession.id);
-          closingCleanTerminalIdsRef.current.delete(closedSession.id);
-          removeFixedTerminalTab(closedSession.id);
-        },
-        onSettled: () => {
-          closingDisconnectedTerminalIdsRef.current.delete(session.id);
-        },
-      });
-    }
-  }, [
-    closeTerminal,
-    isPanelOpen,
-    removeFixedTerminalTab,
-    retainedTerminalViewId,
-    sessions,
-    terminalsQuery.error,
-    terminalsQuery.isLoading,
-  ]);
-
-  const replaceDisconnectedTerminal = useCallback(
-    (terminalId: string) => {
-      if (
-        !canCreateTerminal ||
-        isCreateTerminalPending ||
-        isCloseTerminalPending
-      ) {
-        return;
-      }
-      closeTerminal({
-        mode: "force",
-        terminalId,
-        onSuccess: () => {
-          uiCreatedTerminalIdsRef.current.delete(terminalId);
-          dirtyTerminalIdsRef.current.delete(terminalId);
-          closingCleanTerminalIdsRef.current.delete(terminalId);
-          removeFixedTerminalTab(terminalId);
-          startTerminal();
-        },
-      });
-    },
-    [
-      canCreateTerminal,
-      closeTerminal,
-      isCloseTerminalPending,
-      isCreateTerminalPending,
-      removeFixedTerminalTab,
-      startTerminal,
-    ],
-  );
-
-  useEffect(() => {
-    if (
-      !shouldAutoCloseCleanTerminalSessionsForPanel({
-        isPanelOpen,
-        isPanelPersistedOpen,
-      })
-    ) {
-      return;
-    }
-    for (const session of visibleSessions) {
-      if (
-        !shouldAutoCloseCleanTerminalSession({
-          dirtyTerminalIds: dirtyTerminalIdsRef.current,
-          session,
-          uiCreatedTerminalIds: uiCreatedTerminalIdsRef.current,
-        }) ||
-        closingCleanTerminalIdsRef.current.has(session.id)
-      ) {
-        continue;
-      }
-      closingCleanTerminalIdsRef.current.add(session.id);
-      closeTerminal({
-        mode: "if-clean",
-        terminalId: session.id,
-        onSuccess: (closedSession) => {
-          if (closedSession.status !== "exited") {
-            return;
-          }
-          uiCreatedTerminalIdsRef.current.delete(closedSession.id);
-          dirtyTerminalIdsRef.current.delete(closedSession.id);
-          removeFixedTerminalTab(closedSession.id);
-        },
-        onSettled: () => {
-          closingCleanTerminalIdsRef.current.delete(session.id);
-        },
-      });
-    }
-  }, [
-    closeTerminal,
-    isPanelOpen,
-    isPanelPersistedOpen,
-    removeFixedTerminalTab,
-    visibleSessions,
-  ]);
-
-  const handleCreateTerminal = useCallback(() => {
-    if (activeSession?.status === "disconnected") {
-      replaceDisconnectedTerminal(activeSession.id);
-      return;
-    }
-    startTerminal();
-  }, [activeSession, replaceDisconnectedTerminal, startTerminal]);
-
   const handleSelectTerminal = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
@@ -579,13 +257,6 @@ export function useThreadTerminalController({
     },
     [queryClient],
   );
-
-  const handleActiveTerminalUserInput = useCallback(() => {
-    if (!activeTerminalId) {
-      return;
-    }
-    dirtyTerminalIdsRef.current.add(activeTerminalId);
-  }, [activeTerminalId]);
 
   const handleActiveTerminalTitleChange: ThreadTerminalTitleChangeHandler =
     useCallback(
@@ -668,33 +339,17 @@ export function useThreadTerminalController({
       ],
     );
 
-  const terminalIsReplacing =
-    activeSession?.status === "disconnected" &&
-    isCloseTerminalPending &&
-    closingTerminalVariables?.terminalId === activeSession.id;
-  const terminalIsStarting = isCreateTerminalPending || terminalIsReplacing;
-
-  const inactiveTerminalBodyMessage = canCreateTerminal
-    ? "Starting terminal..."
-    : "Terminals unavailable.";
-
-  const terminalBodyMessage = terminalIsStarting
-    ? inactiveTerminalBodyMessage
-    : "No terminals";
+  const terminalBodyMessage = "No terminals";
 
   return {
     activeSession,
     canCreateTerminal,
     handleActiveTerminalSessionChange,
     handleActiveTerminalTitleChange,
-    handleActiveTerminalUserInput,
-    handleCreateTerminal,
     handleSelectTerminal,
     hasTerminalQueryError: terminalsQuery.error !== null,
-    isCreateTerminalPending,
     isPanelOpen,
     shouldMountTerminalView,
-    shouldRetainActiveTerminalView,
     terminalBodyMessage,
   };
 }

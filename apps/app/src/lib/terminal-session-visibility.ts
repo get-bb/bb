@@ -1,24 +1,9 @@
 import { isActiveTerminalSessionStatus } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 
-interface RetainedTerminalSessionArgs {
-  retainedTerminalId: string | null;
-  session: TerminalSession;
-}
-
-export function shouldShowRetainedTerminalSession({
-  retainedTerminalId,
-  session,
-}: RetainedTerminalSessionArgs): boolean {
+export function isVisibleTerminalSession(session: TerminalSession): boolean {
   return (
     isActiveTerminalSessionStatus(session.status) ||
-    (session.status === "disconnected" && session.id === retainedTerminalId)
+    session.status === "disconnected"
   );
-}
-
-export function shouldCloseUnretainedDisconnectedTerminalSession({
-  retainedTerminalId,
-  session,
-}: RetainedTerminalSessionArgs): boolean {
-  return session.status === "disconnected" && session.id !== retainedTerminalId;
 }

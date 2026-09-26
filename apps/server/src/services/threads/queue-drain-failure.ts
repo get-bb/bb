@@ -65,7 +65,7 @@ export function recordQueuedMessageDrainFailure(
   },
 ): void {
   const { host } = dispatchEnvironmentAndHost(deps, args.thread.environmentId);
-  if (host !== null && host.status === "disconnected") {
+  if (host !== null && !deps.hub.hasDaemonForHost(host.id)) {
     setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
       id: args.row.id,
       threadId: args.row.threadId,

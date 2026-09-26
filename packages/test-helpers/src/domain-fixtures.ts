@@ -148,10 +148,7 @@ export function makeThreadWithRuntime(
 ): ThreadWithRuntime {
   const thread: ThreadWithRuntime = {
     ...makeThread(),
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
+    runtime: { displayStatus: "idle" },
   };
   return {
     ...thread,

@@ -116,7 +116,7 @@ export function makeThreadResponse(
     latestAttentionAt: 0,
     createdAt: 0,
     updatedAt: 0,
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    runtime: { displayStatus: "idle" },
     activeBackgroundAgentCount: 0,
     canRestoreEnvironment: false,
     canSpawnChild: true,

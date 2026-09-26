@@ -170,7 +170,6 @@ import {
 } from "@/components/thread/terminal/useThreadTerminalController";
 import {
   buildTerminalSyncedSecondaryFileTabs,
-  getRetainedTerminalTabId,
   syncTerminalTabsInFixedPanelState,
 } from "@/components/secondary-panel/terminalPanelTabs";
 import {
@@ -944,14 +943,6 @@ function RootComposeSurface({
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
-  const retainedTerminalId = useMemo(
-    () =>
-      getRetainedTerminalTabId({
-        activeTab: activeFixedSecondaryTab,
-        isPanelOpen: isPersistedSecondaryPanelOpen,
-      }),
-    [activeFixedSecondaryTab, isPersistedSecondaryPanelOpen],
-  );
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const isCompactViewport = useIsCompactViewport();
   const secondaryPanelDrawerVisibility =
@@ -1110,7 +1101,6 @@ function RootComposeSurface({
     preserveWorkspaceTabsAcrossContexts: true,
     projectHostId: rootProjectHostId,
     projectId: isProjectless ? null : projectId,
-    retainedTerminalId,
     storageFileExists: checkRootThreadStorageFileExists,
     storageFiles: rootThreadStorageFiles,
     terminalSessions: loadedTerminalSessions,
@@ -1125,10 +1115,9 @@ function RootComposeSurface({
         ? orderedSecondaryFileTabs
         : buildTerminalSyncedSecondaryFileTabs({
             orderedTabs: orderedSecondaryFileTabs,
-            retainedTerminalId,
             terminalSessions: loadedTerminalSessions,
           }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs, retainedTerminalId],
+    [loadedTerminalSessions, orderedSecondaryFileTabs],
   );
   useEffect(() => {
     if (!terminalsListLoaded) {
@@ -1136,17 +1125,11 @@ function RootComposeSurface({
     }
     updateFixedPanelTabsState((state) =>
       syncTerminalTabsInFixedPanelState({
-        retainedTerminalId,
         state,
         terminalSessions,
       }),
     );
-  }, [
-    retainedTerminalId,
-    terminalSessions,
-    terminalsListLoaded,
-    updateFixedPanelTabsState,
-  ]);
+  }, [terminalSessions, terminalsListLoaded, updateFixedPanelTabsState]);
   const canCreateRootTerminal = canCreateRootComposeTerminal({
     connectedHostIds,
     environmentHostId: rootPanelEnvironment?.hostId,

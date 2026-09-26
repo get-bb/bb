@@ -33,7 +33,6 @@ import type {
 
 export interface HostConnectionNotice {
   label: string;
-  tone: "pending" | "error";
 }
 
 export interface ThreadTimelineSurfaceProps {
@@ -254,11 +253,7 @@ export function ThreadTimelineSurface({
         {hostConnectionNotice ? (
           <TimelineStatusIndicator
             label={hostConnectionNotice.label}
-            className={
-              hostConnectionNotice.tone === "error"
-                ? "mt-4 text-destructive"
-                : "mt-4"
-            }
+            className="mt-4 text-destructive"
           />
         ) : null}
         <HeightTransition visible={showOngoingIndicator}>

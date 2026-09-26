@@ -923,6 +923,7 @@ describe("pending interaction lifecycle", () => {
       const replacementSession = seedSession(harness.deps, host.id);
       await handleHostSessionOpened(harness.deps, {
         activeThreads: [],
+        undeliveredEventThreadIds: [],
         hostId: host.id,
         openedSession: replacementSession,
         previousSession: session,

@@ -16,7 +16,7 @@ export interface GetLatestSessionForHostArgs {
   hostId: string;
 }
 
-export interface ListLatestSessionsForHostsArgs {
+export interface ListLatestClosedSessionsForHostsArgs {
   hostIds: readonly string[];
 }
 
@@ -30,10 +30,7 @@ export interface OpenSessionInput {
   leaseTimeoutMs: number;
 }
 
-export function openSession(
-  db: DbConnection,
-  input: OpenSessionInput,
-) {
+export function openSession(db: DbConnection, input: OpenSessionInput) {
   const now = Date.now();
   const id = createHostDaemonSessionId();
 
@@ -75,7 +72,6 @@ export function openSession(
 
   markHostSeen(db, input.hostId, now);
 
-
   return row;
 }
 
@@ -110,8 +106,6 @@ export function closeSession(
     .returning()
     .get();
 
-  markHostSeen(db, existing.hostId, now);
-
   notifier.notifyHost(existing.hostId, ["host-disconnected"]);
 
   return updated ?? null;
@@ -139,9 +133,9 @@ export function getLatestSessionForHost(
   );
 }
 
-export function listLatestSessionsForHosts(
+export function listLatestClosedSessionsForHosts(
   db: SessionReadConnection,
-  args: ListLatestSessionsForHostsArgs,
+  args: ListLatestClosedSessionsForHostsArgs,
 ): HostDaemonSessionRow[] {
   const hostIds = [...new Set(args.hostIds)];
   if (hostIds.length === 0) {
@@ -158,11 +152,8 @@ export function listLatestSessionsForHosts(
           SELECT latest.id
           FROM host_daemon_sessions AS latest
           WHERE latest.host_id = ${hostDaemonSessions.hostId}
-          ORDER BY
-            latest.updated_at DESC,
-            latest.created_at DESC,
-            CASE WHEN latest.status = 'active' THEN 1 ELSE 0 END DESC,
-            latest.id DESC
+            AND latest.status = 'closed'
+          ORDER BY latest.closed_at DESC, latest.id DESC
           LIMIT 1
         )`,
       ),

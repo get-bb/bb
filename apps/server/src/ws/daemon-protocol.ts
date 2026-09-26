@@ -17,7 +17,12 @@ import {
   getInactiveSessionLogFields,
   requireAuthorizedOpenSession,
 } from "../internal/session-state.js";
-import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
+import {
+  handleDaemonSessionSilent,
+  handleDaemonSocketClosed,
+  handleDaemonSocketOpened,
+} from "../internal/session-owner-side-effects.js";
+import { HEARTBEAT_INTERVAL_MS, LEASE_TIMEOUT_MS } from "../constants.js";
 import {
   notifyDaemonEnvironmentChange,
   recordDaemonEnvironmentMetadataChange,
@@ -101,9 +106,10 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
+  handleDaemonSocketOpened(deps, { hostId: args.hostId });
   deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   if (!isServerMoveSnapshotFenced(deps.db)) {
-    deps.terminalSessions.expireDisconnectedHostTerminals({
+    deps.terminalSessions.reconcileDisconnectedHostTerminals({
       daemonSessionId: args.sessionId,
       hostId: args.hostId,
     });
@@ -142,6 +148,7 @@ export function onDaemonSocketMessage(
   plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): void {
+  deps.hub.recordDaemonActivity(args.sessionId);
   const message = parseSocketMessage(
     args.socket,
     args.raw,
@@ -328,6 +335,25 @@ export function onDaemonSocketMessage(
     );
     args.socket.close(1008, "inactive-session");
   }
+}
+
+const DAEMON_LIVENESS_CHECK_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
+const DAEMON_LIVENESS_MAX_QUIET_CHECKS = Math.ceil(
+  LEASE_TIMEOUT_MS / DAEMON_LIVENESS_CHECK_INTERVAL_MS,
+);
+
+export function startDaemonLivenessChecks(
+  deps: LoggedPendingInteractionWorkSessionDeps & Pick<AppDeps, "sharedPorts">,
+): () => void {
+  const interval = setInterval(() => {
+    for (const sessionId of deps.hub.takeSilentDaemonSessionIds(
+      DAEMON_LIVENESS_MAX_QUIET_CHECKS,
+    )) {
+      handleDaemonSessionSilent(deps, { sessionId });
+    }
+  }, DAEMON_LIVENESS_CHECK_INTERVAL_MS);
+  interval.unref();
+  return () => clearInterval(interval);
 }
 
 export function onDaemonSocketClose(

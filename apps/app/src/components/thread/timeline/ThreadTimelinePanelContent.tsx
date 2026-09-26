@@ -66,12 +66,9 @@ export function ThreadTimelinePanelContent({
     displayStatus === "idle" && hasActiveBackgroundWork
       ? "Background work running"
       : undefined;
-  const ongoingIndicatorLabel =
-    displayStatus === "host-reconnecting"
-      ? "Waiting for reconnection"
-      : isProvisioningDisplayStatus
-        ? "Provisioning thread..."
-        : backgroundOnlyIndicatorLabel;
+  const ongoingIndicatorLabel = isProvisioningDisplayStatus
+    ? "Provisioning thread..."
+    : backgroundOnlyIndicatorLabel;
   const showOngoingIndicator =
     threadQuery.data?.status !== "stopping" &&
     (isProvisioningDisplayStatus ||
