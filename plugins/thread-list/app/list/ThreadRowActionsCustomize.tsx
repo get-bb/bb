@@ -277,7 +277,7 @@ function RowActionSlotPicker({
         <DropdownMenuSeparator />
         <RowActionOption
           icon="X"
-          label="None"
+          label="Hide"
           selected={value === null}
           onSelect={() => {
             focusHandedOff.current = onChange(null);

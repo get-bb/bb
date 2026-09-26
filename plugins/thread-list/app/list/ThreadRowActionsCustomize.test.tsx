@@ -52,7 +52,7 @@ it("fills, replaces, swaps, and clears slots", () => {
 it.each([
   { initial: ["archive"], slot: 0, pick: "Pin", focusedSlot: 1, focused: "pin" },
   { initial: ["pin", "archive", "rename"], slot: 0, pick: "Rename", focusedSlot: 0, focused: "rename" },
-  { initial: ["pin", "archive", "rename"], slot: 1, pick: "None", focusedSlot: 1, focused: "pin" },
+  { initial: ["pin", "archive", "rename"], slot: 1, pick: "Hide", focusedSlot: 1, focused: "pin" },
 ] as const)(
   "moves focus to slot $focusedSlot after picking $pick in slot $slot",
   async ({ initial, slot, pick, focusedSlot, focused }) => {
