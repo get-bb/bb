@@ -29,7 +29,7 @@ export function SidebarFooterSettings() {
   return (
     <SettingsWithControl
       label="Sidebar footer"
-      description="Drag to reorder. Icons that don't fit the sidebar's width stay in the footer's More menu."
+      description="Drag to reorder."
       controlPlacement="below"
     >
       <div

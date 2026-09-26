@@ -8,7 +8,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useSetAtom } from "jotai";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -41,7 +40,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import {
   useSidebarFooterPreferences,
-  sidebarFooterCapacityAtom,
+  useMeasureSidebarFooterCapacity,
   SIDEBAR_FOOTER_MORE_ID,
   type FooterItem,
   type BuiltinFooterId,
@@ -214,27 +213,7 @@ export function PluginSidebarFooterItems({
   const customizeAfterClose = useRef(false);
   const menuRef = useRef<HTMLUListElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
-  const setCapacity = useSetAtom(sidebarFooterCapacityAtom);
-  useLayoutEffect(() => {
-    const menu = menuRef.current;
-    const more = moreRef.current;
-    if (!menu || !more) return;
-    const measure = () => {
-      const width = menu.getBoundingClientRect().width;
-      const controlWidth = more.getBoundingClientRect().width;
-      if (width === 0 || controlWidth === 0) return;
-      const gap = Number.parseFloat(getComputedStyle(menu).columnGap) || 0;
-      setCapacity(
-        Math.max(0, Math.floor((width + gap) / (controlWidth + gap)) - 1),
-      );
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(menu);
-    observer.observe(more);
-    return () => observer.disconnect();
-  }, [setCapacity]);
+  useMeasureSidebarFooterCapacity(menuRef, moreRef);
   const isAvailable = (item: FooterItem) =>
     item.kind === "plugin" ||
     builtInActions.some((action) => action.id === item.id);

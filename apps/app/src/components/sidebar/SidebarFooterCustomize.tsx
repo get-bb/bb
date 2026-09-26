@@ -13,6 +13,7 @@ import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { FooterItemIcon } from "@/components/plugin/PluginSidebarFooterItems";
 import {
   type FooterItem,
+  useMeasureSidebarFooterCapacity,
   useSidebarFooterPreferences,
 } from "./sidebarFooterPreferences";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
@@ -25,6 +26,9 @@ const BADGE_CLASS =
 export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
   const preferences = useSidebarFooterPreferences();
   const containerRef = useRef<HTMLDivElement>(null);
+  const footerRowRef = useRef<HTMLDivElement>(null);
+  const moreGlyphRef = useRef<HTMLSpanElement>(null);
+  useMeasureSidebarFooterCapacity(footerRowRef, moreGlyphRef);
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (typeof active.id === "string" && typeof over?.id === "string") {
       preferences.move(active.id, over.id);
@@ -81,7 +85,10 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
             : `${preferences.footer.length} of ${preferences.capacity}`
         }
       />
-      <div className="flex items-center gap-1 overflow-hidden bg-sidebar-accent py-2">
+      <div
+        ref={footerRowRef}
+        className="flex items-center gap-1 overflow-hidden bg-sidebar-accent py-2"
+      >
         <ul
           aria-label="Footer icons"
           className="flex min-w-0 items-center gap-1"
@@ -114,6 +121,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
           ))}
         </ul>
         <span
+          ref={moreGlyphRef}
           aria-hidden="true"
           className={cn(
             SIDEBAR_FOOTER_ACTION_CLASS,
@@ -123,40 +131,33 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
           <Icon name="MoreHorizontal" />
         </span>
       </div>
-      <ZoneLabel label="More menu" />
-      {preferences.more.length === 0 ? (
-        <p className="px-2 py-1 text-xs text-muted-foreground">
-          Every icon is in the footer.
-        </p>
-      ) : (
-        <ul
-          aria-label="More menu items"
-          className="space-y-0.5 px-1"
-          onClickCapture={moreDnd.onClickCapture}
-        >
-          <DndContext {...moreDnd.dndContextProps}>
-            <SortableContext
-              items={preferences.more.map((item) => item.key)}
-              strategy={verticalListSortingStrategy}
-            >
-              {preferences.more.map((item) => (
-                <MoreMenuRow
-                  key={item.key}
-                  item={item}
-                  reorderDisabled={preferences.more.length < 2}
-                  addDisabled={preferences.isFull}
-                  onAdd={() => preferences.addToFooter(item.key)}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        </ul>
+      {preferences.more.length > 0 && (
+        <>
+          <ZoneLabel label="More menu" />
+          <ul
+            aria-label="More menu items"
+            className="space-y-0.5 px-1"
+            onClickCapture={moreDnd.onClickCapture}
+          >
+            <DndContext {...moreDnd.dndContextProps}>
+              <SortableContext
+                items={preferences.more.map((item) => item.key)}
+                strategy={verticalListSortingStrategy}
+              >
+                {preferences.more.map((item) => (
+                  <MoreMenuRow
+                    key={item.key}
+                    item={item}
+                    reorderDisabled={preferences.more.length < 2}
+                    addDisabled={preferences.isFull}
+                    onAdd={() => preferences.addToFooter(item.key)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </ul>
+        </>
       )}
-      <p className="px-2 pb-1 pt-2 text-xs text-muted-foreground">
-        {preferences.isFull && preferences.more.length > 0
-          ? "Footer is full. Remove an icon to add another."
-          : "Drag to reorder."}
-      </p>
     </div>
   );
 }

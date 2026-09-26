@@ -166,7 +166,6 @@ describe("PluginSidebarFooterItems", () => {
     expect(
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
     ).toHaveProperty("disabled", true);
-    screen.getByText("Footer is full. Remove an icon to add another.");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Remove Action two from footer" }),

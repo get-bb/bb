@@ -1,4 +1,5 @@
-import { atom, useAtom, useAtomValue } from "jotai";
+import { type RefObject, useLayoutEffect } from "react";
+import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   usePluginSlots,
   type PluginSidebarFooterItemSlot,
@@ -14,6 +15,33 @@ export const sidebarFooterHiddenAtom = createSyncedPreferenceAtom(
 );
 export const SIDEBAR_FOOTER_MORE_ID = "sidebar-footer-more";
 export const sidebarFooterCapacityAtom = atom<number | null>(null);
+
+export function useMeasureSidebarFooterCapacity(
+  rowRef: RefObject<HTMLElement | null>,
+  moreRef: RefObject<HTMLElement | null>,
+) {
+  const setCapacity = useSetAtom(sidebarFooterCapacityAtom);
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const more = moreRef.current;
+    if (!row || !more) return;
+    const measure = () => {
+      const width = row.getBoundingClientRect().width;
+      const controlWidth = more.getBoundingClientRect().width;
+      if (width === 0 || controlWidth === 0) return;
+      const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
+      setCapacity(
+        Math.max(0, Math.floor((width + gap) / (controlWidth + gap)) - 1),
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    observer.observe(more);
+    return () => observer.disconnect();
+  }, [rowRef, moreRef, setCapacity]);
+}
 
 export type BuiltinFooterId = "settings" | "report-bug";
 export type FooterItem = { key: string; label: string; icon: string } & (
