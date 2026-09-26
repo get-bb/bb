@@ -305,6 +305,9 @@ It leaves the old copy locked and its machine service in place.
 directory that is already enrolled, reading its machine ID from `auth.json` and
 its server address and headers from `config.json`; `bb server
 install-machine-service` runs it for the directory a server move left behind.
+On such a machine, `bb` in your own terminal targets that saved address and
+sends its headers; `bb` inside a thread uses the `BB_SERVER_URL` the daemon
+provides, an authenticated loopback proxy, and does not receive the headers.
 
 Reconnect a disconnected machine whose server access or host key was revoked
 or became stale, without changing its BB host ID:

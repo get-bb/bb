@@ -944,7 +944,7 @@ describe("bb-app launcher", () => {
     expect(context.serverUrl).toBe("https://bb.example.test");
   });
 
-  it("uses managed config server URL over ambient env", async () => {
+  it("uses managed config server URL over ambient env outside CLI calls", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-server-config-"));
     writeFileSync(
       join(dataDir, "config.json"),
@@ -965,6 +965,103 @@ describe("bb-app launcher", () => {
 
     expect(runtime.context.serverUrl).toBe("https://stored.example.test");
     expect(runtime.env.BB_SERVER_URL).toBe("https://stored.example.test");
+  });
+
+  it("routes CLI calls to a caller-supplied server URL without the managed machine credential", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-proxy-url-"));
+    writeFileSync(
+      join(dataDir, "config.json"),
+      JSON.stringify({
+        serverHeaders: { "x-bb-connect-machine": "test-machine-credential" },
+        serverUrl: "https://stored.example.test",
+      }),
+      "utf8",
+    );
+
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: {
+        BB_DATA_DIR: dataDir,
+        BB_SERVER_URL: "http://127.0.0.1:59089",
+      },
+      homeDir: "/home/tester",
+      options: { help: false },
+      serverUrlMode: "cli",
+    });
+
+    expect(runtime.context.serverUrl).toBe("http://127.0.0.1:59089");
+    expect(runtime.env.BB_SERVER_URL).toBe("http://127.0.0.1:59089");
+    expect(runtime.env.BB_SERVER_HEADERS).toBeUndefined();
+
+    const cliEnvPath = join(dataDir, "cli-env.json");
+    const exitCode = await runBundledCliCommand({
+      args: [
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], JSON.stringify({ headers: process.env.BB_SERVER_HEADERS ?? null, url: process.env.BB_SERVER_URL }))",
+        cliEnvPath,
+      ],
+      context: runtime.context,
+      env: { ...runtime.env, BB_CLI: process.execPath },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(cliEnvPath, "utf8"))).toEqual({
+      headers: null,
+      url: "http://127.0.0.1:59089",
+    });
+  });
+
+  it.each([
+    { env: {}, label: "unset" },
+    { env: { BB_SERVER_URL: "  " }, label: "blank" },
+    {
+      env: { BB_SERVER_URL: "https://stored.example.test/" },
+      label: "the managed server URL",
+    },
+  ])(
+    "keeps the managed server URL and machine credential for CLI calls when the caller URL is $label",
+    async ({ env }) => {
+      const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-config-url-"));
+      writeFileSync(
+        join(dataDir, "config.json"),
+        JSON.stringify({
+          serverHeaders: { "x-bb-connect-machine": "test-machine-credential" },
+          serverUrl: "https://stored.example.test",
+        }),
+        "utf8",
+      );
+
+      const runtime = await resolveBbAppRuntimeState({
+        entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js")
+          .href,
+        env: { ...env, BB_DATA_DIR: dataDir },
+        homeDir: "/home/tester",
+        options: { help: false },
+        serverUrlMode: "cli",
+      });
+
+      expect(new URL(runtime.env.BB_SERVER_URL ?? "").href).toBe(
+        "https://stored.example.test/",
+      );
+      expect(runtime.env.BB_SERVER_HEADERS).toBe(
+        JSON.stringify({ "x-bb-connect-machine": "test-machine-credential" }),
+      );
+    },
+  );
+
+  it("routes CLI calls to the default local server without managed config", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-default-url-"));
+
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: { BB_DATA_DIR: dataDir },
+      homeDir: "/home/tester",
+      options: { help: false },
+      serverUrlMode: "cli",
+    });
+
+    expect(runtime.env.BB_SERVER_URL).toBe("http://127.0.0.1:38886");
+    expect(runtime.env.BB_SERVER_HEADERS).toBeUndefined();
   });
 
   it("keeps full-stack startup local even when managed config has a server URL", async () => {

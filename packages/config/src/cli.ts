@@ -1,4 +1,9 @@
-import { resolveEnvLoader, type EnvLoaderArgs } from "./env.js";
+import {
+  readOptionalEnvVar,
+  resolveEnvLoader,
+  type EnvLoaderArgs,
+} from "./env.js";
+import { BB_SERVER_HEADERS_ENV } from "./env-vars.js";
 import { loadHostDaemonPortValue } from "./ports.js";
 import {
   BB_LOOPBACK_HOST,
@@ -53,4 +58,15 @@ export function loadCliConfig(args: LoadCliConfigArgs = {}): CliConfig {
         : BB_PROD_HOST_DAEMON_PORT,
     BB_SERVER_URL: serverUrl,
   };
+}
+
+export function loadCliServerHeaders(
+  args: EnvLoaderArgs = {},
+): Record<string, string> | undefined {
+  const loader = resolveEnvLoader(args);
+  return readOptionalEnvVar({
+    context: loader.context,
+    definition: BB_SERVER_HEADERS_ENV,
+    env: loader.env,
+  });
 }
