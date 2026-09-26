@@ -11,6 +11,7 @@ import {
   definePluginApp,
   experimental_ProviderIcon as ProviderIcon,
   experimental_useSidebarThreads,
+  experimental_usePluginId,
   type ExperimentalSidebarFooterDisclosureProps,
   useBbContext,
 } from "@get-bb/plugin-sdk/app";
@@ -70,6 +71,17 @@ let storeSnapshot: UsageStoreSnapshot = {
 let activeRefreshCount = 0;
 let lastMachineId: string | null = null;
 let lastProviderIdByMachine = new Map<string, string>();
+
+function readSelectedMachine(storageKey: string | null): string | null {
+  if (lastMachineId !== null) return lastMachineId;
+  if (storageKey !== null) {
+    try {
+      const stored = window.localStorage.getItem(storageKey);
+      if (stored !== null && stored.length > 0) return stored;
+    } catch {}
+  }
+  return lastMachineId;
+}
 
 function updateStore(next: UsageStoreSnapshot): void {
   storeSnapshot = next;
@@ -341,10 +353,12 @@ export function ProviderUsageStatusContent({
   snapshot,
   threadMachineId,
   refreshEnabled = true,
+  machineSelectionStorageKey = null,
 }: ExperimentalSidebarFooterDisclosureProps & {
   snapshot: UsageStoreSnapshot;
   threadMachineId: string | null;
   refreshEnabled?: boolean;
+  machineSelectionStorageKey?: string | null;
 }) {
   const [, refreshCountdowns] = useState(0);
   useEffect(() => {
@@ -356,7 +370,7 @@ export function ProviderUsageStatusContent({
   }, []);
   const machines = snapshot.data?.machines ?? [];
   const [requestedMachineId, setRequestedMachineId] = useState<string | null>(
-    lastMachineId,
+    () => readSelectedMachine(machineSelectionStorageKey),
   );
   const [requestedProviderIds, setRequestedProviderIds] = useState(
     lastProviderIdByMachine,
@@ -435,10 +449,18 @@ export function ProviderUsageStatusContent({
     };
   }, [activeMachineId, activeProviderId, refreshEnabled]);
 
-  const selectMachine = useCallback((machineId: string) => {
-    lastMachineId = machineId;
-    setRequestedMachineId(machineId);
-  }, []);
+  const selectMachine = useCallback(
+    (machineId: string) => {
+      lastMachineId = machineId;
+      setRequestedMachineId(machineId);
+      if (machineSelectionStorageKey !== null) {
+        try {
+          window.localStorage.setItem(machineSelectionStorageKey, machineId);
+        } catch {}
+      }
+    },
+    [machineSelectionStorageKey],
+  );
 
   const selectProvider = useCallback(
     (providerId: string) => {
@@ -662,6 +684,7 @@ export function ProviderUsageStatusContent({
 }
 
 function ProviderUsageStatus(props: ExperimentalSidebarFooterDisclosureProps) {
+  const pluginId = experimental_usePluginId();
   const snapshot = useSyncExternalStore(
     subscribeStore,
     getStoreSnapshot,
@@ -680,6 +703,7 @@ function ProviderUsageStatus(props: ExperimentalSidebarFooterDisclosureProps) {
       {...props}
       snapshot={snapshot}
       threadMachineId={threadMachineId}
+      machineSelectionStorageKey={`bb.${pluginId}.selected-machine.v1`}
     />
   );
 }

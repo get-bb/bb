@@ -3,7 +3,16 @@
 Shows usage from enabled usage-source plugins in the sidebar. Provider tabs
 use provider names and icons, with pooled accounts stacked under each provider.
 The card lists account metadata cheaply, then fetches only the selected provider’s accounts. Unopened tabs have no quota badge until measured. Shared sources such as Account Pooler are selected by default; an explicit
-machine selection shows that machine’s local usage instead.
+machine selection shows that machine’s local usage instead. The sidebar remembers
+its last explicit pool or device selection across close/reopen and page reloads.
+This navigation history is local to the browser profile and BB origin, namespaced
+by the display plugin ID; it is not a server-wide setting. Only the source ID is
+stored, not account or usage data. If that source disappears, selection falls back
+to an available shared source, the current thread’s machine, a connected machine,
+or the first remaining machine. The remembered choice is retained if it returns;
+choosing another source replaces it. Provider tabs remain independent per source
+within the page session. If browser storage is unavailable, close/reopen memory
+still works, but reload persistence is unavailable.
 
 An unconfigured shared source remains selectable and shows setup guidance.
 Failed refreshes retain the last available measurements with a retry notice.
