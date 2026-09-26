@@ -465,7 +465,7 @@ describe("PluginSidebarFooterItems", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Customize footer" }),
     );
-    expect(onCustomize).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onCustomize).toHaveBeenCalledTimes(1));
     expect(screen.getByLabelText("Current path").textContent).toBe("/");
     fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
     expect(screen.getByText("Usage detail")).toBeDefined();

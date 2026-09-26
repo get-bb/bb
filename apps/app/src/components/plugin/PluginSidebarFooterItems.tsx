@@ -10,6 +10,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   SidebarMenu,
@@ -206,6 +207,7 @@ export function PluginSidebarFooterItems({
 }) {
   const navigate = useNavigate();
   const preferences = useSidebarFooterPreferences();
+  const isCompactViewport = useIsCompactViewport();
   const previousHidden = useRef(preferences.hidden);
   const customizeAfterClose = useRef(false);
   const menuRef = useRef<HTMLUListElement>(null);
@@ -405,6 +407,7 @@ export function PluginSidebarFooterItems({
                 side="top"
                 align="start"
                 mobileTitle="More footer actions"
+                onCloseAutoFocus={handleCloseAutoFocus}
               >
                 {hidden.map((item) => (
                   <DropdownMenuItem
@@ -416,7 +419,9 @@ export function PluginSidebarFooterItems({
                   </DropdownMenuItem>
                 ))}
                 {hidden.length > 0 && <DropdownMenuSeparator />}
-                <DropdownMenuItem onSelect={onCustomize}>
+                <DropdownMenuItem
+                  onSelect={isCompactViewport ? onCustomize : customize}
+                >
                   <Icon name="SlidersHorizontal" />
                   Customize footer
                 </DropdownMenuItem>
