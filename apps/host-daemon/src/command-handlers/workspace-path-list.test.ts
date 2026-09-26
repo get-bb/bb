@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGit } from "@bb/host-workspace";
 import { listWorkspacePaths } from "./file-list.js";
 import { listHostPaths } from "./host-files.js";
@@ -41,6 +41,7 @@ async function paths(root: string) {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots
       .splice(0)
@@ -49,6 +50,29 @@ afterEach(async () => {
 });
 
 describe("workspace path discovery", () => {
+  it("reuses discovery across successive file suggestion queries", async () => {
+    const root = await createRoot();
+    await write(root, "alpha.md");
+    await write(root, "beta.md");
+    const readDirectory = vi.spyOn(fs, "readdir");
+    const command = {
+      type: "host.list_paths" as const,
+      path: root,
+      includeFiles: true,
+      includeDirectories: false,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
+      limit: 1,
+    };
+    const alpha = await listHostPaths({ ...command, query: "alpha" });
+    const reads = readDirectory.mock.calls.length;
+    const beta = await listHostPaths({ ...command, query: "beta" });
+    expect(alpha.paths.map((entry) => entry.path)).toEqual(["alpha.md"]);
+    expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);
+    expect(readDirectory.mock.calls.length).toBe(reads);
+  });
+
   it("includes tracked and non-ignored untracked files while pruning Git-ignored trees", async () => {
     const root = await createRoot();
     await initRepo(root);
