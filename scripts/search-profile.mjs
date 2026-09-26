@@ -483,6 +483,17 @@ async function compare(baseArg, headArg) {
   manifest.fixture = JSON.parse(
     await readFile(join(output, "fixture-manifest.json"), "utf8"),
   );
+  command("tar", [
+    "-czf",
+    join(output, "fixture.tgz"),
+    "-C",
+    output,
+    "fixture",
+    "mention-plugin",
+  ]);
+  manifest.fixture.archiveSha256 = hash(
+    await readFile(join(output, "fixture.tgz")),
+  );
   await json(join(output, "manifest.json"), manifest);
   for (const [round, label] of manifest.order.entries())
     await measure(label, revisions[label], round);
