@@ -2270,7 +2270,7 @@ describe("SplitThreadArea", () => {
     await screen.findByText("Docs panel");
     expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
     const [pluginClose] = screen.getAllByRole("button", { name: "Close pane" });
-    const reserve = pluginClose?.nextElementSibling;
+    const reserve = pluginClose?.parentElement?.nextElementSibling;
     expect(reserve?.tagName).toBe("SPAN");
     expect(reserve?.getAttribute("aria-hidden")).toBe("true");
 
@@ -2280,7 +2280,7 @@ describe("SplitThreadArea", () => {
     await waitFor(() =>
       expect(
         screen.getAllByRole("button", { name: "Close pane" })[0]
-          ?.nextElementSibling,
+          ?.parentElement?.nextElementSibling,
       ).toBeNull(),
     );
   });
