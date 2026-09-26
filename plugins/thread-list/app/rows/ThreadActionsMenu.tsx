@@ -28,11 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
@@ -40,10 +36,7 @@ import {
   experimental_useSidebarThreadActions,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
-import {
-  ActionMenuItem,
-  ActionMenuSeparator,
-} from "../ui/action-menu-items.js";
+import { ActionMenuItem, ActionMenuSeparator } from "../ui/action-menu-items.js";
 import { CompactLongPressMenu } from "../ui/compact-long-press-menu.js";
 import { copyToClipboardWithToast } from "../ui/clipboard.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
@@ -204,7 +197,7 @@ function ThreadSectionMoveMenu({
         >
           <Icon name={THREAD_ROW_ACTIONS.move.icon} aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">
-            {THREAD_ROW_ACTIONS.move.title}
+            {THREAD_ROW_ACTIONS.move.label}
           </span>
           <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
         </DropdownMenuItem>
@@ -222,7 +215,7 @@ function ThreadSectionMoveMenu({
           Back
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>{THREAD_ROW_ACTIONS.move.title}</DropdownMenuLabel>
+        <DropdownMenuLabel>{THREAD_ROW_ACTIONS.move.label}</DropdownMenuLabel>
         {items}
       </>
     );
@@ -238,7 +231,7 @@ function ThreadSectionMoveMenu({
     <Sub>
       <SubTrigger>
         <Icon name={THREAD_ROW_ACTIONS.move.icon} aria-hidden="true" />
-        {THREAD_ROW_ACTIONS.move.title}
+        {THREAD_ROW_ACTIONS.move.label}
       </SubTrigger>
       <SubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
         {items}
@@ -382,11 +375,11 @@ function threadRowActionModel(
   switch (id) {
     case "split":
       return onOpenInSplit
-        ? { ...withTitle(THREAD_ROW_ACTIONS.split), run: onOpenInSplit }
+        ? { ...THREAD_ROW_ACTIONS.split), run: onOpenInSplit }
         : null;
     case "copyLink":
       return {
-        ...withTitle(THREAD_ROW_ACTIONS.copyLink),
+        ...THREAD_ROW_ACTIONS.copyLink),
         run: () => {
           void copyToClipboardWithToast(getThreadUrl(thread), {
             successMessage: "Thread link copied",
@@ -413,7 +406,7 @@ function threadRowActionModel(
     case "move":
       return null;
     case "rename":
-      return { ...withTitle(THREAD_ROW_ACTIONS.rename), run: onRename };
+      return { ...THREAD_ROW_ACTIONS.rename), run: onRename };
     case "archive":
       return {
         icon: isArchived ? "ArchiveRestore" : "Archive",
@@ -427,10 +420,6 @@ function threadRowActionModel(
         },
       };
   }
-}
-
-function withTitle(action: { icon: IconName; title: string }) {
-  return { icon: action.icon, label: action.title };
 }
 
 export function ThreadRowAction({
@@ -617,7 +606,7 @@ function ThreadMoveQuickAction({
 }) {
   const sectionMove = useThreadSectionMove();
   if (!canMoveThreadToSection(sectionMove, thread)) return null;
-  const { icon, title } = THREAD_ROW_ACTIONS.move;
+  const { icon, label } = THREAD_ROW_ACTIONS.move;
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
       <Tooltip>
@@ -632,7 +621,7 @@ function ThreadMoveQuickAction({
                 "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
                 className,
               )}
-              aria-label={title}
+              aria-label={label}
               onClick={(event) => {
                 event.stopPropagation();
               }}
@@ -641,13 +630,13 @@ function ThreadMoveQuickAction({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{title}</TooltipContent>
+        <TooltipContent side="bottom">{label}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         align="end"
         className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto"
       >
-        <DropdownMenuLabel>{title}</DropdownMenuLabel>
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
         <ThreadSectionMoveItems
           sectionMove={sectionMove}
           surface="dropdown"

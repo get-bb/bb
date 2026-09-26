@@ -212,7 +212,7 @@ function RowActionSlotPicker({
     id: value ?? `empty-${index}`,
     disabled: reorderDisabled,
   });
-  const label = `Row action ${index + 1}: ${value === null ? "None" : THREAD_ROW_ACTIONS[value].title}`;
+  const label = `Row action ${index + 1}: ${value === null ? "None" : THREAD_ROW_ACTIONS[value].label}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -267,7 +267,7 @@ function RowActionSlotPicker({
           <RowActionOption
             key={id}
             icon={THREAD_ROW_ACTIONS[id].icon}
-            label={THREAD_ROW_ACTIONS[id].title}
+            label={THREAD_ROW_ACTIONS[id].label}
             selected={value === id}
             onSelect={() => {
               focusHandedOff.current = onChange(id);
