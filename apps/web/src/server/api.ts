@@ -165,7 +165,8 @@ type ConnectApiResult =
   | Awaited<ReturnType<typeof redeemConnectCode>>
   | Awaited<ReturnType<typeof redeemMachineCode>>
   | Awaited<ReturnType<typeof createMachineCodeForServerCredential>>
-  | Awaited<ReturnType<typeof revokeMachineForServerCredential>>;
+  | Awaited<ReturnType<typeof revokeMachineForServerCredential>>
+  | Awaited<ReturnType<typeof renameMachineForServerCredential>>;
 
 export function connectApiResponse(result: ConnectApiResult): Response {
   return "status" in result
@@ -202,6 +203,7 @@ export interface MachineSummary {
   subdomain: string | null;
   online: boolean;
   lastSeenAt: number | null;
+  sessionSeenAt: number | null;
   createdAt: number;
 }
 
@@ -289,6 +291,8 @@ export async function getAccountState(
       name: machine.name,
       subdomain: machine.subdomain,
       lastSeenAt: machine.lastSeenAt,
+      sessionSeenAt: machine.sessionSeenAt,
+      sessionEndedAt: machine.sessionEndedAt,
       createdAt: machine.createdAt,
     })
     .from(machine)
@@ -297,13 +301,17 @@ export async function getAccountState(
   const machines = machineRows
     .map((row) => {
       const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
+      const sessionSeenMs = row.sessionSeenAt?.getTime() ?? null;
       return {
         id: row.id,
         name: row.name,
         subdomain: row.subdomain,
         online:
-          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+          row.sessionEndedAt === null &&
+          sessionSeenMs != null &&
+          now - sessionSeenMs < SERVER_OFFLINE_AFTER_MS,
         lastSeenAt: lastSeenMs,
+        sessionSeenAt: sessionSeenMs,
         createdAt: row.createdAt.getTime(),
       };
     })
@@ -636,6 +644,30 @@ export async function revokeMachineForServerCredential(
     : result;
 }
 
+export async function renameMachineForServerCredential(
+  deps: Pick<Deps, "db">,
+  credential: string,
+  machineId: string,
+  name: string,
+): Promise<{ ok: true } | { error: string; status: number }> {
+  const srv = await findServerByCredential(deps.db, credential);
+  if (!srv) return { error: "unauthorized", status: 401 };
+  const renamed = await deps.db
+    .update(machine)
+    .set({ name })
+    .where(
+      and(
+        eq(machine.id, machineId),
+        eq(machine.userId, srv.userId),
+        isNull(machine.revokedAt),
+      ),
+    )
+    .run();
+  return rowsChanged(renamed) > 0
+    ? { ok: true }
+    : { error: "not-found", status: 404 };
+}
+
 export async function disconnectServer(
   deps: Deps,
   userId: string,
@@ -783,6 +815,7 @@ export async function lookupMachineCodeForServerCredential(
 export async function redeemMachineCode(
   deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
+  name?: string,
 ): Promise<
   | {
       credential: string;
@@ -821,6 +854,7 @@ export async function redeemMachineCode(
     .values({
       id: machineId,
       userId: row.userId,
+      name: name?.trim() || null,
       credentialHash: await sha256Hex(credential),
       createdAt: new Date(),
     })

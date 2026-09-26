@@ -24,6 +24,7 @@ import {
 import type { CredentialStore } from "./credential.js";
 import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
 import { asConnectPairError, redeemConnectCode } from "./redeem.js";
+import { renameMachine } from "./rename-machine.js";
 import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
@@ -214,6 +215,12 @@ export class ConnectTunnel {
     const credential = this.getCredential();
     if (credential === null) throw new Error("not_paired");
     await revokeMachine(credential, machineId);
+  }
+
+  async renameMachine(machineId: string, name: string): Promise<void> {
+    const credential = this.getCredential();
+    if (credential === null) throw new Error("not_paired");
+    await renameMachine(credential, machineId, name);
   }
 
   status(): ConnectStatus {

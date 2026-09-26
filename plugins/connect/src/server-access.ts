@@ -133,12 +133,15 @@ export async function registerServerAccess(
         await bb.storage.kv.set(grantKey(hostId), { intent });
         signal.throwIfAborted();
         const pending = intent;
-        const redeemed = await redeemMachineCode({ ...pending, signal }).catch(
-          () => {
-            signal.throwIfAborted();
-            return null;
-          },
-        );
+        const host = await bb.sdk.hosts.get({ hostId });
+        const redeemed = await redeemMachineCode({
+          ...pending,
+          name: host.name.slice(0, 120),
+          signal,
+        }).catch(() => {
+          signal.throwIfAborted();
+          return null;
+        });
         if (redeemed === null)
           return acquisitionFailure(
             "Cloud device may need dashboard revocation: interrupted machine access acquisition",

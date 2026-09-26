@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hostname } from "node:os";
 import {
   ConnectMachineRedeemError,
   deriveConnectBaseUrl,
@@ -107,6 +108,7 @@ export async function enrollDesktopMachine(
       {
         apexUrl: deriveConnectBaseUrl(minted.data.result.serverUrl),
         code: minted.data.result.code,
+        name: hostname().slice(0, 120),
       },
       fetchImpl,
     );

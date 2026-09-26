@@ -1147,6 +1147,19 @@ The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared
 ports).
 
+The getbb.app dashboard marks a machine Online while its daemon's server
+WebSocket, which passes through the Connect gate, is open. The gate records the
+session when the bb server accepts that WebSocket, refreshes it while the
+server's tunnel stays connected, and marks it ended when the socket closes. A
+session that has not been refreshed for 90 seconds also shows as Offline.
+Credential requests and port-share tunnels update activity history, but do not
+establish Online status. Machines without a recorded session show their last
+activity without an Online or Offline dot.
+
+A machine's dashboard name comes from the device when it enrolls. Renaming the
+machine in bb (`bb machine rename`, or the app) updates the dashboard
+name through the server's connect plugin.
+
 ### Pairing the bb mobile app
 
 The bb mobile app reaches a paired bb through the same connect route. It

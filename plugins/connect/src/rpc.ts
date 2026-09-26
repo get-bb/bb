@@ -24,6 +24,10 @@ const portInputSchema = z
   })
   .strict();
 const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
+const renameMachineInputSchema = z.object({
+  machineId: z.string().min(1),
+  name: z.string().trim().min(1),
+});
 
 const shareListingSchema: z.ZodType<ShareListing> = z
   .object({
@@ -123,6 +127,10 @@ export const connectRpcContract = defineRpcContract({
     input: revokeMachineInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },
+  renameMachine: {
+    input: renameMachineInputSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
 });
 
 type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
@@ -205,6 +213,10 @@ export function createRpcHandlers(
     },
     async revokeMachine(args) {
       await tunnel.revokeMachine(args.machineId);
+      return { ok: true };
+    },
+    async renameMachine(args) {
+      await tunnel.renameMachine(args.machineId, args.name);
       return { ok: true };
     },
   };

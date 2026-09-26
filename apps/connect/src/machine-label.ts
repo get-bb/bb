@@ -86,8 +86,23 @@ export async function assignMachineLabel(
     .where(eq(machine.id, machineId))
     .get();
   if (!row) return null;
-  if (row.subdomain !== null) return row.subdomain;
   if (row.revokedAt !== null) return null;
+
+  const name = desiredName.trim().slice(0, 120);
+  if (name.length > 0) {
+    await db
+      .update(machine)
+      .set({ name })
+      .where(
+        and(
+          eq(machine.id, machineId),
+          isNull(machine.revokedAt),
+          isNull(machine.name),
+        ),
+      )
+      .run();
+  }
+  if (row.subdomain !== null) return row.subdomain;
 
   const base = sanitizeMachineLabelBase(desiredName, machineId);
   for (let ordinal = 1; ; ordinal += 1) {

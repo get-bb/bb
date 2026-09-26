@@ -18,6 +18,7 @@ import {
   type EnrollmentTargetInput,
 } from "@/data/connect";
 import type { SessionState } from "@/lib/session";
+import { describeThisDevice } from "@/notifications/device-label";
 import { useTheme } from "@/theme";
 import { Button, GroupedRow, Icon, Input, Spinner, Text, toast } from "@/ui";
 import { GroupedScreen } from "../settings/GroupedScreen";
@@ -96,6 +97,7 @@ export function ConnectEnrollScreen() {
         apexUrl: target.apexUrl,
         code: target.code,
         label: reauth?.label,
+        deviceName: describeThisDevice(),
       });
       setPhase({ kind: "saving" });
       let profileId: string;

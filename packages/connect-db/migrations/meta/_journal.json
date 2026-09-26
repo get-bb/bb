@@ -57,6 +57,13 @@
       "when": 1790206985030,
       "tag": "0007_server_link_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790290682953,
+      "tag": "0008_machine_session_presence",
+      "breakpoints": true
     }
   ]
 }

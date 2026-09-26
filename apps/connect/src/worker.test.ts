@@ -1692,6 +1692,57 @@ function makeDoEnv() {
   };
 }
 
+async function withWorkersWebSocketPair<T>(
+  pair: [WebSocket, WebSocket],
+  run: () => T | Promise<T>,
+): Promise<T> {
+  const RealResponse = globalThis.Response;
+  class FakeWebSocketPair {
+    0 = pair[0];
+    1 = pair[1];
+  }
+  class WorkersResponse extends RealResponse {
+    readonly webSocket: WebSocket | null;
+    constructor(
+      body?: BodyInit | null,
+      init?: ResponseInit & { webSocket?: WebSocket | null },
+    ) {
+      if (init?.webSocket != null) {
+        super(null, { status: 200 });
+        Object.defineProperty(this, "status", { value: init.status });
+        this.webSocket = init.webSocket;
+      } else {
+        super(body ?? null, init);
+        this.webSocket = null;
+      }
+    }
+  }
+  globalThis.Response = WorkersResponse as never;
+  (globalThis as { WebSocketPair?: unknown }).WebSocketPair = FakeWebSocketPair;
+  try {
+    return await run();
+  } finally {
+    globalThis.Response = RealResponse;
+    delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+  }
+}
+
+function fakeVisitorSocket(attachment: unknown = null) {
+  let stored = attachment;
+  const socket = {
+    readyState: 1,
+    send: vi.fn(),
+    close: vi.fn(() => {
+      socket.readyState = 3;
+    }),
+    serializeAttachment: (value: unknown) => {
+      stored = value;
+    },
+    deserializeAttachment: () => stored,
+  };
+  return socket as unknown as WebSocket;
+}
+
 function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
   readyState = 1,
@@ -1734,6 +1785,84 @@ describe("TunnelDO machine presence", () => {
     expect(update).toHaveBeenCalledWith(machine);
     expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a daemon session from server acceptance until its last socket closes", async () => {
+    const writes: Array<{ table: unknown; values: unknown }> = [];
+    vi.mocked(drizzle).mockReturnValue({
+      update: (table: unknown) => ({
+        set: (values: unknown) => {
+          writes.push({ table, values });
+          return { where: () => ({ run: async () => {} }) };
+        },
+      }),
+    } as never);
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const sent: Uint8Array[] = [];
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+    const daemon = fakeVisitorSocket();
+
+    const upgrade = await withWorkersWebSocketPair(
+      [fakeTunnelSocket(), daemon],
+      () =>
+        dob.fetch(
+          new Request("https://do.internal/internal/ws", {
+            headers: {
+              upgrade: "websocket",
+              [GATE_MACHINE_ID_HEADER]: "machine-m4",
+            },
+          }),
+        ),
+    );
+    expect(upgrade.status).toBe(101);
+    const opened = decodeFrame(sent[0]);
+    if (opened.type !== "open-ws") throw new Error("expected open-ws");
+    expect(writes).toEqual([]);
+
+    const open = {
+      table: machine,
+      values: { sessionSeenAt: expect.any(Date), sessionEndedAt: null },
+    };
+    const ended = {
+      table: machine,
+      values: {
+        sessionSeenAt: expect.any(Date),
+        sessionEndedAt: expect.any(Date),
+      },
+    };
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({
+        type: "ws-open-ack",
+        streamId: opened.streamId,
+        protocol: null,
+      }),
+    );
+    await dob.alarm();
+    expect(writes).toEqual([open, open]);
+
+    const reconnected = fakeVisitorSocket({
+      streamId: opened.streamId + 1,
+      machineSession: { machineId: "machine-m4", confirmed: true },
+    });
+    state.addSocket(reconnected, [`visitor:${opened.streamId + 1}`]);
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({
+        type: "close-stream",
+        streamId: opened.streamId,
+        code: 1000,
+        reason: "server closed",
+      }),
+    );
+    expect(vi.mocked(daemon.close)).toHaveBeenCalledWith(1000, "server closed");
+    expect(writes).toEqual([open, open]);
+
+    dob.webSocketClose(reconnected, 1001, "daemon stopped");
+    expect(writes).toEqual([open, open, ended]);
   });
 });
 
@@ -2007,41 +2136,16 @@ describe("TunnelDO response relay", () => {
     const midBodyResponse = await pendingBody;
     expect(midBodyResponse.status).toBe(200);
 
-    const RealResponse = globalThis.Response;
-    class FakeWebSocketPair {
-      0 = fakeTunnelSocket();
-      1 = fakeTunnelSocket();
-    }
-    class WorkersResponse extends RealResponse {
-      readonly webSocket: WebSocket | null;
-      constructor(
-        body?: BodyInit | null,
-        init?: ResponseInit & { webSocket?: WebSocket | null },
-      ) {
-        if (init?.webSocket != null) {
-          super(null, { status: 200 });
-          Object.defineProperty(this, "status", { value: init.status });
-          this.webSocket = init.webSocket;
-        } else {
-          super(body ?? null, init);
-          this.webSocket = null;
-        }
-      }
-    }
-    globalThis.Response = WorkersResponse as never;
-    (globalThis as { WebSocketPair?: unknown }).WebSocketPair =
-      FakeWebSocketPair;
-    try {
-      const upgrade = await dob.fetch(
-        new Request("https://do.internal/__tunnel?v=1", {
-          headers: { upgrade: "websocket" },
-        }),
-      );
-      expect(upgrade.status).toBe(101);
-    } finally {
-      globalThis.Response = RealResponse;
-      delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
-    }
+    const upgrade = await withWorkersWebSocketPair(
+      [fakeTunnelSocket(), fakeTunnelSocket()],
+      () =>
+        dob.fetch(
+          new Request("https://do.internal/__tunnel?v=1", {
+            headers: { upgrade: "websocket" },
+          }),
+        ),
+    );
+    expect(upgrade.status).toBe(101);
 
     expect(vi.mocked(oldTunnel.close)).toHaveBeenCalledWith(
       1000,

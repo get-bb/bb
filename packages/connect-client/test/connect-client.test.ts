@@ -98,14 +98,18 @@ describe("redeemMachineCredential", () => {
 
     await expect(
       redeemMachineCredential(
-        { apexUrl: "https://getbb.app", code: "ABCD-1234" },
+        {
+          apexUrl: "https://getbb.app",
+          code: "ABCD-1234",
+          name: "Sawyer's laptop",
+        },
         fetchImpl,
       ),
     ).resolves.toEqual(CREDENTIAL);
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://getbb.app/api/connect/redeem-machine",
       expect.objectContaining({
-        body: JSON.stringify({ code: "ABCD-1234" }),
+        body: JSON.stringify({ code: "ABCD-1234", name: "Sawyer's laptop" }),
         method: "POST",
       }),
     );

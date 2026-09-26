@@ -15,6 +15,7 @@ import {
   session,
   sha256Hex,
   user,
+  validateLabel,
 } from "@bb/connect-db";
 
 import {
@@ -398,9 +399,23 @@ describe("machine label assignment", () => {
     await expect(
       assignMachineLabel(db, "machine-new", "  Sawyer Air!!!  "),
     ).resolves.toBe("sawyer-air-4");
+    expect(
+      db
+        .select({ name: machine.name })
+        .from(machine)
+        .where(eq(machine.id, "machine-new"))
+        .get()?.name,
+    ).toBe("Sawyer Air!!!");
     await expect(
       assignMachineLabel(db, "machine-new", "a totally different name"),
     ).resolves.toBe("sawyer-air-4");
+    expect(
+      db
+        .select({ name: machine.name })
+        .from(machine)
+        .where(eq(machine.id, "machine-new"))
+        .get()?.name,
+    ).toBe("Sawyer Air!!!");
   });
 
   it("uses machine-<id-prefix> when the desired name is empty or invalid", async () => {
@@ -420,6 +435,32 @@ describe("machine label assignment", () => {
     await expect(
       assignMachineLabel(db, "ABC-12345-rest", "admin"),
     ).resolves.toBe("machine-abc12345");
+  });
+
+  it("assigns a label for an oversized host name and stores the name cut to 120 characters", async () => {
+    seedUser("acct-a");
+    db.insert(machine)
+      .values({
+        id: "machine-long-name",
+        userId: "acct-a",
+        credentialHash: "hash",
+        createdAt: now,
+      })
+      .run();
+    const label = await assignMachineLabel(
+      db,
+      "machine-long-name",
+      "a".repeat(300),
+    );
+    expect(label).not.toBeNull();
+    expect(validateLabel(label ?? "")).toBeNull();
+    expect(
+      db
+        .select({ name: machine.name })
+        .from(machine)
+        .where(eq(machine.id, "machine-long-name"))
+        .get()?.name,
+    ).toBe("a".repeat(120));
   });
 
   it("authenticates the assigning machine and refuses revoked credentials", async () => {

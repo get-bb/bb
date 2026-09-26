@@ -1207,7 +1207,9 @@ function AccountDashboard({ state }: { state: ServerState }) {
         ) : (
           state.machines.map((machine: MachineSummary) => {
             const machineName =
-              machine.name ?? `Machine ${machine.id.slice(0, 8)}`;
+              machine.name ??
+              machine.subdomain ??
+              `Machine ${machine.id.slice(0, 8)}`;
             return (
               <div
                 key={machine.id}
@@ -1215,38 +1217,34 @@ function AccountDashboard({ state }: { state: ServerState }) {
               >
                 <StatusDot
                   state={
-                    machine.lastSeenAt === null
-                      ? "new"
-                      : machine.online
-                        ? "online"
-                        : "offline"
+                    machine.online
+                      ? "online"
+                      : machine.sessionSeenAt !== null
+                        ? "offline"
+                        : "new"
                   }
                 />
                 <span className="min-w-0 flex-1">
-                  {machine.subdomain !== null ? (
-                    <span className="block truncate font-mono text-sm font-medium leading-tight">
-                      {state.serverUrlTemplate
-                        .replace("{label}", machine.subdomain)
-                        .replace(/^https?:\/\//u, "")}
-                    </span>
-                  ) : (
-                    <span className="block truncate text-sm font-medium leading-tight">
-                      {machineName}
-                    </span>
-                  )}
+                  <span className="block truncate text-sm font-medium leading-tight">
+                    {machineName}
+                  </span>
                   <span className="mt-px block truncate text-xs text-muted-foreground">
                     {machine.online ? (
                       "Online"
-                    ) : machine.lastSeenAt !== null ? (
+                    ) : machine.sessionSeenAt !== null ? (
                       <>
                         <span className="text-warning-text">Offline</span>
-                        {` · last seen ${relativeTime(machine.lastSeenAt)}`}
+                        {` · last connected ${relativeTime(machine.sessionSeenAt)}`}
                       </>
+                    ) : machine.lastSeenAt !== null ? (
+                      `No confirmed connection · last activity ${relativeTime(machine.lastSeenAt)}`
                     ) : (
                       "Never connected"
                     )}
-                    {machine.subdomain !== null && machine.name !== null
-                      ? ` · ${machine.name}`
+                    {machine.subdomain !== null
+                      ? ` · ${state.serverUrlTemplate
+                          .replace("{label}", machine.subdomain)
+                          .replace(/^https?:\/\//u, "")}`
                       : ""}
                   </span>
                 </span>

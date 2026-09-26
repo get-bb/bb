@@ -88,31 +88,58 @@ function assertNotServerMachine(deps: AppDeps, hostId: string): void {
   }
 }
 
+async function invokeConnectMachineRpc(
+  plugins: PluginService,
+  method: "revokeMachine" | "renameMachine",
+  input: { machineId: string; name?: string },
+): Promise<void> {
+  const connectPlugin = plugins
+    .list()
+    .find((plugin) => plugin.source === "builtin:connect");
+  if (!connectPlugin) throw new Error("connect plugin is not installed");
+  const handler = plugins.getRpcHandler(connectPlugin.id, method);
+  if (handler.outcome !== "found") {
+    throw new Error(`connect plugin ${method} handler is ${handler.outcome}`);
+  }
+  const result = await plugins.invokeRpcHandler(
+    connectPlugin.id,
+    method,
+    handler.value,
+    input,
+  );
+  if (!result.ok) throw new Error(result.error.message);
+}
+
 async function revokeConnectMachineCredential(
   deps: AppDeps,
   plugins: PluginService,
   machineId: string,
 ): Promise<void> {
   try {
-    const connectPlugin = plugins
-      .list()
-      .find((plugin) => plugin.source === "builtin:connect");
-    if (!connectPlugin) throw new Error("connect plugin is not installed");
-    const handler = plugins.getRpcHandler(connectPlugin.id, "revokeMachine");
-    if (handler.outcome !== "found") {
-      throw new Error(`connect plugin revoke handler is ${handler.outcome}`);
-    }
-    const result = await plugins.invokeRpcHandler(
-      connectPlugin.id,
-      "revokeMachine",
-      handler.value,
-      { machineId },
-    );
-    if (!result.ok) throw new Error(result.error.message);
+    await invokeConnectMachineRpc(plugins, "revokeMachine", { machineId });
   } catch (error) {
     deps.logger.error(
       { err: error, machineId },
       "Host was removed locally, but its bb connect machine credential could not be revoked. Revoke this machine manually from the getbb.app dashboard.",
+    );
+  }
+}
+
+async function renameConnectMachine(
+  deps: AppDeps,
+  plugins: PluginService,
+  machineId: string,
+  name: string,
+): Promise<void> {
+  try {
+    await invokeConnectMachineRpc(plugins, "renameMachine", {
+      machineId,
+      name,
+    });
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, machineId },
+      "Host was renamed locally, but its getbb.app machine name could not be updated.",
     );
   }
 }
@@ -198,7 +225,7 @@ export function registerHostRoutes(
   patch(routes.update, (context, payload) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
-    requireMutableHost(deps, hostId);
+    const previous = requireMutableHost(deps, hostId);
     const updated = updateHost(deps.db, deps.hub, hostId, {
       name: payload.name,
     });
@@ -206,6 +233,14 @@ export function registerHostRoutes(
       throw new ApiError(404, "host_not_found", "Host not found");
     }
     deps.hub.notifyHost(hostId, ["host-connected"]);
+    if (updated.connectMachineId !== null && updated.name !== previous.name) {
+      void renameConnectMachine(
+        deps,
+        plugins,
+        updated.connectMachineId,
+        updated.name,
+      );
+    }
     return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
   });
 

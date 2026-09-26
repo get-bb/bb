@@ -837,4 +837,49 @@ describe("public host management", () => {
       );
     });
   }, 30_000);
+
+  it("asks the connect plugin to rename a renamed host's cloud machine", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, {
+        connectMachineId: "machine-cloud-rename",
+        id: "host_cloud_rename",
+        name: "Old Name",
+      });
+      const connectPlugin = await harness.pluginService.install(
+        "builtin:connect",
+        { kind: "root" },
+      );
+      const renameRecord = {
+        publication: null,
+        inputSchema: z.object({ machineId: z.string(), name: z.string() }),
+        outputSchema: z.object({ ok: z.literal(true) }),
+        handler: vi.fn(async () => ({ ok: true })),
+      };
+      vi.spyOn(harness.pluginService, "getRpcHandler").mockReturnValue({
+        outcome: "found",
+        value: renameRecord,
+      });
+      const invoke = vi
+        .spyOn(harness.pluginService, "invokeRpcHandler")
+        .mockResolvedValue({ ok: true, result: { ok: true } });
+      const rename = (name: string) =>
+        harness.app.request(`${API}/hosts/${host.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+
+      expect((await rename("New Name")).status).toBe(200);
+      await vi.waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith(
+          connectPlugin.id,
+          "renameMachine",
+          renameRecord,
+          { machineId: "machine-cloud-rename", name: "New Name" },
+        ),
+      );
+      expect((await rename("New Name")).status).toBe(200);
+      expect(invoke).toHaveBeenCalledTimes(1);
+    });
+  }, 30_000);
 });
