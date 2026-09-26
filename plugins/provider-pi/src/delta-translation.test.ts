@@ -392,7 +392,7 @@ describe("pi delta translation equivalence", () => {
     ).toEqual([]);
   });
 
-  it("agent_end surfaces Pi assistant stop errors as failed turns", () => {
+  it("agent_end preserves the checkpoint when Pi assistant stop errors fail the turn", () => {
     const harness = createHarness();
     const quotaMessage =
       '400 {"type":"error","error":{"type":"invalid_request_error","message":"You\'re out of extra usage. Add more at claude.ai/settings/usage and keep going."},"request_id":"req_011CajgGfxCAhmznZJw7t6Br"}';
@@ -400,9 +400,10 @@ describe("pi delta translation equivalence", () => {
     harness.translate(loadFixture("agent-start.json"));
     const turnId = harness.openTurnId();
 
-    const events = harness.translate(
-      createPiAgentErrorEvent(quotaMessage, false),
-    );
+    const events = harness.translate({
+      ...createPiAgentErrorEvent(quotaMessage, false),
+      providerCheckpointId: "pi-failed-entry",
+    });
 
     expect(events).toEqual([
       {
@@ -419,6 +420,7 @@ describe("pi delta translation equivalence", () => {
         providerThreadId: "",
         scope: turnScope(turnId),
         status: "failed",
+        providerCheckpointId: "pi-failed-entry",
       },
     ]);
     expect(events.some((event) => event.type === "item/completed")).toBe(false);

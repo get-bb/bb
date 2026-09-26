@@ -708,7 +708,13 @@ export function createPiDeltaTranslator(
               kind: "provider.error",
               message: "Provider error",
               detail: lastAssistant.errorMessage,
-              settlesTurn: true,
+            },
+            {
+              kind: "turn.boundary",
+              status: "failed",
+              ...(piEvent.data.providerCheckpointId !== undefined
+                ? { providerCheckpointId: piEvent.data.providerCheckpointId }
+                : {}),
             },
           ];
         }

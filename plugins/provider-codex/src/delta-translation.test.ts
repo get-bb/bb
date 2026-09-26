@@ -223,7 +223,7 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
-  it("translates a failed turn/completed without claiming a fork checkpoint", () => {
+  it("preserves the checkpoint after a failed turn so the next message can be edited", () => {
     const harness = createHarness();
     const events = harness.translate(
       codexEvent("turn/completed", {
@@ -245,9 +245,9 @@ describe("codex turn lifecycle translation", () => {
         scope: turnScope(harness.turnId("turn-1")),
         status: "failed",
         error: { message: "rate limited" },
+        providerCheckpointId: "turn-1",
       }),
     );
-    expect(events[0]).not.toHaveProperty("providerCheckpointId");
   });
 
   it("stamps the codex turn id as providerCheckpointId on completed turns", () => {
