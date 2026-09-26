@@ -834,6 +834,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonOnlineRpcCommandSchema.selectedModel":
+    "A selected model requests its reasoning choices without probing the whole catalog.",
   "hostDaemonCommandSchema.options.reasoningLevel":
     "Absent when the selected model advertises no selectable reasoning levels; preserve the agent setting.",
   "hostDaemonCommandSchema.options.promptMode":

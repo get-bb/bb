@@ -38,7 +38,10 @@ const sessionConstructionFields = {
 };
 
 export const modelListParamsSchema = z
-  .object({ cwd: z.string().min(1).optional() })
+  .object({
+    cwd: z.string().min(1).optional(),
+    selectedModel: z.string().min(1).optional(),
+  })
   .passthrough();
 
 export const threadStartParamsSchema = z

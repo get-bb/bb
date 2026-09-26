@@ -22,12 +22,18 @@ models selectable through BB's model field. Grok Build advertises models and
 
 BB reuses the initial model's advertised reasoning choices and probes other
 models within a five-second budget, trying configured priority models first.
-Models not reached, or without recognized choices, show no reasoning selector;
-BB leaves their agent reasoning setting unchanged. An empty
+Selecting an unprobed model starts a separate discovery session that probes only
+that model, with a five-second timeout. Results are cached by model. While
+loading, or after failure or an unrecognized response, BB shows no reasoning
+selector and leaves the agent reasoning setting unchanged. Failed probes have
+a 30-second server retry cooldown. Individual probe failures do not stop bulk
+discovery of other models. An empty
 `supportedReasoningEfforts` in `bb provider models <provider-id> --json` means
 BB has no selectable reasoning levels for that model, not that the model cannot
-reason. Refresh the catalog after changing the agent's default or priority
-models. This does not require omp's proposed `_meta.thoughtLevels` extension.
+reason. Use `bb provider models <provider-id> --selected-model <model-id>
+--json` (SDK: `providers.models({ providerId, selectedModel })`) to request
+the same discovery without the picker. Refresh the catalog after changing the
+agent's default or priority models. This does not require omp's proposed `_meta.thoughtLevels` extension.
 
 OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
 expose compatible compaction. Check the actual agent's capabilities before

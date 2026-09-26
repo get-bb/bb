@@ -207,7 +207,12 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.modelList,
-            params: cwdAndStaticProviderOptions(command.cwd),
+            params: {
+              ...cwdAndStaticProviderOptions(command.cwd),
+              ...(command.selectedModel === undefined
+                ? {}
+                : { selectedModel: command.selectedModel }),
+            },
           };
         case "provider/health":
           return {

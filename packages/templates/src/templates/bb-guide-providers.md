@@ -12,6 +12,7 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
   bb provider list [--machine <id-or-name> | --environment <id>]
                                           List available providers
   bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
+    [--selected-model <model-id>]
                                           List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
@@ -182,3 +183,5 @@ The bb user and project roots keep higher precedence than matching shared roots.
 
 OpenCode ACP declares support for the built-in /compact command. Cursor ACP does
 not expose compatible manual compaction through ACP.
+
+Use --selected-model to discover an unprobed model's reasoning choices and include a selected-only model. Discovery leaves reasoning unset while unknown; ACP probes only the requested model and caches the result.
