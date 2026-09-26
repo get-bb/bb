@@ -8,6 +8,7 @@ import {
   type AppShortcut,
 } from "@bb/domain";
 import {
+  appShortcutMatchesQuery,
   formatAppShortcut,
   formatAppShortcutAria,
   isEditableKeyboardTarget,
@@ -258,6 +259,44 @@ describe("app keybindings", () => {
     expect(formatAppShortcut(ALT_P, "MacIntel")).toBe("⌥ P");
     expect(formatAppShortcut(ALT_P, "Win32")).toBe("Alt + P");
     expect(formatAppShortcutAria(ALT_P, "MacIntel")).toBe("Alt+P");
+  });
+
+  it("matches search queries against shortcut keys and modifiers", () => {
+    const escape: AppShortcut = {
+      key: "Escape",
+      mod: false,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    };
+    const modShiftO: AppShortcut = {
+      key: "o",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: true,
+    };
+    expect(appShortcutMatchesQuery(escape, "Win32", "escape")).toBe(true);
+    expect(appShortcutMatchesQuery(escape, "Win32", "esc")).toBe(true);
+    expect(appShortcutMatchesQuery(escape, "Win32", "enter")).toBe(false);
+    expect(appShortcutMatchesQuery(modShiftO, "Win32", "ctrl shift o")).toBe(
+      true,
+    );
+    expect(appShortcutMatchesQuery(modShiftO, "Win32", "ctrl+shift+o")).toBe(
+      true,
+    );
+    expect(appShortcutMatchesQuery(modShiftO, "MacIntel", "cmd shift o")).toBe(
+      true,
+    );
+    expect(appShortcutMatchesQuery(modShiftO, "MacIntel", "ctrl o")).toBe(
+      false,
+    );
+    expect(appShortcutMatchesQuery(modShiftO, "Win32", "ctrl o")).toBe(true);
+    expect(appShortcutMatchesQuery(modShiftO, "Win32", "ctrl+shift+p")).toBe(
+      false,
+    );
   });
 
   it("formats arrow keys as arrow glyphs", () => {

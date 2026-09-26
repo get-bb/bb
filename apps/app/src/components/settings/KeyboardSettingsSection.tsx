@@ -30,7 +30,7 @@ import {
   resetCommandShortcutOverride,
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
-import { browserPlatform, presentAppShortcut } from "@/lib/app-keybindings";
+import { browserPlatform, presentAppShortcut, appShortcutMatchesQuery } from "@/lib/app-keybindings";
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
@@ -549,6 +549,17 @@ export function KeyboardSettingsSection() {
     ],
   );
 
+  const shortcutMatches = useCallback(
+    (command: KeyboardCommandId, query: string): boolean => {
+      const model = commandRowModels.get(command);
+      if (model === undefined) return false;
+      return [model.shortcut, model.webDefaultShortcut, model.desktopDefaultShortcut]
+        .filter((shortcut): shortcut is AppShortcut => shortcut !== null)
+        .some((shortcut) => appShortcutMatchesQuery(shortcut, platform, query));
+    },
+    [commandRowModels, platform],
+  );
+
   const visibleGroups = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (query.length === 0) return commandGroups;
@@ -560,6 +571,7 @@ export function KeyboardSettingsSection() {
             label === query,
             label.startsWith(query),
             label.includes(query),
+            shortcutMatches(metadata.command, query),
             metadata.command.toLowerCase().includes(query),
             metadata.description.toLowerCase().includes(query),
           ].findIndex(Boolean);
@@ -570,7 +582,7 @@ export function KeyboardSettingsSection() {
       .sort((left, right) => left.rank - right.rank)
       .map(({ metadata }) => metadata);
     return commands.length === 0 ? [] : [{ label: "Search results", commands }];
-  }, [commandGroups, search]);
+  }, [commandGroups, search, shortcutMatches]);
 
   const latestSettingsRef = useRef({
     defaults,
