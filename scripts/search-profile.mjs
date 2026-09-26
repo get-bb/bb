@@ -33,6 +33,22 @@ const json = async (path, value) => {
 const command = (name, args) =>
   execFileSync(name, args, { cwd: root, stdio: "inherit" });
 
+async function checkout(revision) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      execFileSync("git", ["checkout", "--detach", revision], {
+        cwd: root,
+        stdio: ["ignore", "inherit", "pipe"],
+      });
+      return;
+    } catch (error) {
+      if (attempt >= 29 || !error.stderr?.toString().includes("index.lock"))
+        throw error;
+      await sleep(1000);
+    }
+  }
+}
+
 async function seed() {
   const {
     createConnection,
@@ -431,7 +447,7 @@ async function compare(baseArg, headArg) {
     artifacts: {},
   };
   for (const [label, revision] of Object.entries(revisions)) {
-    command("git", ["checkout", "--detach", revision]);
+    await checkout(revision);
     command("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"]);
     if (label === "before")
       command(process.execPath, [
@@ -525,7 +541,7 @@ async function compare(baseArg, headArg) {
     }
   }
   await json(join(output, "results/cpu-summary.json"), profiles);
-  command("git", ["checkout", "--detach", revisions.after]);
+  await checkout(revisions.after);
 }
 
 async function summarize() {
