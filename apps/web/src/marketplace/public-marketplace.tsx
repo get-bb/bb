@@ -2,32 +2,48 @@ import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenera
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
+import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
 import AudioWave01Icon from "@hugeicons/core-free-icons/AudioWave01Icon";
+import BellDotIcon from "@hugeicons/core-free-icons/BellDotIcon";
+import Book02Icon from "@hugeicons/core-free-icons/Book02Icon";
+import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
+import BrowserIcon from "@hugeicons/core-free-icons/BrowserIcon";
+import Calendar03Icon from "@hugeicons/core-free-icons/Calendar03Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
 import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
+import Coffee02Icon from "@hugeicons/core-free-icons/Coffee02Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Database01Icon from "@hugeicons/core-free-icons/Database01Icon";
 import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
+import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import Folder02Icon from "@hugeicons/core-free-icons/Folder02Icon";
 import FolderGitTwoIcon from "@hugeicons/core-free-icons/FolderGit2Icon";
-import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
+import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
+import LimitationIcon from "@hugeicons/core-free-icons/LimitationIcon";
+import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
+import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
 import LockIcon from "@hugeicons/core-free-icons/LockIcon";
 import Mail02Icon from "@hugeicons/core-free-icons/Mail02Icon";
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
 import PackageIcon from "@hugeicons/core-free-icons/PackageIcon";
+import PaintBoardIcon from "@hugeicons/core-free-icons/PaintBoardIcon";
 import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
+import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
 import UserSwitchIcon from "@hugeicons/core-free-icons/UserSwitchIcon";
 import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
@@ -49,6 +65,10 @@ import {
   marketplaceEntryInstalls,
   type MarketplaceStats,
 } from "./marketplace-model.js";
+import {
+  bundledPluginName,
+  bundledPluginSetup,
+} from "./bundled-marketplace.js";
 import { MarketplaceScreenshots } from "./marketplace-screenshots.js";
 import { MarketplaceOverview } from "./marketplace-overview.js";
 import type {
@@ -85,26 +105,44 @@ const SORT_LABELS: Record<MarketplaceSort, string> = {
 const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   AiContentGenerator01: AiContentGenerator01Icon,
   AlertCircle: AlertCircleIcon,
+  AppWindow: BrowserIcon,
   Archive: Archive03Icon,
+  ArrowReloadHorizontal: ArrowReloadHorizontalIcon,
   AudioLines: AudioWave01Icon,
+  BellDot: BellDotIcon,
+  Brain: BrainIcon,
+  Calendar: Calendar03Icon,
   ChartColumn: ChartColumnIcon,
   ClipboardCheck: CheckListIcon,
   Clock: Clock01Icon,
   Cloud: CloudIcon,
+  Code: SourceCodeIcon,
+  Coffee: Coffee02Icon,
   Copy: Copy01Icon,
   Database: Database01Icon,
+  EditFile: Edit04Icon,
+  Explore: Book02Icon,
   FileText: File01Icon,
   FolderGit: FolderGitTwoIcon,
   FolderOpen: Folder02Icon,
   GitBranch: GitBranchIcon,
+  Github: GithubIcon,
+  Globe: InternetIcon,
   GridView: GridViewIcon,
   Layers: Layers01Icon,
+  Limitation: LimitationIcon,
+  ListTodo: CheckListIcon,
+  ListView: ListViewIcon,
   Lock: LockIcon,
   Mail: Mail02Icon,
+  MessageQuestion: MessageQuestionIcon,
+  Palette: PaintBoardIcon,
   PanelLeft: SidebarLeftIcon,
   Puzzle: PuzzleIcon,
-  SlidersHorizontal: SlidersHorizontalIcon,
+  Repeat: RepeatIcon,
   SideChat: SentIcon,
+  SlidersHorizontal: SlidersHorizontalIcon,
+  Smartphone: SmartPhone01Icon,
   Terminal: ComputerTerminal01Icon,
   UserSwitch: UserSwitchIcon,
   Workflow: WorkflowCircle03Icon,
@@ -182,7 +220,9 @@ function PluginArtwork({
     );
   }
   const url = marketplaceAssetUrl(entry.icon.url);
-  const isSvg = new URL(url).pathname.toLowerCase().endsWith(".svg");
+  const isSvg = new URL(url, "https://getbb.app").pathname
+    .toLowerCase()
+    .endsWith(".svg");
   return (
     <span className={className} aria-hidden>
       {isSvg ? (
@@ -246,13 +286,22 @@ function InstallCount({
   stats: MarketplaceStats | null;
   variant?: "card" | "detail";
 }) {
-  const total = marketplaceEntryInstalls(entry, stats);
   const className = `marketplace-${variant}-installs`;
+  if (bundledPluginName(entry) !== null) {
+    return (
+      <span className={className}>
+        {variant === "detail" ? "Included with bb" : "Built in"}
+      </span>
+    );
+  }
+  const total = marketplaceEntryInstalls(entry, stats);
   if (total === undefined) {
     return <span className={`${className} is-new`}>New</span>;
   }
   const formatted =
-    variant === "detail" ? total.toLocaleString("en-US") : formatInstalls(total);
+    variant === "detail"
+      ? total.toLocaleString("en-US")
+      : formatInstalls(total);
   return (
     <span
       className={className}
@@ -357,42 +406,60 @@ function Shelf({
   stats: MarketplaceStats | null;
   onSelect: (category: string | undefined, sort?: MarketplaceSort) => void;
 }) {
-  const notable = shelf.kind === "collection";
+  const [expanded, setExpanded] = useState(false);
+  const builtIn =
+    shelf.kind === "collection" &&
+    shelf.entries.every((entry) => bundledPluginName(entry) !== null);
+  const notable = shelf.kind === "collection" && !builtIn;
   const description =
     shelf.description ??
-    (notable ? "Hand-picked recent additions." : undefined);
-  const viewHref = notable
-    ? "/marketplace?sort=recently-added"
-    : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
+    (builtIn
+      ? "Made by the bb team and included with bb."
+      : notable
+        ? "Hand-picked recent additions."
+        : undefined);
+  const viewHref = builtIn
+    ? `#${shelf.id}`
+    : notable
+      ? "/marketplace?sort=recently-added"
+      : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
   return (
     <section
-      className={`marketplace-shelf${notable ? " marketplace-shelf-notable" : ""}`}
+      id={builtIn ? shelf.id : undefined}
+      className={`marketplace-shelf${shelf.kind === "collection" ? " marketplace-shelf-notable" : ""}`}
     >
       <div className="marketplace-section-head">
         <div>
           <h2>
-            {shelf.label}{"\u00a0"}
+            {shelf.label}
+            {"\u00a0"}
             <span>{shelf.entries.length}</span>
           </h2>
           {description === undefined ? null : <p>{description}</p>}
         </div>
-        <a
-          href={viewHref}
-          onClick={(event) => {
-            event.preventDefault();
-            if (notable) {
-              onSelect(undefined, "recently-added");
-              return;
-            }
-            onSelect(shelf.id);
-          }}
-        >
-          View all
-        </a>
+        {expanded ? null : (
+          <a
+            href={viewHref}
+            onClick={(event) => {
+              event.preventDefault();
+              if (builtIn) {
+                setExpanded(true);
+                return;
+              }
+              if (notable) {
+                onSelect(undefined, "recently-added");
+                return;
+              }
+              onSelect(shelf.id);
+            }}
+          >
+            View all
+          </a>
+        )}
       </div>
       <PluginGrid
         manifest={manifest}
-        entries={shelf.entries.slice(0, 3)}
+        entries={expanded ? shelf.entries : shelf.entries.slice(0, 3)}
         stats={stats}
         notable={notable}
       />
@@ -859,7 +926,8 @@ function MoreInCategory({
       <div className="marketplace-section-head">
         <div>
           <h2>
-            More in {categoryName}{"\u00a0"}
+            More in {categoryName}
+            {"\u00a0"}
             <span>{entries.length}</span>
           </h2>
           {category?.description === undefined ? null : (
@@ -901,7 +969,13 @@ export function PublicMarketplaceDetailPage({
   const category = categoryDefinition?.displayName ?? "More plugins";
   const categoryId = categoryDefinition?.id ?? UNCATEGORIZED_CATEGORY_ID;
   const repository = marketplaceRepositoryUrl(entry);
-  const installCommand = marketplaceInstallCommand(entry.id);
+  const setup = bundledPluginSetup(entry);
+  const installCommand =
+    setup === null
+      ? marketplaceInstallCommand(entry.id)
+      : setup.kind === "included"
+        ? null
+        : setup.command;
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
 
@@ -950,23 +1024,24 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
-
             </div>
           </div>
           <div className="marketplace-detail-install">
             <div className="marketplace-detail-actions">
-              <CommandButton
-                command={installCommand}
-                label={`Copy ${installCommand}`}
-                size="compact"
-                onCopy={(copied) => {
-                  if (!copied) return;
-                  trackLandingEvent({
-                    name: "marketplace_install_command_copied",
-                    properties: { plugin_id: entry.id },
-                  });
-                }}
-              />
+              {installCommand === null ? null : (
+                <CommandButton
+                  command={installCommand}
+                  label={`Copy ${installCommand}`}
+                  size="compact"
+                  onCopy={(copied) => {
+                    if (!copied) return;
+                    trackLandingEvent({
+                      name: "marketplace_install_command_copied",
+                      properties: { plugin_id: entry.id },
+                    });
+                  }}
+                />
+              )}
               <MarketplaceLink
                 className="marketplace-detail-source marketplace-detail-download"
                 href="/download/macos"
@@ -991,15 +1066,15 @@ export function PublicMarketplaceDetailPage({
               <hr className="marketplace-overview-rule" />
               <div className="marketplace-overview-heading">
                 <h2>Overview</h2>
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+                <a
+                  className="marketplace-detail-source"
+                  href={repository}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View source
+                  <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+                </a>
               </div>
               {entry.overview === undefined ? null : (
                 <MarketplaceOverview markdown={entry.overview} />

@@ -8,6 +8,13 @@ on:
       - "apps/web/**"
       - "packages/connect-db/**"
       - "changelog-parser.ts"
+      - "apps/server/scripts/generate-bb-official-marketplace.ts"
+      - "apps/server/src/services/plugins/builtin-registry.ts"
+      - "plugins/bb-official.json"
+      - "plugins/*/package.json"
+      - "plugins/*/PLUGIN_OVERVIEW.md"
+      - "plugins/*/icons/*.svg"
+      - "plugins/*/*.svg"
   workflow_dispatch:
 
 env:

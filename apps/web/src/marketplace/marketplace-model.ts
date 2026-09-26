@@ -12,5 +12,6 @@ export function marketplaceEntryInstalls(
   entry: MarketplaceV2Entry,
   stats: MarketplaceStats | null,
 ): number | undefined {
+  if ("bundled" in entry.source) return undefined;
   return stats?.plugins[entry.id]?.installs;
 }

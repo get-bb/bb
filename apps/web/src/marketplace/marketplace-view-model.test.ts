@@ -167,6 +167,12 @@ describe("public marketplace view model", () => {
     expect(marketplaceRepositoryUrl(gitEntry)).toBe(
       "https://github.com/acme/bb-plugins",
     );
+    expect(
+      marketplaceRepositoryUrl({
+        ...npmEntry,
+        source: { bundled: { plugin: "docs" } },
+      }),
+    ).toBe("https://github.com/get-bb/bb/tree/main/plugins/docs");
   });
 
   it("orders category recommendations by install count", () => {

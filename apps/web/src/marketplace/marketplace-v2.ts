@@ -80,6 +80,12 @@ const marketplaceNpmSourceSchema = z.object({
     .refine((value) => value.range === undefined || value.tag === undefined),
 });
 
+const marketplaceBundledSourceSchema = z.object({
+  bundled: z.object({
+    plugin: z.string().regex(MARKETPLACE_ID_PATTERN),
+  }),
+});
+
 export const marketplaceV2EntrySchema = z.object({
   id: z.string().regex(MARKETPLACE_ID_PATTERN),
   displayName: z.string().min(1),
@@ -90,7 +96,11 @@ export const marketplaceV2EntrySchema = z.object({
     .transform((tags) => tags.slice(0, 10))
     .default([]),
   author: marketplaceAuthorSchema,
-  source: z.union([marketplaceGitSourceSchema, marketplaceNpmSourceSchema]),
+  source: z.union([
+    marketplaceGitSourceSchema,
+    marketplaceNpmSourceSchema,
+    marketplaceBundledSourceSchema,
+  ]),
   category: z.string().regex(MARKETPLACE_ID_PATTERN).optional(),
   screenshots: z
     .array(screenshotUrlSchema)
