@@ -30,7 +30,7 @@
 
 ---
 
-## Task: relocate-story-card-helper
+## Task 1: relocate-story-card-helper
 
 `StoryCard`/`StoryRow` (`apps/app/.ladle/story-card.tsx`) is the layout helper every `Overview` story in this plan needs. It currently lives in `apps/app`, but its only dependency is `cn` from `@bb/shared-ui/lib/utils` — nothing app-specific. A `packages/shared-ui` story importing it from `apps/app/.ladle/story-card` would invert the monorepo's dependency direction (a package depending on the app that consumes it) and reach across a relative path five directories up and back down. Relocate the canonical implementation into `packages/shared-ui`, and leave a re-export shim at the old path so the 95 existing `apps/app` consumers need no changes.
 
@@ -215,7 +215,7 @@ git commit -m "Move StoryCard/StoryRow into shared-ui so shared-ui stories can u
 
 ---
 
-## Task: wire-ladle-build-gate
+## Task 2: wire-ladle-build-gate
 
 Add the CI build-health gate the spec requires, and the `AGENTS.md` maintenance line. `apps/app/package.json` already has a `"storybook:build": "ladle build"` script and `/apps/app/build/` is already gitignored — this task only needs to point Ladle's `stories` glob at `packages/shared-ui`, give Turbo a cacheable task name for the script, and run it in CI.
 
@@ -287,7 +287,7 @@ git commit -m "Add a ladle build gate for packages/shared-ui stories"
 
 ---
 
-## Task: author-select-stories
+## Task 3: author-select-stories
 
 `packages/shared-ui/src/components/ui/select.tsx` exports 10 symbols: `Select`, `SelectGroup`, `SelectValue`, `SelectTrigger`, `SelectContent`, `SelectLabel`, `SelectItem`, `SelectSeparator`, `SelectScrollUpButton`, `SelectScrollDownButton`. Real usage in `plugins/tasks/views/manage/preset-dialog.tsx` and `plugins/tasks/views/manage/new-project-dialog.tsx` covers three distinct patterns: a fixed-option select, a data-driven select with a synthetic default value, and a select with a separator dividing a list from a trailing action item. `SelectScrollUpButton`/`SelectScrollDownButton` render automatically inside `SelectContent` when a list overflows and are never referenced directly by any real call site — they don't need their own row. `SelectGroup`/`SelectLabel` have no clean non-plugin-specific real usage (the one hit, `plugins/theme-preview/app.tsx`, wraps items in a plugin-local `ThemeOption` swatch component) — leave them out of this `Overview`; note the gap rather than fabricate a pattern with no real basis.
 
@@ -453,7 +453,7 @@ git commit -m "Add a shared-ui/Select Ladle story from real plugin usage"
 
 ---
 
-## Task: author-dialog-stories
+## Task 4: author-dialog-stories
 
 `packages/shared-ui/src/components/ui/dialog.tsx` exports 9 symbols: `Dialog`, `DialogOverlay`, `DialogTrigger`, `DialogClose`, `DialogContent`, `DialogHeader`, `DialogFooter`, `DialogTitle`, `DialogDescription`. `DialogOverlay` renders automatically inside `DialogContent` (`dialog.tsx:254`) and is never referenced directly by real call sites — it doesn't need its own row. Real usage covers two distinct shapes: a confirm-style dialog (`plugins/tasks/components/confirm-dialog.tsx`) and a form-style dialog with fields in the body (`plugins/tasks/views/manage/preset-dialog.tsx`, simplified to drop plugin-SDK-only pickers). `plugins/theme-preview/app.tsx` and `plugins/account-pool/app.tsx` show `Dialog` used uncontrolled with `DialogTrigger asChild` and `DialogClose asChild` rather than manually tracked `open` state — use that pattern; it's both more real and simpler than manual state.
 
@@ -635,7 +635,7 @@ git commit -m "Add a shared-ui/Dialog Ladle story from real plugin usage"
 
 ---
 
-## Task: author-dropdown-menu-stories
+## Task 5: author-dropdown-menu-stories
 
 `packages/shared-ui/src/components/ui/dropdown-menu.tsx` exports 15 symbols. Real usage in `plugins/thread-list/app/rows/ThreadActionsMenu.tsx` shows an icon-triggered actions menu with plain items, a submenu (`DropdownMenuSub`/`SubTrigger`/`SubContent`), a separator, and a destructive item (`variant="destructive"` on `DropdownMenuItem`, confirmed at `dropdown-menu.tsx:203`). `plugins/tasks/views/list/filter-bar.tsx` shows `DropdownMenuCheckboxItem` used as a single-select toggle group with a `mobileTitle` on `DropdownMenuContent`. `DropdownMenuSubTrigger` renders its own trailing chevron automatically (`dropdown-menu.tsx:599`) — do not add a second one. `DropdownMenuRadioItem`/`DropdownMenuRadioGroup`/`DropdownMenuLabel`/`DropdownMenuShortcut`/`DropdownMenuGroup`/`DropdownMenuPortal` have no real usage found in `plugins/*` — leave them out of this `Overview` rather than fabricate a pattern.
 
