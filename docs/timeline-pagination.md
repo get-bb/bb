@@ -59,9 +59,17 @@ snapshot projected no such rows. When a new latest snapshot's window reaches
 the loaded tip and this value does not exceed it, `mergeLoadedTimelineWithLatest`
 keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the
-page omitted, and loaded rows are replaced. A row that keeps changing while
-omitted, such as a long-running item before a content cut, therefore replaces
-loaded rows on each refresh.
+page omitted, and loaded rows are replaced.
+
+A latest page sends omitted rows whose `sourceSeqEnd` reaches its window start
+in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
+a running background delegation that started on an older page. Each update
+keeps only the nested children that reach the window start.
+`mergeLoadedTimelineWithLatest` joins each update into the loaded row with the
+same id and ignores rows it has not loaded. Updates larger than the page byte
+budget, and leaves omitted by a content cut, still count toward
+`olderRowsSourceSeqEnd`.
+
 `completedTurnDisplay` reports whether the page projected finished turns as
 collapsed "Worked for" rows or flat rows. It is part of the display surface: a
 cursor from one display returns HTTP 400 under the other, and

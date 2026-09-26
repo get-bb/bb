@@ -361,13 +361,33 @@ function mergeLoadedTimelineOlderCursor(
   return latest.anchorSeq < current.anchorSeq ? latest : current;
 }
 
+function applyOlderRowUpdates(
+  rows: TimelineRow[],
+  updates: readonly TimelineRow[] | undefined,
+): TimelineRow[] {
+  if (updates === undefined) {
+    return rows;
+  }
+  const updatesById = new Map(updates.map((row) => [row.id, row]));
+  return rows.map((row) => {
+    const update = updatesById.get(row.id);
+    return update === undefined
+      ? row
+      : prependOlderTimelineRows({
+          olderRows: [row],
+          loadedRows: [update],
+        })[0]!;
+  });
+}
+
 function mergeAdvancedSnapshotTimelineRows({
   current,
   latestRows,
   latestTimeline,
 }: MergeAdvancedSnapshotTimelineRowsArgs): MergeLatestTimelineRowsResult {
   const latestWindowStartSequence = timelineWindowStartSequence(latestTimeline);
-  const { olderRowsSourceSeqEnd } = latestTimeline.timelinePage;
+  const { olderRowUpdates, olderRowsSourceSeqEnd } =
+    latestTimeline.timelinePage;
   if (
     olderRowsSourceSeqEnd === undefined ||
     (olderRowsSourceSeqEnd !== null &&
@@ -375,14 +395,15 @@ function mergeAdvancedSnapshotTimelineRows({
   ) {
     return { canMerge: false, rows: [...latestRows] };
   }
+  const currentRows = applyOlderRowUpdates(current.rows, olderRowUpdates);
   if (latestTimeline.timelinePage.olderCursor === null) {
     return mergeLatestTimelineRows({
       latestRows,
       latestWindowStartSequence,
-      loadedRows: current.rows,
+      loadedRows: currentRows,
     });
   }
-  const loadedRows = current.rows.filter(
+  const loadedRows = currentRows.filter(
     (row) => !isOptimisticTimelineRowId(row.id),
   );
   const latestRowIds = new Set(latestRows.map((row) => row.id));

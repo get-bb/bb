@@ -2275,6 +2275,8 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
   const stateTypes = [
     "item/backgroundTask/progress",
     "item/backgroundTask/completed",
+    "item/delegation/progress",
+    "item/delegation/completed",
   ] satisfies ThreadEventType[];
   const latest = alias(events, "latest_background_task_state");
 

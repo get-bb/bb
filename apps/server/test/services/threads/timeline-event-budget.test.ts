@@ -796,11 +796,15 @@ describe("timeline event budget", () => {
   });
 
   it.each([
-    { changedRows: "an older group", turns: [1, 2] },
-    { changedRows: "the omitted start of the newest group", turns: [1] },
+    { changedRows: "an older group", turns: [1, 2], rebuilds: false },
+    {
+      changedRows: "the omitted start of the newest group",
+      turns: [1],
+      rebuilds: true,
+    },
   ])(
-    "signals a rebuild when a late completion changes $changedRows",
-    async ({ turns }) => {
+    "merges a late completion that changes $changedRows",
+    async ({ turns, rebuilds }) => {
       const harness = await createTestAppHarness({
         featureFlags: { ...defaultFeatureFlags, timelineWindowEventBudget: 5 },
       });
@@ -927,7 +931,9 @@ describe("timeline event budget", () => {
 
         const live = await read("");
 
-        expect(live.timelinePage.olderRowsSourceSeqEnd).toBe(latest.maxSeq + 1);
+        expect(live.timelinePage.olderRowsSourceSeqEnd! > latest.maxSeq).toBe(
+          rebuilds,
+        );
         const merged = mergeLoadedTimelineWithLatest({
           current: buildLoadedTimelineState({
             latestWindowEndSequence: latest.maxSeq,
@@ -939,7 +945,7 @@ describe("timeline event budget", () => {
           latestTimeline: live,
           surfaceKey: thread.id,
         });
-        expect(merged.rows).toEqual(live.rows);
+        if (rebuilds) expect(merged.rows).toEqual(live.rows);
         let reloadedRows = merged.rows;
         let reloadCursor = merged.olderCursor;
         while (reloadCursor) {
@@ -971,6 +977,145 @@ describe("timeline event budget", () => {
       }
     },
   );
+
+  it("keeps walked history while a background subagent streams under a later message", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const { db, thread } = setup(harness.db);
+      type EventInput = Parameters<typeof insertEvents>[2][number];
+      let sequence = 0;
+      const event = (
+        type: EventInput["type"],
+        scope: EventInput["scope"],
+        fields: Partial<EventInput> = {},
+      ): EventInput => ({
+        threadId: thread.id,
+        sequence: ++sequence,
+        type,
+        scope,
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: "{}",
+        ...fields,
+      });
+      const delegationId = "turn-1-delegation";
+      const delegation = (status: "pending" | "completed") =>
+        JSON.stringify({
+          item: {
+            type: "delegation",
+            id: delegationId,
+            childRef: "toolu_background",
+            label: "Background audit",
+            status,
+            background: true,
+          },
+        });
+      const message = (
+        id: string,
+        parentToolCallId: string | null = null,
+      ): EventInput =>
+        event("item/completed", turnScope("turn-1"), {
+          itemId: id,
+          itemKind: "agentMessage",
+          parentToolCallId,
+          data: JSON.stringify({
+            item: {
+              type: "agentMessage",
+              id,
+              text: id,
+              ...(parentToolCallId === null ? {} : { parentToolCallId }),
+            },
+          }),
+        });
+      const request = (turn: number): EventInput[] => [
+        event("client/turn/requested", threadScope(), {
+          providerThreadId: null,
+          data: JSON.stringify({
+            direction: "outbound",
+            source: "tell",
+            initiator: "user",
+            request: { method: "turn/start", params: {} },
+            requestId: requestId(turn),
+            senderThreadId: null,
+            input: [{ type: "text", text: `User ${turn}`, mentions: [] }],
+            target:
+              turn === 1
+                ? { kind: "thread-start" }
+                : { kind: "steer", expectedTurnId: "turn-1" },
+            execution,
+          }),
+        }),
+        ...(turn === 1 ? [event("turn/started", turnScope("turn-1"))] : []),
+        event("turn/input/accepted", turnScope("turn-1"), {
+          data: JSON.stringify({ clientRequestId: requestId(turn) }),
+        }),
+      ];
+      insertEvents(db, noopNotifier, [
+        ...request(1),
+        event("item/started", turnScope("turn-1"), {
+          itemId: delegationId,
+          itemKind: "delegation",
+          data: delegation("pending"),
+        }),
+        event("item/delegation/completed", threadScope(), {
+          itemId: delegationId,
+          itemKind: "delegation",
+          data: delegation("completed"),
+        }),
+        message("turn-1-message"),
+        ...request(2),
+        message("turn-2-message"),
+      ]);
+      const read = async (query = "") => {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/timeline?segmentLimit=1&${query}`,
+        );
+        return threadTimelineResponseSchema.parse(await response.json());
+      };
+      const walk = async (latest: ThreadTimelineResponse) => {
+        let rows = latest.rows;
+        let cursor = latest.timelinePage.olderCursor;
+        while (cursor) {
+          const older = await read(
+            `beforeAnchorSeq=${cursor.anchorSeq}&beforeAnchorId=${cursor.anchorId}`,
+          );
+          rows = prependOlderTimelineRows({
+            olderRows: older.rows,
+            loadedRows: rows,
+          });
+          cursor = older.timelinePage.olderCursor;
+        }
+        return rows;
+      };
+      const latest = await read();
+      let current = buildLoadedTimelineState({
+        latestWindowEndSequence: latest.maxSeq,
+        latestRows: await walk(latest),
+        olderCursor: null,
+        surfaceKey: thread.id,
+        historySnapshot: latest.timelinePage.historySnapshot,
+      });
+      expect(current.rows.length).toBeGreaterThan(latest.rows.length);
+
+      for (const progress of [1, 2]) {
+        insertEvents(db, noopNotifier, [
+          message(`subagent-${progress}`, delegationId),
+        ]);
+        const live = await read();
+        current = mergeLoadedTimelineWithLatest({
+          current,
+          latestTimeline: live,
+          surfaceKey: thread.id,
+        });
+        expect(current.olderCursor).toBeNull();
+        expect(current.rows).toEqual(await walk(live));
+      }
+    } finally {
+      await harness.cleanup();
+    }
+  });
 
   it("preserves canonical content under a tiny response byte budget", () => {
     const { db, thread } = setup();

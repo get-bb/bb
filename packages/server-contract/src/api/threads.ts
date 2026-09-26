@@ -932,6 +932,7 @@ export const timelinePageMetadataSchema = z
     olderCursor: timelinePaginationCursorSchema.nullable(),
     historySnapshot: z.string().optional(),
     olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
+    olderRowUpdates: z.array(timelineRowSchema).optional(),
     contentPage: z
       .object({
         anchorSeq: z.number().int().nonnegative(),

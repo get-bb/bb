@@ -4634,11 +4634,31 @@ describe("events", () => {
         parentToolCallId: null,
         data: taskData("task:wf-other", "running"),
       },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        scope: threadScope(),
+        providerThreadId: "provider-thread-1",
+        type: "item/delegation/completed",
+        itemId: "delegation-1",
+        itemKind: "delegation",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "delegation",
+            id: "delegation-1",
+            childRef: "agent-1",
+            label: "Background audit",
+            status: "completed",
+            background: true,
+          },
+        }),
+      },
     ]);
 
     const rows = listLatestBackgroundTaskStateRowsByItemIds(db, {
       threadId: thread.id,
-      itemIds: ["task:wf-1", "task:wf-2"],
+      itemIds: ["task:wf-1", "task:wf-2", "delegation-1"],
     });
 
     expect(
@@ -4657,6 +4677,11 @@ describe("events", () => {
         itemId: "task:wf-1",
         sequence: 4,
         type: "item/backgroundTask/completed",
+      },
+      {
+        itemId: "delegation-1",
+        sequence: 6,
+        type: "item/delegation/completed",
       },
     ]);
 
