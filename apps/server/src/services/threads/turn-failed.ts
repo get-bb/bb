@@ -3,6 +3,8 @@ import {
   getLatestStoredRateLimitsEvent,
   getLatestStoredThreadEventOfTypes,
   getThread,
+  getStoredTurnRequestEventForTurn,
+  type DbQueryConnection,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   type DbConnection,
@@ -19,6 +21,8 @@ import {
 } from "@bb/domain";
 import type { PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { ApiError } from "../../errors.js";
+import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
 
 /** The message shapes the fallback query can return, by event type. */
@@ -59,12 +63,28 @@ export interface FailedTurnRecord {
  * where there is nothing to announce and nothing for a retry to re-submit.
  */
 export function loadFailedTurn(
-  db: DbConnection,
+  db: DbQueryConnection,
   threadId: string,
 ): FailedTurnRecord | null {
   const row = getLastStoredTurnRequestEvent(db, threadId);
   if (row === null) return null;
   try {
+    const completion = getLatestStoredThreadEventOfTypes(db, {
+      threadId,
+      afterSequence: row.sequence,
+      types: ["turn/completed"],
+    });
+    if (
+      completion?.turnId &&
+      z
+        .object({ status: z.literal("completed") })
+        .safeParse(JSON.parse(completion.data)).success &&
+      getStoredTurnRequestEventForTurn(db, {
+        threadId,
+        turnId: completion.turnId,
+      })?.sequence === row.sequence
+    )
+      return null;
     return {
       request: parseStoredTurnRequestEvent(row),
       requestSequence: row.sequence,
@@ -89,6 +109,27 @@ export function retryChain(request: TurnRequestEventData): {
     attemptNumber: request.retryAttempt ?? 1,
     originalRequestId: request.retryOfRequestId ?? request.requestId,
   };
+}
+
+export function requireCurrentRetry(
+  db: DbQueryConnection,
+  threadId: string,
+  retry: TurnRequestRetryMarker,
+): void {
+  const failed = loadFailedTurn(db, threadId);
+  const chain = failed ? retryChain(failed.request) : null;
+  if (
+    getThread(db, threadId)?.status !== "error" ||
+    !chain ||
+    chain.originalRequestId !== retry.requestId ||
+    chain.attemptNumber + 1 !== retry.attempt
+  ) {
+    throw new ApiError(
+      409,
+      "no_failed_turn",
+      "The failed turn was completed or superseded before retry dispatch.",
+    );
+  }
 }
 
 /**
