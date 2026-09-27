@@ -61,6 +61,7 @@ import {
   MessageActionBar,
   PROSE_COLUMN_INSET_CLASS,
 } from "./MessageActionBar.js";
+import { AgentQuestionChoices } from "./AgentQuestionChoices.js";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
@@ -600,6 +601,9 @@ function AssistantConversationMessage({
           />
         )}
       </SelectableMessageProse>
+      {!streaming ? (
+        <AgentQuestionChoices text={text} onAddToChat={onAddToChat} />
+      ) : null}
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
         imageItems={attachmentItems.imageItems}

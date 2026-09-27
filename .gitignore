@@ -96,3 +96,4 @@ provider-recordings/raw/
 
 /plugins/.bundled-stage-*/
 /plugins/*/.bundled-runtime/
+apps/app/public/gpu-ask/
