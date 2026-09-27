@@ -3543,6 +3543,7 @@ describe("PromptBoxInternal compact layout", () => {
 
   it("keeps the prompt editor visible while the waveform occupies the action row", () => {
     const stop = vi.fn();
+    const send = vi.fn();
     const cancel = vi.fn();
     render(
       <PromptBoxInternal
@@ -3554,7 +3555,7 @@ describe("PromptBoxInternal compact layout", () => {
             stream: null,
             start: vi.fn(),
             stop,
-            send: vi.fn(),
+            send,
             cancel,
           },
         })}
@@ -3582,15 +3583,19 @@ describe("PromptBoxInternal compact layout", () => {
     const cancelButton = screen.getByRole("button", {
       name: "Cancel recording",
     });
+    const sendButton = screen.getByRole("button", { name: "Send voice input" });
     const voiceControls = document.querySelector(
       "[data-promptbox-voice-controls]",
     );
     expect(voiceControls?.classList.contains("pointer-events-auto")).toBe(true);
     expect(voiceControls?.contains(confirm)).toBe(true);
     expect(voiceControls?.contains(cancelButton)).toBe(true);
+    expect(voiceControls?.contains(sendButton)).toBe(true);
     fireEvent.click(confirm);
+    fireEvent.click(sendButton);
     fireEvent.click(cancelButton);
     expect(stop).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
     expect(cancel).toHaveBeenCalledOnce();
   });
 

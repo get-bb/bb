@@ -13,6 +13,8 @@ interface VoiceRecordingBarProps {
 
 const CONTROL_BUTTON_CLASS =
   "size-8 rounded-full p-0 max-md:pointer-coarse:size-10";
+const ACTION_BUTTON_CLASS =
+  "size-8 rounded-md p-0 max-md:pointer-coarse:size-10";
 
 export function VoiceRecordingBar({
   state,
@@ -50,18 +52,21 @@ export function VoiceRecordingBar({
       <Button
         type="button"
         size="icon"
-        variant="default"
+        variant="secondary"
         aria-label={
           isTranscribing ? "Transcribing voice input" : "Stop and add to draft"
         }
         disabled={isTranscribing}
         onClick={onConfirm}
-        className={CONTROL_BUTTON_CLASS}
+        className={ACTION_BUTTON_CLASS}
       >
         {isTranscribing ? (
           <Icon name="Spinner" className="size-4 animate-spin" />
         ) : (
-          <Icon name="Check" className="size-4" />
+          <Icon
+            name="Square"
+            className="size-3.5 fill-current [&_*]:stroke-0"
+          />
         )}
       </Button>
       <Button
@@ -71,9 +76,9 @@ export function VoiceRecordingBar({
         aria-label="Send voice input"
         disabled={isTranscribing}
         onClick={onSend}
-        className={CONTROL_BUTTON_CLASS}
+        className={ACTION_BUTTON_CLASS}
       >
-        <Icon name="ArrowUp" className="size-4" />
+        <Icon name="CornerDownLeft" className="size-4" />
       </Button>
     </div>
   );
