@@ -69,7 +69,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="Disabled control"
-        hint="plugins/automations/detail-view.tsx — a focusable span wraps a disabled Switch so the reason it's disabled is still reachable by keyboard and screen readers"
+        hint="plugins/automations/detail-view.tsx — a focusable span wraps a disabled Switch; hovering the disabled control itself may not open it (browsers suppress pointer events on disabled form elements), but Tab-focusing the wrapping span always does"
       >
         <DisabledControlTooltipDemo />
       </StoryRow>
