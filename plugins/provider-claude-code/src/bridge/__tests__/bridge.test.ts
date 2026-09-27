@@ -20,6 +20,7 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   type JsonValue,
   type RuntimePermissionPolicy,
+  type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
 const { forkSessionMock, queryMock } = vi.hoisted(() => ({
@@ -1075,6 +1076,38 @@ describe("bridge", () => {
     });
   });
 
+  it("allows bypass mode only for full access sessions, including ones starting in plan mode", () => {
+    const sessionOptions = (
+      permissionMode: ClaudePermissionMode,
+      permissionScope: RuntimePermissionScope,
+    ) =>
+      buildSessionOptions(
+        {
+          chromeEnabled: false,
+          disable1MContext: false,
+          sandboxEnabled: true,
+          workflowsEnabled: false,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          permissionMode,
+          permissionScope,
+          serviceTier: "default",
+        },
+        {},
+      );
+
+    expect(sessionOptions("plan", "full").allowBypassPermissions).toBe(true);
+    expect(
+      sessionOptions("bypassPermissions", "full").allowBypassPermissions,
+    ).toBe(true);
+    expect(sessionOptions("plan", "workspace").allowBypassPermissions).toBe(
+      false,
+    );
+    expect(
+      sessionOptions("acceptEdits", "workspace").allowBypassPermissions,
+    ).toBe(false);
+  });
+
   it("uses a Claude executable discovered from PATH for SDK sessions", () => {
     const { binDir, executablePath } = createTempClaudeExecutable();
     const options = buildSessionOptions(
@@ -1769,22 +1802,9 @@ describe("bridge", () => {
       await expect(planPromise).resolves.toMatchObject({ behavior: "allow" });
       await bridge.flushWork();
 
-      const editResult = await canUseTool(
-        "Edit",
-        { file_path: "/tmp/worktree/test.md", new_string: "hi" },
-        {
-          requestId: "control-request",
-          signal: new AbortController().signal,
-          toolUseID: "tool-edit",
-          blockedPath: "/tmp/worktree",
-          decisionReason: "Outside the sandbox",
-        },
+      expect(queries[0]?.setPermissionMode).toHaveBeenLastCalledWith(
+        "bypassPermissions",
       );
-
-      expect(editResult).toMatchObject({ behavior: "allow" });
-      expect(
-        bridge.messages.filter((message) => isApprovalInteraction(message)),
-      ).toHaveLength(1);
 
       await stopBridgeThread({ bridge, queries, threadId });
     } finally {
