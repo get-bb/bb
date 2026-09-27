@@ -67,19 +67,10 @@ interface AssistantToolUseMessageArgs {
   toolUseId: string;
 }
 
-interface CanUseToolPolicyAllowExpectation {
-  behavior: "allow";
-  updatedInput: Record<string, unknown>;
-}
-
-interface CanUseToolPolicyDenyExpectation {
+interface CanUseToolPolicyExpectation {
   behavior: "deny";
   messageIncludes: string;
 }
-
-type CanUseToolPolicyExpectation =
-  | CanUseToolPolicyAllowExpectation
-  | CanUseToolPolicyDenyExpectation;
 
 interface CanUseToolPolicyCase {
   blockedPath?: string;
@@ -1415,12 +1406,6 @@ describe("bridge", () => {
       approvalReviewer: "automatic",
       permissionEscalation: "deny",
     } satisfies RuntimePermissionPolicy;
-    const FULL_POLICY = {
-      permissionMode: "full",
-      permissionScope: "full",
-      approvalReviewer: null,
-      permissionEscalation: null,
-    } satisfies RuntimePermissionPolicy;
 
     const policyCases = [
       {
@@ -1452,24 +1437,6 @@ describe("bridge", () => {
         expected: {
           behavior: "deny",
           messageIncludes: "bb's workspace sandbox allows work inside",
-        },
-      },
-      {
-        id: "full-bypass-allow",
-        name: "full bypass allows Bash input unchanged",
-        policy: FULL_POLICY,
-        toolName: "Bash",
-        decisionReason: "This command requires approval",
-        input: {
-          command: "git status --short",
-          description: "Permission boundary test",
-        },
-        expected: {
-          behavior: "allow",
-          updatedInput: {
-            command: "git status --short",
-            description: "Permission boundary test",
-          },
         },
       },
     ] satisfies CanUseToolPolicyCase[];
@@ -1514,23 +1481,11 @@ describe("bridge", () => {
           throw new Error(`Expected ${testCase.name} to return a decision`);
         }
 
-        switch (testCase.expected.behavior) {
-          case "allow":
-            expect(result).toMatchObject({
-              behavior: "allow",
-              toolUseID,
-              updatedInput: testCase.expected.updatedInput,
-            });
-            expect("decisionClassification" in result).toBe(false);
-            break;
-          case "deny":
-            if (result.behavior !== "deny") {
-              throw new Error(`Expected ${testCase.name} to deny`);
-            }
-            expect(result.toolUseID).toBe(toolUseID);
-            expect(result.message).toContain(testCase.expected.messageIncludes);
-            break;
+        if (result.behavior !== "deny") {
+          throw new Error(`Expected ${testCase.name} to deny`);
         }
+        expect(result.toolUseID).toBe(toolUseID);
+        expect(result.message).toContain(testCase.expected.messageIncludes);
 
         bridge.sendRequest(stopRequestId, "thread/stop", {
           threadId,
@@ -1881,6 +1836,135 @@ describe("bridge", () => {
 
       await stopBridgeThread({ bridge, queries, threadId });
     } finally {
+      bridge.restore();
+    }
+  });
+
+  it("forwards a permissions.ask rule prompt in full access mode", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    const uidSpy = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    try {
+      const threadId = "thread-full-ask-rule";
+      const toolUseID = "tool-full-ask-rule";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+          instructions: "test",
+          providerOptions: {
+            workflowsEnabled: false,
+          },
+        },
+      });
+      await bridge.waitForResponse(1);
+
+      const resultPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "git push origin main" },
+        {
+          description: "Push the branch to origin",
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID,
+        },
+      );
+      await bridge.flushWork();
+
+      const permissionRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded permission request");
+      }
+      expect(permissionRequest.params).toMatchObject({
+        threadId,
+        payload: {
+          kind: "approval",
+          subject: expect.objectContaining({ itemId: toolUseID }),
+        },
+      });
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: { decision: "deny", grantedPermissions: null },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "deny",
+        toolUseID,
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      uidSpy.mockRestore();
+      bridge.restore();
+    }
+  });
+
+  it("keeps approving requests itself in full access mode when running as root", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    const uidSpy = vi.spyOn(process, "getuid").mockReturnValue(0);
+    try {
+      const threadId = "thread-full-root";
+      const toolUseID = "tool-full-root";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+          instructions: "test",
+          providerOptions: {
+            workflowsEnabled: false,
+          },
+        },
+      });
+      await bridge.waitForResponse(1);
+
+      expect(getLatestQueryCall().options.permissionMode).toBe("default");
+      await expect(
+        getLastCanUseTool()(
+          "Bash",
+          { command: "npm --version" },
+          {
+            decisionReason: "This command requires approval",
+            requestId: "control-request",
+            signal: new AbortController().signal,
+            toolUseID,
+          },
+        ),
+      ).resolves.toMatchObject({ behavior: "allow", toolUseID });
+      expect(
+        bridge.messages.filter((message) => isApprovalInteraction(message)),
+      ).toHaveLength(0);
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      uidSpy.mockRestore();
       bridge.restore();
     }
   });
