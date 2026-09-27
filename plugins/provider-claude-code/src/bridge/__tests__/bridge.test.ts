@@ -1563,6 +1563,65 @@ describe("bridge", () => {
     }
   });
 
+  it("forwards a permissions.ask rule prompt that carries no permission hints", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-ask-rule";
+      const toolUseID = "tool-ask-rule";
+      await startBridgeThread({ bridge, threadId });
+
+      const resultPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "git push origin main" },
+        {
+          description: "Push the branch to origin",
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID,
+        },
+      );
+      await bridge.flushWork();
+
+      const permissionRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded permission request");
+      }
+      expect(permissionRequest.params).toMatchObject({
+        threadId,
+        payload: {
+          kind: "approval",
+          availableDecisions: ["allow_once", "deny"],
+          subject: expect.objectContaining({ itemId: toolUseID }),
+        },
+      });
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: { decision: "allow_once", grantedPermissions: null },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "allow",
+        toolUseID,
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("does not let a session grant for a folder cover a later request that names no folder", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
