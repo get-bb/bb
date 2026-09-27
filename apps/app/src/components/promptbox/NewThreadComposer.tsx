@@ -1094,7 +1094,7 @@ export function NewThreadComposer({
     useState<{ scopeKey: string; value: JsonValue | null } | null>(null);
   const [environmentProviderInputsBlocked, setProviderInputsBlocked] =
     useState<{ scopeKey: string; reason: string } | null>(null);
-  const environmentProviderInputsScopeKey = `${projectId}\0${effectiveEnvironmentValue}\0${providerHostId ?? ""}`;
+  const environmentProviderInputsScopeKey = `${seedSignature}\0${effectiveEnvironmentValue}\0${providerHostId ?? ""}`;
   const handleProviderInputsChange = useCallback(
     (next: PluginEnvironmentProviderInputsChange) => {
       if (next.status === "blocked") {

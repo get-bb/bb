@@ -1446,6 +1446,17 @@ export interface PluginSidebarThreadActions {
     sectionId?: string;
     environmentId?: string;
     hostId?: string;
+    /**
+     * Seed the native composer's environment provider, machine, and inputs.
+     * Uses the same environment shape as NewThreadRequest, including a fresh
+     * managed worktree with an explicit hostId and baseBranch. Applied once per
+     * navigation; the user can still change every picker. environmentId wins
+     * over this seed, which wins over hostId. Host environments require an
+     * explicit hostId, including personal workspaces. project-default resets
+     * the environment picker to its default. Invalid values throw before
+     * navigation. Experimental: see docs/api_to_audit.md.
+     */
+    experimental_environment?: NewThreadRequest["environment"];
     focusPrompt?: boolean;
   }): void;
   setPinned(threadId: string, pinned: boolean): Promise<void>;

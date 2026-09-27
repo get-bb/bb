@@ -3,7 +3,7 @@ import {
   ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +23,7 @@ import type {
   SidebarBootstrapResponse,
   TerminalSession,
 } from "@bb/server-contract";
+import { createThreadEnvironmentArgsSchema } from "@bb/server-contract";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
@@ -93,6 +94,7 @@ import {
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
+import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -356,10 +358,26 @@ export function readRootComposeEnvironmentTargetFromLocationState(
   state: unknown,
 ):
   | { kind: "reuse"; environmentId: string }
+  | { kind: "environment"; environment: NewThreadRequest["environment"] }
   | { kind: "host"; hostId: string }
   | null {
   const environmentId = readReuseEnvironmentIdFromLocationState(state);
   if (environmentId !== null) return { kind: "reuse", environmentId };
+  if (
+    typeof state === "object" &&
+    state !== null &&
+    "newThreadEnvironment" in state
+  ) {
+    const environment = createThreadEnvironmentArgsSchema.safeParse(
+      state.newThreadEnvironment,
+    );
+    if (
+      environment.success &&
+      (environment.data.type !== "host" ||
+        environment.data.hostId !== undefined)
+    )
+      return { kind: "environment", environment: environment.data };
+  }
   const hostId = readNewEnvironmentHostIdFromLocationState(state);
   return hostId === null ? null : { kind: "host", hostId };
 }
@@ -542,6 +560,11 @@ export function LegacyProjectComposeRedirect({
   return <RouteLoadingSkeleton isBoundedPane={false} />;
 }
 
+interface RootComposeEnvironmentSeed {
+  key: string;
+  environment: NewThreadRequest["environment"];
+}
+
 export function RootComposeView() {
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
@@ -561,10 +584,13 @@ export function RootComposeView() {
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useRootComposeForkSeed();
+  const [environmentSeed, setEnvironmentSeed] =
+    useState<RootComposeEnvironmentSeed | null>(null);
 
   const handleProjectChange = useCallback(
     (projectId: string) => {
       setForkSeed(null);
+      setEnvironmentSeed(null);
       setRootComposeProjectId(projectId);
     },
     [setForkSeed, setRootComposeProjectId],
@@ -607,6 +633,7 @@ export function RootComposeView() {
       );
       setLastCreatedThreadId(thread.id);
       setForkSeed(null);
+      setEnvironmentSeed(null);
       setRootComposeSectionId(null);
       if (shouldNavigateToCreatedThread) {
         navigate(
@@ -652,7 +679,9 @@ export function RootComposeView() {
   const composerSeed = useMemo(
     () =>
       forkSeed === null
-        ? undefined
+        ? environmentSeed === null
+          ? undefined
+          : { environment: environmentSeed.environment }
         : {
             providerId: forkSeed.providerId,
             model: forkSeed.model,
@@ -664,7 +693,7 @@ export function RootComposeView() {
               environmentId: forkSeed.environmentId,
             },
           },
-    [forkSeed],
+    [forkSeed, environmentSeed],
   );
 
   return (
@@ -674,7 +703,7 @@ export function RootComposeView() {
       draftStorage={{ kind: "new-thread" }}
       selectionScope="new-thread"
       seed={composerSeed}
-      resetKey={forkSeed?.sourceThreadId ?? null}
+      resetKey={forkSeed?.sourceThreadId ?? environmentSeed?.key ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}
       onSubmit={handleSubmit}
       onLeaveWithDraft={handleLeaveWithDraft}
@@ -682,6 +711,8 @@ export function RootComposeView() {
       {(composer) => (
         <RootComposeSurface
           composer={composer}
+          environmentSeed={environmentSeed}
+          setEnvironmentSeed={setEnvironmentSeed}
           forkSeed={forkSeed}
           lastCreatedThreadId={lastCreatedThreadId}
           rootComposeProjectId={rootComposeProjectId}
@@ -698,6 +729,8 @@ export function RootComposeView() {
 
 interface RootComposeSurfaceProps {
   composer: NewThreadComposerState;
+  environmentSeed: RootComposeEnvironmentSeed | null;
+  setEnvironmentSeed: (seed: RootComposeEnvironmentSeed | null) => void;
   forkSeed: ForkThreadCreateSeed | null;
   lastCreatedThreadId: string | null;
   rootComposeProjectId: string;
@@ -710,6 +743,8 @@ interface RootComposeSurfaceProps {
 
 function RootComposeSurface({
   composer,
+  environmentSeed,
+  setEnvironmentSeed,
   forkSeed,
   lastCreatedThreadId,
   rootComposeProjectId,
@@ -794,8 +829,24 @@ function RootComposeSurface({
   const stateInitialPrompt = readInitialPromptFromLocationState(location.state);
   const searchInitialDraft = useInitialPromptDraft(searchInitialPrompt);
   const stateInitialDraft = useInitialPromptDraft(stateInitialPrompt);
+  const consumedTargetKey = useRef<string | null>(null);
+  const appliedEnvironmentSeed = useRef<string | null>(null);
   const setPromptDraft = promptDraft.setDraft;
   const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
+
+  useEffect(() => {
+    if (environmentSeed === null) {
+      appliedEnvironmentSeed.current = null;
+      return;
+    }
+    const key = `${environmentSeed.key}\0${projectId}`;
+    if (appliedEnvironmentSeed.current === key) return;
+    appliedEnvironmentSeed.current = key;
+    seedEnvironmentSelectionValue(
+      newThreadEnvironmentArgsToSeed(environmentSeed.environment)
+        ?.selectionValue ?? "",
+    );
+  }, [environmentSeed, projectId, seedEnvironmentSelectionValue]);
 
   useEffect(() => {
     const initialPrompt = readInitialPromptFromSearch(location.search);
@@ -826,9 +877,24 @@ function RootComposeSurface({
       location.state,
     );
     if (!hasSingleUseRootComposeTargetState(location.state)) return;
-    if (environmentTarget?.kind === "host" && !hostSelectionReady) {
+    if (consumedTargetKey.current === location.key) return;
+    if (
+      (environmentTarget?.kind === "host" ||
+        environmentTarget?.kind === "environment") &&
+      !hostSelectionReady
+    ) {
       return;
     }
+    if (
+      environmentSeed !== null &&
+      (nextForkSeed !== null ||
+        (environmentTarget !== null &&
+          environmentTarget.kind !== "environment"))
+    ) {
+      setEnvironmentSeed(null);
+      return;
+    }
+    consumedTargetKey.current = location.key;
     if (shouldStartComposingFromLocationState(location.state)) {
       setStartedComposing(true);
     }
@@ -843,6 +909,12 @@ function RootComposeSurface({
       );
     } else if (environmentTarget?.kind === "host") {
       selectHostForNewEnvironment(environmentTarget.hostId);
+    } else if (environmentTarget?.kind === "environment") {
+      setForkSeed(null);
+      setEnvironmentSeed({
+        key: location.key,
+        environment: environmentTarget.environment,
+      });
     }
     if (nextForkSeed !== null) {
       setForkSeed(nextForkSeed);
@@ -863,6 +935,9 @@ function RootComposeSurface({
     });
   }, [
     focusPromptBox,
+    environmentSeed,
+    setEnvironmentSeed,
+    location.key,
     location.search,
     location.state,
     hostSelectionReady,

@@ -7,6 +7,7 @@ import {
 } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { isDraftThread } from "@bb/client-core";
+import { createThreadEnvironmentArgsSchema } from "@bb/server-contract";
 import type {
   PluginSdkApp,
   PluginSidebarProject,
@@ -309,6 +310,17 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         navigate(getThreadRoutePath({ projectId, threadId }));
       },
       openNewThread(options) {
+        const environment =
+          options?.experimental_environment === undefined
+            ? undefined
+            : createThreadEnvironmentArgsSchema.parse(
+                options.experimental_environment,
+              );
+        if (environment?.type === "host" && environment.hostId === undefined) {
+          throw new Error(
+            "hostId is required to seed the new-thread environment",
+          );
+        }
         const projectId = options?.projectId;
         if (projectId !== undefined) {
           setRootComposeProjectId(projectId);
@@ -321,6 +333,9 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           ...(options?.environmentId !== undefined
             ? { reuseEnvironmentId: options.environmentId }
             : {}),
+          ...(environment === undefined
+            ? {}
+            : { newThreadEnvironment: environment }),
           ...(typeof options?.hostId === "string" &&
           options.hostId.trim().length > 0
             ? { newEnvironmentHostId: options.hostId.trim() }

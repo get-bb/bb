@@ -2647,6 +2647,30 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
+**New-thread environment seed (Sep 2026).**
+`PluginSidebarThreadActions.openNewThread({ projectId, experimental_environment })`
+opens the native New thread screen with the environment shape from
+`NewThreadRequest`. This supports a fresh managed worktree with an explicit
+host and base branch, a checkout, environment reuse, or a provider with machine
+and inputs. Every host environment seed requires an explicit `hostId`, including
+personal workspaces; `project-default` resets the environment selection.
+`environmentId` takes priority over `experimental_environment`,
+which takes priority over `hostId`. Invalid seeds throw before navigation;
+router state is independently validated. The target waits for the project and
+machine catalogs, applies once, and is removed from navigation state. Pickers
+remain editable. Another open, even with identical arguments, starts a new
+seed; input overrides from an earlier open must not replace that seed.
+
+Audit before stabilization: exercise desktop and compact layouts, unavailable
+hosts/providers and missing sources, delayed catalogs, project changes,
+repeated launches, back navigation, and provider input controls. Verify that
+worktree creation stays fresh and that the submitted request reflects the
+visible pickers. This seeds selection only; it does not create a thread or
+provide plugin-specific attribution or a submission callback. Thread creation
+already supports these environments through `bb.sdk.threads.spawn` and
+`bb thread spawn --project <id> --machine <id> --new-environment worktree
+--base-branch <ref>`.
+
 **New-thread machine selection (Sep 2026).**
 `PluginSidebarThreadActions.openNewThread` accepts `hostId` to
 preselect a known machine with an available environment provider for a new

@@ -848,6 +848,56 @@ describe("hasSingleUseRootComposeTargetState", () => {
   it("ignores non-target state", () => {
     expect(hasSingleUseRootComposeTargetState(null)).toBe(false);
   });
+
+  it("parses environment inputs and prioritizes them over a host-only target", () => {
+    const environment = {
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      machine: { type: "existing", hostId: "host_worktree" },
+      inputs: { branch: { kind: "named", name: "release" } },
+    };
+    const state = {
+      newThreadEnvironment: environment,
+      newEnvironmentHostId: "host_other",
+    };
+    expect(readRootComposeEnvironmentTargetFromLocationState(state)).toEqual({
+      kind: "environment",
+      environment,
+    });
+    expect(hasSingleUseRootComposeTargetState(state)).toBe(true);
+    expect(
+      readRootComposeEnvironmentTargetFromLocationState({
+        ...state,
+        reuseEnvironmentId: "env_existing",
+      }),
+    ).toEqual({ kind: "reuse", environmentId: "env_existing" });
+  });
+
+  it.each([
+    null,
+    { type: "host", workspace: { type: "personal" } },
+    {
+      type: "host",
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    },
+    { type: "provider", environmentProviderId: "" },
+    { type: "reuse", environmentId: 42 },
+  ])(
+    "ignores malformed environment navigation data: %j",
+    (newThreadEnvironment) => {
+      expect(
+        readRootComposeEnvironmentTargetFromLocationState({
+          newThreadEnvironment,
+        }),
+      ).toBeNull();
+      expect(
+        readRootComposeEnvironmentTargetFromLocationState({
+          newThreadEnvironment,
+          newEnvironmentHostId: "host_valid",
+        }),
+      ).toEqual({ kind: "host", hostId: "host_valid" });
+    },
+  );
 });
 
 describe("shouldStartComposingFromLocationState", () => {

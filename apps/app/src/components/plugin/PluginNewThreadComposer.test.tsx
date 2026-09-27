@@ -82,6 +82,7 @@ function render(element: ReactNode) {
 const mocks = vi.hoisted(() => ({
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
+  createThread: vi.fn(),
   uploadAttachment: vi.fn(),
   projectThreads: [] as ThreadListEntry[],
   sidebarNavigationSettled: true,
@@ -95,6 +96,11 @@ const mocks = vi.hoisted(() => ({
   machineProviders: [] as SystemMachineProvider[],
   modelsLoading: false,
   permissionCeiling: undefined as "accept-edits" | "auto" | "full" | undefined,
+}));
+
+vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCreateThread: () => ({ mutateAsync: mocks.createThread }),
+  useCreateDraftThread: () => ({ mutateAsync: vi.fn().mockResolvedValue({}) }),
 }));
 
 vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
@@ -682,6 +688,9 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
+    mocks.createThread
+      .mockReset()
+      .mockResolvedValue({ id: "thr_created", projectId: "proj_1" });
     mocks.uploadAttachment.mockReset();
     mocks.projectThreads = [];
     mocks.sidebarNavigationSettled = true;
@@ -1529,6 +1538,12 @@ describe("PluginNewThreadComposer seeding", () => {
             state: {
               newEnvironmentHostId: "host_2",
               reuseEnvironmentId: "env_existing",
+              newThreadEnvironment: {
+                type: "provider",
+                environmentProviderId: "git-worktree",
+                machine: { type: "existing", hostId: "host_2" },
+                inputs: DEFAULT_BRANCH_INPUTS,
+              },
             },
           },
         ],
@@ -1546,6 +1561,251 @@ describe("PluginNewThreadComposer seeding", () => {
       );
       expect(router.state.location.state).toBeNull();
     });
+  });
+
+  function renderRootEnvironment(environment: NewThreadRequest["environment"]) {
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "*", element: <RootComposeView /> }],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: { newThreadEnvironment: environment, focusPrompt: true },
+          },
+        ],
+      },
+    );
+    const element = () => (
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>
+    );
+    const view = render(element());
+    return { router, refresh: () => view.rerender(element()) };
+  }
+
+  const rootWorktreeEnvironment: NewThreadRequest["environment"] = {
+    type: "host",
+    hostId: "host_2",
+    workspace: {
+      type: "managed-worktree",
+      baseBranch: { kind: "named", name: "release" },
+    },
+  };
+
+  it.each([
+    rootWorktreeEnvironment,
+    {
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      machine: { type: "existing", hostId: "host_2" },
+      inputs: { branch: { kind: "named", name: "release" } },
+    } satisfies NewThreadRequest["environment"],
+  ])(
+    "submits the native composer with a fresh remote worktree and its branch: %j",
+    async (environment) => {
+      mocks.sidebarNavigationSettled = false;
+      mocks.projectThreads = [
+        makeThreadListEntry({
+          id: "thr_existing",
+          projectId: "proj_1",
+          environmentId: "env_existing",
+          environmentHostId: "host_1",
+          environmentProviderId: "git-worktree",
+        }),
+      ];
+      const { router, refresh } = renderRootEnvironment(environment);
+      expect(router.state.location.state).not.toBeNull();
+      mocks.sidebarNavigationSettled = true;
+      refresh();
+      await waitFor(() => {
+        expect(router.state.location.state).toBeNull();
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          "provider:git-worktree",
+        );
+        expect(
+          latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+        ).toBe("host_2");
+      });
+      act(() =>
+        getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+          text: "Build in a fresh worktree",
+          mentions: [],
+          attachments: [],
+        }),
+      );
+      await submit();
+      await waitFor(() =>
+        expect(mocks.createThread).toHaveBeenCalledWith(
+          expect.objectContaining({
+            projectId: "proj_1",
+            environment: {
+              type: "provider",
+              environmentProviderId: "git-worktree",
+              machine: { type: "existing", hostId: "host_2" },
+              inputs: { branch: { kind: "named", name: "release" } },
+            },
+          }),
+        ),
+      );
+    },
+  );
+
+  it("keeps user overrides through refreshes and reapplies an identical seed on a new navigation", async () => {
+    const { router, refresh } = renderRootEnvironment(rootWorktreeEnvironment);
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    fireEvent.click(screen.getByTestId("worktree-default-branch"));
+    refresh();
+    await act(() =>
+      router.navigate("/", {
+        state: { newThreadEnvironment: rootWorktreeEnvironment },
+      }),
+    );
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    act(() =>
+      getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+        text: "Use the release branch again",
+        mentions: [],
+        attachments: [],
+      }),
+    );
+    await submit();
+    await waitFor(() =>
+      expect(mocks.createThread).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environment: expect.objectContaining({
+            inputs: { branch: { kind: "named", name: "release" } },
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("preserves picker changes instead of reseeding on a rerender", async () => {
+    const { router, refresh } = renderRootEnvironment(rootWorktreeEnvironment);
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    fireEvent.click(screen.getByTestId("worktree-default-branch"));
+    act(() =>
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        CHECKOUT_PROVIDER,
+        "host_1",
+      ),
+    );
+    refresh();
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:project-checkout",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_1");
+    });
+    act(() =>
+      getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+        text: "Use my selection",
+        mentions: [],
+        attachments: [],
+      }),
+    );
+    await submit();
+    await waitFor(() =>
+      expect(mocks.createThread).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environment: {
+            type: "provider",
+            environmentProviderId: "project-checkout",
+            machine: { type: "existing", hostId: "host_1" },
+            inputs: {},
+          },
+        }),
+      ),
+    );
+  });
+
+  it("does not carry the worktree seed into a user-selected project", async () => {
+    const { router } = renderRootEnvironment(rootWorktreeEnvironment);
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    await act(() => latestPromptBoxProps().project.onChange("proj_2"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_2");
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:project-checkout",
+      );
+    });
+  });
+
+  it("honors a later host-only navigation after a worktree seed", async () => {
+    const { router } = renderRootEnvironment(rootWorktreeEnvironment);
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    await act(() =>
+      router.navigate("/", { state: { newEnvironmentHostId: "host_1" } }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_1");
+    });
+  });
+
+  it("resets a previous worktree selection with project-default", async () => {
+    const { router } = renderRootEnvironment(rootWorktreeEnvironment);
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:git-worktree",
+      );
+    });
+    await act(() =>
+      router.navigate("/", {
+        state: { newThreadEnvironment: { type: "project-default" } },
+      }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:project-checkout",
+      );
+    });
+  });
+
+  it("submits an existing environment supplied through the full environment seed", async () => {
+    mocks.projectThreads = [
+      makeThreadListEntry({
+        id: "thr_existing",
+        projectId: "proj_1",
+        environmentId: "env_existing",
+        environmentHostId: "host_1",
+        environmentProviderId: "git-worktree",
+      }),
+    ];
+    const { router } = renderRootEnvironment({
+      type: "reuse",
+      environmentId: "env_existing",
+    });
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "reuse:env_existing",
+      );
+    });
+    act(() =>
+      getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+        text: "Use the existing environment",
+        mentions: [],
+        attachments: [],
+      }),
+    );
+    await submit();
+    await waitFor(() =>
+      expect(mocks.createThread).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "proj_1",
+          environment: { type: "reuse", environmentId: "env_existing" },
+        }),
+      ),
+    );
   });
 
   it("closes visible plugin details before an underlying terminal", async () => {

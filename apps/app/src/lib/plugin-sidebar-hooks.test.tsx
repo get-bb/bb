@@ -429,6 +429,63 @@ describe("useSidebarThreadActions", () => {
     expect(actions.navigate).toHaveBeenCalledWith("/", undefined);
   });
 
+  it("opens a project with a fresh worktree seed", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+    const environment = {
+      type: "host" as const,
+      hostId: "host_remote",
+      workspace: {
+        type: "managed-worktree" as const,
+        baseBranch: { kind: "default" as const },
+      },
+    };
+    act(() =>
+      result.current.openNewThread({
+        projectId: "proj_app",
+        experimental_environment: environment,
+        focusPrompt: true,
+      }),
+    );
+    expect(actions.setRootComposeProjectId).toHaveBeenCalledWith("proj_app");
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: { newThreadEnvironment: environment, focusPrompt: true },
+    });
+  });
+
+  it("rejects a worktree without a host before changing project or navigating", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+    expect(() =>
+      result.current.openNewThread({
+        projectId: "proj_app",
+        experimental_environment: {
+          type: "host",
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "default" },
+          },
+        },
+      }),
+    ).toThrow("hostId is required");
+    expect(actions.setRootComposeProjectId).not.toHaveBeenCalled();
+    expect(actions.navigate).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit host for personal-workspace seeds too", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+    expect(() =>
+      result.current.openNewThread({
+        experimental_environment: {
+          type: "host",
+          workspace: { type: "personal" },
+        },
+      }),
+    ).toThrow("hostId is required");
+    expect(actions.navigate).not.toHaveBeenCalled();
+  });
+
   it("re-expands a collapsed conversation when opening its thread", () => {
     const thread = makeThreadListEntry({ id: "thr_1", projectId: "proj_app" });
     state.data = payload([thread]);
