@@ -11,6 +11,26 @@ vi.mock("./WaveformVisualizer.js", () => ({
 afterEach(cleanup);
 
 describe("VoiceRecordingBar", () => {
+  it("offers separate add-to-draft and send actions", () => {
+    const onConfirm = vi.fn();
+    const onSend = vi.fn();
+    render(
+      <VoiceRecordingBar
+        state="recording"
+        stream={null}
+        onConfirm={onConfirm}
+        onSend={onSend}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Stop and add to draft" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send voice input" }));
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(onSend).toHaveBeenCalledOnce();
+  });
+
   it("disables confirm while transcribing", () => {
     const onConfirm = vi.fn();
     render(
@@ -18,6 +38,7 @@ describe("VoiceRecordingBar", () => {
         state="transcribing"
         stream={null}
         onConfirm={onConfirm}
+        onSend={vi.fn()}
         onCancel={vi.fn()}
       />,
     );

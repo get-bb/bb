@@ -453,6 +453,7 @@ export interface PromptVoiceConfig {
   stream: MediaStream | null;
   start: () => void | Promise<void>;
   stop: () => void;
+  send: () => void;
   cancel: () => void;
 }
 
@@ -460,6 +461,7 @@ export interface PromptBoxHandle {
   focusEnd: () => void;
   captureHeightForLayoutChange: () => void;
   insertTextAtCursor: (text: string) => void;
+  sendVoiceTranscript: (text: string) => void;
   getTextBeforeCursor: () => string | undefined;
   playVoiceCompletionTransition: () => Promise<void>;
 }
@@ -2500,12 +2502,24 @@ export function PromptBoxInternal({
     return beforeCursor.length > 0 ? beforeCursor : undefined;
   }, []);
 
+  const [voiceSubmitBaseline, setVoiceSubmitBaseline] = useState<string | null>(
+    null,
+  );
+  const sendVoiceTranscript = useCallback(
+    (text: string) => {
+      setVoiceSubmitBaseline(valueRef.current);
+      insertTextAtCursor(text);
+    },
+    [insertTextAtCursor],
+  );
+
   useImperativeHandle(
     promptBoxRef,
     () => ({
       captureHeightForLayoutChange: capturePromptBoxHeight,
       focusEnd,
       insertTextAtCursor,
+      sendVoiceTranscript,
       getTextBeforeCursor,
       playVoiceCompletionTransition,
     }),
@@ -2514,6 +2528,7 @@ export function PromptBoxInternal({
       focusEnd,
       getTextBeforeCursor,
       insertTextAtCursor,
+      sendVoiceTranscript,
       playVoiceCompletionTransition,
     ],
   );
@@ -2718,6 +2733,23 @@ export function PromptBoxInternal({
       blurPromptEditor(editorRef.current);
     }
   }, [canPrimarySubmit, onSubmit]);
+
+  useEffect(() => {
+    if (
+      voiceSubmitBaseline === null ||
+      showVoiceActionGroup ||
+      value === voiceSubmitBaseline
+    )
+      return;
+    setVoiceSubmitBaseline(null);
+    if (canSubmit) submitPrompt();
+  }, [
+    voiceSubmitBaseline,
+    showVoiceActionGroup,
+    value,
+    canSubmit,
+    submitPrompt,
+  ]);
 
   const handleSubmitClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -3292,6 +3324,7 @@ export function PromptBoxInternal({
                     state={renderedVoiceActionState}
                     stream={voice.stream}
                     onConfirm={voice.stop}
+                    onSend={voice.send}
                     onCancel={cancelVoiceInput}
                   />
                 </div>

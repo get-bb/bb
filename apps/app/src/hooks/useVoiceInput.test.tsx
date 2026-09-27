@@ -161,6 +161,24 @@ it("keeps an accepted transcription running after unmount", async () => {
   expect(onTranscript).toHaveBeenCalledWith("Spoken words");
 });
 
+it("discards a stopped recording cancelled before the recorder's stop event", async () => {
+  vi.stubGlobal("MediaRecorder", DeferredRecorder);
+  const onTranscribe = vi.fn();
+  const onTranscript = vi.fn();
+  const { result } = renderHook(() =>
+    useVoiceInput({ onTranscribe, onTranscript }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  act(() => {
+    result.current.stop();
+    result.current.cancel();
+  });
+  await act(async () => DeferredRecorder.current.finish());
+  expect(onTranscribe).not.toHaveBeenCalled();
+  expect(onTranscript).not.toHaveBeenCalled();
+});
+
 it("transcribes an accepted recording when the recorder stops after unmount", async () => {
   vi.stubGlobal("MediaRecorder", DeferredRecorder);
   const onTranscribe = vi.fn().mockResolvedValue("Delayed words");

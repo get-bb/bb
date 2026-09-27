@@ -7,6 +7,7 @@ interface VoiceRecordingBarProps {
   state: "recording" | "transcribing";
   stream: MediaStream | null;
   onConfirm: () => void;
+  onSend: () => void;
   onCancel: () => void;
 }
 
@@ -17,6 +18,7 @@ export function VoiceRecordingBar({
   state,
   stream,
   onConfirm,
+  onSend,
   onCancel,
 }: VoiceRecordingBarProps) {
   const isTranscribing = state === "transcribing";
@@ -50,9 +52,7 @@ export function VoiceRecordingBar({
         size="icon"
         variant="default"
         aria-label={
-          isTranscribing
-            ? "Transcribing voice input"
-            : "Stop and transcribe recording"
+          isTranscribing ? "Transcribing voice input" : "Stop and add to draft"
         }
         disabled={isTranscribing}
         onClick={onConfirm}
@@ -63,6 +63,17 @@ export function VoiceRecordingBar({
         ) : (
           <Icon name="Check" className="size-4" />
         )}
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="default"
+        aria-label="Send voice input"
+        disabled={isTranscribing}
+        onClick={onSend}
+        className={CONTROL_BUTTON_CLASS}
+      >
+        <Icon name="ArrowUp" className="size-4" />
       </Button>
     </div>
   );
