@@ -1,4 +1,9 @@
-import { getThread, type ClaimedQueuedThreadMessageRow } from "@bb/db";
+import {
+  getThread,
+  listQueuedThreadMessagesWaitingOnKind,
+  setQueuedThreadMessageFailureReason,
+  type ClaimedQueuedThreadMessageRow,
+} from "@bb/db";
 import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
@@ -63,4 +68,25 @@ export function queueInputForStartingTurn(
     );
   }
   return outcome;
+}
+
+export function preserveFailedTurnStartQueue(
+  deps: Pick<AppDeps, "db"> & { hub: Pick<AppDeps["hub"], "notifyThread"> },
+  threadId: string,
+): void {
+  if (getThread(deps.db, threadId)?.status !== "error") return;
+  if (getActiveTurnId(deps, threadId) !== null) return;
+  for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
+    threadId,
+    kind: "turn-starting",
+  })) {
+    setQueuedThreadMessageFailureReason(deps.db, deps.hub, {
+      id: row.id,
+      threadId,
+      failureReason:
+        "The previous turn ended. This message was kept for manual recovery.",
+      now: Date.now(),
+      retryDelaysMs: [],
+    });
+  }
 }
