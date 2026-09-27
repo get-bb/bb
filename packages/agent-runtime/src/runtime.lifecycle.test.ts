@@ -304,18 +304,24 @@ describe("createAgentRuntime lifecycle", () => {
           {
             name: "PATH",
             source: { plugin: "env-test" },
-            value: "/plugin/bin",
+            value: { masked: true },
             reason: "Use the plugin toolchain",
           },
           {
             name: "AUTH_PROXY_URL",
             source: { plugin: "env-test" },
-            value: "http://127.0.0.1:3334/plugins/env-test/auth",
+            value: { masked: true },
             reason: "Use the authenticated server proxy",
           },
+          { name: "BB_SERVER_URL", source: "shell", value: { masked: true } },
         ]),
       });
-      expect(JSON.stringify(events)).toContain("/plugins/env-test/auth");
+      const resolvedEnvironmentEvents = JSON.stringify(
+        events.filter((event) => event.type === "provider.env-resolved"),
+      );
+      expect(resolvedEnvironmentEvents).not.toContain("/plugin/bin");
+      expect(resolvedEnvironmentEvents).not.toContain("/plugins/env-test/auth");
+      expect(resolvedEnvironmentEvents).not.toContain("127.0.0.1:3334");
 
       await runtime.runTurn({
         clientRequestId: "creq_222222224c",

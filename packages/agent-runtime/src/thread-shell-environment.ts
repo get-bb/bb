@@ -34,7 +34,7 @@ export interface ResolvedThreadEnvironmentEntry {
     | "shell"
     | { plugin: string }
     | { core: "machine-git" | "machine-environment" | "project-environment" };
-  value: string | { masked: true };
+  value: { masked: true };
   reason?: string;
 }
 
@@ -55,8 +55,8 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
 } {
   const envVars = buildThreadShellEnvironment(args);
   const droppedContributions: DroppedThreadEnvironmentContribution[] = [];
-  const entries: ResolvedThreadEnvironmentEntry[] = Object.entries(envVars).map(
-    ([name, value]) => ({ name, source: "shell", value }),
+  const entries: ResolvedThreadEnvironmentEntry[] = Object.keys(envVars).map(
+    (name) => ({ name, source: "shell", value: { masked: true } }),
   );
   for (const contribution of args.contributedEnv) {
     let value: string;
@@ -90,7 +90,7 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
     entries.push({
       name: contribution.name,
       source: contribution.source,
-      value: "core" in contribution.source ? { masked: true } : value,
+      value: { masked: true },
       reason: contribution.reason,
     });
   }
