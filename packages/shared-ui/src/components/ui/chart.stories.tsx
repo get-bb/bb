@@ -15,7 +15,7 @@ const chartData = [
 ];
 
 const chartConfig = {
-  threads: { label: "Threads", color: "var(--chart-1)" },
+  threads: { label: "Threads", color: "var(--color-primary)" },
 } satisfies ChartConfig;
 
 export function Overview() {

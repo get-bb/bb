@@ -21,7 +21,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Archive confirmation"
-        hint="vburojevic/bb-plugin-linear:app/ArchiveDialog.tsx — reversible action, so the body says so explicitly"
+        hint="vburojevic/bb-plugin-linear:app/ArchiveDialog.tsx — reversible, explained in body (trigger added for demo; normally fully controlled)"
       >
         <AlertDialog>
           <AlertDialogTrigger asChild>
@@ -42,7 +42,7 @@ export function Overview() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Keep it</AlertDialogCancel>
-              <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90">
+              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Archive
               </AlertDialogAction>
             </AlertDialogFooter>
