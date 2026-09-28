@@ -176,22 +176,24 @@ function CollectionBrowseDemo() {
                         { id: "project", label: "Project" },
                         { id: "alpha", label: "Automation name" },
                       ]}
-                      onChange={(next) =>
-                        setSortMode(next as "project" | "alpha")
-                      }
+                      onChange={(next) => {
+                        if (next === "project" || next === "alpha") setSortMode(next);
+                      }}
                     />
                   </>
                 }
               />
             }
             footer={
-              <ResourcePagination
-                page={pagination.page}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                visibleCount={pagination.visibleCount}
-                onPageChange={pagination.setPage}
-              />
+              pagination.total > pagination.pageSize ? (
+                <ResourcePagination
+                  page={pagination.page}
+                  pageSize={pagination.pageSize}
+                  total={pagination.total}
+                  visibleCount={pagination.visibleCount}
+                  onPageChange={pagination.setPage}
+                />
+              ) : undefined
             }
           >
             <ResourceListPanel>

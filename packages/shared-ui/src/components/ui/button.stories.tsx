@@ -128,13 +128,13 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="Icon-only row action"
-          hint="plugins/thread-list/ThreadActionsMenu.tsx — ghost icon-size button toggling archive state"
+          hint="plugins/thread-list/app/rows/ThreadActionsMenu.tsx — ghost icon-size button toggling archive state"
         >
           <ArchiveThreadRowDemo />
         </StoryRow>
         <StoryRow
           label="Async pagination trigger"
-          hint="plugins/thread-list/ProjectList.tsx — ghost sm button whose label reflects fetch-next-page state"
+          hint="plugins/thread-list/app/list/ProjectList.tsx — ghost sm button whose label reflects fetch-next-page state"
         >
           <LoadMoreArchivedDemo />
         </StoryRow>

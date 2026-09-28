@@ -10,7 +10,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Empty thread list"
-        hint="plugins/thread-list/ThreadListEmptyState.tsx — sidebar's no-threads message, icon + muted text"
+        hint="plugins/thread-list/app/ui/ThreadListEmptyState.tsx — sidebar's no-threads message, icon + muted text"
       >
         <EmptyState
           message="No threads"
