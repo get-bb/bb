@@ -35,7 +35,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Sidebar menu row"
-        hint="plugins/thread-list/sidebar.tsx — SidebarMenuSkeleton sizes each row to a pseudo-random width via a hashed id"
+        hint="plugins/thread-list/app/ui/sidebar.tsx — SidebarMenuSkeleton sizes each row to a pseudo-random width via a hashed id"
       >
         <SidebarMenuSkeletonDemo />
       </StoryRow>

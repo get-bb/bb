@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship real, composed-usage Ladle `Overview` stories for every remaining `packages/shared-ui` component with nonzero real usage (tiers 1-3 already covered Select/Dialog/DropdownMenu/Tooltip/Tabs/Popover/Command/ContextMenu) — 8 tasks, ~19 story files, covering Button, five form controls, two loading-state components, the whole `Resource*` family, `WorkflowProgress`, `QuestionForm`, five misc single-use widgets, and `Pill`.
+**Goal:** Ship real, composed-usage Ladle `Overview` stories for every remaining `packages/shared-ui` component with nonzero real usage (tiers 1-3 already covered Select/Dialog/DropdownMenu/Tooltip/Tabs/Popover/Command/ContextMenu) — 8 tasks, 17 story files, covering Button, five form controls, two loading-state components, the whole `Resource*` family, `WorkflowProgress`, `QuestionForm`, five misc single-use widgets, and `Pill`.
 
 **Architecture:** No new infrastructure. Tier 1's pipeline (`packages/shared-ui/src/lib/story-card.tsx`, the `ladle build` CI gate, the `AGENTS.md` convention) already covers this tier. Unlike tiers 1-3 (one component family per task), this tier batches multiple small, thematically-related components into a single task where their real usage is genuinely related (e.g. RadioGroup+Checkbox+Switch all come from the same settings-form call site), and gives the one large family (`Resource*`) its own task producing a single co-located file with two `StoryRow`s (collection/browse, detail/activity) rather than splitting it across files — `Resource*`'s barrel export (`resource-list.tsx`) is the one file every real call site actually imports from.
 
@@ -183,13 +183,13 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="Icon-only row action"
-          hint="plugins/thread-list/ThreadActionsMenu.tsx — ghost icon-size button toggling archive state"
+          hint="plugins/thread-list/app/rows/ThreadActionsMenu.tsx — ghost icon-size button toggling archive state"
         >
           <ArchiveThreadRowDemo />
         </StoryRow>
         <StoryRow
           label="Async pagination trigger"
-          hint="plugins/thread-list/ProjectList.tsx — ghost sm button whose label reflects fetch-next-page state"
+          hint="plugins/thread-list/app/list/ProjectList.tsx — ghost sm button whose label reflects fetch-next-page state"
         >
           <LoadMoreArchivedDemo />
         </StoryRow>
@@ -315,7 +315,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Dialog form field"
-        hint="plugins/thread-list/ThreadSectionCreateDialog.tsx — required text input in a dialog form with inline validation"
+        hint="plugins/thread-list/app/list/ThreadSectionCreateDialog.tsx — required text input in a dialog form with inline validation"
       >
         <CreateSectionFormDemo />
       </StoryRow>
@@ -710,7 +710,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Sidebar menu row"
-        hint="plugins/thread-list/sidebar.tsx — SidebarMenuSkeleton sizes each row to a pseudo-random width via a hashed id"
+        hint="plugins/thread-list/app/ui/sidebar.tsx — SidebarMenuSkeleton sizes each row to a pseudo-random width via a hashed id"
       >
         <SidebarMenuSkeletonDemo />
       </StoryRow>
@@ -1880,7 +1880,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Empty thread list"
-        hint="plugins/thread-list/ThreadListEmptyState.tsx — sidebar's no-threads message, icon + muted text"
+        hint="plugins/thread-list/app/ui/ThreadListEmptyState.tsx — sidebar's no-threads message, icon + muted text"
       >
         <EmptyState
           message="No threads"

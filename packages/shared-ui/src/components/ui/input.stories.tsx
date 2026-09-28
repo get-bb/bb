@@ -58,7 +58,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Dialog form field"
-        hint="plugins/thread-list/ThreadSectionCreateDialog.tsx — required text input in a dialog form with inline validation"
+        hint="plugins/thread-list/app/list/ThreadSectionCreateDialog.tsx — required text input in a dialog form with inline validation"
       >
         <CreateSectionFormDemo />
       </StoryRow>
