@@ -439,6 +439,14 @@ export function parseLifecycleError(error: unknown): LifecycleApiError | null {
   return result.success ? result.data : null;
 }
 
+export function isHostDisconnectedError(error: unknown): boolean {
+  const lifecycleError = parseLifecycleError(error);
+  return (
+    lifecycleError?.code === "host_unavailable" &&
+    lifecycleError.details.reason === "disconnected"
+  );
+}
+
 export function formatLifecycleErrorDescription(
   description: LifecycleErrorDescription,
 ): string {
