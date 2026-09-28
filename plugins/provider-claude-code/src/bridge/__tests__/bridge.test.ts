@@ -4206,7 +4206,7 @@ describe("bridge", () => {
     { method: "turn/start", name: "turn start" },
     { method: "turn/steer", name: "turn steer" },
   ] as const)(
-    "delays $name responses until the SDK prompt consumes the input",
+    "opens $name when the SDK consumes input before producing output",
     async (testCase) => {
       const threadId = `thread-${testCase.method.replace("/", "-")}-consumed`;
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4239,6 +4239,11 @@ describe("bridge", () => {
         await bridge.flushWork();
 
         expect(bridge.hasResponse(2)).toBe(false);
+        expect(
+          assembleCapturedThreadEvents(bridge.messages, "claude-code").some(
+            (event) => event.type === "turn/started",
+          ),
+        ).toBe(false);
         await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
           "Please account for the restart",
         );
@@ -4246,7 +4251,71 @@ describe("bridge", () => {
           result: { threadId },
         });
 
+        const events = assembleCapturedThreadEvents(
+          bridge.messages,
+          "claude-code",
+        );
+        const started = events.find((event) => event.type === "turn/started");
+        expect(started).toBeDefined();
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "turn/input/accepted",
+            clientRequestId: "creq_abcdefghjk",
+            scope: started?.scope,
+          }),
+        );
+
+        if (testCase.method === "turn/start") {
+          if (started?.scope.kind !== "turn")
+            throw new Error("Missing active turn");
+          bridge.sendRequest(3, "turn/steer", {
+            threadId,
+            providerThreadId: threadId,
+            expectedTurnId: started.scope.turnId,
+            input: [{ type: "text", text: "Use the corrected approach" }],
+            clientRequestId: "creq_abcdefghjm",
+            options: {
+              permissionMode: "accept-edits",
+              permissionScope: "workspace",
+              approvalReviewer: "user",
+              permissionEscalation: "ask",
+              providerOptions: {},
+            },
+          });
+          await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+            "Use the corrected approach",
+          );
+          await bridge.waitForResponse(3);
+          const steered = assembleCapturedThreadEvents(
+            bridge.messages,
+            "claude-code",
+          );
+          expect(
+            steered.filter((event) => event.type === "turn/started"),
+          ).toHaveLength(1);
+          expect(steered).toContainEqual(
+            expect.objectContaining({
+              type: "turn/input/accepted",
+              clientRequestId: "creq_abcdefghjm",
+              scope: steered.find((event) => event.type === "turn/started")
+                ?.scope,
+            }),
+          );
+        }
+
         await stopBridgeThread({ bridge, queries, threadId });
+        const stopped = assembleCapturedThreadEvents(
+          bridge.messages,
+          "claude-code",
+        );
+        expect(stopped).toContainEqual(
+          expect.objectContaining({
+            type: "turn/completed",
+            status: "interrupted",
+            scope: stopped.find((event) => event.type === "turn/started")
+              ?.scope,
+          }),
+        );
       } finally {
         queries[0]?.finish();
         bridge.restore();

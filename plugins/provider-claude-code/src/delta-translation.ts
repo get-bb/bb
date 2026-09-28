@@ -370,7 +370,7 @@ function getClaudeResultErrorDetail(message: ClaudeResultMessage): string {
 
 interface ClaudeTurnMirror {
   turnOpen: boolean;
-  pendingInputs: number;
+  responseStarted: boolean;
   segment: number;
 }
 
@@ -379,7 +379,6 @@ interface ClaudeThreadDialectState {
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
   latestRequestContextTokens: number | undefined;
   latestProviderCheckpointId: string | undefined;
-  pendingUserCheckpointId: string | undefined;
   lastModelFallback:
     | (ClaudeModelFallbackTransition & { segment: number })
     | undefined;
@@ -394,11 +393,10 @@ interface ClaudeThreadDialectState {
 
 function createThreadState(): ClaudeThreadDialectState {
   return {
-    mirror: { turnOpen: false, pendingInputs: 0, segment: 0 },
+    mirror: { turnOpen: false, responseStarted: false, segment: 0 },
     cumulativeTokens: ZERO_TOKEN_USAGE,
     latestRequestContextTokens: undefined,
     latestProviderCheckpointId: undefined,
-    pendingUserCheckpointId: undefined,
     lastModelFallback: undefined,
     armedHardRateLimitRejection: undefined,
     selectedModelContextWindow: null,
@@ -445,10 +443,9 @@ export function createClaudeDeltaTranslator(
     state.suppressUnacceptedTurnStart = false;
     state.mirror.turnOpen = true;
     state.mirror.segment += 1;
-    state.mirror.pendingInputs = 0;
+    state.mirror.responseStarted = false;
     state.latestRequestContextTokens = undefined;
-    state.latestProviderCheckpointId = state.pendingUserCheckpointId;
-    state.pendingUserCheckpointId = undefined;
+    state.latestProviderCheckpointId = undefined;
     state.armedHardRateLimitRejection = undefined;
     state.startedTools.clear();
   }
@@ -465,20 +462,12 @@ export function createClaudeDeltaTranslator(
   ): ThreadDelta[] {
     for (const delta of deltas) {
       switch (delta.kind) {
-        case "input.accepted":
-          if (!state.mirror.turnOpen) {
-            state.mirror.pendingInputs += 1;
-          }
-          break;
         case "turn.open":
           mirrorOpenTurn(state);
+          state.mirror.responseStarted = true;
           break;
         case "turn.boundary":
-          if (
-            state.mirror.turnOpen ||
-            (delta.claimIfIdle === true && state.mirror.pendingInputs > 0)
-          ) {
-            mirrorOpenTurn(state);
+          if (state.mirror.turnOpen) {
             mirrorCloseTurn(state);
           }
           break;
@@ -486,16 +475,12 @@ export function createClaudeDeltaTranslator(
           if (delta.threadScoped === true) {
             break;
           }
-          if (!state.mirror.turnOpen && state.mirror.pendingInputs > 0) {
-            mirrorOpenTurn(state);
-          }
           if (delta.settlesTurn === true && state.mirror.turnOpen) {
             mirrorCloseTurn(state);
           }
           break;
         case "session.ended":
-          if (state.mirror.turnOpen || state.mirror.pendingInputs > 0) {
-            mirrorOpenTurn(state);
+          if (state.mirror.turnOpen) {
             mirrorCloseTurn(state);
           }
           break;
@@ -507,11 +492,7 @@ export function createClaudeDeltaTranslator(
   }
 
   function isTurnStartSuppressed(state: ClaudeThreadDialectState): boolean {
-    return (
-      state.suppressUnacceptedTurnStart &&
-      !state.mirror.turnOpen &&
-      state.mirror.pendingInputs === 0
-    );
+    return state.suppressUnacceptedTurnStart && !state.mirror.turnOpen;
   }
 
   function toRawEvent(rawEvent: JsonRpcMessage): ProviderRawEvent {
@@ -801,7 +782,7 @@ export function createClaudeDeltaTranslator(
     }
 
     if (isClaudeNoResponseRequestedSyntheticMessage(message)) {
-      if (!state.mirror.turnOpen && state.mirror.pendingInputs === 0) {
+      if (!state.mirror.turnOpen) {
         return [];
       }
       const deltas = withMirror(state, [{ kind: "turn.open" }]);
@@ -947,15 +928,11 @@ export function createClaudeDeltaTranslator(
         message.isSynthetic === true ||
         message.parent_tool_use_id != null ||
         context?.parentToolCallId !== undefined ||
-        (!state.mirror.turnOpen && state.mirror.pendingInputs === 0)
+        !state.mirror.turnOpen
       ) {
         return [];
       }
-      if (state.mirror.turnOpen) {
-        state.latestProviderCheckpointId ??= message.uuid;
-      } else {
-        state.pendingUserCheckpointId = message.uuid;
-      }
+      state.latestProviderCheckpointId ??= message.uuid;
       return [];
     }
     if (!state.mirror.turnOpen) {
@@ -1022,11 +999,11 @@ export function createClaudeDeltaTranslator(
       return unexpectedSdkEventDeltas(event, context);
     }
     const message = parsedMessage.data;
-    const resultCanClaimPendingInput =
+    const resultCanSettleBeforeResponse =
       message.origin === undefined || message.origin.kind === "human";
     if (
-      !state.mirror.turnOpen &&
-      (state.mirror.pendingInputs === 0 || !resultCanClaimPendingInput)
+      !state.mirror.turnOpen ||
+      (!state.mirror.responseStarted && !resultCanSettleBeforeResponse)
     ) {
       return [];
     }
@@ -1287,7 +1264,8 @@ export function createClaudeDeltaTranslator(
   ): ThreadDelta[] {
     const state = stateFor({ threadId });
     state.suppressUnacceptedTurnStart = false;
-    return withMirror(state, [{ kind: "input.accepted", clientRequestId }]);
+    mirrorOpenTurn(state);
+    return [{ kind: "turn.open" }, { kind: "input.accepted", clientRequestId }];
   }
 
   function buildSessionSettlementDeltas(threadId: string): ThreadDelta[] {

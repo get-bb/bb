@@ -552,7 +552,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       ),
     ).toEqual([]);
 
-    harness.acceptInput("creq_23456789ad", context.threadId);
+    const accepted = harness.acceptInput("creq_23456789ad", context.threadId);
     const followUp = harness.translate(
       {
         type: "assistant",
@@ -565,13 +565,13 @@ describe("claude turn and checkpoint lifecycle", () => {
       },
       context,
     );
-    expect(followUp).toContainEqual(
+    expect(accepted).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
         scope: turnScope(TURN_2),
       }),
     );
-    expect(followUp).toContainEqual(
+    expect(accepted).toContainEqual(
       expect.objectContaining({
         type: "turn/input/accepted",
         clientRequestId: "creq_23456789ad",
@@ -639,7 +639,7 @@ describe("claude turn and checkpoint lifecycle", () => {
 describe("claude synthetic no-response handling", () => {
   it("completes a pending turn for Claude synthetic no-response messages", () => {
     const harness = createClaudeDeltaHarness();
-    expect(harness.acceptInput("creq_23456789af", "bb-thread-1")).toEqual([]);
+    const accepted = harness.acceptInput("creq_23456789af", "bb-thread-1");
 
     const events = harness.translate(
       {
@@ -662,7 +662,7 @@ describe("claude synthetic no-response handling", () => {
       { threadId: "bb-thread-1" },
     );
 
-    expect(events).toEqual([
+    expect([...accepted, ...events]).toEqual([
       {
         type: "turn/started",
         threadId: "",
@@ -699,8 +699,6 @@ describe("claude synthetic no-response handling", () => {
     );
 
     expect(resetEvents.map((event) => event.type)).toEqual([
-      "turn/started",
-      "turn/input/accepted",
       "thread/context/cleared",
     ]);
     expect(resetEvents).toContainEqual({
@@ -734,7 +732,7 @@ describe("claude synthetic no-response handling", () => {
 
   it("does not let a recovered task notification settle pending human input", () => {
     const harness = createClaudeDeltaHarness();
-    harness.acceptInput("creq_23456789af", "bb-thread-1");
+    const accepted = harness.acceptInput("creq_23456789af", "bb-thread-1");
 
     expect(
       harness.translate(
@@ -764,7 +762,7 @@ describe("claude synthetic no-response handling", () => {
       { threadId: "bb-thread-1" },
     );
 
-    expect(assistantEvents).toContainEqual(
+    expect(accepted).toContainEqual(
       expect.objectContaining({
         type: "turn/input/accepted",
         scope: turnScope(TURN_1),
@@ -830,7 +828,7 @@ describe("claude synthetic no-response handling", () => {
 
   it("completes a pending turn for wrapped Claude synthetic no-response messages", () => {
     const harness = createClaudeDeltaHarness();
-    harness.acceptInput("creq_23456789af", "bb-thread-1");
+    const accepted = harness.acceptInput("creq_23456789af", "bb-thread-1");
 
     const events = harness.translate(
       {
@@ -860,7 +858,7 @@ describe("claude synthetic no-response handling", () => {
       { threadId: "bb-thread-1" },
     );
 
-    expect(events).toEqual([
+    expect([...accepted, ...events]).toEqual([
       {
         type: "turn/started",
         threadId: "",

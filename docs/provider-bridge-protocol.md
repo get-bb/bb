@@ -433,7 +433,13 @@ it:
    so correlation is explicit and the runtime never guesses which user
    message opened a turn; the assembler queues it until a turn opens (or
    emits into the already-open turn for steers) and constructs
-   `turn/input/accepted` itself. Settlement rides `turn.boundary
+   `turn/input/accepted` itself. Claude emits `turn.open` together with
+   acceptance once the SDK consumes the prompt, before waiting for model
+   output. Follow-up input can then steer into that turn during provider
+   preparation. SDK consumption failure must not open a turn; stopping after
+   consumption must settle it even if no output arrived. A recovered task
+   notification cannot settle this accepted user turn before its response
+   begins. Settlement rides `turn.boundary
 { status }`; a boundary with `claimIfIdle: true` owns a turn only when
    accepted input is pending, so a provider-terminal fallback signal on an
    idle thread settles nothing. A prompt the provider handles without doing
