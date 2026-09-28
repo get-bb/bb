@@ -65,7 +65,9 @@ added or enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, the plugin
 contributes its provider-specific server route and a distinct secret token to
 Claude Code or Codex sessions on every host. Claude Code also receives
-`ENABLE_TOOL_SEARCH=true` so tool search stays on through the hub. Codex
+`ENABLE_TOOL_SEARCH=true` so tool search stays on through the hub, and
+`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1` so Opus keeps its native 1M
+context window instead of the 200k fallback for custom base URLs. Codex
 receives `CODEX_OPENAI_BASE_URL` and the secret `CODEX_POOL_AUTH_TOKEN`; its
 app server uses those values without editing `~/.codex/config.toml`.
 Codex image generation and editing use the same authenticated pool route.
