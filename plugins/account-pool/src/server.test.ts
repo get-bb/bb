@@ -1764,6 +1764,12 @@ describe("Account Pool plugin", () => {
           "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
       },
       {
+        name: "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
+        value: "1",
+        reason:
+          "Claude Code limits Opus to a 200k context window behind a custom base URL; the hub forwards to Anthropic's API",
+      },
+      {
         name: "BB_ACCOUNT_POOL_PARENT_URL",
         value: { serverPath: "/api/v1/plugins/account-pool/http" },
         reason: "Account Pooler hub for nested bb servers on this machine",
@@ -6522,6 +6528,7 @@ describe("Account Pool nested proxy", () => {
       "ANTHROPIC_BASE_URL",
       "ANTHROPIC_AUTH_TOKEN",
       "ENABLE_TOOL_SEARCH",
+      "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
       "BB_ACCOUNT_POOL_PARENT_URL",
       "BB_ACCOUNT_POOL_PARENT_TOKEN",
     ]);

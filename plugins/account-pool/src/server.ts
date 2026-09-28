@@ -300,6 +300,12 @@ export function createAccountPoolPlugin(
           reason:
             "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
         },
+        {
+          name: "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
+          value: "1",
+          reason:
+            "Claude Code limits Opus to a 200k context window behind a custom base URL; the hub forwards to Anthropic's API",
+        },
       ]),
     );
     bb.providers.experimental_contributeEnvHealth("claude-code", () =>
