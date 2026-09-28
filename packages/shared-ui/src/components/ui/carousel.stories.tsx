@@ -5,14 +5,14 @@ export default {
   title: "shared-ui/Carousel",
 };
 
-const PLACEHOLDER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4"];
+const PLACEHOLDER_COLORS = ["bg-primary", "bg-accent", "bg-destructive", "bg-success"];
 
 export function Overview() {
   return (
     <StoryCard>
       <StoryRow
         label="Screenshot gallery"
-        hint="apps/app/.../PluginMarketplaceListing.tsx — PluginScreenshotGallery, images replaced with placeholders"
+        hint="apps/app/src/components/plugin/management/PluginMarketplaceListing.tsx — PluginScreenshotGallery, images replaced with placeholders"
       >
         <Carousel
           opts={{ align: "start", containScroll: "trimSnaps" }}
@@ -23,7 +23,7 @@ export function Overview() {
             {PLACEHOLDER_COLORS.map((color, index) => (
               <CarouselItem key={color} className="basis-auto pl-3">
                 <div
-                  className={`flex h-40 w-64 items-center justify-center rounded-md border border-border object-contain text-sm text-white ${color}`}
+                  className={`flex h-40 w-64 items-center justify-center rounded-md border border-border text-sm text-white ${color}`}
                 >
                   Screenshot {index + 1}
                 </div>
