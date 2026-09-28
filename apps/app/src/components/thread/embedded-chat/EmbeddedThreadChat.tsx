@@ -9,6 +9,7 @@ import {
 } from "react";
 import { defaultAppSettings, type PromptInput } from "@bb/domain";
 import type { SendMessageDelivery } from "@bb/server-contract";
+import type { ComposerSubmitOptions, JsonValue } from "@get-bb/plugin-sdk";
 import type {
   AttachmentsConfig,
   HistoryConfig,
@@ -62,7 +63,11 @@ import {
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
-import { showMutationErrorToast } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
+import { promptDraftToInput } from "@bb/client-core";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -443,6 +448,56 @@ function EmbeddedThreadChatWithComposer({
       threadId,
     ],
   );
+  const submitProgrammatically = useCallback(
+    async (
+      options: ComposerSubmitOptions,
+      pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
+    ) => {
+      const submittedDraft = promptDraft.getCurrent();
+      const input = promptDraftToInput(submittedDraft);
+      if (input.length === 0) {
+        throw new Error("Type a message before submitting it.");
+      }
+      const clearedSubmittedDraft =
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      setIsTurnSubmitting(true);
+      try {
+        const result = await sendThreadMessage.mutateAsync({
+          id: threadId,
+          input,
+          mode: "queue-if-active",
+          ...executionRequestFields,
+          ...(options.sendAt === undefined ? {} : { sendAt: options.sendAt }),
+          ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
+        });
+        reportQueuedSendDelivery(result.delivery);
+      } catch (error) {
+        if (clearedSubmittedDraft) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
+        throw new Error(
+          getMutationErrorMessage({
+            error,
+            fallbackMessage: "Failed to submit message",
+            lifecycleOperation: "send_message",
+          }),
+        );
+      } finally {
+        if (isMountedRef.current) {
+          setIsTurnSubmitting(false);
+        }
+      }
+    },
+    [
+      executionRequestFields,
+      promptDraft,
+      sendThreadMessage,
+      setBottomAttachmentError,
+      threadId,
+    ],
+  );
+  const submitProgrammaticallyRef = useLatestRef(submitProgrammatically);
   const handleSubmit = useCallback(() => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
@@ -645,23 +700,22 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessage?.draft ?? null,
   );
   const setStoredPromptDraft = promptDraft.setDraft;
+  const getStoredPromptDraft = promptDraft.getCurrent;
+  const storedPromptDraftKey = promptDraft.storageKey;
   const bottomPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (bottomScope === null) return null;
     const identity = bottomComposerHostIdentity;
-    const initialDraft = currentPromptDraftRef.current;
     return {
       scope: bottomScope,
-      textEffectKey: identity,
+      textEffectKey: storedPromptDraftKey,
       getCurrent: () =>
         activeBottomComposerIdentityRef.current === identity
           ? currentPromptDraftRef.current
-          : initialDraft,
+          : getStoredPromptDraft(),
       subscribeDraft: subscribeBottomDraft,
-      setDraft: (draft) => {
-        if (activeBottomComposerIdentityRef.current === identity) {
-          setStoredPromptDraft(draft);
-        }
-      },
+      setDraft: setStoredPromptDraft,
+      submit: (options, pluginSubmission) =>
+        submitProgrammaticallyRef.current(options, pluginSubmission),
       focus: () => {
         if (activeBottomComposerIdentityRef.current === identity) {
           setComposerFocusNonce((nonce) => nonce + 1);
@@ -671,7 +725,10 @@ function EmbeddedThreadChatWithComposer({
   }, [
     bottomComposerHostIdentity,
     bottomScope,
+    getStoredPromptDraft,
     setStoredPromptDraft,
+    storedPromptDraftKey,
+    submitProgrammaticallyRef,
     subscribeBottomDraft,
   ]);
   const queuedPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
@@ -720,6 +777,9 @@ function EmbeddedThreadChatWithComposer({
           isCurrentQueuedEdit(current) ? { ...current, draft } : current,
         );
       },
+      isAvailable: () =>
+        activeQueuedComposerIdentityRef.current === identity &&
+        isCurrentQueuedEdit(committedInlineEditRef.current),
       focus: () => {
         if (activeQueuedComposerIdentityRef.current === identity) {
           setInlineComposerFocusNonce((nonce) => nonce + 1);

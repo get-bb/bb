@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk/app";
+import type {
+  PluginComposerApi,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk/app";
 
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
 const app = await loadPluginApp(() => import("./app"));
-const { composerScopeKey, openSendLater, resetSendLaterState } =
-  await import("./app");
+const { openSendLater, resetSendLaterState } = await import("./app");
 
 const customization = app.composerCustomizations[0]!;
 const plusMenuItem = customization.plusMenu![0]!;
@@ -19,24 +21,8 @@ const picker = customization.banners![0]!;
 
 const HOUR_MS = 60 * 60 * 1000;
 
-function composerView(overrides: {
-  scope?: PluginComposerScope;
-  text?: string;
-  isEmpty?: boolean;
-  attachmentCount?: number;
-  isSubmitting?: boolean;
-}): ComposerView {
-  const text = overrides.text ?? "ship the release notes";
-  return {
-    scope: overrides.scope ?? { kind: "thread", threadId: "thr_scope" },
-    layout: "expanded",
-    draft: {
-      text,
-      isEmpty: overrides.isEmpty ?? text.trim() === "",
-      attachmentCount: overrides.attachmentCount ?? 0,
-    },
-    run: { isRunning: false, isSubmitting: overrides.isSubmitting ?? false },
-  };
+function fakeComposer(fields: Partial<PluginComposerApi>): PluginComposerApi {
+  return fields as PluginComposerApi;
 }
 
 function openPicker(
@@ -47,8 +33,11 @@ function openPicker(
     threadId: "thr_scope",
   };
   const text = options.text ?? "ship the release notes";
-  openSendLater(composerView({ scope, text }));
-  return renderSlot(picker, {}, { composer: { scope, text } });
+  const slot = renderSlot(picker, {}, { composer: { scope, text } });
+  act(() => {
+    openSendLater(fakeComposer({ isEmpty: false, key: slot.composer.key }));
+  });
+  return slot;
 }
 
 async function chooseScheduleOption(
@@ -87,16 +76,26 @@ describe("registration", () => {
         plusMenu: [
           { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
+        sendMenu: [
+          { id: "send-later", label: "Send later…", icon: "Calendar" },
+        ],
         banners: [{ id: "send-later", chrome: "bare" }],
       },
     ]);
   });
 
-  it("disables the row when there is no draft to schedule", () => {
-    const disabled = plusMenuItem.disabled as (view: ComposerView) => boolean;
-    expect(disabled(composerView({ text: "" }))).toBe(true);
-    expect(disabled(composerView({ isSubmitting: true }))).toBe(true);
-    expect(disabled(composerView({}))).toBe(false);
+  it("disables the row while the composer would not submit", () => {
+    const disabled = plusMenuItem.disabled as (
+      composer: PluginComposerApi,
+    ) => boolean;
+    expect(disabled(fakeComposer({ isSubmittingBlocked: true }))).toBe(true);
+    expect(disabled(fakeComposer({ isSubmittingBlocked: false }))).toBe(false);
+  });
+
+  it("refuses to open for an empty draft", () => {
+    expect(openSendLater(fakeComposer({ isEmpty: true, key: "k" }))).toBe(
+      false,
+    );
   });
 });
 
@@ -111,9 +110,14 @@ describe("picker visibility", () => {
   });
 
   it("stays closed in a composer other than the one it was opened from", () => {
-    openSendLater(
-      composerView({ scope: { kind: "thread", threadId: "thr_a" } }),
+    const opener = renderSlot(
+      picker,
+      {},
+      { composer: { scope: { kind: "thread", threadId: "thr_a" } } },
     );
+    const openerKey = opener.composer.key;
+    opener.unmount();
+    openSendLater(fakeComposer({ isEmpty: false, key: openerKey }));
     const slot = renderSlot(
       picker,
       {},
@@ -243,27 +247,5 @@ describe("scheduling", () => {
     expect(slot.queryByRole("dialog")).toBeNull();
     expect(slot.inspection.composer.submits).toHaveLength(0);
     expect(slot.inspection.composer.text).toBe("ship the release notes");
-  });
-});
-
-describe("composerScopeKey", () => {
-  it("distinguishes every composer kind", () => {
-    const keys = [
-      composerScopeKey({ kind: "thread", threadId: "t1" }),
-      composerScopeKey({
-        kind: "queued-message",
-        threadId: "t1",
-        queuedMessageId: "q1",
-      }),
-      composerScopeKey({
-        kind: "side-chat",
-        projectId: "p1",
-        parentThreadId: "t1",
-        tabId: "tab1",
-        childThreadId: null,
-      }),
-      composerScopeKey({ kind: "new-thread", projectId: null }),
-    ];
-    expect(new Set(keys).size).toBe(keys.length);
   });
 });

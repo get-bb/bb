@@ -701,12 +701,13 @@ useBbNavigate (including openUrl(url), which applies the current
 client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
-workspace/host/thread-storage files), useComposer
-(read/replace/update/clear scoped composer text,
-apply a class-based text effect, lock input, quote selections, insert mention
-pills, and focus the composer), and useComposerView (reactive bound scope,
-layout, draft, and run state). Plain-text edits preserve attachments and
-reconcile only inline mentions overlapped by the edit. Define RPC methods with `defineRpcContract`
+workspace/host/thread-storage files), and useComposer (one stable handle for
+the bound composer: read its text, mentions, scope, layout, run and submit
+state, and why submitting is blocked; replace/update/clear text; insert text
+and mentions at the cursor or end; apply a class-based text effect, lock input,
+quote selections, submit exactly as Enter would, and focus the composer).
+Plain-text edits preserve attachments and reconcile only inline mentions
+overlapped by the edit. Define RPC methods with `defineRpcContract`
 and Standard Schema-compatible input/output validators (Zod works directly),
 register via `bb.rpc.register(contract, handlers)`, then use a type-only
 backend contract import with `useRpc<typeof contract>()` for exact frontend
@@ -913,10 +914,9 @@ reload/disable/shutdown).
 Frontend entries register React slots (homepageSection, settingsSection,
 navPanel, threadPanelAction, experimental_newThreadPanelAction, fileOpener,
 messageDirective) and composer
-customizations via `app.composer.customize({ actions, plusMenu, banners,
-richText })`; action/banner components use `useComposer()` and
-`useComposerView()`, while the host renders plus-menu rows and editor
-decorations. The deprecated pre-1.0 `slots.composerAccessory` footer API was
+customizations via `app.composer.customize({ actions, plusMenu, sendMenu,
+banners, richText })`; action/banner components use `useComposer()`, while the
+host renders plus-menu and send-menu rows and editor decorations. The deprecated pre-1.0 `slots.composerAccessory` footer API was
 removed; migrate controls to actions or the plus menu and larger content to
 banners. Register all frontend surfaces via
 definePluginApp, use the hooks

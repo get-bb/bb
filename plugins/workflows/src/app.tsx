@@ -31,7 +31,7 @@ import {
 import {
   definePluginApp,
   useBbNavigate,
-  useComposerView,
+  useComposer,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
@@ -529,9 +529,9 @@ function RefreshWarning({ message }: { message: string }) {
 }
 
 function WorkflowStatusBanner() {
-  const view = useComposerView();
-  if (view.scope.kind !== "thread") return null;
-  return <WorkflowStatusBannerLoaded threadId={view.scope.threadId} />;
+  const { scope } = useComposer();
+  if (scope.kind !== "thread") return null;
+  return <WorkflowStatusBannerLoaded threadId={scope.threadId} />;
 }
 
 function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {

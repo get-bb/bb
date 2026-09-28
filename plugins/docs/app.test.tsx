@@ -1421,8 +1421,9 @@ describe("Docs nav panel", () => {
     await slot.findByRole("textbox", { name: "Document content" });
     fireEvent.click(slot.getByRole("button", { name: "Ask for changes" }));
     await waitFor(() =>
-      expect(slot.inspection.composer.mentions).toEqual([
+      expect(slot.inspection.composer.draft.mentions).toMatchObject([
         {
+          kind: "plugin",
           provider: "note",
           id: "personal:ask-inline.md",
           label: "Launch email",
@@ -1430,7 +1431,7 @@ describe("Docs nav panel", () => {
       ]),
     );
     expect(slot.inspection.composer.text).toBe(
-      "Keep this instruction.\n\nUpdate Launch email ",
+      "Keep this instruction.\n\nUpdate @Launch email ",
     );
     expect(slot.inspection.composer.focusCount).toBeGreaterThan(0);
   });

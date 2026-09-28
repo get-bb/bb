@@ -18,9 +18,12 @@ Read the installed declarations for exact current signatures.
 - `CodeOverflowMode`
 - `ComposerCustomization`
 - `ComposerPlusMenuItem`
+- `ComposerSendMenuItem`
 - `ComposerRichTextSpec`
-- `ComposerStructuredDraft`
-- `ComposerView`
+- `ComposerDraft`
+- `ComposerMention`
+- `ComposerInsertPart`
+- `ComposerInsertOptions`
 - `DiffProps`
 - `DiffViewMode`
 - `ExperimentalAppPanel`
@@ -100,8 +103,8 @@ Read the installed declarations for exact current signatures.
 - `PluginHookSignatures`
 - `PluginHooks`
 - `PluginTurnFailedEvent`
-- `ExperimentalComposerSubmitOptions`
-- `ExperimentalComposerSelection`
+- `ComposerSubmitOptions`
+- `ComposerSelection`
 - `PluginAgentConfiguration`
 - `PluginAgentConfigurationContext`
 - `PluginAgentToolContentPart`

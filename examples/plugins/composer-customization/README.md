@@ -2,12 +2,13 @@
 
 A small reference plugin for every `app.composer.customize(...)` region:
 
-- `actions`: a React button using `useComposer()` and `useComposerView()` to
-  lock and decorate the bound draft;
-- `plusMenu`: a host-rendered command that appends a checklist;
-- `banners`: a card showing reactive draft and scope information;
-- `richText.effects`: a paint-only rule highlighting `TODO`; and
-- `richText.onDraftChange`: debounced structured-draft observation.
+- `actions`: a React button using `useComposer()` to lock and decorate the
+  bound draft;
+- `plusMenu`: a host-rendered command that appends a checklist with
+  `insert(…, { at: "end", block: true })`;
+- `banners`: a card showing the draft, its mentions, its scope, and why
+  submitting is blocked; and
+- `richText.effects`: a paint-only rule highlighting `TODO`.
 
 The CSS uses BB's public `--canvas`, `--ink`, and `--accent` theme anchors.
 Production plugins should vendor the BB prompt icon-button recipe for action

@@ -1492,6 +1492,7 @@ describe("loadPluginApp", () => {
       },
       selectedText: "answer",
       openPanel,
+      composer: null,
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({
@@ -1837,27 +1838,6 @@ describe("renderSlot", () => {
     );
   });
 
-  it("exposes an explicit side-chat composer scope", () => {
-    const sideChatScope = {
-      kind: "side-chat",
-      projectId: "proj_1",
-      parentThreadId: "thr_parent",
-      tabId: "side-chat:one",
-      childThreadId: null,
-    } satisfies PluginComposerScope;
-    const slot = renderSlot(
-      app.composerCustomizations[0]!.actions![0]!,
-      {},
-      { composer: { text: "side-chat draft", scope: sideChatScope } },
-    );
-
-    expect(
-      JSON.parse(
-        slot.getByTestId("composer-scope-details").textContent ?? "{}",
-      ),
-    ).toEqual(sideChatScope);
-  });
-
   it("drives host-originated composer text and scope changes", async () => {
     const initialScope = {
       kind: "queued-message",
@@ -1865,11 +1845,8 @@ describe("renderSlot", () => {
       queuedMessageId: "qmsg_1",
     } satisfies PluginComposerScope;
     const nextScope = {
-      kind: "side-chat",
-      projectId: "proj_1",
-      parentThreadId: "thr_parent",
-      tabId: "side-chat:one",
-      childThreadId: null,
+      kind: "thread",
+      threadId: "thr_2",
     } satisfies PluginComposerScope;
     const slot = renderSlot(
       app.composerCustomizations[0]!.actions![0]!,
@@ -1986,17 +1963,15 @@ describe("renderSlot", () => {
     ]);
     newThreadSlot.unmount();
 
-    const sideChatSlot = renderSlot(
+    const queuedSlot = renderSlot(
       app.composerCustomizations[0]!.actions![0]!,
       {},
       {
         composer: {
           scope: {
-            kind: "side-chat",
-            projectId: "proj_1",
-            parentThreadId: "thr_1",
-            tabId: "tab_1",
-            childThreadId: null,
+            kind: "queued-message",
+            threadId: "thr_1",
+            queuedMessageId: "qmsg_1",
           },
         },
       },
@@ -2004,8 +1979,8 @@ describe("renderSlot", () => {
     await expect(
       capturedComposerSetSelection!({ model: "gpt-5" }),
     ).rejects.toThrow(/no pickers/);
-    expect(sideChatSlot.composer.selections).toEqual([]);
-    sideChatSlot.unmount();
+    expect(queuedSlot.composer.selections).toEqual([]);
+    queuedSlot.unmount();
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {

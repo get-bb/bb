@@ -192,8 +192,8 @@ describe("PromptBoxActionsMenu", () => {
         item: {
           id: "improve",
           label: "Improve prompt",
-          run: ({ view: receivedView }) => {
-            focusedByPlugin(receivedView);
+          run: ({ composer }) => {
+            focusedByPlugin(composer.key);
             document.getElementById("plugin-focus-target")?.focus();
           },
         },
@@ -206,7 +206,7 @@ describe("PromptBoxActionsMenu", () => {
         item: {
           id: "rewrite",
           label: "Rewrite prompt",
-          disabled: (receivedView) => receivedView.draft.isEmpty,
+          disabled: (composer) => composer.isEmpty,
           run: vi.fn(),
         },
       },
@@ -268,7 +268,7 @@ describe("PromptBoxActionsMenu", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Improve prompt" }));
     await waitFor(() => {
-      expect(focusedByPlugin).toHaveBeenCalledWith(view);
+      expect(focusedByPlugin).toHaveBeenCalledWith("plus-menu-test");
       expect(document.activeElement?.id).toBe("plugin-focus-target");
     });
   });

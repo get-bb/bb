@@ -1,5 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
-import type { ComposerPlusMenuItem, ComposerView } from "@get-bb/plugin-sdk";
+import type {
+  ComposerPlusMenuItem,
+  ComposerView,
+  PluginComposerApi,
+} from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { DropdownMenuItem } from "@bb/shared-ui/dropdown-menu";
@@ -246,16 +250,18 @@ function preserveOpenPluginOrder(
 export function PluginComposerPlusMenuEntry({
   contribution,
   onSelected,
+  slotKind = "composerPlusMenuItem",
 }: {
   contribution: PluginComposerPlusMenuContribution;
   onSelected?(selection: PluginComposerPlusMenuSelection): void;
+  slotKind?: "composerPlusMenuItem" | "composerSendMenuItem";
 }) {
   const { key, pluginId, customizationId, item } = contribution;
   return (
     <PluginSlotMount
       key={key}
       pluginId={pluginId}
-      slotKind="composerPlusMenuItem"
+      slotKind={slotKind}
       slotId={`${customizationId}/${item.id}`}
       crashFallback={<></>}
     >
@@ -280,11 +286,13 @@ function PluginComposerPlusMenuEntryContent({
   const composer = useComposer();
   const view = useComposerView();
   const disabled =
-    typeof item.disabled === "function" ? item.disabled(view) : item.disabled;
+    typeof item.disabled === "function"
+      ? item.disabled(composer)
+      : item.disabled;
 
   const run = async () => {
     try {
-      await item.run({ composer, view });
+      await item.run({ composer, view } as { composer: PluginComposerApi });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(

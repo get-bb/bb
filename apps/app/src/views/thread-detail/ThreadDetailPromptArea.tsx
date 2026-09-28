@@ -1766,6 +1766,11 @@ export function ThreadDetailPromptArea({
             draft,
             commitInlineQueuedMessage,
           ),
+        isAvailable: () =>
+          isInlineQueuedMessageEditSession(
+            inlineEditingQueuedMessageRef.current,
+            session,
+          ),
         focus: focusInlinePluginComposer,
       };
     }, [
@@ -1877,6 +1882,8 @@ export function ThreadDetailPromptArea({
         subscribeDraft: subscribeSentMessageEditDraft,
         setDraft: (nextDraft) =>
           writeSentMessageEditDraft(sentMessageEditRef, operationId, nextDraft),
+        isAvailable: () =>
+          sentMessageEditRef.current?.operationId === operationId,
         focus: focusInlinePluginComposer,
       };
     }, [

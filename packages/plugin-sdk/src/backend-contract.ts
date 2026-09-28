@@ -670,7 +670,7 @@ export interface MessageDispatchHookContext {
   queuedMessages: ThreadQueuedMessage[];
   /**
    * Opaque JSON supplied by a plugin through the composer's
-   * `experimental_submit`, paired with that plugin's id. Null for ordinary
+   * `submit`, paired with that plugin's id. Null for ordinary
    * submissions and queued re-attempts. Core does not persist or interpret
    * the data.
    */

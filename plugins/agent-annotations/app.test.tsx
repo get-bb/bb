@@ -180,7 +180,7 @@ describe("AnnotateAction", () => {
           <AnnotateAction {...props} />
           <button
             onClick={() => {
-              void composer.experimental_submit({
+              void composer.submit({
                 experimental_data: null,
               });
             }}

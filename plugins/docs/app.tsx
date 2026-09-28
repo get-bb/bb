@@ -914,14 +914,18 @@ function InlineDocument({
     setAskError(null);
     try {
       await session.flush();
-      composer.updateText(
-        (current) => `${current}${current.trim() ? "\n\n" : ""}Update `,
+      composer.insert(
+        [
+          "Update ",
+          {
+            provider: "note",
+            id: `${document.vaultId}:${document.path}`,
+            label: document.title,
+          },
+          " ",
+        ],
+        { at: "end", block: true },
       );
-      composer.insertMention({
-        provider: "note",
-        id: `${document.vaultId}:${document.path}`,
-        label: document.title,
-      });
       composer.focus();
     } catch (error) {
       setAskError(errorMessage(error));

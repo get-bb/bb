@@ -1397,7 +1397,7 @@ export interface PluginSidebarThreadDraftState {
 
 /**
  * The status another plugin's app-wide script set on a thread's row through
- * `useComposer().experimental_setThreadRowStatus` (see
+ * the content-script context's `experimental_setThreadRowStatus` (see
  * {@link PluginSdkApp.useSidebarThreadRowStatus}). bb's row draws it in
  * place of the draft glyph while it is set; a replaced list should do the
  * same so a status set by, say, the drafts or workflows plugin does not
@@ -1735,6 +1735,12 @@ export interface PluginMessageActionContext {
    * is never thrown: the host logs it and reports it here.
    */
   openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  /**
+   * The composer of the thread the message is in, or null when that thread's
+   * composer is not available on this surface. The same handle
+   * `useComposer()` returns there.
+   */
+  composer: PluginComposerApi | null;
 }
 
 /**
@@ -2300,13 +2306,6 @@ export type PluginComposerScope =
       queuedMessageId: string;
     }
   | {
-      kind: "side-chat";
-      projectId: string;
-      parentThreadId: string;
-      tabId: string;
-      childThreadId: string | null;
-    }
-  | {
       kind: "new-thread";
       /** Root compose's effective selected project; null only while unresolved. */
       projectId: string | null;
@@ -2326,6 +2325,8 @@ export interface ComposerCustomization {
     component: ComponentType;
   }[];
   plusMenu?: readonly ComposerPlusMenuItem[];
+  /** Host-rendered rows in the menu next to the composer's send button. */
+  sendMenu?: readonly ComposerSendMenuItem[];
   richText?: ComposerRichTextSpec;
 }
 
@@ -2337,14 +2338,31 @@ export interface ComposerPlusMenuItem {
   icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
-  disabled?: boolean | ((view: ComposerView) => boolean);
-  run(context: {
-    composer: PluginComposerApi;
-    view: ComposerView;
-  }): void | Promise<void>;
+  disabled?: boolean | ((composer: PluginComposerApi) => boolean);
+  run(context: { composer: PluginComposerApi }): void | Promise<void>;
 }
 
-/** Reactive read-side of the composer a plugin surface is mounted in. */
+/**
+ * Host-rendered row in the menu next to the composer's send button, for
+ * alternatives to sending right away (save as a draft, send later). The menu
+ * shows only while the composer can submit.
+ */
+export interface ComposerSendMenuItem {
+  id: string;
+  label: string;
+  /** Drawn only when the manifest declares no `bb.branding.icon`. */
+  icon?: BbIconName;
+  /** Accessible description for the host-rendered row. */
+  description?: string;
+  disabled?: boolean | ((composer: PluginComposerApi) => boolean);
+  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+}
+
+/**
+ * Reactive read-side of the composer a plugin surface is mounted in.
+ * @internal Superseded by `useComposer()`; kept for plugins built against
+ * older SDKs.
+ */
 export interface ComposerView {
   scope: PluginComposerScope;
   layout: "expanded" | "compact" | "zen";
@@ -2360,10 +2378,18 @@ export interface ComposerRichTextSpec {
     match(text: string): readonly { from: number; to: number }[];
     className: string;
   }[];
-  /** Debounced, read-only observation of the structured draft. */
+  /**
+   * Debounced, read-only observation of the structured draft.
+   * @internal Superseded by `useComposer().draft`; kept for plugins built
+   * against older SDKs.
+   */
   onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
 }
 
+/**
+ * @internal Superseded by {@link ComposerDraft}; kept for plugins built
+ * against older SDKs.
+ */
 export interface ComposerStructuredDraft {
   text: string;
   mentions: readonly {
@@ -2373,6 +2399,73 @@ export interface ComposerStructuredDraft {
     id: string;
     label: string;
   }[];
+}
+
+/** The composer's text and the @-mention pills in it. */
+export interface ComposerDraft {
+  text: string;
+  mentions: readonly ComposerMention[];
+}
+
+/**
+ * One @-mention pill: its range in `ComposerDraft.text` plus everything the
+ * host needs to recreate it, so a mention read from `draft` can be passed
+ * back to `insert` unchanged.
+ */
+export type ComposerMention = {
+  from: number;
+  to: number;
+  label: string;
+} & (
+  | { kind: "thread"; threadId: string; projectId?: string }
+  | { kind: "project"; projectId: string }
+  | { kind: "section"; sectionId: string }
+  | {
+      kind: "path";
+      path: string;
+      source: "workspace" | "thread-storage";
+      entryKind: "file" | "directory";
+    }
+  | {
+      kind: "command";
+      trigger: "/" | "$";
+      name: string;
+      source: "skill" | "command";
+      origin: "builtin" | "project" | "user";
+      argumentHint: string | null;
+    }
+  | {
+      kind: "plugin";
+      /** The plugin that owns the pill. */
+      pluginId: string;
+      /** The mention provider id that plugin registered. */
+      provider: string;
+      /** The item id the provider's `resolve` receives at send time. */
+      id: string;
+      icon?: string | null;
+    }
+);
+
+/**
+ * What `insert` accepts: text, a mention read from `draft` (any kind), or one
+ * of the calling plugin's own mentions (`{ provider, id, label }`, no `kind`).
+ */
+export type ComposerInsertPart =
+  | string
+  | ComposerMention
+  | PluginComposerMention;
+
+/** Where `insert` puts its content. */
+export interface ComposerInsertOptions {
+  /**
+   * `"cursor"` (default) inserts at the editor's selection, replacing any
+   * selected text; the selection is kept while focus is elsewhere, and the
+   * composer must be on screen. `"end"` inserts after the last character and
+   * also works for a composer that is not on screen.
+   */
+  at?: "cursor" | "end";
+  /** Put the content on its own paragraph, adding a paragraph break before and after only where text is adjacent. */
+  block?: boolean;
 }
 
 /** Host-rendered paint applied to the editable composer text. */
@@ -2408,18 +2501,55 @@ export interface PluginComposerMention {
 }
 
 /**
- * Programmatic access to the chat composer draft — the same shared draft the
- * built-in "Add to chat" affordances (file preview, diff, terminal selections)
- * write to. While a queued message is being edited, writes land in that
- * message's inline editor. In a side chat, writes land in the visible side-chat
- * draft. Otherwise, inside a thread context writes land in that thread's draft;
- * anywhere else (nav panel, homepage section) they seed the new-thread composer
- * draft, which persists until the user sends or clears it.
+ * One composer: its state and the writes a plugin can make. `useComposer()`
+ * returns the composer the calling surface belongs to — inside a composer
+ * slot, that composer; in a thread's panels, that thread's composer;
+ * elsewhere, the current route's draft (the thread in view, or the new-thread
+ * draft).
+ *
+ * The handle is stable: the same composer returns the same object across
+ * renders, and its methods always act on the current draft, so it is safe to
+ * keep in effects, callbacks and async work. Its reactive fields (`text`,
+ * `draft`, `isEmpty`, …) re-render the calling component when they change;
+ * depend on those fields, not on the handle, in memo dependency lists.
+ *
+ * A handle always writes to its own composer's draft. Thread and new-thread
+ * drafts persist, so a write after the composer left the screen still lands
+ * in that draft. When the draft no longer exists (a queued-message or
+ * sent-message editor that closed), `insert`, `removeMention`, `submit` and
+ * `setSelection` throw "This composer is no longer available"; the older
+ * text methods log a warning and do nothing.
  */
 export interface PluginComposerApi {
   scope: PluginComposerScope;
+  /**
+   * Stable identity for this composer's draft: the same across remounts and
+   * reloads for thread and new-thread composers (including a `ThreadChat`),
+   * and per editing session for queued-message and sent-message editors.
+   */
+  readonly key: string;
+  /** `"compact"` in the collapsed single-line layout, otherwise `"expanded"`. */
+  readonly layout: "expanded" | "compact";
+  /** The thread's agent is running or stopping. Always false in a new-thread composer. */
+  readonly isRunning: boolean;
+  /** The composer is submitting right now. */
+  readonly isSubmitting: boolean;
+  /**
+   * Pressing Enter would not submit right now: the same decision as the
+   * host's send button (empty draft, uploads in progress, loading, a
+   * selection or setup missing, a pending interaction, voice input, …).
+   */
+  readonly isSubmittingBlocked: boolean;
+  /** The host's message for why submitting is blocked, or null when it is not. */
+  readonly submittingBlockedReason: string | null;
+  /** No text (ignoring whitespace), no mentions and no attachments. */
+  readonly isEmpty: boolean;
+  /** Attachments that have finished uploading. */
+  readonly attachmentCount: number;
   /** Current plain text for this composer scope. */
   readonly text: string;
+  /** The text and every @-mention in it, with the data to recreate each pill. */
+  readonly draft: ComposerDraft;
   /**
    * Replace the draft's plain text. Attachments are preserved. Inline mentions
    * outside the changed range are preserved and rebased; mentions overlapped
@@ -2433,6 +2563,17 @@ export interface PluginComposerApi {
   updateText(updater: (current: string) => string): void;
   /** Clear plain text without clearing independently attached files. */
   clear(): void;
+  /**
+   * Insert text and mentions. See {@link ComposerInsertOptions} for placement.
+   * Mentions read from `draft` are recreated exactly; the calling plugin's
+   * own `{ provider, id, label }` resolves through its mention provider.
+   * Throws for another plugin's mention without `kind`, and for
+   * `at: "cursor"` when the composer is not on screen.
+   */
+  insert(
+    parts: ComposerInsertPart | readonly ComposerInsertPart[],
+    options?: ComposerInsertOptions,
+  ): void;
   /**
    * Apply a host-rendered effect to this composer's editable text, or clear it.
    * Effects are scoped to the calling plugin and automatically clear when the
@@ -2452,28 +2593,28 @@ export interface PluginComposerApi {
    */
   addQuote(text: string): void;
   /**
-   * Insert an @-mention pill that resolves through this plugin's mention
-   * provider at send time — the durable way to reference an entity whose
-   * content should be fetched fresh when the message is sent.
+   * Append an @-mention pill that resolves through this plugin's mention
+   * provider at send time. `insert` places mentions at the cursor instead.
    */
   insertMention(mention: PluginComposerMention): void;
   /** Remove this plugin's matching mention pills and their text from the current draft. */
-  experimental_removeMention(mention: { provider: string; id: string }): void;
+  removeMention(mention: { provider: string; id: string }): void;
   /** Subscribe to successful local submissions in this composer scope, including accepted queued messages. Failed sends and draft clearing do not notify. Dispose on unmount. */
-  experimental_onSubmitted(listener: () => void): () => void;
+  onSubmitted(listener: () => void): () => void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
   /**
-   * Submit this composer's draft through the composer's OWN submit pipeline,
-   * optionally scheduling it or attaching plugin-owned dispatch data.
-   *
-   * This is a real submission, not a plugin-issued send: the host builds the
-   * request exactly as pressing Enter would, so the draft's attachments and
+   * Submit this composer's draft exactly as pressing Enter would: the same
+   * checks and the same action (send, or queue while the thread is busy; a
+   * provider handoff creates a new thread). The draft's attachments and
    * @-mentions, and — in the new-thread composer — the provider, model,
    * reasoning level, service tier, permission mode and environment the user
-   * has selected on screen, all travel with it. A plugin cannot assemble that
-   * tuple itself, which is why sending from the backend instead would silently
-   * run the message with different settings than the ones in front of the user.
+   * has selected on screen, all travel with it.
+   *
+   * While attachments are uploading it waits for them, then checks again; it
+   * rejects if an upload fails. Otherwise, when submitting is blocked it
+   * rejects with `submittingBlockedReason`, a message safe to show to the
+   * user. The queued-message and sent-message editors save edits and reject.
    *
    * `sendAt` queues the submission until that time. `experimental_data` is
    * opaque JSON delivered to dispatch hooks together with the calling plugin's
@@ -2482,18 +2623,10 @@ export interface PluginComposerApi {
    * later attempts; core does not persist or interpret the opaque data.
    *
    * Resolves once the host has accepted the submission and cleared the draft.
-   * Rejects when the composer refused to submit — a scope with no submit
-   * pipeline (a queued-message editor, a side chat), an empty draft, or a
-   * composer that is not ready (still loading its execution defaults, missing
-   * an environment). The rejection's message is safe to show to the user.
    * Failures of the underlying request are reported by bb's own submit error
    * handling and restore the draft, exactly as an interactive failure does.
-   *
-   * Experimental: see docs/api_to_audit.md.
    */
-  experimental_submit(
-    options: ExperimentalComposerSubmitOptions,
-  ): Promise<void>;
+  submit(options: ComposerSubmitOptions): Promise<void>;
   /**
    * Set this composer's pickers as if each value had been picked by hand.
    *
@@ -2540,21 +2673,26 @@ export interface PluginComposerApi {
    * mounted outside any composer), when the calling surface is no longer
    * active, and when a value is not a known reasoning level, service tier or
    * permission mode.
-   *
-   * Experimental: see docs/api_to_audit.md.
    */
+  setSelection(selection: ComposerSelection): Promise<ComposerSelection>;
+  /** @internal Old name of `removeMention`; kept for plugins built against older SDKs. */
+  experimental_removeMention(mention: { provider: string; id: string }): void;
+  /** @internal Old name of `onSubmitted`; kept for plugins built against older SDKs. */
+  experimental_onSubmitted(listener: () => void): () => void;
+  /** @internal Old name of `submit`; kept for plugins built against older SDKs. */
+  experimental_submit(options: ComposerSubmitOptions): Promise<void>;
+  /** @internal Old name of `setSelection`; kept for plugins built against older SDKs. */
   experimental_setSelection(
-    selection: ExperimentalComposerSelection,
-  ): Promise<ExperimentalComposerSelection>;
+    selection: ComposerSelection,
+  ): Promise<ComposerSelection>;
 }
 
 /**
- * Picker values for `experimental_setSelection`, and the shape it resolves
- * with. Field names match `NewThreadRequest` and the `default*` props of
+ * Picker values for `setSelection`, and the shape it resolves with. Field names match `NewThreadRequest` and the `default*` props of
  * `experimental_NewThreadComposer`, so one routed decision can feed the
  * composer, the embedded composer and `bb.sdk.threads.spawn` alike.
  */
-export interface ExperimentalComposerSelection {
+export interface ComposerSelection {
   /** New-thread composers only. BB's personal-project id means "Don't work in a project". */
   projectId?: string;
   /**
@@ -2576,15 +2714,20 @@ export interface ExperimentalComposerSelection {
 }
 
 /**
- * What `experimental_submit` does differently from pressing Enter.
+ * What `submit` does differently from pressing Enter.
  *
  * `experimental_data` is opaque JSON delivered to dispatch hooks. The runtime
  * associates it with the calling plugin automatically for the initial
  * dispatch attempt.
  */
-export type ExperimentalComposerSubmitOptions =
+export type ComposerSubmitOptions =
   | { sendAt: number; experimental_data?: JsonValue }
   | { experimental_data: JsonValue; sendAt?: never };
+
+/** @internal Old name of {@link ComposerSelection}. */
+export type ExperimentalComposerSelection = ComposerSelection;
+/** @internal Old name of {@link ComposerSubmitOptions}. */
+export type ExperimentalComposerSubmitOptions = ComposerSubmitOptions;
 
 // ---------------------------------------------------------------------------
 // ThreadChat — the host-owned chat component.
@@ -2823,7 +2966,7 @@ export interface NewThreadRequest {
   input: PromptInput[];
   /**
    * Epoch ms the first turn should dispatch at. Present only when the
-   * submission came from `useComposer().experimental_submit` — a scheduled
+   * submission came from `useComposer().submit` — a scheduled
    * create — and absent otherwise, which is what makes an ordinary submission
    * start work at once. Forward it to `threads.spawn` unchanged: the thread is
    * created `pending` and its first message is queued as a row until then.
@@ -3382,5 +3525,6 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_Diff: ComponentType<DiffProps>;
+  /** @internal Superseded by `useComposer()`; kept for plugins built against older SDKs. */
   useComposerView(): ComposerView;
 }

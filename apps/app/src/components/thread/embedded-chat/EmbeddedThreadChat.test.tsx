@@ -36,10 +36,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const hostDraftMocks = vi.hoisted(() => ({
-  latestHost: null as {
-    getCurrent(): { text: string };
-    subscribeDraft(listener: () => void): () => void;
-  } | null,
+  latestHost: null as PluginComposerHost | null,
   textAtNotify: [] as string[],
   subscribed: false,
 }));
@@ -666,6 +663,38 @@ describe("EmbeddedThreadChat", () => {
     expect(composer.hidden).toBe(false);
     expect(composer.dataset.submitMode).toBe("ready");
     expect(screen.getByTestId("embedded-chat-queued-messages")).toBeTruthy();
+  });
+
+  it("keeps the composer key across a remount and writes after unmount to the thread draft", () => {
+    const scope = { kind: "thread", threadId: "thr_key" } as const;
+    const draftKey = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj-1",
+      threadId: "thr_key",
+    }).storageKey;
+    const first = render(
+      buildEmbeddedChat({
+        threadId: "thr_key",
+        pluginComposerBottomScope: scope,
+      }),
+    );
+    const firstHost = hostDraftMocks.latestHost!;
+    expect(firstHost.textEffectKey).toBe(draftKey);
+    first.unmount();
+
+    firstHost.setDraft({ text: "late result", mentions: [], attachments: [] });
+
+    render(
+      buildEmbeddedChat({
+        threadId: "thr_key",
+        pluginComposerBottomScope: scope,
+      }),
+    );
+    const secondHost = hostDraftMocks.latestHost!;
+    expect(secondHost.textEffectKey).toBe(draftKey);
+    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
+      "late result",
+    );
   });
 
   it("delivers the new thread's draft to host subscribers immediately on a thread switch", () => {

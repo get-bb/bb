@@ -2198,8 +2198,8 @@ app's tooltip provider (300 ms delay, hoverable content disabled), including
 through portals; host SDK components need no plugin-owned tooltip provider.
 The pane-local code-highlighting worker pool is not inherited here; its hooks
 support rendering without a pool. Hooks whose contract
-requires a particular surface, including `useComposer` and `useComposerView`,
-remain limited to that surface. One overlay crash hides only that registration;
+requires a particular surface, including `useComposer`, remain limited to that
+surface. One overlay crash hides only that registration;
 sibling overlays remain mounted.
 
 **Audit before stabilizing.**
@@ -2845,18 +2845,53 @@ providers need, the 50-image boundary is appropriate, and local image access
 should remain governed by the thread dispatch validator rather than an earlier
 plugin-specific check.
 
+## Composer API redesign: final names without the experimental prefix
+
+**What shipped.** `useComposer()` returns one stable handle per composer
+(`key`, `layout`, `isRunning`, `isSubmitting`, `isSubmittingBlocked`,
+`submittingBlockedReason`, `isEmpty`, `attachmentCount`, `draft`, `insert`),
+`removeMention`, `onSubmitted`, `submit` and `setSelection` replace their
+`experimental_` names, `ComposerCustomization.sendMenu` replaces the send
+menu's hard-coded plugin ids, and `PluginMessageActionContext.composer`
+exposes the message thread's composer. Michael decided to ship these under
+final names as an explicit exception to the experimental-prefix rule, so
+plugin authors migrate once. Replaced members (`useComposerView`,
+`ComposerView`, `richText.onDraftChange`, `ComposerStructuredDraft`, the
+`experimental_` composer names, the `side-chat` scope and the `zen` layout)
+are tagged `@internal`: `stripInternal` removes them from the published
+declarations while the runtime keeps exporting and implementing them, so
+existing plugins keep working. The frontend export parity test lists the
+runtime-only exports.
+
+**Audit.**
+
+1. **Handle semantics.** A stable handle with reactive getters means memo
+   dependencies must name fields (`composer.draft`), not the handle. Confirm
+   the lint and documentation guidance is enough.
+2. **Mention shape.** `ComposerMention` exposes core resource fields (path
+   source and entry kind, command source and origin). Confirm these are
+   stable enough to be public.
+3. **Canonical pill text.** `insert` writes the editor's canonical pill text
+   (`@label` for plugin mentions), while `insertMention` keeps writing the
+   bare label. Decide whether `insertMention` should converge.
+4. **Message-action composers.** They have no slot lifecycle, so
+   `setTextEffect` and `setInputLock` warn and do nothing there. Confirm.
+5. **Runtime-only aliases.** Decide when, if ever, the runtime drops the
+   `@internal` names.
+
 ## Composer mention removal and successful submission subscriptions
 
-`PluginComposerApi.experimental_removeMention({ provider, id })` removes all matching mentions owned by the calling plugin from the current unsent draft, deletes their label text, rebases other mentions, and preserves attachments. It does not delete server records or alter sent messages.
+`PluginComposerApi.removeMention({ provider, id })` removes all matching mentions owned by the calling plugin from the current unsent draft, deletes their label text, rebases other mentions, and preserves attachments. It does not delete server records or alter sent messages.
 
-`PluginComposerApi.experimental_onSubmitted(listener)` observes successful local thread-send, queue-create, and new-thread-create mutations in the matching composer scope. It returns an unsubscribe function; host teardown also disposes subscriptions. Failed requests, draft clearing, and editing an existing queued message do not notify. This is a local UI notification, not a cross-device server event.
+`PluginComposerApi.onSubmitted(listener)` observes successful local thread-send, queue-create, and new-thread-create mutations in the matching composer scope. It returns an unsubscribe function; host teardown also disposes subscriptions. Failed requests, draft clearing, and editing an existing queued message do not notify. This is a local UI notification, not a cross-device server event.
 
-Before stabilization, audit side-chat and handoff scope routing, decide whether to include the submitted structured draft in notifications to distinguish annotations created while a request is pending, and verify disposal, failure restoration, mention rebasing, and callback failure isolation across every composer host.
+Before stabilization, audit handoff scope routing, decide whether to include the submitted structured draft in notifications to distinguish annotations created while a request is pending, and verify disposal, failure restoration, mention rebasing, and callback failure isolation across every composer host.
 
-## `useComposer().experimental_submit` and dispatch `experimental_submission`
+## `useComposer().submit` and dispatch `experimental_submission`
 
-**What it does.** Runs the composer's own submit pipeline with the draft that
-is on screen, preserving attachments, @-mentions, and the execution and
+**What it does.** Submits exactly as pressing Enter would, applying the same
+checks as the host's send button (it waits for uploads in progress, then
+rejects with `submittingBlockedReason`), with the draft that is on screen, preserving attachments, @-mentions, and the execution and
 environment choices visible in a new-thread composer. `sendAt` schedules the
 submission. `experimental_data` carries opaque JSON to every message dispatch
 hook on the initial attempt in an `experimental_submission` envelope containing
@@ -2864,7 +2899,8 @@ the calling plugin's id. Core validates JSON but does not persist or interpret
 it. Hooks run before operational core waits; a plugin-authored wait persists
 its owner through the queued row's existing `waitingOn` value. Backed host-side
 by an optional `submit` on the internal
-`PluginComposerHost`, supplied by the thread and new-thread composers. Rejects
+`PluginComposerHost`, supplied by the thread, `ThreadChat` and new-thread
+composers. Rejects
 with a user-presentable message when the composer cannot submit and restores
 the draft after request failure. Consumers: `plugins/scheduled-send` and
 `plugins/drafts`.
@@ -2874,13 +2910,11 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
 1. **Programmatic send authority.** `experimental_data` permits an immediate
    submission without `sendAt`. Confirm which composer customizations should
    receive that authority before stabilization.
-2. **Two of four scopes are unsupported.** A queued-message editor and a side
-   chat have no `submit`, and the route-draft fallback (a plugin surface
-   mounted outside any composer) has none either. All three reject with the
-   same "cannot submit programmatically" message, so a plugin cannot tell
-   "unsupported here" from "no composer mounted". Decide whether
-   `ComposerView` should advertise submit capability so a `+` menu row can
-   disable itself instead of failing on click.
+2. **Editors that save instead of send.** The queued-message and sent-message
+   editors and the route-draft fallback have no `submit` and reject with
+   "cannot submit programmatically". `isSubmittingBlocked` lets a row disable
+   itself before a click; confirm whether those surfaces also need a
+   distinct capability flag.
 3. **Data visibility.** Every dispatch hook sees the envelope and its owner id,
    not only the plugin that submitted it. Confirm that dispatch hooks remain
    the right trust boundary for plugin-owned submission data.
@@ -2900,7 +2934,7 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
    `experimental_data` can be lost in that surface. Decide whether to expose a
    forwardable experimental field or reject data-bearing submissions there.
 
-## `useComposer().experimental_setSelection`
+## `useComposer().setSelection`
 
 **What it does.** Sets a composer's pickers (provider, model, reasoning level,
 service tier, permission mode, and in a new-thread composer the project and
@@ -2926,7 +2960,7 @@ selection as it stands is returned. Backed by an optional `setSelection` on
 the internal `PluginComposerHost`, supplied by the thread and new-thread
 composers, including the plugin-embedded `experimental_NewThreadComposer`
 whose component-local selections leave the stored new-thread preferences
-untouched. The input type is `ExperimentalComposerSelection`; the hook
+untouched. The input type is `ComposerSelection`; the hook
 validates it and rejects unknown reasoning levels, tiers and permission
 modes. The testing harness records accepted calls in `composer.selections`.
 

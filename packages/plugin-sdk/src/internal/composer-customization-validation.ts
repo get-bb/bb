@@ -1,5 +1,6 @@
 import type {
   ComposerCustomization,
+  PluginComposerScope,
   PluginComposerThreadRowStatus,
 } from "@get-bb/plugin-sdk";
 
@@ -203,13 +204,46 @@ function parseContributionArray<T extends { id: string }>(
   return parsed;
 }
 
+type ComposerMenuItem = NonNullable<ComposerCustomization["plusMenu"]>[number];
+
+function parseMenuItem(entryKind: string, value: unknown): ComposerMenuItem {
+  const entry = value as Record<string, unknown> | null;
+  const id = requireSlotId(entryKind, entry?.id);
+  const icon = requireOptionalString(entryKind, "icon", entry?.icon);
+  const description = requireOptionalString(
+    entryKind,
+    "description",
+    entry?.description,
+  );
+  const disabled = entry?.disabled;
+  if (
+    disabled !== undefined &&
+    typeof disabled !== "boolean" &&
+    typeof disabled !== "function"
+  ) {
+    throw new Error(
+      `${entryKind}: "disabled" must be a boolean or function when set`,
+    );
+  }
+  return {
+    id,
+    label: requireNonEmptyString(entryKind, "label", entry?.label),
+    ...(icon !== undefined ? { icon } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(disabled !== undefined
+      ? { disabled: disabled as NonNullable<ComposerMenuItem["disabled"]> }
+      : {}),
+    run: requireFunction<ComposerMenuItem["run"]>(entryKind, "run", entry?.run),
+  };
+}
+
 function parseRegions(
   kind: string,
   registration: Record<string, unknown>,
   onRejected: RejectionReporter,
 ): Pick<
   ComposerCustomization,
-  "actions" | "banners" | "plusMenu" | "richText"
+  "actions" | "banners" | "plusMenu" | "sendMenu" | "richText"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -237,50 +271,17 @@ function parseRegions(
       component: requireComponent(entryKind, entry?.component),
     };
   });
-  const plusMenu = parseContributionArray<
-    NonNullable<ComposerCustomization["plusMenu"]>[number]
-  >(
+  const plusMenu = parseContributionArray<ComposerMenuItem>(
     `${kind}.plusMenu`,
     registration.plusMenu,
     onRejected,
-    (entryKind, value) => {
-      const entry = value as Record<string, unknown> | null;
-      const id = requireSlotId(entryKind, entry?.id);
-      const icon = requireOptionalString(entryKind, "icon", entry?.icon);
-      const description = requireOptionalString(
-        entryKind,
-        "description",
-        entry?.description,
-      );
-      const disabled = entry?.disabled;
-      if (
-        disabled !== undefined &&
-        typeof disabled !== "boolean" &&
-        typeof disabled !== "function"
-      ) {
-        throw new Error(
-          `${entryKind}: "disabled" must be a boolean or function when set`,
-        );
-      }
-      return {
-        id,
-        label: requireNonEmptyString(entryKind, "label", entry?.label),
-        ...(icon !== undefined ? { icon } : {}),
-        ...(description !== undefined ? { description } : {}),
-        ...(disabled !== undefined
-          ? {
-              disabled: disabled as NonNullable<
-                NonNullable<
-                  ComposerCustomization["plusMenu"]
-                >[number]["disabled"]
-              >,
-            }
-          : {}),
-        run: requireFunction<
-          NonNullable<ComposerCustomization["plusMenu"]>[number]["run"]
-        >(entryKind, "run", entry?.run),
-      };
-    },
+    parseMenuItem,
+  );
+  const sendMenu = parseContributionArray<ComposerMenuItem>(
+    `${kind}.sendMenu`,
+    registration.sendMenu,
+    onRejected,
+    parseMenuItem,
   );
 
   let richText: ComposerCustomization["richText"];
@@ -337,6 +338,7 @@ function parseRegions(
     ...(actions !== undefined ? { actions } : {}),
     ...(banners !== undefined ? { banners } : {}),
     ...(plusMenu !== undefined ? { plusMenu } : {}),
+    ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),
   };
 }
@@ -375,7 +377,14 @@ export function collectComposerCustomization(
     requireUniqueId(kind, seenIds, id);
     return {
       id,
-      ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
+      ...(scopes !== undefined
+        ? {
+            scopes: (scopes as string[]).filter(
+              (scope): scope is PluginComposerScope["kind"] =>
+                scope !== "side-chat",
+            ),
+          }
+        : {}),
       ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected),
     };
   } catch (error) {

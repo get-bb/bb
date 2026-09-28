@@ -1449,49 +1449,52 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
-  describe.each([false, true])("swapped submit actions: %s", (swapSubmitActions) => {
-    it.each(["", "Follow up"])(
-      "sends with the same action and queues only draft input (%j)",
-      (value) => {
-        const onSubmit = vi.fn();
-        const onModifierSubmit = vi.fn();
-        const onStop = vi.fn();
-        render(
-          <PromptBoxInternal
-            {...createPromptBoxProps({
-              value,
-              onSubmit,
-              submission: {
-                onModifierSubmit,
-                swapSubmitActions,
-                isRunning: true,
-                onStop,
-              },
-            })}
-          />,
-        );
+  describe.each([false, true])(
+    "swapped submit actions: %s",
+    (swapSubmitActions) => {
+      it.each(["", "Follow up"])(
+        "sends with the same action and queues only draft input (%j)",
+        (value) => {
+          const onSubmit = vi.fn();
+          const onModifierSubmit = vi.fn();
+          const onStop = vi.fn();
+          render(
+            <PromptBoxInternal
+              {...createPromptBoxProps({
+                value,
+                onSubmit,
+                submission: {
+                  onModifierSubmit,
+                  swapSubmitActions,
+                  isRunning: true,
+                  onStop,
+                },
+              })}
+            />,
+          );
 
-        const editor = getPromptEditorElement();
-        fireEvent.keyDown(editor, {
-          key: "Enter",
-          metaKey: !swapSubmitActions,
-        });
-        expect(onModifierSubmit).toHaveBeenCalledOnce();
-        expect(onSubmit).not.toHaveBeenCalled();
+          const editor = getPromptEditorElement();
+          fireEvent.keyDown(editor, {
+            key: "Enter",
+            metaKey: !swapSubmitActions,
+          });
+          expect(onModifierSubmit).toHaveBeenCalledOnce();
+          expect(onSubmit).not.toHaveBeenCalled();
 
-        fireEvent.keyDown(editor, {
-          key: "Enter",
-          metaKey: swapSubmitActions,
-        });
-        expect(onSubmit).toHaveBeenCalledTimes(value ? 1 : 0);
-        expect(onModifierSubmit).toHaveBeenCalledOnce();
-        if (!value) {
-          fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
-          expect(onStop).toHaveBeenCalledOnce();
-        }
-      },
-    );
-  });
+          fireEvent.keyDown(editor, {
+            key: "Enter",
+            metaKey: swapSubmitActions,
+          });
+          expect(onSubmit).toHaveBeenCalledTimes(value ? 1 : 0);
+          expect(onModifierSubmit).toHaveBeenCalledOnce();
+          if (!value) {
+            fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+            expect(onStop).toHaveBeenCalledOnce();
+          }
+        },
+      );
+    },
+  );
 
   it.each([
     { swapSubmitActions: false, touch: true },
@@ -1513,13 +1516,13 @@ describe("PromptBoxInternal submit shortcuts", () => {
           pluginRegistrationSet([
             {
               id: "send-later",
-              plusMenu: [
+              plusMenu: [{ id: "other", label: "Other action", run: vi.fn() }],
+              sendMenu: [
                 {
                   id: "send-later",
                   label: "Send later",
                   run: schedule,
                 },
-                { id: "other", label: "Other action", run: vi.fn() },
               ],
             },
           ]),
@@ -1529,9 +1532,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
           pluginRegistrationSet([
             {
               id: "drafts",
-              plusMenu: [
-                { id: "drafts", label: "Save draft", run: saveDraft },
-              ],
+              sendMenu: [{ id: "drafts", label: "Save draft", run: saveDraft }],
             },
           ]),
         );
@@ -1678,7 +1679,9 @@ describe("PromptBoxInternal submit shortcuts", () => {
             })}
           />,
         );
-        expect(screen.queryByRole("button", { name: "Send options" })).toBeNull();
+        expect(
+          screen.queryByRole("button", { name: "Send options" }),
+        ).toBeNull();
         const submit = screen.getByRole("button", { name: "Submit (Enter)" });
         vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
           new DOMRect(0, 0, 40, 40),

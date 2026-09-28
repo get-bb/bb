@@ -11,9 +11,9 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  ComposerSelection,
+  ComposerSubmitOptions,
   ComposerView,
-  ExperimentalComposerSelection,
-  ExperimentalComposerSubmitOptions,
   JsonValue,
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
@@ -26,14 +26,13 @@ export interface PluginComposerHost {
   getCurrent(): PromptDraftState;
   subscribeDraft(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
+  isAvailable?(): boolean;
   focus(): void;
   submit?(
-    options: ExperimentalComposerSubmitOptions,
+    options: ComposerSubmitOptions,
     pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
   ): Promise<void>;
-  setSelection?(
-    selection: ExperimentalComposerSelection,
-  ): Promise<ExperimentalComposerSelection>;
+  setSelection?(selection: ComposerSelection): Promise<ComposerSelection>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {
@@ -42,8 +41,6 @@ export function composerScopeIdentity(scope: PluginComposerScope): string {
       return `thread/${scope.threadId}`;
     case "queued-message":
       return `queued-message/${scope.threadId}/${scope.queuedMessageId}`;
-    case "side-chat":
-      return `side-chat/${scope.projectId}/${scope.parentThreadId}/${scope.tabId}/${scope.childThreadId ?? "draft"}`;
     case "new-thread":
       return `new-thread/${scope.projectId ?? "unresolved"}`;
   }

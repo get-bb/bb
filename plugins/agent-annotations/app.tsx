@@ -69,9 +69,7 @@ export function AnnotateAction({
 }: ExperimentalPluginBrowserToolbarActionProps) {
   const composer = useComposer();
   const rpc = useRpc<typeof agentAnnotationsRpcContract>();
-  const composerRef = useRef(composer);
   const pendingSaves = useRef(Promise.resolve());
-  composerRef.current = composer;
   const [state, setState] = useState<PageState>(INACTIVE_STATE);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,13 +85,13 @@ export function AnnotateAction({
       }
       const components = await readReactComponents(page, annotation.id);
       const saved = await rpc.call("save", { ...annotation, components });
-      composerRef.current.insertMention({
+      composer.insertMention({
         provider: ANNOTATION_MENTION_PROVIDER_ID,
         id: saved.id,
         label: annotationMentionLabel(annotation),
       });
     },
-    [page, rpc],
+    [composer, page, rpc],
   );
 
   useEffect(() => {
@@ -113,7 +111,7 @@ export function AnnotateAction({
       pendingSaves.current = pendingSaves.current
         .then(async () => {
           if (message.type === "annotation-delete") {
-            composerRef.current.experimental_removeMention({
+            composer.removeMention({
               provider: ANNOTATION_MENTION_PROVIDER_ID,
               id: message.id,
             });
@@ -131,7 +129,7 @@ export function AnnotateAction({
           setError(errorMessage(cause));
         });
     });
-  }, [addToPrompt, page, rpc]);
+  }, [addToPrompt, composer, page, rpc]);
 
   useEffect(() => {
     if (page === null) {
@@ -153,7 +151,7 @@ export function AnnotateAction({
 
   useEffect(
     () =>
-      composer.experimental_onSubmitted(() => {
+      composer.onSubmitted(() => {
         pendingSaves.current = pendingSaves.current
           .then(async () => {
             if (page !== null)
@@ -163,8 +161,7 @@ export function AnnotateAction({
           })
           .catch((cause: unknown) => setError(errorMessage(cause)));
       }),
-    // oxlint-disable-next-line react/exhaustive-deps
-    [composer.experimental_onSubmitted, page, applyState],
+    [composer, page, applyState],
   );
 
   const toggle = useCallback(() => {

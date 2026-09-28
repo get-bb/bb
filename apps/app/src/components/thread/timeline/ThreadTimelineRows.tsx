@@ -133,6 +133,10 @@ import {
   type PluginMessageActionSlot,
 } from "@/lib/plugin-slots.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import {
+  usePluginComposerHost,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import { isPluginSideChatSenderThread } from "@/lib/side-chat-plugin.js";
 import {
   buildMessageDirectiveRegistry,
@@ -740,9 +744,16 @@ function buildRowPluginMessageActions(args: {
   message: ThreadChatMessageReference;
   selectedText?: string;
   openThreadPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
+  composerHost: PluginComposerHost | null;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
-  const { slots, timelineThreadId, message, selectedText, openThreadPanel } =
-    args;
+  const {
+    slots,
+    timelineThreadId,
+    message,
+    selectedText,
+    openThreadPanel,
+    composerHost,
+  } = args;
   if (timelineThreadId === undefined || slots.length === 0) {
     return undefined;
   }
@@ -758,6 +769,7 @@ function buildRowPluginMessageActions(args: {
         message,
         selectedText,
         openThreadPanel,
+        composerHost,
       }),
   }));
 }
@@ -849,6 +861,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
   mobileActionDisplay,
   streaming,
 }: ConversationRowContentProps) {
+  const composerHost = usePluginComposerHost();
   const {
     canSpawnChild,
     inlineMessageEditor,
@@ -892,6 +905,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     timelineThreadId: threadId,
     message: messageReference,
     openThreadPanel: onOpenPluginPanel,
+    composerHost,
   });
   const rowConsumerActions =
     consumerMessageActions.length === 0
@@ -2046,6 +2060,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
   const onOpenPluginPanel = props.onOpenPluginPanel;
+  const composerHost = usePluginComposerHost();
   const selectionPluginActions = useMemo<
     readonly ThreadTimelinePluginMessageAction[]
   >(() => {
@@ -2059,10 +2074,12 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         message: activeSelection.message,
         selectedText: activeSelection.selection.text,
         openThreadPanel: onOpenPluginPanel,
+        composerHost,
       }) ?? []
     );
   }, [
     activeSelection,
+    composerHost,
     messageActionSlots,
     onOpenPluginPanel,
     timelineThreadId,
