@@ -12,7 +12,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Loading"
-        hint="apps/app/.../TerminalHostSelector.tsx — shown while the host list is still loading"
+        hint="apps/app/src/components/secondary-panel/TerminalHostSelector.tsx — shown while the host list is still loading"
       >
         <OptionDisplay label="Machine" value="Loading…" className={CONTROL_CLASS_NAME} />
       </StoryRow>
