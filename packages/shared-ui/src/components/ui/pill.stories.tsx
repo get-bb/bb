@@ -1,8 +1,8 @@
-import { Pill, type PillVariant } from "@bb/shared-ui/pill";
-import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { Pill, type PillVariant } from "./pill.js";
+import { StoryCard, StoryRow } from "../../lib/story-card";
 
 export default {
-  title: "ui/Pill",
+  title: "shared-ui/Pill",
 };
 
 const variants: readonly PillVariant[] = [
