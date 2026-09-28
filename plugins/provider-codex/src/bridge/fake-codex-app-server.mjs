@@ -16,6 +16,7 @@ let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
 const pendingStartTurnIdsByThreadId = new Map();
 let interruptAttempts = 0;
+let pendingRateLimitReadId = null;
 const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
@@ -411,6 +412,10 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "account/rateLimits/read":
+      if (script?.deferredRateLimitRead) {
+        pendingRateLimitReadId = id;
+        return;
+      }
       respond(id, { rateLimits: {} });
       return;
     case "model/list":
@@ -505,6 +510,21 @@ async function handleRequest(message) {
       return;
     }
     case "turn/start": {
+      if (pendingRateLimitReadId !== null) {
+        for (const rateLimits of script.deferredRateLimitRead.updates) {
+          notify("account/rateLimits/updated", { rateLimits });
+        }
+        if (script.deferredRateLimitRead.error) {
+          respondError(
+            pendingRateLimitReadId,
+            -32603,
+            "Quota read unavailable",
+          );
+        } else {
+          respond(pendingRateLimitReadId, script.deferredRateLimitRead.result);
+        }
+        pendingRateLimitReadId = null;
+      }
       if (firstInputText(params.input) === ZERO_WORK_PROMPT_TEXT) {
         respond(id, {});
         return;

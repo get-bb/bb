@@ -928,28 +928,36 @@ const ignoredChildResultSchema = z.unknown();
 async function initializeChild(
   connection: CodexAppServerConnection,
   postInitializeRequests?: readonly ProviderPostInitializeRequest[],
-): Promise<void> {
+): Promise<{ optionalRequestsSettled: Promise<void> }> {
   await connection.request({
     method: "initialize",
     params: CODEX_INITIALIZE_PARAMS,
     resultSchema: ignoredChildResultSchema,
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
+  const optionalRequests: Promise<void>[] = [];
   for (const request of postInitializeRequests ?? []) {
-    try {
-      const result = await connection.request({
-        method: request.plan.method,
-        ...("params" in request.plan && request.plan.params !== undefined
-          ? { params: request.plan.params }
-          : {}),
-        resultSchema: ignoredChildResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      });
-      request.onResult(result);
-    } catch (error) {
-      if (request.required) {
-        throw error;
+    const pending = (async () => {
+      try {
+        const result = await connection.request({
+          method: request.plan.method,
+          ...("params" in request.plan && request.plan.params !== undefined
+            ? { params: request.plan.params }
+            : {}),
+          resultSchema: ignoredChildResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        request.onResult(result);
+      } catch (error) {
+        if (request.required) {
+          throw error;
+        }
       }
+    })();
+    if (request.required) {
+      await pending;
+    } else {
+      optionalRequests.push(pending);
     }
   }
   if (configuredSkillExtraRoots !== null) {
@@ -960,6 +968,11 @@ async function initializeChild(
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
   }
+  return {
+    optionalRequestsSettled: Promise.all(optionalRequests).then(
+      () => undefined,
+    ),
+  };
 }
 
 const codexThreadIdentityResultSchema = z
@@ -1090,11 +1103,22 @@ async function constructThreadSession(
   }
   sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
+  let pendingRateLimitNotifications: (() => void)[] | null = [];
   const connection = spawnChildConnection({
     envVars: decoded.sessionOptions.envVars,
     recordThreadId: args.threadId,
-    onNotification: (method, params) =>
-      handleChildNotification(args.threadId, serial, method, params),
+    onNotification: (method, params) => {
+      const deliver = () =>
+        handleChildNotification(args.threadId, serial, method, params);
+      if (
+        method === "account/rateLimits/updated" &&
+        pendingRateLimitNotifications !== null
+      ) {
+        pendingRateLimitNotifications.push(deliver);
+      } else {
+        deliver();
+      }
+    },
     onRequest: (method, params, responder) =>
       handleChildRequest(args.threadId, serial, method, params, responder),
     onExit: (info) => handleChildExit(args.threadId, serial, info),
@@ -1102,7 +1126,17 @@ async function constructThreadSession(
   session.connection = connection;
 
   try {
-    await initializeChild(connection, translator.buildPostInitializeRequests());
+    const { optionalRequestsSettled } = await initializeChild(
+      connection,
+      translator.buildPostInitializeRequests(),
+    );
+    void optionalRequestsSettled.then(() => {
+      const notifications = pendingRateLimitNotifications;
+      pendingRateLimitNotifications = null;
+      for (const deliver of notifications ?? []) {
+        deliver();
+      }
+    });
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       command: {
