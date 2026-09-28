@@ -87,8 +87,8 @@ import {
   publishComposerEditorBridge,
   type ComposerEditorBridge,
   type ComposerEditorInsertValue,
-  type ComposerEditorState,
 } from "@/lib/composer-editor-registry";
+import type { ComposerEditorState } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
@@ -2711,23 +2711,7 @@ export function PromptBoxInternal({
   const insertAtCursorForPlugin = useCallback(
     (value: ComposerEditorInsertValue, block: boolean) => {
       const currentEditor = editorRef.current;
-      if (!currentEditor || currentEditor.isDestroyed) {
-        const current = valueRef.current;
-        const separator = block && current.trim().length > 0 ? "\n\n" : "";
-        const base = block ? current.replace(/\s+$/u, "") : current;
-        const offset = base.length + separator.length;
-        onChangeRef.current(`${base}${separator}${value.text}`, [
-          ...mentionRangesRef.current.filter(
-            (mention) => mention.end <= base.length,
-          ),
-          ...value.mentions.map((mention) => ({
-            ...mention,
-            start: mention.start + offset,
-            end: mention.end + offset,
-          })),
-        ]);
-        return;
-      }
+      if (!currentEditor || currentEditor.isDestroyed) return false;
       const insertion = currentEditor.chain();
       if (!isPointerCoarse) insertion.focus();
       insertion
@@ -2740,6 +2724,7 @@ export function PromptBoxInternal({
         )
         .run();
       if (!isPointerCoarse) scheduleRevealEditorSelection();
+      return true;
     },
     [isPointerCoarse, richTextEditing, scheduleRevealEditorSelection],
   );

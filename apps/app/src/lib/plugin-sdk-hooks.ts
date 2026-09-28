@@ -48,12 +48,11 @@ import {
   subscribeComposerEditorBridges,
   useComposerEditorBridge,
 } from "@/lib/composer-editor-registry";
+import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
-  composerTargetFromHost,
-  createComposerHandleBinding,
+  composerHandleController,
   listedComposerHandles,
-  type ComposerHandleController,
-  type ComposerTarget,
+  type ComposerSource,
 } from "@/lib/plugin-composer-handle";
 import { sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
@@ -92,7 +91,6 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
-const alwaysAvailable = () => true;
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
     matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
@@ -725,18 +723,15 @@ export function useComposer(): PluginComposerApi {
     [scope],
   );
 
-  const target = useMemo<ComposerTarget>(
+  const source = useMemo<ComposerSource>(
     () =>
-      composerHost !== null
-        ? composerTargetFromHost(composerHost)
-        : {
-            key: routeDraft.storageKey,
-            scope,
-            getCurrent: routeDraft.getCurrent,
-            setDraft: routeDraft.setDraft,
-            isAvailable: alwaysAvailable,
-            focus: () => requestComposerFocus(routeDraft.storageKey),
-          },
+      composerHost ?? {
+        scope,
+        textEffectKey: routeDraft.storageKey,
+        getCurrent: routeDraft.getCurrent,
+        setDraft: routeDraft.setDraft,
+        focus: () => requestComposerFocus(routeDraft.storageKey),
+      },
     [
       composerHost,
       routeDraft.getCurrent,
@@ -745,9 +740,14 @@ export function useComposer(): PluginComposerApi {
       scope,
     ],
   );
-  const controller = useMemo<ComposerHandleController>(
-    () => ({ pluginId, target, setTextEffect, setInputLock, onSubmitted }),
-    [onSubmitted, pluginId, setInputLock, setTextEffect, target],
+  const controller = useMemo(
+    () =>
+      composerHandleController(pluginId, source, {
+        setTextEffect,
+        setInputLock,
+        onSubmitted,
+      }),
+    [onSubmitted, pluginId, setInputLock, setTextEffect, source],
   );
   const [binding, setBinding] = useState(() =>
     createComposerHandleBinding(textEffectKey, controller),

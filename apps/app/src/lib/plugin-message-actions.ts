@@ -4,10 +4,8 @@ import type {
   ThreadChatMessageReference,
 } from "@get-bb/plugin-sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import {
-  createComposerHandleBinding,
-  detachedComposerController,
-} from "./plugin-composer-handle";
+import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
+import { detachedComposerController } from "./plugin-composer-handle";
 import type { MarkdownMessageDirectiveOpenThreadPanel } from "@/components/ui/markdown-message-directives";
 import type { PluginMessageActionSlot } from "./plugin-slots";
 

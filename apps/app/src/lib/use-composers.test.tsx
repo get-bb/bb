@@ -52,7 +52,7 @@ function mountEditor(host: TestHost, pluginCustomizable = true) {
       isAttaching: false,
       attachmentError: null,
     },
-    insertAtCursor: () => {},
+    insertAtCursor: () => true,
   };
   act(() => publishComposerEditorBridge(host.textEffectKey, bridge));
   published.push([host.textEffectKey, bridge]);

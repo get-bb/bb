@@ -19,8 +19,6 @@ import {
   type BranchesState,
   type ComposerCustomization,
   type ComposerDraft,
-  type ComposerInsertOptions,
-  type ComposerInsertPart,
   type ComposerMention,
   type ComposerSelection,
   type ComposerSubmitOptions,
@@ -101,6 +99,12 @@ import {
   type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
+import {
+  appendComposerDraft,
+  createComposerHandleBinding,
+  reconcileComposerMentions,
+  type ComposerHandleTarget,
+} from "../internal/composer-handle.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import {
@@ -196,7 +200,10 @@ export interface ExperimentalFixedTabOpenCall {
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
-  /** Latest text and mention pills, as `useComposer().draft` reports them. */
+  /**
+   * Latest text and mention pills, as `useComposer().draft` reports them.
+   * The harness composer has no caret, so cursor inserts land at the end.
+   */
   readonly draft: ComposerDraft;
   /** The key `useComposer().key` reports for the current scope. */
   readonly key: string;
@@ -212,14 +219,6 @@ export interface ComposerLog {
   inputLockCalls: boolean[];
   quotes: string[];
   mentions: PluginComposerMention[];
-  /**
-   * Every `insert` the plugin ran, in order. The harness composer has no
-   * caret, so cursor inserts land at the end of the draft.
-   */
-  inserts: Array<{
-    parts: ComposerInsertPart | readonly ComposerInsertPart[];
-    options: ComposerInsertOptions;
-  }>;
   focusCount: number;
   /**
    * Every `submit` the plugin ran, in order. The harness composer has no
@@ -317,38 +316,6 @@ export interface SidebarNavigationCall {
   openInSplit?: boolean;
 }
 
-function reconcileTestComposerMentions(
-  currentText: string,
-  nextText: string,
-  mentions: readonly ComposerMention[],
-): ComposerMention[] {
-  let prefix = 0;
-  const maxPrefix = Math.min(currentText.length, nextText.length);
-  while (prefix < maxPrefix && currentText[prefix] === nextText[prefix]) {
-    prefix += 1;
-  }
-  let suffix = 0;
-  while (
-    suffix < currentText.length - prefix &&
-    suffix < nextText.length - prefix &&
-    currentText[currentText.length - suffix - 1] ===
-      nextText[nextText.length - suffix - 1]
-  ) {
-    suffix += 1;
-  }
-  const replacedEnd = currentText.length - suffix;
-  const delta = nextText.length - currentText.length;
-  return mentions.flatMap((mention) => {
-    if (mention.to <= prefix) return [mention];
-    if (mention.from >= replacedEnd) {
-      return [
-        { ...mention, from: mention.from + delta, to: mention.to + delta },
-      ];
-    }
-    return [];
-  });
-}
-
 function testComposerKey(scope: PluginComposerScope): string {
   switch (scope.kind) {
     case "thread":
@@ -380,50 +347,6 @@ function testComposerMentionText(mention: ComposerMention): string {
       return `@${path}${mention.entryKind === "directory" && !path.endsWith("/") ? "/" : ""}`;
     }
   }
-}
-
-function testComposerInsertValue(
-  parts: ComposerInsertPart | readonly ComposerInsertPart[],
-  pluginId: string,
-): ComposerDraft & { mentions: ComposerMention[] } {
-  const list: readonly ComposerInsertPart[] = Array.isArray(parts)
-    ? parts
-    : [parts as ComposerInsertPart];
-  let text = "";
-  const mentions: ComposerMention[] = [];
-  for (const part of list) {
-    if (typeof part === "string") {
-      text += part;
-      continue;
-    }
-    let mention: ComposerMention;
-    if ("kind" in part) {
-      mention = part;
-    } else {
-      const provider = part.provider.trim();
-      if (provider.length === 0 || provider.includes(":")) {
-        throw new Error(`Invalid mention provider id "${part.provider}".`);
-      }
-      mention = {
-        from: 0,
-        to: 0,
-        label: part.label.trim() || part.id,
-        kind: "plugin",
-        pluginId,
-        provider,
-        id: part.id,
-        icon: null,
-      };
-    }
-    const serialized = testComposerMentionText(mention);
-    mentions.push({
-      ...mention,
-      from: text.length,
-      to: text.length + serialized.length,
-    });
-    text += serialized;
-  }
-  return { text, mentions };
 }
 
 function createSdkFakeNode(
@@ -2031,13 +1954,9 @@ export function renderSlot<
     if (next === composerText) return;
     commitComposerDraft(
       next,
-      reconcileTestComposerMentions(composerText, next, composerMentions),
+      reconcileComposerMentions(composerText, next, composerMentions),
     );
   };
-  const composerIsEmpty = () =>
-    composerText.trim() === "" &&
-    composerMentions.length === 0 &&
-    composerAttachmentCount === 0;
   const composerBlockedReason = (): string | null => {
     if (options.composer?.submittingBlockedReason !== undefined) {
       return options.composer.submittingBlockedReason;
@@ -2080,7 +1999,6 @@ export function renderSlot<
     inputLockCalls: [],
     quotes: [],
     mentions: [],
-    inserts: [],
     focusCount: 0,
     submits: [],
     selections: [],
@@ -2088,53 +2006,103 @@ export function renderSlot<
   const composerOwnership = { active: true };
   const composerIsAvailable = () =>
     composerOwnership.active || composerScope.kind !== "queued-message";
-  const requireComposerAvailable = () => {
-    if (!composerIsAvailable()) {
-      throw new Error("This composer is no longer available.");
-    }
-  };
   const submissionListeners = new Set<() => void>();
-  const onSubmitted = (listener: () => void) => {
-    submissionListeners.add(listener);
-    return () => {
-      submissionListeners.delete(listener);
-    };
+  const composerTarget: ComposerHandleTarget = {
+    get key() {
+      return testComposerKey(composerScope);
+    },
+    get scope() {
+      return composerScope;
+    },
+    getDraft: composerDraft,
+    getAttachmentCount: () => composerAttachmentCount,
+    setDraft: (next) => commitComposerDraft(next.text, [...next.mentions]),
+    addQuote(text) {
+      const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
+      if (trimmed === "") return;
+      const block = trimmed
+        .split("\n")
+        .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+        .join("\n");
+      commitComposerText(
+        composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
+      );
+      composerLog.quotes.push(text);
+    },
+    getEditorState: () => {
+      const reason = composerBlockedReason();
+      return {
+        layout: composerLayout,
+        isRunning: composerIsRunning,
+        isSubmitting: composerIsSubmitting,
+        isSubmittingBlocked: reason !== null,
+        submittingBlockedReason: reason,
+        isAttaching: false,
+        attachmentError: null,
+      };
+    },
+    subscribeEditorState: () => () => {},
+    insertAtCursor(value, block) {
+      composerTarget.setDraft(
+        appendComposerDraft(composerDraft(), value, block),
+      );
+      return true;
+    },
+    isAvailable: composerIsAvailable,
+    focus() {
+      composerLog.focusCount += 1;
+    },
+    async submit(submitOptions) {
+      composerLog.submits.push(submitOptions);
+      commitComposerDraft("", []);
+      for (const listener of submissionListeners) listener();
+    },
+    async setSelection(selection) {
+      if (composerScope.kind === "queued-message") {
+        throw new Error("This composer has no pickers to set.");
+      }
+      const {
+        projectId: _projectId,
+        environment: _environment,
+        ...rest
+      } = selection;
+      const accepted: ComposerSelection =
+        composerScope.kind === "thread" ? rest : { ...selection };
+      composerLog.selections.push(accepted);
+      return accepted;
+    },
   };
-  const removeMention = ({
+  const composerHandle = createComposerHandleBinding(
+    testComposerKey(composerScope),
+    {
+      pluginId: composerPluginId,
+      target: composerTarget,
+      mentionText: testComposerMentionText,
+      setTextEffect(effect) {
+        if (!composerOwnership.active) return;
+        composerLog.textEffect = effect;
+        composerLog.textEffectCalls.push(effect);
+      },
+      setInputLock(locked) {
+        if (!composerOwnership.active) return;
+        composerLog.inputLocked = locked;
+        composerLog.inputLockCalls.push(locked);
+      },
+      onSubmitted(listener) {
+        submissionListeners.add(listener);
+        return () => {
+          submissionListeners.delete(listener);
+        };
+      },
+    },
+  ).handle;
+  const forgetLoggedMention = ({
     provider,
     id,
   }: {
     provider: string;
     id: string;
   }) => {
-    let nextText = composerText;
-    let nextMentions = composerMentions;
-    for (const mention of [...composerMentions].sort(
-      (a, b) => b.from - a.from,
-    )) {
-      if (
-        mention.kind !== "plugin" ||
-        mention.pluginId !== composerPluginId ||
-        mention.provider !== provider ||
-        mention.id !== id
-      ) {
-        continue;
-      }
-      const length = mention.to - mention.from;
-      nextText = nextText.slice(0, mention.from) + nextText.slice(mention.to);
-      nextMentions = nextMentions
-        .filter((candidate) => candidate !== mention)
-        .map((candidate) =>
-          candidate.from >= mention.to
-            ? {
-                ...candidate,
-                from: candidate.from - length,
-                to: candidate.to - length,
-              }
-            : candidate,
-        );
-    }
-    commitComposerDraft(nextText, nextMentions);
     for (let index = composerLog.mentions.length - 1; index >= 0; index -= 1) {
       const mention = composerLog.mentions[index];
       if (mention?.provider === provider && mention.id === id) {
@@ -2142,157 +2110,22 @@ export function renderSlot<
       }
     }
   };
-  const submit = async (submitOptions: ComposerSubmitOptions) => {
-    requireComposerAvailable();
-    if (
-      submitOptions.sendAt !== undefined &&
-      (!Number.isFinite(submitOptions.sendAt) ||
-        submitOptions.sendAt <= Date.now())
-    ) {
-      throw new Error("Pick a time in the future.");
-    }
-    const blockedReason = composerBlockedReason();
-    if (blockedReason !== null) throw new Error(blockedReason);
-    composerLog.submits.push(submitOptions);
-    commitComposerDraft("", []);
-    for (const listener of submissionListeners) listener();
-  };
-  const setSelection = async (selection: ComposerSelection) => {
-    requireComposerAvailable();
-    if (composerScope.kind === "queued-message") {
-      throw new Error("This composer has no pickers to set.");
-    }
-    const {
-      projectId: _projectId,
-      environment: _environment,
-      ...rest
-    } = selection;
-    const accepted: ComposerSelection =
-      composerScope.kind === "thread" ? rest : { ...selection };
-    composerLog.selections.push(accepted);
-    return accepted;
-  };
-  const composerHandle: PluginComposerApi = {
-    get scope() {
-      return composerScope;
-    },
-    get key() {
-      return testComposerKey(composerScope);
-    },
-    get layout() {
-      return composerLayout;
-    },
-    get isRunning() {
-      return composerIsRunning;
-    },
-    get isSubmitting() {
-      return composerIsSubmitting;
-    },
-    get isSubmittingBlocked() {
-      return composerBlockedReason() !== null;
-    },
-    get submittingBlockedReason() {
-      return composerBlockedReason();
-    },
-    get isEmpty() {
-      return composerIsEmpty();
-    },
-    get attachmentCount() {
-      return composerAttachmentCount;
-    },
-    get text() {
-      return composerText;
-    },
-    get draft() {
-      return composerDraft();
-    },
-    setText(next) {
-      commitComposerText(next);
-    },
-    updateText(updater) {
-      commitComposerText(updater(composerText));
-    },
-    clear() {
-      commitComposerText("");
-    },
-    insert(parts, insertOptions = {}) {
-      requireComposerAvailable();
-      const value = testComposerInsertValue(parts, composerPluginId);
-      const base = insertOptions.block
-        ? composerText.replace(/\s+$/u, "")
-        : composerText;
-      const separator = insertOptions.block && base.length > 0 ? "\n\n" : "";
-      const offset = base.length + separator.length;
-      commitComposerDraft(`${base}${separator}${value.text}`, [
-        ...composerMentions.filter((mention) => mention.to <= base.length),
-        ...value.mentions.map((mention) => ({
-          ...mention,
-          from: mention.from + offset,
-          to: mention.to + offset,
-        })),
-      ]);
-      composerLog.inserts.push({ parts, options: insertOptions });
-    },
-    setTextEffect(effect) {
-      if (!composerOwnership.active) return;
-      composerLog.textEffect = effect;
-      composerLog.textEffectCalls.push(effect);
-    },
-    setInputLock(locked) {
-      if (!composerOwnership.active) return;
-      composerLog.inputLocked = locked;
-      composerLog.inputLockCalls.push(locked);
-    },
-    addQuote(text) {
-      const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
-      if (trimmed !== "") {
-        const block = trimmed
-          .split("\n")
-          .map((line) => (line.length > 0 ? `> ${line}` : ">"))
-          .join("\n");
-        commitComposerText(
-          composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
-        );
-        composerLog.quotes.push(text);
-      }
-      composerLog.focusCount += 1;
-    },
-    insertMention(mention) {
-      const label = mention.label.trim() || mention.id;
-      const separator =
-        composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
-      const from = composerText.length + separator.length;
-      commitComposerDraft(`${composerText}${separator}${label} `, [
-        ...composerMentions,
-        {
-          from,
-          to: from + label.length,
-          label,
-          kind: "plugin",
-          pluginId: composerPluginId,
-          provider: mention.provider,
-          id: mention.id,
-          icon: null,
-        },
-      ]);
+  const { insertMention, removeMention, experimental_removeMention } =
+    composerHandle;
+  Object.assign(composerHandle, {
+    insertMention(mention: PluginComposerMention) {
+      insertMention(mention);
       composerLog.mentions.push(mention);
-      composerLog.focusCount += 1;
     },
-    removeMention(mention) {
-      requireComposerAvailable();
+    removeMention(mention: { provider: string; id: string }) {
       removeMention(mention);
+      forgetLoggedMention(mention);
     },
-    onSubmitted,
-    focus() {
-      composerLog.focusCount += 1;
+    experimental_removeMention(mention: { provider: string; id: string }) {
+      experimental_removeMention(mention);
+      forgetLoggedMention(mention);
     },
-    submit,
-    setSelection,
-    experimental_removeMention: removeMention,
-    experimental_onSubmitted: onSubmitted,
-    experimental_submit: submit,
-    experimental_setSelection: setSelection,
-  };
+  });
   const composer: TestComposerStore = {
     api: composerHandle,
     apiList: [composerHandle],

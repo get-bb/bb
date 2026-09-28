@@ -74,6 +74,12 @@
       "import": "./dist/internal/composer-customization-validation.js",
       "default": "./dist/internal/composer-customization-validation.js"
     },
+    "./internal/composer-handle": {
+      "source": "./src/internal/composer-handle.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-composer-handle.d.ts",
+      "import": "./dist/internal/composer-handle.js",
+      "default": "./dist/internal/composer-handle.js"
+    },
     "./internal/composer-view": {
       "source": "./src/internal/composer-view.ts",
       "types": "./bundled-types/bb-plugin-sdk-internal-composer-view.d.ts",

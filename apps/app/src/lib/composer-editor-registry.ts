@@ -1,17 +1,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
+import type { ComposerEditorState } from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { createKeyedListeners } from "./keyed-listeners";
-
-export interface ComposerEditorState {
-  layout: "expanded" | "compact";
-  isRunning: boolean;
-  isSubmitting: boolean;
-  isSubmittingBlocked: boolean;
-  submittingBlockedReason: string | null;
-  isAttaching: boolean;
-  attachmentError: string | null;
-}
 
 export interface ComposerEditorInsertValue {
   text: string;
@@ -22,7 +13,7 @@ export interface ComposerEditorBridge {
   host: PluginComposerHost;
   pluginCustomizable: boolean;
   state: ComposerEditorState;
-  insertAtCursor(value: ComposerEditorInsertValue, block: boolean): void;
+  insertAtCursor(value: ComposerEditorInsertValue, block: boolean): boolean;
 }
 
 const bridgesByKey = new Map<string, ComposerEditorBridge>();

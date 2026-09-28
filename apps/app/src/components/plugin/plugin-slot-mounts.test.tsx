@@ -1224,7 +1224,7 @@ describe("useComposer", () => {
         isAttaching: false,
         attachmentError: null,
       },
-      insertAtCursor: () => {},
+      insertAtCursor: () => true,
     };
     publishComposerEditorBridge("thread:thr_submit", readyEditor);
     const view = render(

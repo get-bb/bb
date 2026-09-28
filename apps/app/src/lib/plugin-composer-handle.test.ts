@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftState } from "@bb/client-core";
+import type { ComposerEditorState } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   clearComposerEditorBridge,
   publishComposerEditorBridge,
   type ComposerEditorBridge,
-  type ComposerEditorState,
 } from "./composer-editor-registry";
+import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
-  createComposerHandleBinding,
-  type ComposerHandleController,
-  type ComposerTarget,
+  composerHandleController,
+  type ComposerSource,
 } from "./plugin-composer-handle";
 
 const KEY = "composer-handle-test";
@@ -29,7 +29,7 @@ const published: ComposerEditorBridge[] = [];
 
 function publishEditor(
   state: Partial<ComposerEditorState> = {},
-  insertAtCursor: ComposerEditorBridge["insertAtCursor"] = () => {},
+  insertAtCursor: ComposerEditorBridge["insertAtCursor"] = () => true,
 ): ComposerEditorBridge {
   const bridge: ComposerEditorBridge = {
     host: {
@@ -106,11 +106,11 @@ const MENTIONS: PromptTextMention[] = [
 
 function makeTarget(
   initial: PromptDraftState,
-  overrides: Partial<ComposerTarget> = {},
+  overrides: Partial<ComposerSource> = {},
 ) {
   let draft = initial;
-  const target: ComposerTarget = {
-    key: KEY,
+  const target: ComposerSource = {
+    textEffectKey: KEY,
     scope: { kind: "thread", threadId: "thr_1" },
     getCurrent: () => draft,
     setDraft: (next) => {
@@ -123,15 +123,15 @@ function makeTarget(
   return { target, current: () => draft };
 }
 
-function makeHandle(target: ComposerTarget, pluginId = "demo") {
-  const controller: ComposerHandleController = {
-    pluginId,
-    target,
-    setTextEffect: () => {},
-    setInputLock: () => {},
-    onSubmitted: () => () => {},
-  };
-  return createComposerHandleBinding(KEY, controller);
+function makeHandle(target: ComposerSource, pluginId = "demo") {
+  return createComposerHandleBinding(
+    KEY,
+    composerHandleController(pluginId, target, {
+      setTextEffect: () => {},
+      setInputLock: () => {},
+      onSubmitted: () => () => {},
+    }),
+  );
 }
 
 const emptyDraft: PromptDraftState = {
@@ -172,7 +172,7 @@ describe("composer handle", () => {
   });
 
   it("inserts at the cursor through the mounted editor and refuses without one", () => {
-    const insertAtCursor = vi.fn();
+    const insertAtCursor = vi.fn(() => true);
     publishEditor({}, insertAtCursor);
     const { target } = makeTarget(emptyDraft);
     const { handle } = makeHandle(target);
@@ -203,6 +203,46 @@ describe("composer handle", () => {
     expect(() =>
       handle.insert({ provider: "bad:id", id: "x", label: "x" }, { at: "end" }),
     ).toThrow(/Invalid mention provider/);
+  });
+
+  it("appends a cursor insert while the mounted editor is still initializing", () => {
+    publishEditor({}, () => false);
+    const { target, current } = makeTarget({
+      text: "Hi",
+      mentions: [],
+      attachments: [],
+    });
+
+    makeHandle(target).handle.insert("there", { block: true });
+    expect(current().text).toBe("Hi\n\nthere");
+  });
+
+  it("removes only its own mentions, rebases the rest, and keeps attachments", () => {
+    const attachments: PromptDraftState["attachments"] = [];
+    const pill = (pluginId: string, start: number): PromptTextMention => ({
+      start,
+      end: start + 4,
+      resource: {
+        kind: "plugin",
+        pluginId,
+        itemId: "annotation:1",
+        label: "same",
+        icon: null,
+      },
+    });
+    const { target, current } = makeTarget({
+      text: "same same tail",
+      mentions: [pill("annotations", 0), pill("other", 5)],
+      attachments,
+    });
+
+    makeHandle(target, "annotations").handle.removeMention({
+      provider: "annotation",
+      id: "1",
+    });
+    expect(current().text).toBe(" same tail");
+    expect(current().mentions).toEqual([pill("other", 1)]);
+    expect(current().attachments).toBe(attachments);
   });
 
   it("appends a block after existing text and keeps existing mentions", () => {
@@ -314,13 +354,13 @@ describe("composer handle", () => {
     const handle = binding.handle;
     const second = makeTarget({ text: "two", mentions: [], attachments: [] });
 
-    binding.update({
-      pluginId: "demo",
-      target: second.target,
-      setTextEffect: () => {},
-      setInputLock: () => {},
-      onSubmitted: () => () => {},
-    });
+    binding.update(
+      composerHandleController("demo", second.target, {
+        setTextEffect: () => {},
+        setInputLock: () => {},
+        onSubmitted: () => () => {},
+      }),
+    );
 
     expect(binding.handle).toBe(handle);
     expect(handle.text).toBe("two");
