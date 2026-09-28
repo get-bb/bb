@@ -1051,13 +1051,18 @@ or enabled account is available without a plugin reload.
 When the plugin has an enabled account whose secret file is readable and
 valid, it automatically contributes the provider's hub route and a
 machine-specific secret token to Claude Code or Codex sessions on every host.
-Claude Code also receives `ENABLE_TOOL_SEARCH=true`.
+Claude Code also receives `ENABLE_TOOL_SEARCH=true` and
+`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies both when launching `codex app-server`
 without writing to `~/.codex/config.toml`.
 Codex image generation and editing use the same authenticated pool route.
 Claude Code disables tool search behind a custom base URL by default; the hub
 forwards `tool_reference` blocks unchanged, so the override keeps it on.
+Behind a custom base URL, Claude Code also limits Opus models without a `[1m]`
+suffix to a 200k context window. The hub forwards to Anthropic's API, so the
+second override gives pooled sessions the same native context window as a
+direct login.
 Tokens are never printed
 by the CLI. Plugin startup and `bb pool status` remove token files for machines
 that are no longer enrolled. Status lists token mint and last-use timestamps
