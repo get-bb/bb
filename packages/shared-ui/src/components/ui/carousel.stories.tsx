@@ -5,7 +5,7 @@ export default {
   title: "shared-ui/Carousel",
 };
 
-const PLACEHOLDER_COLORS = ["bg-primary", "bg-accent", "bg-destructive", "bg-success"];
+const PLACEHOLDER_COLORS = ["bg-muted", "bg-muted", "bg-muted", "bg-muted"];
 
 export function Overview() {
   return (
@@ -21,9 +21,9 @@ export function Overview() {
         >
           <CarouselContent className="-ml-3 items-center">
             {PLACEHOLDER_COLORS.map((color, index) => (
-              <CarouselItem key={color} className="basis-auto pl-3">
+              <CarouselItem key={index} className="basis-auto pl-3">
                 <div
-                  className={`flex h-40 w-64 items-center justify-center rounded-md border border-border text-sm text-white ${color}`}
+                  className={`flex h-40 w-64 items-center justify-center rounded-md border border-border text-sm text-muted-foreground ${color}`}
                 >
                   Screenshot {index + 1}
                 </div>

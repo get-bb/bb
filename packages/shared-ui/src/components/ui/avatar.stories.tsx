@@ -50,7 +50,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="Official bb-authored plugin"
-        hint="official=true renders a wordmark instead of initials — BbLogo (app-only SVG) is stubbed here as plain text"
+        hint="official=true renders a wordmark instead of initials — BbLogo (app-only SVG) stubbed as text, shown only if image fails"
       >
         <Avatar role="img" aria-label="bb's avatar" className="size-10 border border-border bg-muted">
           <AvatarImage

@@ -13,8 +13,8 @@ export function Overview() {
           <AccordionItem value="item-1">
             <AccordionTrigger>What triggers a rebuild?</AccordionTrigger>
             <AccordionContent>
-              Any change under `packages/shared-ui/src` or `apps/app/src/components/ui` — the Turbo task's
-              `inputs` list covers both.
+              Any change under packages/shared-ui/src or apps/app/src/components/ui — the Turbo task's
+              inputs list covers both.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="item-2">
