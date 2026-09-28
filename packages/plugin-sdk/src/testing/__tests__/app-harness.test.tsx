@@ -30,6 +30,7 @@ const {
   ThreadChat,
   useBbNavigate,
   useComposer,
+  useComposers,
   useComposerView,
   useRealtime,
   useRealtimeConnectionState,
@@ -396,6 +397,7 @@ function InlineVis({
 
 function ComposerProbe() {
   const composer = useComposer();
+  const listed = useComposers();
   const view = useComposerView();
   capturedComposerVisualSetters = {
     setTextEffect: composer.setTextEffect,
@@ -409,6 +411,9 @@ function ComposerProbe() {
         {JSON.stringify(composer.scope)}
       </span>
       <span data-testid="composer-text">{composer.text}</span>
+      <span data-testid="composer-listed">
+        {String(listed.length === 1 && listed[0] === composer)}
+      </span>
       <span data-testid="composer-view-text">{view.draft.text}</span>
       <span data-testid="composer-attachment-count">
         {view.draft.attachmentCount}
@@ -1821,6 +1826,7 @@ describe("renderSlot", () => {
 
     expect(thread.getByTestId("composer-scope").textContent).toBe("thread");
     expect(thread.getByTestId("composer-text").textContent).toBe("seed");
+    expect(thread.getByTestId("composer-listed").textContent).toBe("true");
     fireEvent.click(thread.getByText("replace"));
     fireEvent.click(thread.getByText("update"));
     fireEvent.click(thread.getByText("update"));

@@ -24,7 +24,11 @@ import {
   type PromptDraftState,
 } from "@bb/client-core";
 import { serializedTextForPromptMentionResource } from "@/components/promptbox/mentions/prompt-mention-clipboard";
-import { removePluginMention } from "./composer-submissions";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import {
+  removePluginMention,
+  subscribeComposerSubmitted,
+} from "./composer-submissions";
 import {
   getComposerEditorBridge,
   subscribeComposerEditorBridge,
@@ -660,4 +664,72 @@ export function createComposerHandleBinding(
       controller = next;
     },
   };
+}
+
+const alwaysAvailable = () => true;
+
+export function composerTargetFromHost(
+  host: PluginComposerHost,
+): ComposerTarget {
+  return {
+    key: host.textEffectKey,
+    scope: host.scope,
+    getCurrent: host.getCurrent,
+    setDraft: host.setDraft,
+    isAvailable: host.isAvailable ?? alwaysAvailable,
+    focus: host.focus,
+    ...(host.submit !== undefined ? { submit: host.submit } : {}),
+    ...(host.setSelection !== undefined
+      ? { setSelection: host.setSelection }
+      : {}),
+  };
+}
+
+export function detachedComposerController(
+  pluginId: string,
+  host: PluginComposerHost,
+  caller: string,
+): ComposerHandleController {
+  const scope = host.scope;
+  const warnNoLifecycle = (method: string) => {
+    console.warn(
+      `[plugin:${pluginId}] ${caller} composer.${method} has no effect; call it from a composer slot's useComposer().`,
+    );
+  };
+  return {
+    pluginId,
+    target: composerTargetFromHost(host),
+    setTextEffect: () => warnNoLifecycle("setTextEffect"),
+    setInputLock: () => warnNoLifecycle("setInputLock"),
+    onSubmitted: (listener) => subscribeComposerSubmitted(scope, listener),
+  };
+}
+
+const listedComposerBindings = new Map<
+  string,
+  Map<string, ComposerHandleBinding>
+>();
+
+export function listedComposerHandles(
+  pluginId: string,
+  hosts: readonly PluginComposerHost[],
+): readonly PluginComposerApi[] {
+  const previous = listedComposerBindings.get(pluginId) ?? new Map();
+  const next = new Map<string, ComposerHandleBinding>();
+  const handles = hosts.map((host) => {
+    const controller = detachedComposerController(
+      pluginId,
+      host,
+      "useComposers()",
+    );
+    const existing = previous.get(host.textEffectKey);
+    const binding =
+      existing ?? createComposerHandleBinding(host.textEffectKey, controller);
+    binding.update(controller);
+    next.set(host.textEffectKey, binding);
+    return binding.handle;
+  });
+  if (next.size === 0) listedComposerBindings.delete(pluginId);
+  else listedComposerBindings.set(pluginId, next);
+  return handles;
 }

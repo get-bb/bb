@@ -38,6 +38,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`
 - `useComposer`
+- `useComposers`
 - `useComposerView` — deprecated, runtime-only for older plugins; use `useComposer`
 - `experimental_useSidebarThreads`
 - `experimental_useSidebarThreadActions`

@@ -2743,18 +2743,28 @@ export function PromptBoxInternal({
     },
     [isPointerCoarse, richTextEditing, scheduleRevealEditorSelection],
   );
-  const composerEditorBridge = useMemo<ComposerEditorBridge>(
-    () => ({
-      state: composerEditorState,
-      insertAtCursor: insertAtCursorForPlugin,
-    }),
-    [composerEditorState, insertAtCursorForPlugin],
+  const composerEditorBridge = useMemo<ComposerEditorBridge | null>(
+    () =>
+      pluginComposerHost === null
+        ? null
+        : {
+            host: pluginComposerHost,
+            pluginCustomizable: !suppressPluginComposerCustomizations,
+            state: composerEditorState,
+            insertAtCursor: insertAtCursorForPlugin,
+          },
+    [
+      composerEditorState,
+      insertAtCursorForPlugin,
+      pluginComposerHost,
+      suppressPluginComposerCustomizations,
+    ],
   );
   const publishedComposerEditorBridgeRef = useRef<ComposerEditorBridge | null>(
     null,
   );
   useLayoutEffect(() => {
-    if (composerEditorKey === null) return;
+    if (composerEditorKey === null || composerEditorBridge === null) return;
     publishComposerEditorBridge(composerEditorKey, composerEditorBridge);
     publishedComposerEditorBridgeRef.current = composerEditorBridge;
   }, [composerEditorBridge, composerEditorKey]);

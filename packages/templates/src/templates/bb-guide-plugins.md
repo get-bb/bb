@@ -705,7 +705,9 @@ workspace/host/thread-storage files), and useComposer (one stable handle for
 the bound composer: read its text, mentions, scope, layout, run and submit
 state, and why submitting is blocked; replace/update/clear text; insert text
 and mentions at the cursor or end; apply a class-based text effect, lock input,
-quote selections, submit exactly as Enter would, and focus the composer).
+quote selections, submit exactly as Enter would, and focus the composer),
+and useComposers (a handle for every composer on screen, so a panel can write
+into the one the user picks).
 Plain-text edits preserve attachments and reconcile only inline mentions
 overlapped by the edit. Define RPC methods with `defineRpcContract`
 and Standard Schema-compatible input/output validators (Zod works directly),

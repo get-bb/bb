@@ -31,7 +31,19 @@ function publishEditor(
   state: Partial<ComposerEditorState> = {},
   insertAtCursor: ComposerEditorBridge["insertAtCursor"] = () => {},
 ): ComposerEditorBridge {
-  const bridge = { state: { ...READY, ...state }, insertAtCursor };
+  const bridge: ComposerEditorBridge = {
+    host: {
+      scope: { kind: "thread", threadId: "thr_1" },
+      textEffectKey: KEY,
+      getCurrent: () => ({ text: "", mentions: [], attachments: [] }),
+      subscribeDraft: () => () => {},
+      setDraft: () => {},
+      focus: () => {},
+    },
+    pluginCustomizable: true,
+    state: { ...READY, ...state },
+    insertAtCursor,
+  };
   publishComposerEditorBridge(KEY, bridge);
   published.push(bridge);
   return bridge;

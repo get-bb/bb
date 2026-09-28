@@ -4,8 +4,10 @@ import type {
   ThreadChatMessageReference,
 } from "@get-bb/plugin-sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { subscribeComposerSubmitted } from "./composer-submissions";
-import { createComposerHandleBinding } from "./plugin-composer-handle";
+import {
+  createComposerHandleBinding,
+  detachedComposerController,
+} from "./plugin-composer-handle";
 import type { MarkdownMessageDirectiveOpenThreadPanel } from "@/components/ui/markdown-message-directives";
 import type { PluginMessageActionSlot } from "./plugin-slots";
 
@@ -27,30 +29,10 @@ function messageActionComposer(
   if (host.scope.kind !== "thread" || host.scope.threadId !== threadId) {
     return null;
   }
-  const scope = host.scope;
-  const warnNoLifecycle = (method: string) => {
-    console.warn(
-      `[plugin:${pluginId}] a message action's composer.${method} has no effect; call it from a component.`,
-    );
-  };
-  return createComposerHandleBinding(host.textEffectKey, {
-    pluginId,
-    target: {
-      key: host.textEffectKey,
-      scope,
-      getCurrent: host.getCurrent,
-      setDraft: host.setDraft,
-      isAvailable: host.isAvailable ?? (() => true),
-      focus: host.focus,
-      ...(host.submit !== undefined ? { submit: host.submit } : {}),
-      ...(host.setSelection !== undefined
-        ? { setSelection: host.setSelection }
-        : {}),
-    },
-    setTextEffect: () => warnNoLifecycle("setTextEffect"),
-    setInputLock: () => warnNoLifecycle("setInputLock"),
-    onSubmitted: (listener) => subscribeComposerSubmitted(scope, listener),
-  }).handle;
+  return createComposerHandleBinding(
+    host.textEffectKey,
+    detachedComposerController(pluginId, host, "a message action's"),
+  ).handle;
 }
 
 export function runPluginMessageAction({

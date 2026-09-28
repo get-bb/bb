@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { createKeyedListeners } from "./keyed-listeners";
 
 export interface ComposerEditorState {
@@ -18,12 +19,22 @@ export interface ComposerEditorInsertValue {
 }
 
 export interface ComposerEditorBridge {
+  host: PluginComposerHost;
+  pluginCustomizable: boolean;
   state: ComposerEditorState;
   insertAtCursor(value: ComposerEditorInsertValue, block: boolean): void;
 }
 
 const bridgesByKey = new Map<string, ComposerEditorBridge>();
 const bridgeListeners = createKeyedListeners<string>();
+const bridgeListListeners = new Set<() => void>();
+let bridgeList: readonly ComposerEditorBridge[] = [];
+
+function notifyBridge(key: string): void {
+  bridgeList = [...bridgesByKey.values()];
+  bridgeListeners.notify(key);
+  for (const listener of [...bridgeListListeners]) listener();
+}
 
 export function publishComposerEditorBridge(
   key: string,
@@ -31,7 +42,7 @@ export function publishComposerEditorBridge(
 ): void {
   if (bridgesByKey.get(key) === bridge) return;
   bridgesByKey.set(key, bridge);
-  bridgeListeners.notify(key);
+  notifyBridge(key);
 }
 
 export function clearComposerEditorBridge(
@@ -40,7 +51,7 @@ export function clearComposerEditorBridge(
 ): void {
   if (bridgesByKey.get(key) !== bridge) return;
   bridgesByKey.delete(key);
-  bridgeListeners.notify(key);
+  notifyBridge(key);
 }
 
 export function getComposerEditorBridge(
@@ -54,6 +65,19 @@ export function subscribeComposerEditorBridge(
   listener: () => void,
 ): () => void {
   return bridgeListeners.subscribe(key, listener);
+}
+
+export function getComposerEditorBridges(): readonly ComposerEditorBridge[] {
+  return bridgeList;
+}
+
+export function subscribeComposerEditorBridges(
+  listener: () => void,
+): () => void {
+  bridgeListListeners.add(listener);
+  return () => {
+    bridgeListListeners.delete(listener);
+  };
 }
 
 export function useComposerEditorBridge(

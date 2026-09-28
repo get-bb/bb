@@ -16,7 +16,9 @@ Composer UI extensions register through `app.composer.customize(...)`. A
 host-rendered `ComposerPlusMenuItem` and `ComposerSendMenuItem` rows, and
 `ComposerRichTextSpec` rules. Mounted components use `useComposer()`: one
 stable handle for the composer's text, mentions, scope, layout, run and submit
-state, writes, effects, and input locking.
+state, writes, effects, and input locking. Panels and pages that write into a
+composer the user picks use `useComposers()`, one handle per composer on
+screen.
 Any mounted plugin component can use
 `useBbNavigate().openThreadPanel(...)` to request one of the
 same plugin's registered thread-panel actions; it returns false when the

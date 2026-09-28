@@ -111,6 +111,14 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
     `experimental_submit`, `experimental_setSelection`,
     `experimental_onSubmitted` and `experimental_removeMention` names, and
     `richText.onDraftChange` (read `draft` instead).
+- `useComposers()` → a handle for every composer on screen that composer
+  customizations mount in (thread page, `ThreadChat`, new-thread, open
+  queued-message editors), oldest first. Use it from a panel or page that
+  writes into a composer the user picks: label each by `scope`, then call
+  `insert`, `focus` or `submit` on the chosen one. Handles are the same
+  `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
+  `setInputLock` have no effect here. Re-renders when the list or a listed
+  draft changes.
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
   registered theme name for that mode, and `theme` is the resolved **VS Code

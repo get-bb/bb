@@ -450,11 +450,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read the draft prompt's text and every @-mention in it, whether it is empty, and how many files are attached",
           "Read the prompt box's layout, whether the thread is running a turn, whether the composer is submitting, and whether submitting is blocked with the same reason bb's send button shows",
           "Keep one stable composer handle across renders and async work; writes after the composer leaves the screen still land in its saved draft",
+          "List every composer on screen from a panel or page, label each by its scope, and write into the one the user picks",
           "Lock the input and release it again, so the draft prompt cannot change mid-operation",
           "Release locks and text effects automatically when the slot unmounts or its composer scope changes; persistent [thread row status](thread-row-status) requires an app-wide script",
         ],
         apiSymbols: [
           "useComposer",
+          "useComposers",
           "PluginComposerApi",
           "ComposerDraft",
           "ComposerMention",

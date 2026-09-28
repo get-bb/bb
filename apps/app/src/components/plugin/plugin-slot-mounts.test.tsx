@@ -1206,6 +1206,15 @@ describe("useComposer", () => {
     }
 
     const readyEditor: ComposerEditorBridge = {
+      host: {
+        scope: { kind: "thread", threadId: "thr_submit" },
+        textEffectKey: "thread:thr_submit",
+        getCurrent: () => draft,
+        subscribeDraft: () => () => {},
+        setDraft: () => {},
+        focus: () => {},
+      },
+      pluginCustomizable: true,
       state: {
         layout: "expanded",
         isRunning: false,

@@ -239,6 +239,7 @@ export interface ComposerLog {
 
 interface TestComposerStore {
   api: PluginComposerApi;
+  apiList: readonly PluginComposerApi[];
   getAttachmentCount(): number;
   getLayout(): "expanded" | "compact";
   getRun(): { isRunning: boolean; isSubmitting: boolean };
@@ -1099,6 +1100,15 @@ const testPluginSdkApp = {
       composer.getVersionSnapshot,
     );
     return composer.api;
+  },
+  useComposers(): readonly PluginComposerApi[] {
+    const composer = useSlotEnv("useComposers").composer;
+    useSyncExternalStore(
+      composer.subscribe,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
+    );
+    return composer.apiList;
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
@@ -2285,6 +2295,7 @@ export function renderSlot<
   };
   const composer: TestComposerStore = {
     api: composerHandle,
+    apiList: [composerHandle],
     getAttachmentCount: () => composerAttachmentCount,
     getLayout: () => composerLayout,
     getRun: () => ({

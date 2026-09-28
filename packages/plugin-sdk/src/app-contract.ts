@@ -3292,6 +3292,20 @@ export interface PluginSdkApp {
   ): ExperimentalFixedTabTargetState<Target> | null;
   useComposer(): PluginComposerApi;
   /**
+   * Every composer on screen that plugin composer customizations mount in,
+   * oldest first: the thread page's composer, a `ThreadChat`'s composer, the
+   * new-thread composer and open queued-message editors. Use it from a panel
+   * or page that writes into a composer the user picks — label each by its
+   * `scope`, then call `insert`, `focus` or `submit` on the chosen handle.
+   *
+   * Each handle is stable while its composer stays on screen and follows the
+   * same lifetime rule as `useComposer()`. `setTextEffect` and `setInputLock`
+   * have no effect here; call them from a composer slot's `useComposer()`.
+   * The calling component re-renders when the list or any listed draft
+   * changes.
+   */
+  useComposers(): readonly PluginComposerApi[];
+  /**
    * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
    * Reads the host's own cache and realtime subscriptions, so it costs no
    * extra request and updates exactly when the built-in sidebar does.

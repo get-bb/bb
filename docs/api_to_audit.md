@@ -2852,8 +2852,10 @@ plugin-specific check.
 `submittingBlockedReason`, `isEmpty`, `attachmentCount`, `draft`, `insert`),
 `removeMention`, `onSubmitted`, `submit` and `setSelection` replace their
 `experimental_` names, `ComposerCustomization.sendMenu` replaces the send
-menu's hard-coded plugin ids, and `PluginMessageActionContext.composer`
-exposes the message thread's composer. Michael decided to ship these under
+menu's hard-coded plugin ids, `PluginMessageActionContext.composer`
+exposes the message thread's composer, and `useComposers()` lists a handle for
+every composer on screen that customizations mount in (excluding the
+sent-message editor), oldest first. Michael decided to ship these under
 final names as an explicit exception to the experimental-prefix rule, so
 plugin authors migrate once. Replaced members (`useComposerView`,
 `ComposerView`, `richText.onDraftChange`, `ComposerStructuredDraft`, the
@@ -2876,8 +2878,12 @@ runtime-only exports.
    bare label. Decide whether `insertMention` should converge.
 4. **Message-action composers.** They have no slot lifecycle, so
    `setTextEffect` and `setInputLock` warn and do nothing there. Confirm.
+   `useComposers()` handles behave the same way.
 5. **Runtime-only aliases.** Decide when, if ever, the runtime drops the
    `@internal` names.
+6. **Composer list order and membership.** `useComposers()` orders by mount
+   and omits the sent-message editor. Decide whether panels also need the
+   last-focused composer to pick a default target.
 
 ## Composer mention removal and successful submission subscriptions
 

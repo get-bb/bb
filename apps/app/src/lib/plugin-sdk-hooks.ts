@@ -41,10 +41,17 @@ import {
   PluginComposerViewContext,
   usePluginComposerHost,
   usePluginComposerHostDraft,
+  type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { useComposerEditorBridge } from "@/lib/composer-editor-registry";
 import {
+  getComposerEditorBridges,
+  subscribeComposerEditorBridges,
+  useComposerEditorBridge,
+} from "@/lib/composer-editor-registry";
+import {
+  composerTargetFromHost,
   createComposerHandleBinding,
+  listedComposerHandles,
   type ComposerHandleController,
   type ComposerTarget,
 } from "@/lib/plugin-composer-handle";
@@ -721,20 +728,7 @@ export function useComposer(): PluginComposerApi {
   const target = useMemo<ComposerTarget>(
     () =>
       composerHost !== null
-        ? {
-            key: composerHost.textEffectKey,
-            scope,
-            getCurrent: composerHost.getCurrent,
-            setDraft: composerHost.setDraft,
-            isAvailable: composerHost.isAvailable ?? alwaysAvailable,
-            focus: composerHost.focus,
-            ...(composerHost.submit !== undefined
-              ? { submit: composerHost.submit }
-              : {}),
-            ...(composerHost.setSelection !== undefined
-              ? { setSelection: composerHost.setSelection }
-              : {}),
-          }
+        ? composerTargetFromHost(composerHost)
         : {
             key: routeDraft.storageKey,
             scope,
@@ -765,4 +759,49 @@ export function useComposer(): PluginComposerApi {
   }
   currentBinding.update(controller);
   return currentBinding.handle;
+}
+
+function createComposerDraftsStore(hosts: readonly PluginComposerHost[]) {
+  let snapshot = hosts.map((host) => host.getCurrent());
+  return {
+    subscribe(listener: () => void): () => void {
+      const unsubscribes = hosts.map((host) => host.subscribeDraft(listener));
+      return () => {
+        for (const unsubscribe of unsubscribes) unsubscribe();
+      };
+    },
+    getSnapshot() {
+      const next = hosts.map((host) => host.getCurrent());
+      if (next.some((draft, index) => draft !== snapshot[index])) {
+        snapshot = next;
+      }
+      return snapshot;
+    },
+  };
+}
+
+export function useComposers(): readonly PluginComposerApi[] {
+  const pluginId = usePluginId();
+  const bridges = useSyncExternalStore(
+    subscribeComposerEditorBridges,
+    getComposerEditorBridges,
+    getComposerEditorBridges,
+  );
+  const hosts = useMemo(
+    () =>
+      bridges
+        .filter((bridge) => bridge.pluginCustomizable)
+        .map((bridge) => bridge.host),
+    [bridges],
+  );
+  const draftsStore = useMemo(() => createComposerDraftsStore(hosts), [hosts]);
+  useSyncExternalStore(
+    draftsStore.subscribe,
+    draftsStore.getSnapshot,
+    draftsStore.getSnapshot,
+  );
+  return useMemo(
+    () => listedComposerHandles(pluginId, hosts),
+    [hosts, pluginId],
+  );
 }
