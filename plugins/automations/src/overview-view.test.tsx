@@ -66,9 +66,60 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
   },
 ];
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("AutomationOverviewView", () => {
+  it("shows sixteen rows immediately and reveals the rest while scrolling", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const original = INSTALLED_AUTOMATIONS[0]!;
+    if ("problem" in original.automation)
+      throw new Error("Expected a readable fixture");
+    const entries = Array.from({ length: 24 }, (_, index) => ({
+      ...original,
+      automation: {
+        ...original.automation,
+        id: `auto_${index}`,
+        name: `Job ${String(index).padStart(2, "0")}`,
+      },
+    }));
+    const { container } = render(
+      <AutomationOverviewView
+        entries={entries}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
+        onDelete={() => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll("[data-resource-row]")).toHaveLength(16);
+    const viewport = container.querySelector<HTMLElement>(
+      "#automations-installed-results",
+    )!;
+    Object.defineProperties(viewport, {
+      clientHeight: { value: 400, configurable: true },
+      scrollHeight: { value: 1000, configurable: true },
+      scrollTop: { value: 600, configurable: true },
+    });
+    fireEvent.scroll(viewport);
+    expect(container.querySelectorAll("[data-resource-row]")).toHaveLength(24);
+    expect(screen.queryByText("Next")).toBeNull();
+  }, 15_000);
+
   it("keeps lifecycle groups stable around the selected sort", () => {
     const baseEntry = INSTALLED_AUTOMATIONS[0]!;
     if ("problem" in baseEntry.automation) {

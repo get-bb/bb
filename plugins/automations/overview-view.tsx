@@ -16,11 +16,6 @@ import {
 } from "./detail-view.js";
 import { Icon } from "@/components/ui/icon";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
-import {
-  ResourcePagination,
-  useResourcePagination,
-  useResourceViewportPageSize,
-} from "@/components/ui/resource-pagination";
 import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import {
   ResourceBrowseGrid,
@@ -275,13 +270,24 @@ export function OverviewRow({
     lastRunStatus: automation.lastRunStatus,
   });
   const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
+  const targetUnavailable =
+    automation.execution.mode === "agent" &&
+    automation.lastRunStatus === "failed" &&
+    automation.lastError?.startsWith("Target thread ") === true;
 
   return (
     <ResourceRow
       leading={<AutomationRowLeading automation={automation} />}
       title={automation.name}
       description={
-        <AutomationRowMetadata automation={automation} project={project} />
+        <div className="min-w-0 space-y-1">
+          <AutomationRowMetadata automation={automation} project={project} />
+          {automation.lastRunStatus === "failed" && automation.lastError ? (
+            <p className="line-clamp-2 text-xs text-destructive" role="alert">
+              {automation.lastError}
+            </p>
+          ) : null}
+        </div>
       }
       muted={lifecycleLocked}
       onOpen={() => onNavigate(route)}
@@ -300,13 +306,15 @@ export function OverviewRow({
       persistentActions={
         <AutomationLifecycleControl
           checked={automation.enabled && !lifecycleLocked}
-          disabled={lifecycleLocked || togglePending}
+          disabled={lifecycleLocked || targetUnavailable || togglePending}
           disabledReason={
-            lifecycleLocked
-              ? oneShotLifecycle === "expired"
-                ? "Missed its run time. Edit to reschedule."
-                : "Already ran. Edit to reschedule."
-              : undefined
+            targetUnavailable
+              ? "Edit the target thread before resuming this automation."
+              : lifecycleLocked
+                ? oneShotLifecycle === "expired"
+                  ? "Missed its run time. Edit to reschedule."
+                  : "Already ran. Edit to reschedule."
+                : undefined
           }
           label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
           onCheckedChange={(enabled) => {
@@ -557,21 +565,38 @@ export function AutomationOverviewView({
   }, [filteredEntries, sortDirection, sortMode]);
   const [installedViewport, setInstalledViewport] =
     useState<HTMLDivElement | null>(null);
-  const installedPageSize = useResourceViewportPageSize(installedViewport);
-  const installedPagination = useResourcePagination(visibleEntries, {
-    pageSize: installedPageSize,
-    resetKey: [
-      normalizedQuery,
-      projectFilters.join(","),
-      statusFilters.join(","),
-      sortMode,
-      sortDirection,
-    ].join("\u0000"),
-  });
-  const hasInstalledPagination =
-    error === null &&
-    entries !== null &&
-    installedPagination.total > installedPagination.pageSize;
+  const [visibleCount, setVisibleCount] = useState(16);
+  const resetKey = [
+    normalizedQuery,
+    projectFilters.join(","),
+    statusFilters.join(","),
+    sortMode,
+    sortDirection,
+  ].join("\u0000");
+  useEffect(() => setVisibleCount(16), [resetKey]);
+  useEffect(() => {
+    if (!installedViewport || visibleCount >= visibleEntries.length) return;
+    const revealMore = () => {
+      if (installedViewport.clientHeight === 0) return;
+      if (
+        installedViewport.scrollTop + installedViewport.clientHeight >=
+        installedViewport.scrollHeight - 160
+      ) {
+        setVisibleCount((count) => Math.min(count + 16, visibleEntries.length));
+      }
+    };
+    installedViewport.addEventListener("scroll", revealMore, { passive: true });
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(revealMore);
+    observer?.observe(installedViewport);
+    revealMore();
+    return () => {
+      installedViewport.removeEventListener("scroll", revealMore);
+      observer?.disconnect();
+    };
+  }, [installedViewport, visibleCount, visibleEntries.length]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "project" && nextSort !== "alpha") return;
@@ -621,7 +646,7 @@ export function AutomationOverviewView({
   } else {
     body = (
       <ResourceListPanel>
-        {installedPagination.items.map((entry) => {
+        {visibleEntries.slice(0, visibleCount).map((entry) => {
           const { automation, project } = entry;
           return "problem" in automation ? (
             <AutomationProblemRow
@@ -735,18 +760,6 @@ export function AutomationOverviewView({
                 </>
               }
             />
-          }
-          footer={
-            hasInstalledPagination ? (
-              <ResourcePagination
-                page={installedPagination.page}
-                pageSize={installedPagination.pageSize}
-                total={installedPagination.total}
-                visibleCount={installedPagination.visibleCount}
-                onPageChange={installedPagination.setPage}
-                scrollTargetId="automations-installed-results"
-              />
-            ) : undefined
           }
         >
           {body}

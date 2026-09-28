@@ -40,7 +40,7 @@ export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { projects: ProjectsSdk };
 };
 
-const sdkThreadSchema = z
+export const sdkThreadSchema = z
   .object({
     id: z.string(),
     archivedAt: z.number().nullable(),
@@ -89,7 +89,7 @@ function renderAutomationDueMessage(args: {
   return `[bb automation due:${args.automationId}]\n\n${args.prompt}`;
 }
 
-function isThreadReusable(thread: SdkThread): boolean {
+export function isThreadReusable(thread: SdkThread): boolean {
   return (
     thread.deletedAt === null &&
     thread.archivedAt === null &&

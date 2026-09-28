@@ -211,7 +211,9 @@ const storedAutomationScriptExecutionSchema = z
   .strict()
   .transform((execution) => ({
     ...execution,
-    workingDirectory: execution.workingDirectory ?? { type: "automation-storage" as const },
+    workingDirectory: execution.workingDirectory ?? {
+      type: "automation-storage" as const,
+    },
   }));
 
 const automationScriptExecutionRequestSchema = z
@@ -324,9 +326,16 @@ export type AgentExecutionUpdate = z.infer<typeof agentExecutionUpdateSchema>;
 
 const scriptExecutionUpdateSchema = z
   .object({
-    workingDirectory: automationScriptWorkingDirectorySchema,
+    workingDirectory: automationScriptWorkingDirectorySchema.optional(),
+    env: z.record(z.string(), z.string()).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => value.workingDirectory !== undefined || value.env !== undefined,
+    {
+      message: "at least one script execution field is required",
+    },
+  );
 export type ScriptExecutionUpdate = z.infer<typeof scriptExecutionUpdateSchema>;
 
 export const automationResponseSchema = z

@@ -60,6 +60,8 @@ available unchanged in run output.
 
 ## Variables and CLI lookup
 
+Scripts that implement Discord and BB thread delivery can opt in to notification controls in the Automations detail view by setting `NOTIFICATION_CHANNELS=discord,bb` in their script environment. The controls write `NOTIFY_DISCORD` and `NOTIFY_BB` as `true` or `false` and `NOTIFY_THREAD_ID` as the BB destination. The script remains responsible for honoring these variables and validating the thread ID before sending. Automations without the opt-in marker do not show delivery controls.
+
 The plugin injects these variables:
 
 ```text

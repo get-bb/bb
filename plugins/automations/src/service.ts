@@ -61,7 +61,13 @@ import {
   readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
-import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
+import {
+  errorMessage,
+  executeAgentRun,
+  executeScriptRun,
+  isThreadReusable,
+  sdkThreadSchema,
+} from "./run.js";
 import {
   createScriptWorkingDirectoryResolver,
   projectPathForHost,
@@ -725,6 +731,25 @@ export function createAutomationService(args: {
           currentExecution,
           input.agent,
         );
+        if (input.agent.target?.type === "target-thread") {
+          let thread: z.infer<typeof sdkThreadSchema>;
+          try {
+            thread = sdkThreadSchema.parse(
+              await bb.sdk.threads.get({
+                threadId: input.agent.target.threadId,
+              }),
+            );
+          } catch {
+            throw new Error(
+              `Target thread ${input.agent.target.threadId} is unavailable. Choose an active thread or create a new one.`,
+            );
+          }
+          if (!isThreadReusable(thread)) {
+            throw new Error(
+              `Target thread ${input.agent.target.threadId} is unavailable. Choose an active thread or create a new one.`,
+            );
+          }
+        }
         if (
           input.agent.providerId !== undefined ||
           input.agent.permissionMode !== undefined ||
@@ -745,10 +770,15 @@ export function createAutomationService(args: {
             "Script execution options can only update script automations",
           );
         }
-        validateScriptWorkingDirectory(input.script.workingDirectory);
+        if (input.script.workingDirectory !== undefined) {
+          validateScriptWorkingDirectory(input.script.workingDirectory);
+        }
         patch.execution = {
           ...currentExecution,
-          workingDirectory: input.script.workingDirectory,
+          ...(input.script.workingDirectory === undefined
+            ? {}
+            : { workingDirectory: input.script.workingDirectory }),
+          ...(input.script.env === undefined ? {} : { env: input.script.env }),
         };
       }
       if (

@@ -8,6 +8,7 @@ import type {
   AutomationRunResponse,
   AutomationRunStatus,
   AgentExecutionUpdate,
+  ScriptExecutionUpdate,
 } from "./src/rpc-types";
 import {
   experimental_PermissionModePicker as PermissionModePicker,
@@ -75,6 +76,7 @@ interface AutomationDetailViewProps {
   onEdit: () => void;
   onCancelEdit: () => void;
   onUpdateAgent: (update: AgentExecutionUpdate) => Promise<void>;
+  onUpdateScript?: (update: ScriptExecutionUpdate) => Promise<void>;
   onRunNow: () => void;
   onDelete: () => void;
   onOpenThread: (threadId: string) => void;
@@ -510,10 +512,14 @@ export function AgentAutomationDefinition({
   const [permissionMode, setPermissionMode] = useState(
     execution.permissionMode,
   );
+  const [targetThreadId, setTargetThreadId] = useState(
+    execution.targetThreadId ?? "",
+  );
   useEffect(() => {
     setPrompt(execution.prompt);
     setProviderModel(providerModelValue(execution));
     setPermissionMode(execution.permissionMode);
+    setTargetThreadId(execution.targetThreadId ?? "");
     // oxlint-disable-next-line react/exhaustive-deps
   }, [
     execution.model,
@@ -522,16 +528,23 @@ export function AgentAutomationDefinition({
     execution.providerId,
     execution.reasoningLevel,
     execution.serviceTier,
+    execution.targetThreadId,
   ]);
   const pickerRouting = providerModelRouting(execution.environment);
   const trimmedPrompt = prompt.trim();
+  const targetValid =
+    !targetThreadId.trim() ||
+    /^thr_[A-Za-z0-9_-]+$/.test(targetThreadId.trim());
+  const targetChanged =
+    targetThreadId.trim() !== (execution.targetThreadId ?? "");
   const dirty =
     prompt !== execution.prompt ||
     providerModel.providerId !== execution.providerId ||
     providerModel.model !== execution.model ||
     providerModel.reasoningLevel !== execution.reasoningLevel ||
     providerModel.serviceTier !== execution.serviceTier ||
-    permissionMode !== execution.permissionMode;
+    permissionMode !== execution.permissionMode ||
+    targetChanged;
   const promptFooter = (
     <div
       data-automation-prompt-footer=""
@@ -587,7 +600,7 @@ export function AgentAutomationDefinition({
       className="overflow-hidden rounded-xl border border-border bg-background shadow-lift"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!dirty || trimmedPrompt.length === 0) return;
+        if (!dirty || trimmedPrompt.length === 0 || !targetValid) return;
         void onUpdate({
           prompt: trimmedPrompt,
           providerId: providerModel.providerId,
@@ -595,6 +608,19 @@ export function AgentAutomationDefinition({
           reasoningLevel: providerModel.reasoningLevel,
           serviceTier: providerModel.serviceTier ?? null,
           permissionMode,
+          ...(targetThreadId.trim() === (execution.targetThreadId ?? "")
+            ? {}
+            : {
+                target: targetThreadId.trim()
+                  ? {
+                      type: "target-thread" as const,
+                      threadId: targetThreadId.trim(),
+                    }
+                  : {
+                      type: "environment" as const,
+                      environment: execution.environment,
+                    },
+              }),
         });
       }}
     >
@@ -605,6 +631,17 @@ export function AgentAutomationDefinition({
         disabled={pending}
         className="min-h-28 resize-none border-0 bg-transparent px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
       />
+      <label className="block px-4 pb-2 text-xs text-muted-foreground">
+        Target thread ID (leave empty to create a new thread each run)
+        <input
+          aria-label="Target thread ID"
+          value={targetThreadId}
+          onChange={(event) => setTargetThreadId(event.target.value)}
+          placeholder="thr_..."
+          disabled={pending}
+          className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm text-foreground"
+        />
+      </label>
       <div
         data-automation-prompt-action-row=""
         className="flex min-w-0 shrink-0 items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5"
@@ -614,7 +651,7 @@ export function AgentAutomationDefinition({
             value={providerModel}
             onChange={setProviderModel}
             {...(pickerRouting === undefined ? {} : { routing: pickerRouting })}
-            allowProviderChange={execution.targetThreadId === undefined}
+            allowProviderChange={targetThreadId.trim() === ""}
             disabled={pending}
             className="h-6 max-w-full"
           />
@@ -624,7 +661,7 @@ export function AgentAutomationDefinition({
           variant="ghost"
           size="sm"
           className="ml-auto shrink-0"
-          disabled={pending || dirty}
+          disabled={pending}
           onClick={onCancel}
         >
           Cancel
@@ -633,10 +670,12 @@ export function AgentAutomationDefinition({
           type="submit"
           size="sm"
           className="shrink-0"
-          disabled={pending || !dirty || trimmedPrompt.length === 0}
+          disabled={
+            pending || !dirty || trimmedPrompt.length === 0 || !targetValid
+          }
         >
           <Icon name="Check" className="size-3.5" aria-hidden />
-          Save Prompt
+          {targetChanged ? "Save changes" : "Save Prompt"}
         </Button>
       </div>
       {promptFooter}
@@ -733,6 +772,90 @@ export function ScriptAutomationDefinition({
   );
 }
 
+function NotificationChannels({
+  execution,
+  pending,
+  onSave,
+}: {
+  execution: Extract<AutomationDetailResponse["execution"], { mode: "script" }>;
+  pending: boolean;
+  onSave: (update: ScriptExecutionUpdate) => Promise<void>;
+}) {
+  const env = execution.env ?? {};
+  const [discord, setDiscord] = useState(env.NOTIFY_DISCORD !== "false");
+  const [bb, setBb] = useState(env.NOTIFY_BB === "true");
+  const [threadId, setThreadId] = useState(env.NOTIFY_THREAD_ID ?? "");
+  useEffect(() => {
+    setDiscord(env.NOTIFY_DISCORD !== "false");
+    setBb(env.NOTIFY_BB === "true");
+    setThreadId(env.NOTIFY_THREAD_ID ?? "");
+  }, [env.NOTIFY_DISCORD, env.NOTIFY_BB, env.NOTIFY_THREAD_ID]);
+  const valid = !bb || /^thr_[A-Za-z0-9_-]+$/.test(threadId.trim());
+  const changed =
+    discord !== (env.NOTIFY_DISCORD !== "false") ||
+    bb !== (env.NOTIFY_BB === "true") ||
+    threadId.trim() !== (env.NOTIFY_THREAD_ID ?? "");
+  return (
+    <ResourceDefinitionSection label="Notifications">
+      <div className="space-y-3 rounded-lg border border-border bg-background p-4">
+        <label className="flex items-center justify-between gap-3 text-sm">
+          Send to Discord
+          <Switch
+            checked={discord}
+            onCheckedChange={setDiscord}
+            disabled={pending}
+            aria-label="Send to Discord"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-sm">
+          Send to BB thread
+          <Switch
+            checked={bb}
+            onCheckedChange={setBb}
+            disabled={pending}
+            aria-label="Send to BB thread"
+          />
+        </label>
+        <label className="block text-xs text-muted-foreground">
+          BB thread ID
+          <input
+            aria-label="BB notification thread ID"
+            value={threadId}
+            onChange={(event) => setThreadId(event.target.value)}
+            placeholder="thr_..."
+            disabled={pending}
+            className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm text-foreground"
+          />
+        </label>
+        {bb && !valid ? (
+          <p className="text-xs text-destructive">
+            Enter a valid BB thread ID.
+          </p>
+        ) : null}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={pending || !changed || !valid}
+            onClick={() =>
+              void onSave({
+                env: {
+                  ...env,
+                  NOTIFY_DISCORD: String(discord),
+                  NOTIFY_BB: String(bb),
+                  NOTIFY_THREAD_ID: threadId.trim(),
+                },
+              })
+            }
+          >
+            Save notifications
+          </Button>
+        </div>
+      </div>
+    </ResourceDefinitionSection>
+  );
+}
+
 export function AutomationDetailView({
   automation,
   projectLabel,
@@ -743,6 +866,7 @@ export function AutomationDetailView({
   onEdit,
   onCancelEdit,
   onUpdateAgent,
+  onUpdateScript,
   onRunNow,
   onDelete,
   onOpenThread,
@@ -757,15 +881,23 @@ export function AutomationDetailView({
   });
   const requiresPrompt =
     automation.execution.mode === "agent" && automation.execution.prompt === "";
+  const targetUnavailable =
+    automation.execution.mode === "agent" &&
+    automation.lastRunStatus === "failed" &&
+    automation.lastError?.startsWith("Target thread ") === true;
   const lifecycleLocked =
-    requiresPrompt || !oneShotLifecycleAllowsToggle(oneShotLifecycle);
+    requiresPrompt ||
+    targetUnavailable ||
+    !oneShotLifecycleAllowsToggle(oneShotLifecycle);
   const lifecycleDisabledReason = requiresPrompt
     ? "Add a prompt before changing this automation."
-    : lifecycleLocked
-      ? oneShotLifecycle === "expired"
-        ? "Missed its run time. Edit to reschedule."
-        : "Already ran. Edit to reschedule."
-      : undefined;
+    : targetUnavailable
+      ? "Edit the target thread before resuming this automation."
+      : lifecycleLocked
+        ? oneShotLifecycle === "expired"
+          ? "Missed its run time. Edit to reschedule."
+          : "Already ran. Edit to reschedule."
+        : undefined;
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
   const projectContextLabel = projectLabel;
@@ -834,6 +966,22 @@ export function AutomationDetailView({
       }
     >
       <ResourceDetailStack>
+        {automation.lastRunStatus === "failed" && automation.lastError ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            <p className="font-medium">Last run failed</p>
+            <p className="mt-1 break-words">{automation.lastError}</p>
+            {automation.execution.mode === "agent" &&
+            automation.lastError.includes("Target thread") ? (
+              <p className="mt-1">
+                Edit the target thread ID or clear it to create a new thread
+                before resuming.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <ResourceDefinitionSection
           label={bodyLabel}
           actions={
@@ -864,6 +1012,16 @@ export function AutomationDetailView({
             <ScriptAutomationDefinition execution={execution} />
           )}
         </ResourceDefinitionSection>
+
+        {execution.mode === "script" &&
+        execution.env?.NOTIFICATION_CHANNELS === "discord,bb" &&
+        onUpdateScript ? (
+          <NotificationChannels
+            execution={execution}
+            pending={actionPending}
+            onSave={onUpdateScript}
+          />
+        ) : null}
 
         <ResourceActivitySection label="Runs">
           {runsState.error !== null ? (

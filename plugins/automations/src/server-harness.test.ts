@@ -116,9 +116,10 @@ async function bootAutomationsPlugin(
       },
       threads: {
         async get({ threadId }) {
+          if (threadId === "thr_missing") throw new Error("Thread not found");
           return {
             id: threadId,
-            archivedAt: null,
+            archivedAt: threadId === "thr_archived" ? 1 : null,
             deletedAt: null,
             sectionId: threadId === THREAD_ID ? SECTION_ID : null,
             status: "idle",
@@ -1202,6 +1203,26 @@ describe("automations server plugin harness", () => {
       }),
     ).rejects.toThrow();
 
+    await harness.dispose();
+  });
+
+  it("rejects an archived target thread before saving the automation", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const created = await createAgentAutomation(harness);
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+        agent: { target: { type: "target-thread", threadId: "thr_archived" } },
+      }),
+    ).rejects.toThrow("unavailable");
+    const stored = automationDetailResponseSchema.parse(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    );
+    expect(stored.execution).not.toHaveProperty("targetThreadId");
     await harness.dispose();
   });
 

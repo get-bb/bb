@@ -1221,6 +1221,27 @@ describe("automation service", () => {
         workingDirectory: { type: "path", path: pluginDataDir },
         resolvedWorkingDirectory: pluginDataDir,
       });
+      const delivery = await service.update({
+        projectId: "proj_test",
+        automationId: created.id,
+        script: {
+          env: {
+            NOTIFICATION_CHANNELS: "discord,bb",
+            NOTIFY_DISCORD: "false",
+            NOTIFY_BB: "true",
+            NOTIFY_THREAD_ID: "thr_test123",
+          },
+        },
+      });
+      expect(delivery.execution).toMatchObject({
+        mode: "script",
+        workingDirectory: { type: "path", path: pluginDataDir },
+        env: {
+          NOTIFY_DISCORD: "false",
+          NOTIFY_BB: "true",
+          NOTIFY_THREAD_ID: "thr_test123",
+        },
+      });
       await expect(
         service.get({
           projectId: "proj_test",

@@ -14,6 +14,7 @@ import type {
   AutomationDetailResponse,
   AutomationResponse,
   AgentExecutionUpdate,
+  ScriptExecutionUpdate,
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
@@ -332,6 +333,8 @@ function useMutations() {
     delete: (route: DetailRoute) => call("automations_delete", route),
     update: (route: DetailRoute, agent: AgentExecutionUpdate) =>
       rpc.call("automations_update", { ...route, agent }),
+    updateScript: (route: DetailRoute, script: ScriptExecutionUpdate) =>
+      rpc.call("automations_update", { ...route, script }),
   };
 }
 
@@ -572,6 +575,25 @@ function DetailView({
     [mutations, refetch, route],
   );
 
+  const updateScript = useCallback(
+    async (script: ScriptExecutionUpdate) => {
+      setActionPending(true);
+      try {
+        await mutations.updateScript(route, script);
+        toast.success("Notification settings updated");
+        refetch();
+      } catch (rpcError: unknown) {
+        toast.error(
+          `Failed to update notification settings: ${errorText(rpcError)}`,
+        );
+        throw rpcError;
+      } finally {
+        setActionPending(false);
+      }
+    },
+    [mutations, refetch, route],
+  );
+
   const confirmDelete = useCallback(() => {
     setDeleting(true);
     mutations
@@ -676,6 +698,7 @@ function DetailView({
       onEdit={openEdit}
       onCancelEdit={requiresPrompt ? onBack : () => setEditingRequested(false)}
       onUpdateAgent={updateAgent}
+      onUpdateScript={updateScript}
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
       onOpenThread={openThread}

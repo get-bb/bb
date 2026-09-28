@@ -338,7 +338,7 @@ describe("Automation detail recipe", () => {
     expect(
       (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
         .disabled,
-    ).toBe(true);
+    ).toBe(false);
     fireEvent.click(reopenedSavePrompt);
     expect(updateAgent).toHaveBeenCalledWith({
       prompt: "Summarize the last two days.",
@@ -562,6 +562,63 @@ describe("Automation detail recipe", () => {
     expect(scriptPanel.lastElementChild?.className).toContain(
       "bg-surface-recessed/55",
     );
+  });
+
+  it("edits opted-in Discord and BB notification routes independently", async () => {
+    const onUpdateScript = vi.fn(async () => {});
+    render(
+      <AutomationDetailView
+        automation={{
+          ...AUTOMATION,
+          execution: {
+            mode: "script",
+            script: "echo briefing",
+            workingDirectory: { type: "automation-storage" },
+            resolvedWorkingDirectory: "/tmp",
+            timeoutMs: 60_000,
+            env: {
+              NOTIFICATION_CHANNELS: "discord,bb",
+              NOTIFY_DISCORD: "true",
+              NOTIFY_BB: "false",
+              JOB: "morning-briefing",
+            },
+          },
+        }}
+        projectLabel="Personal"
+        runsState={{
+          runs: [],
+          nextCursor: null,
+          loading: false,
+          loadingMore: false,
+          error: null,
+          loadMore: () => {},
+          retry: () => {},
+        }}
+        actionPending={false}
+        onToggle={() => {}}
+        onEdit={() => {}}
+        onUpdateScript={onUpdateScript}
+        onRunNow={() => {}}
+        onDelete={() => {}}
+        onOpenThread={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Send to Discord" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Send to BB thread" }));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "BB notification thread ID" }),
+      { target: { value: "thr_briefing" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save notifications" }));
+    expect(onUpdateScript).toHaveBeenCalledWith({
+      env: {
+        NOTIFICATION_CHANNELS: "discord,bb",
+        NOTIFY_DISCORD: "false",
+        NOTIFY_BB: "true",
+        NOTIFY_THREAD_ID: "thr_briefing",
+        JOB: "morning-briefing",
+      },
+    });
   });
 
   it.each([
