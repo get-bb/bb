@@ -235,6 +235,7 @@ export const OFFICIAL_PLUGINS = [
 
 export const AUTOMATIC_AI_SERVICE_PLUGIN_IDS: readonly string[] = [
   "provider-codex",
+  "provider-claude-code",
   "bb-ai",
 ];
 
