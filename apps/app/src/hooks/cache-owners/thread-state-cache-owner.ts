@@ -34,6 +34,7 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
   restoreCachedThreadLists,
+  restoreRemovedThreadEntries,
   type CachedThreadListSnapshot,
 } from "./thread-list-cache-data";
 import {
@@ -861,11 +862,29 @@ export function rollbackArchiveThreadsTransaction({
     return;
   }
 
-  restoreCachedThreadLists(queryClient, transaction.previousThreadLists);
-  restoreCachedSidebarNavigation(
+  const threadIds = new Set(transaction.archivedThreadIds);
+  restoreCachedThreadLists(
     queryClient,
-    transaction.previousSidebarNavigation,
+    transaction.previousThreadLists,
+    threadIds,
   );
+  const previousNavigation = transaction.previousSidebarNavigation;
+  if (previousNavigation) {
+    const previousProjects = [
+      previousNavigation.personalProject,
+      ...previousNavigation.projects,
+    ];
+    applyToCachedSidebarNavigationThreads({
+      queryClient,
+      mapper: (list, projectId) =>
+        restoreRemovedThreadEntries(
+          list,
+          previousProjects.find((project) => project.id === projectId)
+            ?.threads ?? [],
+          threadIds,
+        ),
+    });
+  }
   for (const snapshot of transaction.previousThreads) {
     queryClient.setQueryData(threadQueryKey(snapshot.id), snapshot.thread);
   }

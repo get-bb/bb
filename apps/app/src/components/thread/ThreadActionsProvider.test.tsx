@@ -6,6 +6,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
+import {
+  sidebarNavigationQueryKey,
+  threadListQueryKey,
+} from "@/hooks/queries/query-keys";
+import { getCachedSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
 import {
@@ -157,6 +167,141 @@ afterEach(() => {
 });
 
 describe("ThreadActionsProvider archive confirmation", () => {
+  it.each(["archive", "confirmation", "error", "archive-error"] as const)(
+    "optimistically removes the sidebar row during the child check and handles %s",
+    async (outcome) => {
+      let resolveSummary!: (summary: {
+        nonDeletedChildCount: number;
+        unarchivedDescendantCount: number;
+      }) => void;
+      let rejectSummary!: (error: Error) => void;
+      vi.mocked(sdk.threads.childSummary).mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            resolveSummary = resolve;
+            rejectSummary = reject;
+          }),
+      );
+      if (outcome === "archive-error") {
+        vi.mocked(sdk.threads.archiveAll).mockRejectedValueOnce(
+          new Error("Archive failed"),
+        );
+      }
+      const thread = makeThreadListEntry(makeThread());
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarBootstrapResponse({
+          projects: [
+            makeProjectWithThreadsResponse({
+              id: thread.projectId,
+              threads: [thread],
+            }),
+          ],
+        }),
+      );
+      renderProvider(<ArchiveButton thread={thread} />);
+      fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+      await vi.waitFor(() => {
+        expect(sdk.threads.childSummary).toHaveBeenCalled();
+        expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([]);
+      });
+      expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+      if (outcome === "error") {
+        rejectSummary(new Error("Could not check children"));
+      } else {
+        resolveSummary({
+          nonDeletedChildCount: outcome === "confirmation" ? 1 : 0,
+          unarchivedDescendantCount: outcome === "confirmation" ? 1 : 0,
+        });
+      }
+      if (outcome === "archive") {
+        await vi.waitFor(() =>
+          expect(sdk.threads.archiveAll).toHaveBeenCalled(),
+        );
+        expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([]);
+      } else {
+        await vi.waitFor(() =>
+          expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+            thread,
+          ]),
+        );
+        if (outcome === "archive-error") {
+          expect(sdk.threads.archiveAll).toHaveBeenCalled();
+        } else {
+          expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+        }
+        if (outcome === "confirmation") {
+          fireEvent.click(
+            await screen.findByRole("button", { name: "Cancel" }),
+          );
+          expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+            thread,
+          ]);
+        } else {
+          await vi.waitFor(() => expect(appToast.error).toHaveBeenCalled());
+        }
+      }
+    },
+  );
+
+  it("does not restore another archived row when a delayed child check requires confirmation", async () => {
+    let resolveSummary!: (summary: {
+      nonDeletedChildCount: number;
+      unarchivedDescendantCount: number;
+    }) => void;
+    vi.mocked(sdk.threads.childSummary)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSummary = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        nonDeletedChildCount: 0,
+        unarchivedDescendantCount: 0,
+      });
+    const first = makeThreadListEntry(makeThread());
+    const second = makeThreadListEntry(makeThread({ id: "thr_second" }));
+    const untouched = makeThreadListEntry(makeThread({ id: "thr_untouched" }));
+    const listKey = threadListQueryKey({ archived: false });
+    queryClient.setQueryData(listKey, [first, second, untouched]);
+    vi.mocked(sdk.threads.archiveAll).mockResolvedValueOnce({
+      ok: true,
+      archivedThreadIds: [second.id],
+    });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarBootstrapResponse({
+        projects: [
+          makeProjectWithThreadsResponse({
+            id: first.projectId,
+            threads: [first, second, untouched],
+          }),
+        ],
+      }),
+    );
+    renderProvider(
+      <>
+        <ArchiveButton thread={first} />
+        <ArchiveButton thread={second} />
+      </>,
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[0]!);
+    await vi.waitFor(() =>
+      expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([second, untouched]),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[1]!);
+    await vi.waitFor(() =>
+      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+        threadId: second.id,
+      }),
+    );
+    resolveSummary({ nonDeletedChildCount: 1, unarchivedDescendantCount: 1 });
+    await screen.findByRole("button", { name: "Cancel" });
+    expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([first, untouched]);
+    expect(queryClient.getQueryData(listKey)).toEqual([first, untouched]);
+  });
+
   it("archives a thread without children without opening a dialog", async () => {
     vi.mocked(sdk.threads.childSummary).mockResolvedValue({
       nonDeletedChildCount: 0,
