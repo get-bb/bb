@@ -1656,6 +1656,29 @@ describe("@bb/sdk", () => {
     expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
   });
 
+  it("lists thread sections without fetching sidebar projects", async () => {
+    const sections = [
+      { id: "sec_123", name: "Review", createdAt: 1, updatedAt: 2 },
+    ];
+    const queue = createFetchQueue([{ body: sections }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threadSections.list()).resolves.toEqual(sections);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/thread-sections",
+      },
+    ]);
+  });
+
   it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {

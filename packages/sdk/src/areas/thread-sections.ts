@@ -6,7 +6,6 @@ import type {
   UpdateThreadSectionRequest,
 } from "@bb/server-contract";
 import {
-  sidebarBootstrapResponseSchema,
   threadSectionMutationResponseSchema,
   threadSectionSchema,
 } from "@bb/server-contract";
@@ -47,12 +46,12 @@ export function createThreadSectionsArea(
     },
     async list(input) {
       const body = await transport.readJson(
-        transport.api.v1["sidebar-bootstrap"].$get(
+        transport.api.v1["thread-sections"].$get(
           {},
           ...signalRequestArgs(input?.signal),
         ),
       );
-      return sidebarBootstrapResponseSchema.parse(body).sections;
+      return threadSectionSchema.array().parse(body);
     },
     async update(input) {
       const body = await transport.readJson(

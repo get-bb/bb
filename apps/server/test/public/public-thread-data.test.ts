@@ -95,6 +95,10 @@ type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 describe("public thread data routes", () => {
   it("manages sections through the canonical public route lifecycle", async () => {
     await withTestHarness(async (harness) => {
+      const initialList = await harness.app.request("/api/v1/thread-sections");
+      expect(initialList.status).toBe(200);
+      expect(await readJson(initialList)).toEqual([]);
+
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -168,6 +172,9 @@ describe("public thread data routes", () => {
       expect(bootstrap.sections).toContainEqual(
         expect.objectContaining({ id: section.id, name: "Ship room" }),
       );
+      const listResponse = await harness.app.request("/api/v1/thread-sections");
+      expect(listResponse.status).toBe(200);
+      expect(await readJson(listResponse)).toEqual(bootstrap.sections);
 
       const deleteResponse = await harness.app.request(
         "/api/v1/thread-sections",
@@ -188,6 +195,8 @@ describe("public thread data routes", () => {
         updatedThreadCount: 1,
       });
       expect(getThread(harness.db, thread.id)?.sectionId).toBeNull();
+      const emptyList = await harness.app.request("/api/v1/thread-sections");
+      expect(await readJson(emptyList)).toEqual([]);
 
       const missingResponse = await harness.app.request(
         "/api/v1/thread-sections",
