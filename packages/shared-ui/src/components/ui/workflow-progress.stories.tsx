@@ -54,7 +54,7 @@ const SNAPSHOT: WorkflowProgressSnapshot = {
       attempt: 2,
       cached: false,
       lastProgressAt: Date.now() - 1000 * 60 * 2,
-      phaseIndex: 2,
+      phaseIndex: 3,
       error: "Test suite exited with code 1",
       metadata: ["anthropic", "sonnet-5", "medium"],
       durationMs: 31000,
