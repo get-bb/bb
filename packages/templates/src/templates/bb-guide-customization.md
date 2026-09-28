@@ -554,6 +554,11 @@ without build-number reporting cannot determine update status. Installed version
 and build are device-local; CLI and SDK release metadata report the published APK.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
+Storage & retention is a default-disabled bundled plugin. Enable it
+with `bb plugin enable storage-retention`.
+Its sidebar panel and `bb storage` commands own retention policies and machine
+cleanup. See the plugin’s storage-retention skill for commands and limitations.
+
 ### Opt-in server performance diagnostics
 
 Start with `pnpm start --perf-diagnostics`, `pnpm start:worktree --perf-diagnostics`,

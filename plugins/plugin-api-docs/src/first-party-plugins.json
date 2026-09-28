@@ -125,6 +125,11 @@
     "icon": "SideChat"
   },
   {
+    "id": "storage-retention",
+    "name": "Storage & retention",
+    "icon": "FolderOpen"
+  },
+  {
     "id": "tasks",
     "name": "Tasks",
     "icon": "ListTodo"
