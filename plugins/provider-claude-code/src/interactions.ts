@@ -44,12 +44,16 @@ import {
 
 interface ClaudeSessionRulesArgs {
   permissions: PendingInteractionGrantedPermissionProfile;
+  suggestedRules: ClaudePermissionRule[];
   toolName: string | null;
 }
 
 function getClaudeSessionRules(
   args: ClaudeSessionRulesArgs,
 ): ClaudePermissionRule[] {
+  if (args.toolName === CLAUDE_BASH_TOOL_NAME) {
+    return args.suggestedRules;
+  }
   return args.toolName !== null && args.permissions.network?.enabled === true
     ? [{ toolName: args.toolName }]
     : [];
@@ -315,6 +319,7 @@ function getClaudePermissionUpdateToolName(
 
 export function buildClaudeInteractiveResponse(
   args: ClaudeInteractionOutcome,
+  suggestedRules: ClaudePermissionRule[],
 ): ClaudeInteractiveResponse {
   if (!isApprovalInteractionOutcome(args)) {
     return {
@@ -354,6 +359,7 @@ export function buildClaudeInteractiveResponse(
     permissions,
     rules: getClaudeSessionRules({
       permissions,
+      suggestedRules,
       toolName: getClaudePermissionUpdateToolName(args.payload),
     }),
   });

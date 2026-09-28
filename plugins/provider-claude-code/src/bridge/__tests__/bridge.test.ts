@@ -1563,6 +1563,134 @@ describe("bridge", () => {
     }
   });
 
+  it("approves only Claude Code's suggested rule when a Bash command is allowed for the session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-bash-session-rule";
+      await startBridgeThread({ bridge, threadId });
+
+      const npmPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "npm --version" },
+        {
+          blockedPath: "/tmp/outside",
+          decisionReason: "This command requires approval",
+          requestId: "control-request-npm",
+          signal: new AbortController().signal,
+          suggestions: [
+            {
+              type: "addRules",
+              rules: [{ toolName: "Bash", ruleContent: "npm --version" }],
+              behavior: "allow",
+              destination: "localSettings",
+            },
+          ],
+          toolUseID: "tool-npm",
+        },
+      );
+      await bridge.flushWork();
+      const npmRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (npmRequest?.id === undefined) {
+        throw new Error("Expected forwarded npm permission request");
+      }
+      expect(npmRequest.params).toMatchObject({
+        payload: {
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
+          subject: {
+            kind: "command",
+            sessionGrant: {
+              network: null,
+              fileSystem: { read: ["/tmp/outside"], write: ["/tmp/outside"] },
+            },
+          },
+        },
+      });
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: npmRequest.id,
+          result: {
+            decision: "allow_for_session",
+            grantedPermissions: {
+              network: null,
+              fileSystem: { read: ["/tmp/outside"], write: ["/tmp/outside"] },
+            },
+          },
+        }),
+      );
+      await expect(npmPromise).resolves.toMatchObject({
+        behavior: "allow",
+        updatedPermissions: [
+          {
+            type: "addDirectories",
+            directories: ["/tmp/outside"],
+            destination: "session",
+          },
+          {
+            type: "addRules",
+            rules: [{ toolName: "Bash", ruleContent: "npm --version" }],
+            behavior: "allow",
+            destination: "session",
+          },
+        ],
+      });
+
+      const pythonPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "python3 -c 'print(42)'" },
+        {
+          blockedPath: "/tmp/outside",
+          decisionReason: "This command requires approval",
+          requestId: "control-request-python",
+          signal: new AbortController().signal,
+          suggestions: [
+            {
+              type: "addRules",
+              rules: [
+                { toolName: "Bash", ruleContent: "python3 -c 'print(42)'" },
+              ],
+              behavior: "allow",
+              destination: "localSettings",
+            },
+          ],
+          toolUseID: "tool-python",
+        },
+      );
+      await bridge.flushWork();
+      const pythonRequest = bridge.messages.find(
+        (message) =>
+          isApprovalInteraction(message) && message.id !== npmRequest.id,
+      );
+      if (pythonRequest?.id === undefined) {
+        throw new Error("Expected forwarded python permission request");
+      }
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: pythonRequest.id,
+          result: { decision: "deny", grantedPermissions: null },
+        }),
+      );
+      await expect(pythonPromise).resolves.toMatchObject({
+        behavior: "deny",
+        toolUseID: "tool-python",
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("forwards AskUserQuestion through canUseTool and returns the answer payload", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];

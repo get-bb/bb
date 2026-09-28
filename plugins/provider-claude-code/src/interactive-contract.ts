@@ -185,7 +185,8 @@ export function toPendingInteractionPermissionProfile(
         })();
 
   const network =
-    CLAUDE_NETWORK_PERMISSION_TOOL_NAMES.has(args.toolName) || hasRuleSuggestion
+    CLAUDE_NETWORK_PERMISSION_TOOL_NAMES.has(args.toolName) ||
+    (hasRuleSuggestion && args.toolName !== CLAUDE_BASH_TOOL_NAME)
       ? { enabled: true }
       : null;
 
@@ -221,6 +222,7 @@ export interface ClaudePermissionRequestApprovalParams {
   input: Record<string, unknown>;
   reason: string | null;
   permissions: PendingInteractionGrantablePermissionProfile;
+  suggestedRules: ClaudePermissionRule[];
 }
 
 const claudeUserQuestionOptionSchema = z.object({
