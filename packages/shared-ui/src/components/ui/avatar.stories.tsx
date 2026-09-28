@@ -53,6 +53,12 @@ export function Overview() {
         hint="official=true renders a wordmark instead of initials — BbLogo (app-only SVG) is stubbed here as plain text"
       >
         <Avatar role="img" aria-label="bb's avatar" className="size-10 border border-border bg-muted">
+          <AvatarImage
+            src="https://github.com/get-bb.png?size=80"
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
           <AvatarFallback aria-hidden className="text-xs font-semibold text-subtle-foreground">
             BB
           </AvatarFallback>
