@@ -158,8 +158,11 @@ function HoverMenuDemo() {
       </PopoverAnchor>
       <PopoverContent
         align="start"
+        role="menu"
         onPointerEnter={cancelClose}
         onPointerLeave={scheduleClose}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
         className="w-40 p-1"
       >
         {["Move left", "Move right", "Move top", "Move bottom"].map(
@@ -167,6 +170,7 @@ function HoverMenuDemo() {
             <button
               key={label}
               type="button"
+              role="menuitem"
               className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
             >
               {label}

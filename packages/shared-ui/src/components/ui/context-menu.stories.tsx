@@ -57,7 +57,7 @@ function RowActionsDemo() {
           Rename
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem className="text-destructive focus:bg-destructive/15 focus:text-destructive">
+        <ContextMenuItem className="text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive">
           <Icon name="Trash2" aria-hidden />
           Remove
         </ContextMenuItem>
