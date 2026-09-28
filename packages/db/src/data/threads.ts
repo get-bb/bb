@@ -2084,7 +2084,7 @@ export function unarchiveThread(
       return tx
         .update(threads)
         .set({ archivedAt: null, updatedAt: now })
-        .where(eq(threads.id, id))
+        .where(and(eq(threads.id, id), isNotNull(threads.archivedAt)))
         .returning()
         .get();
     },

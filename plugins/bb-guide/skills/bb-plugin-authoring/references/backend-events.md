@@ -93,6 +93,12 @@ and counted in the plugin's handler stats (`bb plugin list`).
 
 Lifecycle events are broadcast to all loaded plugins regardless of sidebar
 visibility.
+Use `thread.*` events to react to lifecycle changes while your plugin is
+loaded. Events that occur while it is unloaded are not replayed. Register
+handlers first, then reconcile tracked threads once at startup to catch changes
+from a restart, reload, or disabled period. Make handlers idempotent if a live
+event overlaps reconciliation. Avoid polling thread state to detect lifecycle
+changes.
 
 `thread.created` fires on row creation, so the first user message is not
 always in the timeline yet. To react to a thread's content, listen on

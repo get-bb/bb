@@ -532,13 +532,13 @@ export function countCallsForRun(db: Db, runId: string): WorkflowCallCounts {
   return row;
 }
 
-export function listRunningCalls(db: Db, limit: number): WorkflowCallRow[] {
+export function listRunningCalls(db: Db): WorkflowCallRow[] {
   return db
     .prepare(
       `${CALL_SELECT} WHERE status = 'running' AND child_thread_id IS NOT NULL
-       ORDER BY COALESCE(last_activity_at, started_at), id LIMIT ?`,
+       ORDER BY COALESCE(last_activity_at, started_at), id`,
     )
-    .all(limit)
+    .all()
     .map(callRow);
 }
 

@@ -852,6 +852,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Runs server code when a thread changes state. With this, a plugin can:",
         bullets: [
           "Subscribe to threads being created, going active or idle, failing, being archived or unarchived, or being deleted",
+          "Register handlers before one startup reconciliation because unloaded events are not replayed; avoid polling thread state to detect lifecycle changes",
           "Subscribe to messages being queued behind a wait, dispatching when it clears, or being cancelled before dispatch",
           "Subscribe when a thread receives a pending interaction",
           "Observe debounced experimental_thread.events notifications with the latest sequence and current thread, or experimental_terminal.input without keystroke contents",

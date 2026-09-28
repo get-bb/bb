@@ -486,7 +486,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     for (const dependent of dependents) {
       const deleted = getThread(deps.db, dependent.id);
       if (!deleted) continue;
-      emitPluginThreadDeleted(deleted);
+      if (dependent.deletedAt === null) emitPluginThreadDeleted(deleted);
       cancelAbandonedProviderCreations(deps, deleted.id);
       deps.terminalSessions.closeDeletedThreadTerminals({
         threadId: deleted.id,

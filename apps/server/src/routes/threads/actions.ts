@@ -561,8 +561,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (thread.archivedAt === null) return context.json({ ok: true });
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
     if (!unarchiveThread(deps.db, deps.hub, thread.id)) {
+      if (getThread(deps.db, thread.id)?.archivedAt === null)
+        return context.json({ ok: true });
       throw new ApiError(
         409,
         "invalid_request",

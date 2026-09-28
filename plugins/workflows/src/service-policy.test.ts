@@ -1102,64 +1102,6 @@ describe("workflow service policy integration", () => {
     ).rejects.toThrow("different environment or workspace");
   });
 
-  it("reconciles missed idle and deleted events from persisted running calls", async () => {
-    const idle = setup();
-    harnesses.push(idle.harness);
-    const idleRun = await idle.start(source(`return await agent("idle");`));
-    const idleController = new AbortController();
-    const idleWorker = idle.service.runWorker(idleController.signal);
-    await eventually(() => expect(idle.childCount()).toBe(1));
-    idle.workers.set("child-1", {
-      status: "idle",
-      output: "reconciled",
-      deleted: false,
-    });
-    idle.db
-      .prepare(
-        `UPDATE workflow_calls SET last_activity_at = ? WHERE run_id = ?`,
-      )
-      .run(Date.now() - 2_000_000, idleRun.id);
-    await eventually(() =>
-      expect(getRunRequired(idle.db, idleRun.id).status).toBe("succeeded"),
-    );
-    idleController.abort();
-    await idleWorker;
-
-    const deleted = setup();
-    harnesses.push(deleted.harness);
-    const deletedRun = await deleted.start(
-      source(`return await agent("deleted");`),
-    );
-    const deletedController = new AbortController();
-    const deletedWorker = deleted.service.runWorker(deletedController.signal);
-    await eventually(() => expect(deleted.childCount()).toBe(1));
-    deleted.workers.get("child-1")!.deleted = true;
-    await eventually(() => {
-      const run = getRunRequired(deleted.db, deletedRun.id);
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("deleted");
-    });
-    deletedController.abort();
-    await deletedWorker;
-
-    const errored = setup();
-    harnesses.push(errored.harness);
-    const erroredRun = await errored.start(
-      source(`return await agent("errored");`),
-    );
-    const errorController = new AbortController();
-    const errorWorker = errored.service.runWorker(errorController.signal);
-    await eventually(() => expect(errored.childCount()).toBe(1));
-    errored.workers.get("child-1")!.status = "error";
-    await eventually(() => {
-      const run = getRunRequired(errored.db, erroredRun.id);
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("error state");
-    });
-    errorController.abort();
-    await errorWorker;
-  });
-
   it("keeps quiet workers alive until the total run timeout", async () => {
     const test = setup();
     harnesses.push(test.harness);
@@ -1193,6 +1135,31 @@ describe("workflow service policy integration", () => {
     });
     controller.abort();
     await worker;
+  });
+
+  it("fails an archived worker once when its lifecycle event arrives", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("work");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+      );
+      test.service.onThreadArchived("child-1");
+      test.service.onThreadArchived("child-1");
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+      );
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "failed",
+        error: "Workflow worker was archived",
+      });
+    } finally {
+      controller.abort();
+      await worker;
+    }
   });
 
   it("leaves clean shutdown state recoverable without a false notification", async () => {
@@ -1322,7 +1289,7 @@ describe("workflow service policy integration", () => {
     },
   );
 
-  it("amortizes discovery and does not poll origins of backed-off notifications", async () => {
+  it("discovers workers once and skips origins of backed-off notifications", async () => {
     const test = setup();
     harnesses.push(test.harness);
     const run = await test.start(source('return "done";'));
@@ -1360,7 +1327,7 @@ describe("workflow service policy integration", () => {
     }
   });
 
-  it("amortizes origin reconciliation across maintenance ticks", async () => {
+  it("reconciles origins at startup without polling", async () => {
     const test = setup();
     harnesses.push(test.harness);
     const run = await test.start(source(`return await agent("work");`));
@@ -1509,11 +1476,10 @@ describe("workflow service policy integration", () => {
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     try {
-      await eventually(() =>
-        expect(
-          test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
-        ).toEqual({ thread_id: "spawning-worker" }),
-      );
+      await eventually(() => expect(metadata.workflowWorker).toBe(1));
+      expect(
+        test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
+      ).toBeUndefined();
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(test.archived).toEqual([]);
       release();
@@ -1575,11 +1541,10 @@ describe("workflow service policy integration", () => {
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     try {
-      await eventually(() =>
-        expect(
-          test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
-        ).toEqual({ thread_id: "zz-live-worker" }),
-      );
+      await eventually(() => expect(metadata.workflowWorker).toBe(1));
+      expect(
+        test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
+      ).toBeUndefined();
       expiredRunWithWorkers(test.db, "retired-run", ["aa-retired-worker"]);
       await eventually(() =>
         expect(stoppedThreads()).toContain("aa-retired-worker"),
