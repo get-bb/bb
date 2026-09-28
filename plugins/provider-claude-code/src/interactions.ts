@@ -25,11 +25,13 @@ export type ClaudeInteractionOutcome =
 import {
   buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,
+  CLAUDE_BASH_TOOL_NAME,
   CLAUDE_EXIT_PLAN_MODE_TOOL_NAME,
   claudeExitPlanModeInputSchema,
   isClaudeConcreteFileChangeToolName,
   type ClaudeInteractiveResponse,
   type ClaudePermissionRequestApprovalParams,
+  type ClaudePermissionRule,
   type ClaudeUserQuestion,
   type ClaudeUserQuestionOutput,
   type ClaudeUserQuestionRequestParams,
@@ -40,13 +42,26 @@ import {
   parseClaudeBashCommand,
 } from "./tool-classification.js";
 
+interface ClaudeSessionRulesArgs {
+  permissions: PendingInteractionGrantedPermissionProfile;
+  toolName: string | null;
+}
+
+function getClaudeSessionRules(
+  args: ClaudeSessionRulesArgs,
+): ClaudePermissionRule[] {
+  return args.toolName !== null && args.permissions.network?.enabled === true
+    ? [{ toolName: args.toolName }]
+    : [];
+}
+
 function hasClaudeSessionPermissionUpdate(
   args: ClaudePermissionRequestApprovalParams,
 ): boolean {
   return (
     buildClaudeSessionPermissionUpdates({
       permissions: args.permissions,
-      toolName: args.toolName,
+      rules: getClaudeSessionRules(args),
     }) !== undefined
   );
 }
@@ -77,7 +92,7 @@ function buildClaudeApprovalSubject(
     }
   }
 
-  if (args.toolName === "Bash") {
+  if (args.toolName === CLAUDE_BASH_TOOL_NAME) {
     const bashCommand = parseClaudeBashCommand(args.input);
     if (bashCommand) {
       return {
@@ -284,7 +299,7 @@ function getClaudePermissionUpdateToolName(
 ): string | null {
   switch (payload.subject.kind) {
     case "command":
-      return "Bash";
+      return CLAUDE_BASH_TOOL_NAME;
     case "file_change":
       return null;
     case "permission_grant":
@@ -332,11 +347,15 @@ export function buildClaudeInteractiveResponse(
     };
   }
 
+  const permissions = resolveClaudeGrantedPermissions(
+    args.resolution.grantedPermissions,
+  );
   const updatedPermissions = buildClaudeSessionPermissionUpdates({
-    permissions: resolveClaudeGrantedPermissions(
-      args.resolution.grantedPermissions,
-    ),
-    toolName: getClaudePermissionUpdateToolName(args.payload),
+    permissions,
+    rules: getClaudeSessionRules({
+      permissions,
+      toolName: getClaudePermissionUpdateToolName(args.payload),
+    }),
   });
 
   return {
