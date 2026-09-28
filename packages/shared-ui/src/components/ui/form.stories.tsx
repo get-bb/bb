@@ -25,8 +25,6 @@ function ProjectNameFormDemo() {
   const form = useForm<ProjectFormValues>({ defaultValues: { name: "" } });
 
   useEffect(() => {
-    // Trigger validation on mount so FormMessage has a real error to render
-    // without requiring a click inside the Ladle canvas.
     void form.trigger();
   }, [form]);
 
