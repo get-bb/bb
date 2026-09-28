@@ -650,7 +650,6 @@ describe("terminal activation history", () => {
           result.current.update((state) =>
             syncTerminalTabsInFixedPanelState({
               state,
-              retainedTerminalId: "closing-terminal",
               terminalSessions: [],
             }),
           ),
