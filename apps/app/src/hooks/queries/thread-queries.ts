@@ -695,7 +695,6 @@ function liftThreadListPlaceholder(
     canRestoreEnvironment: false,
     canSpawnChild: false,
     queuedMessageCount: 0,
-    draft: null,
   };
 }
 

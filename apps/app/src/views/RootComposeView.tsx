@@ -72,12 +72,7 @@ import { PluginIcon } from "@/components/plugin/PluginIcon";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  useCreateDraftThread,
-  useCreateThread,
-} from "@/hooks/mutations/thread-runtime-mutations";
-import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useCloseTerminal,
   useCloseEnvironmentTerminal,
@@ -95,13 +90,7 @@ import {
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import {
-  arePromptDraftStatesEqual,
-  emptyPromptDraftState,
-  isPromptDraftEmpty,
-  type PromptDraftAttachment,
-  type PromptDraftState,
-} from "@bb/client-core";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import {
   buildForkThreadRequest,
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
@@ -549,7 +538,6 @@ export function RootComposeView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
-  const createDraftThread = useCreateDraftThread();
   const [rootComposeSectionId, setRootComposeSectionId] =
     useRootComposeSectionId();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
@@ -628,27 +616,6 @@ export function RootComposeView() {
       setRootComposeSectionId,
     ],
   );
-  const handleLeaveWithDraft = useCallback(
-    (request: NewThreadRequest, draft: PromptDraftState) => {
-      if (forkSeed !== null) return;
-      const newThreadDraft = getPromptDraftAccessor({ kind: "new-thread" });
-      if (!arePromptDraftStatesEqual(newThreadDraft.getCurrent(), draft)) {
-        return;
-      }
-      newThreadDraft.setDraft(emptyPromptDraftState());
-      createDraftThread
-        .mutateAsync({
-          ...request,
-          ...(rootComposeSectionId ? { sectionId: rootComposeSectionId } : {}),
-        })
-        .catch(() => {
-          if (isPromptDraftEmpty(newThreadDraft.getCurrent())) {
-            newThreadDraft.setDraft(draft);
-          }
-        });
-    },
-    [createDraftThread, forkSeed, rootComposeSectionId],
-  );
   const composerSeed = useMemo(
     () =>
       forkSeed === null
@@ -677,7 +644,6 @@ export function RootComposeView() {
       resetKey={forkSeed?.sourceThreadId ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}
       onSubmit={handleSubmit}
-      onLeaveWithDraft={handleLeaveWithDraft}
     >
       {(composer) => (
         <RootComposeSurface

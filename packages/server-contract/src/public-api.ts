@@ -274,7 +274,6 @@ import type {
   UpdateThreadPluginMetadataRequest,
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
-  UpdateThreadDraftRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
@@ -306,7 +305,6 @@ import {
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
   updateQueuedMessageRequestSchema,
-  updateThreadDraftRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
   updateThreadPluginMetadataRequestSchema,
@@ -1479,14 +1477,6 @@ export const publicApiRoutes = {
         threadPaneActionRequestSchema,
       ),
       response: jsonResponse<ThreadPaneActionResponse>(),
-    }),
-    updateDraft: defineRoute({
-      path: "/threads/:id/draft",
-      method: "put",
-      request: jsonRequest<PathId, UpdateThreadDraftRequest>(
-        updateThreadDraftRequestSchema,
-      ),
-      response: jsonResponse<ThreadResponse>(),
     }),
     tabs: defineRoute({
       path: "/threads/:id/tabs",

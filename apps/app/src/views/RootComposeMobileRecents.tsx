@@ -16,7 +16,6 @@ import { OverflowFade } from "@/components/ui/overflow-fade";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
   getThreadListIndicatorLabel,
-  isDraftThread,
   resolveThreadListIndicator,
   threadListIndicatorStateForThread,
   buildChronologicalThreadList,
@@ -425,14 +424,7 @@ export function RootComposeMobileRecents({
     () => new Set(collapsedThreadIdList),
     [collapsedThreadIdList],
   );
-  const localDraftThreadIds = usePromptDraftInputThreadIds(threads);
-  const draftThreadIds = useMemo(() => {
-    const ids = new Set(localDraftThreadIds);
-    for (const thread of threads) {
-      if (isDraftThread(thread)) ids.add(thread.id);
-    }
-    return ids;
-  }, [localDraftThreadIds, threads]);
+  const draftThreadIds = usePromptDraftInputThreadIds(threads);
   const toggleCollapsed = useCallback(
     (threadId: string) => {
       setCollapsedThreadIdList((current) =>

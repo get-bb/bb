@@ -1,6 +1,6 @@
 import { notifyComposerSubmitted } from "@/lib/composer-submissions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { PromptInput, ThreadQueuedMessage } from "@bb/domain";
+import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
   SendQueuedMessageMode,
@@ -17,7 +17,6 @@ import type {
   SendThreadMessageMutationRequest,
 } from "./mutation-request-types";
 import {
-  applyCreateDraftThreadResult,
   applyCreateThreadResult,
   applyQueuedMessageCreateResult,
   applyQueuedMessageDeleteResult,
@@ -25,7 +24,6 @@ import {
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
   applySendThreadMessageSuccess,
-  applyThreadDraftUpdateResult,
   applyThreadGoalClearResult,
   applyThreadPlanCancellationResult,
   beginCreateQueuedMessageTransaction,
@@ -243,44 +241,6 @@ export function useEditThreadMessage() {
         queryClient,
         threadId: variables.id,
       });
-    },
-  });
-}
-
-export function useCreateDraftThread() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to save draft.",
-    },
-    mutationFn: (request: AppCreateThreadRequest) =>
-      sdk.threads.spawn({
-        ...request,
-        origin: "app",
-        originKind: null,
-        startedOnBehalfOf: null,
-        draft: true,
-      }),
-    onMutate: async () => beginCreateThreadTransaction({ queryClient }),
-    onSuccess: (thread) => {
-      applyCreateDraftThreadResult({ queryClient, thread });
-    },
-  });
-}
-
-export function useUpdateThreadDraft() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to save draft.",
-      showErrorToast: false,
-    },
-    mutationFn: ({ id, input }: { id: string; input: PromptInput[] }) =>
-      sdk.threads.updateDraft({ threadId: id, input }),
-    onSuccess: (thread) => {
-      applyThreadDraftUpdateResult({ queryClient, thread });
     },
   });
 }

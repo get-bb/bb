@@ -19,10 +19,6 @@
     "On 2026-09-25 both SplitWorkspaceRoute limits rose another 2 KiB for",
     "machine enrollment command status and selected-machine sidebar placement.",
     "",
-    "On 2026-09-25 the SplitWorkspaceRoute raw limit rose 2 KiB for native",
-    "thread drafts: saving new-thread text as a draft thread and syncing a",
-    "draft thread's composer with the server. The brotli limit did not change.",
-    "",
     "On 2026-09-26 the SplitWorkspaceRoute raw limit rose 0.5 KiB for",
     "nested worktree group alignment. No new dependencies enter the route.",
     "",
@@ -109,7 +105,7 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 2341134,
+      "maxBytes": 2339086,
       "maxBrotliBytes": 630625,
       "forbiddenPackages": [
         "@pierre/diffs",

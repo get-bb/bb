@@ -605,7 +605,6 @@ export const threads = sqliteTable(
       .notNull()
       .default("starting"),
     startupContext: text("startup_context"),
-    draft: text("draft"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },

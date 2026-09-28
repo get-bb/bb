@@ -204,7 +204,7 @@ describe("message.dispatch hook context", () => {
       installHooks({
         "message.dispatch": [
           {
-            pluginId: "holder",
+            pluginId: "drafts",
             handler: (context) => {
               seen.push(context.experimental_submission);
               return { action: "proceed" };
@@ -217,8 +217,8 @@ describe("message.dispatch hook context", () => {
         "host-new-thread-submission",
       );
       const pluginSubmission = {
-        pluginId: "holder",
-        data: { kind: "hold" },
+        pluginId: "drafts",
+        data: { kind: "draft" },
       };
 
       await createThreadFromRequest(harness.deps, {
@@ -244,8 +244,8 @@ describe("message.dispatch hook context", () => {
       installHooks({
         "message.dispatch": [
           {
-            pluginId: "holder",
-            handler: () => ({ action: "wait", reason: "Held" }),
+            pluginId: "drafts",
+            handler: () => ({ action: "wait", reason: "Draft" }),
           },
         ],
       });
@@ -267,8 +267,8 @@ describe("message.dispatch hook context", () => {
       expect(response.delivery).toBe("queued");
       expect(onlyQueuedRow(harness, thread.id).waitingOn).toEqual({
         kind: "plugin",
-        pluginId: "holder",
-        reason: "Held",
+        pluginId: "drafts",
+        reason: "Draft",
       });
       expect(onlyQueuedRow(harness, thread.id).sendAt).toBeNull();
     });
@@ -912,7 +912,7 @@ describe("message.dispatch hook message author", () => {
         },
         input: textInput("queued by a plugin"),
         origin: "plugin",
-        originPluginId: "holder",
+        originPluginId: "drafts",
         projectId: project.id,
         providerId: "codex",
         startedOnBehalfOf: null,
@@ -922,8 +922,8 @@ describe("message.dispatch hook message author", () => {
       await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
 
       expect(seen).toEqual([
-        { origin: "plugin", originPluginId: "holder" },
-        { origin: "plugin", originPluginId: "holder" },
+        { origin: "plugin", originPluginId: "drafts" },
+        { origin: "plugin", originPluginId: "drafts" },
       ]);
     });
   });
@@ -1057,19 +1057,19 @@ describe("message.dispatch grouped authors", () => {
           },
           {
             origins: ["plugin", "plugin"],
-            pluginIds: ["holder", "holder"],
+            pluginIds: ["drafts", "drafts"],
             origin: "plugin",
-            originPluginId: "holder",
+            originPluginId: "drafts",
           },
           {
             origins: ["plugin", "plugin"],
-            pluginIds: ["holder", "automations"],
+            pluginIds: ["drafts", "automations"],
             origin: "plugin",
             originPluginId: "mixed",
           },
           {
             origins: ["plugin", null],
-            pluginIds: ["holder", null],
+            pluginIds: ["drafts", null],
             origin: "mixed",
             originPluginId: "mixed",
           },
@@ -1228,18 +1228,18 @@ describe("message.dispatch hooks on the queue drain", () => {
       const seen: unknown[] = [];
       const registry = emptyRegistry();
       registry["message.dispatch"].push({
-        pluginId: "holder",
+        pluginId: "drafts",
         handler: (context) => {
           seen.push(context.experimental_submission);
-          const isHeld =
-            context.experimental_submission?.pluginId === "holder" ||
+          const isDraft =
+            context.experimental_submission?.pluginId === "drafts" ||
             context.queuedMessages.some(
               (message) =>
                 message.waitingOn?.kind === "plugin" &&
-                message.waitingOn.pluginId === "holder",
+                message.waitingOn.pluginId === "drafts",
             );
-          return isHeld
-            ? ({ action: "wait", reason: "Held" } as const)
+          return isDraft
+            ? ({ action: "wait", reason: "Draft" } as const)
             : ({ action: "proceed" } as const);
         },
       });
@@ -1249,8 +1249,8 @@ describe("message.dispatch hooks on the queue drain", () => {
         status: "idle",
       });
       const pluginSubmission = {
-        pluginId: "holder",
-        data: { kind: "hold" },
+        pluginId: "drafts",
+        data: { kind: "draft" },
       };
 
       await acceptThreadSendRequest(harness.deps, {

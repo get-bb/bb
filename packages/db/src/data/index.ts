@@ -67,8 +67,6 @@ export {
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
-  setThreadDraft,
-  getThreadDraft,
   getThreadStartupContext,
   setThreadStartupContext,
   listExistingThreadIds,

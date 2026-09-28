@@ -54,7 +54,6 @@ import {
   sendThreadMessage,
 } from "../../services/threads/thread-send.js";
 import { acceptThreadSendRequest } from "../../services/threads/thread-send-request.js";
-import { updateThreadDraft } from "../../services/threads/thread-draft.js";
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import { clearThreadContext } from "../../services/threads/thread-context-clear.js";
 import {
@@ -232,7 +231,7 @@ function assertPinnedThreadOrderResult(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { post, patch, put, del } = typedRoutes<PublicApiSchema>(app, {
+  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -271,16 +270,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
     });
     return context.json(queuedMessage, 201);
-  });
-
-  put(routes.updateDraft, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    await updateThreadDraft(deps, { input: payload.input, thread });
-    return context.json(
-      toThreadResponseFromThread(deps, {
-        thread: requirePublicThread(deps.db, thread.id),
-      }),
-    );
   });
 
   post(routes.sendQueuedMessage, async (context, payload) => {

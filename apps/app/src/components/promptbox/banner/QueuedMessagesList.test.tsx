@@ -1809,9 +1809,9 @@ describe("queued row affordances", () => {
     setPluginLogoUrls(
       new Map([
         [
-          "approvals",
+          "drafts",
           {
-            displayName: "Approvals",
+            displayName: "Drafts",
             icon: "EditFile",
             compactIconUrl: null,
             logoUrl: null,
@@ -1823,16 +1823,16 @@ describe("queued row affordances", () => {
     );
     const { container, getByText } = renderQueuedMessages([
       {
-        ...makeQueuedMessage("q_held", "Held message"),
+        ...makeQueuedMessage("q_draft", "Draft message"),
         waitingOn: {
           kind: "plugin",
-          pluginId: "approvals",
-          reason: "Awaiting approval",
+          pluginId: "drafts",
+          reason: "Draft",
         },
       },
     ]);
 
-    const waitLine = getByText("Held by Approvals · Awaiting approval").closest(
+    const waitLine = getByText("Held by Drafts · Draft").closest(
       "[data-queued-message-wait]",
     );
     expect(waitLine?.querySelector("[data-icon=EditFile]")).not.toBeNull();

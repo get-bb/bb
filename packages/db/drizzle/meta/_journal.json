@@ -932,6 +932,13 @@
       "when": 1790322211064,
       "tag": "0132_thread_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "6",
+      "when": 1790613729994,
+      "tag": "0133_remove_thread_drafts",
+      "breakpoints": true
     }
   ]
 }
