@@ -8,6 +8,7 @@ import {
   type ThreadChangeKind,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TimelineDeltaMessage } from "@bb/server-contract";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { TRANSPORT_TEST_BRIDGE_LAUNCH } from "../helpers/provider-registry.js";
@@ -511,6 +512,88 @@ describe("NotificationHub", () => {
     expect(JSON.parse(systemSocket.messages[0]).changes).toEqual([
       ...SYSTEM_CHANGE_KINDS,
     ]);
+  });
+});
+
+describe("NotificationHub timeline delta pushes", () => {
+  const capabilities = new Set(["timeline-delta"] as const);
+
+  function makeTimelineDelta(threadId: string): TimelineDeltaMessage {
+    return {
+      type: "timeline-delta",
+      threadId,
+      segmentLimit: null,
+      fromMaxSeq: 3,
+      body: {
+        rows: [],
+        contextBoundarySeq: null,
+        completedTurnDisplay: "collapse",
+        activePromptMode: null,
+        activeThinking: null,
+        activeWorkflows: [],
+        activeBackgroundCommands: [],
+        pendingTodos: null,
+        goal: null,
+        modelFallback: null,
+        timelinePage: {
+          kind: "latest",
+          segmentLimit: 20,
+          returnedSegmentCount: 0,
+          hasOlderRows: false,
+          olderCursor: null,
+        },
+        maxSeq: 4,
+        delta: { upsertRows: [] },
+      },
+    };
+  }
+
+  it("sends a timeline delta only to capable detail subscribers of that thread", () => {
+    const hub = new NotificationHub();
+    const capableDetail = createMockHubSocket();
+    const plainDetail = createMockHubSocket();
+    const capableList = createMockHubSocket();
+    const capableOtherThread = createMockHubSocket();
+    hub.registerClient(capableDetail, { capabilities });
+    hub.registerClient(plainDetail, { capabilities: new Set() });
+    hub.registerClient(capableList, { capabilities });
+    hub.registerClient(capableOtherThread, { capabilities });
+    hub.subscribe(capableDetail, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+    hub.subscribe(plainDetail, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(capableList, { kind: "thread-list" });
+    hub.subscribe(capableOtherThread, {
+      kind: "thread-detail",
+      threadId: "thread-2",
+    });
+
+    expect(
+      hub.hasThreadDetailSubscriberWithCapability("thread-1", "timeline-delta"),
+    ).toBe(true);
+    expect(hub.sendTimelineDelta(makeTimelineDelta("thread-1"))).toBe(1);
+
+    expect(
+      capableDetail.messages.map((message) => JSON.parse(message)),
+    ).toEqual([makeTimelineDelta("thread-1")]);
+    expect(plainDetail.messages).toEqual([]);
+    expect(capableList.messages).toEqual([]);
+    expect(capableOtherThread.messages).toEqual([]);
+  });
+
+  it("forgets capabilities when the socket unregisters", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerClient(socket, { capabilities });
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.unregisterClient(socket);
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+
+    expect(
+      hub.hasThreadDetailSubscriberWithCapability("thread-1", "timeline-delta"),
+    ).toBe(false);
+    expect(hub.sendTimelineDelta(makeTimelineDelta("thread-1"))).toBe(0);
   });
 });
 

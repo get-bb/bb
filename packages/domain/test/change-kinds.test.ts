@@ -7,6 +7,8 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
+  formatRealtimeClientCapabilities,
+  parseRealtimeClientCapabilities,
   threadChangeMetadataSchema,
   type ChangedMessage,
   type ThreadChangeMetadata,
@@ -164,5 +166,19 @@ describe("lenient changed-message schema parity", () => {
     expect(Object.keys(maximalThreadMetadata).sort()).toEqual(
       Object.keys(threadChangeMetadataSchema.shape).sort(),
     );
+  });
+});
+
+describe("realtime client capabilities", () => {
+  it("keeps known capabilities from the upgrade query and ignores the rest", () => {
+    expect([
+      ...parseRealtimeClientCapabilities(
+        formatRealtimeClientCapabilities(["timeline-delta"]),
+      ),
+    ]).toEqual(["timeline-delta"]);
+    expect([
+      ...parseRealtimeClientCapabilities("future-cap,timeline-delta,"),
+    ]).toEqual(["timeline-delta"]);
+    expect(parseRealtimeClientCapabilities(undefined).size).toBe(0);
   });
 });

@@ -26,6 +26,7 @@ import {
   updateCachedThreadListStatusState,
 } from "./query-cache";
 import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
+import { isThreadTimelineCaughtUpByPush } from "./timeline-push-cache-owner";
 import { invalidateSystemExecutionOptions } from "./system-cache-effects";
 import {
   getCachedThreadLists,
@@ -873,9 +874,11 @@ function dirtyThreadTimelineQueries({
   queryClient,
   threadId,
 }: ThreadRealtimeDirtyContext): void {
-  const timelineQueryKeys = getThreadTimelineWindowInvalidationQueryKeys({
-    threadId,
-  });
+  const timelineQueryKeys =
+    threadId !== undefined &&
+    isThreadTimelineCaughtUpByPush(queryClient, threadId)
+      ? []
+      : getThreadTimelineWindowInvalidationQueryKeys({ threadId });
   const outlineQueryKeys = getThreadConversationOutlineInvalidationQueryKeys({
     threadId,
   });

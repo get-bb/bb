@@ -1,3 +1,4 @@
+import type { RealtimeClientCapability } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   onClientSocketMessage,
@@ -5,6 +6,8 @@ import {
 } from "../../src/ws/client-protocol.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+
+const NO_CAPABILITIES: ReadonlySet<RealtimeClientCapability> = new Set();
 
 function createProtocolDeps(hub: NotificationHub) {
   return {
@@ -23,7 +26,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,
@@ -49,7 +52,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,
@@ -69,7 +72,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,
@@ -97,7 +100,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,
@@ -116,7 +119,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,
@@ -134,7 +137,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
 
     expect(() => onClientSocketMessage(deps, socket, "{")).not.toThrow();
     expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
@@ -145,7 +148,7 @@ describe("client websocket protocol", () => {
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,
@@ -179,8 +182,8 @@ describe("client websocket protocol", () => {
     const socket = createMockHubSocket();
     const otherSocket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketOpen(hub, otherSocket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
+    onClientSocketOpen(hub, otherSocket, NO_CAPABILITIES);
     onClientSocketMessage(deps, socket, JSON.stringify({ type: "ping" }));
 
     expect(socket.closed).toHaveLength(0);
@@ -191,12 +194,32 @@ describe("client websocket protocol", () => {
     expect(deps.watchInterests.subscribe).not.toHaveBeenCalled();
   });
 
+  it("registers the capabilities announced at upgrade for later subscriptions", () => {
+    const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
+    const socket = createMockHubSocket();
+
+    onClientSocketOpen(hub, socket, new Set(["timeline-delta"]));
+    onClientSocketMessage(
+      deps,
+      socket,
+      JSON.stringify({
+        type: "subscribe",
+        target: { kind: "thread-detail", threadId: "thread-1" },
+      }),
+    );
+
+    expect(
+      hub.hasThreadDetailSubscriberWithCapability("thread-1", "timeline-delta"),
+    ).toBe(true);
+  });
+
   it("rejects direct watch messages", () => {
     const hub = new NotificationHub();
     const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, socket, NO_CAPABILITIES);
     onClientSocketMessage(
       deps,
       socket,

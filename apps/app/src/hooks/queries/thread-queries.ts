@@ -24,6 +24,8 @@ import type {
   ThreadStorageLocationResponse,
   ThreadStoragePathListResponse,
   ThreadTimelineResponse,
+  TimelineDelta,
+  TimelineDeltaMessage,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import { useDebouncedValue } from "../useDebouncedValue";
@@ -1036,6 +1038,21 @@ function isNoOpThreadTimelineDelta(
   );
 }
 
+function mergeThreadTimelineDeltaRows(
+  previous: ThreadTimelineResponse,
+  response: ThreadTimelineResponse,
+  delta: TimelineDelta,
+): ThreadTimelineResponse | null {
+  if (isNoOpThreadTimelineDelta(previous, response)) {
+    equivalentThreadTimelineMaxSeqs.set(previous, response.maxSeq);
+    return previous;
+  }
+  const merged = applyTimelineDelta(previous.rows, delta);
+  return merged === null
+    ? null
+    : { ...response, rows: merged, delta: undefined };
+}
+
 async function mergeThreadTimelineDelta(
   previous: ThreadTimelineResponse | undefined,
   response: ThreadTimelineResponse,
@@ -1044,17 +1061,30 @@ async function mergeThreadTimelineDelta(
   if (response.delta === undefined) {
     return response;
   }
-  if (previous !== undefined && isNoOpThreadTimelineDelta(previous, response)) {
-    equivalentThreadTimelineMaxSeqs.set(previous, response.maxSeq);
-    return previous;
+  const merged =
+    previous === undefined
+      ? null
+      : mergeThreadTimelineDeltaRows(previous, response, response.delta);
+  return merged ?? fetchFull();
+}
+
+export function mergePushedThreadTimelineDelta(
+  previous: ThreadTimelineResponse | undefined,
+  message: TimelineDeltaMessage,
+): ThreadTimelineResponse | null {
+  if (
+    previous === undefined ||
+    (message.segmentLimit ?? undefined) !==
+      resolveThreadTimelineSegmentLimit() ||
+    resolveThreadTimelineMaxSeq(previous) !== message.fromMaxSeq
+  ) {
+    return null;
   }
-  const merged = previous
-    ? applyTimelineDelta(previous.rows, response.delta)
-    : null;
-  if (merged !== null) {
-    return { ...response, rows: merged, delta: undefined };
-  }
-  return fetchFull();
+  return mergeThreadTimelineDeltaRows(
+    previous,
+    message.body,
+    message.body.delta,
+  );
 }
 
 interface FetchThreadTimelineArgs {
@@ -1089,9 +1119,15 @@ async function fetchThreadTimeline({
       ? { afterSequence: String(resolveThreadTimelineMaxSeq(previous)) }
       : {}),
   });
-  return mergeThreadTimelineDelta(previous, response, () =>
+  const merged = await mergeThreadTimelineDelta(previous, response, () =>
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
+  const current = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
+  return current !== undefined &&
+    current !== previous &&
+    resolveThreadTimelineMaxSeq(current) > resolveThreadTimelineMaxSeq(merged)
+    ? current
+    : merged;
 }
 
 export function useThreadTimeline(

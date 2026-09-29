@@ -6,6 +6,7 @@ import {
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
   threadPaneActionSignalLenientSchema,
+  timelineDeltaMessageLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
@@ -15,7 +16,12 @@ import type {
   ThreadOpenFile,
   ThreadOpenSignal,
   ThreadPaneActionSignal,
+  TimelineDeltaMessage,
 } from "@bb/server-contract";
+import {
+  formatRealtimeClientCapabilities,
+  REALTIME_CLIENT_CAPABILITIES_QUERY_PARAM,
+} from "@bb/domain";
 import { buildBrowserWebSocketUrl } from "./dev-websocket-url";
 import {
   isDocumentVisible,
@@ -26,6 +32,7 @@ type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
+type TimelineDeltaCallback = (message: TimelineDeltaMessage) => void;
 export type WebSocketConnectedEvent =
   | { reconnected: false }
   | {
@@ -39,6 +46,43 @@ export type WebSocketConnectionState =
   | "connecting"
   | "connected"
   | "reconnecting";
+
+const KNOWN_REALTIME_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "changed",
+  "plugin-signal",
+  "pong",
+  "thread-open",
+  "thread-pane-action",
+  "timeline-delta",
+]);
+
+function buildRealtimeWebSocketUrl(): string {
+  const url = new URL(buildBrowserWebSocketUrl("/ws"));
+  url.searchParams.set(
+    REALTIME_CLIENT_CAPABILITIES_QUERY_PARAM,
+    formatRealtimeClientCapabilities(["timeline-delta"]),
+  );
+  return url.toString();
+}
+
+function isTimelineDeltaFrame(parsed: unknown): boolean {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "type" in parsed &&
+    parsed.type === "timeline-delta"
+  );
+}
+
+function hasUnknownRealtimeMessageType(parsed: unknown): boolean {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "type" in parsed &&
+    typeof parsed.type === "string" &&
+    !KNOWN_REALTIME_MESSAGE_TYPES.has(parsed.type)
+  );
+}
 
 export const REALTIME_PING_INTERVAL_MS = 25_000;
 export const REALTIME_PONG_TIMEOUT_MS = 5_000;
@@ -81,6 +125,7 @@ export class WebSocketManager {
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
+  private timelineDeltaCallbacks = new Set<TimelineDeltaCallback>();
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -95,6 +140,7 @@ export class WebSocketManager {
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private pongDeadline = 0;
   private hiddenAt: number | null = null;
+  private hasLoggedInvalidTimelineDelta = false;
   private readonly minReconnectionDelay =
     REALTIME_MIN_RECONNECTION_DELAY_MS +
     Math.random() * REALTIME_RECONNECTION_DELAY_JITTER_MS;
@@ -106,7 +152,7 @@ export class WebSocketManager {
   connect(): void {
     if (this.socket) return;
 
-    const url = buildBrowserWebSocketUrl("/ws");
+    const url = buildRealtimeWebSocketUrl();
 
     const socket = new ReconnectingWebSocket(url, undefined, {
       minReconnectionDelay: this.minReconnectionDelay,
@@ -123,6 +169,7 @@ export class WebSocketManager {
       this.lastServerActivityAt = Date.now();
       const reconnected = this.hasConnected;
       this.hasConnected = true;
+      this.hasLoggedInvalidTimelineDelta = false;
       this.setConnectionState("connected");
       this.startPingLoop();
       for (const subscription of this.subscriptions.values()) {
@@ -371,11 +418,27 @@ export class WebSocketManager {
       return;
     }
 
+    if (isTimelineDeltaFrame(parsed)) {
+      const timelineDelta =
+        timelineDeltaMessageLenientSchema.safeParse(parsed);
+      if (timelineDelta.success) {
+        for (const cb of this.timelineDeltaCallbacks) {
+          cb(timelineDelta.data);
+        }
+      } else if (!this.hasLoggedInvalidTimelineDelta) {
+        this.hasLoggedInvalidTimelineDelta = true;
+        console.debug("Ignored invalid timeline delta", timelineDelta.error);
+      }
+      return;
+    }
+
     const msg = changedMessageLenientSchema.safeParse(parsed);
     if (msg.success) {
       for (const cb of this.callbacks) {
         cb(msg.data);
       }
+    } else if (hasUnknownRealtimeMessageType(parsed)) {
+      console.debug("Ignored unknown realtime message", parsed);
     } else {
       console.error("Ignored invalid realtime message", msg.error);
     }
@@ -454,6 +517,13 @@ export class WebSocketManager {
     this.pluginSignalCallbacks.add(callback);
     return () => {
       this.pluginSignalCallbacks.delete(callback);
+    };
+  }
+
+  onTimelineDelta(callback: TimelineDeltaCallback): () => void {
+    this.timelineDeltaCallbacks.add(callback);
+    return () => {
+      this.timelineDeltaCallbacks.delete(callback);
     };
   }
 

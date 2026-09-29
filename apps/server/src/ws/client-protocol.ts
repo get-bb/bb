@@ -1,4 +1,8 @@
-import { clientMessageSchema, type PongMessage } from "@bb/domain";
+import {
+  clientMessageSchema,
+  type PongMessage,
+  type RealtimeClientCapability,
+} from "@bb/domain";
 import { parseSocketMessage } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
 import type { WatchInterestCoordinator } from "./watch-interests.js";
@@ -13,8 +17,9 @@ interface ClientSocket {
 export function onClientSocketOpen(
   hub: NotificationHub,
   socket: ClientSocket,
+  capabilities: ReadonlySet<RealtimeClientCapability>,
 ): void {
-  hub.registerClient(socket);
+  hub.registerClient(socket, { capabilities });
 }
 
 export function onClientSocketMessage(

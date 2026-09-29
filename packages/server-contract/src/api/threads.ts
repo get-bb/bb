@@ -1045,6 +1045,23 @@ export type ThreadTimelineResponse = z.infer<
   typeof threadTimelineResponseSchema
 >;
 
+const timelineDeltaMessageFields = {
+  type: z.literal("timeline-delta"),
+  threadId: z.string().min(1),
+  segmentLimit: z.number().int().positive().nullable(),
+  fromMaxSeq: z.number().int().nonnegative(),
+  body: threadTimelineResponseSchema.extend({ delta: timelineDeltaSchema }),
+};
+
+export const timelineDeltaMessageSchema = z
+  .object(timelineDeltaMessageFields)
+  .strict();
+export type TimelineDeltaMessage = z.infer<typeof timelineDeltaMessageSchema>;
+
+export const timelineDeltaMessageLenientSchema = z.object(
+  timelineDeltaMessageFields,
+);
+
 export const threadConversationOutlineAttachmentSummarySchema = z
   .object({
     imageCount: z.number().int().nonnegative(),

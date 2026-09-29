@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { assertNever } from "@bb/core-ui";
+import type { TimelineDeltaMessage } from "@bb/server-contract";
 import {
   createDebouncedCallbackScheduler,
   type ChangedMessage,
@@ -20,6 +21,11 @@ import {
 } from "./cache-owners/system-cache-effects";
 import { whenRouteContentPainted } from "@/lib/route-content-paint";
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
+import {
+  createTimelinePushCacheOwner,
+  forgetThreadTimelineReceipts,
+  recordThreadTimelineChange,
+} from "./cache-owners/timeline-push-cache-owner";
 import {
   isDocumentVisible,
   subscribeToDocumentVisibility,
@@ -74,6 +80,7 @@ interface RealtimeCacheEffects {
   handleChanged: (message: ChangedMessage) => void;
   handleConnected: (event: RealtimeConnectedEvent) => void;
   handleResumed: () => void;
+  handleTimelineDelta: (message: TimelineDeltaMessage) => void;
 }
 
 export interface RealtimeCacheEffectsVisibility {
@@ -104,6 +111,11 @@ interface ThreadChangeState {
   globalChangeKinds: Set<ThreadChangeKind>;
   metadataByThreadId: Map<string, ThreadChangeMetadata>;
 }
+
+const TIMELINE_CHANGE_KINDS: ReadonlySet<ThreadChangeKind> = new Set([
+  "events-appended",
+  "thread-created",
+]);
 
 interface MergeThreadChangesArg {
   changes: readonly ThreadChangeKind[];
@@ -427,6 +439,7 @@ export function createRealtimeCacheEffects({
 }: RealtimeCacheEffectsOptions): RealtimeCacheEffects {
   let cancelInitialConnectRefresh: (() => void) | null = null;
   const threadChangeState = createThreadChangeState();
+  const timelinePushOwner = createTimelinePushCacheOwner({ queryClient });
   let hasDeferredThreadChanges = false;
   const deferredNonThreadChanges = createDeferredNonThreadChanges();
   const invalidationScheduler = createDebouncedCallbackScheduler({
@@ -538,6 +551,7 @@ export function createRealtimeCacheEffects({
       cancelInitialConnectRefresh?.();
       cancelInitialConnectRefresh = null;
       unsubscribeVisibility();
+      timelinePushOwner.dispose();
       invalidationScheduler.dispose();
       environmentInvalidator.dispose();
       disposeTrailingActiveRefetches(queryClient);
@@ -547,6 +561,14 @@ export function createRealtimeCacheEffects({
       const documentVisible = visibility.isDocumentVisible();
       switch (message.entity) {
         case "thread": {
+          if (message.id && message.changes.includes("thread-deleted")) {
+            forgetThreadTimelineReceipts(queryClient, message.id);
+          } else if (
+            message.id &&
+            message.changes.some((change) => TIMELINE_CHANGE_KINDS.has(change))
+          ) {
+            recordThreadTimelineChange(queryClient, message.id);
+          }
           if (!documentVisible) {
             recordThreadChange(threadChangeState, message);
             hasDeferredThreadChanges = true;
@@ -618,6 +640,12 @@ export function createRealtimeCacheEffects({
         default:
           assertNever(message);
       }
+    },
+    handleTimelineDelta: (message) => {
+      if (!visibility.isDocumentVisible()) {
+        return;
+      }
+      timelinePushOwner.handleTimelineDelta(message);
     },
     handleConnected: (event) => {
       cancelInitialConnectRefresh?.();

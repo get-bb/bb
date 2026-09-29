@@ -52,6 +52,18 @@ describe("createTimelineLatestRowsCache", () => {
     expect(cache.get("thr_x", "k", 3)?.rows).toEqual(rows("r3"));
   });
 
+  it("returns the newest revision for a thread and params key", () => {
+    const cache = createTimelineLatestRowsCache({ ringSize: 3 });
+    expect(cache.getLatest("thr_x", "k")).toBeUndefined();
+    cache.set("thr_x", "k", { maxSeq: 5, rows: rows("r5") });
+    cache.set("thr_x", "k", { maxSeq: 7, rows: rows("r7") });
+    cache.set("thr_x", "k", { maxSeq: 5, rows: rows("r5") });
+    expect(cache.getLatest("thr_x", "k")?.maxSeq).toBe(7);
+    expect(cache.getLatest("thr_y", "k")).toBeUndefined();
+    cache.invalidateThread("thr_x");
+    expect(cache.getLatest("thr_x", "k")).toBeUndefined();
+  });
+
   it("bounds params keys LRU-style; a lookup counts as use", () => {
     const cache = createTimelineLatestRowsCache({ maxEntries: 2 });
     cache.set("thr_a", "a", { maxSeq: 1, rows: rows("a") });

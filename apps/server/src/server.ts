@@ -14,6 +14,10 @@ import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { Hono } from "hono";
 import { terminalWebSocketQuerySchema } from "@bb/server-contract";
+import {
+  parseRealtimeClientCapabilities,
+  REALTIME_CLIENT_CAPABILITIES_QUERY_PARAM,
+} from "@bb/domain";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import type { ServerAppDeps } from "./types.js";
@@ -877,8 +881,12 @@ export function createApp(
     "/ws",
     upgradeWebSocket((context) => {
       assertBrowserWebSocketAllowed(context);
+      const capabilities = parseRealtimeClientCapabilities(
+        context.req.query(REALTIME_CLIENT_CAPABILITIES_QUERY_PARAM),
+      );
       return {
-        onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
+        onOpen: (_event, socket) =>
+          onClientSocketOpen(deps.hub, socket, capabilities),
         onMessage: (event, socket) =>
           onClientSocketMessage(deps, socket, event.data),
         onClose: (_event, socket) => onClientSocketClose(deps, socket),

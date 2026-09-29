@@ -14,11 +14,8 @@ import {
 } from "@bb/db";
 import type { Hono } from "hono";
 import {
-  DEFAULT_COMPLETED_TURN_DISPLAY,
   PROMPT_HISTORY_ENTRY_LIMIT,
   threadEventTypeSchema,
-  type AppSettings,
-  type CompletedTurnDisplay,
   type ThreadEventType,
 } from "@bb/domain";
 import {
@@ -56,7 +53,6 @@ import { toThreadQueuedMessage } from "../../services/threads/thread-queued-mess
 import {
   toThreadEventWithMeta,
   buildThreadConversationOutlineProjectionKey,
-  buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -67,17 +63,14 @@ import type {
   ThreadTimelinePageRequest,
 } from "../../services/threads/timeline-pagination.js";
 import { createSlowThreadTimelineBuildLogger } from "../../services/threads/timeline-build-log.js";
-import {
-  buildThreadTimelineCacheKey,
-  buildThreadTimelineParamsKey,
-  createThreadTimelineCache,
-} from "../../services/threads/timeline-cache.js";
+import { createThreadTimelineCache } from "../../services/threads/timeline-cache.js";
 import { createTimelineLatestRowsCache } from "../../services/threads/timeline-latest-rows-cache.js";
 import {
-  DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  truncateTimelineResponseOutputs,
-} from "../../services/threads/timeline-output-truncation.js";
-import { previewTimelineResponseOutputs } from "../../services/threads/timeline-output-preview.js";
+  createThreadTimelineWindows,
+  resolveThreadCompletedTurnDisplay,
+  resolveThreadProviderDisplayName,
+} from "../../services/threads/timeline-window.js";
+import { startTimelineLivePush } from "../../services/threads/timeline-live-push.js";
 import { computeTimelineRowDelta } from "@bb/server-contract";
 import {
   findThreadEvent,
@@ -91,7 +84,6 @@ import {
   parseInteger,
   parseOptionalInteger,
 } from "../../services/lib/validation.js";
-import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import {
   DEFAULT_PATH_LIST_EXCLUDE_NAMES,
@@ -99,25 +91,6 @@ import {
 } from "../path-list-policy.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
-
-function resolveThreadProviderDisplayName(
-  deps: Pick<AppDeps, "providerRegistry">,
-  providerId: string,
-): string | undefined {
-  return deps.providerRegistry.get(providerId)?.info.displayName;
-}
-
-function resolveThreadCompletedTurnDisplay(
-  deps: Pick<AppDeps, "providerRegistry">,
-  settings: AppSettings,
-  providerId: string,
-): CompletedTurnDisplay {
-  return (
-    settings.providerCompletedTurnDisplay[providerId] ??
-    deps.providerRegistry.get(providerId)?.info.completedTurnDisplay ??
-    DEFAULT_COMPLETED_TURN_DISPLAY
-  );
-}
 
 function validateFilePath(filePath: string): void {
   if (
@@ -354,6 +327,18 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
     logger: deps.logger,
   });
+  const timelineWindows = createThreadTimelineWindows({
+    deps,
+    slowTimelineBuildLogger,
+    timelineCache,
+    timelineLatestRowsCache,
+  });
+  const timelineLivePush = startTimelineLivePush({
+    db: deps.db,
+    hub: deps.hub,
+    logger: deps.logger,
+    timelineWindows,
+  });
   const conversationOutlineCache = new Map<
     string,
     ThreadConversationOutlineResponse["items"]
@@ -419,71 +404,13 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const includeNestedRows = query.includeNestedRows === "true";
     const summaryOnly = query.summaryOnly === "true";
 
-    const providerDisplayName = resolveThreadProviderDisplayName(
-      deps,
-      thread.providerId,
-    );
-    const settings = getAppSettings(deps.db);
-    const includeDiagnosticOperations = settings.showDiagnosticEvents;
-    const completedTurnDisplay = resolveThreadCompletedTurnDisplay(
-      deps,
-      settings,
-      thread.providerId,
-    );
-    const maxSeq = getLatestThreadSequence(deps.db, {
-      threadId: thread.id,
-    });
-    const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
-    const keyArgs = {
-      threadId: thread.id,
-      status: thread.status,
-      environmentId: thread.environmentId,
-      providerDisplayName,
-      page,
-      includeNestedRows,
-      summaryOnly,
-      includeDiagnosticOperations,
-      completedTurnDisplay,
-    };
-    const full = timelineCache.getOrBuild(
-      thread.id,
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
-      () => {
-        const { profile, response } = buildThreadTimelineWithProfile(
-          deps.db,
-          thread,
-          {
-            completedTurnDisplay,
-            eventBudget,
-            includeDiagnosticOperations,
-            includeNestedRows,
-            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-            maxSeq,
-            page,
-            providerDisplayName,
-            planCommand: resolveProviderPlanCommand(
-              deps.providerRegistry,
-              thread.providerId,
-            ),
-            summaryOnly,
-          },
-        );
-        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        const truncated = truncateTimelineResponseOutputs(
-          response,
-          DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-        );
-        return includeNestedRows
-          ? truncated
-          : previewTimelineResponseOutputs(truncated);
-      },
-    );
+    const request = { includeNestedRows, page, summaryOnly };
+    const { full, maxSeq, paramsKey } = timelineWindows.build(thread, request);
 
     const afterSequence = parseOptionalInteger(
       query.afterSequence,
       "afterSequence",
     );
-    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const previous =
       afterSequence === undefined
         ? undefined
@@ -495,6 +422,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     timelineLatestRowsCache.set(thread.id, paramsKey, {
       maxSeq,
       rows: full.rows,
+    });
+    timelineLivePush.noteTimelineRead({
+      paramsKey,
+      request,
+      threadId: thread.id,
     });
 
     return context.json(

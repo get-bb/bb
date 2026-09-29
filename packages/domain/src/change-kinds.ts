@@ -143,6 +143,37 @@ const unsubscribeMessageSchema = z.object({
 });
 export type UnsubscribeMessage = z.infer<typeof unsubscribeMessageSchema>;
 
+export const REALTIME_CLIENT_CAPABILITIES = ["timeline-delta"] as const;
+export type RealtimeClientCapability =
+  (typeof REALTIME_CLIENT_CAPABILITIES)[number];
+export const REALTIME_CLIENT_CAPABILITIES_QUERY_PARAM = "caps";
+
+function isRealtimeClientCapability(
+  value: string,
+): value is RealtimeClientCapability {
+  return REALTIME_CLIENT_CAPABILITIES.some(
+    (capability) => capability === value,
+  );
+}
+
+export function parseRealtimeClientCapabilities(
+  value: string | undefined,
+): ReadonlySet<RealtimeClientCapability> {
+  const capabilities = new Set<RealtimeClientCapability>();
+  for (const entry of value?.split(",") ?? []) {
+    if (isRealtimeClientCapability(entry)) {
+      capabilities.add(entry);
+    }
+  }
+  return capabilities;
+}
+
+export function formatRealtimeClientCapabilities(
+  capabilities: readonly RealtimeClientCapability[],
+): string {
+  return capabilities.join(",");
+}
+
 export const pingMessageSchema = z.object({
   type: z.literal("ping"),
 });

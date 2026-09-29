@@ -20,7 +20,7 @@ const fakeSocketState = vi.hoisted(() => {
     readonly options: ReconnectOptions | undefined;
 
     constructor(
-      _url: string,
+      readonly url: string,
       _protocols?: unknown,
       options?: ReconnectOptions,
     ) {
@@ -261,6 +261,91 @@ describe("WebSocketManager thread-open signals", () => {
 
     expect(changed).toHaveBeenCalledTimes(1);
     expect(threadOpen).not.toHaveBeenCalled();
+  });
+
+  it("routes timeline deltas to their own listeners", () => {
+    const { manager } = createConnectedManager();
+    const timelineDelta = vi.fn();
+    const changed = vi.fn();
+    manager.onTimelineDelta(timelineDelta);
+    manager.onChanged(changed);
+
+    const message = {
+      type: "timeline-delta",
+      threadId: "thr_1",
+      segmentLimit: null,
+      fromMaxSeq: 3,
+      body: {
+        rows: [],
+        contextBoundarySeq: null,
+        completedTurnDisplay: "collapse",
+        activePromptMode: null,
+        activeThinking: null,
+        activeWorkflows: [],
+        activeBackgroundCommands: [],
+        pendingTodos: null,
+        goal: null,
+        modelFallback: null,
+        timelinePage: {
+          kind: "latest",
+          segmentLimit: 20,
+          returnedSegmentCount: 0,
+          hasOlderRows: false,
+          olderCursor: null,
+        },
+        maxSeq: 4,
+        delta: { upsertRows: [] },
+      },
+    };
+    dispatchRaw(message);
+
+    expect(timelineDelta).toHaveBeenCalledWith(message);
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it("announces the timeline delta capability on the websocket URL", () => {
+    createConnectedManager();
+
+    const url = new URL(fakeSocketState.instances[0]?.url ?? "");
+    expect(url.pathname).toBe("/ws");
+    expect(url.searchParams.get("caps")).toBe("timeline-delta");
+  });
+
+  it("ignores frames of an unknown type quietly", () => {
+    const { manager } = createConnectedManager();
+    const changed = vi.fn();
+    manager.onChanged(changed);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    dispatchRaw({ type: "future-frame", payload: 1 });
+    dispatchRaw({ type: "changed", entity: "thread", changes: 1 });
+
+    expect(changed).not.toHaveBeenCalled();
+    expect(debugSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+    debugSpy.mockRestore();
+  });
+
+  it("drops invalid timeline deltas quietly, logging once per connection", () => {
+    const { manager } = createConnectedManager();
+    const changed = vi.fn();
+    const timelineDelta = vi.fn();
+    manager.onChanged(changed);
+    manager.onTimelineDelta(timelineDelta);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    dispatchRaw({ type: "timeline-delta", threadId: "thr_1", body: 1 });
+    dispatchRaw({ type: "timeline-delta", threadId: "thr_1", body: 2 });
+
+    expect(timelineDelta).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(debugSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+    debugSpy.mockRestore();
   });
 
   it("routes typed thread-pane actions separately", () => {

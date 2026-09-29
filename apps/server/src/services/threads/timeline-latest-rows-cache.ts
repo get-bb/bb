@@ -8,11 +8,15 @@ interface TimelineLatestRows {
   rows: readonly TimelineRow[];
 }
 
-interface TimelineLatestRowsCache {
+export interface TimelineLatestRowsCache {
   get(
     threadId: string,
     paramsKey: string,
     maxSeq: number,
+  ): TimelineLatestRows | undefined;
+  getLatest(
+    threadId: string,
+    paramsKey: string,
   ): TimelineLatestRows | undefined;
   invalidateThread(threadId: string): void;
   set(threadId: string, paramsKey: string, value: TimelineLatestRows): void;
@@ -44,6 +48,20 @@ export function createTimelineLatestRowsCache(
       }
       touch(paramsKey, entry);
       return entry.ring.find((value) => value.maxSeq === maxSeq);
+    },
+    getLatest(threadId, paramsKey) {
+      const entry = entries.get(paramsKey);
+      if (entry === undefined || entry.threadId !== threadId) {
+        return undefined;
+      }
+      touch(paramsKey, entry);
+      let latest: TimelineLatestRows | undefined;
+      for (const value of entry.ring) {
+        if (latest === undefined || value.maxSeq > latest.maxSeq) {
+          latest = value;
+        }
+      }
+      return latest;
     },
     invalidateThread(threadId) {
       for (const [paramsKey, entry] of entries) {

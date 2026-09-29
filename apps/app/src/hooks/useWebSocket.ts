@@ -22,6 +22,9 @@ export function useWebSocket(): void {
       cacheEffects.handleChanged(message);
       deletedResourceRouteChangeRef.current(message);
     });
+    const unsubscribeTimelineDelta = wsManager.onTimelineDelta(
+      cacheEffects.handleTimelineDelta,
+    );
 
     wsManager.connect();
 
@@ -30,6 +33,7 @@ export function useWebSocket(): void {
       unsubscribeConnected();
       unsubscribeResumed();
       unsubscribe();
+      unsubscribeTimelineDelta();
     };
   }, [queryClient]);
 }

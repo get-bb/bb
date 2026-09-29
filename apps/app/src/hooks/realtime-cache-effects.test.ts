@@ -9,6 +9,12 @@ import {
   THREAD_CHANGE_KINDS,
 } from "@bb/domain";
 import type { QueryClient } from "@tanstack/react-query";
+import type {
+  ThreadTimelineResponse,
+  TimelineDeltaMessage,
+  TimelineRow,
+} from "@bb/server-contract";
+import { makeThreadTimelineResponse } from "@/test/fixtures/thread-responses";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
@@ -67,6 +73,40 @@ import {
   REALTIME_SYSTEM_CHANGE_REGISTRY,
   REALTIME_THREAD_CHANGE_REGISTRY,
 } from "./cache-owners/realtime-cache-registry";
+
+function pushedRow(title: string, seq: number): TimelineRow {
+  return {
+    id: "row-1",
+    kind: "system",
+    threadId: "thr_1",
+    turnId: null,
+    sourceSeqStart: seq,
+    sourceSeqEnd: seq,
+    startedAt: 1,
+    createdAt: 1,
+    systemKind: "debug",
+    title,
+    detail: null,
+    status: null,
+  };
+}
+
+function timelineDeltaPush(
+  fromMaxSeq: number,
+  maxSeq: number,
+  title: string,
+): TimelineDeltaMessage {
+  return {
+    type: "timeline-delta",
+    threadId: "thr_1",
+    segmentLimit: null,
+    fromMaxSeq,
+    body: {
+      ...makeThreadTimelineResponse({ maxSeq }),
+      delta: { upsertRows: [pushedRow(title, maxSeq)] },
+    },
+  };
+}
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
   "thread-created",
@@ -911,6 +951,60 @@ describe("createRealtimeCacheEffects", () => {
 
     unsubscribeSearch();
     effects.dispose();
+  });
+
+  it("skips the timeline read for an appended batch that a pushed delta already covered", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16),
+      cancelAnimationFrame: (handle: ReturnType<typeof setTimeout>) =>
+        clearTimeout(handle),
+    });
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const timelineQueryFn = vi.fn(async () =>
+      makeThreadTimelineResponse({ maxSeq: 3, rows: [pushedRow("first", 3)] }),
+    );
+    const observer = new QueryObserver(queryClient, {
+      queryKey: timelineKey,
+      queryFn: timelineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    timelineQueryFn.mockClear();
+    const appended = {
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["item/agentMessage/delta"] },
+      changes: ["events-appended"],
+    } as const;
+
+    effects.handleChanged(appended);
+    effects.handleTimelineDelta(timelineDeltaPush(3, 4, "pushed"));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(timelineQueryFn).not.toHaveBeenCalled();
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(timelineKey)?.maxSeq,
+    ).toBe(4);
+
+    effects.handleChanged(appended);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleTimelineDelta(timelineDeltaPush(4, 5, "late"));
+    await vi.advanceTimersByTimeAsync(16);
+
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(timelineKey)?.maxSeq,
+    ).toBe(3);
+
+    unsubscribe();
+    effects.dispose();
+    vi.unstubAllGlobals();
   });
 
   it("marks the timeline of an unviewed thread stale without scheduling a refetch", async () => {

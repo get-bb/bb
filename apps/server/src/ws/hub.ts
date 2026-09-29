@@ -2,6 +2,7 @@ import { emitPluginThreadEvents } from "../services/plugins/plugin-thread-events
 import { Buffer } from "node:buffer";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
+  type RealtimeClientCapability,
   type RealtimeSubscriptionTarget,
   type ChangedMessage,
   type EnvironmentChangeKind,
@@ -26,10 +27,12 @@ import {
   terminalServerMessageSchema,
   threadOpenSignalSchema,
   threadPaneActionSignalSchema,
+  timelineDeltaMessageSchema,
   type ThreadPaneAction,
   type ThreadOpenFile,
   type ThreadOpenSplit,
   type TerminalServerMessage,
+  type TimelineDeltaMessage,
 } from "@bb/server-contract";
 
 const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
@@ -59,6 +62,10 @@ export type ServerChangedMessage =
   | Extract<ChangedMessage, { entity: "system" }>;
 
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
+
+interface RegisterClientOptions {
+  capabilities: ReadonlySet<RealtimeClientCapability>;
+}
 
 interface PendingThreadListEventsAppended {
   eventTypes: Set<ThreadEventType>;
@@ -219,6 +226,10 @@ export class HostOnlineRpcUnavailableError extends Error {
 
 export class NotificationHub implements DbNotifier {
   private readonly clientKeysBySocket = new Map<HubSocket, Set<string>>();
+  private readonly clientCapabilitiesBySocket = new Map<
+    HubSocket,
+    ReadonlySet<RealtimeClientCapability>
+  >();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
   private readonly daemonSessions = new Map<
     string,
@@ -280,14 +291,18 @@ export class NotificationHub implements DbNotifier {
     PendingThreadListEventsAppended
   >();
 
-  registerClient(socket: HubSocket): void {
+  registerClient(socket: HubSocket, options?: RegisterClientOptions): void {
     if (!this.clientKeysBySocket.has(socket)) {
       this.clientKeysBySocket.set(socket, new Set());
+    }
+    if (options !== undefined && options.capabilities.size > 0) {
+      this.clientCapabilitiesBySocket.set(socket, options.capabilities);
     }
   }
 
   unregisterClient(socket: HubSocket): void {
     this.unregisterTerminalClientSocket(socket);
+    this.clientCapabilitiesBySocket.delete(socket);
     const keys = this.clientKeysBySocket.get(socket);
     if (!keys) {
       return;
@@ -859,6 +874,50 @@ export class NotificationHub implements DbNotifier {
       }
       this.threadEventWaiters.delete(threadId);
     }
+  }
+
+  hasThreadDetailSubscriberWithCapability(
+    threadId: string,
+    capability: RealtimeClientCapability,
+  ): boolean {
+    return (
+      this.threadDetailSocketsWithCapability(threadId, capability).length > 0
+    );
+  }
+
+  sendTimelineDelta(message: TimelineDeltaMessage): number {
+    const sockets = this.threadDetailSocketsWithCapability(
+      message.threadId,
+      "timeline-delta",
+    );
+    if (sockets.length === 0) {
+      return 0;
+    }
+    const parseResult = timelineDeltaMessageSchema.safeParse(message);
+    if (!parseResult.success) {
+      console.error("Skipping invalid timeline delta push", parseResult.error);
+      return 0;
+    }
+    const payload = JSON.stringify(parseResult.data);
+    for (const socket of sockets) {
+      socket.send(payload);
+    }
+    return sockets.length;
+  }
+
+  private threadDetailSocketsWithCapability(
+    threadId: string,
+    capability: RealtimeClientCapability,
+  ): HubSocket[] {
+    const sockets = this.clientSocketsByKey.get(
+      subscriptionKey({ kind: "thread-detail", threadId }),
+    );
+    if (!sockets) {
+      return [];
+    }
+    return [...sockets].filter((socket) =>
+      this.clientCapabilitiesBySocket.get(socket)?.has(capability),
+    );
   }
 
   notifyThreadOpen(

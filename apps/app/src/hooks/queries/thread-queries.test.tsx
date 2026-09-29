@@ -1199,6 +1199,47 @@ describe("useThreadTimeline no-op deltas", () => {
     ).toBe(9);
   });
 
+  it("keeps a newer pushed timeline when an older read resolves", async () => {
+    const previous = makeSnapshotTimeline(7);
+    const pushed = {
+      ...makeSnapshotTimeline(9),
+      rows: [{ ...streamingRow, title: "Pushed row" }],
+    };
+    let resolveRead: (response: ThreadTimelineResponse) => void = () => {};
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    const { queryClient } = renderCachedTimeline(previous);
+
+    let refetch: Promise<unknown> = Promise.resolve();
+    act(() => {
+      refetch = queryClient.refetchQueries({
+        queryKey: threadTimelineQueryKey("thread-1"),
+      });
+    });
+    act(() => {
+      queryClient.setQueryData(threadTimelineQueryKey("thread-1"), pushed);
+    });
+    const pushedCache = queryClient.getQueryData(
+      threadTimelineQueryKey("thread-1"),
+    );
+    await act(async () => {
+      resolveRead({
+        ...makeSnapshotTimeline(8),
+        rows: [],
+        delta: { upsertRows: [{ ...streamingRow, title: "Older read" }] },
+      });
+      await refetch;
+    });
+
+    expect(queryClient.getQueryData(threadTimelineQueryKey("thread-1"))).toBe(
+      pushedCache,
+    );
+    expect(pushedCache).toEqual(pushed);
+  });
+
   it("continues from the advanced sequence after a no-op delta", async () => {
     const previous = makeSnapshotTimeline(7);
     vi.mocked(sdk.threads.timeline)
