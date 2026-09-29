@@ -58,7 +58,8 @@ it("keeps search typing and keyboard selection across the first menu download", 
     { wrapper },
   );
   await act(async () => {});
-  expect(menu.imports).toBe(0);
+  await waitFor(() => expect(menu.imports).toBe(1));
+  expect(screen.queryByPlaceholderText("Search models")).toBeNull();
   fireEvent.click(
     screen.getByRole("button", { name: "Provider, model and reasoning" }),
   );

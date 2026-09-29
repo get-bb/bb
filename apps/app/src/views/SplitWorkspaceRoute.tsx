@@ -1,3 +1,4 @@
+import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
 import { useSplitPreload } from "@/lib/define-split";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { lazy, useMemo } from "react";
@@ -28,6 +29,7 @@ const PluginsView = lazy(() =>
 
 export default function SplitWorkspaceRoute() {
   useSplitPreload(LazyThreadSecondaryPanel);
+  useSplitPreload(ModelReasoningMenu);
   const location = useLocation();
   const { projectId, threadId, isThreadView } = useRouteState();
   const pluginMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);

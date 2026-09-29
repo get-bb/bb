@@ -8,8 +8,8 @@ actual mount, which may be caused by restored state or search as well as a click
 
 ## Rules chosen
 
-- Startup: warm the right-panel shell when the workspace route mounts.
-- Idle: warm common command-palette and model-menu code after paint. This favors
+- Startup: warm the right-panel shell and model menu when the workspace route mounts.
+- Idle: warm command-palette code after paint. This favors
   fast first use; it still spends transfer, parsing and evaluation work on visits
   where those features remain closed. Customization stays on demand.
 - Intent: explicit small targets such as picker and panel-toggle buttons.
@@ -38,7 +38,7 @@ actual mount, which may be caused by restored state or search as well as a click
 | BbDiff / BbSourceCode                                       | Render only when BB's renderer is selected or a plugin delegates to Original                                         | A replacement that never uses Original must not download BB rendering code. Worker initialization follows actual renderer demand and has its own fallback.                                                              |
 | Timeline terminal output                                    | Render only for expanded command output, including search-driven expansion                                           | Full-output fetching stays outside the lazy renderer, parallel with the import. ansi-to-html and its legacy entity tables are one optional chunk. No timeline-wide idle or hover warming.                               |
 | Queued messages                                             | Data demand: a nonempty queue, pending queue summary, or inline edit                                                 | Pending details warm the chunk while data loads; empty queues do not mount it. There is no single reliable pointer trigger because queues can appear remotely.                                                          |
-| Model menu                                                  | Idle after the picker shell mounts, or earlier trigger intent/first open                                             | Common UI gets early warming. Trigger, shortcuts, state, provider tabs and input stay eager; preserve typing and keyboard selection during a cold download.                                                             |
+| Model menu                                                  | Workspace-page mount, or a standalone picker shell mounting                                                          | Common UI gets early warming. Trigger, shortcuts, state, provider tabs and input stay eager; preserve typing and keyboard selection during a cold download.                                                             |
 | Command palette body                                        | Idle after its eager shell mounts, or earlier first open                                                             | Warm common keyboard UI after paint. Input, Escape and focus stay eager; thread-search mode keeps its separate chunk.                                                                                                   |
 
 ## Existing boundaries outside the migration
@@ -149,8 +149,8 @@ shell on workspace-page mount. The shell also fetches its shared Git-diff/file
 preview dependencies and dnd-kit. Opening the panel requests BrowserTabDeck,
 ThreadTerminalPanel and NewTabPage together without mounting inactive views.
 Neither xterm nor the BB code renderers start merely from this warming. The
-empty root fixture has no model picker; its idle policy is covered by the shared
-hook and picker tests, not this production-page capture. Customization, queue
+empty root fixture has no model picker; its startup import is initiated by the workspace route even before a picker is
+shown. Standalone pickers also register startup warming; imports are shared. Customization, queue
 and terminal-output chunks remain absent from this cold root visit.
 
 The request-abort retry check used the real sidebar module on the Ladle server.
