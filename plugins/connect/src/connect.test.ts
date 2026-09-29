@@ -2758,7 +2758,7 @@ describe("connect CLI", () => {
     expect(text.stdout).toContain("Server:     https://sawyer.getbb.app");
     expect(text.stdout).toContain("Apex:       https://getbb.app");
     expect(text.stdout).toContain("in about 10 min");
-    expect(text.stdout).toContain("Add mobile device");
+    expect(text.stdout).toContain("Pair phone");
 
     const json = await current.harness.runCli(["machine-code", "--json"]);
     expect(json.exitCode).toBe(0);

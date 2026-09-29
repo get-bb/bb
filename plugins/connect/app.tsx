@@ -639,7 +639,13 @@ function MobilePairingCard({
   );
 }
 
-function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
+function AddMobileDeviceSection({
+  dashboardUrl,
+  serverUrl,
+}: {
+  dashboardUrl: string;
+  serverUrl: string | null;
+}) {
   const rpc = useRpc<typeof connectRpcContract>();
   const [payload, setPayload] = useState<MobilePairingPayload | null>(null);
   const [minting, setMinting] = useState(false);
@@ -663,16 +669,16 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
   }, [minting, rpc]);
 
   return (
-    <div className="space-y-2.5 border-t border-border-seam pt-4">
-      <div className="flex items-center">
-        <h3 className="text-sm font-medium text-subtle-foreground">
-          Pair your phone
-        </h3>
-        <span className="flex-1" />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="flex min-w-0 items-center gap-2 text-sm text-subtle-foreground">
+          <StatusDot tone="ok" />
+          <span className="break-all">{serverUrl ?? "Connected"}</span>
+        </p>
         {payload === null ? (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
             className="text-muted-foreground"
             disabled={minting}
@@ -683,12 +689,12 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
             ) : (
               <Icon name="Plus" className="size-3.5" />
             )}
-            Add mobile device
+            Pair phone
           </Button>
         ) : (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
             className="text-muted-foreground"
             onClick={() => {
@@ -709,12 +715,7 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
           minting={minting}
           onRenew={mint}
         />
-      ) : (
-        <p className="text-xs text-subtle-foreground/75">
-          Pair the bb mobile app with this bb. It gets a one-time code to scan
-          or type; the phone then reaches this bb through {dashboardHost}.
-        </p>
-      )}
+      ) : null}
 
       {errorCode === "machine_limit" ? (
         <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
@@ -1540,6 +1541,7 @@ function useConnectStatus() {
 function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
   const { status, loadError, refetch } = useConnectStatus();
   const [manage, setManage] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   if (loadError !== null)
     return (
       <div role="alert" className="space-y-2 text-sm">
@@ -1555,6 +1557,51 @@ function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
         Loading connection status…
       </p>
     );
+  if (purpose === "mobile") {
+    if (status.paired && status.state === "connected") {
+      return (
+        <AddMobileDeviceSection
+          dashboardUrl={status.dashboardUrl}
+          serverUrl={status.url}
+        />
+      );
+    }
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0 flex-1 text-sm text-subtle-foreground">
+            {status.paired
+              ? "bb connect is reconnecting."
+              : "Use bb connect to pair your phone from anywhere."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={setupOpen}
+            onClick={() => setSetupOpen(!setupOpen)}
+          >
+            {setupOpen ? "Close" : status.paired ? "Details" : "Set up"}
+          </Button>
+        </div>
+        {setupOpen ? (
+          <div className="border-t border-border-seam pt-4">
+            {status.paired ? (
+              <ReconnectingContent
+                status={status}
+                onChanged={refetch}
+                onDisconnected={refetch}
+              />
+            ) : (
+              <NotPairedContent
+                dashboardUrl={status.dashboardUrl}
+                onPaired={refetch}
+              />
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   if (!status.paired)
     return (
       <NotPairedContent dashboardUrl={status.dashboardUrl} onPaired={refetch} />
@@ -1589,9 +1636,6 @@ function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
           onChanged={refetch}
           onDisconnected={refetch}
         />
-      ) : null}
-      {purpose === "mobile" ? (
-        <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
       ) : null}
     </section>
   );

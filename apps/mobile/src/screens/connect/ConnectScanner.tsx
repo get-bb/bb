@@ -38,9 +38,7 @@ export function ConnectScanner({ onScanned, active }: ConnectScannerProps) {
           bb needs the camera to scan the pairing QR code.
         </Text>
         {permission.canAskAgain ? (
-          <Button onPress={() => void requestPermission()}>
-            Allow camera
-          </Button>
+          <Button onPress={() => void requestPermission()}>Allow camera</Button>
         ) : (
           <Button
             variant="outline"
@@ -85,7 +83,7 @@ export function ConnectScanner({ onScanned, active }: ConnectScannerProps) {
       <Text variant="footnote" tone="muted" className="px-4">
         {lastIgnored
           ? `Not a bb pairing code: ${lastIgnored}`
-          : "Point the camera at the QR code from bb Settings → Mobile → Add mobile device."}
+          : "Point the camera at the QR code from bb Settings → Mobile → Pair phone."}
       </Text>
     </View>
   );

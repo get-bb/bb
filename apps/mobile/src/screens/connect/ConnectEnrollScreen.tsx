@@ -240,7 +240,7 @@ export function ConnectEnrollScreen() {
           footnote={
             reauth
               ? "Generate a new pairing code on the server to reconnect this phone. Your saved server keeps its place."
-              : "Pair this phone with your bb server through getbb.app. Generate a code in bb Settings → Mobile → Add mobile device, or run `bb connect machine-code`."
+              : "Pair this phone with your bb server through getbb.app. Generate a code in bb Settings → Mobile → Pair phone, or run `bb connect machine-code`."
           }
         >
           <GroupedRow

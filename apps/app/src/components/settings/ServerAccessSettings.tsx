@@ -168,15 +168,25 @@ function ServerAccessSettingsContent({
   machineAccess: MachineAccessState;
   purpose: "machines" | "mobile";
 }) {
+  if (purpose === "mobile") {
+    return (
+      <section
+        aria-label="Connect your phone"
+        className="space-y-2 rounded-lg border border-border bg-card px-4 py-3.5"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Connect your phone</h2>
+          <MachineAccessMethodPicker machineAccess={machineAccess} />
+        </div>
+        <MachineAccessDetails machineAccess={machineAccess} purpose={purpose} />
+      </section>
+    );
+  }
   return (
     <SettingsSection
       title="Server access"
       actionPlacement="inline"
-      description={
-        purpose === "mobile"
-          ? "Choose how your phone connects to bb."
-          : "Choose how new machines connect to bb."
-      }
+      description="Choose how new machines connect to bb."
       action={<MachineAccessMethodPicker machineAccess={machineAccess} />}
       bodyClassName="space-y-3"
     >

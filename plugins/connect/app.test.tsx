@@ -274,16 +274,31 @@ describe("connect settings section", () => {
           },
         },
       );
+      if (purpose === "mobile") {
+        await slot.findByRole("button", { name: "Set up" });
+        expect(
+          slot.queryByRole("textbox", { name: "Connect code" }),
+        ).toBeNull();
+        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
+        expect(
+          slot.getByRole("textbox", { name: "Connect code" }),
+        ).toBeTruthy();
+        fireEvent.click(slot.getByRole("button", { name: "Close" }));
+        expect(
+          slot.queryByRole("textbox", { name: "Connect code" }),
+        ).toBeNull();
+        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
+      }
       await slot.findByRole("textbox", { name: "Connect code" });
       fireEvent.change(slot.getByLabelText("Connect code"), {
         target: { value: "K7QP-2M4X" },
       });
-      await slot.findByText("Connected");
+      await slot.findByText("https://workstation.getbb.app");
       expect(slot.navigateCalls).toEqual([]);
       expect(slot.queryByRole("textbox", { name: "Connect code" })).toBeNull();
-      expect(
-        Boolean(slot.queryByRole("button", { name: "Add mobile device" })),
-      ).toBe(purpose === "mobile");
+      expect(Boolean(slot.queryByRole("button", { name: "Pair phone" }))).toBe(
+        purpose === "mobile",
+      );
     },
   );
 
@@ -658,9 +673,7 @@ describe("connect settings section", () => {
         name: "Open Mobile settings",
       });
       expect(link.getAttribute("href")).toBe("/settings/mobile");
-      expect(
-        slot.queryByRole("button", { name: "Add mobile device" }),
-      ).toBeNull();
+      expect(slot.queryByRole("button", { name: "Pair phone" })).toBeNull();
     },
   );
 
@@ -676,8 +689,12 @@ describe("connect settings section", () => {
         expect(slot.queryByText("Loading connection status…")).toBeNull(),
       );
       if (currentStatus.paired) {
+        expect(slot.getByText("bb connect is reconnecting.")).toBeTruthy();
+        fireEvent.click(slot.getByRole("button", { name: "Details" }));
         expect(slot.getByText("Reconnecting…")).toBeTruthy();
       } else {
+        expect(slot.queryByRole("textbox")).toBeNull();
+        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
         expect(
           slot.getByRole("link", { name: "Get a connect code" }),
         ).toBeTruthy();
@@ -686,9 +703,7 @@ describe("connect settings section", () => {
       expect(
         slot.queryByRole("link", { name: "Manage remote access" }),
       ).toBeNull();
-      expect(
-        slot.queryByRole("button", { name: "Add mobile device" }),
-      ).toBeNull();
+      expect(slot.queryByRole("button", { name: "Pair phone" })).toBeNull();
     },
   );
 
@@ -709,11 +724,9 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByText("https://workstation.getbb.app");
     expect(slot.queryByText("K7QP-2M4X")).toBeNull();
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Add mobile device" }),
-    );
+    fireEvent.click(await slot.findByRole("button", { name: "Pair phone" }));
 
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
@@ -751,10 +764,8 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Add mobile device" }),
-    );
+    await slot.findByText("https://workstation.getbb.app");
+    fireEvent.click(await slot.findByRole("button", { name: "Pair phone" }));
     await slot.findByText("AAAA-1111");
 
     await slot.findByText("Code expired", undefined, { timeout: 4_000 });
@@ -782,10 +793,8 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Add mobile device" }),
-    );
+    await slot.findByText("https://workstation.getbb.app");
+    fireEvent.click(await slot.findByRole("button", { name: "Pair phone" }));
 
     await slot.findByText(/reached its machine limit/);
     const link = slot.getByRole("link", {
@@ -793,7 +802,7 @@ describe("connect settings section", () => {
     }) as HTMLAnchorElement;
     expect(link.href).toBe("https://getbb.app/dashboard");
     expect(slot.queryByText("machine_limit")).toBeNull();
-    slot.getByRole("button", { name: "Add mobile device" });
+    slot.getByRole("button", { name: "Pair phone" });
   });
 
   it("turn off confirms, keeps the account, and shows the off card with a receipt", async () => {
