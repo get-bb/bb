@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { RootComposeRightPanelToggle } from "./RootComposeView";
 
 const { preloadThreadSecondaryPanel } = vi.hoisted(() => ({
@@ -19,6 +26,8 @@ vi.mock(
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -46,25 +55,16 @@ describe("RootComposeRightPanelToggle", () => {
     expect(preloadThreadSecondaryPanel).toHaveBeenCalledTimes(2);
   });
 
-  it("warms the panel chunk while the browser is idle", () => {
-    const cancelIdleCallback = vi.fn();
-    const requestIdleCallback = vi.fn(
-      (callback: IdleRequestCallback): number => {
-        callback({ didTimeout: false, timeRemaining: () => 50 });
-        return 7;
-      },
-    );
-    vi.stubGlobal("cancelIdleCallback", cancelIdleCallback);
-    vi.stubGlobal("requestIdleCallback", requestIdleCallback);
+  it("warms the panel chunk after yielding the initial paint", async () => {
+    vi.useFakeTimers();
+    const preload = vi
+      .spyOn(LazyThreadSecondaryPanel, "preload")
+      .mockResolvedValue(undefined);
 
     render(<RootComposeRightPanelToggle isOpen={false} onToggle={vi.fn()} />);
 
-    expect(requestIdleCallback).toHaveBeenCalledWith(
-      preloadThreadSecondaryPanel,
-      { timeout: 1000 },
-    );
-    expect(preloadThreadSecondaryPanel).toHaveBeenCalledOnce();
-    cleanup();
-    expect(cancelIdleCallback).toHaveBeenCalledWith(7);
+    expect(preload).not.toHaveBeenCalled();
+    await act(async () => vi.runAllTimersAsync());
+    expect(preload).toHaveBeenCalledOnce();
   });
 });
