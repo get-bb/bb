@@ -32,6 +32,9 @@ const TIMELINE_CONTROLLER_PROPS_WITH_ROWS: TimelineQueryResultProp[] = [
 export const TIMELINE_CONTROLLER_PROPS_WITHOUT_ROWS: TimelineQueryResultProp[] =
   [...TIMELINE_CONTROLLER_PROPS_WITH_ROWS, "isFetching"];
 
+const EMPTY_TIMELINE_ROWS: TimelineRow[] = [];
+const EMPTY_TIMELINE_WORKFLOWS: ThreadTimelineResponse["activeWorkflows"] = [];
+
 interface UseThreadTimelineControllerArgs {
   enabled?: boolean;
   surfaceKey?: string;
@@ -104,6 +107,25 @@ function reconcileLoadedTimeline({
   });
 }
 
+function advanceLoadedTimelineTracker(
+  tracker: LoadedTimelineTracker,
+  latestTimeline: ThreadTimelineResponse | undefined,
+  surfaceKey: string,
+): LoadedTimelineState {
+  if (
+    tracker.latestTimeline !== latestTimeline ||
+    tracker.loaded.surfaceKey !== surfaceKey
+  ) {
+    tracker.loaded = reconcileLoadedTimeline({
+      current: tracker.loaded,
+      latestTimeline,
+      surfaceKey,
+    });
+    tracker.latestTimeline = latestTimeline;
+  }
+  return tracker.loaded;
+}
+
 export function useThreadTimelineController({
   enabled = true,
   surfaceKey: explicitSurfaceKey,
@@ -137,18 +159,11 @@ export function useThreadTimelineController({
         surfaceKey,
       }),
     }));
-  let loadedTimeline = loadedTimelineTracker.loaded;
-  if (
-    loadedTimelineTracker.latestTimeline !== latestTimeline ||
-    loadedTimeline.surfaceKey !== surfaceKey
-  ) {
-    loadedTimeline = reconcileLoadedTimeline({
-      current: loadedTimelineTracker.loaded,
-      latestTimeline,
-      surfaceKey,
-    });
-    setLoadedTimelineTracker({ latestTimeline, loaded: loadedTimeline });
-  }
+  const loadedTimeline = advanceLoadedTimelineTracker(
+    loadedTimelineTracker,
+    latestTimeline,
+    surfaceKey,
+  );
   const updateLoadedTimeline = useCallback(
     (update: (current: LoadedTimelineState) => LoadedTimelineState) => {
       setLoadedTimelineTracker((current) => {
@@ -247,7 +262,7 @@ export function useThreadTimelineController({
   const timelineRows =
     loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
       ? loadedTimeline.rows
-      : (latestTimeline?.rows ?? []);
+      : (latestTimeline?.rows ?? EMPTY_TIMELINE_ROWS);
   const timelineQueryState = useConnectionAwareQueryState({
     hasResolvedData:
       latestTimelineQuery.data !== undefined || timelineRows.length > 0,
@@ -267,8 +282,10 @@ export function useThreadTimelineController({
   return {
     activePromptMode: latestTimeline?.activePromptMode ?? null,
     activeThinking: latestTimeline?.activeThinking ?? null,
-    activeWorkflows: latestTimeline?.activeWorkflows ?? [],
-    activeBackgroundCommands: latestTimeline?.activeBackgroundCommands ?? [],
+    activeWorkflows:
+      latestTimeline?.activeWorkflows ?? EMPTY_TIMELINE_WORKFLOWS,
+    activeBackgroundCommands:
+      latestTimeline?.activeBackgroundCommands ?? EMPTY_TIMELINE_WORKFLOWS,
     contextBoundarySeq: latestTimeline?.contextBoundarySeq ?? null,
     contextWindowUsage: latestTimeline?.contextWindowUsage,
     goal: latestTimeline?.goal ?? null,

@@ -2,6 +2,7 @@ import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -32,6 +33,7 @@ import { ThreadProviderContext } from "@/components/thread/thread-provider-conte
 import {
   defaultAppSettings,
   resolveEnvironmentMergeBaseBranch,
+  type PendingInteraction,
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
@@ -316,6 +318,7 @@ const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
+const EMPTY_PENDING_INTERACTIONS: readonly PendingInteraction[] = [];
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
 const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY = "bb.pullRequest.mergeMethod";
 
@@ -640,7 +643,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
     },
   );
-  const pendingInteractions = pendingInteractionsQuery.data ?? [];
+  const pendingInteractions =
+    pendingInteractionsQuery.data ?? EMPTY_PENDING_INTERACTIONS;
   const pendingInteractionsInitialLoading = isPendingInteractionStateUnknown(
     pendingInteractionsQuery.data,
     pendingInteractionsQuery.isFetching,
@@ -868,9 +872,18 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     threadId,
   });
   const sendMessage = useSendThreadMessage();
+  const sendMessageAction = useMemo(
+    () => ({
+      isPending: sendMessage.isPending,
+      mutateAsync: sendMessage.mutateAsync,
+    }),
+    [sendMessage.isPending, sendMessage.mutateAsync],
+  );
   const editMessage = useEditThreadMessage();
+  const editMessageAsync = editMessage.mutateAsync;
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
+  const requestEnvironmentActionAsync = requestEnvironmentAction.mutateAsync;
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
     pullRequestMergeMethodAtom,
   );
@@ -1093,24 +1106,23 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }
       const session = activeSentMessageEditSession;
       const execution = target.execution;
-      void editMessage
-        .mutateAsync({
-          id: session.threadId,
-          operationId: session.operationId,
-          expectedRequestSequence: session.target.expectedRequestSequence,
-          input: target.input,
-          ...(execution
-            ? {
-                model: execution.model,
-                permissionMode: execution.permissionMode,
-                reasoningLevel: execution.reasoningLevel,
-                executionInputSources: execution.executionInputSources,
-                ...(execution.supportsServiceTier && execution.serviceTier
-                  ? { serviceTier: execution.serviceTier }
-                  : {}),
-              }
-            : {}),
-        })
+      void editMessageAsync({
+        id: session.threadId,
+        operationId: session.operationId,
+        expectedRequestSequence: session.target.expectedRequestSequence,
+        input: target.input,
+        ...(execution
+          ? {
+              model: execution.model,
+              permissionMode: execution.permissionMode,
+              reasoningLevel: execution.reasoningLevel,
+              executionInputSources: execution.executionInputSources,
+              ...(execution.supportsServiceTier && execution.serviceTier
+                ? { serviceTier: execution.serviceTier }
+                : {}),
+            }
+          : {}),
+      })
         .then(() => {
           closeSentMessageEdit(session.operationId);
         })
@@ -1122,7 +1134,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           });
         });
     },
-    [activeSentMessageEditSession, closeSentMessageEdit, editMessage],
+    [activeSentMessageEditSession, closeSentMessageEdit, editMessageAsync],
   );
   const activeSentMessageEditTargetMessageId =
     activeSentMessageEditSession?.target.messageId ?? null;
@@ -1777,7 +1789,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     }
     const toastId = appToast.loading("Marking pull request ready");
     try {
-      const response = await requestEnvironmentAction.mutateAsync({
+      const response = await requestEnvironmentActionAsync({
         id: environmentId,
         action: "pull_request_ready",
       });
@@ -1794,7 +1806,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         }),
       });
     }
-  }, [requestEnvironmentAction, thread?.environmentId]);
+  }, [requestEnvironmentActionAsync, thread?.environmentId]);
   const handlePullRequestDraft = useCallback(async () => {
     const environmentId = thread?.environmentId;
     if (!environmentId) {
@@ -1802,7 +1814,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     }
     const toastId = appToast.loading("Converting pull request to draft");
     try {
-      const response = await requestEnvironmentAction.mutateAsync({
+      const response = await requestEnvironmentActionAsync({
         id: environmentId,
         action: "pull_request_draft",
       });
@@ -1819,7 +1831,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         }),
       });
     }
-  }, [requestEnvironmentAction, thread?.environmentId]);
+  }, [requestEnvironmentActionAsync, thread?.environmentId]);
   const handlePullRequestMerge = useCallback(
     async (method: PullRequestMergeMethod) => {
       const environmentId = thread?.environmentId;
@@ -1829,7 +1841,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       setPullRequestMergeMethod(method);
       const toastId = appToast.loading(getPullRequestMergeLoadingTitle(method));
       try {
-        const response = await requestEnvironmentAction.mutateAsync({
+        const response = await requestEnvironmentActionAsync({
           id: environmentId,
           action: "pull_request_merge",
           options: { method },
@@ -1849,7 +1861,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }
     },
     [
-      requestEnvironmentAction,
+      requestEnvironmentActionAsync,
       setPullRequestMergeMethod,
       thread?.environmentId,
     ],
@@ -2370,6 +2382,54 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [handleOpenLiveFilePreview, thread?.environmentId],
   );
+  const workspaceCheckout = workspaceStatus?.checkout;
+  const threadCheckoutDisplay = useMemo(
+    () =>
+      workspaceCheckout
+        ? formatWorkspaceCheckoutDisplay({ checkout: workspaceCheckout })
+        : undefined,
+    [workspaceCheckout],
+  );
+  const contextBannerMergeBase = useMemo<ContextBannerMergeBaseConfig | null>(
+    () =>
+      canUseGitUi && showMergeBase && effectiveMergeBaseBranch
+        ? {
+            branch: effectiveMergeBaseBranch,
+            branchRef: selectedMergeBaseBranchRef,
+            options: mergeBaseBranchOptions,
+            remoteOptions: mergeBaseRemoteBranchOptions,
+            optionsLoading: isLoadingMergeBaseBranchOptions,
+            onChange: handleMergeBaseBranchChange,
+            onPickerOpenChange: handleMergeBasePickerOpenChange,
+            onSearchQueryChange: setMergeBaseBranchSearchQuery,
+          }
+        : null,
+    [
+      canUseGitUi,
+      effectiveMergeBaseBranch,
+      handleMergeBaseBranchChange,
+      handleMergeBasePickerOpenChange,
+      isLoadingMergeBaseBranchOptions,
+      mergeBaseBranchOptions,
+      mergeBaseRemoteBranchOptions,
+      selectedMergeBaseBranchRef,
+      setMergeBaseBranchSearchQuery,
+      showMergeBase,
+    ],
+  );
+  const deferredTimelineRows = useDeferredValue(timelineRows);
+  const deferredActiveThinking = useDeferredValue(activeThinking);
+  const showDeferredTimeline =
+    deferredTimelineRows !== timelineRows &&
+    deferredTimelineRows.length > 0 &&
+    timelineRows.length > 0 &&
+    deferredTimelineRows[0]?.threadId === timelineRows[0]?.threadId;
+  const paneTimelineRows = showDeferredTimeline
+    ? deferredTimelineRows
+    : timelineRows;
+  const paneActiveThinking = showDeferredTimeline
+    ? deferredActiveThinking
+    : activeThinking;
 
   if (threadQueryState.status === "loading") {
     return <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />;
@@ -2418,11 +2478,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     isThreadOnReusableEnvironment && projectId && thread.environmentId !== null
       ? createThreadInEnvironment
       : undefined;
-  const promptBannerMergeBaseBranch = effectiveMergeBaseBranch;
   const threadBranchName = workspaceBranch?.currentBranch ?? undefined;
-  const threadCheckoutDisplay = workspaceStatus
-    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
-    : undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const threadEnvironmentGoneStatus =
     hostLifecycle ??
@@ -2564,22 +2620,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       workspaceStatusPending={
         canUseGitUi && (environmentQuery.isLoading || workStatusQuery.isLoading)
       }
-      contextBannerMergeBase={
-        canUseGitUi && showMergeBase && promptBannerMergeBaseBranch
-          ? {
-              branch: promptBannerMergeBaseBranch,
-              branchRef: selectedMergeBaseBranchRef,
-              options: mergeBaseBranchOptions,
-              remoteOptions: mergeBaseRemoteBranchOptions,
-              optionsLoading: isLoadingMergeBaseBranchOptions,
-              onChange: handleMergeBaseBranchChange,
-              onPickerOpenChange: handleMergeBasePickerOpenChange,
-              onSearchQueryChange: setMergeBaseBranchSearchQuery,
-            }
-          : null
-      }
+      contextBannerMergeBase={contextBannerMergeBase}
       composerFocusRequestNonce={composerFocusRequestNonce}
-      sendMessage={sendMessage}
+      sendMessage={sendMessageAction}
       sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
@@ -2968,7 +3011,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               onPanelFocus: touchFixedPanelTabsState,
             }}
             timeline={{
-              activeThinking,
+              activeThinking: paneActiveThinking,
               canSpawnChild: thread.canSpawnChild,
               contextBoundarySeq,
               threadOriginKind,
@@ -2999,7 +3042,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
                   thread.runtime.displayStatus,
                 ) &&
                 !isThreadTimelinePending,
-              timelineRows,
+              ongoingIndicatorLabel:
+                thread.runtime.displayStatus === "host-reconnecting"
+                  ? "Waiting for reconnection"
+                  : undefined,
+              timelineRows: paneTimelineRows,
               isStopping: thread.status === "stopping",
               stoppingAnchorAt: thread.updatedAt,
               threadId: thread.id,

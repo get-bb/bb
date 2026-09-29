@@ -502,7 +502,7 @@ describe("thread event pruning", () => {
         totalRemoved: 32,
       });
       expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
-        "history-rewritten",
+        "history-compacted",
       ]);
       const second = pruneThreadEventHistoryBestEffort(harness.deps, {
         threadId: thread.id,

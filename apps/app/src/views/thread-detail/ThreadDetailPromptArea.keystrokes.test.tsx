@@ -17,7 +17,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import {
   afterEach,
   beforeAll,
@@ -37,6 +37,7 @@ import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
+  followUpPromptBoxRenders: vi.fn(),
   sendMessageMutateAsync: vi.fn(),
   shellProbeRenders: vi.fn(),
   updateQueuedMessageMutateAsync: vi.fn(),
@@ -55,28 +56,31 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     } | null;
     pendingInteraction?: ReactNode;
     stack: ReactNode;
-  }) => (
-    <div data-testid="follow-up-prompt-box">
-      <div data-testid="prompt-stack">
-        {stack}
-        {pendingInteraction}
-      </div>
-      {composer ? (
-        <div hidden={pendingInteraction !== null}>
-          <input
-            aria-label="Composer message"
-            value={composer.message}
-            onChange={(event) =>
-              composer.onChangeMessage(event.currentTarget.value, [])
-            }
-          />
-          <button type="button" onClick={composer.onSubmit}>
-            Submit composer
-          </button>
+  }) => {
+    mocks.followUpPromptBoxRenders();
+    return (
+      <div data-testid="follow-up-prompt-box">
+        <div data-testid="prompt-stack">
+          {stack}
+          {pendingInteraction}
         </div>
-      ) : null}
-    </div>
-  ),
+        {composer ? (
+          <div hidden={pendingInteraction !== null}>
+            <input
+              aria-label="Composer message"
+              value={composer.message}
+              onChange={(event) =>
+                composer.onChangeMessage(event.currentTarget.value, [])
+              }
+            />
+            <button type="button" onClick={composer.onSubmit}>
+              Submit composer
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  },
 }));
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
@@ -363,50 +367,60 @@ interface RenderPromptAreaArgs {
   pendingInteractions?: readonly PendingInteraction[];
 }
 
-function buildPromptArea({
+function makePromptAreaProps({
   thread,
   pendingInteractions = [],
-}: RenderPromptAreaArgs) {
+}: RenderPromptAreaArgs): ComponentProps<typeof ThreadDetailPromptArea> {
+  return {
+    activeBackgroundAgentCount: 0,
+    activeBackgroundCommands: [],
+    activePromptMode: null,
+    activeWorkflows: [],
+    canUseGitUi: false,
+    childPendingInteractions: [],
+    childThreadsSection: null,
+    composerFocusRequestNonce: 0,
+    contextBannerMergeBase: null,
+    canRestoreEnvironment: false,
+    environmentGoneStatus: null,
+    goal: null,
+    modelFallback: null,
+    isEnvironmentActionPending: false,
+    onChangedFileClick: vi.fn(),
+    parentThreadSection: null,
+    pendingInteractions,
+    pendingInteractionsInitialLoading: false,
+    queuedMessageCount: 0,
+    pendingTodos: null,
+    projectId: PROJECT_ID,
+    pullRequest: null,
+    pullRequestMergeMethod: "squash",
+    resolveMentionLink: () => null,
+    sendMessage: {
+      isPending: false,
+      mutateAsync: mocks.sendMessageMutateAsync,
+    },
+    steerActiveThreadOnEnter: false,
+    thread,
+    workspaceChangedFilesSection: null,
+    workspaceStatusPending: false,
+  };
+}
+
+function buildPromptAreaFromProps(
+  props: ComponentProps<typeof ThreadDetailPromptArea>,
+) {
   return (
     <PluginComposerHostScopeProvider>
       <ShellProbe />
       <PublishedHostDraftProbe />
-      <ThreadDetailPromptArea
-        activeBackgroundAgentCount={0}
-        activeBackgroundCommands={[]}
-        activePromptMode={null}
-        activeWorkflows={[]}
-        canUseGitUi={false}
-        childPendingInteractions={[]}
-        childThreadsSection={null}
-        composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
-        canRestoreEnvironment={false}
-        environmentGoneStatus={null}
-        goal={null}
-        modelFallback={null}
-        isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
-        parentThreadSection={null}
-        pendingInteractions={pendingInteractions}
-        pendingInteractionsInitialLoading={false}
-        queuedMessageCount={0}
-        pendingTodos={null}
-        projectId={PROJECT_ID}
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
-        resolveMentionLink={() => null}
-        sendMessage={{
-          isPending: false,
-          mutateAsync: mocks.sendMessageMutateAsync,
-        }}
-        steerActiveThreadOnEnter={false}
-        thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
-      />
+      <ThreadDetailPromptArea {...props} />
     </PluginComposerHostScopeProvider>
   );
+}
+
+function buildPromptArea(args: RenderPromptAreaArgs) {
+  return buildPromptAreaFromProps(makePromptAreaProps(args));
 }
 
 function renderPromptArea(args: RenderPromptAreaArgs) {
@@ -436,6 +450,29 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.clearAllMocks();
+});
+
+describe("ThreadDetailPromptArea render isolation", () => {
+  it("does not render again when the thread view re-renders with unchanged props", () => {
+    const props = makePromptAreaProps({ thread: makeThread(threadId) });
+    const { rerender } = render(buildPromptAreaFromProps(props));
+    const rendersAfterMount = mocks.followUpPromptBoxRenders.mock.calls.length;
+
+    rerender(buildPromptAreaFromProps({ ...props }));
+    rerender(buildPromptAreaFromProps({ ...props }));
+
+    expect(mocks.followUpPromptBoxRenders).toHaveBeenCalledTimes(
+      rendersAfterMount,
+    );
+
+    rerender(
+      buildPromptAreaFromProps({ ...props, composerFocusRequestNonce: 1 }),
+    );
+
+    expect(mocks.followUpPromptBoxRenders.mock.calls.length).toBeGreaterThan(
+      rendersAfterMount,
+    );
+  });
 });
 
 describe("ThreadDetailPromptArea published composer host", () => {

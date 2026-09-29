@@ -60,6 +60,20 @@ export function invalidatePluginList(args: {
   });
 }
 
+export function hasFreshSettledEnabledPluginList(args: {
+  freshSince: number;
+  queryClient: QueryClient;
+}): boolean {
+  const state = args.queryClient.getQueryState<InstalledPlugin[]>(
+    pluginListQueryKey(true),
+  );
+  return (
+    state?.data !== undefined &&
+    state.dataUpdatedAt >= args.freshSince &&
+    !state.data.some((plugin) => plugin.enabled && plugin.status === "starting")
+  );
+}
+
 export async function markEnabledPluginListStale(args: {
   queryClient: QueryClient;
 }): Promise<void> {

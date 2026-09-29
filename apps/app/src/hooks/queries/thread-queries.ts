@@ -1,5 +1,6 @@
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
+  replaceEqualDeep,
   useInfiniteQuery,
   useQuery,
   useQueryClient,
@@ -9,10 +10,7 @@ import {
 import { useCallback, useEffect, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
-import type {
-  PendingInteraction,
-  ThreadListEntry,
-} from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -969,6 +967,75 @@ export function useThreadHostFilePreview(
   });
 }
 
+const equivalentThreadTimelineMaxSeqs = new WeakMap<
+  ThreadTimelineResponse,
+  number
+>();
+
+export function resolveThreadTimelineMaxSeq(
+  timeline: ThreadTimelineResponse,
+): number {
+  return equivalentThreadTimelineMaxSeqs.get(timeline) ?? timeline.maxSeq;
+}
+
+function historySnapshotWithoutMaxSeq(
+  historySnapshot: string | undefined,
+): unknown {
+  if (historySnapshot === undefined) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(historySnapshot);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed) ||
+      !("maxSeq" in parsed)
+    ) {
+      return historySnapshot;
+    }
+    return { ...parsed, maxSeq: null };
+  } catch {
+    return historySnapshot;
+  }
+}
+
+function visibleThreadTimelineMetadata(timeline: ThreadTimelineResponse) {
+  const { historySnapshot, olderCursor, ...timelinePage } =
+    timeline.timelinePage;
+  return {
+    ...timeline,
+    delta: undefined,
+    maxSeq: undefined,
+    rows: undefined,
+    timelinePage: {
+      ...timelinePage,
+      historySnapshot: historySnapshotWithoutMaxSeq(historySnapshot),
+      olderCursorAnchorSeq: olderCursor?.anchorSeq ?? null,
+    },
+  };
+}
+
+function isNoOpThreadTimelineDelta(
+  previous: ThreadTimelineResponse,
+  response: ThreadTimelineResponse,
+): boolean {
+  if (
+    response.delta === undefined ||
+    response.delta.upsertRows.length > 0 ||
+    response.delta.rowOrder !== undefined
+  ) {
+    return false;
+  }
+  const previousMetadata = visibleThreadTimelineMetadata(previous);
+  return (
+    replaceEqualDeep(
+      previousMetadata,
+      visibleThreadTimelineMetadata(response),
+    ) === previousMetadata
+  );
+}
+
 async function mergeThreadTimelineDelta(
   previous: ThreadTimelineResponse | undefined,
   response: ThreadTimelineResponse,
@@ -976,6 +1043,10 @@ async function mergeThreadTimelineDelta(
 ): Promise<ThreadTimelineResponse> {
   if (response.delta === undefined) {
     return response;
+  }
+  if (previous !== undefined && isNoOpThreadTimelineDelta(previous, response)) {
+    equivalentThreadTimelineMaxSeqs.set(previous, response.maxSeq);
+    return previous;
   }
   const merged = previous
     ? applyTimelineDelta(previous.rows, response.delta)
@@ -1014,8 +1085,8 @@ async function fetchThreadTimeline({
     threadId,
     signal,
     ...pageArgs,
-    ...(previous?.maxSeq !== undefined
-      ? { afterSequence: String(previous.maxSeq) }
+    ...(previous !== undefined
+      ? { afterSequence: String(resolveThreadTimelineMaxSeq(previous)) }
       : {}),
   });
   return mergeThreadTimelineDelta(previous, response, () =>

@@ -1120,6 +1120,47 @@ describe("useThreadTimelineController commits", () => {
     ).toEqual([]);
   });
 
+  it("renders the consumer once per timeline update", async () => {
+    vi.mocked(sdk.threads.timeline).mockReturnValue(new Promise(() => {}));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const publishRows = async (maxSeq: number) => {
+      act(() => {
+        queryClient.setQueryData(
+          TIMELINE_QUERY_KEY,
+          makeTimelineResponse({
+            maxSeq,
+            rows: [newestLoadedRow, makeUserRow(`row-${maxSeq}`, maxSeq)],
+          }),
+        );
+      });
+      await flushQueryNotifications();
+    };
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const onConsumerRender = vi.fn<(rowIds: string[]) => void>();
+    function ControllerConsumer() {
+      const controller = useThreadTimelineController({ threadId: "thread-1" });
+      onConsumerRender(rowIds(controller));
+      return null;
+    }
+    render(<ControllerConsumer />, { wrapper });
+    await flushQueryNotifications();
+    await publishRows(2);
+    const rendersBeforeUpdates = onConsumerRender.mock.calls.length;
+
+    for (const maxSeq of [3, 4, 5]) {
+      await publishRows(maxSeq);
+    }
+
+    expect(onConsumerRender.mock.calls.length - rendersBeforeUpdates).toBe(3);
+    expect(onConsumerRender.mock.lastCall?.[0]).toEqual([
+      newestLoadedRow.id,
+      "row-5",
+    ]);
+  });
+
   it("commits once on mount with a cached timeline and shows its rows and cursor", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(

@@ -45,6 +45,7 @@ import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import { invalidateAppUpdateStatus } from "./app-update-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
+import { hasFreshSettledEnabledPluginList } from "./plugin-cache-owner";
 import {
   invalidateQueryKeys,
   refetchFailedActiveQueryKeys,
@@ -92,17 +93,22 @@ interface InitialConnectInvalidationArgs extends QueryClientArg {
   connectedAt: number;
 }
 
+const INITIAL_CONNECT_FRESH_PLUGIN_STATE_MS = 5_000;
+
 export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
   connectedAt,
   queryClient,
 }: InitialConnectInvalidationArgs): void {
   for (const queryKey of getServerReconnectInvalidationQueryKeys()) {
-    queryClient.invalidateQueries({
-      queryKey,
-      predicate: (query) =>
-        query.state.dataUpdatedAt !== 0 &&
-        query.state.dataUpdatedAt < connectedAt,
-    });
+    void queryClient.invalidateQueries(
+      {
+        queryKey,
+        predicate: (query) =>
+          query.state.dataUpdatedAt !== 0 &&
+          query.state.dataUpdatedAt < connectedAt,
+      },
+      { cancelRefetch: false },
+    );
   }
 }
 
@@ -119,6 +125,19 @@ export function refetchActiveRealtimeQueriesOnResume({
       { cancelRefetch: false },
     );
   }
+}
+
+export function hasFreshPluginStateAtInitialConnect({
+  connectedAt,
+  queryClient,
+}: InitialConnectInvalidationArgs): boolean {
+  const freshSince = connectedAt - INITIAL_CONNECT_FRESH_PLUGIN_STATE_MS;
+  const configUpdatedAt =
+    queryClient.getQueryState(systemConfigQueryKey())?.dataUpdatedAt ?? 0;
+  return (
+    configUpdatedAt >= freshSince &&
+    hasFreshSettledEnabledPluginList({ freshSince, queryClient })
+  );
 }
 
 export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {

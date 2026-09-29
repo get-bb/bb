@@ -93,9 +93,9 @@ describe("event loop stall monitor", () => {
 
   it("logs and resets when the max event loop delay reaches the threshold", () => {
     const histogram = installHistogram({
-      maxDelayMs: 500,
+      maxDelayMs: 250,
       meanDelayMs: 25,
-      p99DelayMs: 450,
+      p99DelayMs: 200,
     });
     const logger = { info: vi.fn() };
 
@@ -111,11 +111,11 @@ describe("event loop stall monitor", () => {
     expect(logger.info).toHaveBeenCalledWith(
       {
         intervalMs: 5_000,
-        maxDelayMs: 500,
+        maxDelayMs: 250,
         meanDelayMs: 25,
-        p99DelayMs: 450,
+        p99DelayMs: 200,
         resolutionMs: 20,
-        thresholdMs: 500,
+        thresholdMs: 250,
         ...EMPTY_WORK_SNAPSHOT,
       },
       "Event loop stalled",
@@ -126,9 +126,9 @@ describe("event loop stall monitor", () => {
 
   it("does not log below the threshold", () => {
     const histogram = installHistogram({
-      maxDelayMs: 499,
+      maxDelayMs: 249,
       meanDelayMs: 25,
-      p99DelayMs: 450,
+      p99DelayMs: 200,
     });
     const logger = { info: vi.fn() };
 

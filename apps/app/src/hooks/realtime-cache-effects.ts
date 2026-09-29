@@ -12,11 +12,13 @@ import {
   type ThreadChangeKind,
 } from "@bb/domain";
 import {
+  hasFreshPluginStateAtInitialConnect,
   invalidateRealtimeQueriesAfterServerReconnect,
   invalidateRealtimeQueriesFetchedBeforeInitialConnect,
   refetchActiveRealtimeQueriesOnResume,
   refetchErroredRealtimeQueriesOnInitialConnect,
 } from "./cache-owners/system-cache-effects";
+import { whenRouteContentPainted } from "@/lib/route-content-paint";
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
 import {
   isDocumentVisible,
@@ -79,7 +81,13 @@ export interface RealtimeCacheEffectsVisibility {
   subscribe: (listener: () => void) => () => void;
 }
 
+export interface InitialConnectRefreshSchedule {
+  requestIdle: (callback: () => void) => () => void;
+  whenRoutePainted: () => Promise<void>;
+}
+
 interface RealtimeCacheEffectsOptions {
+  initialConnectRefreshSchedule?: InitialConnectRefreshSchedule;
   queryClient: QueryClient;
   visibility?: RealtimeCacheEffectsVisibility;
 }
@@ -369,10 +377,55 @@ const DEFAULT_VISIBILITY: RealtimeCacheEffectsVisibility = {
   subscribe: subscribeToDocumentVisibility,
 };
 
+const INITIAL_CONNECT_REFRESH_IDLE_TIMEOUT_MS = 2_000;
+
+function requestIdleRefresh(callback: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const id = window.requestIdleCallback(callback, {
+      timeout: INITIAL_CONNECT_REFRESH_IDLE_TIMEOUT_MS,
+    });
+    return () => window.cancelIdleCallback(id);
+  }
+  const timeout = window.setTimeout(callback, 0);
+  return () => window.clearTimeout(timeout);
+}
+
+const DEFAULT_INITIAL_CONNECT_REFRESH_SCHEDULE: InitialConnectRefreshSchedule =
+  {
+    requestIdle: requestIdleRefresh,
+    whenRoutePainted: whenRouteContentPainted,
+  };
+
+function scheduleInitialConnectRefresh(
+  refresh: () => void,
+  schedule: InitialConnectRefreshSchedule,
+): () => void {
+  let cancelled = false;
+  let cancelIdle: (() => void) | null = null;
+  void schedule.whenRoutePainted().then(() => {
+    if (cancelled) {
+      return;
+    }
+    cancelIdle = schedule.requestIdle(() => {
+      cancelIdle = null;
+      if (!cancelled) {
+        refresh();
+      }
+    });
+  });
+  return () => {
+    cancelled = true;
+    cancelIdle?.();
+    cancelIdle = null;
+  };
+}
+
 export function createRealtimeCacheEffects({
+  initialConnectRefreshSchedule = DEFAULT_INITIAL_CONNECT_REFRESH_SCHEDULE,
   queryClient,
   visibility = DEFAULT_VISIBILITY,
 }: RealtimeCacheEffectsOptions): RealtimeCacheEffects {
+  let cancelInitialConnectRefresh: (() => void) | null = null;
   const threadChangeState = createThreadChangeState();
   let hasDeferredThreadChanges = false;
   const deferredNonThreadChanges = createDeferredNonThreadChanges();
@@ -482,6 +535,8 @@ export function createRealtimeCacheEffects({
 
   return {
     dispose: () => {
+      cancelInitialConnectRefresh?.();
+      cancelInitialConnectRefresh = null;
       unsubscribeVisibility();
       invalidationScheduler.dispose();
       environmentInvalidator.dispose();
@@ -565,19 +620,28 @@ export function createRealtimeCacheEffects({
       }
     },
     handleConnected: (event) => {
-      applySystemChanges(["plugins-changed"]);
+      cancelInitialConnectRefresh?.();
+      cancelInitialConnectRefresh = null;
       if (event.reconnected) {
+        applySystemChanges(["plugins-changed"]);
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,
           queryClient,
         });
         return;
       }
+      const connectedAt = Date.now();
+      if (!hasFreshPluginStateAtInitialConnect({ connectedAt, queryClient })) {
+        applySystemChanges(["plugins-changed"]);
+      }
       refetchErroredRealtimeQueriesOnInitialConnect({ queryClient });
-      invalidateRealtimeQueriesFetchedBeforeInitialConnect({
-        connectedAt: Date.now(),
-        queryClient,
-      });
+      cancelInitialConnectRefresh = scheduleInitialConnectRefresh(() => {
+        cancelInitialConnectRefresh = null;
+        invalidateRealtimeQueriesFetchedBeforeInitialConnect({
+          connectedAt,
+          queryClient,
+        });
+      }, initialConnectRefreshSchedule);
     },
     handleResumed: () => {
       if (!visibility.isDocumentVisible()) {

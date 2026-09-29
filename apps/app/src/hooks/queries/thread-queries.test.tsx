@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import type { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
@@ -258,14 +259,15 @@ describe("useThreadDetailBootstrap", () => {
     });
     await waitFor(() => {
       expect(
-        queryClient.getQueryData<ThreadTimelineResponse>(
-          threadTimelineQueryKey("thread-1"),
-        ),
-      ).toEqual({
-        ...previousTimeline,
-        maxSeq: 8,
-      });
+        queryClient.getQueryState(threadTimelineQueryKey("thread-1"))
+          ?.dataUpdatedAt,
+      ).toBeGreaterThan(1);
     });
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      ),
+    ).toBe(previousTimeline);
   });
 
   it("only suppresses a thread refetch for a bootstrap fetched after mount", () => {
@@ -1059,6 +1061,170 @@ describe("thread open cache retention", () => {
         `thread-${COARSE_POINTER_THREAD_OPEN_CACHE_MAX_THREADS}`,
       ),
     ).toBe(true);
+  });
+});
+
+describe("useThreadTimeline no-op deltas", () => {
+  const streamingRow = {
+    id: "row-1",
+    kind: "system",
+    threadId: "thread-1",
+    turnId: null,
+    sourceSeqStart: 7,
+    sourceSeqEnd: 7,
+    startedAt: 1,
+    createdAt: 1,
+    systemKind: "debug",
+    title: "Existing row",
+    detail: null,
+    status: null,
+  } satisfies ThreadTimelineResponse["rows"][number];
+
+  function makeSnapshotTimeline(maxSeq: number): ThreadTimelineResponse {
+    const snapshot = {
+      version: 3,
+      threadId: "thread-1",
+      maxSeq,
+      status: "active",
+      surface: "default",
+    };
+    return makeThreadTimelineResponse({
+      rows: [streamingRow],
+      maxSeq,
+      timelinePage: {
+        kind: "latest",
+        segmentLimit: 100,
+        returnedSegmentCount: 1,
+        hasOlderRows: true,
+        historySnapshot: JSON.stringify(snapshot),
+        olderCursor: {
+          anchorSeq: 3,
+          anchorId: `timeline-v3:${btoa(JSON.stringify({ snapshot }))}`,
+        },
+      },
+    });
+  }
+
+  function emptyDeltaFrom(
+    timeline: ThreadTimelineResponse,
+  ): ThreadTimelineResponse {
+    return { ...timeline, rows: [], delta: { upsertRows: [] } };
+  }
+
+  function renderCachedTimeline(previous: ThreadTimelineResponse) {
+    mockMatchMedia([]);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(threadTimelineQueryKey("thread-1"), previous, {
+      updatedAt: 1,
+    });
+    const rendered = renderHook(
+      () =>
+        useThreadTimeline("thread-1", {
+          notifyOnChangeProps: ["data"],
+          staleTime: Infinity,
+        }),
+      { wrapper },
+    );
+    return { queryClient, rendered };
+  }
+
+  async function refetchTimeline(queryClient: QueryClient) {
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: threadTimelineQueryKey("thread-1"),
+      });
+    });
+  }
+
+  it("keeps data identity for an empty delta that only advances maxSeq", async () => {
+    const previous = makeSnapshotTimeline(7);
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      emptyDeltaFrom(makeSnapshotTimeline(9)),
+    );
+    const { queryClient, rendered } = renderCachedTimeline(previous);
+    const dataBefore = rendered.result.current.data;
+
+    await refetchTimeline(queryClient);
+
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[0]?.[0]).toMatchObject({
+      afterSequence: "7",
+    });
+    expect(queryClient.getQueryData(threadTimelineQueryKey("thread-1"))).toBe(
+      previous,
+    );
+    expect(rendered.result.current.data).toBe(dataBefore);
+  });
+
+  it("applies an empty delta that changes the context boundary", async () => {
+    const previous = makeSnapshotTimeline(7);
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      emptyDeltaFrom({ ...makeSnapshotTimeline(9), contextBoundarySeq: 8 }),
+    );
+    const { queryClient } = renderCachedTimeline(previous);
+
+    await refetchTimeline(queryClient);
+
+    const cached = queryClient.getQueryData<ThreadTimelineResponse>(
+      threadTimelineQueryKey("thread-1"),
+    );
+    expect(cached).not.toBe(previous);
+    expect(cached?.contextBoundarySeq).toBe(8);
+    expect(cached?.maxSeq).toBe(9);
+    expect(cached?.rows).toEqual([streamingRow]);
+  });
+
+  it("applies an empty delta whose history snapshot changes beyond maxSeq", async () => {
+    const previous = makeSnapshotTimeline(7);
+    const next = makeSnapshotTimeline(9);
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      emptyDeltaFrom({
+        ...next,
+        timelinePage: {
+          ...next.timelinePage,
+          historySnapshot: next.timelinePage.historySnapshot?.replace(
+            '"active"',
+            '"idle"',
+          ),
+        },
+      }),
+    );
+    const { queryClient } = renderCachedTimeline(previous);
+
+    await refetchTimeline(queryClient);
+
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      )?.maxSeq,
+    ).toBe(9);
+  });
+
+  it("continues from the advanced sequence after a no-op delta", async () => {
+    const previous = makeSnapshotTimeline(7);
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(emptyDeltaFrom(makeSnapshotTimeline(9)))
+      .mockResolvedValueOnce({
+        ...makeSnapshotTimeline(11),
+        rows: [],
+        delta: {
+          upsertRows: [{ ...streamingRow, title: "Updated row" }],
+        },
+      });
+    const { queryClient } = renderCachedTimeline(previous);
+
+    await refetchTimeline(queryClient);
+    await refetchTimeline(queryClient);
+
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[1]?.[0]).toMatchObject({
+      afterSequence: "9",
+    });
+    const cached = queryClient.getQueryData<ThreadTimelineResponse>(
+      threadTimelineQueryKey("thread-1"),
+    );
+    expect(cached?.maxSeq).toBe(11);
+    expect(
+      cached?.rows.map((row) => row.kind === "system" && row.title),
+    ).toEqual(["Updated row"]);
   });
 });
 

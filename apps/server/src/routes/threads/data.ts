@@ -338,13 +338,17 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
   deps.hub.onChangedMessage((message) => {
-    if (
-      message.entity === "thread" &&
-      message.changes.includes("history-rewritten")
-    ) {
+    if (message.entity !== "thread") {
+      return;
+    }
+    if (message.changes.includes("history-rewritten")) {
       clearTimelineOrderingContextCache(deps.db);
       timelineCache.invalidateThread(message.id);
       timelineLatestRowsCache.invalidateThread(message.id);
+      return;
+    }
+    if (message.changes.includes("history-compacted")) {
+      timelineCache.invalidateThread(message.id);
     }
   });
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({

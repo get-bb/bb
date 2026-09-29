@@ -350,10 +350,22 @@ describe("system cache effects", () => {
   it("invalidates realtime queries whose data predates the initial connect", () => {
     const queryClient = createCacheEffectQueryClient();
     const hostsKey = hostsQueryKey();
+    const justBeforeKey = threadQueryKey("thr_just_before");
+    const atConnectKey = threadQueryKey("thr_at_connect");
     const providersKey = systemProvidersQueryKey();
     const neverFetchedKey = sidebarNavigationQueryKey();
     const connectedAt = Date.now();
-    queryClient.setQueryData(hostsKey, [], { updatedAt: connectedAt - 500 });
+    queryClient.setQueryData(hostsKey, [], { updatedAt: connectedAt - 3_000 });
+    queryClient.setQueryData(
+      justBeforeKey,
+      { id: "thr_just_before" },
+      { updatedAt: connectedAt - 1 },
+    );
+    queryClient.setQueryData(
+      atConnectKey,
+      { id: "thr_at_connect" },
+      { updatedAt: connectedAt },
+    );
     queryClient.setQueryData(
       providersKey,
       { providers: [] },
@@ -366,8 +378,42 @@ describe("system cache effects", () => {
     });
 
     expect(queryClient.getQueryState(hostsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(justBeforeKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(atConnectKey)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(neverFetchedKey)).toBeUndefined();
+  });
+
+  it("refreshes an old active query on initial connect without aborting its read in flight", async () => {
+    const queryClient = createCacheEffectQueryClient();
+    const hostsKey = hostsQueryKey();
+    const connectedAt = Date.now();
+    const signals: AbortSignal[] = [];
+    const queryFn = vi.fn(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise<string>((resolve) => {
+          signals.push(signal);
+          setTimeout(() => resolve("loaded"), 10);
+        }),
+    );
+    queryClient.setQueryData(hostsKey, [], { updatedAt: connectedAt - 3_000 });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: hostsKey,
+      queryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    void observer.refetch();
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    invalidateRealtimeQueriesFetchedBeforeInitialConnect({
+      connectedAt,
+      queryClient,
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(signals[0]?.aborted).toBe(false);
+    unsubscribe();
   });
 
   it("refetches an active diff TOC query but evicts the observer-less patch cache after reconnect", async () => {

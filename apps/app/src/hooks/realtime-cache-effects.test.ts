@@ -49,7 +49,11 @@ import {
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
-import { pluginContributionsQueryKey } from "./queries/query-keys";
+import {
+  pluginContributionsQueryKey,
+  pluginListQueryKey,
+} from "./queries/query-keys";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 import { systemEnvironmentProvidersQueryKey } from "./queries/environment-provider-queries";
 import {
   createRealtimeCacheEffects,
@@ -2071,6 +2075,145 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("coalesces a burst of history rewrites into one sidebar refetch without aborting the read in flight", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const sidebarQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    for (let frame = 0; frame < 6; frame += 1) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: `thr_${frame % 3}`,
+        changes: ["history-rewritten"],
+      });
+      await vi.advanceTimersByTimeAsync(8);
+    }
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(signals[0]?.aborted).toBe(false);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    expect(
+      invalidateSpy.mock.calls.some(
+        ([, options]) => options?.cancelRefetch !== false,
+      ),
+    ).toBe(false);
+
+    const emptySidebar = { projects: [], personalProject: { threads: [] } };
+    resolveFetches[0]?.(emptySidebar);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    resolveFetches[1]?.(emptySidebar);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals.some((signal) => signal.aborted)).toBe(false);
+
+    invalidateSpy.mockRestore();
+    unsubscribe();
+    effects.dispose();
+  });
+
+  it("marks only the timeline stale when an unviewed thread's history is compacted", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    const threadKey = threadQueryKey("thr_1");
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "needle",
+    });
+    const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
+    queryClient.setQueryData(timelineKey, { rows: [] });
+    queryClient.setQueryData(outlineKey, { items: [] });
+    queryClient.setQueryData(threadKey, { id: "thr_1" });
+    queryClient.setQueryData(sidebarNavigationKey, {
+      projects: [],
+      personalProject: { threads: [] },
+    });
+    queryClient.setQueryData(threadSearchKey, {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+    queryClient.setQueryData(promptHistoryKey, []);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["history-compacted"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    for (const queryKey of [
+      outlineKey,
+      threadKey,
+      sidebarNavigationKey,
+      threadSearchKey,
+      promptHistoryKey,
+    ]) {
+      expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(false);
+    }
+
+    effects.dispose();
+  });
+
+  it("refetches a viewed timeline without aborting its read or touching the outline when history is compacted", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    queryClient.setQueryData(outlineKey, { items: [] });
+    const signals: AbortSignal[] = [];
+    const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise(() => {});
+    });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: timelineKey,
+      queryFn: timelineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["history-compacted"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(signals[0]?.aborted).toBe(false);
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).toBe(false);
+
+    unsubscribe();
+    effects.dispose();
+  });
+
   it("supersedes an in-flight timeline read when a turn completes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -2895,6 +3038,124 @@ describe("createRealtimeCacheEffects", () => {
     expect(resolveThreadInvalidationDebounce(true)).toEqual({
       debounceMs: 150,
       maxWaitMs: 400,
+    });
+  });
+
+  describe("on the first connect", () => {
+    function createInitialConnectContext() {
+      let resolvePainted: () => void = () => {};
+      const painted = new Promise<void>((resolve) => {
+        resolvePainted = resolve;
+      });
+      const idleCallbacks: Array<() => void> = [];
+      const queryClient = createAppQueryClient({
+        defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+        showMutationErrorToasts: false,
+      });
+      const effects = createRealtimeCacheEffects({
+        initialConnectRefreshSchedule: {
+          requestIdle: (callback) => {
+            idleCallbacks.push(callback);
+            return () => {
+              idleCallbacks.splice(idleCallbacks.indexOf(callback), 1);
+            };
+          },
+          whenRoutePainted: () => painted,
+        },
+        queryClient,
+      });
+      const runIdle = () => {
+        for (const callback of idleCallbacks.splice(0)) {
+          callback();
+        }
+      };
+      return { effects, idleCallbacks, queryClient, resolvePainted, runIdle };
+    }
+
+    it("refreshes queries fetched before the connect, after the route paints and the browser idles", async () => {
+      const { effects, idleCallbacks, queryClient, resolvePainted, runIdle } =
+        createInitialConnectContext();
+      const now = Date.now();
+      const oldKey = hostsQueryKey();
+      const recentKey = threadQueryKey("thr_recent");
+      const afterConnectKey = threadQueryKey("thr_after_connect");
+      queryClient.setQueryData(oldKey, [], { updatedAt: now - 3_000 });
+      queryClient.setQueryData(
+        recentKey,
+        { id: "thr_recent" },
+        { updatedAt: now - 200 },
+      );
+
+      effects.handleConnected({ reconnected: false });
+      queryClient.setQueryData(afterConnectKey, { id: "thr_after_connect" });
+      await Promise.resolve();
+      expect(idleCallbacks).toHaveLength(0);
+      expect(queryClient.getQueryState(oldKey)?.isInvalidated).toBe(false);
+
+      resolvePainted();
+      await vi.waitFor(() => expect(idleCallbacks).toHaveLength(1));
+      expect(queryClient.getQueryState(oldKey)?.isInvalidated).toBe(false);
+
+      runIdle();
+      expect(queryClient.getQueryState(oldKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(recentKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(afterConnectKey)?.isInvalidated).toBe(
+        false,
+      );
+      effects.dispose();
+    });
+
+    it("drops a pending first-connect refresh when the socket reconnects first", async () => {
+      const { effects, idleCallbacks, queryClient, resolvePainted } =
+        createInitialConnectContext();
+      const disconnectedAt = Date.now();
+      const oldKey = hostsQueryKey();
+      queryClient.setQueryData(oldKey, [], {
+        updatedAt: disconnectedAt - 3_000,
+      });
+
+      effects.handleConnected({ reconnected: false });
+      effects.handleConnected({ reconnected: true, disconnectedAt });
+      expect(queryClient.getQueryState(oldKey)?.isInvalidated).toBe(true);
+
+      resolvePainted();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(idleCallbacks).toHaveLength(0);
+      effects.dispose();
+    });
+
+    it("skips the synthetic plugins-changed replay while config and settled plugins are fresh", () => {
+      const { effects, queryClient } = createInitialConnectContext();
+      const configKey = systemConfigQueryKey();
+      queryClient.setQueryData(configKey, {});
+      queryClient.setQueryData(pluginListQueryKey(true), [
+        makeInstalledPlugin({ id: "running", status: "running" }),
+      ]);
+
+      effects.handleConnected({ reconnected: false });
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+
+      effects.handleConnected({
+        reconnected: true,
+        disconnectedAt: Date.now(),
+      });
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+      effects.dispose();
+    });
+
+    it("replays plugins-changed on the first connect while an enabled plugin is still starting", () => {
+      const { effects, queryClient } = createInitialConnectContext();
+      const configKey = systemConfigQueryKey();
+      queryClient.setQueryData(configKey, {});
+      queryClient.setQueryData(pluginListQueryKey(true), [
+        makeInstalledPlugin({ id: "booting", status: "starting" }),
+      ]);
+
+      effects.handleConnected({ reconnected: false });
+
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+      effects.dispose();
     });
   });
 

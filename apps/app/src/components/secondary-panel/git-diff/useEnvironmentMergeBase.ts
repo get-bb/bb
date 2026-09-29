@@ -185,6 +185,7 @@ export function useEnvironmentMergeBase({
     Boolean(effectiveMergeBaseBranch) &&
     !isOnDefaultBranch;
 
+  const mutateEnvironment = updateEnvironment.mutate;
   const handleMergeBaseBranchChange: MergeBaseBranchChangeHandler = useCallback(
     (branch) => {
       if (!environment || !thread?.environmentId) {
@@ -204,7 +205,7 @@ export function useEnvironmentMergeBase({
         return;
       }
 
-      updateEnvironment.mutate(
+      mutateEnvironment(
         {
           id: environment.id,
           mergeBaseBranch: nextPersistedMergeBaseBranch,
@@ -242,9 +243,9 @@ export function useEnvironmentMergeBase({
     },
     [
       environment,
+      mutateEnvironment,
       setSelectedMergeBaseBranch,
       thread,
-      updateEnvironment,
       workspaceStatus,
     ],
   );

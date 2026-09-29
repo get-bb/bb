@@ -2,6 +2,7 @@ import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -392,7 +393,7 @@ async function runWhileFollowUpShortcutSending(
   }
 }
 
-export function ThreadDetailPromptArea({
+export const ThreadDetailPromptArea = memo(function ThreadDetailPromptArea({
   activeBackgroundAgentCount,
   canRestoreEnvironment,
   canUseGitUi,
@@ -2289,4 +2290,4 @@ export function ThreadDetailPromptArea({
       {bottomContent}
     </>
   );
-}
+});

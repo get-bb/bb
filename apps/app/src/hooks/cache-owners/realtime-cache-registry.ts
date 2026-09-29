@@ -357,7 +357,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     ],
   },
   "history-rewritten": {
-    flush: "immediate",
+    flush: "debounced",
     dirty: [
       dirtyThreadListQueries,
       dirtyThreadDetailQueries,
@@ -367,6 +367,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyProjectPromptHistoryQueries,
       getThreadPendingInteractionInvalidationQueryKeys,
     ],
+  },
+  "history-compacted": {
+    flush: "debounced",
+    dirty: [dirtyThreadTimelineWindowQueries],
   },
   "interactions-changed": {
     flush: "debounced",
@@ -656,9 +660,10 @@ export function executeRealtimeDirtyHandlers<
     if (!queryKeys) {
       continue;
     }
-    for (const queryKey of queryKeys) {
-      context.queryClient.invalidateQueries({ queryKey });
-    }
+    invalidateQueryKeysWithoutCancelingActiveFetches({
+      queryClient: context.queryClient,
+      queryKeys,
+    });
   }
 }
 
@@ -902,6 +907,25 @@ function dirtyThreadTimelineQueries({
       queryKeys: outlineQueryKeys,
     });
   }
+}
+
+function dirtyThreadTimelineWindowQueries({
+  queryClient,
+  threadId,
+}: ThreadRealtimeDirtyContext): void {
+  const queryKeys = getThreadTimelineWindowInvalidationQueryKeys({
+    threadId,
+  });
+  if (
+    threadId !== undefined &&
+    !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
+  ) {
+    for (const queryKey of queryKeys) {
+      queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+    }
+    return;
+  }
+  invalidateQueryKeysWithoutCancelingActiveFetches({ queryClient, queryKeys });
 }
 
 function dirtyThreadTurnRequestQueries({

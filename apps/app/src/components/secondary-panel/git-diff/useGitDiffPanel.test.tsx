@@ -243,3 +243,23 @@ it("keeps delayed file and commit intents with the owner that requested them", a
   expect(right.result.current.gitDiffSelectValue).toBe("all");
   expect(right.result.current.pendingGitDiffCommitSha).toBeNull();
 });
+
+it("keeps the merge-base change handler stable across renders of the same environment", () => {
+  const environment = makeMergeBaseEnvironment("env-stable", "main");
+  const setSelectedMergeBaseBranch = noop;
+  const { result, rerender } = renderHook(
+    () =>
+      useEnvironmentMergeBase({
+        environment,
+        setSelectedMergeBaseBranch,
+        updateEnvironment: useUpdateEnvironment(),
+      }).handleMergeBaseBranchChange,
+    { wrapper: TestRoot },
+  );
+  const handler = result.current;
+
+  rerender();
+  rerender();
+
+  expect(result.current).toBe(handler);
+});
