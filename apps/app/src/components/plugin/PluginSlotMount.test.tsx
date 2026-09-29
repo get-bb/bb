@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -9,6 +16,11 @@ import {
   resetCrashedPluginSlots,
 } from "./PluginSlotMount";
 import { applyPluginCss, resetPluginCssForTest } from "@/lib/plugin-css";
+import { prefetchThreadOpen } from "@/hooks/queries/thread-queries";
+
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  prefetchThreadOpen: vi.fn(),
+}));
 
 function Bomb(): never {
   throw new Error("kaboom");
@@ -31,6 +43,30 @@ describe("PluginSlotMount", () => {
     resetPluginCssForTest();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("prefetches a thread when the pointer goes down on a thread link inside the slot", () => {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PluginSlotMount
+          pluginId="thread-list"
+          slotKind="threadList"
+          slotId="a"
+        >
+          <a href="/projects/proj-1/threads/thr-1">
+            <span>Thread one</span>
+          </a>
+        </PluginSlotMount>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.pointerDown(screen.getByText("Thread one"));
+
+    expect(vi.mocked(prefetchThreadOpen)).toHaveBeenCalledWith(
+      queryClient,
+      "thr-1",
+    );
   });
 
   it("collapses a throwing slot to a crash chip and keeps siblings alive", () => {

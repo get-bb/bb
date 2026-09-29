@@ -147,6 +147,7 @@ import {
   TimelineWindowingMeasurementsContext,
   TimelineWindowingScrollRootContext,
   type TimelineWindowedItemRenderState,
+  type TimelineWindowInitialScroll,
 } from "./TimelineWindowedItemsLoader.js";
 
 export interface ThreadTimelineRowsProps {
@@ -363,6 +364,25 @@ const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
 const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
 const TIMELINE_TERMINAL_EXPANSION_RETENTION = 24;
+const TIMELINE_MEASUREMENT_THREAD_RETENTION = 20;
+const timelineMeasurementsByThread = new Map<string, Map<string, number>>();
+
+function retainThreadTimelineMeasurements(
+  threadId: string,
+): Map<string, number> {
+  const retained =
+    timelineMeasurementsByThread.get(threadId) ?? new Map<string, number>();
+  timelineMeasurementsByThread.delete(threadId);
+  timelineMeasurementsByThread.set(threadId, retained);
+  while (
+    timelineMeasurementsByThread.size > TIMELINE_MEASUREMENT_THREAD_RETENTION
+  ) {
+    const oldestThreadId = timelineMeasurementsByThread.keys().next().value;
+    if (oldestThreadId === undefined) break;
+    timelineMeasurementsByThread.delete(oldestThreadId);
+  }
+  return retained;
+}
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
   const context = useContext(TimelineRendererStaticContext);
@@ -1830,6 +1850,16 @@ function TimelineRowsList({
     bottomAnchor?.getScrollElement ??
     null;
   const isTopLevelList = spacing === "top-level";
+  const hasBottomAnchor = bottomAnchor !== null;
+  const initialScroll = useMemo<TimelineWindowInitialScroll | undefined>(
+    () =>
+      !isTopLevelList || detailScrollRoot !== null || !hasBottomAnchor
+        ? undefined
+        : scrollRestoreRowId === null
+          ? { kind: "end" }
+          : { kind: "item", key: scrollRestoreRowId },
+    [detailScrollRoot, hasBottomAnchor, isTopLevelList, scrollRestoreRowId],
+  );
   const { measureRef: messageColumnWidthSourceRef, width: messageColumnWidth } =
     useMeasuredWidth({ enabled: isTopLevelList });
   const messageColumnWidthValue = useMemo(
@@ -1860,6 +1890,7 @@ function TimelineRowsList({
             }}
             gap={spacing === "bundle" ? 0 : 8}
             getScrollElement={getWindowingScrollElement}
+            initialScroll={initialScroll}
             itemKeys={itemKeys}
             measurements={measurements}
             minItemCount={
@@ -1930,7 +1961,13 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
 
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const getViewRows = useTimelineViewRowsCache();
-  const [windowingMeasurements] = useState(() => new Map<string, number>());
+  const measurementOwnerKey =
+    props.threadId ?? props.timelineRows[0]?.threadId ?? "";
+  const [windowingMeasurements] = useState(() =>
+    measurementOwnerKey === ""
+      ? new Map<string, number>()
+      : retainThreadTimelineMeasurements(measurementOwnerKey),
+  );
   const rows = useMemo(
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],

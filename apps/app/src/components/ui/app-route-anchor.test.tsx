@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createPortal } from "react-dom";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PluginDetailRouteNavigationProvider,
@@ -13,14 +14,20 @@ import {
 } from "./app-route-anchor";
 
 const openPaneContentInSplit = vi.hoisted(() => vi.fn());
+const prefetchThreadOpen = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/split-layout/openPaneContentInSplit", () => ({
   openPaneContentInSplit,
 }));
 
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  prefetchThreadOpen,
+}));
+
 afterEach(() => {
   cleanup();
   openPaneContentInSplit.mockReset();
+  prefetchThreadOpen.mockReset();
 });
 
 interface NavigationSample {
@@ -168,6 +175,27 @@ describe("useRouteAnchorDelegate portaled overlays", () => {
     );
 
     expect(notPrevented).toBe(false);
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/threads/thr-next",
+    );
+  });
+
+  it("starts the thread open prefetch before navigating", () => {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/threads/thr-current"]}>
+          <RouteNavigationProvider>
+            <CurrentPath />
+            <PortaledThreadLinkDelegate overlayPluginId="thread-list" />
+          </RouteNavigationProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Open next thread" }));
+
+    expect(prefetchThreadOpen).toHaveBeenCalledWith(queryClient, "thr-next");
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/threads/thr-next",
     );

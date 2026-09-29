@@ -20,6 +20,10 @@ import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSpli
 import { paneContentForPathname } from "@/views/thread-detail/splitThreadNavigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { usePublishPluginDetailOpener } from "@/components/plugin/plugin-detail-opener";
+import {
+  resolveThreadIdFromRoutePath,
+  useThreadOpenPrefetch,
+} from "@/lib/thread-open-prefetch";
 
 interface RouteNavigationProviderProps {
   children: ReactNode;
@@ -198,6 +202,7 @@ export function useRouteAnchorDelegate(): (
 ) => void {
   const navigation = useContext(RouteNavigationContext);
   const openPluginDetail = useContext(PluginDetailRouteNavigationContext);
+  const prefetchThreadOpen = useThreadOpenPrefetch();
   return useCallback(
     (event) => {
       if (navigation === null || event.defaultPrevented) return;
@@ -235,9 +240,13 @@ export function useRouteAnchorDelegate(): (
         return;
       }
       event.preventDefault();
+      const threadId = resolveThreadIdFromRoutePath(route.path);
+      if (threadId !== null) {
+        prefetchThreadOpen?.(threadId);
+      }
       navigation.navigate(route.path);
     },
-    [navigation, openPluginDetail],
+    [navigation, openPluginDetail, prefetchThreadOpen],
   );
 }
 
@@ -249,6 +258,7 @@ export function RouteAnchor({
   ...anchorProps
 }: RouteAnchorProps) {
   const navigation = useContext(RouteNavigationContext);
+  const prefetchThreadOpen = useThreadOpenPrefetch();
   const route = useMemo(() => {
     const origin = currentOrigin();
     return origin === null || href === undefined
@@ -267,9 +277,13 @@ export function RouteAnchor({
       }
 
       event.preventDefault();
+      const threadId = resolveThreadIdFromRoutePath(route.path);
+      if (threadId !== null) {
+        prefetchThreadOpen?.(threadId);
+      }
       navigation.navigate(route.path);
     },
-    [navigation, onClick, route],
+    [navigation, onClick, prefetchThreadOpen, route],
   );
 
   return (

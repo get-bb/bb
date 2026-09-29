@@ -13,6 +13,7 @@ import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 import {
   TimelineWindowedItemsLoader,
   type TimelineWindowedItemRenderState,
+  type TimelineWindowInitialScroll,
 } from "./TimelineWindowedItemsLoader.js";
 
 const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
@@ -43,7 +44,10 @@ class ResizeObserverStub implements ResizeObserver {
 function renderWindowedItems(options?: {
   alwaysMountedKeys?: ReadonlySet<string>;
   clientHeight?: number;
+  getScrollElement?: () => HTMLElement | null;
+  initialScroll?: TimelineWindowInitialScroll;
   measurements?: Map<string, number>;
+  onRenderItem?: (index: number) => void;
 }) {
   const measurements = options?.measurements ?? new Map<string, number>();
   Object.defineProperty(scrollElement, "clientHeight", {
@@ -60,26 +64,30 @@ function renderWindowedItems(options?: {
         alwaysMountedKeys={options?.alwaysMountedKeys}
         estimateItemHeight={() => 32}
         gap={0}
-        getScrollElement={() => scrollElement}
+        getScrollElement={options?.getScrollElement ?? (() => scrollElement)}
+        initialScroll={options?.initialScroll}
         itemKeys={ITEM_KEYS}
         measurements={measurements}
-        renderItem={(index: number, state: TimelineWindowedItemRenderState) => (
-          <div
-            key={ITEM_KEYS[index]}
-            ref={state.itemRef}
-            data-index={state.itemIndex}
-            data-testid={`wrapper-${index}`}
-            data-timeline-window-key={ITEM_KEYS[index]}
-            data-timeline-windowed-realized={String(state.isRealized)}
-            style={state.itemStyle}
-          >
-            {state.isRealized ? (
-              <button type="button" data-testid={`content-${index}`}>
-                row {index}
-              </button>
-            ) : null}
-          </div>
-        )}
+        renderItem={(index: number, state: TimelineWindowedItemRenderState) => {
+          options?.onRenderItem?.(index);
+          return (
+            <div
+              key={ITEM_KEYS[index]}
+              ref={state.itemRef}
+              data-index={state.itemIndex}
+              data-testid={`wrapper-${index}`}
+              data-timeline-window-key={ITEM_KEYS[index]}
+              data-timeline-windowed-realized={String(state.isRealized)}
+              style={state.itemStyle}
+            >
+              {state.isRealized ? (
+                <button type="button" data-testid={`content-${index}`}>
+                  row {index}
+                </button>
+              ) : null}
+            </div>
+          );
+        }}
       />,
       { container: scrollElement },
     ),
@@ -133,29 +141,53 @@ afterEach(() => {
 });
 
 describe("TimelineWindowedItems", () => {
-  it("captures exact heights before the scrollport becomes usable", () => {
-    const measurements = new Map<string, number>();
+  it("renders only the tail window from the first commit when it starts at the end", () => {
+    const renderedIndexes = new Set<number>();
 
-    render(
-      <TimelineWindowedItemsLoader
-        estimateItemHeight={() => 100}
-        gap={0}
-        getScrollElement={() => scrollElement}
-        itemKeys={ITEM_KEYS}
-        measurements={measurements}
-        renderItem={(index, state) => (
-          <div
-            key={ITEM_KEYS[index]}
-            ref={state.itemRef}
-            data-index={state.itemIndex}
-          />
-        )}
-      />,
-      { container: scrollElement },
+    renderWindowedItems({
+      initialScroll: { kind: "end" },
+      onRenderItem: (index) => renderedIndexes.add(index),
+    });
+
+    expect(renderedIndexes.has(0)).toBe(false);
+    expect(Math.min(...renderedIndexes)).toBeGreaterThan(80);
+    expect(screen.getByTestId("content-99")).toBeTruthy();
+    expect(screen.getAllByTestId(/^wrapper-/).length).toBeLessThanOrEqual(
+      3 + 2 * 8 + 1,
     );
+  });
 
-    expect(measurements.get("row-0")).toBe(32);
-    expect(measurements.get("row-99")).toBe(32);
+  it("renders the window around a saved row from the first commit", () => {
+    const renderedIndexes = new Set<number>();
+
+    renderWindowedItems({
+      initialScroll: { kind: "item", key: "row-50" },
+      onRenderItem: (index) => renderedIndexes.add(index),
+    });
+
+    expect(screen.getByTestId("content-50")).toBeTruthy();
+    expect(renderedIndexes.has(0)).toBe(false);
+    expect(renderedIndexes.has(99)).toBe(false);
+  });
+
+  it("adopts the scroll root's offset when the root attaches after the first commit", async () => {
+    let attached = false;
+    const renderedIndexes = new Set<number>();
+
+    renderWindowedItems({
+      getScrollElement: () => (attached ? scrollElement : null),
+      initialScroll: { kind: "end" },
+      onRenderItem: (index) => renderedIndexes.add(index),
+    });
+    expect(renderedIndexes.has(0)).toBe(false);
+    expect(screen.getByTestId("content-99")).toBeTruthy();
+
+    scrollElement.scrollTop = 1_600;
+    attached = true;
+
+    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
+    expect(screen.queryByTestId("wrapper-99")).toBeNull();
+    expect(scrollElement.scrollTop).toBe(1_600);
   });
 
   it("preserves visible row identity when crossing the windowing threshold in either direction", async () => {

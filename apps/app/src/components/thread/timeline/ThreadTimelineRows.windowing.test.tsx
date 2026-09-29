@@ -134,7 +134,69 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function renderMainTimeline(threadId: string) {
+  const scrollElement = document.createElement("div");
+  scrollElement.setAttribute("data-test-main-scroll", "");
+  document.body.append(scrollElement);
+  const bottomAnchor: BottomAnchorContextValue = {
+    captureScrollAnchor: vi.fn(),
+    getScrollElement: () => scrollElement,
+    isAtBottom: true,
+    scrollElementIntoView: vi.fn(),
+    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+    scrollToBottom: vi.fn(),
+  };
+  const rows = Array.from({ length: 80 }, (_, index) =>
+    conversationRow({
+      id: `measured-message-${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      sourceSeqEnd: index + 1,
+      sourceSeqStart: index + 1,
+      text: `Measured message ${index}`,
+      threadId,
+    }),
+  );
+  const view = render(
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <BottomAnchorContext.Provider value={bottomAnchor}>
+          <ThreadTimelineRows
+            threadId={threadId}
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </BottomAnchorContext.Provider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  const spacerHeight = view.container.querySelector<HTMLElement>(
+    '[data-timeline-row-list="top-level"] [data-timeline-virtual-spacer]',
+  )?.style.height;
+  return {
+    spacerHeight,
+    unmount: () => {
+      view.unmount();
+      scrollElement.remove();
+    },
+  };
+}
+
 describe("ThreadTimelineRows windowing", () => {
+  it("reuses a thread's row measurements after switching away and back", () => {
+    const first = renderMainTimeline("thr_measured");
+    first.unmount();
+    const other = renderMainTimeline("thr_other");
+    other.unmount();
+
+    const returned = renderMainTimeline("thr_measured");
+    returned.unmount();
+
+    expect(first.spacerHeight).toBeDefined();
+    expect(other.spacerHeight).toBe(first.spacerHeight);
+    expect(returned.spacerHeight).not.toBe(first.spacerHeight);
+  });
+
   it("windows the rows inside a large expanded detail", async () => {
     const view = renderDelegation();
     const detailScroll = view.container.querySelector<HTMLElement>(

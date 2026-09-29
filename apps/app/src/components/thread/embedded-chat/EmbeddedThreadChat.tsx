@@ -1,6 +1,7 @@
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -174,13 +175,14 @@ function EmbeddedThreadChatHostedFooter({
       className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
     >
       <PageShell
-        key={surface.threadId}
         scrollBehavior="bottom-anchor"
         scrollAnchorThreadId={surface.threadId}
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
         footerClassName="chat-prompt-box"
-        footer={footer}
+        footer={
+          footer ? <Fragment key={surface.threadId}>{footer}</Fragment> : null
+        }
         scrollOverlay={scrollOverlay}
       >
         <ThreadTimelineSurface {...surface} />

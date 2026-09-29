@@ -760,4 +760,34 @@ describe("EmbeddedThreadChat", () => {
     );
     expect(hostDraftMocks.textAtNotify).toEqual(["beta draft", "alpha draft"]);
   });
+
+  it("keeps the hosted scroll body across a thread switch and remounts the thread's footer", () => {
+    const hosted = (threadId: string) => (
+      <EmbeddedThreadChat
+        variant="hosted-footer"
+        footer={<div data-testid="hosted-footer">{threadId}</div>}
+        surface={{
+          activeThinking: null,
+          contextBoundarySeq: null,
+          isThreadTimelinePending: false,
+          showOngoingIndicator: false,
+          threadId,
+          threadRuntimeDisplayStatus: "idle",
+          timelineError: false,
+          timelineRows: [],
+          workspaceRootPath: undefined,
+        }}
+      />
+    );
+    const view = render(hosted("thr_hosted_a"));
+    const scrollArea = screen.getByTestId("embedded-chat-scroll-area");
+    const firstFooter = screen.getByTestId("hosted-footer");
+
+    view.rerender(hosted("thr_hosted_b"));
+
+    expect(screen.getByTestId("embedded-chat-scroll-area")).toBe(scrollArea);
+    const nextFooter = screen.getByTestId("hosted-footer");
+    expect(nextFooter.textContent).toBe("thr_hosted_b");
+    expect(nextFooter).not.toBe(firstFooter);
+  });
 });

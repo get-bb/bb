@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { createStore, Provider } from "jotai";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { MAX_PANES, type SplitLayout } from "@/lib/split-layout";
@@ -126,6 +127,7 @@ const modeState = vi.hoisted(() => ({
   searchLoading: false,
 }));
 const routeNavigateMock = vi.hoisted(() => vi.fn());
+const prefetchThreadOpenMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
@@ -253,6 +255,7 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
     await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
   return {
     ...actual,
+    prefetchThreadOpen: prefetchThreadOpenMock,
     useThreadSearch: ({ query }: { query: string }) => ({
       data: modeState.searchResponse,
       debouncedQuery: query.trim(),
@@ -339,30 +342,33 @@ function renderPalette({
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   store.set(paletteThreadLifecyclesAtom, lifecycles);
+  const queryClient = new QueryClient();
   const result = render(
     <Provider store={store}>
-      <CompactViewportOverrideProvider isCompactViewport={compact}>
-        <MemoryRouter>
-          <AppCommandProvider>
-            <button type="button" data-testid="origin">
-              origin
-            </button>
-            <Handler command="thread.new" />
-            <Handler command="thread.search" />
-            <Handler command="thread.next" />
-            <Handler command="panel.toggle" />
-            <Handler command="terminal.open" />
-            <Handler command="composer.focus" />
-            <Handler command="browser.reload" />
-            <CommandPalette threadId={null} projectId={null} />
-            <LocationProbe />
-          </AppCommandProvider>
-        </MemoryRouter>
-      </CompactViewportOverrideProvider>
+      <QueryClientProvider client={queryClient}>
+        <CompactViewportOverrideProvider isCompactViewport={compact}>
+          <MemoryRouter>
+            <AppCommandProvider>
+              <button type="button" data-testid="origin">
+                origin
+              </button>
+              <Handler command="thread.new" />
+              <Handler command="thread.search" />
+              <Handler command="thread.next" />
+              <Handler command="panel.toggle" />
+              <Handler command="terminal.open" />
+              <Handler command="composer.focus" />
+              <Handler command="browser.reload" />
+              <CommandPalette threadId={null} projectId={null} />
+              <LocationProbe />
+            </AppCommandProvider>
+          </MemoryRouter>
+        </CompactViewportOverrideProvider>
+      </QueryClientProvider>
     </Provider>,
   );
   screen.getByTestId("origin").focus();
-  return { ...result, store };
+  return { ...result, queryClient, store };
 }
 
 function openPalette(): KeyboardEvent {
@@ -419,6 +425,7 @@ afterEach(() => {
   modeState.recentError = false;
   modeState.searchLoading = false;
   routeNavigateMock.mockReset();
+  prefetchThreadOpenMock.mockReset();
   openThreadInSplitMock.mockReset();
   window.localStorage.clear();
 });
@@ -432,6 +439,32 @@ describe("CommandPalette", () => {
     },
     focusedPaneId: "origin",
   };
+
+  it("prefetches the highlighted thread once the highlight settles", async () => {
+    modeState.activeRecents = [
+      makeThread("first"),
+      makeThread("second", { updatedAt: 1 }),
+      makeThread("third", { updatedAt: 0 }),
+    ];
+    const { queryClient } = renderPalette();
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Search threads" });
+    expectText(selectedOption(), "Title first");
+    await waitFor(() => {
+      expect(prefetchThreadOpenMock).toHaveBeenCalledWith(queryClient, "first");
+    });
+
+    fireEvent.keyDown(searchField(), { key: "ArrowDown" });
+    fireEvent.keyDown(searchField(), { key: "ArrowDown" });
+    expectText(selectedOption(), "Title third");
+    await waitFor(() => {
+      expect(prefetchThreadOpenMock).toHaveBeenCalledWith(queryClient, "third");
+    });
+    expect(prefetchThreadOpenMock).not.toHaveBeenCalledWith(
+      queryClient,
+      "second",
+    );
+  });
 
   it.each(["click", "Control", "Meta"])(
     "opens only the selected result in a split with %s",

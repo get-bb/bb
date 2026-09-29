@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
 import { useRouteAnchorDelegate } from "@/components/ui/app-route-anchor";
 import { usePluginCss } from "@/lib/plugin-css";
+import { useThreadOpenIntentPrefetchRoot } from "@/lib/thread-open-prefetch";
 import {
   PluginContext,
   PluginSlotOwnershipContext,
@@ -180,6 +181,7 @@ export function PluginSlotMount({
   onCrash,
 }: PluginSlotMountProps) {
   const onRouteAnchorClick = useRouteAnchorDelegate();
+  const threadOpenIntentRootRef = useThreadOpenIntentPrefetchRoot();
   usePluginCss(pluginId);
   return (
     <PluginContext.Provider value={pluginId}>
@@ -195,6 +197,7 @@ export function PluginSlotMount({
         {...(onCrash ? { onCrash } : {})}
       >
         <div
+          ref={threadOpenIntentRootRef}
           data-bb-plugin-root=""
           data-bb-plugin={pluginId}
           className="contents"

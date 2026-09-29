@@ -39,11 +39,16 @@ export interface TimelineWindowedItemRenderState {
   windowingEnabled: boolean;
 }
 
+export type TimelineWindowInitialScroll =
+  | { kind: "end" }
+  | { kind: "item"; key: string };
+
 export interface TimelineWindowedItemsProps {
   alwaysMountedKeys?: ReadonlySet<string>;
   estimateItemHeight: (index: number) => number;
   gap: number;
   getScrollElement: (() => HTMLElement | null) | null;
+  initialScroll?: TimelineWindowInitialScroll;
   itemKeys: readonly string[];
   measurements: Map<string, number>;
   minItemCount?: number;

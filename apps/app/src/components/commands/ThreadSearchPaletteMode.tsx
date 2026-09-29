@@ -46,6 +46,7 @@ import {
   ThreadListEmptyState,
 } from "@/components/thread/ThreadListEmptyState";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { useThreadOpenHoverIntentPrefetch } from "@/lib/thread-open-prefetch";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent, MAX_PANES } from "@/lib/split-layout";
@@ -210,6 +211,7 @@ export function ThreadSearchPaletteMode({
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
   const activeRow = options[activeIndex]?.row;
+  useThreadOpenHoverIntentPrefetch(activeRow?.threadId ?? null);
   const canSplit =
     activeRow != null &&
     !isCompact &&

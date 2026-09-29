@@ -169,7 +169,7 @@ function renderTimeline({
   scrollIntoViewRowId,
   virtualized = false,
 }: RenderArgs) {
-  const timeline = (renderedRowIds: string[]) => {
+  const timeline = (renderedRowIds: string[], renderedThreadId = threadId) => {
     const rows = renderedRowIds.map((rowId) => (
       <div key={rowId} data-timeline-row-id={rowId}>
         {rowId}
@@ -180,7 +180,7 @@ function renderTimeline({
         footer={<div>Footer</div>}
         maxWidthClassName="max-w-none"
         scrollAreaClassName={SCROLL_AREA_CLASS}
-        scrollAnchorThreadId={threadId}
+        scrollAnchorThreadId={renderedThreadId}
       >
         {showCapturePrependAnchorControl ? (
           <CapturePrependAnchorControl />
@@ -224,6 +224,8 @@ function renderTimeline({
         view.container.querySelector(`[data-timeline-row-id="${rowId}"]`),
       ),
     rerenderRows: (nextRowIds: string[]) => view.rerender(timeline(nextRowIds)),
+    switchThread: (nextThreadId: string, nextRowIds: string[]) =>
+      view.rerender(timeline(nextRowIds, nextThreadId)),
     unmount: view.unmount,
   };
 }
@@ -862,6 +864,94 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     getLatestResizeObserver().trigger();
 
     expect(a2.scrollArea.scrollTop).toBe(220);
+  });
+
+  it("resets to the bottom when the thread changes without a remount", () => {
+    const a = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["a-row-1", "a-row-2", "a-row-3"],
+    });
+    mockScrollAreaRect(a.scrollArea);
+    mockRowRect(a.getRow("a-row-1"), { top: -120, bottom: -20 });
+    mockRowRect(a.getRow("a-row-2"), { top: -20, bottom: 80 });
+    mockRowRect(a.getRow("a-row-3"), { top: 80, bottom: 180 });
+    setScrollMetrics(a.scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+    a.scrollArea.scrollTop = 150;
+    fireEvent.wheel(a.scrollArea);
+    fireEvent.scroll(a.scrollArea);
+    const threadAAnchor = readAnchor("thread-a");
+    expect(threadAAnchor).toEqual({
+      rowId: "a-row-2",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    setScrollMetrics(a.scrollArea, {
+      scrollHeight: 600,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.timelineRowId?.startsWith("b-")
+          ? new DOMRect(0, 10, 100, 100)
+          : new DOMRect(0, 0, 0, 0);
+      },
+    );
+    a.switchThread("thread-b", ["b-row-1", "b-row-2"]);
+
+    expect(a.getRow("b-row-1").closest(`.${SCROLL_AREA_CLASS}`)).toBe(
+      a.scrollArea,
+    );
+    expect(a.scrollArea.scrollTop).toBe(500);
+
+    setScrollMetrics(a.scrollArea, {
+      scrollHeight: 800,
+      clientHeight: 100,
+      scrollTop: 500,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(a.scrollArea.scrollTop).toBe(700);
+    expect(readAnchor("thread-a")).toEqual(threadAAnchor);
+  });
+
+  it("restores the new thread's saved row when the thread changes without a remount", () => {
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-b"), {
+      rowId: "b-row-2",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+    const a = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["a-row-1", "a-row-2"],
+    });
+    mockScrollAreaRect(a.scrollArea);
+    setScrollMetrics(a.scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+
+    a.switchThread("thread-b", ["b-row-1", "b-row-2", "b-row-3"]);
+    mockRowRect(a.getRow("b-row-2"), { top: 200, bottom: 300 });
+    setScrollMetrics(a.scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(a.getRow("b-row-2").closest(`.${SCROLL_AREA_CLASS}`)).toBe(
+      a.scrollArea,
+    );
+    expect(a.scrollArea.scrollTop).toBe(220);
   });
 
   it("never reads scrollHeight or clientHeight from per-scroll-event handlers", () => {

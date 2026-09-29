@@ -6,7 +6,7 @@ import {
   type NotifyOnChangeProps,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import type {
@@ -91,6 +91,10 @@ import {
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
+import {
+  THREAD_OPEN_CACHE_GC_MS,
+  touchThreadOpenCache,
+} from "../cache-owners/thread-open-cache-owner";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -105,6 +109,7 @@ const THREAD_MENTION_CANDIDATE_LIMIT = 200;
 const THREAD_SEARCH_DEBOUNCE_MS = 150;
 export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
 const THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS = 2;
+export const THREAD_OPEN_PREFETCH_STALE_MS = 10_000;
 
 interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
   timelinePrefetch?: boolean;
@@ -698,6 +703,54 @@ function liftThreadListPlaceholder(
   };
 }
 
+interface FetchThreadDetailBootstrapArgs {
+  queryClient: QueryClient;
+  signal: AbortSignal;
+  threadId: string;
+}
+
+export async function fetchThreadDetailBootstrap({
+  queryClient,
+  signal,
+  threadId,
+}: FetchThreadDetailBootstrapArgs): Promise<ThreadWithIncludesResponse> {
+  const thread = await sdk.threads.get({
+    include: "environment,host",
+    threadId,
+    signal,
+  });
+  ingestThreadDetailBootstrap({
+    queryClient,
+    thread,
+  });
+  return thread;
+}
+
+export function prefetchThreadOpen(
+  queryClient: QueryClient,
+  threadId: string,
+): void {
+  const timelineQueryKey = threadTimelineQueryKey(threadId);
+  const timelineQuery = queryClient
+    .getQueryCache()
+    .find({ queryKey: timelineQueryKey, exact: true });
+  if (timelineQuery?.isActive() === true) {
+    return;
+  }
+  void queryClient.prefetchQuery({
+    queryKey: threadDetailBootstrapQueryKey(threadId),
+    queryFn: ({ signal }) =>
+      fetchThreadDetailBootstrap({ queryClient, signal, threadId }),
+    staleTime: Infinity,
+  });
+  void queryClient.prefetchQuery({
+    queryKey: timelineQueryKey,
+    queryFn: ({ signal }) =>
+      fetchThreadTimeline({ queryClient, signal, threadId }),
+    staleTime: THREAD_OPEN_PREFETCH_STALE_MS,
+  });
+}
+
 export function useThreadDetailBootstrap(
   id: string,
   options?: ThreadDetailBootstrapQueryOptions,
@@ -724,19 +777,11 @@ export function useThreadDetailBootstrap(
         });
       }
 
-      const thread = await sdk.threads.get({
-        include: "environment,host",
-        threadId,
-        signal,
-      });
-      ingestThreadDetailBootstrap({
-        queryClient,
-        thread,
-      });
-      return thread;
+      return fetchThreadDetailBootstrap({ queryClient, signal, threadId });
     },
     enabled,
     staleTime: Infinity,
+    gcTime: THREAD_OPEN_CACHE_GC_MS,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
   });
@@ -985,6 +1030,11 @@ export function useThreadTimeline(
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
+  useEffect(() => {
+    if (enabled) {
+      touchThreadOpenCache(queryClient, id);
+    }
+  }, [enabled, id, queryClient]);
 
   return useQuery<ThreadTimelineResponse>({
     queryKey: threadTimelineQueryKey(id),
@@ -997,6 +1047,7 @@ export function useThreadTimeline(
       });
     },
     enabled,
+    gcTime: THREAD_OPEN_CACHE_GC_MS,
     ...(options?.notifyOnChangeProps === undefined
       ? {}
       : { notifyOnChangeProps: options.notifyOnChangeProps }),

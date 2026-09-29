@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -9,13 +10,16 @@ import {
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import {
   defaultRangeExtractor,
+  observeElementOffset,
   useVirtualizer,
   type Range,
+  type Virtualizer,
 } from "@tanstack/react-virtual";
 import {
   DEFAULT_WINDOWING_MIN_ITEM_COUNT,
   recordTimelineMeasurement,
   type TimelineWindowedItemsProps,
+  type TimelineWindowInitialScroll,
 } from "./TimelineWindowedItemsLoader.js";
 
 const TIMELINE_WINDOW_OVERSCAN_ITEMS = 8;
@@ -23,6 +27,47 @@ const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 const GET_NO_SCROLL_ELEMENT = () => null;
+
+let lastKnownScrollViewportHeight = 800;
+
+function readScrollViewportHeight(scrollElement: HTMLElement | null): number {
+  if (scrollElement === null) return lastKnownScrollViewportHeight;
+  const height = scrollElement.clientHeight;
+  if (height > 0) lastKnownScrollViewportHeight = height;
+  return height;
+}
+
+interface ResolveInitialWindowOffsetArgs {
+  estimateSize: (index: number) => number;
+  gap: number;
+  indexByKey: ReadonlyMap<string, number>;
+  initialScroll: TimelineWindowInitialScroll;
+  itemCount: number;
+  scrollMargin: number;
+  viewportHeight: number;
+}
+
+function resolveInitialWindowOffset({
+  estimateSize,
+  gap,
+  indexByKey,
+  initialScroll,
+  itemCount,
+  scrollMargin,
+  viewportHeight,
+}: ResolveInitialWindowOffsetArgs): number {
+  const targetIndex =
+    initialScroll.kind === "item"
+      ? indexByKey.get(initialScroll.key)
+      : undefined;
+  const endIndex = targetIndex ?? itemCount;
+  let offset = scrollMargin;
+  for (let index = 0; index < endIndex; index += 1) {
+    offset += estimateSize(index) + gap;
+  }
+  if (targetIndex !== undefined) return offset;
+  return Math.max(0, offset - (itemCount > 0 ? gap : 0) - viewportHeight);
+}
 
 function measureBorderBox(
   element: HTMLElement,
@@ -51,6 +96,7 @@ export function TimelineWindowedItems({
   estimateItemHeight,
   gap,
   getScrollElement,
+  initialScroll,
   itemKeys,
   measurements,
   minItemCount = DEFAULT_WINDOWING_MIN_ITEM_COUNT,
@@ -58,12 +104,23 @@ export function TimelineWindowedItems({
 }: TimelineWindowedItemsProps) {
   const configured =
     itemKeys.length >= minItemCount && getScrollElement !== null;
+  const resolvedGetScrollElement = getScrollElement ?? GET_NO_SCROLL_ELEMENT;
   const [scrollRootUsable, setScrollRootUsable] = useState(true);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);
+  const [scrollElementAvailable, setScrollElementAvailable] = useState(
+    () => resolvedGetScrollElement() !== null,
+  );
+  const [initialRect] = useState(() => ({
+    width: 0,
+    height: readScrollViewportHeight(resolvedGetScrollElement()),
+  }));
+  const initialScrollPendingRef = useRef(initialScroll !== undefined);
+  const readDomOffsetOnAttachRef = useRef(
+    initialScroll !== undefined && !scrollElementAvailable,
+  );
   const containerElementRef = useRef<HTMLDivElement>(null);
   const windowingEnabled = configured && scrollRootUsable;
-  const resolvedGetScrollElement = getScrollElement ?? GET_NO_SCROLL_ELEMENT;
 
   const indexByKey = useMemo(
     () => new Map(itemKeys.map((key, index) => [key, index])),
@@ -122,9 +179,43 @@ export function TimelineWindowedItems({
     },
     [forcedIndexes],
   );
-  const initialOffset = useCallback(
-    () => resolvedGetScrollElement()?.scrollTop ?? 0,
-    [resolvedGetScrollElement],
+  const initialOffset = useCallback(() => {
+    const scrollElement = resolvedGetScrollElement();
+    if (initialScroll === undefined || !initialScrollPendingRef.current) {
+      return scrollElement?.scrollTop ?? 0;
+    }
+    return resolveInitialWindowOffset({
+      estimateSize,
+      gap,
+      indexByKey,
+      initialScroll,
+      itemCount: itemKeys.length,
+      scrollMargin,
+      viewportHeight: readScrollViewportHeight(scrollElement),
+    });
+  }, [
+    estimateSize,
+    gap,
+    indexByKey,
+    initialScroll,
+    itemKeys.length,
+    resolvedGetScrollElement,
+    scrollMargin,
+  ]);
+  const observeScrollOffset = useCallback(
+    (
+      instance: Virtualizer<HTMLElement, HTMLDivElement>,
+      onOffset: (offset: number, isScrolling: boolean) => void,
+    ) => {
+      const unsubscribe = observeElementOffset(instance, onOffset);
+      const scrollElement = instance.scrollElement;
+      if (readDomOffsetOnAttachRef.current && scrollElement !== null) {
+        readDomOffsetOnAttachRef.current = false;
+        onOffset(scrollElement.scrollTop, false);
+      }
+      return unsubscribe;
+    },
+    [],
   );
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
@@ -137,7 +228,9 @@ export function TimelineWindowedItems({
     getItemKey,
     getScrollElement: resolvedGetScrollElement,
     initialOffset,
+    initialRect,
     measureElement,
+    observeElementOffset: observeScrollOffset,
     overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
     scrollMargin,
@@ -172,14 +265,7 @@ export function TimelineWindowedItems({
       }
     };
     const scrollElement = resolvedGetScrollElement();
-    if (scrollElement === null) {
-      setScrollRootUsable(false);
-      const frame = requestAnimationFrame(() => {
-        updateRootUsability();
-        updateScrollGeometry();
-      });
-      return () => cancelAnimationFrame(frame);
-    }
+    if (scrollElement === null) return;
     updateRootUsability();
     updateScrollGeometry();
     if (typeof ResizeObserver === "undefined") return;
@@ -193,7 +279,32 @@ export function TimelineWindowedItems({
       observer.observe(containerParent);
     }
     return () => observer.disconnect();
-  }, [configured, resolvedGetScrollElement, updateScrollGeometry]);
+  }, [
+    configured,
+    resolvedGetScrollElement,
+    scrollElementAvailable,
+    updateScrollGeometry,
+  ]);
+
+  useEffect(() => {
+    if (!configured || scrollElementAvailable) return;
+    if (resolvedGetScrollElement() !== null) {
+      setScrollElementAvailable(true);
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      if (resolvedGetScrollElement() !== null) {
+        setScrollElementAvailable(true);
+        return;
+      }
+      setScrollRootUsable(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [configured, resolvedGetScrollElement, scrollElementAvailable]);
+
+  useLayoutEffect(() => {
+    initialScrollPendingRef.current = false;
+  }, []);
 
   useLayoutEffect(updateScrollGeometry);
 

@@ -263,6 +263,9 @@ export function BottomAnchoredScrollBody({
     scrollContentHeight: number | null;
   }>({ scrollAreaClientHeight: null, scrollContentHeight: null });
   const scrollAnchorRowsRef = useRef<NodeListOf<HTMLElement> | null>(null);
+  const appliedScrollAnchorThreadRef = useRef<{
+    threadId: string | undefined;
+  } | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const initialScrollRestoreRowId = useMemo(() => {
     if (scrollAnchorThreadId === undefined) return null;
@@ -428,6 +431,46 @@ export function BottomAnchoredScrollBody({
       scrollTop: scrollArea.scrollTop,
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const applied = appliedScrollAnchorThreadRef.current;
+    if (applied !== null && applied.threadId === scrollAnchorThreadId) return;
+    appliedScrollAnchorThreadRef.current = { threadId: scrollAnchorThreadId };
+    if (applied !== null) {
+      cancelQueuedRestore();
+      const captureThrottle = scrollAnchorCaptureThrottleRef.current;
+      if (captureThrottle.trailingTimeout !== null) {
+        window.clearTimeout(captureThrottle.trailingTimeout);
+      }
+      scrollAnchorCaptureThrottleRef.current = {
+        lastWriteAt: 0,
+        trailingTimeout: null,
+      };
+      shouldStickToBottomRef.current = true;
+      userDetachedFromBottomRef.current = false;
+      userScrollIntentUntilRef.current = 0;
+      userScrollInputPendingRef.current = false;
+      pendingPrependAnchorRef.current = null;
+      pendingScrollRestoreRef.current = null;
+      scrollAnchorRowsRef.current = null;
+      setIsAtBottom(true);
+    }
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+    const anchor =
+      scrollAnchorThreadId === undefined
+        ? null
+        : store.get(threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId));
+    if (anchor && !anchor.atBottom) return;
+    scrollArea.scrollTop = refreshMaxScrollOffset(scrollArea);
+    queueBottomRestore();
+  }, [
+    cancelQueuedRestore,
+    queueBottomRestore,
+    refreshMaxScrollOffset,
+    scrollAnchorThreadId,
+    store,
+  ]);
 
   useLayoutEffect(() => {
     const scrollArea = scrollAreaRef.current;
@@ -823,14 +866,19 @@ export function BottomAnchoredScrollBody({
     [refreshMaxScrollOffset, writeScrollAnchor],
   );
 
+  const flushScrollAnchorCaptureRef = useRef(flushScrollAnchorCapture);
+  useLayoutEffect(() => {
+    flushScrollAnchorCaptureRef.current = flushScrollAnchorCapture;
+  }, [flushScrollAnchorCapture]);
+
   useLayoutEffect(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
 
     return () => {
-      flushScrollAnchorCapture(scrollArea);
+      flushScrollAnchorCaptureRef.current(scrollArea);
     };
-  }, [flushScrollAnchorCapture]);
+  }, []);
 
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
