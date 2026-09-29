@@ -2583,6 +2583,7 @@ export interface PluginComposerApi {
   ): void;
 
   /**
+   * @internal Legacy text replacement; retained at runtime for older plugins.
    * @deprecated Use `replace` with explicit text and mentions. This legacy method reconciles mentions automatically.
    * Replace the draft's plain text. Attachments are preserved. Inline mentions
    * outside the changed range are preserved and rebased; mentions overlapped
@@ -2590,12 +2591,16 @@ export interface PluginComposerApi {
    */
   setText(next: string): void;
   /**
+   * @internal Legacy text updater; retained at runtime for older plugins.
    * @deprecated Use `replace(current => next)` with explicit mention ranges.
    * Replace the draft's plain text from the latest committed value. Uses the
    * same structured-state reconciliation as `setText`.
    */
   updateText(updater: (current: string) => string): void;
-  /** @deprecated Use `replace({ text: "", mentions: [] })`. Attachments are preserved. */
+  /**
+   * @internal Legacy text clearing; retained at runtime for older plugins.
+   * @deprecated Use `replace({ text: "", mentions: [] })`. Attachments are preserved.
+   */
   clear(): void;
   /**
    * Insert text and mentions. See {@link ComposerInsertOptions} for placement.

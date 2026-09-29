@@ -87,11 +87,10 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   - Save `composer.draft`, then restore it with `composer.replace(saved)`.
     For an LLM rewrite, map preserved mention placeholders to explicit ranges
     in the resulting text and replace text and mentions together.
-  - `setText`, `updateText`, and `clear` remain deprecated typed compatibility
-    methods. Use `insert` or `replace` in new code. `addQuote`, `insertMention`,
-    and `removeMention` are runtime-only compatibility methods and are absent
-    from published types. Legacy text setters retain automatic mention
-    reconciliation; legacy `insertMention` retains its bare-label formatting.
+  - `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
+    `removeMention` are runtime-only compatibility methods and are absent
+    from published types. Use `insert` or `replace` in new code. Legacy text
+    setters retain automatic mention reconciliation; legacy `insertMention` retains its bare-label formatting.
   - `submit({ sendAt? , experimental_data? })` submits exactly as pressing
     Enter would (send, or queue while the thread is busy). It waits for
     uploads in progress, then rejects with `submittingBlockedReason` when the
