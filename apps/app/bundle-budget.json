@@ -101,6 +101,7 @@
     "@tiptap/react",
     "@tiptap/starter-kit",
     "@xterm/xterm",
+    "ansi-to-html",
     "katex",
     "oniguruma-to-es",
     "prosemirror-model",
@@ -152,10 +153,15 @@
     "src/components/thread/terminal/ThreadTerminalPanel.tsx": [
       "boot",
       "SplitWorkspaceRoute"
+    ],
+    "src/components/thread/timeline/TerminalOutputBlock.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
     ]
   },
   "onDemandPackages": {
     "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
+    "ansi-to-html": "src/components/thread/timeline/TerminalOutputBlock.tsx",
     "katex": "src/components/ui/markdown-katex.ts",
     "rehype-katex": "src/components/ui/markdown-katex.ts"
   },
@@ -173,6 +179,7 @@
         "@shikijs/langs",
         "@shikijs/vscode-textmate",
         "@xterm/xterm",
+        "ansi-to-html",
         "katex",
         "mermaid",
         "oniguruma-to-es",
