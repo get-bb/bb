@@ -2,7 +2,16 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect, useLayoutEffect, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
@@ -391,6 +400,8 @@ function renderEmbeddedChat(
 }
 
 describe("EmbeddedThreadChat", () => {
+  beforeAll(() => LazyQueuedMessagesList.preload());
+
   beforeEach(() => {
     window.localStorage.clear();
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});

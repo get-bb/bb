@@ -27,9 +27,9 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
-  QueuedMessagesList,
+  LazyQueuedMessagesList,
   type QueuedMessageInlineEditor,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+} from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import type {
   ExecutionControlsProps,
   ExecutionPermissionConfig,
@@ -1036,7 +1036,7 @@ function EmbeddedThreadChatWithComposer({
   const queuedMessagesStack = useMemo(
     () =>
       queuedMessages.length > 0 && !hasComposerBlockingPendingInteraction ? (
-        <QueuedMessagesList
+        <LazyQueuedMessagesList
           attachedToComposer
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}

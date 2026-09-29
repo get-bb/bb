@@ -150,6 +150,10 @@
       "boot",
       "SplitWorkspaceRoute"
     ],
+    "src/components/promptbox/banner/QueuedMessagesList.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
     "src/components/thread/terminal/ThreadTerminalPanel.tsx": [
       "boot",
       "SplitWorkspaceRoute"
@@ -170,6 +174,10 @@
       "maxBytes": 2339086,
       "maxBrotliBytes": 630625,
       "forbiddenPackages": [
+        "@dnd-kit/accessibility",
+        "@dnd-kit/core",
+        "@dnd-kit/sortable",
+        "@dnd-kit/utilities",
         "@pierre/diffs",
         "@pierre/theming",
         "@pierre/trees",
