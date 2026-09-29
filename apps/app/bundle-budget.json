@@ -111,6 +111,8 @@
     "shiki"
   ],
   "splitBoundaries": {
+    "src/components/code/BbDiff.tsx": ["boot", "SplitWorkspaceRoute"],
+    "src/components/code/BbSourceCode.tsx": ["boot", "SplitWorkspaceRoute"],
     "src/components/sidebar/SidebarFooterCustomize.tsx": [
       "boot",
       "SplitWorkspaceRoute"

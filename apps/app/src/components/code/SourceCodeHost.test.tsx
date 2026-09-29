@@ -9,6 +9,7 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
+import { SplitPreviewProvider } from "@/lib/define-split";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { SourceCodeHost } from "./SourceCodeHost";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -137,6 +138,34 @@ describe("SourceCodeHost", () => {
     render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
 
     expect(await screen.findByTestId("bb-source-code")).toBeDefined();
+  });
+
+  it("shows the caller's fallback while BB's renderer loads and nothing for SDK callers", () => {
+    const loading = (children: React.ReactNode) => (
+      <SplitPreviewProvider
+        id="bb-source-code"
+        state="loading"
+        onRetry={() => {}}
+      >
+        {children}
+      </SplitPreviewProvider>
+    );
+    render(
+      loading(
+        <SourceCodeHost
+          content={CONTENT}
+          path="src/app.ts"
+          fallback={<p>Loading source</p>}
+        />,
+      ),
+    );
+    expect(screen.getByText("Loading source")).toBeDefined();
+    cleanup();
+
+    const sdk = render(
+      loading(<PluginSourceCode content={CONTENT} path="src/app.ts" />),
+    );
+    expect(sdk.container.childElementCount).toBe(0);
   });
 
   it("resolves presentation defaults for BB's renderer", async () => {
