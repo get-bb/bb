@@ -226,7 +226,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb environment providers`
 - `bb environment list`
 - `bb environment delete`
-- `bb environment retry-cleanup`
+- `bb environment cleanup`
 - `bb environment show`
 - `bb environment get`
 - `bb environment status`
@@ -365,6 +365,6 @@ connects. With `--no-wait`, it returns the creating host ID immediately.
 
 - `bb machine paths <id> [--json]`: read the latest reported thread-storage root,
   including offline machines; unavailable until the first daemon session.
-- `bb environment retry-cleanup <id> [--json]`: bypass backoff for pending or failed
+- `bb environment cleanup <id> [--json]`: bypass backoff for pending or failed
   provider cleanup; rejects live threads and environments without pending cleanup.
   Inspect completion through `bb environment show <id>`.

@@ -155,7 +155,7 @@ export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
-  experimental_retryCleanup(args: EnvironmentActionArgs): Promise<{ ok: true }>;
+  experimental_cleanup(args: EnvironmentActionArgs): Promise<{ ok: true }>;
   archiveThreads(
     args: EnvironmentActionArgs,
   ): Promise<EnvironmentArchiveThreadsResult>;
@@ -400,9 +400,9 @@ export function createEnvironmentsArea(
       );
       return response.providers;
     },
-    async experimental_retryCleanup(input) {
+    async experimental_cleanup(input) {
       return transport.readJson(
-        transport.api.v1.environments[":id"]["retry-cleanup"].$post({
+        transport.api.v1.environments[":id"]["cleanup"].$post({
           param: { id: input.environmentId },
         }),
       );

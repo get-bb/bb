@@ -1427,7 +1427,7 @@ describe("core environment orchestration", () => {
             .run();
           const retryRequest = () =>
             harness.app.request(
-              `/api/v1/environments/${environmentId}/retry-cleanup`,
+              `/api/v1/environments/${environmentId}/cleanup`,
               { method: "POST" },
             );
           expect((await retryRequest()).status).toBe(409);
@@ -1446,7 +1446,7 @@ describe("core environment orchestration", () => {
             }),
           });
           await expect(
-            sdk.environments.experimental_retryCleanup({ environmentId }),
+            sdk.environments.experimental_cleanup({ environmentId }),
           ).resolves.toEqual({ ok: true });
           await expect
             .poll(
@@ -1478,7 +1478,7 @@ describe("core environment orchestration", () => {
       expect(
         (
           await harness.app.request(
-            `/api/v1/environments/${environmentId}/retry-cleanup`,
+            `/api/v1/environments/${environmentId}/cleanup`,
             { method: "POST" },
           )
         ).status,

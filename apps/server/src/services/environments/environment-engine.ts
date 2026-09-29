@@ -884,10 +884,7 @@ async function sweepProviderEnvironmentInSlot(
   );
 }
 
-export function retryEnvironmentCleanup(
-  deps: Deps,
-  environmentId: string,
-): boolean {
+export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   const row = getEnvironment(deps.db, environmentId);
   if (
     row === null ||

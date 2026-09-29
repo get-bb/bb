@@ -1082,8 +1082,8 @@ export const publicApiRoutes = {
   },
 
   environments: {
-    retryCleanup: defineRoute({
-      path: "/environments/:id/retry-cleanup",
+    cleanup: defineRoute({
+      path: "/environments/:id/cleanup",
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),

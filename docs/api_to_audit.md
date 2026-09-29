@@ -3047,12 +3047,12 @@ from the machine's latest daemon session, even offline or without live threads.
 It returns 409 when no session has reported paths. It does not wake the machine
 or create directories. CLI: `bb machine paths <id> [--json]`.
 
-`bb.sdk.environments.experimental_retryCleanup({ environmentId })` bypasses
+`bb.sdk.environments.experimental_cleanup({ environmentId })` bypasses
 backoff for pending or failed provider cleanup and starts the existing lifecycle
 sweep. It rejects live threads, environments without pending cleanup, and
 already-removed environments. Acceptance is not completion; inspect the ordinary
 environment lifecycle fields for progress. CLI:
-`bb environment retry-cleanup <id> [--json]`.
+`bb environment cleanup <id> [--json]`.
 
 Before stabilization, audit path portability and session freshness after machine
 re-enrollment, and cleanup retry behavior across unavailable providers, concurrent
