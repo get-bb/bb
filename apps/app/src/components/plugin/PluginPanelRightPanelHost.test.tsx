@@ -733,13 +733,11 @@ describe("PluginPanelRightPanelHost", () => {
     expect(showButton.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
   });
 
-  it("keeps one panel toggle and mounts the collapsed panel before opening", async () => {
+  it("keeps one panel toggle and retains the panel after its first opening", async () => {
     renderHost();
 
     expect(screen.getByTestId("shared-secondary-panel-layout")).toBeTruthy();
-    const collapsedPanel = await screen.findByTestId(
-      "shared-thread-secondary-panel",
-    );
+    expect(screen.queryByTestId("shared-thread-secondary-panel")).toBeNull();
     await waitFor(() =>
       expect(
         screen
@@ -753,8 +751,8 @@ describe("PluginPanelRightPanelHost", () => {
     });
     fireEvent.click(showButton);
 
-    expect(screen.getByTestId("shared-thread-secondary-panel")).toBe(
-      collapsedPanel,
+    const realizedPanel = await screen.findByTestId(
+      "shared-thread-secondary-panel",
     );
     expect(
       screen
@@ -777,6 +775,9 @@ describe("PluginPanelRightPanelHost", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+    expect(screen.getByTestId("shared-thread-secondary-panel")).toBe(
+      realizedPanel,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),

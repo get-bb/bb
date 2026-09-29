@@ -28,6 +28,7 @@ import {
   LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadSecondaryPanel,
+  preloadThreadSecondaryPanel,
   LazyThreadStorageFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
@@ -1198,6 +1199,9 @@ export function PluginPanelRightPanelHost({
                   className={RIGHT_PANEL_TOGGLE_CLASS}
                   aria-label={toggleLabel}
                   aria-pressed={isOpen}
+                  onPointerEnter={preloadThreadSecondaryPanel}
+                  onFocus={preloadThreadSecondaryPanel}
+                  onPointerDown={preloadThreadSecondaryPanel}
                   onClick={togglePanel}
                 >
                   <Icon name={toggleIconName} />

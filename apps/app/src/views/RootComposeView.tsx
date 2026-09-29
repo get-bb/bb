@@ -1,4 +1,3 @@
-import { scheduleSplitPreloads } from "@/lib/define-split";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import {
   ThreadTitle,
@@ -58,7 +57,6 @@ import type {
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import {
   LazyBrowserTabDeck,
-  LazyThreadSecondaryPanel,
   preloadThreadSecondaryPanel,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
@@ -285,8 +283,6 @@ export function RootComposeRightPanelToggle({
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
 
-  useEffect(() => scheduleSplitPreloads([LazyThreadSecondaryPanel]), []);
-
   return (
     <Button
       type="button"
@@ -298,6 +294,7 @@ export function RootComposeRightPanelToggle({
       }
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       aria-expanded={isOpen}
+      onPointerEnter={preloadThreadSecondaryPanel}
       onFocus={preloadThreadSecondaryPanel}
       onPointerDown={preloadThreadSecondaryPanel}
       onClick={onToggle}

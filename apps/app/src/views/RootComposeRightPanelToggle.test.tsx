@@ -49,13 +49,14 @@ describe("RootComposeRightPanelToggle", () => {
     render(<RootComposeRightPanelToggle isOpen={false} onToggle={vi.fn()} />);
 
     const button = screen.getByRole("button", { name: "Show right panel" });
+    fireEvent.pointerEnter(button);
     fireEvent.pointerDown(button);
     fireEvent.focus(button);
 
-    expect(preloadThreadSecondaryPanel).toHaveBeenCalledTimes(2);
+    expect(preloadThreadSecondaryPanel).toHaveBeenCalledTimes(3);
   });
 
-  it("warms the panel chunk after yielding the initial paint", async () => {
+  it("does not preload a closed panel merely because the browser becomes idle", async () => {
     vi.useFakeTimers();
     const preload = vi
       .spyOn(LazyThreadSecondaryPanel, "preload")
@@ -65,6 +66,6 @@ describe("RootComposeRightPanelToggle", () => {
 
     expect(preload).not.toHaveBeenCalled();
     await act(async () => vi.runAllTimersAsync());
-    expect(preload).toHaveBeenCalledOnce();
+    expect(preload).not.toHaveBeenCalled();
   });
 });

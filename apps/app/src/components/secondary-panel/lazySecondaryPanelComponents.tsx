@@ -1,5 +1,5 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
-import type { ComponentProps, ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -88,37 +88,59 @@ type LazyThreadSecondaryPanelProps = ComponentProps<
   drawerFallback: ReactNode;
 };
 
-export const LazyThreadSecondaryPanel =
-  defineSplit<LazyThreadSecondaryPanelProps>({
-    id: "thread-secondary-panel",
-    load: () =>
-      import("./ThreadSecondaryPanel").then(
-        (module) => module.ThreadSecondaryPanel,
-      ),
-    loading: ({ drawerFallback, ...props }) =>
-      props.renderAsDrawer ? (
-        drawerFallback
-      ) : (
+const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
+  id: "thread-secondary-panel",
+  load: () =>
+    import("./ThreadSecondaryPanel").then(
+      (module) => module.ThreadSecondaryPanel,
+    ),
+  loading: ({ drawerFallback, ...props }) =>
+    props.renderAsDrawer ? (
+      drawerFallback
+    ) : (
+      <ThreadSecondaryPanelInlinePlaceholder
+        isOpen={props.isOpen}
+        isConversationCollapsed={props.isConversationCollapsed}
+        resizablePanelId={props.resizablePanelId}
+      />
+    ),
+  error: (props) =>
+    props.renderAsDrawer ? (
+      <SplitLoadFailure retry={props.retry} />
+    ) : (
+      <ThreadSecondaryPanelInlinePlaceholder
+        isOpen={props.isOpen}
+        isConversationCollapsed={props.isConversationCollapsed}
+        resizablePanelId={props.resizablePanelId}
+      >
+        <SplitLoadFailure retry={props.retry} />
+      </ThreadSecondaryPanelInlinePlaceholder>
+    ),
+  preload: "intent",
+});
+
+function useRetainedRealization(active: boolean): boolean {
+  const [realized, setRealized] = useState(active);
+  if (active && !realized) setRealized(true);
+  return active || realized;
+}
+
+export const LazyThreadSecondaryPanel = Object.assign(
+  function ThreadSecondaryPanelGate(props: LazyThreadSecondaryPanelProps) {
+    const realized = useRetainedRealization(props.isOpen);
+    if (!realized) {
+      return props.renderAsDrawer ? null : (
         <ThreadSecondaryPanelInlinePlaceholder
-          isOpen={props.isOpen}
+          isOpen={false}
           isConversationCollapsed={props.isConversationCollapsed}
           resizablePanelId={props.resizablePanelId}
         />
-      ),
-    error: (props) =>
-      props.renderAsDrawer ? (
-        <SplitLoadFailure retry={props.retry} />
-      ) : (
-        <ThreadSecondaryPanelInlinePlaceholder
-          isOpen={props.isOpen}
-          isConversationCollapsed={props.isConversationCollapsed}
-          resizablePanelId={props.resizablePanelId}
-        >
-          <SplitLoadFailure retry={props.retry} />
-        </ThreadSecondaryPanelInlinePlaceholder>
-      ),
-    preload: "idle",
-  });
+      );
+    }
+    return <ThreadSecondaryPanelSplit {...props} />;
+  },
+  ThreadSecondaryPanelSplit,
+);
 
 export function preloadThreadSecondaryPanel(): void {
   void LazyThreadSecondaryPanel.preload();
@@ -138,7 +160,7 @@ export const LazyThreadTerminalPanel = defineSplit({
   preload: "render",
 });
 
-export const LazyBrowserTabDeck = defineSplit({
+const BrowserTabDeckSplit = defineSplit({
   id: "browser-tab-deck",
   load: () =>
     import("./BrowserTabDeck").then((module) => module.BrowserTabDeck),
@@ -149,6 +171,13 @@ export const LazyBrowserTabDeck = defineSplit({
     ),
   preload: "render",
 });
+
+export const LazyBrowserTabDeck = Object.assign(function BrowserTabDeckGate(
+  props: ComponentProps<typeof BrowserTabDeckSplit>,
+) {
+  const realized = useRetainedRealization(props.activeBrowserTabId !== null);
+  return realized ? <BrowserTabDeckSplit {...props} /> : null;
+}, BrowserTabDeckSplit);
 
 export const LazyNewTabPage = defineSplit({
   id: "new-tab-page",

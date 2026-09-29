@@ -33,8 +33,12 @@ those shared with a renderer's worker or data-loading stage. Footer customizatio
 keeps its real header and Done button and reserves the expected content height
 with a simple skeleton bar, without fake icons or rows.
 
-The loader is shared between speculative preload and rendering. A failed import
-clears the helper's promise cache. Retry creates a fresh React lazy component,
+The loader is shared between speculative preload and rendering, including automatic
+retries. Recognized browser chunk-download and Vite CSS-preload failures get two
+additional attempts after 500 ms and 1500 ms; the loading UI stays visible until
+success or exhaustion. Other loader errors and component render errors fail
+immediately. There is no retry loop, automatic page reload, or URL rewriting.
+A failed import clears the helper's promise cache after the attempts finish. Retry creates a fresh React lazy component,
 so a rejected lazy instance does not permanently trap the feature in its error
 state. Browser module caching can still prevent recovery from a failed download, module
 evaluation, or stale deployment URL; use the browser reload in that case. A blocked
@@ -90,9 +94,10 @@ Pilots:
 - `LazySidebarFooterCustomize`: render on demand; loading/error retain Done and
   Escape so slow or failed downloads do not trap customization mode.
 - `LazyFilePreview`: render on demand; a local panel skeleton.
-- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders and an idle
-  preload scope in `RootComposeRightPanelToggle`, plus explicit focus/pointer
-  warm-up. Inline failure preserves the resizable Panel structure.
+- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders, intent
+  warm-up on panel toggles, and realization on first open. Closed desktop panels
+  retain a lightweight resizable Panel shell; loaded content stays mounted after
+  closing. Inline failure preserves the resizable Panel structure.
 
 ## Enforce the boundary
 
@@ -156,3 +161,11 @@ Each child returns:
 
 Review each loading experience before integration. Build and check the combined
 result too: shared chunk changes mean independent byte savings are not additive.
+
+## Audited loading policies
+
+See [the September 29 loading-policy audit](ui-split-loading-audit.md) for the
+complete inventory, actual mount gates, intent wiring, nested loads and rationale.
+A policy label alone does not make a hidden mounted component lazy. Keep the
+implementation behind an explicit first-use gate, then retain it where closing
+must preserve state. Do not add idle preloads merely to hide the loading state.

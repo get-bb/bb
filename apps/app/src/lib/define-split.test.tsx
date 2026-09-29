@@ -205,3 +205,69 @@ it.each(["preload", "previous mount"])(
     second.unmount();
   },
 );
+
+it.each([
+  new TypeError(
+    "Failed to fetch dynamically imported module: /assets/editor.js",
+  ),
+  new TypeError("error loading dynamically imported module: /assets/editor.js"),
+  new TypeError("Importing a module script failed."),
+  new Error("Unable to preload CSS for /assets/editor.css"),
+])(
+  "shares bounded automatic download retries across preload and render: %s",
+  async (error) => {
+    vi.useFakeTimers();
+    const load = vi
+      .fn<() => Promise<React.ComponentType>>()
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error)
+      .mockResolvedValue(() => <p>Recovered editor</p>);
+    const Split = defineSplit({
+      id: "automatic-retry",
+      load,
+      loading: () => <p>Loading editor</p>,
+      preload: "intent",
+    });
+    const warm = Split.preload();
+    render(<Split />);
+    await act(async () => {});
+    expect(load).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(499));
+    expect(load).toHaveBeenCalledOnce();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Loading editor")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(1500));
+    await warm;
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(screen.getByText("Recovered editor")).toBeTruthy();
+  },
+);
+
+it("stops automatic retries after three attempts and permits a new manual attempt", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const load = vi
+    .fn<() => Promise<React.ComponentType>>()
+    .mockRejectedValue(
+      new TypeError("Failed to fetch dynamically imported module: /editor.js"),
+    );
+  const Split = defineSplit({
+    id: "exhausted-retry",
+    load,
+    loading: () => <p>Loading editor</p>,
+    preload: "render",
+  });
+  render(<Split />);
+  await act(async () => vi.runAllTimersAsync());
+  expect(load).toHaveBeenCalledTimes(3);
+  expect(screen.getByRole("alert")).toBeTruthy();
+  await act(async () => vi.advanceTimersByTimeAsync(60000));
+  expect(load).toHaveBeenCalledTimes(3);
+  load.mockResolvedValue(() => <p>Recovered editor</p>);
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await act(async () => vi.runAllTimersAsync());
+  expect(screen.getByText("Recovered editor")).toBeTruthy();
+  expect(load).toHaveBeenCalledTimes(4);
+});

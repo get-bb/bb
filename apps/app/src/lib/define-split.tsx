@@ -70,6 +70,29 @@ export interface PreloadableSplit {
   preload: () => Promise<void>;
 }
 
+const DOWNLOAD_RETRY_DELAYS = [500, 1500];
+
+function isChunkDownloadError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /^(Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS for)/i.test(
+      error.message,
+    )
+  );
+}
+
+async function loadWithDownloadRetries<T>(load: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await load();
+    } catch (error) {
+      const delay = DOWNLOAD_RETRY_DELAYS[attempt];
+      if (delay === undefined || !isChunkDownloadError(error)) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 export function defineSplit<P extends object>({
   id,
   load,
@@ -87,7 +110,7 @@ export function defineSplit<P extends object>({
   let loaded: ComponentType<P> | null = null;
   const loadModule = () => {
     pending ??= Promise.resolve()
-      .then(load)
+      .then(() => loadWithDownloadRetries(load))
       .then((component) => {
         loaded = component;
         return { default: component };
