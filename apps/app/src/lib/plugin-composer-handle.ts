@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
-  ComposerDraft,
+  ComposerDraftReplacement,
+  ComposerDraftSnapshot,
   ComposerMention,
   ComposerSelection,
   PluginComposerApi,
@@ -8,6 +9,7 @@ import type {
 import {
   appendComposerDraft,
   createComposerHandleBinding,
+  createComposerDraftActions,
   OFF_SCREEN_EDITOR_STATE,
   type ComposerHandleBinding,
   type ComposerHandleController,
@@ -137,12 +139,15 @@ function mentionText(mention: ComposerMention): string {
   return serializedTextForPromptMentionResource(resourceOf(mention));
 }
 
-const composerDrafts = new WeakMap<PromptDraftState, ComposerDraft>();
+const composerDrafts = new WeakMap<PromptDraftState, ComposerDraftSnapshot>();
 
-function composerDraftOf(draft: PromptDraftState): ComposerDraft {
+export function composerDraftFromPromptDraft(
+  draft: PromptDraftState,
+): ComposerDraftSnapshot {
   const cached = composerDrafts.get(draft);
   if (cached !== undefined) return cached;
-  const next: ComposerDraft = {
+  const next: ComposerDraftSnapshot = {
+    attachments: draft.attachments,
     text: draft.text,
     mentions: draft.mentions.map(composerMentionFromTextMention),
   };
@@ -150,22 +155,55 @@ function composerDraftOf(draft: PromptDraftState): ComposerDraft {
   return next;
 }
 
+type ComposerDraftSource = Pick<
+  ComposerSource,
+  "getCurrent" | "setDraft" | "focus" | "isAvailable"
+>;
+
+export function createCoreComposerActions(source: ComposerDraftSource) {
+  const target = composerDraftTarget(source);
+  const actions = createComposerDraftActions(() => target);
+  return {
+    get draft() {
+      return actions.draft;
+    },
+    replace: actions.replace,
+    focus: actions.focus,
+    restoreDraft: (draft: PromptDraftState) =>
+      actions.replace(composerDraftFromPromptDraft(draft)),
+  };
+}
+
+function composerDraftTarget(source: ComposerDraftSource) {
+  return {
+    getDraft: () => composerDraftFromPromptDraft(source.getCurrent()),
+    setDraft: (next: ComposerDraftReplacement) => {
+      const current = source.getCurrent();
+      source.setDraft({
+        ...current,
+        text: next.text,
+        mentions: next.mentions.map(textMentionFromComposerMention),
+        attachments:
+          next.attachments === undefined ||
+          next.attachments === current.attachments
+            ? current.attachments
+            : [...next.attachments],
+      });
+    },
+    isAvailable: source.isAvailable ?? (() => true),
+    focus: source.focus,
+  };
+}
+
 function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
-  const setDraft = (next: ComposerDraft) =>
-    source.setDraft({
-      ...source.getCurrent(),
-      text: next.text,
-      mentions: next.mentions.map(textMentionFromComposerMention),
-    });
-  const getDraft = () => composerDraftOf(source.getCurrent());
+  const draftTarget = composerDraftTarget(source);
   const hostSetSelection = source.setSelection;
   const key = source.textEffectKey;
   return {
+    ...draftTarget,
     key,
     scope: source.scope,
-    getDraft,
     getAttachmentCount: () => source.getCurrent().attachments.length,
-    setDraft,
     addQuote: (text) => {
       const current = source.getCurrent();
       const next = appendQuoteAndAttachmentsToDraft(current, text, []);
@@ -185,11 +223,12 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
         },
         block,
       );
-      if (!inserted) setDraft(appendComposerDraft(getDraft(), value, block));
+      if (!inserted)
+        draftTarget.setDraft(
+          appendComposerDraft(draftTarget.getDraft(), value, block),
+        );
       return true;
     },
-    isAvailable: source.isAvailable ?? (() => true),
-    focus: source.focus,
     ...(source.submit !== undefined ? { submit: source.submit } : {}),
     ...(hostSetSelection !== undefined
       ? {

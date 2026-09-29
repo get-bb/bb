@@ -1,5 +1,12 @@
+import {
+  removeComposerMentions,
+  setComposerText,
+} from "./composer-draft-transforms.js";
+export { reconcileComposerMentions } from "./composer-draft-transforms.js";
 import type {
   ComposerDraft,
+  ComposerDraftReplacement,
+  ComposerDraftSnapshot,
   ComposerInsertOptions,
   ComposerInsertPart,
   ComposerMention,
@@ -11,6 +18,9 @@ import type {
   PluginComposerScope,
   PluginComposerTextEffect,
 } from "@get-bb/plugin-sdk";
+import { createComposerDraftActions } from "./composer-draft-actions.js";
+
+export { createComposerDraftActions } from "./composer-draft-actions.js";
 
 export interface ComposerEditorState {
   layout: "expanded" | "compact";
@@ -25,9 +35,9 @@ export interface ComposerEditorState {
 export interface ComposerHandleTarget {
   key: string;
   scope: PluginComposerScope;
-  getDraft(): ComposerDraft;
+  getDraft(): ComposerDraftSnapshot;
   getAttachmentCount(): number;
-  setDraft(next: ComposerDraft): void;
+  setDraft(next: ComposerDraftReplacement): void;
   addQuote(text: string): void;
   getEditorState(): ComposerEditorState;
   subscribeEditorState(listener: () => void): () => void;
@@ -77,49 +87,6 @@ function warnDeprecatedComposerMember(oldName: string, newName: string): void {
   console.warn(
     `useComposer().${oldName} is deprecated; use useComposer().${newName}.`,
   );
-}
-
-export function reconcileComposerMentions(
-  currentText: string,
-  nextText: string,
-  mentions: readonly ComposerMention[],
-): ComposerMention[] {
-  if (currentText === nextText) return [...mentions];
-
-  let unchangedPrefixLength = 0;
-  const maximumPrefixLength = Math.min(currentText.length, nextText.length);
-  while (
-    unchangedPrefixLength < maximumPrefixLength &&
-    currentText[unchangedPrefixLength] === nextText[unchangedPrefixLength]
-  ) {
-    unchangedPrefixLength += 1;
-  }
-
-  let unchangedSuffixLength = 0;
-  while (
-    unchangedSuffixLength < currentText.length - unchangedPrefixLength &&
-    unchangedSuffixLength < nextText.length - unchangedPrefixLength &&
-    currentText[currentText.length - unchangedSuffixLength - 1] ===
-      nextText[nextText.length - unchangedSuffixLength - 1]
-  ) {
-    unchangedSuffixLength += 1;
-  }
-
-  const replacedCurrentEnd = currentText.length - unchangedSuffixLength;
-  const replacementDelta = nextText.length - currentText.length;
-  return mentions.flatMap((mention) => {
-    if (mention.to <= unchangedPrefixLength) return [mention];
-    if (mention.from >= replacedCurrentEnd) {
-      return [
-        {
-          ...mention,
-          from: mention.from + replacementDelta,
-          to: mention.to + replacementDelta,
-        },
-      ];
-    }
-    return [];
-  });
 }
 
 export function appendComposerDraft(
@@ -192,42 +159,6 @@ function insertValue(
   return { text, mentions };
 }
 
-function withoutOwnMention(
-  draft: ComposerDraft,
-  pluginId: string,
-  provider: string,
-  id: string,
-): ComposerDraft {
-  let next = draft;
-  const matches = draft.mentions
-    .filter(
-      (mention) =>
-        mention.kind === "plugin" &&
-        mention.pluginId === pluginId &&
-        mention.provider === provider &&
-        mention.id === id,
-    )
-    .sort((a, b) => b.from - a.from);
-  for (const match of matches) {
-    const length = match.to - match.from;
-    next = {
-      text: next.text.slice(0, match.from) + next.text.slice(match.to),
-      mentions: next.mentions
-        .filter((mention) => mention !== match)
-        .map((mention) =>
-          mention.from >= match.to
-            ? {
-                ...mention,
-                from: mention.from - length,
-                to: mention.to - length,
-              }
-            : mention,
-        ),
-    };
-  }
-  return next;
-}
-
 function isDraftEmpty(draft: ComposerDraft, attachmentCount: number): boolean {
   return (
     draft.text.trim().length === 0 &&
@@ -236,19 +167,25 @@ function isDraftEmpty(draft: ComposerDraft, attachmentCount: number): boolean {
   );
 }
 
-const legacyDrafts = new WeakSet<ComposerDraft>();
+const legacyDrafts = new WeakMap<
+  ComposerDraftSnapshot,
+  ComposerDraftSnapshot
+>();
 
 function withLegacyDraftFields(
-  draft: ComposerDraft,
+  draft: ComposerDraftSnapshot,
   attachmentCount: number,
-): ComposerDraft {
-  if (legacyDrafts.has(draft)) return draft;
-  Object.defineProperties(draft, {
+): ComposerDraftSnapshot {
+  const cached = legacyDrafts.get(draft);
+  if (cached) return cached;
+  const snapshot = { ...draft };
+  Object.defineProperties(snapshot, {
     isEmpty: { value: isDraftEmpty(draft, attachmentCount), enumerable: false },
     attachmentCount: { value: attachmentCount, enumerable: false },
   });
-  legacyDrafts.add(draft);
-  return draft;
+  Object.freeze(snapshot);
+  legacyDrafts.set(draft, snapshot);
+  return snapshot;
 }
 
 function waitForUploads(target: ComposerHandleTarget): Promise<void> {
@@ -287,16 +224,10 @@ export function createComposerHandleBinding(
   const replaceText = (nextText: string) => {
     const current = target().getDraft();
     if (nextText === current.text) return;
-    target().setDraft({
-      text: nextText,
-      mentions: reconcileComposerMentions(
-        current.text,
-        nextText,
-        current.mentions,
-      ),
-    });
+    target().setDraft(setComposerText(current, nextText));
   };
   const insertMention = (mention: PluginComposerMention) => {
+    warnDeprecatedComposerMember("insertMention", "insert");
     const provider = validProviderId(mention.provider);
     if (provider === null) {
       console.warn(
@@ -330,15 +261,18 @@ export function createComposerHandleBinding(
   };
   const removeMentionFrom = (mention: { provider: string; id: string }) => {
     const current = target().getDraft();
-    const next = withoutOwnMention(
+    const next = removeComposerMentions(
       current,
-      controller.pluginId,
-      mention.provider,
-      mention.id,
+      (item) =>
+        item.kind === "plugin" &&
+        item.pluginId === controller.pluginId &&
+        item.provider === mention.provider &&
+        item.id === mention.id,
     );
     if (next !== current) target().setDraft(next);
   };
   const removeMention = (mention: { provider: string; id: string }) => {
+    warnDeprecatedComposerMember("removeMention", "replace");
     requireAvailable();
     removeMentionFrom(mention);
   };
@@ -435,7 +369,9 @@ export function createComposerHandleBinding(
     };
   };
 
+  const draftActions = createComposerDraftActions(target);
   const handle: PluginComposerApi = {
+    replace: draftActions.replace,
     get scope() {
       return target().scope;
     },
@@ -468,25 +404,29 @@ export function createComposerHandleBinding(
     },
     get draft() {
       return withLegacyDraftFields(
-        target().getDraft(),
+        draftActions.draft,
         target().getAttachmentCount(),
       );
     },
     setText: (next) => {
+      warnDeprecatedComposerMember("setText", "replace");
       if (legacyAvailable("setText")) replaceText(next);
     },
     updateText: (updater) => {
+      warnDeprecatedComposerMember("updateText", "replace");
       if (legacyAvailable("updateText")) {
         replaceText(updater(target().getDraft().text));
       }
     },
     clear: () => {
+      warnDeprecatedComposerMember("clear", "replace");
       if (legacyAvailable("clear")) replaceText("");
     },
     insert,
     setTextEffect: (effect) => controller.setTextEffect(effect),
     setInputLock: (locked) => controller.setInputLock(locked),
     addQuote: (text) => {
+      warnDeprecatedComposerMember("addQuote", "replace");
       if (!legacyAvailable("addQuote")) return;
       target().addQuote(text);
       target().focus();
@@ -498,10 +438,7 @@ export function createComposerHandleBinding(
     submit,
     setSelection,
     experimental_removeMention: (mention) => {
-      warnDeprecatedComposerMember(
-        "experimental_removeMention",
-        "removeMention",
-      );
+      warnDeprecatedComposerMember("experimental_removeMention", "replace");
       if (!legacyAvailable("experimental_removeMention")) return;
       removeMentionFrom(mention);
     },

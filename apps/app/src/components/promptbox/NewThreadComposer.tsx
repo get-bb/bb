@@ -1,3 +1,4 @@
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import { usePendingAttachmentUploads } from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
@@ -1849,6 +1850,12 @@ export function NewThreadComposer({
     ],
   );
 
+  const restoreHistoryDraft = useCallback(
+    (draft: PromptDraftState) =>
+      createCoreComposerActions(pluginComposerHost).restoreDraft(draft),
+    [pluginComposerHost],
+  );
+
   const renderPromptBox = useCallback(
     (options: NewThreadComposerPromptOptions) => {
       const locks = options.locks ?? {};
@@ -1873,7 +1880,7 @@ export function NewThreadComposer({
           history={{
             currentDraft,
             entries: promptHistoryDrafts,
-            onSelectEntry: promptDraft.setDraft,
+            onSelectEntry: restoreHistoryDraft,
             resetKey: projectId,
           }}
           typeahead={{
@@ -2072,6 +2079,7 @@ export function NewThreadComposer({
       promptBoxFocusRequest,
       promptDraft,
       promptHistoryDrafts,
+      restoreHistoryDraft,
       promptMentions,
       pluginComposerHost,
       providerOptions,

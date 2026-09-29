@@ -91,9 +91,10 @@ export default definePluginApp((app) => {
         id: "append-checklist",
         label: "Append checklist",
         run: ({ composer }) =>
-          composer.updateText(
-            (current) => `${current}\n\n- Verify behavior\n- Run checks`,
-          ),
+          composer.insert("- Verify behavior\n- Run checks", {
+            at: "end",
+            block: true,
+          }),
       },
     ],
     banners: [{ id: "workflow", component: WorkflowBanner }],

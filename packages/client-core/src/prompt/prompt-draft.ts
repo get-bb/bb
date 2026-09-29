@@ -72,10 +72,10 @@ function normalizeQuotedSelectionText(text: string): string {
   return normalizedLines.join("\n").trim();
 }
 
-export function appendQuoteToDraftText(
-  state: PromptDraftState,
+export function appendQuoteToDraftText<Draft extends { text: string }>(
+  state: Draft,
   quotedText: string,
-): PromptDraftState {
+): Draft {
   const trimmed = normalizeQuotedSelectionText(quotedText);
   if (trimmed === "") return state;
 
@@ -89,11 +89,13 @@ export function appendQuoteToDraftText(
   return { ...state, text };
 }
 
-export function appendQuoteAndAttachmentsToDraft(
-  state: PromptDraftState,
+export function appendQuoteAndAttachmentsToDraft<
+  Draft extends { text: string; attachments: readonly PromptDraftAttachment[] },
+>(
+  state: Draft,
   quotedText: string,
   attachments: readonly PromptDraftAttachment[],
-): PromptDraftState {
+): Draft {
   const quotedState = appendQuoteToDraftText(state, quotedText);
   if (attachments.length === 0) {
     return quotedState;

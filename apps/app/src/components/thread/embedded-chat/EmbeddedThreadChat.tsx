@@ -1,3 +1,5 @@
+import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
   useEffect,
@@ -67,7 +69,7 @@ import {
   getMutationErrorMessage,
   showMutationErrorToast,
 } from "@/lib/mutation-errors";
-import { promptDraftToInput } from "@bb/client-core";
+import { type PromptDraftState, promptDraftToInput } from "@bb/client-core";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -334,7 +336,6 @@ function EmbeddedThreadChatWithComposer({
     currentPromptDraftInput,
     activeComposerDraft,
     activeComposerDraftInput,
-    setActiveComposerDraft,
     handleChangeMessage,
     removeActiveComposerAttachment,
   } = useActiveComposerDraft({
@@ -622,14 +623,25 @@ function EmbeddedThreadChatWithComposer({
     void handleSaveInlineQueuedMessage();
   }, [handleSaveInlineQueuedMessage]);
 
-  const addQuoteToPromptDraft = promptDraft.addQuote;
+  const composerActions = useMemo(
+    () =>
+      createCoreComposerActions({
+        getCurrent: promptDraft.getCurrent,
+        setDraft: promptDraft.setDraft,
+        focus: () => setComposerFocusNonce((nonce) => nonce + 1),
+      }),
+    [promptDraft.getCurrent, promptDraft.setDraft],
+  );
   const handleAddToChat = useCallback<ThreadTimelineAddToChatHandler>(
     (text, attachments) => {
-      addQuoteToPromptDraft(text, attachments);
-      setComposerFocusNonce((nonce) => nonce + 1);
+      composerActions.replace((current) =>
+        appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
+      );
+      composerActions.focus();
     },
-    [addQuoteToPromptDraft],
+    [composerActions],
   );
+  const restoreHistoryDraft = composerActions.restoreDraft;
 
   const queuedEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
   const queuedEditOwnerThreadId =
@@ -811,7 +823,7 @@ function EmbeddedThreadChatWithComposer({
       history: {
         currentDraft: currentPromptDraft,
         entries: [],
-        onSelectEntry: promptDraft.setDraft,
+        onSelectEntry: restoreHistoryDraft,
       } satisfies HistoryConfig,
       isFollowUpSubmitting: isTurnSubmitting,
       message: currentPromptDraft.text,
@@ -834,11 +846,19 @@ function EmbeddedThreadChatWithComposer({
       handleModifierSubmit,
       handleSubmit,
       isTurnSubmitting,
-      promptDraft.setDraft,
+      restoreHistoryDraft,
       promptDraft.setTextAndMentions,
       steerActiveThreadOnEnter,
       submitMode,
     ],
+  );
+  const restoreQueuedHistoryDraft = useCallback(
+    (draft: PromptDraftState) => {
+      if (queuedPluginComposerHost === null)
+        throw new Error("This composer is no longer available.");
+      createCoreComposerActions(queuedPluginComposerHost).restoreDraft(draft);
+    },
+    [queuedPluginComposerHost],
   );
   const inlineComposerConfig = useMemo<FollowUpComposerProps | null>(
     () =>
@@ -847,7 +867,7 @@ function EmbeddedThreadChatWithComposer({
             history: {
               currentDraft: activeComposerDraft,
               entries: [],
-              onSelectEntry: setActiveComposerDraft,
+              onSelectEntry: restoreQueuedHistoryDraft,
             } satisfies HistoryConfig,
             isFollowUpSubmitting: isUpdateQueuedMessagePending,
             message: activeComposerDraft.text,
@@ -873,8 +893,8 @@ function EmbeddedThreadChatWithComposer({
       handleChangeMessage,
       handleInlineComposerSubmit,
       inlineEditingQueuedMessage,
+      restoreQueuedHistoryDraft,
       isUpdateQueuedMessagePending,
-      setActiveComposerDraft,
     ],
   );
 

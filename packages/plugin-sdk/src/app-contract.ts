@@ -19,6 +19,7 @@ import type {
 import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,
+  UploadedPromptAttachment,
 } from "@bb/server-contract";
 import type {
   BbSdkAreas,
@@ -2407,6 +2408,20 @@ export interface ComposerDraft {
   mentions: readonly ComposerMention[];
 }
 
+/** An already uploaded attachment; paths retain their original project or thread ownership. */
+export type ComposerAttachment = UploadedPromptAttachment;
+
+/** The complete current draft. Snapshots and their entries are immutable. */
+export interface ComposerDraftSnapshot extends ComposerDraft {
+  readonly attachments: readonly ComposerAttachment[];
+}
+
+/** Atomic text and mention replacement, optionally replacing uploaded attachments too. */
+export interface ComposerDraftReplacement extends ComposerDraft {
+  /** Omit to preserve attachments; supply an empty array to remove them all. Does not upload or copy files. */
+  attachments?: readonly ComposerAttachment[];
+}
+
 /**
  * One @-mention pill: its range in `ComposerDraft.text` plus everything the
  * host needs to recreate it, so a mention read from `draft` can be passed
@@ -2516,7 +2531,7 @@ export interface PluginComposerMention {
  * A handle always writes to its own composer's draft. Thread and new-thread
  * drafts persist, so a write after the composer left the screen still lands
  * in that draft. When the draft no longer exists (a queued-message or
- * sent-message editor that closed), `insert`, `removeMention`, `submit` and
+ * sent-message editor that closed), `insert`, `replace`, `removeMention`, `submit` and
  * `setSelection` throw "This composer is no longer available"; the older
  * text methods log a warning and do nothing.
  */
@@ -2548,20 +2563,39 @@ export interface PluginComposerApi {
   readonly attachmentCount: number;
   /** Current plain text for this composer scope. */
   readonly text: string;
-  /** The text and every @-mention in it, with the data to recreate each pill. */
-  readonly draft: ComposerDraft;
+  /** The complete current draft, including uploaded attachments. Stable until the draft changes. */
+  readonly draft: ComposerDraftSnapshot;
   /**
+   * Replace text and mentions together in one committed change. An updater
+   * receives the latest immutable snapshot, including attachments, and must
+   * return its result synchronously. Returning that same snapshot is a no-op.
+   * Omitted attachments are preserved; an explicit list replaces them, and
+   * an empty list clears them. Does not infer or rebase mention ranges.
+   * Ranges are non-overlapping UTF-16 offsets into the supplied text.
+   * Invalid results, throwing updaters, and unavailable editors leave the
+   * draft unchanged. Does not focus, submit, upload, or copy files between
+   * projects. Use `insert` for insertion at the editor's cursor.
+   */
+  replace(
+    next:
+      | ComposerDraftReplacement
+      | ((current: ComposerDraftSnapshot) => ComposerDraftReplacement),
+  ): void;
+
+  /**
+   * @deprecated Use `replace` with explicit text and mentions. This legacy method reconciles mentions automatically.
    * Replace the draft's plain text. Attachments are preserved. Inline mentions
    * outside the changed range are preserved and rebased; mentions overlapped
    * by the replacement are removed because their text representation changed.
    */
   setText(next: string): void;
   /**
+   * @deprecated Use `replace(current => next)` with explicit mention ranges.
    * Replace the draft's plain text from the latest committed value. Uses the
    * same structured-state reconciliation as `setText`.
    */
   updateText(updater: (current: string) => string): void;
-  /** Clear plain text without clearing independently attached files. */
+  /** @deprecated Use `replace({ text: "", mentions: [] })`. Attachments are preserved. */
   clear(): void;
   /**
    * Insert text and mentions. See {@link ComposerInsertOptions} for placement.
@@ -2587,17 +2621,19 @@ export interface PluginComposerApi {
    */
   setInputLock(locked: boolean): void;
   /**
+   * @deprecated Use `replace(current => next)` to append quoted text, then `focus()`.
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection
    * in chat" primitive.
    */
   addQuote(text: string): void;
   /**
+   * @deprecated Use `insert(mention, { at: "end" })`, then `focus()`. `insert` uses canonical pill text.
    * Append an @-mention pill that resolves through this plugin's mention
    * provider at send time. `insert` places mentions at the cursor instead.
    */
   insertMention(mention: PluginComposerMention): void;
-  /** Remove this plugin's matching mention pills and their text from the current draft. */
+  /** @deprecated Use `replace(current => next)` to remove matching pills and rebase surviving ranges. */
   removeMention(mention: { provider: string; id: string }): void;
   /** Subscribe to successful local submissions in this composer scope, including accepted queued messages. Failed sends and draft clearing do not notify. Dispose on unmount. */
   onSubmitted(listener: () => void): () => void;

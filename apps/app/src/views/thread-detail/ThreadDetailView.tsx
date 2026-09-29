@@ -1,3 +1,7 @@
+import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import {
+  createCoreComposerActions,
+} from "@/lib/plugin-composer-handle";
 import {
   useCallback,
   useEffect,
@@ -995,7 +999,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }),
     [selectionPromptDraftProjectId, selectionPromptDraftThreadId],
   );
-  const addQuoteToComposer = selectionPromptDraft.addQuote;
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
   const [sentMessageEditSession, setSentMessageEditSession] =
     useState<SentMessageEditSession | null>(null);
@@ -1166,13 +1169,23 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       ),
     [selectionPromptDraft.storageKey],
   );
+  const composerActions = useMemo(
+    () =>
+      createCoreComposerActions({
+        ...selectionPromptDraft,
+        focus: () => setComposerFocusRequestNonce((nonce) => nonce + 1),
+      }),
+    [selectionPromptDraft],
+  );
   const handleSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       dismissCompactKeyboard();
-      addQuoteToComposer(text, attachments);
-      setComposerFocusRequestNonce((nonce) => nonce + 1);
+      composerActions.replace((current) =>
+        appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
+      );
+      composerActions.focus();
     },
-    [addQuoteToComposer, dismissCompactKeyboard],
+    [composerActions, dismissCompactKeyboard],
   );
   const sendSideChatMessageToMain = useSendSideChatMessageToMain({
     createQueuedMessage,

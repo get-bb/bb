@@ -18,7 +18,8 @@ import {
   type BbNavigate,
   type BranchesState,
   type ComposerCustomization,
-  type ComposerDraft,
+  type ComposerAttachment,
+  type ComposerDraftSnapshot,
   type ComposerMention,
   type ComposerSelection,
   type ComposerSubmitOptions,
@@ -204,7 +205,7 @@ export interface ComposerLog {
    * Latest text and mention pills, as `useComposer().draft` reports them.
    * The harness composer has no caret, so cursor inserts land at the end.
    */
-  readonly draft: ComposerDraft;
+  readonly draft: ComposerDraftSnapshot;
   /** The key `useComposer().key` reports for the current scope. */
   readonly key: string;
   /** Latest host-provided composer scope. */
@@ -1453,6 +1454,7 @@ export interface RenderSlotOptions<
     mentions?: readonly ComposerMention[];
     scope?: PluginComposerScope;
     attachmentCount?: number;
+    attachments?: readonly ComposerAttachment[];
     layout?: "expanded" | "compact";
     isRunning?: boolean;
     isSubmitting?: boolean;
@@ -1930,7 +1932,9 @@ export function renderSlot<
   let composerMentions: ComposerMention[] = [
     ...(options.composer?.mentions ?? []),
   ];
-  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  let composerAttachments = [...(options.composer?.attachments ?? [])];
+  let composerAttachmentCount =
+    options.composer?.attachmentCount ?? composerAttachments.length;
   const composerLayout = options.composer?.layout ?? "expanded";
   const composerIsRunning = options.composer?.isRunning ?? false;
   const composerIsSubmitting = options.composer?.isSubmitting ?? false;
@@ -1966,13 +1970,19 @@ export function renderSlot<
       ? "Type a message first."
       : null;
   };
-  let composerDraftCache: { version: number; draft: ComposerDraft } | null =
-    null;
-  const composerDraft = (): ComposerDraft => {
+  let composerDraftCache: {
+    version: number;
+    draft: ComposerDraftSnapshot;
+  } | null = null;
+  const composerDraft = (): ComposerDraftSnapshot => {
     if (composerDraftCache?.version !== composerVersion) {
       composerDraftCache = {
         version: composerVersion,
-        draft: { text: composerText, mentions: composerMentions },
+        draft: {
+          text: composerText,
+          mentions: composerMentions,
+          attachments: composerAttachments,
+        },
       };
     }
     return composerDraftCache.draft;
@@ -1982,7 +1992,7 @@ export function renderSlot<
       return composerText;
     },
     get draft() {
-      return composerDraft();
+      return composerHandle.draft;
     },
     get key() {
       return testComposerKey(composerScope);
@@ -2016,7 +2026,13 @@ export function renderSlot<
     },
     getDraft: composerDraft,
     getAttachmentCount: () => composerAttachmentCount,
-    setDraft: (next) => commitComposerDraft(next.text, [...next.mentions]),
+    setDraft: (next) => {
+      if (next.attachments !== undefined) {
+        composerAttachments = [...next.attachments];
+        composerAttachmentCount = composerAttachments.length;
+      }
+      commitComposerDraft(next.text, [...next.mentions]);
+    },
     addQuote(text) {
       const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
       if (trimmed === "") return;

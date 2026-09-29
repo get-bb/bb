@@ -1,3 +1,4 @@
+import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftState } from "@bb/client-core";
@@ -15,6 +16,8 @@ import {
 } from "./composer-submissions";
 import {
   composerHandleController,
+  composerDraftFromPromptDraft,
+  createCoreComposerActions,
   type ComposerSource,
 } from "./plugin-composer-handle";
 
@@ -400,8 +403,234 @@ describe("composer handle", () => {
 
     expect(binding.handle).toBe(handle);
     expect(handle.text).toBe("two");
-    handle.setText("updated");
+    handle.replace((current) => ({ ...current, text: "updated" }));
     expect(second.current().text).toBe("updated");
     expect(first.current().text).toBe("one");
   });
 });
+
+describe.each(["core", "plugin"] as const)(
+  "%s composer draft actions",
+  (caller) => {
+    const actionsFor = (source: ComposerSource) =>
+      caller === "core"
+        ? createCoreComposerActions(source)
+        : makeHandle(source).handle;
+    const quote = (
+      actions: ReturnType<typeof actionsFor>,
+      text: string,
+      attachments?: Parameters<typeof appendQuoteAndAttachmentsToDraft>[2],
+    ) => {
+      actions.replace((current) =>
+        appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
+      );
+      actions.focus();
+    };
+    const attachment = {
+      type: "localFile",
+      path: "attachments/spec.txt",
+      name: "spec.txt",
+      sizeBytes: 12,
+    } as const;
+
+    it("restores a structured history snapshot atomically and replaces pills even when text is unchanged", () => {
+      const history: PromptDraftState = {
+        text: "x".repeat(44),
+        mentions: MENTIONS,
+        attachments: [attachment],
+      };
+      const stored = makeTarget({
+        text: "newer draft",
+        mentions: [],
+        attachments: [],
+      });
+      const observations: PromptDraftState[] = [];
+      const actions = actionsFor({
+        ...stored.target,
+        setDraft(next) {
+          stored.target.setDraft(next);
+          observations.push(stored.current());
+        },
+      });
+      actions.replace(composerDraftFromPromptDraft(history));
+      expect(observations).toEqual([history]);
+      expect(actions.draft.attachments).toEqual([attachment]);
+
+      actions.replace({ text: history.text, mentions: [] });
+      expect(stored.current()).toEqual({
+        text: history.text,
+        mentions: [],
+        attachments: [attachment],
+      });
+      actions.replace({
+        text: "",
+        mentions: [],
+        attachments: [],
+      });
+      expect(stored.current()).toEqual(emptyDraft);
+      expect(observations).toHaveLength(3);
+    });
+
+    it("updates from the latest complete draft and preserves earlier snapshots", () => {
+      const stored = makeTarget({
+        text: "original",
+        mentions: [],
+        attachments: [],
+      });
+      const actions = actionsFor(stored.target);
+      const snapshot = actions.draft;
+      expect(actions.draft).toBe(snapshot);
+      stored.target.setDraft({
+        text: "latest",
+        mentions: [],
+        attachments: [attachment],
+      });
+      actions.replace((current) => ({ ...current, text: `${current.text}!` }));
+      actions.replace((current) => ({ ...current, text: `${current.text}?` }));
+      expect(stored.current()).toEqual({
+        text: "latest!?",
+        mentions: [],
+        attachments: [attachment],
+      });
+      expect(snapshot).toEqual({
+        text: "original",
+        mentions: [],
+        attachments: [],
+      });
+      const unchanged = stored.current();
+      actions.replace((current) => current);
+      expect(stored.current()).toBe(unchanged);
+    });
+
+    it("rejects invalid, throwing, and mutating updaters without altering any draft content", () => {
+      const stored = makeTarget({
+        text: "x".repeat(44),
+        mentions: MENTIONS,
+        attachments: [attachment],
+      });
+      const actions = actionsFor(stored.target);
+      const original = stored.current();
+      expect(() =>
+        actions.replace((current) => ({ ...current, text: "" })),
+      ).toThrow("Invalid composer draft");
+      expect(() =>
+        actions.replace(() => {
+          throw new Error("transform failed");
+        }),
+      ).toThrow("transform failed");
+      expect(() =>
+        actions.replace((current) => {
+          current.mentions[0]!.label = "mutated";
+          return current;
+        }),
+      ).toThrow();
+      expect(() =>
+        actions.replace((current) => {
+          current.attachments[0]!.path = "changed";
+          return current;
+        }),
+      ).toThrow();
+      expect(stored.current()).toBe(original);
+      expect(actions.draft.mentions[0]!.label).toBe("Fix search");
+      expect(actions.draft.attachments[0]!.path).toBe(attachment.path);
+    });
+
+    it("quotes with attachments in one write, preserves existing pills, and deduplicates attachment-only additions", () => {
+      const initial: PromptDraftState = {
+        text: "x".repeat(44),
+        mentions: MENTIONS,
+        attachments: [attachment],
+      };
+      const stored = makeTarget(initial);
+      const observations: PromptDraftState[] = [];
+      const focused: PromptDraftState[] = [];
+      const actions = actionsFor({
+        ...stored.target,
+        setDraft(next) {
+          stored.target.setDraft(next);
+          observations.push(stored.current());
+        },
+        focus: () => focused.push(stored.current()),
+      });
+      const image = {
+        type: "localImage",
+        path: "attachments/screen.png",
+        name: "screen.png",
+        sizeBytes: 24,
+      } as const;
+      quote(actions, "first\r\nsecond", [attachment, image, image]);
+      expect(observations).toEqual([
+        {
+          ...initial,
+          text: `${initial.text}\n> first\n> second\n`,
+          attachments: [attachment, image],
+        },
+      ]);
+      expect(focused).toEqual(observations);
+      const other = { ...attachment, path: "attachments/other.txt" };
+      quote(actions, "", [other]);
+      expect(stored.current().attachments).toEqual([attachment, image, other]);
+      expect(observations).toHaveLength(2);
+    });
+
+    it.each([
+      {
+        text: "x",
+        mentions: [
+          { kind: "thread", threadId: "t", label: "t", from: 0, to: 2 },
+        ],
+      },
+      {
+        text: "xx",
+        mentions: [
+          { kind: "thread", threadId: "t", label: "t", from: 0, to: 2 },
+          { kind: "thread", threadId: "t", label: "t", from: 1, to: 2 },
+        ],
+      },
+      {
+        text: "x",
+        mentions: [{ kind: "unknown", from: 0, to: 1, label: "x" }],
+      },
+      {
+        text: "x",
+        mentions: [],
+        attachments: [
+          { type: "localFile", path: "", name: "file", sizeBytes: 1 },
+        ],
+      },
+    ])(
+      "rejects malformed replacement without changing the saved draft: %j",
+      (invalid) => {
+        const stored = makeTarget({
+          ...emptyDraft,
+          text: "keep me",
+          attachments: [attachment],
+        });
+        const before = stored.current();
+        const actions = actionsFor(stored.target);
+        expect(() =>
+          actions.replace(invalid as Parameters<typeof actions.replace>[0]),
+        ).toThrow("Invalid composer draft");
+        expect(stored.current()).toBe(before);
+      },
+    );
+
+    it("rejects invalid attachment quotes and writes after an ephemeral editor closes", () => {
+      let available = true;
+      const stored = makeTarget(emptyDraft, { isAvailable: () => available });
+      const actions = actionsFor(stored.target);
+      expect(() =>
+        quote(actions, "must not append", [{ ...attachment, sizeBytes: -1 }]),
+      ).toThrow("Invalid composer draft");
+      expect(stored.current()).toEqual(emptyDraft);
+      available = false;
+      expect(() => quote(actions, "closed", [attachment])).toThrow(
+        "no longer available",
+      );
+      expect(() => actions.replace({ text: "closed", mentions: [] })).toThrow(
+        "no longer available",
+      );
+      expect(stored.current()).toEqual(emptyDraft);
+    });
+  },
+);

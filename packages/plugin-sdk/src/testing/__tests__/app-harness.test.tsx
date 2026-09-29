@@ -2043,3 +2043,67 @@ describe("renderSlot", () => {
     ]);
   });
 });
+
+it("reacts to attachment-only updates and atomic replacement through the public composer hook", () => {
+  const attachment = {
+    type: "localFile",
+    path: "attachments/spec.txt",
+    name: "spec.txt",
+    sizeBytes: 12,
+  } as const;
+  function DraftActionsProbe() {
+    const composer = useComposer();
+    return (
+      <>
+        <output>
+          {composer.text}:{composer.attachmentCount}:{String(composer.isEmpty)}
+        </output>
+        <button
+          onClick={() =>
+            composer.replace((current) => ({
+              ...current,
+              attachments: current.attachments.some(
+                (item) => item.path === attachment.path,
+              )
+                ? current.attachments
+                : [...current.attachments, attachment],
+            }))
+          }
+        >
+          Attach file
+        </button>
+        <button
+          onClick={() =>
+            composer.replace({
+              text: "prefill",
+              mentions: [],
+            })
+          }
+        >
+          Prefill
+        </button>
+        <button
+          onClick={() =>
+            composer.replace({
+              text: "",
+              mentions: [],
+              attachments: [],
+            })
+          }
+        >
+          Replace all
+        </button>
+      </>
+    );
+  }
+  const slot = renderSlot({ component: DraftActionsProbe }, {});
+  expect(slot.getByRole("status").textContent).toBe(":0:true");
+  fireEvent.click(slot.getByRole("button", { name: "Attach file" }));
+  expect(slot.getByRole("status").textContent).toBe(":1:false");
+  fireEvent.click(slot.getByRole("button", { name: "Attach file" }));
+  expect(slot.getByRole("status").textContent).toBe(":1:false");
+  fireEvent.click(slot.getByRole("button", { name: "Prefill" }));
+  expect(slot.getByRole("status").textContent).toBe("prefill:1:false");
+  fireEvent.click(slot.getByRole("button", { name: "Replace all" }));
+  expect(slot.getByRole("status").textContent).toBe(":0:true");
+});

@@ -69,27 +69,28 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
     and message bb's send button shows: empty draft, uploads in progress,
     loading, a missing selection or setup, a pending interaction, voice
     input), `isEmpty`, and `attachmentCount`.
-  - Content: `text` is the plain text; `draft` is `{ text, mentions }` where
+  - Content: `text` is the plain text; `draft` is an immutable `{ text, mentions, attachments }` snapshot where
     each `ComposerMention` carries its range and everything needed to
     recreate the pill (`kind` thread, project, section, path, command, or
     plugin with `pluginId`, `provider` and `id`).
-  - Writes: `setText(next)`, `updateText(current => next)` and `clear()`
-    replace text, preserve attachments, and rebase mentions outside the
-    changed range. `insert(parts, { at?, block? })` inserts text and
-    mentions: `parts` mixes strings, mentions read from `draft` (recreated
-    exactly, any kind), and your own `{ provider, id, label }`; `at:
-"cursor"` (default) inserts at the selection and needs the composer on
-    screen, `at: "end"` appends; `block: true` puts the content on its own
-    paragraph. `addQuote(text)` appends a `> ` blockquote and focuses;
-    `insertMention({ provider, id, label })` appends one of YOUR mention
-    pills; `removeMention({ provider, id })` removes your pills and their
-    text; `focus()` focuses the caret. `setTextEffect({ className })` paints
-    the draft (`null` clears); `setInputLock(locked)` makes the editor
-    read-only and auto-releases when the slot unmounts or changes scope.
-  - Rewriting a prompt with an LLM: read `draft`, replace each mention with a
-    placeholder the model must keep, map the placeholders back to the
-    original mention objects, then `clear()` and `insert(parts, { at: "end"
-})`.
+  - Editing: `insert(parts, { at?, block? })` inserts text and pills at the
+    current selection (default) or at `"end"`; `block: true` places the content
+    on its own paragraph. `replace(next)` atomically sets text and mentions;
+    `replace(current => next)` transforms the latest complete draft. Mention
+    ranges must explicitly match the result: replacement does not reconcile
+    them automatically. Omit attachments to preserve them, or provide a list
+    (including `[]`) to replace them. The updater is synchronous; invalid
+    results and throws leave the draft unchanged. Returning `current` is a no-op.
+  - `focus()` focuses the caret. `setTextEffect({ className })` paints the
+    draft (`null` clears); `setInputLock(locked)` makes the editor read-only
+    and auto-releases when the slot unmounts or changes scope.
+  - Save `composer.draft`, then restore it with `composer.replace(saved)`.
+    For an LLM rewrite, map preserved mention placeholders to explicit ranges
+    in the resulting text and replace text and mentions together.
+  - `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
+    `removeMention` are deprecated compatibility methods. Use `insert` or
+    `replace` in new code. Legacy text setters retain automatic mention
+    reconciliation; legacy `insertMention` retains its bare-label formatting.
   - `submit({ sendAt? , experimental_data? })` submits exactly as pressing
     Enter would (send, or queue while the thread is busy). It waits for
     uploads in progress, then rejects with `submittingBlockedReason` when the
@@ -104,7 +105,7 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   - Lifetime: a handle writes to its own composer's draft. Thread and
     new-thread drafts persist, so writes after the composer leaves the screen
     still land there. Once a queued-message or sent-message editor closes,
-    `insert`, `removeMention`, `submit` and `setSelection` throw and the older
+    `insert`, `replace`, `submit` and `setSelection` throw and the older
     text methods warn and do nothing.
   - Deprecated, still working for plugins built against older SDKs but gone
     from the types: `useComposerView()` (use `useComposer()`), the

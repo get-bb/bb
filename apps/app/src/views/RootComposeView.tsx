@@ -1,3 +1,6 @@
+import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import type { ComposerAttachment } from "@get-bb/plugin-sdk";
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import {
   ThreadTitle,
@@ -90,7 +93,6 @@ import {
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import type { PromptDraftAttachment } from "@bb/client-core";
 import {
   buildForkThreadRequest,
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
@@ -746,20 +748,25 @@ function RootComposeSurface({
       }),
     [focusPromptBox, promptDraft.storageKey, setStartedComposing],
   );
+  const composerActions = useMemo(
+    () => createCoreComposerActions(pluginComposerHost),
+    [pluginComposerHost],
+  );
   const handleRootPanelSelectionAddToChat = useCallback(
-    (text: string, attachments?: readonly PromptDraftAttachment[]) => {
-      promptDraft.addQuote(text, attachments);
-      setStartedComposing(true);
-      window.requestAnimationFrame(focusPromptBox);
+    (text: string, attachments?: readonly ComposerAttachment[]) => {
+      composerActions.replace((current) =>
+        appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
+      );
+      composerActions.focus();
     },
-    [focusPromptBox, promptDraft, setStartedComposing],
+    [composerActions],
   );
 
   const searchInitialPrompt = readInitialPromptFromSearch(location.search);
   const stateInitialPrompt = readInitialPromptFromLocationState(location.state);
   const searchInitialDraft = useInitialPromptDraft(searchInitialPrompt);
   const stateInitialDraft = useInitialPromptDraft(stateInitialPrompt);
-  const setPromptDraft = promptDraft.setDraft;
+  const setPromptDraft = composerActions.restoreDraft;
   const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
 
   useEffect(() => {
@@ -1827,15 +1834,17 @@ function RootComposeSurface({
     !startedComposing &&
     projects !== undefined &&
     projects.length === 0;
-  const setPromptTextAndMentions = promptDraft.setTextAndMentions;
   const handleStartComposing = useCallback(
     (prefill?: string) => {
       if (prefill) {
-        setPromptTextAndMentions(prefill, []);
+        composerActions.replace({
+          text: prefill,
+          mentions: [],
+        });
       }
       setStartedComposing(true);
     },
-    [setPromptTextAndMentions, setStartedComposing],
+    [composerActions, setStartedComposing],
   );
   useEffect(() => {
     if (!startedComposing) return;

@@ -3461,3 +3461,45 @@ remain forbidden. New-machine selections continue through creation.
 
 Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
 progress, cross-project ownership, and concurrent creation before binding.
+
+## Composer editing: `insert` and `replace`
+
+Michael explicitly requested the final names `insert` and `replace`, an
+exception to the experimental-prefix rule. `PluginComposerApi.replace` accepts
+an explicit `ComposerDraftReplacement` or a synchronous updater from the latest
+immutable `ComposerDraftSnapshot`. `draft` now includes uploaded attachments.
+Text and mention metadata commit together, even if text is unchanged. Omitted
+attachments are preserved; an explicit list replaces them. Ranges must be valid
+and non-overlapping; replacement never infers mention reconciliation. Invalid
+results and throwing updaters do not mutate the draft. Returning the supplied
+snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
+
+Core quoting, prefills and history restoration call this same contract. Quotes
+are pure draft transformations that append blockquoted text and merge attachments
+by path, followed by `focus()`. Attachments remain independent draft items, not
+children of a quote. `replace` does not upload/copy files across projects.
+Submission rollback, restore-if-empty seeds, uploads, and editor transactions
+remain beneath these actions. Command completion's trigger-range replacement and
+autocomplete dismissal remain a documented boundary, not a hidden option on
+`replace`.
+
+`setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and `removeMention`
+are deprecated compatibility methods. Their existing text reconciliation,
+formatting, focus, and plugin-ownership behavior is preserved for old plugins;
+core actions use insert/replace; annotations retain the existing plugin-owned
+mention-removal method. No runtime removal is scheduled
+in this change. The unshipped experimental replacement, quote, and attachment
+members introduced during this work were removed rather than retained as aliases.
+
+Before stabilization, audit snapshot identity and updater failure/lifetime
+behavior across mounted, offscreen, and ephemeral editors, replay of attachment
+paths in their owning project, and migration of third-party text transforms to
+explicit mention ranges. Decide whether command application merits a shared
+public operation. These operations edit client-local drafts; existing SDK/CLI
+thread creation and send surfaces still accept structured inputs.
+
+
+Core history conversion is centralized in the composer adapter; quoting operates
+on text and attachments directly without a mention-format round trip. Persisted
+and editor mention formats remain unchanged, while the action layer reads one
+complete draft snapshot instead of separate content and attachment getters.

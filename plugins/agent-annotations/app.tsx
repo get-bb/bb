@@ -85,11 +85,19 @@ export function AnnotateAction({
       }
       const components = await readReactComponents(page, annotation.id);
       const saved = await rpc.call("save", { ...annotation, components });
-      composer.insertMention({
-        provider: ANNOTATION_MENTION_PROVIDER_ID,
-        id: saved.id,
-        label: annotationMentionLabel(annotation),
-      });
+      composer.insert(
+        [
+          composer.text.length === 0 || /\s$/.test(composer.text) ? "" : " ",
+          {
+            provider: ANNOTATION_MENTION_PROVIDER_ID,
+            id: saved.id,
+            label: annotationMentionLabel(annotation),
+          },
+          " ",
+        ],
+        { at: "end" },
+      );
+      composer.focus();
     },
     [composer, page, rpc],
   );

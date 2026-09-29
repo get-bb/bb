@@ -226,6 +226,9 @@ Read the installed SDK declarations for the exact current signatures.
 - `ComposerSelection`
 - `ComposerRichTextSpec`
 - `ComposerDraft`
+- `ComposerDraftSnapshot`
+- `ComposerDraftReplacement`
+- `ComposerAttachment`
 - `ComposerMention`
 - `ComposerInsertPart`
 - `ComposerInsertOptions`
