@@ -8,12 +8,13 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { defineSplit } from "./define-split";
+import { defineSplit, useSplitPreload } from "./define-split";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 it("shares a pending intent preload with rendering, preserves props, and stays mounted across parent renders", async () => {
@@ -208,6 +209,47 @@ it.each([
     render(<Split />);
     await act(async () => vi.runAllTimersAsync());
     expect(screen.getByRole("alert")).toBeTruthy();
+    expect(load).toHaveBeenCalledOnce();
+  },
+);
+
+it.each([true, false])(
+  "warms at idle after paint and cancels on unmount (idle API: %s)",
+  async (hasIdleCallback) => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "requestIdleCallback",
+      hasIdleCallback
+        ? (callback: () => void) => window.setTimeout(callback, 1000)
+        : undefined,
+    );
+    vi.stubGlobal(
+      "cancelIdleCallback",
+      hasIdleCallback ? window.clearTimeout : undefined,
+    );
+    const load = vi.fn(async () => () => <p>Warm feature</p>);
+    const Split = defineSplit({
+      id: "idle",
+      load,
+      loading: () => null,
+      preload: "idle",
+    });
+    function Page() {
+      useSplitPreload(Split);
+      return <p>Page stays usable</p>;
+    }
+    const first = render(<Page />);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(load).not.toHaveBeenCalled();
+    first.unmount();
+    await act(async () => vi.runAllTimersAsync());
+    expect(load).not.toHaveBeenCalled();
+    const second = render(<Page />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(load).toHaveBeenCalledOnce();
+    expect(screen.queryByText("Warm feature")).toBeNull();
+    second.rerender(<Split />);
+    expect(screen.getByText("Warm feature")).toBeTruthy();
     expect(load).toHaveBeenCalledOnce();
   },
 );

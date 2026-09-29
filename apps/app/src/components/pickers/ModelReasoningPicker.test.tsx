@@ -1065,8 +1065,8 @@ describe("ModelReasoningPicker", () => {
     });
 
     fireEvent.click(trigger);
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
     const search = screen.getByPlaceholderText(
       "Search models",
     ) as HTMLInputElement;
@@ -1120,8 +1120,8 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
 
     const modelList = screen.getByRole("listbox", { name: "Models" });
     const reasoning = screen.getByRole("radiogroup", { name: "Reasoning" });

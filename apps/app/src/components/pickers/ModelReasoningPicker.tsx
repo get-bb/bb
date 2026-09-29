@@ -1,3 +1,4 @@
+import { useSplitPreload } from "@/lib/define-split";
 import {
   useCallback,
   useEffect,
@@ -219,6 +220,7 @@ export function ModelReasoningPicker({
   disabled,
   handoff,
 }: ModelReasoningPickerProps) {
+  useSplitPreload(ModelReasoningMenu);
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);

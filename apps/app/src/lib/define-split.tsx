@@ -3,11 +3,12 @@ import {
   lazy,
   Suspense,
   useState,
+  useEffect,
   type ComponentType,
   type ReactNode,
 } from "react";
 
-export type SplitPreloadPolicy = "render" | "intent";
+export type SplitPreloadPolicy = "render" | "intent" | "startup" | "idle";
 
 type FailureProps = { retry: () => void };
 
@@ -92,7 +93,7 @@ export function defineSplit<P extends object>({
     await loadModule().catch(() => undefined);
   };
   const onIntent = () => {
-    if (preload === "intent") void warm();
+    if (preload !== "render") void warm();
   };
 
   function SplitComponent(props: P) {
@@ -130,4 +131,35 @@ export function defineSplit<P extends object>({
       onPointerDown: onIntent,
     },
   });
+}
+
+export function useSplitPreload(split: {
+  preloadPolicy: SplitPreloadPolicy;
+  preload: () => Promise<void>;
+}) {
+  useEffect(() => {
+    if (split.preloadPolicy === "startup") {
+      void split.preload();
+      return;
+    }
+    if (split.preloadPolicy !== "idle") return;
+    let idle: number | undefined;
+    let timeout: number | undefined;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (typeof window.requestIdleCallback === "function") {
+          idle = window.requestIdleCallback(() => void split.preload(), {
+            timeout: 1000,
+          });
+        } else {
+          timeout = window.setTimeout(() => void split.preload(), 1000);
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (idle !== undefined) window.cancelIdleCallback(idle);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [split]);
 }

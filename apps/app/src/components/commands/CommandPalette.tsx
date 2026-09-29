@@ -1,3 +1,4 @@
+import { useSplitPreload } from "@/lib/define-split";
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import {
   pluginCommandId,
@@ -52,6 +53,7 @@ export interface CommandPaletteProps {
 }
 
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
+  useSplitPreload(LazyCommandPaletteBody);
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
 

@@ -10,7 +10,15 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -22,6 +30,7 @@ import {
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
+import * as panelSplits from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
@@ -516,6 +525,8 @@ vi.mock("@/components/thread/terminal/ThreadTerminalPanel", async () => {
 });
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
+  HostFilePreviewTabContent: () => null,
+  ProjectFilePreviewTabContent: () => null,
   WorkspaceFilePreviewTabContent: ({
     activePath,
     environmentId,
@@ -687,6 +698,17 @@ function renderHost(panelPath = "board", subPath = "", store = createStore()) {
 }
 
 describe("PluginPanelRightPanelHost", () => {
+  beforeAll(async () => {
+    for (const split of [
+      panelSplits.LazyWorkspaceFilePreviewTabContent,
+      panelSplits.LazyHostFilePreviewTabContent,
+      panelSplits.LazyHostScopedFilePreviewTabContent,
+      panelSplits.LazyProjectFilePreviewTabContent,
+      panelSplits.LazyThreadStorageFilePreviewTabContent,
+    ])
+      await split.preload();
+  });
+
   beforeEach(() => {
     browserState.available = false;
     viewportState.isCompactViewport = false;

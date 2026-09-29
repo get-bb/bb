@@ -13,5 +13,5 @@ export const ModelReasoningMenu = defineSplit({
       />
     </div>
   ),
-  preload: "intent",
+  preload: "idle",
 });

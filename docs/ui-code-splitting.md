@@ -52,10 +52,12 @@ the implementation through a barrel imported by the shell.
 
 ## Download policy and mounting
 
-| Policy | Behavior |
-| --- | --- |
-| `render` | Load when rendered. No speculative scheduling. |
-| `intent` | Load on rendering or a trigger's pointer-enter, focus, or pointer-down. |
+| Policy    | Behavior                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------ |
+| `render`  | Load when rendered. No speculative scheduling.                                                               |
+| `intent`  | Load on rendering or a trigger's pointer-enter, focus, or pointer-down.                                      |
+| `startup` | With `useSplitPreload`, warm when the owning page mounts.                                                    |
+| `idle`    | With `useSplitPreload`, warm after two animation frames at browser idle, with a one-second timeout/fallback. |
 
 Wire intent on the actual trigger:
 
@@ -69,9 +71,19 @@ If a trigger already handles one of those events, compose the handlers instead
 of overwriting one. `.preload()` is an explicit, safe warm-up available under any
 policy; it catches speculative failures, leaving rendering able to try again.
 
-Optional UI has no page-wide startup or idle scheduler. Use `.preload()` from
-an explicit owner when data or user intent establishes demand. Once started,
-imports cannot be cancelled.
+Register startup/idle policies with `useSplitPreload(Split)` in their owning
+page or eager shell. Scheduling is cancelled if that owner unmounts before it
+starts; an import already started cannot be cancelled. Intent handlers still
+warm startup/idle splits if the user acts first. Use `.preload()` from an
+explicit owner for data demand or related features, such as warming panel tab
+code when the right panel opens.
+
+`.preload()` uses dynamic import: it downloads, parses, compiles and evaluates
+the module graph. An idle callback only schedules its start; it cannot guarantee
+that later evaluation happens while the main thread is idle. Download-only
+prefetch would defer parsing and execution until use, trading less speculative
+CPU work for a slower first interaction. `modulepreload` parses/compiles early
+but defers evaluation. Neither alternative is implemented by this helper.
 
 Downloading and mounting are separate. Keep the existing persistent responsive
 drawer's deferred realization and retained content. Preloading must not mount
@@ -82,9 +94,12 @@ Pilots:
 
 - `LazySidebarFooterCustomize`: render on demand; loading/error retain Done and
   Escape so slow or failed downloads do not trap customization mode.
-- `LazyFilePreview`: render on demand; a local panel skeleton.
-- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders, intent
-  warm-up on panel toggles, and realization on first open. Closed desktop panels
+- `LazyFilePreview`: render on demand; its code already warms through the panel
+  shell’s shared Git-diff dependency on workspace-page load, and is explicitly
+  included in panel-open warming.
+- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders, startup
+  warm-up from the workspace route, intent on panel toggles, and realization on
+  first open. Opening also warms browser, terminal, new-tab and file-preview code. Closed desktop panels
   retain a lightweight resizable Panel shell; loaded content stays mounted after
   closing. Inline failure preserves the resizable Panel structure.
 
@@ -152,4 +167,5 @@ See [the September 29 loading-policy audit](ui-split-loading-audit.md) for the
 complete inventory, actual mount gates, intent wiring, nested loads and rationale.
 A policy label alone does not make a hidden mounted component lazy. Keep the
 implementation behind an explicit first-use gate, then retain it where closing
-must preserve state. Do not add idle preloads merely to hide the loading state.
+must preserve state. Choose idle warming deliberately for commonly used UI; keep
+customization and content-dependent renderers gated by actual demand.

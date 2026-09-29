@@ -1,5 +1,10 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -116,7 +121,7 @@ const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
         <SplitLoadFailure retry={props.retry} />
       </ThreadSecondaryPanelInlinePlaceholder>
     ),
-  preload: "intent",
+  preload: "startup",
 });
 
 function useRetainedRealization(active: boolean): boolean {
@@ -128,6 +133,11 @@ function useRetainedRealization(active: boolean): boolean {
 export const LazyThreadSecondaryPanel = Object.assign(
   function ThreadSecondaryPanelGate(props: LazyThreadSecondaryPanelProps) {
     const realized = useRetainedRealization(props.isOpen);
+    useEffect(() => {
+      if (props.isOpen) {
+        for (const split of panelContentSplits) void split.preload();
+      }
+    }, [props.isOpen]);
     if (!realized) {
       return props.renderAsDrawer ? null : (
         <ThreadSecondaryPanelInlinePlaceholder
@@ -260,3 +270,15 @@ export const LazyThreadStorageFilePreviewTabContent = defineSplit({
   loading: FilePreviewLoading,
   preload: "render",
 });
+
+const panelContentSplits = [
+  LazyBrowserTabDeck,
+  LazyThreadTerminalPanel,
+  LazyNewTabPage,
+  LazyFilePreview,
+  LazyWorkspaceFilePreviewTabContent,
+  LazyHostFilePreviewTabContent,
+  LazyHostScopedFilePreviewTabContent,
+  LazyProjectFilePreviewTabContent,
+  LazyThreadStorageFilePreviewTabContent,
+];
