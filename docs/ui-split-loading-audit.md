@@ -70,9 +70,12 @@ All mounted instances and speculative preloads share that attempt; they do not
 start independent retry storms. The skeleton remains visible until success or
 exhaustion. A subsequent manual Try again starts a fresh bounded attempt.
 
-Recognized errors are the browser dynamic-module-download messages and Vite's
-CSS-preload error. Other loader errors (including syntax/initialization failures)
-and component render exceptions go directly to the local red error line.
+Recognized errors are the browser dynamic-JavaScript-module-download messages.
+Other loader errors (including syntax/initialization failures), CSS-preload errors
+and component render exceptions go directly to the local red error line. Vite
+marks CSS dependencies as seen before loading them; automatically retrying its
+CSS error can skip the failed stylesheet and falsely render a successful but
+unstyled feature, so it is deliberately excluded.
 Retries already started may finish after the requesting view closes, just as
 imports cannot be cancelled. There is no automatic reload or cache-busting URL.
 
@@ -101,3 +104,36 @@ and [MDN dynamic imports](https://developer.mozilla.org/en-US/docs/Web/JavaScrip
 - Emitted-module and package guards measure the critical closures. They do not
   establish whether an idle effect downloads an optional chunk later; cold request
   capture is needed for that distinction.
+
+## Combined result and verification limits
+
+All four new boundaries are integrated with the retry and demand-gate changes.
+The integrated build compared with the wave-2 base `fc92e220a6` measures:
+
+| Payload | Raw bytes | Brotli bytes | Brotli change | New Brotli limit |
+| --- | ---: | ---: | ---: | ---: |
+| Boot | 1,490,317 | 368,624 | −3,514 | 403,839 |
+| Additional thread route | 2,127,197 | 577,106 | −41,117 | 589,508 |
+
+Raw limits are 1,640,415 boot and 2,163,849 route bytes. All four budgets were
+ratcheted down by the full net saving. Per-child gains are not additive because
+shared chunks move between closures. The later skeleton correction is included.
+
+The final integration run passed 204 focused tests. After narrowing retry to
+JavaScript download failures, all 13 shared-helper tests passed. The panel policy
+checks passed 61 tests across the demand gate, responsive layout, headers and
+plugin panel; build, typecheck, lint and the final budget check passed.
+
+On an isolated production app, cold opening the root page fetched none of the
+optional panel, browser, queue, terminal-output, model-menu or command-palette
+chunks. Panel-toggle intent fetched ThreadSecondaryPanel and sortable without
+mounting the panel. Clicking then fetched NewTabPage, not BrowserTabDeck. Closing
+and reopening added no JavaScript requests. This proves actual transfer timing,
+not just the static closure. The backend's plugin-asset requests returned 403, so
+this run verifies app-owned gates, not enabled-plugin behavior or full thread
+workflows. Child feature checks separately cover queue and picker interactions.
+
+The request-abort retry check used the real sidebar module on the Ladle server.
+Phone-width checks used Chromium and verified the app root stayed free of inert
+and aria-hidden. Native browser views and iOS Safari were not reverified in this
+audit. The drawer realization mechanism itself was preserved.

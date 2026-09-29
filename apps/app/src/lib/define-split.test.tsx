@@ -212,7 +212,6 @@ it.each([
   ),
   new TypeError("error loading dynamically imported module: /assets/editor.js"),
   new TypeError("Importing a module script failed."),
-  new Error("Unable to preload CSS for /assets/editor.css"),
 ])(
   "shares bounded automatic download retries across preload and render: %s",
   async (error) => {
@@ -271,3 +270,27 @@ it("stops automatic retries after three attempts and permits a new manual attemp
   expect(screen.getByText("Recovered editor")).toBeTruthy();
   expect(load).toHaveBeenCalledTimes(4);
 });
+
+it.each([
+  new SyntaxError("Unexpected token in feature module"),
+  new Error("Unable to preload CSS for /assets/editor.css"),
+])(
+  "does not automatically retry non-JavaScript-download failures: %s",
+  async (error) => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const load = vi
+      .fn<() => Promise<React.ComponentType>>()
+      .mockRejectedValue(error);
+    const Split = defineSplit({
+      id: "non-download-failure",
+      load,
+      loading: () => null,
+      preload: "render",
+    });
+    render(<Split />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(load).toHaveBeenCalledOnce();
+  },
+);

@@ -34,7 +34,7 @@ keeps its real header and Done button and reserves the expected content height
 with a simple skeleton bar, without fake icons or rows.
 
 The loader is shared between speculative preload and rendering, including automatic
-retries. Recognized browser chunk-download and Vite CSS-preload failures get two
+retries. Recognized browser JavaScript chunk-download failures get two
 additional attempts after 500 ms and 1500 ms; the loading UI stays visible until
 success or exhaustion. Other loader errors and component render errors fail
 immediately. There is no retry loop, automatic page reload, or URL rewriting.

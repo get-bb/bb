@@ -79,10 +79,18 @@
     "The composer (tiptap/prosemirror) is visible on every thread page and is",
     "allowed until it moves behind a first-focus handoff. Run",
     "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
-    "to print the static chain that pulled a package into the closure."
+    "to print the static chain that pulled a package into the closure.",
+    "",
+    "On 2026-09-29 the second split wave moved terminal output, queued messages,",
+    "model-menu contents and command-palette contents behind demand/intent gates.",
+    "The panel policy audit also removed blanket idle preloading and gated first",
+    "panel/browser mounts. Compared with fc92e220a6, the integrated changes saved",
+    "13,894 boot raw / 3,514 boot brotli bytes and",
+    "175,237 thread-route raw / 41,117 thread-route brotli bytes.",
+    "All four limits dropped by those net measured savings; none were raised."
   ],
-  "maxBootBytes": 1654309,
-  "maxBootBrotliBytes": 407353,
+  "maxBootBytes": 1640415,
+  "maxBootBrotliBytes": 403839,
   "forbiddenBootPackages": [
     "@dnd-kit/accessibility",
     "@dnd-kit/core",
@@ -189,8 +197,8 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 2339086,
-      "maxBrotliBytes": 630625,
+      "maxBytes": 2163849,
+      "maxBrotliBytes": 589508,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
