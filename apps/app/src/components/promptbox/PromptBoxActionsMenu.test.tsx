@@ -41,7 +41,6 @@ import {
 import {
   ComposerPlusMenuSlot,
   PromptBoxActionsMenu,
-  withAppPromptActions,
 } from "./PromptBoxActionsMenu";
 
 afterEach(() => {
@@ -117,10 +116,10 @@ describe("PromptBoxActionsMenu", () => {
           <PluginComposerHostProvider value={host}>
             <PluginComposerViewProvider value={view}>
               <ComposerPlusMenuSlot
-                actions={withAppPromptActions([
+                actions={[
                   { kind: "skills", text: "/skills " },
                   { kind: "plan", text: "/plan " },
-                ])}
+                ]}
                 onAction={() => {}}
               />
             </PluginComposerViewProvider>

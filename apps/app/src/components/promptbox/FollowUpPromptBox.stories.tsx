@@ -36,9 +36,6 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   QueuedMessagesList,
@@ -115,7 +112,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
 ];
 
 interface EnvironmentSummaryArgs {

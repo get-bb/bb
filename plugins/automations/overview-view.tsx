@@ -10,6 +10,7 @@ import type {
   AutomationResponse,
   AutomationsOverviewResponse,
 } from "./src/rpc-types.js";
+import { CREATE_AUTOMATION_PROMPT } from "./composer";
 import {
   AutomationLifecycleControl,
   automationIconName,
@@ -57,7 +58,6 @@ const AUTOMATION_STATUS_FILTER_OPTIONS = [
   { id: "paused", label: "Paused" },
 ] as const;
 
-export const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
 export const AUTOMATION_CREATE_TEMPLATES = [
   {
     label: "CI failure triage",

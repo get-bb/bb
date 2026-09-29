@@ -13,9 +13,6 @@ import {
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
@@ -43,7 +40,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
 ];
 
 const idleVoice: PromptVoiceConfig = {

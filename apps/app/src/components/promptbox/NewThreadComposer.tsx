@@ -53,7 +53,6 @@ import {
   NewThreadPromptBox,
   type NewThreadPromptBoxProps,
 } from "@/components/promptbox/NewThreadPromptBox";
-import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@bb/client-core";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -1486,10 +1485,7 @@ export function NewThreadComposer({
     () => buildProviderPromptActionProps(selectedProviderComposerActions),
     [selectedProviderComposerActions],
   );
-  const promptActions = useMemo(
-    () => withAppPromptActions(providerPromptActions.promptActions),
-    [providerPromptActions.promptActions],
-  );
+  const { promptActions } = providerPromptActions;
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,

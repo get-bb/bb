@@ -62,9 +62,6 @@ import {
 } from "@/lib/plugin-logos";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
-  AUTOMATION_PROMPT_ACTION,
-} from "./PromptBoxActionsMenu";
-import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
   arePromptEditorValuesEqual,
@@ -113,7 +110,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -4664,28 +4660,16 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("inserts automation mode as a command pill", async () => {
+  it("starts the draft with the automation prompt", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Automation");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: 0,
-        end: "/automation".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "automation",
-          source: "command",
-          origin: "user",
-          label: "automation",
-          argumentHint: null,
-        },
-      },
-    ]);
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("Create a new bb automation to "),
+    );
+    expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
   it("puts plan before existing text and keeps later pills on their text", async () => {
@@ -4775,10 +4759,9 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("pastes prompt action command tokens as goal, plan, and automation pills", async () => {
+  it("pastes prompt action command tokens as plan and goal pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const text =
-      "/plan inspect first\n/goal finish the change\n/automation keep checking";
+    const text = "/plan inspect first\n/goal finish the change";
 
     await focusPromptEnd(promptBoxRef);
     pastePlainText(text);
@@ -4811,23 +4794,10 @@ describe("PromptBoxInternal prompt actions", () => {
           argumentHint: null,
         },
       },
-      {
-        start: "/plan inspect first\n/goal finish the change\n".length,
-        end: "/plan inspect first\n/goal finish the change\n/automation".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "automation",
-          source: "command",
-          origin: "user",
-          label: "automation",
-          argumentHint: null,
-        },
-      },
     ]);
   });
 
-  it("replaces a leading goal command with automation", async () => {
+  it("replaces a leading goal command with the automation prompt", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
@@ -4837,57 +4807,10 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await selectPromptAction("Automation");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: 0,
-        end: "/automation".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "automation",
-          source: "command",
-          origin: "user",
-          label: "automation",
-          argumentHint: null,
-        },
-      },
-    ]);
-  });
-
-  it("selects automation from slash typeahead as a command pill", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("/auto", {
-      commandSuggestions: [
-        {
-          kind: "command",
-          name: "automation",
-          source: "command",
-          origin: "user",
-          description: null,
-          argumentHint: null,
-        },
-      ],
-    });
-
-    await focusPromptEnd(promptBoxRef);
-    await selectCommandSuggestion("automation");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: 0,
-        end: "/automation".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "automation",
-          source: "command",
-          origin: "user",
-          label: "automation",
-          argumentHint: null,
-        },
-      },
-    ]);
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("Create a new bb automation to "),
+    );
+    expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
   it("selects a slash typeahead command as a command pill", async () => {

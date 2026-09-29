@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { promptActionCommandSuggestions } from "./useCommandSuggestions";
 
 const promptActions = [
@@ -14,7 +13,6 @@ const promptActions = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
 ] as const;
 
 describe("promptActionCommandSuggestions", () => {
@@ -42,14 +40,6 @@ describe("promptActionCommandSuggestions", () => {
         description: null,
         argumentHint: null,
       },
-      {
-        kind: "command",
-        name: "automation",
-        source: "command",
-        origin: "user",
-        description: null,
-        argumentHint: null,
-      },
     ]);
   });
 
@@ -61,13 +51,5 @@ describe("promptActionCommandSuggestions", () => {
         trigger: "/",
       }).map((suggestion) => suggestion.name),
     ).toEqual(["plan"]);
-
-    expect(
-      promptActionCommandSuggestions({
-        promptActions,
-        query: "auto",
-        trigger: "/",
-      }).map((suggestion) => suggestion.name),
-    ).toEqual(["automation"]);
   });
 });

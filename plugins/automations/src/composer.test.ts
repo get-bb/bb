@@ -1,45 +1,34 @@
 import type { ComposerDraftSnapshot } from "@get-bb/plugin-sdk/app";
 import { describe, expect, it } from "vitest";
-import { withAutomationCommand } from "../composer.js";
+import { withCreateAutomationPrompt } from "../composer.js";
 
-const planPill = {
-  kind: "command",
-  trigger: "/",
-  name: "plan",
-  source: "command",
-  origin: "user",
-  argumentHint: null,
-  label: "plan",
-} as const;
-
-describe("withAutomationCommand", () => {
-  it("replaces a leading command and keeps later pills on their text", () => {
+describe("withCreateAutomationPrompt", () => {
+  it("replaces a leading command, keeps later pills, and is idempotent", () => {
     const draft: ComposerDraftSnapshot = {
       text: "/plan check @spec daily",
       mentions: [
-        { ...planPill, from: 0, to: 5 },
+        {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          argumentHint: null,
+          label: "plan",
+          from: 0,
+          to: 5,
+        },
         { kind: "project", projectId: "p", label: "spec", from: 12, to: 17 },
       ],
       attachments: [],
     };
 
-    const next = withAutomationCommand(draft);
+    const next = withCreateAutomationPrompt(draft);
 
-    expect(next.text).toBe("/automation check @spec daily");
-    expect(next.mentions.map(({ kind, from, to }) => [kind, from, to])).toEqual(
-      [
-        ["command", 0, 11],
-        ["project", 18, 23],
-      ],
-    );
-    expect(next.text.slice(18, 23)).toBe("@spec");
-    expect(withAutomationCommand({ ...draft, ...next })).toEqual(next);
-  });
-
-  it("prefixes plain text", () => {
-    expect(
-      withAutomationCommand({ text: "  every morning", mentions: [], attachments: [] })
-        .text,
-    ).toBe("/automation every morning");
+    expect(next.text).toBe("Create a new bb automation to check @spec daily");
+    expect(next.mentions).toEqual([
+      { kind: "project", projectId: "p", label: "spec", from: 36, to: 41 },
+    ]);
+    expect(withCreateAutomationPrompt({ ...draft, ...next })).toEqual(next);
   });
 });
