@@ -729,12 +729,16 @@ function SharedPortsSection({
   const [portInput, setPortInput] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [exposing, setExposing] = useState(false);
+  const [collapsedHosts, setCollapsedHosts] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [revokingHost, setRevokingHost] = useState<string | null>(null);
   const [revokingShare, setRevokingShare] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const expose = useCallback(() => {
     const trimmed = portInput.trim();
-    if (trimmed.length === 0 || exposing) return;
+    if (trimmed.length === 0 || exposing || revokingHost !== null) return;
     const port = Number(trimmed);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       setError("Port must be an integer between 1 and 65535");
@@ -753,11 +757,11 @@ function SharedPortsSection({
         setError(errorText(rpcError));
       },
     );
-  }, [portInput, exposing, rpc]);
+  }, [portInput, exposing, revokingHost, rpc]);
 
   const unexpose = useCallback(
     (hostId: string, port: number) => {
-      if (revokingShare !== null) return;
+      if (revokingShare !== null || revokingHost !== null) return;
       const key = `${hostId}:${port}`;
       setRevokingShare(key);
       setError(null);
@@ -771,8 +775,21 @@ function SharedPortsSection({
         },
       );
     },
-    [revokingShare, rpc],
+    [revokingShare, revokingHost, rpc],
   );
+
+  const unexposeAll = async (hostId: string) => {
+    if (revokingHost !== null || revokingShare !== null) return;
+    setRevokingHost(hostId);
+    setError(null);
+    try {
+      await rpc.call("unexposeAll", { hostId });
+    } catch (rpcError) {
+      setError(errorText(rpcError));
+    } finally {
+      setRevokingHost(null);
+    }
+  };
 
   return (
     <div
@@ -781,8 +798,8 @@ function SharedPortsSection({
         dimmed && "pointer-events-none opacity-60 saturate-[0.85]",
       )}
     >
-      <div className="flex items-center">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-subtle-foreground">
+      <div className="flex flex-wrap items-center gap-1">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle-foreground">
           Shared ports
         </h3>
         <span className="flex-1" />
@@ -791,6 +808,7 @@ function SharedPortsSection({
           variant="ghost"
           size="sm"
           className="text-muted-foreground"
+          disabled={revokingHost !== null}
           onClick={() => setFormOpen((open) => !open)}
         >
           <Icon name="Plus" className="size-3.5" />
@@ -801,21 +819,62 @@ function SharedPortsSection({
       {shares.length > 0 ? (
         <div className="space-y-2.5">
           {groupSharesByHost(shares).map((group) => {
+            const collapsed = collapsedHosts.has(group.hostId);
             const hostDown = group.shares.every((share) => share.url === "");
             return (
               <div key={group.hostId} className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <StatusDot tone={hostDown ? "muted" : "ok"} />
-                  <span
-                    className={cn(
-                      "min-w-0 truncate text-xs font-medium",
-                      hostDown ? "text-muted-foreground" : "text-foreground",
-                    )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`${group.hostName}, ${group.shares.length} shared ports`}
+                    aria-expanded={!collapsed}
+                    onClick={() =>
+                      setCollapsedHosts((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(group.hostId)) next.delete(group.hostId);
+                        else next.add(group.hostId);
+                        return next;
+                      })
+                    }
                   >
-                    {group.hostName}
-                  </span>
+                    <Icon
+                      name={collapsed ? "ChevronRight" : "ChevronDown"}
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    />
+                    <StatusDot tone={hostDown ? "muted" : "ok"} />
+                    <span
+                      className={cn(
+                        "min-w-0 truncate text-xs font-medium",
+                        hostDown ? "text-muted-foreground" : "text-foreground",
+                      )}
+                    >
+                      {group.hostName}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {group.shares.length}
+                    </span>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={DANGER_QUIET_CLASS}
+                    aria-label={`Revoke all (${group.shares.length}) shared ports on ${group.hostName}`}
+                    disabled={
+                      revokingHost !== null ||
+                      revokingShare !== null ||
+                      exposing
+                    }
+                    onClick={() => void unexposeAll(group.hostId)}
+                  >
+                    {revokingHost === group.hostId ? (
+                      <Icon name="Spinner" className="size-4 animate-spin" />
+                    ) : null}
+                    Revoke all ({group.shares.length})
+                  </Button>
                 </div>
-                <ul className="space-y-1 pl-3.5">
+                <ul hidden={collapsed} className="space-y-1 pl-7">
                   {group.shares.map((share) => (
                     <li
                       key={`${share.hostId}:${share.port}`}
@@ -861,7 +920,7 @@ function SharedPortsSection({
                         size="sm"
                         className={DANGER_QUIET_CLASS}
                         disabled={
-                          revokingShare === `${share.hostId}:${share.port}`
+                          revokingHost !== null || revokingShare !== null
                         }
                         onClick={() => unexpose(share.hostId, share.port)}
                       >
@@ -905,7 +964,9 @@ function SharedPortsSection({
           <Button
             type="submit"
             size="sm"
-            disabled={exposing || portInput.trim().length === 0}
+            disabled={
+              exposing || revokingHost !== null || portInput.trim().length === 0
+            }
           >
             {exposing ? (
               <Icon name="Spinner" className="size-4 animate-spin" />

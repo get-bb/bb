@@ -202,6 +202,7 @@ Remote access (bb connect):
   bb connect off                          Disconnect and forget the pairing
   bb connect expose <port> [--host <name-or-id>]    Share a host's HTTP port
   bb connect unexpose <port> [--host <name-or-id>]  Stop sharing on that host
+  bb connect unexpose-all [--host <id>] [--json]   Stop sharing all ports on one machine
   bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
   bb connect machine-code                 Mint a one-time code that pairs the bb mobile app

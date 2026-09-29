@@ -111,6 +111,10 @@ export const connectRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  unexposeAll: {
+    input: z.object({ hostId: z.string().min(1) }).strict(),
+    output: z.object({ removed: z.number().int().nonnegative() }).strict(),
+  },
   listShares: { input: z.null(), output: z.array(shareListingSchema) },
   listAccountServers: {
     input: z.null(),
@@ -178,6 +182,9 @@ export function createRpcHandlers(
         args.port,
         args.hostId ?? (await hostResolver.serverHostId()),
       );
+    },
+    async unexposeAll(args) {
+      return tunnel.unexposeAll(args.hostId);
     },
     async listShares() {
       return tunnel.listShares();

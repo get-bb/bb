@@ -1937,6 +1937,61 @@ describe("connect plugin", () => {
     );
   });
 
+  it.each(["rpc", "cli"])(
+    "revokes only the selected machine’s persisted shares through %s",
+    async (surface) => {
+      const { bb, harness } = await loadPlugin();
+      await bb.storage.kv.set(SHARES_KV_KEY, {
+        [`${SERVER_HOST_ID}:8000`]: {
+          hostId: SERVER_HOST_ID,
+          port: 8000,
+          createdAt: 1,
+        },
+        "host-deleted:8000": {
+          hostId: "host-deleted",
+          port: 8000,
+          createdAt: 2,
+        },
+        "host-deleted:4000": {
+          hostId: "host-deleted",
+          port: 4000,
+          createdAt: 3,
+        },
+      });
+      if (surface === "rpc") {
+        await expect(
+          harness.callRpc("unexposeAll", { hostId: "host-deleted" }),
+        ).resolves.toEqual({
+          removed: 2,
+        });
+      } else {
+        const result = await harness.runCli([
+          "unexpose-all",
+          "--host",
+          "host-deleted",
+          "--json",
+        ]);
+        expect(result.exitCode).toBe(0);
+        expect(JSON.parse(result.stdout ?? "")).toEqual({ removed: 2 });
+      }
+      expect(await bb.storage.kv.get(SHARES_KV_KEY)).toEqual({
+        [`${SERVER_HOST_ID}:8000`]: {
+          hostId: SERVER_HOST_ID,
+          port: 8000,
+          createdAt: 1,
+        },
+      });
+      expect(await harness.callRpc("listShares")).toEqual([
+        expect.objectContaining({ hostId: SERVER_HOST_ID, port: 8000 }),
+      ]);
+      await expect(
+        harness.callRpc("unexposeAll", { hostId: "host-deleted" }),
+      ).resolves.toEqual({
+        removed: 0,
+      });
+    },
+  );
+
   it("keeps valid shares loaded when a host was removed and prunes orphaned shares without a host lookup", async () => {
     const { bb, harness } = await loadPlugin();
     await bb.storage.kv.set(SHARES_KV_KEY, {

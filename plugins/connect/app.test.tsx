@@ -258,38 +258,38 @@ describe("connect settings section", () => {
 
   it("groups shares by host and degrades an unreachable host's group", async () => {
     const reason = "sawyer-air is not connected right now.";
+    const currentStatus = connected({
+      shares: [
+        {
+          hostId: "host-air",
+          hostName: "Sawyer Air",
+          port: 5173,
+          createdAt: 1,
+          url: "",
+          unavailableReason: reason,
+        },
+        {
+          hostId: "host-server",
+          hostName: "Workstation",
+          port: 3000,
+          createdAt: 2,
+          url: "https://workstation--3000.getbb.app",
+        },
+        {
+          hostId: "host-server",
+          hostName: "Workstation",
+          port: 8080,
+          createdAt: 3,
+          url: "https://workstation--8080.getbb.app",
+        },
+      ],
+    });
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       {
         rpc: {
-          status: () =>
-            connected({
-              shares: [
-                {
-                  hostId: "host-air",
-                  hostName: "Sawyer Air",
-                  port: 5173,
-                  createdAt: 1,
-                  url: "",
-                  unavailableReason: reason,
-                },
-                {
-                  hostId: "host-server",
-                  hostName: "Workstation",
-                  port: 3000,
-                  createdAt: 2,
-                  url: "https://workstation--3000.getbb.app",
-                },
-                {
-                  hostId: "host-server",
-                  hostName: "Workstation",
-                  port: 8080,
-                  createdAt: 3,
-                  url: "https://workstation--8080.getbb.app",
-                },
-              ],
-            }),
+          status: () => currentStatus,
           unexpose: () => ({ removed: true, port: 5173 }),
         },
       },
@@ -309,6 +309,18 @@ describe("connect settings section", () => {
       slot.queryByRole("button", { name: "Copy share URL for port 5173" }),
     ).toBeNull();
 
+    const machine = slot.getByRole("button", {
+      name: "Workstation, 2 shared ports",
+    });
+    fireEvent.click(machine);
+    expect(machine.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      slot.queryByRole("link", { name: "workstation--3000.getbb.app" }),
+    ).toBeNull();
+    expect(slot.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    fireEvent.click(machine);
+    expect(machine.getAttribute("aria-expanded")).toBe("true");
+
     const revokeButtons = slot.getAllByRole("button", { name: "Revoke" });
     expect(revokeButtons).toHaveLength(3);
     fireEvent.click(revokeButtons[0]!);
@@ -318,6 +330,84 @@ describe("connect settings section", () => {
         input: { hostId: "host-air", port: 5173 },
       }),
     );
+
+    fireEvent.click(machine);
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+      ...currentStatus,
+      shares: currentStatus.shares.filter((share) => share.port !== 8080),
+    });
+    const updatedMachine = slot.getByRole("button", {
+      name: "Workstation, 1 shared ports",
+    });
+    expect(updatedMachine.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      slot.getByRole("button", {
+        name: "Revoke all (1) shared ports on Workstation",
+      }).textContent,
+    ).toBe("Revoke all (1)");
+    expect(
+      slot.queryByRole("link", { name: "workstation--3000.getbb.app" }),
+    ).toBeNull();
+    fireEvent.click(updatedMachine);
+    slot.getByRole("link", { name: "workstation--3000.getbb.app" });
+    expect(slot.queryByText(":8080")).toBeNull();
+  });
+
+  it("blocks duplicate revocations while pending and allows retry after bulk failure", async () => {
+    let rejectRevoke: (error: Error) => void = () => {};
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () =>
+            connected({
+              shares: [
+                {
+                  hostId: "host-server",
+                  hostName: "Workstation",
+                  port: 3000,
+                  createdAt: 1,
+                  url: "https://workstation--3000.getbb.app",
+                },
+              ],
+            }),
+          unexposeAll: () =>
+            new Promise((_, reject) => {
+              rejectRevoke = reject;
+            }),
+        },
+      },
+    );
+    const revokeAll = await slot.findByRole("button", {
+      name: "Revoke all (1) shared ports on Workstation",
+    });
+    fireEvent.click(revokeAll);
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "unexposeAll",
+        input: { hostId: "host-server" },
+      }),
+    );
+    expect(revokeAll.hasAttribute("disabled")).toBe(true);
+    expect(
+      slot.getByRole("button", { name: "Revoke" }).hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(revokeAll);
+    expect(
+      slot.rpcCalls.filter((call) => call.method === "unexposeAll"),
+    ).toHaveLength(1);
+    rejectRevoke(new Error("Could not save shared ports"));
+    await slot.findByText("Could not save shared ports");
+    expect(revokeAll.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(revokeAll);
+    await waitFor(() =>
+      expect(
+        slot.rpcCalls.filter((call) => call.method === "unexposeAll"),
+      ).toHaveLength(2),
+    );
+    rejectRevoke(new Error("Could not save shared ports"));
+    await slot.findByText("Could not save shared ports");
   });
 
   it("exposes a port through the disclosure form and surfaces errors", async () => {

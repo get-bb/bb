@@ -181,6 +181,28 @@ export class ConnectTunnel {
     return { ...result, port };
   }
 
+  async unexposeAll(hostId: string): Promise<{ removed: number }> {
+    const shares = await this.listShares(hostId);
+    let removed = 0;
+    const failures: string[] = [];
+    for (const share of shares) {
+      try {
+        const result = await this.unexpose(share.port, share.hostId);
+        if (result.removed) removed++;
+      } catch (error) {
+        failures.push(
+          `${share.hostName}:${share.port}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    if (failures.length > 0) {
+      throw new Error(
+        `Revoked ${removed} shared ports; failed to revoke ${failures.length}: ${failures.join("; ")}`,
+      );
+    }
+    return { removed };
+  }
+
   async listShares(hostId?: string): Promise<ShareListing[]> {
     return this.options.shares.list(hostId);
   }

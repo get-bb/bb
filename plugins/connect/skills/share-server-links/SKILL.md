@@ -22,6 +22,14 @@ host, and the command resolves the thread's host automatically.
    thread (or with the same `--host`) so the share is cleaned up. Use
    `bb connect shares [--host <name-or-id>]` to inspect that host's shares.
 
+Use `bb connect unexpose-all [--host <id>] [--json]` to revoke all shared ports
+on one machine, including an unavailable machine. It defaults to the thread's
+machine, or the server machine outside a thread, and keeps machine pairing intact.
+Each collapsible machine group in settings offers **Revoke all** for that machine.
+The typed plugin RPC is `unexposeAll` with `{ hostId: string }` input and a
+`{ removed: number }` result. Bulk revocation attempts every share on that
+machine; any failures report partial progress and can be retried.
+
 `bb connect --help` and `bb connect <command> --help` print the commands and
 their flags and exit 0. Unknown commands and flags fail with a suggestion —
 `bb connect list` points at `bb connect shares` — and with `--json` a failure

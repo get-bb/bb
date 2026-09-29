@@ -266,6 +266,29 @@ export function registerConnectCli(args: {
               };
             }),
         }),
+        "unexpose-all": cliCommand({
+          summary: "Stop sharing all HTTP ports on a machine",
+          options: {
+            host: {
+              type: "string",
+              placeholder: "id",
+              description: "Machine ID; defaults to the thread's host",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const hostId =
+                input.options.host ?? (await hostResolver.resolveId(ctx));
+              const result = await tunnel.unexposeAll(hostId);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? asJson(result)
+                  : `Stopped sharing ${result.removed} ports on ${hostId}\n`,
+              };
+            }),
+        }),
         shares: cliCommand({
           summary: "List shared ports and their public URLs",
           suggestFor: ["list", "ls", "ports"],
