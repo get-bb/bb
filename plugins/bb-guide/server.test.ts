@@ -29,6 +29,7 @@ it("introduces bb without user-question guidance", async () => {
       "Reference a BB thread as `@thread:thr_abc123`",
     );
     expect(introduction).toContain("Do not construct thread URLs manually");
+    expect(introduction).toContain("Stop only processes you started");
     expect(introduction).not.toContain(
       "Ask the user a blocking question only when",
     );
