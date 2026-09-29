@@ -318,7 +318,11 @@ function PluginComposerPlusMenuEntryContent({
         void run();
       }}
     >
-      <PluginIcon pluginId={pluginId} icon={item.icon ?? null} />
+      {item.icon ? (
+        <Icon name={item.icon} className="size-4 shrink-0" aria-hidden="true" />
+      ) : (
+        <PluginIcon pluginId={pluginId} icon={null} />
+      )}
       {item.label}
     </DropdownMenuItem>
   );
