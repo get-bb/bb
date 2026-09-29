@@ -907,6 +907,7 @@ describe("thread runtime config", () => {
       const claudeCode = await build("claude-code");
       expect(claudeCode.options.providerOptions).toEqual({
         chromeEnabled: false,
+        disable1MContext: false,
         memoryEnabled: true,
         providerSubagentsEnabled: true,
         workflowsEnabled: true,
