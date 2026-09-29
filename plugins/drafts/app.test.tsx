@@ -8,26 +8,26 @@ import type {
 
 const app = await loadPluginApp(() => import("./app"));
 const customization = app.composerCustomizations[0]!;
-const plusMenuItem = customization.plusMenu![0]!;
+const sendMenuItem = customization.sendMenu![0]!;
 
 function fakeComposer(fields: Partial<PluginComposerApi>): PluginComposerApi {
   return fields as PluginComposerApi;
 }
 
 describe("registration", () => {
-  it("adds the same draft action to the plus and send menus of thread and new-thread composers", () => {
+  it("adds the draft action to the send menu of thread and new-thread composers", () => {
     expect(app.composerCustomizations).toMatchObject([
       {
         id: "drafts",
         scopes: ["thread", "new-thread"],
-        plusMenu: [{ label: "Save draft…", icon: "EditFile" }],
         sendMenu: [{ label: "Save draft…", icon: "EditFile" }],
       },
     ]);
+    expect(customization.plusMenu).toBeUndefined();
   });
 
   it("disables saving while the composer would not submit", () => {
-    const disabled = plusMenuItem.disabled as (
+    const disabled = sendMenuItem.disabled as (
       composer: PluginComposerApi,
     ) => boolean;
     expect(disabled(fakeComposer({ isSubmittingBlocked: true }))).toBe(true);
@@ -38,7 +38,7 @@ describe("registration", () => {
 describe("saving", () => {
   it("submits the active composer with draft metadata", async () => {
     const submits: ComposerSubmitOptions[] = [];
-    await plusMenuItem.run({
+    await sendMenuItem.run({
       composer: fakeComposer({
         isEmpty: false,
         submit: async (options) => {
@@ -51,7 +51,7 @@ describe("saving", () => {
 
   it("does not submit an empty draft", async () => {
     const submit = vi.fn(async () => {});
-    await plusMenuItem.run({
+    await sendMenuItem.run({
       composer: fakeComposer({ isEmpty: true, submit }),
     });
     expect(submit).not.toHaveBeenCalled();

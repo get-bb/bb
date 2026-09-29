@@ -30,7 +30,6 @@ export default definePluginApp((app) => {
   app.composer.customize({
     id: "drafts",
     scopes: ["thread", "new-thread"],
-    plusMenu: [saveDraft],
     sendMenu: [saveDraft],
   });
 });

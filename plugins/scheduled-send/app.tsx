@@ -317,7 +317,6 @@ export default definePluginApp((app) => {
   app.composer.customize({
     id: "send-later",
     scopes: ["thread", "new-thread"],
-    plusMenu: [sendLater],
     sendMenu: [sendLater],
     banners: [{ id: "send-later", chrome: "bare", component: SendLaterPicker }],
   });

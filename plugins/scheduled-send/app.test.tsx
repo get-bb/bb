@@ -16,7 +16,7 @@ const app = await loadPluginApp(() => import("./app"));
 const { openSendLater, resetSendLaterState } = await import("./app");
 
 const customization = app.composerCustomizations[0]!;
-const plusMenuItem = customization.plusMenu![0]!;
+const sendMenuItem = customization.sendMenu![0]!;
 const picker = customization.banners![0]!;
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -73,19 +73,17 @@ describe("registration", () => {
       {
         id: "send-later",
         scopes: ["thread", "new-thread"],
-        plusMenu: [
-          { id: "send-later", label: "Send later…", icon: "Calendar" },
-        ],
         sendMenu: [
           { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
         banners: [{ id: "send-later", chrome: "bare" }],
       },
     ]);
+    expect(customization.plusMenu).toBeUndefined();
   });
 
   it("disables the row while the composer would not submit", () => {
-    const disabled = plusMenuItem.disabled as (
+    const disabled = sendMenuItem.disabled as (
       composer: PluginComposerApi,
     ) => boolean;
     expect(disabled(fakeComposer({ isSubmittingBlocked: true }))).toBe(true);

@@ -499,9 +499,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "composer-plus-menu",
-        title: "The + menu",
+        title: "The + and send menus",
         summary:
-          "Adds rows to the menu that opens from the + button beside the prompt box. With this, a plugin can:",
+          "Adds rows to the menu that opens from the + button beside the prompt box, or to the menu beside the send button. With this, a plugin can:",
         bullets: [
           "Supply each row's icon, label, and disabled state; bb renders the row itself",
           "Run a callback when someone picks the row",
