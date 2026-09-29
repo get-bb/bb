@@ -1,3 +1,4 @@
+import { composerCustomization } from "./composer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -754,6 +755,7 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
 }
 
 export default definePluginApp((app) => {
+  app.composer.customize(composerCustomization);
   app.slots.navPanel({
     id: "automations",
     title: "Automations",

@@ -15,7 +15,7 @@ import {
 } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
 import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
@@ -60,40 +60,6 @@ export const CREATE_PLUGIN_PROMPT_ACTION: PromptBoxAction = {
   text: CREATE_PLUGIN_PROMPT,
 };
 
-const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
-  "skills",
-  "plan",
-  "goal",
-  "automation",
-  "plugin",
-];
-
-const PROMPT_ACTION_PRESENTATION = {
-  skills: {
-    label: "Skills",
-    icon: "Zap",
-  },
-  plan: {
-    label: "Plan",
-    icon: "ListTodo",
-  },
-  goal: {
-    label: "Goal",
-    icon: "Target",
-  },
-  automation: {
-    label: "Automation",
-    icon: "Repeat",
-  },
-  plugin: {
-    label: "Plugin",
-    icon: "Plug02",
-  },
-} as const satisfies Record<
-  PromptBoxActionKind,
-  { label: string; icon: IconName }
->;
-
 export function withAppPromptActions(
   actions: readonly PromptBoxAction[],
 ): PromptBoxAction[] {
@@ -104,15 +70,6 @@ export function withAppPromptActions(
       (appAction) => !actions.some((action) => action.kind === appAction.kind),
     ),
   ];
-}
-
-function orderedPromptActions(
-  actions: readonly PromptBoxAction[],
-): PromptBoxAction[] {
-  return PROMPT_ACTION_ORDER.flatMap((kind) => {
-    const action = actions.find((candidate) => candidate.kind === kind);
-    return action ? [action] : [];
-  });
 }
 
 export function PromptBoxActionsMenu({
@@ -126,9 +83,10 @@ export function PromptBoxActionsMenu({
   const pluginSelectionRef = useRef<PluginComposerPlusMenuSelection | null>(
     null,
   );
-  const visibleActions = orderedPromptActions(actions).filter(
-    (action) => action.text.length > 0,
+  const skillsAction = actions.find(
+    (action) => action.kind === "skills" && action.text.length > 0,
   );
+  const visibleActions = skillsAction ? [skillsAction] : [];
   const clearSelectedActionAfterClose = useCallback(() => {
     const clear = () => {
       selectedItemRef.current = false;
@@ -221,7 +179,6 @@ export function PromptBoxActionsMenu({
           </>
         ) : null}
         {visibleActions.map((action) => {
-          const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
           return (
             <DropdownMenuItem
               key={action.kind}
@@ -231,15 +188,14 @@ export function PromptBoxActionsMenu({
               }}
             >
               <Icon
-                name={presentation.icon}
+                name="Zap"
                 className="size-4 text-muted-foreground"
                 aria-hidden
               />
-              {presentation.label}
+              Skills
             </DropdownMenuItem>
           );
         })}
-        {pluginItems.length > 0 ? <DropdownMenuSeparator /> : null}
         {pluginItems.map((contribution) => (
           <PluginComposerPlusMenuEntry
             key={contribution.key}

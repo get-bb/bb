@@ -663,6 +663,12 @@ describe("collectPluginAppRegistrations", () => {
         ],
         plusMenu: [
           { id: "bad-menu", label: "", run: () => {} },
+          {
+            id: "bad-visible",
+            label: "Invalid",
+            visible: "yes" as never,
+            run: () => {},
+          },
           { id: "good-menu", label: "Good", run: () => {} },
         ],
         richText: {

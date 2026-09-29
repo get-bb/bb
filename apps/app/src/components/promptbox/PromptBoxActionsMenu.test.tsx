@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
-import type { ComposerView } from "@get-bb/plugin-sdk";
+import type {
+  ComposerSelection,
+  ComposerView,
+  PluginComposerApi,
+} from "@get-bb/plugin-sdk";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +14,17 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  collectPluginAppRegistrations,
+  definePluginApp,
+} from "@/lib/plugin-app-definition";
+import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
+import {
+  setPluginSlotRegistrations,
+  resetPluginSlotStoreForTest,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { ComposerSendMenu } from "./ComposerSendMenu";
 import { MemoryRouter } from "react-router-dom";
 import {
   PluginComposerHostProvider,
@@ -22,13 +38,14 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import {
-  CREATE_PLUGIN_PROMPT_ACTION,
   PromptBoxActionsMenu,
+  ComposerPlusMenuSlot,
   withAppPromptActions,
 } from "./PromptBoxActionsMenu";
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
 });
 
@@ -58,7 +75,7 @@ describe("PromptBoxActionsMenu", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
-  it("seeds the composer with the plugin prompt after the provider actions", async () => {
+  it("keeps only Skills in the core action rows", async () => {
     const onAction = vi.fn();
     render(
       <PromptBoxActionsMenu
@@ -75,21 +92,16 @@ describe("PromptBoxActionsMenu", () => {
       { button: 0 },
     );
     const menuItems = await screen.findAllByRole("menuitem");
-    expect(menuItems.map((item) => item.textContent)).toEqual([
-      "Skills",
-      "Plan",
-      "Automation",
-      "Plugin",
-    ]);
+    expect(menuItems.map((item) => item.textContent)).toEqual(["Skills"]);
     expect(
       menuItems.map((item) =>
         item.querySelector("[data-icon]")?.getAttribute("data-icon"),
       ),
-    ).toEqual(["Zap", "ListTodo", "Repeat", "Plug02"]);
+    ).toEqual(["Zap"]);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Skills" }));
 
-    expect(onAction).toHaveBeenCalledWith(CREATE_PLUGIN_PROMPT_ACTION);
+    expect(onAction).toHaveBeenCalledWith({ kind: "skills", text: "/skills " });
   });
 
   it("keeps a provider-owned action instead of the app copy", () => {
@@ -104,6 +116,141 @@ describe("PromptBoxActionsMenu", () => {
       },
     ]);
   });
+
+  it.each(["plus", "send"] as const)(
+    "reacts to selection changes for %s-menu visibility and disabled state",
+    async (menu) => {
+      registerComposerMenuPlugins();
+      const definition = definePluginApp((app) =>
+        app.composer.customize({
+          id: "conditional",
+          [menu === "plus" ? "plusMenu" : "sendMenu"]: [
+            {
+              id: "hidden",
+              label: "Never shown",
+              visible: false,
+              run: () => {},
+            },
+            {
+              id: "conditional",
+              label: "Codex only",
+              visible: (composer: PluginComposerApi) =>
+                composer.selection?.providerId === "codex",
+              run: () => {},
+            },
+            {
+              id: "disabled",
+              label: "Selection-dependent",
+              disabled: (composer: PluginComposerApi) =>
+                composer.selection?.providerId !== "codex",
+              run: () => {},
+            },
+          ],
+        }),
+      );
+      setPluginSlotRegistrations(
+        "conditional",
+        makePluginRegistrationSet(collectPluginAppRegistrations(definition)),
+      );
+      let selection: ComposerSelection = { providerId: "codex" };
+      const listeners = new Set<() => void>();
+      const draft = { ...emptyPromptDraftState(), text: "Draft" };
+      const view: ComposerView = {
+        scope: { kind: "new-thread", projectId: null },
+        layout: "expanded",
+        draft: { text: "Draft", isEmpty: false, attachmentCount: 0 },
+        run: { isRunning: false, isSubmitting: false },
+      };
+      const host: PluginComposerHost = {
+        scope: view.scope,
+        textEffectKey: `conditional-${menu}`,
+        getCurrent: () => draft,
+        subscribeDraft: () => () => {},
+        setDraft: () => {},
+        focus: () => {},
+        getSelection: () => selection,
+        subscribeSelection: (listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      };
+      render(
+        <MemoryRouter>
+          <PluginComposerHostProvider value={host}>
+            <PluginComposerViewProvider value={view}>
+              {menu === "plus" ? (
+                <ComposerPlusMenuSlot onAction={() => {}} />
+              ) : (
+                <ComposerSendMenu
+                  isPointerCoarse={false}
+                  includePluginContributions
+                  queue={false}
+                  hasInput
+                  canSubmit
+                  onSubmit={undefined}
+                >
+                  <button>Send</button>
+                </ComposerSendMenu>
+              )}
+            </PluginComposerViewProvider>
+          </PluginComposerHostProvider>
+        </MemoryRouter>,
+      );
+      fireEvent.pointerDown(
+        screen.getByRole("button", {
+          name: menu === "plus" ? "Prompt actions" : "Send options",
+        }),
+        { button: 0 },
+      );
+      expect(
+        await screen.findByRole("menuitem", { name: "Codex only" }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("menuitem", { name: "Never shown" }),
+      ).toBeNull();
+      expect(
+        screen
+          .getByRole("menuitem", { name: "Selection-dependent" })
+          .getAttribute("aria-disabled"),
+      ).not.toBe("true");
+      if (menu === "plus") {
+        expect(screen.getAllByRole("menuitem", { name: "Plan" })).toHaveLength(
+          1,
+        );
+        expect(screen.getByRole("menuitem", { name: "Goal" })).toBeTruthy();
+      }
+      act(() => {
+        selection = { providerId: "claude-code" };
+        for (const listener of listeners) listener();
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("menuitem", { name: "Codex only" }),
+        ).toBeNull(),
+      );
+      expect(
+        screen
+          .getByRole("menuitem", { name: "Selection-dependent" })
+          .getAttribute("aria-disabled"),
+      ).toBe("true");
+      if (menu === "plus") {
+        expect(screen.getAllByRole("menuitem", { name: "Plan" })).toHaveLength(
+          1,
+        );
+        expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
+        act(() => {
+          selection = { providerId: "pi" };
+          for (const listener of listeners) listener();
+        });
+        await waitFor(() =>
+          expect(screen.queryByRole("menuitem", { name: "Plan" })).toBeNull(),
+        );
+        expect(
+          screen.getByRole("menuitem", { name: "Automation" }),
+        ).toBeTruthy();
+      }
+    },
+  );
 
   it("restores composer focus after an update-only plugin item", async () => {
     const view: ComposerView = {
@@ -206,7 +353,7 @@ describe("PromptBoxActionsMenu", () => {
         item: {
           id: "rewrite",
           label: "Rewrite prompt",
-          disabled: (composer) => composer.isEmpty,
+          disabled: (composer: PluginComposerApi) => composer.isEmpty,
           run: vi.fn(),
         },
       },
@@ -258,7 +405,6 @@ describe("PromptBoxActionsMenu", () => {
     );
     const menuItems = await screen.findAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
-      "Plan",
       "Improve prompt",
       "Rewrite prompt",
     ]);

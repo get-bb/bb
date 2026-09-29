@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Control the BB introduction and bundled agent skills.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.1"
   },
   "bb": {
     "name": "BB guide",
@@ -13,7 +14,8 @@
     "branding": {
       "icon": "Explore"
     },
-    "server": "./server.ts"
+    "server": "./server.ts",
+    "app": "./app.ts"
   },
   "keywords": [
     "bb-plugin"

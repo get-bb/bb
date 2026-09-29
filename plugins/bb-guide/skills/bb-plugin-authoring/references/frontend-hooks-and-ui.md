@@ -162,8 +162,16 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   button, shown only while the composer can submit) are host-rendered so
   keyboard navigation, focus restoration, and mobile layout remain correct.
   Each item supplies `id`, `label`, optional `icon`, `description`, and
-  `disabled` (a boolean or a function of the composer), plus
-  `run({ composer })`.
+  `visible` and `disabled` (booleans or functions of the live composer), plus
+  `run({ composer })`. Visibility defaults to true and predicates re-evaluate
+  when the draft, selection, or editor state changes. Labels and icons are static.
+- `composer.experimental_applyCommand({ trigger, name, trailingText })` applies
+  a command pill through the editor's prompt-action path: replaces an active
+  command query or preceding prompt action, avoids duplicates at the caret,
+  dismisses completion, and restores focus. The composer must be on screen.
+  It does not submit or change execution settings. Use `insert` for ordinary
+  text and mention insertion. Provider plugins own Plan/Goal menu rows;
+  Automations owns Automation and BB Guide owns Plugin creation.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the

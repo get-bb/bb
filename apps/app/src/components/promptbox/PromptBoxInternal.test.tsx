@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type { PromptTextMention } from "@bb/domain";
 import type { TiptapEditorHTMLElement } from "@tiptap/core";
@@ -8,6 +9,7 @@ import { EditorView } from "@tiptap/pm/view";
 import {
   createRef,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -271,6 +273,8 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
   );
 }
 
+const actionSelection = { providerId: "codex", model: "gpt-6-sol" };
+
 function renderPromptBox(
   initialValue: string,
   options: {
@@ -281,6 +285,7 @@ function renderPromptBox(
     onAttachFiles?: (files: File[]) => Promise<void> | void;
   } = {},
 ) {
+  registerComposerMenuPlugins();
   const changes: PromptChange[] = [];
   const onMentionQueryChange = vi.fn();
   const onCommandQueryChange = vi.fn();
@@ -292,32 +297,58 @@ function renderPromptBox(
     const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
       options.initialMentionRanges ?? [],
     );
+    const draft = useMemo(
+      () => ({ text: value, mentions: mentionRanges, attachments: [] }),
+      [value, mentionRanges],
+    );
+    const host = useMemo<PluginComposerHost>(
+      () => ({
+        scope: { kind: "new-thread", projectId: null },
+        textEffectKey: "prompt-action-composer",
+        getCurrent: () => draft,
+        subscribeDraft: () => () => {},
+        setDraft: (next) => {
+          changes.push({ value: next.text, mentions: next.mentions });
+          setValue(next.text);
+          setMentionRanges(next.mentions);
+        },
+        getSelection: () => actionSelection,
+        focus: () => getPromptEditorElement().focus(),
+      }),
+      [draft],
+    );
     return (
-      <PromptBoxInternal
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={(nextValue, nextMentions) => {
-          changes.push({ mentions: nextMentions, value: nextValue });
-          setValue(nextValue);
-          setMentionRanges(nextMentions);
-        }}
-        onSubmit={onSubmit}
-        typeahead={buildTypeaheadConfig({
-          mentionTriggers: options.mentionTriggers,
-          mentionSuggestions: options.mentionSuggestions,
-          onMentionQueryChange,
-          commandSuggestions: options.commandSuggestions,
-          onCommandQueryChange,
-        })}
-        mentionMenuPlacement="bottom"
-        attachments={{ onAttachFiles: options.onAttachFiles }}
-        promptActions={promptActions}
-        promptBoxRef={promptBoxRef}
-      />
+      <PluginComposerHostProvider value={host}>
+        <PromptBoxInternal
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={(nextValue, nextMentions) => {
+            changes.push({ mentions: nextMentions, value: nextValue });
+            setValue(nextValue);
+            setMentionRanges(nextMentions);
+          }}
+          onSubmit={onSubmit}
+          typeahead={buildTypeaheadConfig({
+            mentionTriggers: options.mentionTriggers,
+            mentionSuggestions: options.mentionSuggestions,
+            onMentionQueryChange,
+            commandSuggestions: options.commandSuggestions,
+            onCommandQueryChange,
+          })}
+          mentionMenuPlacement="bottom"
+          attachments={{ onAttachFiles: options.onAttachFiles }}
+          promptActions={promptActions}
+          promptBoxRef={promptBoxRef}
+        />
+      </PluginComposerHostProvider>
     );
   }
 
-  render(<PromptBoxHarness />);
+  render(
+    <MemoryRouter>
+      <PromptBoxHarness />
+    </MemoryRouter>,
+  );
   return {
     changes,
     onMentionQueryChange,

@@ -1067,6 +1067,10 @@ function getPromptActionRangeImmediatelyBeforeCursor({
   return null;
 }
 
+type PromptActionInput = Omit<PromptBoxAction, "kind"> & {
+  kind?: PromptBoxAction["kind"];
+};
+
 function getPromptActionInsertionRange({
   editor,
   action,
@@ -1074,7 +1078,7 @@ function getPromptActionInsertionRange({
   triggers,
 }: {
   editor: Editor;
-  action: PromptBoxAction;
+  action: PromptActionInput;
   actions: readonly PromptBoxAction[];
   triggers: readonly TypeaheadTrigger[];
 }): PromptActionInsertionRange | null {
@@ -1119,7 +1123,7 @@ function getPromptActionInsertionRange({
 }
 
 function promptActionCommandFromAction(
-  action: PromptBoxAction,
+  action: PromptActionInput,
 ): PromptActionCommand | null {
   if (action.kind === "skills" || !action.command) {
     return null;
@@ -2551,7 +2555,7 @@ export function PromptBoxInternal({
   );
 
   const applyPromptAction = useCallback(
-    (action: PromptBoxAction) => {
+    (action: PromptActionInput) => {
       if (action.text.length === 0) return;
       const commandAction = promptActionCommandFromAction(action);
 
@@ -2736,9 +2740,15 @@ export function PromptBoxInternal({
             host: pluginComposerHost,
             pluginCustomizable: !suppressPluginComposerCustomizations,
             state: composerEditorState,
+            applyCommand: (command) =>
+              applyPromptAction({
+                command,
+                text: `${command.trigger}${command.name}${command.trailingText}`,
+              }),
             insertAtCursor: insertAtCursorForPlugin,
           },
     [
+      applyPromptAction,
       composerEditorState,
       insertAtCursorForPlugin,
       pluginComposerHost,

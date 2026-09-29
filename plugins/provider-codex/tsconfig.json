@@ -17,5 +17,5 @@
     },
     "types": ["node"]
   },
-  "include": ["server.ts", "src", "vitest.config.ts"]
+  "include": ["app.ts", "server.ts", "src", "vitest.config.ts"]
 }

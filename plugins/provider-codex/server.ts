@@ -1,3 +1,4 @@
+import { composerActionKinds } from "./composer-actions.js";
 import { registerCodexAiService } from "./src/ai-service.js";
 import { registerUsageSource } from "./src/usage-source.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -64,7 +65,7 @@ export default function plugin(bb: BbPluginApi) {
       { id: "default", label: "Default" },
       { id: "fast", label: "Fast" },
     ],
-    composerActions: ["plan", "goal"],
+    composerActions: [...composerActionKinds],
     deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,
