@@ -84,10 +84,14 @@ export function defineSplit<P extends object>({
   preload: SplitPreloadPolicy;
 }) {
   let pending: Promise<{ default: ComponentType<P> }> | null = null;
+  let loaded: ComponentType<P> | null = null;
   const loadModule = () => {
     pending ??= Promise.resolve()
       .then(load)
-      .then((component) => ({ default: component }))
+      .then((component) => {
+        loaded = component;
+        return { default: component };
+      })
       .catch((error: unknown) => {
         pending = null;
         throw error;
@@ -105,12 +109,12 @@ export function defineSplit<P extends object>({
     const preview = useContext(SplitPreviewContext).get(id);
     const [attempt, setAttempt] = useState(() => ({
       number: 0,
-      View: lazy(loadModule),
+      View: loaded ?? lazy(loadModule),
     }));
     const retry = () => {
       setAttempt((previous) => ({
         number: previous.number + 1,
-        View: lazy(loadModule),
+        View: loaded ?? lazy(loadModule),
       }));
     };
     if (preview?.state === "loading") return <Loading {...props} />;

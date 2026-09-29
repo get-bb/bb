@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { StrictMode, useEffect } from "react";
+import { StrictMode, useEffect, useLayoutEffect } from "react";
 import {
   act,
   cleanup,
@@ -174,3 +174,34 @@ it("deduplicates startup preloads in StrictMode and cancels idle work when the p
   expect(idleLoad).toHaveBeenCalledOnce();
   expect(renderLoad).not.toHaveBeenCalled();
 });
+
+it.each(["preload", "previous mount"])(
+  "does not commit a loading fallback after %s resolves the component",
+  async (warmup) => {
+    const fallbackCommitted = vi.fn();
+    function Loading() {
+      useLayoutEffect(() => {
+        fallbackCommitted();
+      }, []);
+      return <p>Loading cached feature</p>;
+    }
+    const Split = defineSplit({
+      id: "cached-mount",
+      load: async () => () => <input aria-label="Cached editor" />,
+      loading: Loading,
+      preload: "render",
+    });
+    if (warmup === "preload") {
+      await Split.preload();
+    } else {
+      const first = render(<Split />);
+      await screen.findByRole("textbox", { name: "Cached editor" });
+      first.unmount();
+      fallbackCommitted.mockClear();
+    }
+    const second = render(<Split />);
+    expect(fallbackCommitted).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "Cached editor" })).toBeTruthy();
+    second.unmount();
+  },
+);
