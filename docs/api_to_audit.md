@@ -3049,7 +3049,9 @@ machine or create directories. CLI: `bb machine show <id-or-name> [--json]`.
 
 `bb.sdk.environments.experimental_cleanup({ environmentId })` explicitly requests
 removal of an unused provider-managed environment, overriding automatic retention
-or keep policy and bypassing cleanup backoff. It rejects live threads and
+or keep policy and bypassing cleanup backoff. Normal retirement and failed-cleanup
+retries remain automatic; callers do not need to invoke this during routine
+thread work. It rejects live threads and
 unmanaged environments; already-removed provider environments succeed without
 another removal. Acceptance is not completion; inspect the ordinary environment
 lifecycle fields for progress. CLI: `bb environment cleanup <id> [--json]`.
