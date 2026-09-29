@@ -2339,7 +2339,7 @@ export interface ComposerCustomization {
 export interface ComposerPlusMenuItem {
   id: string;
   label: string;
-  /** Drawn only when the manifest declares no `bb.branding.icon`. */
+  /** Takes precedence over the plugin's `bb.branding.icon`, which is drawn when this is omitted. */
   icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
@@ -2357,7 +2357,7 @@ export interface ComposerPlusMenuItem {
 export interface ComposerSendMenuItem {
   id: string;
   label: string;
-  /** Drawn only when the manifest declares no `bb.branding.icon`. */
+  /** Takes precedence over the plugin's `bb.branding.icon`, which is drawn when this is omitted. */
   icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
