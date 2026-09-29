@@ -13,6 +13,7 @@ import {
   getThreadRoutePath,
   isPluginsRoutePath,
   isRoutePath,
+  isThreadDetailPathname,
   isProjectlessProjectId,
   isSkillsRoutePath,
   isToolsRoutePath,
@@ -34,6 +35,17 @@ describe("route path helpers", () => {
       ).toEqual({ path: `${path}${suffix}` });
     },
   );
+
+  it.each([
+    ["/projects/proj_one/threads/thr_1", true],
+    ["/projects/proj_one/threads/thr_1/files", true],
+    ["/threads/thr_1", true],
+    ["/", false],
+    ["/projects/proj_one", false],
+    ["/plugins/tasks/board", false],
+  ])("detects thread detail pathnames: %s", (pathname, expected) => {
+    expect(isThreadDetailPathname(pathname)).toBe(expected);
+  });
 
   it("recognizes the legacy archived URL", () => {
     expect(isRoutePath({ path: "/archived" })).toBe(true);

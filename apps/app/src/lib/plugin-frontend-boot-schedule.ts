@@ -14,25 +14,27 @@ export function scheduleDeferredPluginFrontendBoot(
 ): () => void {
   let settled = false;
   let cancelIdle: (() => void) | null = null;
-  const fire = () => {
-    if (settled) return;
+  let timeoutId: number | null = null;
+  const stopWaiting = () => {
     settled = true;
-    deps.clearTimeout(timeoutId);
+    if (timeoutId !== null) deps.clearTimeout(timeoutId);
+    timeoutId = null;
     cancelIdle?.();
     cancelIdle = null;
+  };
+  const fire = () => {
+    if (settled) return;
+    stopWaiting();
     boot();
   };
-  const timeoutId = deps.setTimeout(fire, deps.timeoutMs);
   void deps.whenRoutePainted().then(() => {
     if (settled) return;
+    timeoutId = deps.setTimeout(fire, deps.timeoutMs);
     cancelIdle = deps.requestIdle(fire);
   });
   return () => {
     if (settled) return;
-    settled = true;
-    deps.clearTimeout(timeoutId);
-    cancelIdle?.();
-    cancelIdle = null;
+    stopWaiting();
   };
 }
 

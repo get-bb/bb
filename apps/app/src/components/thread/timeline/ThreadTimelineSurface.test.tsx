@@ -3,6 +3,10 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body.js";
+import {
+  resetRouteContentPaintForTest,
+  whenRouteContentPainted,
+} from "@/lib/route-content-paint";
 import { ThreadTimelineSurface } from "./ThreadTimelineSurface";
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -82,5 +86,35 @@ describe("ThreadTimelineSurface load-older control", () => {
 
     emitLatestSentinelIntersection();
     expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ThreadTimelineSurface route paint signal", () => {
+  it("marks route content painted once the timeline stops pending, not before", async () => {
+    resetRouteContentPaintForTest();
+    let painted = false;
+    void whenRouteContentPainted().then(() => {
+      painted = true;
+    });
+    const surface = (isThreadTimelinePending: boolean) => (
+      <ThreadTimelineSurface
+        activeThinking={null}
+        contextBoundarySeq={null}
+        isThreadTimelinePending={isThreadTimelinePending}
+        showOngoingIndicator={false}
+        threadId="thread-1"
+        threadRuntimeDisplayStatus="idle"
+        timelineError={false}
+        timelineRows={[]}
+        workspaceRootPath={undefined}
+      />
+    );
+    const view = render(surface(true));
+    await act(async () => {});
+    expect(painted).toBe(false);
+
+    view.rerender(surface(false));
+    await act(async () => {});
+    expect(painted).toBe(true);
   });
 });

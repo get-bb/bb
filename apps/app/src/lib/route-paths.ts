@@ -81,6 +81,17 @@ export function getPluginPanelRoutePluginId(pathname: string): string | null {
   return matchPath(PLUGIN_PANEL_ROUTE_PATH, pathname)?.params.pluginId ?? null;
 }
 
+const THREAD_DETAIL_PATH_PATTERNS = [
+  "/projects/:projectId/threads/:threadId/*",
+  "/threads/:threadId/*",
+] as const;
+
+export function isThreadDetailPathname(pathname: string): boolean {
+  return THREAD_DETAIL_PATH_PATTERNS.some(
+    (pattern) => matchPath(pattern, pathname) !== null,
+  );
+}
+
 interface IsRoutePathArgs {
   path: string;
 }

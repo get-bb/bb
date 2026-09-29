@@ -95,6 +95,25 @@ describe("preferences sync", () => {
     expect(hydratePreferencesFromMirror()).toBe(false);
   });
 
+  it("marks ready from the mirror, then lets the server answer override it", async () => {
+    mirror.setItem(MIRROR_KEY, JSON.stringify({ organizationMode: "project" }));
+    const store = getDefaultStore();
+    const modeAtom = createSyncedPreferenceAtom("organizationMode");
+    expect(store.get(preferencesReadyAtom())).toBe(false);
+    expect(hydratePreferencesFromMirror()).toBe(true);
+    expect(store.get(preferencesReadyAtom())).toBe(true);
+    expect(store.get(modeAtom)).toBe("project");
+
+    await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
+    expect(store.get(preferencesReadyAtom())).toBe(true);
+    expect(store.get(modeAtom)).toBe("machine");
+  });
+
+  it("stays not ready without a mirror until the server answers", () => {
+    expect(hydratePreferencesFromMirror()).toBe(false);
+    expect(getDefaultStore().get(preferencesReadyAtom())).toBe(false);
+  });
+
   it("keys the mirror by plugin id, so a renamed copy keeps its own layout", async () => {
     expect(MIRROR_KEY).toBe("bb.thread-list.preferences.v1");
     mirror.setItem(MIRROR_KEY, JSON.stringify({ organizationMode: "project" }));
@@ -148,6 +167,40 @@ describe("preferences sync", () => {
     await flushPreferenceWritesForTest();
     applyRemotePreferenceSignal({ key: "chronologicalSort", value: "updated" });
     expect(store.get(sortAtom)).toBe("updated");
+  });
+
+  it("keeps a local edit made while the first server answer is outstanding", async () => {
+    mirror.setItem(MIRROR_KEY, JSON.stringify({ collapsedProjects: [] }));
+    const store = getDefaultStore();
+    const collapsedAtom = createSyncedPreferenceAtom("collapsedProjects");
+    hydratePreferencesFromMirror();
+    let answerList: (value: unknown) => void = () => {};
+    const rpc: PreferencesRpc = {
+      call: (method: string, input: unknown) =>
+        method === "listPreferences"
+          ? new Promise((resolve) => {
+              answerList = resolve;
+            })
+          : Promise.resolve(input),
+    };
+    const hydrated = hydratePreferences(rpc);
+
+    store.set(collapsedAtom, ["proj_a"]);
+    vi.advanceTimersByTime(200);
+    await flushPreferenceWritesForTest();
+    applyRemotePreferenceSignal({ key: "collapsedProjects", value: ["proj_a"] });
+    answerList({
+      preferences: { ...defaultPreferences(), organizationMode: "machine" },
+    });
+    await hydrated;
+
+    expect(store.get(collapsedAtom)).toEqual(["proj_a"]);
+    expect(store.get(createSyncedPreferenceAtom("organizationMode"))).toBe(
+      "machine",
+    );
+    expect(
+      JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}").collapsedProjects,
+    ).toEqual(["proj_a"]);
   });
 
   it("does not write back a value that did not change", async () => {

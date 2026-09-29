@@ -60,14 +60,14 @@ describe("scheduleDeferredPluginFrontendBoot", () => {
     expect(h.boot).toHaveBeenCalledTimes(1);
   });
 
-  it("boots at the timeout when the route never paints, and ignores a later paint", async () => {
+  it("starts the timeout only once the route has painted", async () => {
     const h = makeHarness();
+    expect(h.timers.size).toBe(0);
     h.fireTimeout();
-    expect(h.boot).toHaveBeenCalledTimes(1);
+    expect(h.boot).not.toHaveBeenCalled();
 
     await h.paint();
-    expect(h.idleCallbacks).toHaveLength(0);
-    expect(h.boot).toHaveBeenCalledTimes(1);
+    expect(h.timers.size).toBe(1);
   });
 
   it("boots at the timeout when idle never comes after paint, and cancels the idle request", async () => {
@@ -84,8 +84,8 @@ describe("scheduleDeferredPluginFrontendBoot", () => {
   it("cancel prevents boot from every path", async () => {
     const h = makeHarness();
     h.cancel();
-    expect(h.timers.size).toBe(0);
     await h.paint();
+    expect(h.timers.size).toBe(0);
     expect(h.idleCallbacks).toHaveLength(0);
     h.fireTimeout();
     expect(h.boot).not.toHaveBeenCalled();

@@ -48,10 +48,16 @@ import {
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
+import { loadablePluginFrontendBundle } from "./plugin-first-screen-preload";
 import { getPluginPanelRoutePluginId } from "./route-paths";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
+  readFirstScreenOwners,
+  rememberFirstScreenOwners,
+} from "./plugin-first-screen-owners";
+import {
   beginPluginSlotBatch,
+  getPluginSlotSnapshot,
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
@@ -279,14 +285,7 @@ export async function fetchFrontendCandidates(
       logoDarkUrl: plugin.logoDarkUrl,
       icons: new Map(Object.entries(plugin.icons)),
     });
-    if (
-      plugin.status !== "running" &&
-      plugin.status !== "needs-configuration" &&
-      plugin.status !== "degraded"
-    ) {
-      continue;
-    }
-    const bundle = plugin.app.bundle;
+    const bundle = loadablePluginFrontendBundle(plugin);
     if (bundle === null) continue;
     candidates.push({ pluginId: plugin.id, bundle });
   }
@@ -297,17 +296,50 @@ export async function fetchFrontendCandidates(
 
 export { applyPluginCss } from "./plugin-css";
 
-export const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
+export const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 6;
+
+const NO_PLUGIN_IDS: ReadonlySet<string> = new Set();
 
 export function orderPluginFrontendCandidates(
   candidates: readonly PluginFrontendCandidate[],
   routePluginId: string | null,
+  firstScreenPluginIds: ReadonlySet<string> = NO_PLUGIN_IDS,
 ): PluginFrontendCandidate[] {
   return [...candidates].sort((left, right) => {
     if (left.pluginId === routePluginId) return -1;
     if (right.pluginId === routePluginId) return 1;
+    const leftFirstScreen = firstScreenPluginIds.has(left.pluginId);
+    if (leftFirstScreen !== firstScreenPluginIds.has(right.pluginId)) {
+      return leftFirstScreen ? -1 : 1;
+    }
     return left.bundle.jsBytes - right.bundle.jsBytes;
   });
+}
+
+export type PluginFrontendReconcilePhase = "all" | "first-screen" | "rest";
+
+export interface PluginFrontendReconcileOptions {
+  phase: PluginFrontendReconcilePhase;
+  firstScreenPluginIds: ReadonlySet<string>;
+}
+
+const RECONCILE_ALL: PluginFrontendReconcileOptions = {
+  phase: "all",
+  firstScreenPluginIds: NO_PLUGIN_IDS,
+};
+
+function isInReconcilePhase(
+  pluginId: string,
+  { firstScreenPluginIds, phase }: PluginFrontendReconcileOptions,
+): boolean {
+  switch (phase) {
+    case "all":
+      return true;
+    case "first-screen":
+      return firstScreenPluginIds.has(pluginId);
+    case "rest":
+      return !firstScreenPluginIds.has(pluginId);
+  }
 }
 
 async function runWithConcurrencyLimit<T>(
@@ -628,8 +660,15 @@ async function activateContentScripts(
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  options: PluginFrontendReconcileOptions = RECONCILE_ALL,
 ): Promise<void> {
   if (state.tornDown) return;
+  if (
+    options.phase === "first-screen" &&
+    options.firstScreenPluginIds.size === 0
+  ) {
+    return;
+  }
   const candidates = await deps.fetchCandidates();
   if (state.tornDown) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
@@ -645,19 +684,59 @@ export async function reconcilePluginFrontends(
   }
   const closeSlotBatch = deps.beginSlotBatch();
   try {
-    await reconcileCandidates(candidates, state, deps);
+    await reconcileCandidates(
+      candidates.filter((candidate) =>
+        isInReconcilePhase(candidate.pluginId, options),
+      ),
+      state,
+      deps,
+      options.firstScreenPluginIds,
+    );
   } finally {
     closeSlotBatch();
   }
+}
+
+export interface PluginFrontendFullBootOptions {
+  pendingFirstScreenBoot: Promise<void> | null;
+  firstScreenPluginIds: ReadonlySet<string>;
+}
+
+export async function reconcileFullPluginFrontendBoot(
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+  { pendingFirstScreenBoot, firstScreenPluginIds }: PluginFrontendFullBootOptions,
+): Promise<void> {
+  if (pendingFirstScreenBoot === null) {
+    await reconcilePluginFrontends(state, deps, {
+      phase: "all",
+      firstScreenPluginIds,
+    });
+    return;
+  }
+  await reconcilePluginFrontends(state, deps, {
+    phase: "rest",
+    firstScreenPluginIds,
+  });
+  await pendingFirstScreenBoot;
+  await reconcilePluginFrontends(state, deps, {
+    phase: "all",
+    firstScreenPluginIds,
+  });
 }
 
 async function reconcileCandidates(
   candidates: readonly PluginFrontendCandidate[],
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  firstScreenPluginIds: ReadonlySet<string>,
 ): Promise<void> {
   await runWithConcurrencyLimit(
-    orderPluginFrontendCandidates(candidates, deps.routePluginId()),
+    orderPluginFrontendCandidates(
+      candidates,
+      deps.routePluginId(),
+      firstScreenPluginIds,
+    ),
     PLUGIN_FRONTEND_LOAD_CONCURRENCY,
     async (candidate) => {
       const pluginId = candidate.pluginId;
@@ -908,6 +987,9 @@ export function createPluginFrontendReconcileScheduler(args: {
 
 const state = createPluginFrontendReconcileState();
 let bootPromise: Promise<void> | null = null;
+let firstScreenBootPromise: Promise<void> | null = null;
+let firstScreenPluginIds: ReadonlySet<string> = NO_PLUGIN_IDS;
+let firstScreenBootPending = false;
 let browserDiagnosticsSnapshot: ReadonlyMap<string, PluginFrontendDiagnostic> =
   new Map();
 const browserDiagnosticsListeners = new Set<() => void>();
@@ -989,11 +1071,43 @@ function installPluginFrontendPageLifecycle(): void {
   window.addEventListener("pageshow", (event) => lifecycle.onPageShow(event));
 }
 
+export function bootFirstScreenPluginFrontends(): Promise<void> {
+  if (bootPromise !== null) return bootPromise;
+  firstScreenBootPromise ??= (async () => {
+    installPluginRuntime();
+    installPluginFrontendPageLifecycle();
+    firstScreenPluginIds = new Set(readFirstScreenOwners());
+    firstScreenBootPending = true;
+    try {
+      await reconcilePluginFrontends(state, browserReconcileDeps, {
+        phase: "first-screen",
+        firstScreenPluginIds,
+      });
+    } finally {
+      firstScreenBootPending = false;
+    }
+  })().catch((error: unknown) => {
+    console.warn(
+      `plugin frontend first-screen boot failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  return firstScreenBootPromise;
+}
+
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
-    await reconcilePluginFrontends(state, browserReconcileDeps);
+    if (firstScreenBootPromise === null) {
+      firstScreenPluginIds = new Set(readFirstScreenOwners());
+    }
+    await reconcileFullPluginFrontendBoot(state, browserReconcileDeps, {
+      pendingFirstScreenBoot: firstScreenBootPending
+        ? firstScreenBootPromise
+        : null,
+      firstScreenPluginIds,
+    });
+    rememberFirstScreenOwners(getPluginSlotSnapshot());
   })().catch((error: unknown) => {
     console.warn(
       `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1014,6 +1128,7 @@ async function runLiveReconcile(): Promise<void> {
       return;
     }
     await reconcilePluginFrontends(state, browserReconcileDeps);
+    rememberFirstScreenOwners(getPluginSlotSnapshot());
   } catch (error) {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,

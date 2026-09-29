@@ -11,6 +11,7 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { markRouteContentPainted } from "@/lib/route-content-paint";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
@@ -199,6 +200,9 @@ export function ThreadTimelineSurface({
     onLoadOlderRows !== undefined &&
     !isThreadTimelinePending &&
     !timelineError;
+  useEffect(() => {
+    if (!isThreadTimelinePending) markRouteContentPainted();
+  }, [isThreadTimelinePending]);
 
   return (
     <TimelineReasoningExpansionProvider key={threadId}>

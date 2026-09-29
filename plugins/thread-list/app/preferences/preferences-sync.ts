@@ -37,6 +37,7 @@ interface SyncState {
   store: PreferencesStore | null;
   pluginId: string | null;
   hydrateGeneration: number;
+  keyRevisions: Map<PreferenceKey, number>;
 }
 
 function createSyncState(): SyncState {
@@ -48,6 +49,7 @@ function createSyncState(): SyncState {
     store: null,
     pluginId: null,
     hydrateGeneration: 0,
+    keyRevisions: new Map(),
   };
 }
 
@@ -157,6 +159,22 @@ export function setPreferencesMirrorStorageForTest(
   mirrorStorageOverride = storage;
 }
 
+function bumpKeyRevision(key: PreferenceKey): void {
+  state.keyRevisions.set(key, (state.keyRevisions.get(key) ?? 0) + 1);
+}
+
+function valuesUnchangedSince(
+  values: PreferenceValues,
+  revisions: ReadonlyMap<PreferenceKey, number>,
+): Partial<PreferenceValues> {
+  const unchanged: Partial<PreferenceValues> = {};
+  for (const key of PREFERENCE_KEYS) {
+    if (state.keyRevisions.get(key) !== revisions.get(key)) continue;
+    (unchanged as Record<PreferenceKey, unknown>)[key] = values[key];
+  }
+  return unchanged;
+}
+
 function applyValues(values: Partial<PreferenceValues>): void {
   const store = activeStore();
   for (const key of PREFERENCE_KEYS) {
@@ -171,12 +189,14 @@ export function hydratePreferencesFromMirror(): boolean {
   const mirrored = readMirror(mirrorStorage());
   if (mirrored === null) return false;
   applyValues(mirrored);
+  activeStore().set(state.readyAtom, true);
   return true;
 }
 
 export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
   state.rpc = rpc;
   const generation = ++state.hydrateGeneration;
+  const revisionsAtRequest = new Map(state.keyRevisions);
   const response = await rpc.call("listPreferences", null);
   if (generation !== state.hydrateGeneration) return;
   const preferences =
@@ -195,7 +215,12 @@ export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
       }
     }
   }
-  applyValues({ ...defaultPreferences(), ...values });
+  applyValues(
+    valuesUnchangedSince(
+      { ...defaultPreferences(), ...values },
+      revisionsAtRequest,
+    ),
+  );
   writeMirror(mirrorStorage());
   activeStore().set(state.readyAtom, true);
 }
@@ -206,6 +231,7 @@ export function applyRemotePreferenceSignal(payload: unknown): void {
   const { key, value } = parsed.data;
   const result = parseStoredPreferenceValue(key, value);
   if (!result.success) return;
+  bumpKeyRevision(key);
   applyValues({ [key]: result.value } as Partial<PreferenceValues>);
   writeMirror(mirrorStorage());
 }
@@ -245,6 +271,7 @@ export function schedulePreferenceWrite(
   key: PreferenceKey,
   value: unknown,
 ): void {
+  bumpKeyRevision(key);
   writeMirror(mirrorStorage());
   let pending = state.pendingWrites.get(key);
   if (pending === undefined) {
@@ -278,6 +305,7 @@ export function resetPreferencesSyncForTest(): void {
   state.pendingWrites.clear();
   state.rpc = null;
   state.hydrateGeneration += 1;
+  state.keyRevisions.clear();
   const store = activeStore();
   for (const key of PREFERENCE_KEYS) {
     store.set(valueAtomFor(key), getPreferenceDefault(key));

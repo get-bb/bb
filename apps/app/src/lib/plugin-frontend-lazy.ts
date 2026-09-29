@@ -24,6 +24,17 @@ const loadPluginFrontend = createRetryingModuleLoader<PluginFrontendModule>(
 
 let bootRequested = false;
 
+export async function bootFirstScreenPluginFrontends(): Promise<void> {
+  try {
+    const pluginFrontend = await loadPluginFrontend();
+    await pluginFrontend.bootFirstScreenPluginFrontends();
+  } catch (error) {
+    console.warn(
+      `plugin runtime load failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 export async function bootPluginFrontends(): Promise<void> {
   bootRequested = true;
   markPluginFrontendBootStarted();

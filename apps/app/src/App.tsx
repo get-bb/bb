@@ -22,7 +22,7 @@ import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
-import { markRouteContentPainted } from "./lib/route-content-paint";
+import { markRouteContentPaintedForRoute } from "./lib/route-content-paint";
 import { useRememberPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
@@ -65,6 +65,7 @@ import {
   getPluginConfigurationRoutePath,
   getSettingsRoutePath,
   getSettingsProjectRoutePath,
+  isThreadDetailPathname,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { WindowFindHost } from "./components/layout/WindowFindHost";
@@ -413,9 +414,12 @@ export function AppRoutes() {
 }
 
 function RouteContentPaintSignal() {
-  useEffect(() => {
-    markRouteContentPainted();
-  }, []);
+  const { pathname } = useLocation();
+  const waitsForThreadTimeline = isThreadDetailPathname(pathname);
+  useEffect(
+    () => markRouteContentPaintedForRoute(waitsForThreadTimeline),
+    [waitsForThreadTimeline],
+  );
   return null;
 }
 
