@@ -130,6 +130,26 @@
     "src/components/thread/timeline/TimelineFileDiffBlock.tsx": [
       "boot",
       "SplitWorkspaceRoute"
+    ],
+    "src/components/secondary-panel/BrowserTabDeck.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/secondary-panel/NewTabPage.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/secondary-panel/ThreadSecondaryPanelTabContent.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/secondary-panel/ThreadStorageFileTree.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/thread/terminal/ThreadTerminalPanel.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
     ]
   },
   "onDemandPackages": {

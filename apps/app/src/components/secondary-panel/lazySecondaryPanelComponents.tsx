@@ -1,11 +1,5 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
-import {
-  lazy,
-  Suspense,
-  type ComponentProps,
-  type ComponentType,
-  type ReactNode,
-} from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -20,73 +14,6 @@ import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
 type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
 
-const ThreadTerminalPanelChunk = lazy(() =>
-  import("@/components/thread/terminal/ThreadTerminalPanel").then(
-    ({ ThreadTerminalPanel }) => ({ default: ThreadTerminalPanel }),
-  ),
-);
-const BrowserTabDeckChunk = lazy(() =>
-  import("./BrowserTabDeck").then(({ BrowserTabDeck }) => ({
-    default: BrowserTabDeck,
-  })),
-);
-const NewTabPageChunk = lazy(() =>
-  import("./NewTabPage").then(({ NewTabPage }) => ({ default: NewTabPage })),
-);
-const ThreadStorageFileTreeChunk = lazy(() =>
-  import("./ThreadStorageFileTree").then(({ ThreadStorageFileTree }) => ({
-    default: ThreadStorageFileTree,
-  })),
-);
-const WorkspaceFilePreviewTabContentChunk = lazy(() =>
-  import("./ThreadSecondaryPanelTabContent").then(
-    ({ WorkspaceFilePreviewTabContent }) => ({
-      default: WorkspaceFilePreviewTabContent,
-    }),
-  ),
-);
-const HostFilePreviewTabContentChunk = lazy(() =>
-  import("./ThreadSecondaryPanelTabContent").then(
-    ({ HostFilePreviewTabContent }) => ({
-      default: HostFilePreviewTabContent,
-    }),
-  ),
-);
-const HostScopedFilePreviewTabContentChunk = lazy(() =>
-  import("./ThreadSecondaryPanelTabContent").then(
-    ({ HostScopedFilePreviewTabContent }) => ({
-      default: HostScopedFilePreviewTabContent,
-    }),
-  ),
-);
-const ProjectFilePreviewTabContentChunk = lazy(() =>
-  import("./ThreadSecondaryPanelTabContent").then(
-    ({ ProjectFilePreviewTabContent }) => ({
-      default: ProjectFilePreviewTabContent,
-    }),
-  ),
-);
-const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
-  import("./ThreadSecondaryPanelTabContent").then(
-    ({ ThreadStorageFilePreviewTabContent }) => ({
-      default: ThreadStorageFilePreviewTabContent,
-    }),
-  ),
-);
-
-function withSuspense<P extends object>(
-  Chunk: ComponentType<P>,
-  fallback: ReactNode,
-) {
-  return function LazySecondaryPanelComponent(props: P) {
-    return (
-      <Suspense fallback={fallback}>
-        <Chunk {...props} />
-      </Suspense>
-    );
-  };
-}
-
 export function SecondaryPanelContentSkeleton() {
   return (
     <div
@@ -97,6 +24,14 @@ export function SecondaryPanelContentSkeleton() {
       <Skeleton className="h-3 w-full rounded-sm" />
       <Skeleton className="h-3 w-5/6 rounded-sm" />
       <Skeleton className="h-3 w-2/3 rounded-sm" />
+    </div>
+  );
+}
+
+function FilePreviewLoading() {
+  return (
+    <div role="status" aria-label="Loading file preview">
+      <SecondaryPanelContentSkeleton />
     </div>
   );
 }
@@ -189,63 +124,113 @@ export function preloadThreadSecondaryPanel(): void {
   void LazyThreadSecondaryPanel.preload();
 }
 
-export const LazyThreadTerminalPanel = withSuspense(
-  ThreadTerminalPanelChunk,
-  <SecondaryPanelContentSkeleton />,
-);
-
-export const LazyBrowserTabDeck = withSuspense(BrowserTabDeckChunk, null);
-
-export const LazyNewTabPage = withSuspense(
-  NewTabPageChunk,
-  <SecondaryPanelContentSkeleton />,
-);
-
-export const LazyFilePreview = defineSplit({
-  id: "file-preview",
-  load: () => import("./FilePreview").then((module) => module.FilePreview),
+export const LazyThreadTerminalPanel = defineSplit({
+  id: "thread-terminal-panel",
+  load: () =>
+    import("@/components/thread/terminal/ThreadTerminalPanel").then(
+      (module) => module.ThreadTerminalPanel,
+    ),
   loading: () => (
-    <div role="status" aria-label="Loading file preview">
-      <SecondaryPanelContentSkeleton />
+    <div
+      role="status"
+      className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground"
+    >
+      Loading terminal…
     </div>
   ),
   preload: "render",
 });
 
-export function LazyThreadStorageFileTree({
-  fallback,
-  ...props
-}: ComponentProps<ThreadStorageFileTreeModule["ThreadStorageFileTree"]> & {
-  fallback: ReactNode;
-}) {
-  return (
-    <Suspense fallback={fallback}>
-      <ThreadStorageFileTreeChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyBrowserTabDeck = defineSplit({
+  id: "browser-tab-deck",
+  load: () =>
+    import("./BrowserTabDeck").then((module) => module.BrowserTabDeck),
+  loading: () => null,
+  error: (props) =>
+    props.activeBrowserTabId === null ? null : (
+      <SplitLoadFailure retry={props.retry} />
+    ),
+  preload: "render",
+});
 
-export const LazyWorkspaceFilePreviewTabContent = withSuspense(
-  WorkspaceFilePreviewTabContentChunk,
-  <SecondaryPanelContentSkeleton />,
-);
+export const LazyNewTabPage = defineSplit({
+  id: "new-tab-page",
+  load: () => import("./NewTabPage").then((module) => module.NewTabPage),
+  loading: () => (
+    <p role="status" className="px-4 pt-1 text-sm text-muted-foreground">
+      Loading…
+    </p>
+  ),
+  preload: "render",
+});
 
-export const LazyHostFilePreviewTabContent = withSuspense(
-  HostFilePreviewTabContentChunk,
-  <SecondaryPanelContentSkeleton />,
-);
+export const LazyFilePreview = defineSplit({
+  id: "file-preview",
+  load: () => import("./FilePreview").then((module) => module.FilePreview),
+  loading: FilePreviewLoading,
+  preload: "render",
+});
 
-export const LazyHostScopedFilePreviewTabContent = withSuspense(
-  HostScopedFilePreviewTabContentChunk,
-  <SecondaryPanelContentSkeleton />,
-);
+export const LazyThreadStorageFileTree = defineSplit<
+  ComponentProps<ThreadStorageFileTreeModule["ThreadStorageFileTree"]> & {
+    fallback: ReactNode;
+  }
+>({
+  id: "thread-storage-file-tree",
+  load: () =>
+    import("./ThreadStorageFileTree").then(
+      (module) => module.ThreadStorageFileTree,
+    ),
+  loading: ({ fallback }) => fallback,
+  preload: "render",
+});
 
-export const LazyProjectFilePreviewTabContent = withSuspense(
-  ProjectFilePreviewTabContentChunk,
-  <SecondaryPanelContentSkeleton />,
-);
+export const LazyWorkspaceFilePreviewTabContent = defineSplit({
+  id: "workspace-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.WorkspaceFilePreviewTabContent,
+    ),
+  loading: FilePreviewLoading,
+  preload: "render",
+});
 
-export const LazyThreadStorageFilePreviewTabContent = withSuspense(
-  ThreadStorageFilePreviewTabContentChunk,
-  <SecondaryPanelContentSkeleton />,
-);
+export const LazyHostFilePreviewTabContent = defineSplit({
+  id: "host-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.HostFilePreviewTabContent,
+    ),
+  loading: FilePreviewLoading,
+  preload: "render",
+});
+
+export const LazyHostScopedFilePreviewTabContent = defineSplit({
+  id: "host-scoped-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.HostScopedFilePreviewTabContent,
+    ),
+  loading: FilePreviewLoading,
+  preload: "render",
+});
+
+export const LazyProjectFilePreviewTabContent = defineSplit({
+  id: "project-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.ProjectFilePreviewTabContent,
+    ),
+  loading: FilePreviewLoading,
+  preload: "render",
+});
+
+export const LazyThreadStorageFilePreviewTabContent = defineSplit({
+  id: "thread-storage-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.ThreadStorageFilePreviewTabContent,
+    ),
+  loading: FilePreviewLoading,
+  preload: "render",
+});
