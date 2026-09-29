@@ -103,11 +103,15 @@ export interface RedeemedEnrollment {
 }
 
 export async function redeemEnrollment(
-  args: { apexUrl: string; code: string; label?: string },
+  args: { apexUrl: string; code: string; label?: string; deviceName?: string },
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<RedeemedEnrollment> {
   const credential = await redeemMachineCredential(
-    { apexUrl: args.apexUrl, code: args.code },
+    {
+      apexUrl: args.apexUrl,
+      code: args.code,
+      name: args.deviceName?.slice(0, 120),
+    },
     fetchImpl,
   );
   const label = (args.label?.trim() || credential.handle).slice(

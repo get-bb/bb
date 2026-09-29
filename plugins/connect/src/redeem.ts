@@ -102,13 +102,14 @@ export async function redeemMachineCode(args: {
   signal: AbortSignal;
   code: string;
   serverUrl: string;
+  name?: string;
 }): Promise<{ credential: string; machineId: string; serverUrl: string }> {
   const response = await fetch(
     `${deriveConnectBaseUrl(args.serverUrl)}/api/connect/redeem-machine`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: args.code }),
+      body: JSON.stringify({ code: args.code, name: args.name }),
       signal: AbortSignal.any([args.signal, AbortSignal.timeout(10_000)]),
     },
   );

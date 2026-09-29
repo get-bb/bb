@@ -58,7 +58,7 @@ function handleForApex(serverUrl: string, apexUrl: string): string | null {
 }
 
 export async function redeemMachineCredential(
-  args: { apexUrl: string; code: string },
+  args: { apexUrl: string; code: string; name?: string },
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<ConnectCredential> {
   const url = `${args.apexUrl.replace(/\/$/u, "")}/api/connect/redeem-machine`;
@@ -67,7 +67,7 @@ export async function redeemMachineCredential(
     response = await fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: args.code }),
+      body: JSON.stringify({ code: args.code, name: args.name }),
     });
   } catch (error) {
     throw new ConnectMachineRedeemError(

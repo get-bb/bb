@@ -83,3 +83,12 @@ new machine TunnelDO/cache keys are generation-isolated from their first use.
 Server label resolution, cache/DO keys, disconnect, and reuse behavior remain
 exactly as on main. The pre-existing server-label reuse race is out of scope for
 this migration and must be handled as separate server hardening.
+
+## Machine session presence migration deployment order
+
+Migration `0008_machine_session_presence.sql` adds `machine.session_seen_at` and
+`machine.session_ended_at`. The tunnel Durable Object writes them when a bb
+server accepts, keeps, or closes a machine-credentialed WebSocket. Apply 0008
+before deploying the gate or dashboard workers that write or read these fields.
+Credential request activity remains in `last_seen_at` and does not determine
+Online status.

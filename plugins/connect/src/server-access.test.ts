@@ -27,7 +27,11 @@ const hosts: FakePluginHost[] = [];
 async function setup(beforeInit?: (host: FakePluginHost) => Promise<void>) {
   const host = createFakePluginHost({
     pluginId: "connect",
-    sdk: { hosts: { get: async () => ({ connectMachineId: null }) } },
+    sdk: {
+      hosts: {
+        get: async () => ({ connectMachineId: null, name: "Test machine" }),
+      },
+    },
   });
   hosts.push(host);
   await beforeInit?.(host);
@@ -54,6 +58,7 @@ function cloud() {
       if (path.endsWith("/redeem-machine")) {
         expect(JSON.parse(String(init?.body))).toEqual({
           code: "PRIVATE-CODE",
+          name: "Test machine",
         });
         active = true;
         return Response.json({

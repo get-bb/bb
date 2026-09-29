@@ -2511,6 +2511,46 @@ describe("connect plugin", () => {
     );
   });
 
+  it("renameMachine sends the bounded name with the stored server credential", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_durable",
+          handle: "sawyer",
+        });
+      }
+      if (url === "https://getbb.app/api/connect/rename-machine") {
+        return Response.json({ ok: true });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "https://sawyer.getbb.app",
+    });
+
+    await expect(
+      harness.callRpc("renameMachine", {
+        machineId: "machine-1",
+        name: ` ${"n".repeat(130)} `,
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://getbb.app/api/connect/rename-machine",
+      expect.objectContaining({
+        body: JSON.stringify({ machineId: "machine-1", name: "n".repeat(120) }),
+        headers: {
+          "content-type": "application/json",
+          "x-bb-connect-machine": "bbcred_durable",
+        },
+        method: "POST",
+      }),
+    );
+  });
+
   it("routes local machine creation and revocation through the unified Cloud origin", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
