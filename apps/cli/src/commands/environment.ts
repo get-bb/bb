@@ -334,6 +334,20 @@ export function registerEnvironmentCommands(
     .description("Inspect and operate on first-class environments");
 
   environment
+    .command("retry-cleanup <id>")
+    .description("Retry provider cleanup of an unused environment")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: { json?: boolean }) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.experimental_retryCleanup({ environmentId: id });
+        if (!outputJson(opts, result))
+          console.log("Environment cleanup requested.");
+      }),
+    );
+
+  environment
     .command("providers")
     .description("List registered environment providers")
     .option(

@@ -1,3 +1,5 @@
+import { createBbSdk } from "@bb/sdk/core";
+import { createHttpTransport } from "@bb/sdk/node";
 import { appendThreadProvisioningEvent } from "../../../src/services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../../src/services/threads/thread-lifecycle.js";
 import {
@@ -1389,36 +1391,77 @@ describe("core environment orchestration", () => {
         .toBe("provisioning");
     }));
 
-  it("records a failed remove and retries after the core retry delay", async () =>
-    withTestHarness(async (harness) => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      let removes = 0;
-      const fixture = setup(harness, {
-        policy: { retireGraceMs: 0 },
-        remove: async () => {
-          removes += 1;
-          return removes === 1
-            ? { status: "failed", message: "busy" }
-            : { status: "removed" };
-        },
-      });
-      fixture.ask();
-      await fixture.settled();
-      const environmentId = fixture.attach();
-      await sweepProviderEnvironment(harness.deps, environmentId);
-      expect(getEnvironment(harness.db, environmentId)).toMatchObject({
-        teardownStatus: "failed",
-        teardownMessage: "busy",
-      });
-      await sweepProviderEnvironment(harness.deps, environmentId);
-      expect(removes).toBe(1);
-      vi.setSystemTime(Date.now() + 60_001);
-      await sweepProviderEnvironment(harness.deps, environmentId);
-      expect(getEnvironment(harness.db, environmentId)).toMatchObject({
-        status: "destroyed",
-        teardownStatus: "removed",
-      });
-    }));
+  it.each(["timer", "explicit"] as const)(
+    "retries failed removal through %s",
+    async (retry) =>
+      withTestHarness(async (harness) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        let removes = 0;
+        const fixture = setup(harness, {
+          policy: { retireGraceMs: 0 },
+          remove: async () => {
+            removes += 1;
+            return removes === 1
+              ? { status: "failed", message: "busy" }
+              : { status: "removed" };
+          },
+        });
+        fixture.ask();
+        await fixture.settled();
+        const environmentId = fixture.attach();
+        await sweepProviderEnvironment(harness.deps, environmentId);
+        expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+          teardownStatus: "failed",
+          teardownMessage: "busy",
+        });
+        await sweepProviderEnvironment(harness.deps, environmentId);
+        expect(removes).toBe(1);
+        if (retry === "timer") {
+          vi.setSystemTime(Date.now() + 60_001);
+          await sweepProviderEnvironment(harness.deps, environmentId);
+        } else {
+          harness.db
+            .update(threads)
+            .set({ environmentId, status: "idle" })
+            .where(eq(threads.id, fixture.thread.id))
+            .run();
+          const retryRequest = () =>
+            harness.app.request(
+              `/api/v1/environments/${environmentId}/retry-cleanup`,
+              { method: "POST" },
+            );
+          expect((await retryRequest()).status).toBe(409);
+          expect(removes).toBe(1);
+          harness.db
+            .update(threads)
+            .set({ archivedAt: Date.now() })
+            .where(eq(threads.id, fixture.thread.id))
+            .run();
+          const sdk = createBbSdk({
+            transport: createHttpTransport({
+              baseUrl: "http://localhost",
+              runtime: "node",
+              fetch: async (input, init) =>
+                harness.app.fetch(new Request(input, init)),
+            }),
+          });
+          await expect(
+            sdk.environments.experimental_retryCleanup({ environmentId }),
+          ).resolves.toEqual({ ok: true });
+          await expect
+            .poll(
+              () => getEnvironment(harness.db, environmentId)?.teardownStatus,
+            )
+            .toBe("removed");
+          expect(removes).toBe(2);
+          expect((await retryRequest()).status).toBe(409);
+        }
+        expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+          status: "destroyed",
+          teardownStatus: "removed",
+        });
+      }),
+  );
 
   it("does not retire an environment under the keep policy", async () =>
     withTestHarness(async (harness) => {
@@ -1432,6 +1475,14 @@ describe("core environment orchestration", () => {
         teardownStatus: null,
         status: "ready",
       });
+      expect(
+        (
+          await harness.app.request(
+            `/api/v1/environments/${environmentId}/retry-cleanup`,
+            { method: "POST" },
+          )
+        ).status,
+      ).toBe(409);
     }));
 
   it("cancels retirement when a live thread returns", async () =>

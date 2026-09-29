@@ -3040,6 +3040,25 @@ modes. The testing harness records accepted calls in `composer.selections`.
 
 Before stabilization, audit cookie import authorization: any caller with server access can copy the desktop user's browser sessions into a BB profile, including an automation profile an agent controls, with OS consent only where the platform demands it (macOS Keychain for Chromium, Full Disk Access for Safari; none for Firefox or keyring-free Linux Chromium). Decide whether imports into automation profiles need an explicit handoff like personal-tab control, and whether the daemon should require a desktop-side confirmation. Also audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
 
+## Machine paths and environment cleanup
+
+`bb.sdk.hosts.experimental_paths({ hostId })` returns `threadStorageRootPath`
+from the machine's latest daemon session, even offline or without live threads.
+It returns 409 when no session has reported paths. It does not wake the machine
+or create directories. CLI: `bb machine paths <id> [--json]`.
+
+`bb.sdk.environments.experimental_retryCleanup({ environmentId })` bypasses
+backoff for pending or failed provider cleanup and starts the existing lifecycle
+sweep. It rejects live threads, environments without pending cleanup, and
+already-removed environments. Acceptance is not completion; inspect the ordinary
+environment lifecycle fields for progress. CLI:
+`bb environment retry-cleanup <id> [--json]`.
+
+Before stabilization, audit path portability and session freshness after machine
+re-enrollment, and cleanup retry behavior across unavailable providers, concurrent
+attempts, and environments shared by archived and live threads. These APIs reuse
+existing session data and provider lifecycle state.
+
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
 `experimental_spawnPortableOutputProcess`,

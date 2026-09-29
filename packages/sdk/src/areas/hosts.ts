@@ -106,6 +106,9 @@ export type HostUpdateResult = Host;
 export type MachineProviderListResult = SystemMachineProvider[];
 
 export interface HostsArea {
+  experimental_paths(
+    args: HostGetArgs,
+  ): Promise<{ threadStorageRootPath: string }>;
   experimental_create(args: MachineCreateArgs): Promise<Host>;
   experimental_getEnrollmentCommand(
     args: HostGetArgs,
@@ -143,6 +146,14 @@ export interface HostsArea {
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
   const { transport } = args;
   return {
+    async experimental_paths(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"].paths.$get(
+          { param: { id: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async experimental_create(input) {
       let host = await transport.readJson(
         transport.api.v1.hosts.$post(

@@ -1155,6 +1155,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads, send messages to them, and manage projects",
           "Spawn or fork with lifecycleOwnerThreadId to archive/delete a dependent with a live owner across projects; ownership is immutable, independent of sidebar parents and supports different hosts/environments. Thread responses return the owner or null. Unarchive owner first; Stop does not cascade",
           "List machines and suspend, resume, or remove provider-managed machines",
+          "Read threadStorageRootPath with sdk.hosts.experimental_paths from the latest daemon session, even offline or without live threads; a machine with no reported session returns an error",
+          "Retry pending or failed provider cleanup with sdk.environments.experimental_retryCleanup; live threads prevent retry and ordinary environment lifecycle fields report completion",
           "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, and its snapshot is present only when the latest measurement includes a breakdown",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
@@ -1164,6 +1166,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
+          "HostsArea.experimental_paths",
+          "EnvironmentsArea.experimental_retryCleanup",
           "PluginsArea.experimental_getSafeMode",
           "PluginsArea.experimental_setSafeMode",
         ],

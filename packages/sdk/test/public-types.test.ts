@@ -242,6 +242,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_retryCleanup"
   | "archiveThreads"
   | "commit"
   | "delete"
@@ -274,6 +275,7 @@ type ExpectedFilesKey =
 type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
+  | "experimental_paths"
   | "cloneDefaultPath"
   | "experimental_create"
   | "experimental_getEnrollmentCommand"

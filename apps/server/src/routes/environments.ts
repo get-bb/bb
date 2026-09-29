@@ -1,3 +1,4 @@
+import { retryEnvironmentCleanup } from "../services/environments/environment-engine.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import path from "node:path";
 import {
@@ -284,6 +285,26 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+  post(routes.retryCleanup, (context) => {
+    const environment = requireEnvironment(deps.db, context.req.param("id"));
+    if (
+      countLiveThreadsInEnvironment(deps.db, {
+        environmentId: environment.id,
+      }) > 0
+    )
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Environment still has live threads",
+      );
+    if (!retryEnvironmentCleanup(deps, environment.id))
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Environment has no provider cleanup to retry",
+      );
+    return context.json({ ok: true } as const);
+  });
 
   get(routes.list, async (context, query) => {
     const { limit, offset } = parsePaginationQuery({

@@ -281,3 +281,8 @@ BB source checkout startup
   preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
   sequence and source programmatic helpers. These are repository maintenance
   commands, not environment lifecycle hooks or installed `bb` commands.
+
+`bb environment retry-cleanup <id> [--json]` retries pending or failed provider
+cleanup immediately, bypassing backoff. It rejects live threads and environments
+without pending cleanup. Acceptance is not completion; inspect lifecycle state
+with `bb environment show <id>`.

@@ -1,5 +1,10 @@
+import path from "node:path";
 import { serverAccess } from "../services/machines/server-access.js";
-import { getNonDestroyedHost, updateHost } from "@bb/db";
+import {
+  getLatestSessionForHost,
+  getNonDestroyedHost,
+  updateHost,
+} from "@bb/db";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -128,6 +133,20 @@ export function registerHostRoutes(
       new ApiError(400, "invalid_request", message),
   });
   const routes = publicApiRoutes.hosts;
+  get(routes.paths, (context) => {
+    const hostId = context.req.param("id");
+    requireNonDestroyedHostWithStatus(deps, hostId);
+    const session = getLatestSessionForHost(deps.db, { hostId });
+    if (session === null)
+      throw new ApiError(
+        409,
+        "host_paths_unavailable",
+        "The machine has not reported its filesystem locations",
+      );
+    return context.json({
+      threadStorageRootPath: path.join(session.dataDir, "thread-storage"),
+    });
+  });
 
   post(routes.create, async (context, payload) => {
     assertHostManagementAllowed(context);

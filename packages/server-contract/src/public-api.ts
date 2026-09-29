@@ -820,6 +820,12 @@ export const publicApiRoutes = {
   },
 
   hosts: {
+    paths: defineRoute({
+      path: "/hosts/:id/paths",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ threadStorageRootPath: string }>(),
+    }),
     create: defineRoute({
       path: "/hosts",
       method: "post",
@@ -1076,6 +1082,12 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    retryCleanup: defineRoute({
+      path: "/environments/:id/retry-cleanup",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     list: defineRoute({
       path: "/environments",
       method: "get",

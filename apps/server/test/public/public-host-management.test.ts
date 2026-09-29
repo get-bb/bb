@@ -1,8 +1,11 @@
+import { createBbSdk } from "@bb/sdk/core";
+import { createHttpTransport } from "@bb/sdk/node";
 import { spawnSync } from "node:child_process";
 import {
   getEnvironment,
   getHost,
   hosts,
+  hostDaemonSessions,
   getSessionById,
   getStoredProviderModelCatalog,
   getThread,
@@ -64,6 +67,55 @@ function requestJoinCode(app: {
 }
 
 describe("public host management", () => {
+  it("reads machine paths after an offline session without requiring threads", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_paths" });
+      const request = () =>
+        harness.app.request(`${API}/hosts/${host.id}/paths`);
+      const unavailable = await request();
+      expect(unavailable.status).toBe(409);
+      expect(await unavailable.json()).toMatchObject({
+        code: "host_paths_unavailable",
+      });
+      const session = seedSession(harness.deps, host.id);
+      harness.hub.unregisterDaemon(session.id);
+      harness.db
+        .update(hostDaemonSessions)
+        .set({
+          status: "closed",
+          updatedAt: 1,
+          createdAt: 1,
+        })
+        .where(eq(hostDaemonSessions.id, session.id))
+        .run();
+      const latest = seedSession(harness.deps, host.id, {
+        instanceId: "instance-2",
+      });
+      harness.hub.unregisterDaemon(latest.id);
+      harness.db
+        .update(hostDaemonSessions)
+        .set({
+          status: "closed",
+          dataDir: "/tmp/new-machine-data",
+        })
+        .where(eq(hostDaemonSessions.id, latest.id))
+        .run();
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          baseUrl: "http://localhost",
+          runtime: "node",
+          fetch: async (input, init) =>
+            harness.app.fetch(new Request(input, init)),
+        }),
+      });
+      await expect(
+        sdk.hosts.experimental_paths({ hostId: host.id }),
+      ).resolves.toEqual({
+        threadStorageRootPath: "/tmp/new-machine-data/thread-storage",
+      });
+    });
+  });
+
   it("reconnects a machine by re-enrolling it, replacing access only when the installer runs", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_reconnect" });
