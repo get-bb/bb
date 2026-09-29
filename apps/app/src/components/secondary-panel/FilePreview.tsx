@@ -908,12 +908,13 @@ function FilePreviewHeader({
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuCheckboxItem
+                        className="gap-2 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0"
                         checked={lineOverflowMode === "wrap"}
                         onCheckedChange={(checked) =>
                           onLineOverflowModeChange(checked ? "wrap" : "scroll")
                         }
                       >
-                        Wrap lines
+                        <Icon name="TextWrap" aria-hidden /> Wrap lines
                       </DropdownMenuCheckboxItem>
                     </>
                   ) : null}
