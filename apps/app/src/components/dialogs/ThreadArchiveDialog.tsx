@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { Thread } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -27,9 +28,19 @@ export function ThreadArchiveDialog({
   onOpenChange,
   onArchive,
 }: ThreadArchiveDialogProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        ref={contentRef}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          contentRef.current
+            ?.querySelector<HTMLButtonElement>('button[type="submit"]')
+            ?.focus();
+        }}
+      >
         {target ? (
           <ThreadArchiveDialogContent
             target={target}
@@ -91,7 +102,7 @@ export function ThreadArchiveDialogContent({
         >
           Cancel
         </Button>
-        <Button type="submit" autoFocus disabled={pending}>
+        <Button type="submit" disabled={pending}>
           Archive {archivedThreadCount} threads
         </Button>
       </DialogFooter>
