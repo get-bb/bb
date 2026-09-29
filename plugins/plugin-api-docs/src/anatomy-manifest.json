@@ -18,7 +18,10 @@
       },
       {
         "path": "apps/app/src/views/RootComposeSecondaryContent.tsx",
-        "anchors": ["RootComposeCompactHome composer={children}", "PluginHomepageSections"]
+        "anchors": [
+          "RootComposeCompactHome composer={children}",
+          "PluginHomepageSections"
+        ]
       },
       {
         "path": "apps/app/src/components/secondary-panel/CompactSecondaryPanelShelf.tsx",
@@ -57,8 +60,11 @@
       "sources": [
         {
           "path": "apps/app/src/components/commands/CommandPalette.tsx",
+          "anchors": ["top-[12%] max-w-[640px] translate-y-0 gap-0 p-0"]
+        },
+        {
+          "path": "apps/app/src/components/commands/CommandPaletteBody.tsx",
           "anchors": [
-            "top-[12%] max-w-[640px] translate-y-0 gap-0 p-0",
             "aria-selected={isActive}",
             "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none",
             "bg-state-hover text-foreground"

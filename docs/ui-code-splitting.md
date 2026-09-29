@@ -52,12 +52,10 @@ the implementation through a barrel imported by the shell.
 
 ## Download policy and mounting
 
-| Policy    | Behavior                                                                                                                                                          |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `render`  | Load when rendered. No speculative scheduling.                                                                                                                    |
-| `intent`  | Load on rendering or a trigger's pointer-enter, focus, or pointer-down.                                                                                           |
-| `idle`    | The owning page schedules a load after two animation frames, then browser idle with a one-second timeout; browsers without idle callbacks use a one-second timer. |
-| `startup` | The owning page starts the load when it registers its preload scope.                                                                                              |
+| Policy | Behavior |
+| --- | --- |
+| `render` | Load when rendered. No speculative scheduling. |
+| `intent` | Load on rendering or a trigger's pointer-enter, focus, or pointer-down. |
 
 Wire intent on the actual trigger:
 
@@ -71,18 +69,9 @@ If a trigger already handles one of those events, compose the handlers instead
 of overwriting one. `.preload()` is an explicit, safe warm-up available under any
 policy; it catches speculative failures, leaving rendering able to try again.
 
-Register startup/idle splits in the page or shell that owns them:
-
-```tsx
-useEffect(() => scheduleSplitPreloads([ActivityPanel, Editor]), []);
-```
-
-Registration is explicit: a feature inside an unopened subtree cannot arrange
-its own page-load preload. The scheduler ignores `render` and `intent` policies,
-cancels outstanding idle scheduling on unmount, and deduplicates imports through
-the split's shared loader. Once started, imports cannot be cancelled. Multiple
-eligible imports may run together; avoid a large startup preload list. Startup
-means this scope's registration, not a global `window.load` event.
+Optional UI has no page-wide startup or idle scheduler. Use `.preload()` from
+an explicit owner when data or user intent establishes demand. Once started,
+imports cannot be cancelled.
 
 Downloading and mounting are separate. Keep the existing persistent responsive
 drawer's deferred realization and retained content. Preloading must not mount

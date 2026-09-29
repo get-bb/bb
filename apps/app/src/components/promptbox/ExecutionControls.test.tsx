@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   ExecutionControls,
   type ExecutionControlsProps,
 } from "./ExecutionControls";
+import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
 
 function makeExecutionControlsProps(
   providerOnChange?: (value: string) => void,
@@ -43,6 +44,8 @@ function renderExecutionControls(props: ExecutionControlsProps) {
   const { wrapper } = createQueryClientTestHarness();
   return render(<ExecutionControls {...props} />, { wrapper });
 }
+
+beforeAll(() => ModelReasoningMenu.preload());
 
 afterEach(() => {
   cleanup();

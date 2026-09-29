@@ -1,40 +1,13 @@
 import {
   Component,
-  createContext,
   lazy,
   Suspense,
-  useContext,
   useState,
   type ComponentType,
   type ReactNode,
 } from "react";
 
-export type SplitPreloadPolicy = "render" | "intent" | "idle" | "startup";
-
-type SplitPreview = {
-  state: "loading" | "error";
-  onRetry: () => void;
-};
-
-const SplitPreviewContext = createContext<ReadonlyMap<string, SplitPreview>>(
-  new Map(),
-);
-
-export function SplitPreviewProvider({
-  id,
-  state,
-  onRetry,
-  children,
-}: SplitPreview & { id: string; children: ReactNode }) {
-  const parent = useContext(SplitPreviewContext);
-  return (
-    <SplitPreviewContext.Provider
-      value={new Map(parent).set(id, { state, onRetry })}
-    >
-      {children}
-    </SplitPreviewContext.Provider>
-  );
-}
+export type SplitPreloadPolicy = "render" | "intent";
 
 type FailureProps = { retry: () => void };
 
@@ -62,12 +35,6 @@ class SplitErrorBoundary extends Component<
   override render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
-}
-
-export interface PreloadableSplit {
-  id: string;
-  preloadPolicy: SplitPreloadPolicy;
-  preload: () => Promise<void>;
 }
 
 const DOWNLOAD_RETRY_DELAYS = [500, 1500];
@@ -129,7 +96,6 @@ export function defineSplit<P extends object>({
   };
 
   function SplitComponent(props: P) {
-    const preview = useContext(SplitPreviewContext).get(id);
     const [attempt, setAttempt] = useState(() => ({
       number: 0,
       View: loaded ?? lazy(loadModule),
@@ -140,10 +106,6 @@ export function defineSplit<P extends object>({
         View: loaded ?? lazy(loadModule),
       }));
     };
-    if (preview?.state === "loading") return <Loading {...props} />;
-    if (preview?.state === "error") {
-      return <ErrorView {...props} retry={preview.onRetry} />;
-    }
     const View = attempt.View;
     return (
       <SplitErrorBoundary
@@ -168,36 +130,4 @@ export function defineSplit<P extends object>({
       onPointerDown: onIntent,
     },
   });
-}
-
-export function scheduleSplitPreloads(splits: readonly PreloadableSplit[]) {
-  const idleSplits = splits.filter((split) => split.preloadPolicy === "idle");
-  for (const split of splits) {
-    if (split.preloadPolicy === "startup") void split.preload();
-  }
-  if (idleSplits.length === 0) return () => {};
-
-  let cancelled = false;
-  let idle: number | null = null;
-  let timeout: number | null = null;
-  let frame = window.requestAnimationFrame(() => {
-    frame = window.requestAnimationFrame(() => {
-      const warm = () => {
-        if (!cancelled) {
-          for (const split of idleSplits) void split.preload();
-        }
-      };
-      if (typeof window.requestIdleCallback === "function") {
-        idle = window.requestIdleCallback(warm, { timeout: 1000 });
-      } else {
-        timeout = window.setTimeout(warm, 1000);
-      }
-    });
-  });
-  return () => {
-    cancelled = true;
-    window.cancelAnimationFrame(frame);
-    if (idle !== null) window.cancelIdleCallback(idle);
-    if (timeout !== null) window.clearTimeout(timeout);
-  };
 }

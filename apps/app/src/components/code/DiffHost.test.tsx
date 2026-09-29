@@ -15,7 +15,6 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
-import { SplitPreviewProvider } from "@/lib/define-split";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import {
@@ -288,21 +287,6 @@ describe("DiffHost", () => {
     );
 
     expect(await screen.findByTestId("bb-diff")).toBeDefined();
-  });
-
-  it("shows the caller's fallback while BB's renderer loads", () => {
-    render(
-      <SplitPreviewProvider id="bb-diff" state="loading" onRetry={() => {}}>
-        <DiffHost
-          file={parseFixture()}
-          fullFileContents={null}
-          fallback={<p>Loading diff</p>}
-        />
-      </SplitPreviewProvider>,
-    );
-
-    expect(screen.getByText("Loading diff")).toBeDefined();
-    expect(screen.queryByTestId("bb-diff")).toBeNull();
   });
 
   it("contains a failing BB renderer inside a delegating replacement without disabling the plugin", async () => {

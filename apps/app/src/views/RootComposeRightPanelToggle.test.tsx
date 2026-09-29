@@ -45,8 +45,16 @@ describe("RootComposeRightPanelToggle", () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it("starts loading the panel from pointer or keyboard intent", () => {
+  it("warms the panel from toggle intent but not from mounting the toggle", async () => {
+    vi.useFakeTimers();
+    const preload = vi
+      .spyOn(LazyThreadSecondaryPanel, "preload")
+      .mockResolvedValue(undefined);
     render(<RootComposeRightPanelToggle isOpen={false} onToggle={vi.fn()} />);
+
+    await act(async () => vi.runAllTimersAsync());
+    expect(preload).not.toHaveBeenCalled();
+    expect(preloadThreadSecondaryPanel).not.toHaveBeenCalled();
 
     const button = screen.getByRole("button", { name: "Show right panel" });
     fireEvent.pointerEnter(button);
@@ -54,18 +62,5 @@ describe("RootComposeRightPanelToggle", () => {
     fireEvent.focus(button);
 
     expect(preloadThreadSecondaryPanel).toHaveBeenCalledTimes(3);
-  });
-
-  it("does not preload a closed panel merely because the browser becomes idle", async () => {
-    vi.useFakeTimers();
-    const preload = vi
-      .spyOn(LazyThreadSecondaryPanel, "preload")
-      .mockResolvedValue(undefined);
-
-    render(<RootComposeRightPanelToggle isOpen={false} onToggle={vi.fn()} />);
-
-    expect(preload).not.toHaveBeenCalled();
-    await act(async () => vi.runAllTimersAsync());
-    expect(preload).not.toHaveBeenCalled();
   });
 });

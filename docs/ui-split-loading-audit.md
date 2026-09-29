@@ -98,7 +98,8 @@ and [MDN dynamic imports](https://developer.mozilla.org/en-US/docs/Web/JavaScrip
   first use loads only the requested surface, and closing retains panel state.
   It fails on the original eagerly mounted wrappers.
 - `RootComposeRightPanelToggle.test.tsx`: pointer/focus intent still warms the panel,
-  but merely becoming idle does not.
+  but mounting the toggle does not. This component-level test does not cover
+  idle effects elsewhere in the parent page; production request capture does.
 - Existing responsive-panel, browser-lifecycle and feature tests remain responsible
   for their own focus, tab, native-view, drawer and plugin contracts.
 - Emitted-module and package guards measure the critical closures. They do not
@@ -112,17 +113,26 @@ The integrated build compared with the wave-2 base `fc92e220a6` measures:
 
 | Payload | Raw bytes | Brotli bytes | Brotli change | New Brotli limit |
 | --- | ---: | ---: | ---: | ---: |
-| Boot | 1,490,317 | 368,624 | −3,514 | 403,839 |
-| Additional thread route | 2,127,197 | 577,106 | −41,117 | 589,508 |
+| Boot | 1,489,954 | 368,769 | −3,369 | 403,839 |
+| Additional thread route | 2,127,197 | 577,459 | −40,764 | 589,508 |
 
 Raw limits are 1,640,415 boot and 2,163,849 route bytes. All four budgets were
-ratcheted down by the full net saving. Per-child gains are not additive because
+ratcheted down by the integrated saving before review-scaffolding cleanup; they
+remain unchanged after cleanup. Removing the preview context reduces boot raw
+bytes by 363; changed chunk hashes move Brotli totals slightly. Per-child gains
+are not additive because
 shared chunks move between closures. The later skeleton correction is included.
 
-The final integration run passed 204 focused tests. After narrowing retry to
+The integration run passed 204 focused tests. After narrowing retry to
 JavaScript download failures, all 13 shared-helper tests passed. The panel policy
 checks passed 61 tests across the demand gate, responsive layout, headers and
-plugin panel; build, typecheck, lint and the final budget check passed.
+plugin panel. Subsequent cleanup removed the unused scheduler and preview
+provider, replacing forced-preview tests with held/rejected module imports.
+The focused cleanup run passed 88 tests; 16 additional tests passed after
+updating existing picker setup and the palette anatomy source path. Independent
+mutations confirmed the old and replacement tests catch missing host fallbacks,
+broken sidebar close controls and lost model queries. Build, typecheck, lint and
+the bundle check passed.
 
 On an isolated production app, cold opening the root page fetched none of the
 optional panel, browser, queue, terminal-output, model-menu or command-palette
