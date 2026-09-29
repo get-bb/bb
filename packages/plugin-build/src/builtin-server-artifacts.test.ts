@@ -39,11 +39,13 @@ describe("builtin server artifacts", () => {
       const root = await mkdtemp(join(repositoryRoot, ".builtin-server-test-"));
       tempDirs.push(root);
       const source = join(repositoryRoot, "plugins", pluginDir);
-      for (const fileName of ["package.json", "server.ts"]) {
-        await cp(join(source, fileName), join(root, fileName));
-      }
-      await cp(join(source, "src"), join(root, "src"), { recursive: true });
-      await cp(join(source, "icons"), join(root, "icons"), { recursive: true });
+      await cp(source, root, {
+        recursive: true,
+        filter: (path) =>
+          !["node_modules", "dist", ".bundled-runtime"].includes(
+            basename(path),
+          ),
+      });
       await symlink(
         join(source, "node_modules"),
         join(root, "node_modules"),
@@ -84,7 +86,9 @@ describe("builtin server artifacts", () => {
       await cp(source, root, {
         recursive: true,
         filter: (path) =>
-          !["node_modules", "dist", ".bundled-runtime"].includes(basename(path)),
+          !["node_modules", "dist", ".bundled-runtime"].includes(
+            basename(path),
+          ),
       });
       await symlink(
         join(source, "node_modules"),
