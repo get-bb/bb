@@ -44,6 +44,8 @@ export type ComposerSource = Pick<
   | "focus"
   | "submit"
   | "setSelection"
+  | "getSelection"
+  | "subscribeSelection"
 >;
 
 type ComposerLifecycle = Pick<
@@ -204,6 +206,7 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
     key,
     scope: source.scope,
     getAttachmentCount: () => source.getCurrent().attachments.length,
+    getSelection: () => source.getSelection?.() ?? null,
     addQuote: (text) => {
       const current = source.getCurrent();
       const next = appendQuoteAndAttachmentsToDraft(current, text, []);

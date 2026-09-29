@@ -26,6 +26,7 @@ import {
 } from "@/components/promptbox/FollowUpPromptBox";
 import {
   useComposerHostDraftNotifier,
+  useComposerHostSelection,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
@@ -711,6 +712,28 @@ function EmbeddedThreadChatWithComposer({
   const subscribeQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
   );
+  const bottomSelection = useMemo(
+    () => ({
+      ...(selectedProviderId ? { providerId: selectedProviderId } : {}),
+      ...(selectedExecutionModel ? { model: selectedExecutionModel } : {}),
+      reasoningLevel,
+      ...(selectedExecutionServiceTier !== undefined
+        ? { serviceTier: selectedExecutionServiceTier }
+        : {}),
+      ...(effectivePermissionMode !== undefined
+        ? { permissionMode: effectivePermissionMode }
+        : {}),
+    }),
+    [
+      effectivePermissionMode,
+      reasoningLevel,
+      selectedExecutionModel,
+      selectedExecutionServiceTier,
+      selectedProviderId,
+    ],
+  );
+  const { getSelection, subscribeSelection } =
+    useComposerHostSelection(bottomComposerHostIdentity, bottomSelection);
   const setStoredPromptDraft = promptDraft.setDraft;
   const getStoredPromptDraft = promptDraft.getCurrent;
   const storedPromptDraftKey = promptDraft.storageKey;
@@ -725,6 +748,8 @@ function EmbeddedThreadChatWithComposer({
           ? currentPromptDraftRef.current
           : getStoredPromptDraft(),
       subscribeDraft: subscribeBottomDraft,
+      getSelection,
+      subscribeSelection,
       setDraft: setStoredPromptDraft,
       submit: (options, pluginSubmission) =>
         submitProgrammaticallyRef.current(options, pluginSubmission),
@@ -738,10 +763,12 @@ function EmbeddedThreadChatWithComposer({
     bottomComposerHostIdentity,
     bottomScope,
     getStoredPromptDraft,
+    getSelection,
     setStoredPromptDraft,
     storedPromptDraftKey,
     submitProgrammaticallyRef,
     subscribeBottomDraft,
+    subscribeSelection,
   ]);
   const queuedPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (

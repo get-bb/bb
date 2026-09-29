@@ -702,7 +702,7 @@ client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
 workspace/host/thread-storage files), and useComposer (one stable handle for
-the bound composer: read its text, mentions, scope, layout, run and submit
+the bound composer: read its text, mentions, reactive picker selection, scope, layout, run and submit
 state, and why submitting is blocked; replace/update/clear text; insert text
 and mentions at the cursor or end; apply a class-based text effect, lock input,
 quote selections, submit exactly as Enter would, and focus the composer),

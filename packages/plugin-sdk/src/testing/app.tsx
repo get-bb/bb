@@ -210,6 +210,8 @@ export interface ComposerLog {
   readonly key: string;
   /** Latest host-provided composer scope. */
   readonly scope: PluginComposerScope;
+  /** Current picker snapshot, or null for a composer without pickers. */
+  readonly selection: ComposerSelection | null;
   /** Latest host-provided attachment count exposed through `useComposerView()`. */
   readonly attachmentCount: number;
   /** Latest host-rendered text effect requested by the plugin. */
@@ -229,9 +231,9 @@ export interface ComposerLog {
   submits: ComposerSubmitOptions[];
   /**
    * Every `setSelection` the harness composer accepted, in order. The
-   * harness has no pickers of its own, so it records the request and echoes
-   * it back as the settled selection, minus the fields the composer's scope
-   * has no picker for (a thread has no project or environment). The
+   * harness has no pickers of its own, so it merges accepted fields into
+   * its current selection and returns that snapshot. A thread drops
+   * project and environment because it has no pickers for them. The
    * queued-message scope rejects, as the app does.
    */
   selections: ComposerSelection[];
@@ -1458,6 +1460,7 @@ export interface RenderSlotOptions<
     layout?: "expanded" | "compact";
     isRunning?: boolean;
     isSubmitting?: boolean;
+    selection?: ComposerSelection;
     /**
      * What `submittingBlockedReason` reports, and what `submit` rejects
      * with. Omitted → "Type a message first." while the draft is empty,
@@ -1927,6 +1930,15 @@ export function renderSlot<
     (threadId !== null
       ? { kind: "thread", threadId }
       : { kind: "new-thread", projectId });
+  let composerSelection: ComposerSelection | null =
+    composerScope.kind === "queued-message"
+      ? null
+      : {
+          ...(composerScope.kind === "new-thread" && projectId !== null
+            ? { projectId }
+            : {}),
+          ...options.composer?.selection,
+        };
 
   let composerText = options.composer?.text ?? "";
   let composerMentions: ComposerMention[] = [
@@ -2000,6 +2012,9 @@ export function renderSlot<
     get scope() {
       return composerScope;
     },
+    get selection() {
+      return composerSelection;
+    },
     get attachmentCount() {
       return composerAttachmentCount;
     },
@@ -2026,6 +2041,7 @@ export function renderSlot<
     },
     getDraft: composerDraft,
     getAttachmentCount: () => composerAttachmentCount,
+    getSelection: () => composerSelection,
     setDraft: (next) => {
       if (next.attachments !== undefined) {
         composerAttachments = [...next.attachments];
@@ -2085,7 +2101,9 @@ export function renderSlot<
       const accepted: ComposerSelection =
         composerScope.kind === "thread" ? rest : { ...selection };
       composerLog.selections.push(accepted);
-      return accepted;
+      composerSelection = { ...composerSelection, ...accepted };
+      notifyComposerListeners();
+      return composerSelection;
     },
   };
   const composerHandle = createComposerHandleBinding(

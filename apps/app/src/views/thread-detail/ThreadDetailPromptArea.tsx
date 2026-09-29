@@ -56,6 +56,7 @@ import { ThreadPendingInteractionBanner } from "@/components/thread/pending-inte
 import {
   type PluginComposerHost,
   useComposerHostDraftNotifier,
+  useComposerHostSelection,
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -994,6 +995,27 @@ export function ThreadDetailPromptArea({
       changeServiceTier: setServiceTier,
       changePermissionMode: setPermissionMode,
     }));
+  const composerSelection = useMemo(
+    () =>
+      readExecutionSelection({
+        selectedProviderId,
+        selectedThreadModel: effectiveSelectedModel,
+        reasoningLevel,
+        serviceTier,
+        supportsServiceTier,
+        permissionMode,
+      }),
+    [
+      effectiveSelectedModel,
+      permissionMode,
+      reasoningLevel,
+      selectedProviderId,
+      serviceTier,
+      supportsServiceTier,
+    ],
+  );
+  const { getSelection, subscribeSelection } =
+    useComposerHostSelection(promptDraft.storageKey, composerSelection);
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
     async (
@@ -1073,6 +1095,8 @@ export function ThreadDetailPromptArea({
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
+      getSelection,
+      subscribeSelection,
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
       submit: submitProgrammaticallyThroughRef,
@@ -1080,11 +1104,13 @@ export function ThreadDetailPromptArea({
     }),
     [
       focusBottomPluginComposer,
+      getSelection,
       promptDraft.getCurrent,
       promptDraft.setDraft,
       promptDraft.storageKey,
       promptDraft.subscribe,
       setSelection,
+      subscribeSelection,
       submitProgrammaticallyThroughRef,
       thread.id,
     ],

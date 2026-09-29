@@ -377,9 +377,8 @@ let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
   "setTextEffect" | "setInputLock"
 > | null = null;
-let capturedComposerSetSelection:
-  | PluginComposerApi["experimental_setSelection"]
-  | null = null;
+let capturedComposerSetSelection: PluginComposerApi["setSelection"] | null =
+  null;
 
 function InlineVis({
   attributes,
@@ -403,7 +402,7 @@ function ComposerProbe() {
     setTextEffect: composer.setTextEffect,
     setInputLock: composer.setInputLock,
   };
-  capturedComposerSetSelection = composer.experimental_setSelection;
+  capturedComposerSetSelection = composer.setSelection;
   return (
     <div>
       <span data-testid="composer-scope">{composer.scope.kind}</span>
@@ -411,6 +410,12 @@ function ComposerProbe() {
         {JSON.stringify(composer.scope)}
       </span>
       <span data-testid="composer-text">{composer.text}</span>
+      <span data-testid="composer-selection">
+        {JSON.stringify(composer.selection)}
+      </span>
+      <span data-testid="listed-composer-selection">
+        {JSON.stringify(listed[0]?.selection)}
+      </span>
       <span data-testid="composer-listed">
         {String(listed.length === 1 && listed[0] === composer)}
       </span>
@@ -1929,7 +1934,7 @@ describe("renderSlot", () => {
     expect(slot.composer.focusCount).toBe(3);
   });
 
-  it("records accepted selections and echoes back what the scope has pickers for", async () => {
+  it("merges picker changes into reactive selection snapshots for both composer hooks", async () => {
     const threadSlot = renderSlot(
       app.composerCustomizations[0]!.actions![0]!,
       {},
@@ -1937,6 +1942,7 @@ describe("renderSlot", () => {
     );
     const setSelection = capturedComposerSetSelection;
     if (setSelection === null) throw new Error("setSelection not captured");
+    expect(threadSlot.getByTestId("composer-selection").textContent).toBe("{}");
 
     await expect(
       setSelection({
@@ -1954,6 +1960,22 @@ describe("renderSlot", () => {
     expect(threadSlot.composer.selections).toEqual([
       { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
     ]);
+    expect(threadSlot.getByTestId("composer-selection").textContent).toBe(
+      JSON.stringify({
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+      }),
+    );
+    await expect(setSelection({ permissionMode: "full" })).resolves.toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "high",
+      permissionMode: "full",
+    });
+    expect(
+      threadSlot.getByTestId("listed-composer-selection").textContent,
+    ).toBe(threadSlot.getByTestId("composer-selection").textContent);
     threadSlot.unmount();
 
     const newThreadSlot = renderSlot(
@@ -1967,6 +1989,9 @@ describe("renderSlot", () => {
     expect(newThreadSlot.composer.selections).toEqual([
       { projectId: "proj_2", model: "gpt-5" },
     ]);
+    expect(newThreadSlot.getByTestId("composer-selection").textContent).toBe(
+      JSON.stringify({ projectId: "proj_2", model: "gpt-5" }),
+    );
     newThreadSlot.unmount();
 
     const queuedSlot = renderSlot(
@@ -1981,6 +2006,9 @@ describe("renderSlot", () => {
           },
         },
       },
+    );
+    expect(queuedSlot.getByTestId("composer-selection").textContent).toBe(
+      "null",
     );
     await expect(
       capturedComposerSetSelection!({ model: "gpt-5" }),

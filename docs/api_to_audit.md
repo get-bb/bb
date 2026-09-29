@@ -2942,6 +2942,16 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
 
 ## `useComposer().setSelection`
 
+**Reactive read added after #4474.** `PluginComposerApi.selection` is a final-named
+member by the same explicit composer API naming exception as `setSelection`.
+It reports the current picker/submission selection as a stable snapshot and
+re-renders `useComposer()` and `useComposers()` consumers when a user or plugin
+changes a picker. It is `null` for composers without pickers. Missing fields
+represent unavailable or unselected values; `isSubmittingBlocked` remains the
+submission readiness signal. Audit snapshot identity across provider catalog
+reconciliation and off-screen composer lifetimes before treating the read
+contract as stabilized.
+
 **What it does.** Sets a composer's pickers (provider, model, reasoning level,
 service tier, permission mode, and in a new-thread composer the project and
 environment) through the same handlers the pickers call, so a plugin-made

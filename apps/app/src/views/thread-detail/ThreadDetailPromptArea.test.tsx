@@ -2067,6 +2067,7 @@ describe("ThreadDetailPromptArea", () => {
       reasoningLevel: "medium",
       permissionMode: "auto",
     });
+    expect(host!.getSelection?.()).toEqual(result);
     expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
     expect(screen.getByTestId("command-suggestions").textContent).toBe(
       "claude-code:new-thread",

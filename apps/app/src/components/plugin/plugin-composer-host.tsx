@@ -25,6 +25,8 @@ export interface PluginComposerHost {
   textEffectKey: string;
   getCurrent(): PromptDraftState;
   subscribeDraft(listener: () => void): () => void;
+  getSelection?(): ComposerSelection;
+  subscribeSelection?(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
   isAvailable?(): boolean;
   focus(): void;
@@ -81,6 +83,42 @@ export function useComposerHostDraftNotifier(
     store.notify();
   }, [draft, store]);
   return store.subscribe;
+}
+
+function createComposerSelectionStore(key: string, initial: ComposerSelection) {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  return {
+    key,
+    getSelection: () => current,
+    subscribeSelection: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    publish: (next: ComposerSelection) => {
+      if (current === next) return;
+      current = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+export function useComposerHostSelection(
+  key: string,
+  selection: ComposerSelection,
+): Required<Pick<PluginComposerHost, "getSelection" | "subscribeSelection">> {
+  const [binding, setBinding] = useState(() =>
+    createComposerSelectionStore(key, selection),
+  );
+  let store = binding;
+  if (binding.key !== key) {
+    store = createComposerSelectionStore(key, selection);
+    setBinding(store);
+  }
+  useLayoutEffect(() => {
+    store.publish(selection);
+  }, [selection, store]);
+  return store;
 }
 
 interface PluginComposerViewModelInput {

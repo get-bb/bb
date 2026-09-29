@@ -91,6 +91,9 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
+const subscribeToNoComposerSelection = () => () => {};
+const getNoComposerSelection = () => null;
+
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
     matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
@@ -610,6 +613,11 @@ export function useComposer(): PluginComposerApi {
   const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
   usePluginComposerHostDraft(composerHost);
+  useSyncExternalStore(
+    composerHost?.subscribeSelection ?? subscribeToNoComposerSelection,
+    composerHost?.getSelection ?? getNoComposerSelection,
+    composerHost?.getSelection ?? getNoComposerSelection,
+  );
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
     () =>
@@ -763,17 +771,30 @@ export function useComposer(): PluginComposerApi {
 
 function createComposerDraftsStore(hosts: readonly PluginComposerHost[]) {
   let snapshot = hosts.map((host) => host.getCurrent());
+  let selections = hosts.map((host) => host.getSelection?.() ?? null);
   return {
     subscribe(listener: () => void): () => void {
-      const unsubscribes = hosts.map((host) => host.subscribeDraft(listener));
+      const unsubscribes = hosts.flatMap((host) => [
+        host.subscribeDraft(listener),
+        ...(host.subscribeSelection === undefined
+          ? []
+          : [host.subscribeSelection(listener)]),
+      ]);
       return () => {
         for (const unsubscribe of unsubscribes) unsubscribe();
       };
     },
     getSnapshot() {
       const next = hosts.map((host) => host.getCurrent());
-      if (next.some((draft, index) => draft !== snapshot[index])) {
+      const nextSelections = hosts.map((host) => host.getSelection?.() ?? null);
+      if (
+        next.some((draft, index) => draft !== snapshot[index]) ||
+        nextSelections.some(
+          (selection, index) => selection !== selections[index],
+        )
+      ) {
         snapshot = next;
+        selections = nextSelections;
       }
       return snapshot;
     },

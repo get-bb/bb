@@ -37,6 +37,7 @@ export interface ComposerHandleTarget {
   scope: PluginComposerScope;
   getDraft(): ComposerDraftSnapshot;
   getAttachmentCount(): number;
+  getSelection(): ComposerSelection | null;
   setDraft(next: ComposerDraftReplacement): void;
   addQuote(text: string): void;
   getEditorState(): ComposerEditorState;
@@ -407,6 +408,9 @@ export function createComposerHandleBinding(
         draftActions.draft,
         target().getAttachmentCount(),
       );
+    },
+    get selection() {
+      return target().getSelection();
     },
     setText: (next) => {
       warnDeprecatedComposerMember("setText", "replace");

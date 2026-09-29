@@ -575,7 +575,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read and rewrite the draft prompt, for example rephrasing it or inserting a template",
           "Insert text and @-mentions at the cursor or at the end, optionally as their own paragraph; a mention read from the draft is recreated exactly, and the plugin's own mentions resolve fresh context when the message is sent",
           "Lock the input while it works, and tint the whole draft while it does",
-          "Set the composer's pickers (provider, model, reasoning level, service tier, permission mode, and on the new-thread screen the project and environment) through the same paths the pickers use, and read back what the composer settled on",
+          "Read reactive picker values from composer.selection, or set them through the same paths the pickers use and read back what the composer settled on",
           "Render in the same row as bb's own prompt-box buttons; bb keeps up to 3 plugins with applicable actions inline, ranked by use, and moves the rest into an overflow menu",
         ],
         apiSymbols: [
@@ -584,6 +584,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ComposerInsertPart",
           "ComposerInsertOptions",
           "PluginComposerApi.setSelection",
+          "PluginComposerApi.selection",
           "ComposerSelection",
         ],
       },

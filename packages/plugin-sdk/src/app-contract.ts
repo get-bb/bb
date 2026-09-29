@@ -2529,7 +2529,7 @@ export interface PluginComposerMention {
  * The handle is stable: the same composer returns the same object across
  * renders, and its methods always act on the current draft, so it is safe to
  * keep in effects, callbacks and async work. Its reactive fields (`text`,
- * `draft`, `isEmpty`, …) re-render the calling component when they change;
+ * `draft`, `selection`, `isEmpty`, …) re-render the calling component when they change;
  * depend on those fields, not on the handle, in memo dependency lists.
  *
  * A handle always writes to its own composer's draft. Thread and new-thread
@@ -2569,6 +2569,8 @@ export interface PluginComposerApi {
   readonly text: string;
   /** The complete current draft, including uploaded attachments. Stable until the draft changes. */
   readonly draft: ComposerDraftSnapshot;
+  /** Current picker values, or null when this composer has no pickers. Stable until a picker value changes. */
+  readonly selection: ComposerSelection | null;
   /**
    * Replace text and mentions together in one committed change. An updater
    * receives the latest immutable snapshot, including attachments, and must
@@ -2733,7 +2735,7 @@ export interface PluginComposerApi {
 }
 
 /**
- * Picker values for `setSelection`, and the shape it resolves with. Field names match `NewThreadRequest` and the `default*` props of
+ * Current picker values in `selection`, input for `setSelection`, and the shape it resolves with. Field names match `NewThreadRequest` and the `default*` props of
  * `experimental_NewThreadComposer`, so one routed decision can feed the
  * composer, the embedded composer and `bb.sdk.threads.spawn` alike.
  */

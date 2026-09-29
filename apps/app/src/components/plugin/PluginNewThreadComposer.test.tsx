@@ -2684,6 +2684,18 @@ describe("NewThreadComposer setSelection", () => {
     return host;
   }
 
+  it("tracks values changed through the visible model picker", async () => {
+    render(rootLikeElement("proj_1"));
+    const host = currentHost();
+    const initial = host.getSelection?.();
+    act(() => latestPromptBoxProps().execution.model.onChange("gpt-5.6-sol"));
+    await waitFor(() => {
+      expect(host.getSelection?.()?.model).toBe("gpt-5.6-sol");
+    });
+    expect(host.getSelection?.()).not.toBe(initial);
+    expect(host.getSelection?.()?.projectId).toBe("proj_1");
+  });
+
   async function settled(
     promise: Promise<ExperimentalComposerSelection>,
     timeout = 1_000,
@@ -2726,6 +2738,7 @@ describe("NewThreadComposer setSelection", () => {
     );
 
     expect(result.projectId).toBe("proj_1");
+    expect(host.getSelection?.()).toEqual(result);
     expect(result.environment).toEqual({
       type: "provider",
       environmentProviderId: "git-worktree",

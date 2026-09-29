@@ -680,6 +680,12 @@ describe("EmbeddedThreadChat", () => {
     );
     const firstHost = hostDraftMocks.latestHost!;
     expect(firstHost.textEffectKey).toBe(draftKey);
+    expect(firstHost.getSelection?.()).toEqual({
+      providerId: "provider-1",
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+    });
     first.unmount();
 
     firstHost.setDraft({ text: "late result", mentions: [], attachments: [] });
