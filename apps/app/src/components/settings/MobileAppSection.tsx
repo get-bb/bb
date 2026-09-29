@@ -1,3 +1,6 @@
+import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
+import AndroidIcon from "@hugeicons/core-free-icons/AndroidIcon";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginMobileSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { mobileAppDownloads } from "@bb/domain";
@@ -25,7 +28,16 @@ export function MobileAppSection() {
       </div>
       <div className="space-y-5">
         <SettingsSection
-          title="iOS"
+          title={
+            <span className="flex items-center gap-2">
+              <HugeiconsIcon
+                icon={AppleIcon}
+                className="size-4 shrink-0"
+                aria-hidden="true"
+              />
+              iOS
+            </span>
+          }
           description="Available through TestFlight"
           bodyClassName="space-y-4"
         >
@@ -50,7 +62,16 @@ export function MobileAppSection() {
           </p>
         </SettingsSection>
         <SettingsSection
-          title="Android"
+          title={
+            <span className="flex items-center gap-2">
+              <HugeiconsIcon
+                icon={AndroidIcon}
+                className="size-4 shrink-0"
+                aria-hidden="true"
+              />
+              Android
+            </span>
+          }
           description="Install the APK directly"
           bodyClassName="space-y-4"
         >
