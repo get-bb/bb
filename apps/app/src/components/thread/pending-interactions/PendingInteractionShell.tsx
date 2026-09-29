@@ -139,7 +139,11 @@ export function PendingInteractionShell({
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
         <ThreadQuestionFormHost>
-          <div id={contentId} hidden={!isExpanded} className="px-3 pb-3 pt-2.5">
+          <div
+            id={contentId}
+            hidden={!isExpanded}
+            className="max-h-[min(32rem,50dvh)] overflow-y-auto overscroll-contain px-3 pb-3 pt-2.5"
+          >
             {title ? (
               <h3 className="min-w-0 text-sm font-medium text-foreground">
                 <ExpandableLine
