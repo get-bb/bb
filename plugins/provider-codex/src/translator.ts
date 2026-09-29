@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  normalizeCodexRateLimits,
   clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
   setCodexInjectedTools,
@@ -1608,20 +1609,32 @@ export function createCodexEventTranslator(
     return repairedDeltas;
   }
 
-  function hydrateRateLimits(
+  function recoverRateLimits(
     response: z.output<typeof codexRateLimitReadResponseSchema>,
-  ): void {
+  ): ThreadDelta[] {
+    const preferredLimitId = eventTranslationState.latestRateLimitId;
+    eventTranslationState.rateLimitsByLimitId.clear();
     const snapshots = response.rateLimitsByLimitId;
     if (snapshots === null || Object.keys(snapshots).length === 0) {
       applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
-      return;
+    } else {
+      for (const [limitId, snapshot] of Object.entries(snapshots)) {
+        applyCodexRateLimitUpdate(eventTranslationState, {
+          ...snapshot,
+          limitId: snapshot.limitId ?? limitId,
+        });
+      }
     }
-    for (const [limitId, snapshot] of Object.entries(snapshots)) {
-      applyCodexRateLimitUpdate(eventTranslationState, {
-        ...snapshot,
-        limitId: snapshot.limitId ?? limitId,
-      });
-    }
+    eventTranslationState.latestRateLimitId = preferredLimitId;
+    return [
+      {
+        kind: "provider.rateLimits",
+        rateLimits: normalizeCodexRateLimits(
+          eventTranslationState,
+          preferredLimitId,
+        ),
+      },
+    ];
   }
 
   function translateEvent(event: ProviderRuntimeEvent): ThreadDelta[] {
@@ -1667,7 +1680,7 @@ export function createCodexEventTranslator(
 
   return {
     activateThreadGitWritableRoots,
-    hydrateRateLimits,
+    recoverRateLimits,
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,

@@ -2451,9 +2451,9 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
-  it("hydrates and preserves rate-limit buckets by limit id", () => {
+  it("recovers and preserves rate-limit buckets by limit id", () => {
     const harness = createHarness();
-    harness.translator.hydrateRateLimits({
+    harness.translator.recoverRateLimits({
       rateLimits: {
         limitId: "codex",
         primary: {
@@ -2597,9 +2597,9 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
-  it("hydrates Codex rate limits before merging truly sparse rolling updates", () => {
+  it("recovers Codex rate limits before merging truly sparse rolling updates", () => {
     const harness = createHarness();
-    harness.translator.hydrateRateLimits({
+    harness.translator.recoverRateLimits({
       rateLimitsByLimitId: null,
       rateLimits: {
         limitId: "codex",

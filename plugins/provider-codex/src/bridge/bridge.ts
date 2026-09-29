@@ -7,6 +7,7 @@ import {
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
+  type ProviderRateLimitState,
   sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -61,9 +62,7 @@ import { parseModelsResponse } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
 import {
   codexTurnSchema,
-  codexHandledEventSchema,
   codexRateLimitReadResponseSchema,
-  type CodexHandledEvent,
 } from "../schemas.js";
 import {
   resolveCodexInstructionOverrides,
@@ -284,7 +283,7 @@ const CODEX_INITIALIZE_PARAMS = {
 };
 
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
-const RATE_LIMIT_HYDRATION_TIMEOUT_MS = 5_000;
+const RATE_LIMIT_RECOVERY_TIMEOUT_MS = 5_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
@@ -470,6 +469,8 @@ interface CodexBridgeSession {
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   pendingPreIdentityDeltas: ThreadDelta[];
+  turnRateLimits: ProviderRateLimitState | null;
+  quotaRecoveryAttempted: boolean;
   rebuildBeforeNextTurnReason: string | null;
   closing: boolean;
   previousChildExit: Promise<void> | null;
@@ -596,7 +597,12 @@ function sendThreadDeltas(
           (dispatch) => dispatch.clientRequestId !== delta.clientRequestId,
         );
     }
+    if (delta.kind === "provider.rateLimits") {
+      session.turnRateLimits = delta.rateLimits;
+    }
     if (delta.kind === "turn.open") {
+      session.turnRateLimits = null;
+      session.quotaRecoveryAttempted = false;
       session.awaitingReplayedUsage = false;
       if (delta.providerTurnId !== undefined) {
         session.openCodexTurnIds.add(delta.providerTurnId);
@@ -671,12 +677,12 @@ function toProviderRuntimeEvent(
   } as ProviderRuntimeEvent;
 }
 
-function handleChildNotification(
+async function handleChildNotification(
   bbThreadId: string,
   serial: number,
   method: string,
   params: unknown,
-): void {
+): Promise<void> {
   const session = currentSession(bbThreadId, serial);
   if (!session) {
     return;
@@ -699,6 +705,42 @@ function handleChildNotification(
   const deltas = session.translator.translateEvent(
     toProviderRuntimeEvent(method, params),
   );
+  const quotaFailure = deltas.some(
+    (delta) =>
+      delta.kind === "provider.error" &&
+      delta.willRetry !== true &&
+      delta.errorInfo?.category === "rate-limit",
+  );
+  const quota = session.turnRateLimits;
+  const blockedWindows =
+    quota?.windows.filter((window) => window.status === "blocked") ?? [];
+  const quotaExplainsFailure =
+    quota?.status === "blocked" &&
+    (quota.kind !== "subscription-window" ||
+      (blockedWindows.length > 0 &&
+        blockedWindows.every(
+          (window) =>
+            window.resetsAtMs !== null && window.resetsAtMs > Date.now(),
+        )));
+  if (
+    quotaFailure &&
+    !quotaExplainsFailure &&
+    !session.quotaRecoveryAttempted &&
+    session.connection !== null
+  ) {
+    session.quotaRecoveryAttempted = true;
+    try {
+      const snapshot = await session.connection.request({
+        method: "account/rateLimits/read",
+        params: { excludeResetCreditDetails: true },
+        resultSchema: codexRateLimitReadResponseSchema,
+        timeoutMs: RATE_LIMIT_RECOVERY_TIMEOUT_MS,
+      });
+      if (currentSession(bbThreadId, serial) !== session) return;
+      sendThreadDeltas(session, session.translator.recoverRateLimits(snapshot));
+    } catch {}
+    if (currentSession(bbThreadId, serial) !== session) return;
+  }
   sendThreadDeltas(session, deltas);
   for (const delta of deltas) {
     if (delta.kind === "provider.error" && delta.willRetry !== true) {
@@ -1051,6 +1093,8 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
+    turnRateLimits: null,
+    quotaRecoveryAttempted: false,
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,
@@ -1077,35 +1121,29 @@ async function constructThreadSession(
   }
   sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
-  let pendingRateLimitNotifications:
-    | Extract<CodexHandledEvent, { method: "account/rateLimits/updated" }>[]
-    | null = [];
+  let notifications = Promise.resolve();
   const connection = spawnChildConnection({
     envVars: decoded.sessionOptions.envVars,
     recordThreadId: args.threadId,
     onNotification: (method, params) => {
-      if (
-        method === "account/rateLimits/updated" &&
-        pendingRateLimitNotifications !== null
-      ) {
-        const parsed = codexHandledEventSchema.safeParse({
-          jsonrpc: "2.0",
-          method,
-          params,
+      notifications = notifications
+        .then(() =>
+          handleChildNotification(args.threadId, serial, method, params),
+        )
+        .catch((error: unknown) => {
+          sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
+            threadId: args.threadId,
+            message: describeCodexLaunchError(error),
+          });
         });
-        if (
-          parsed.success &&
-          parsed.data.method === "account/rateLimits/updated"
-        ) {
-          pendingRateLimitNotifications.push(parsed.data);
-          return;
-        }
-      }
-      handleChildNotification(args.threadId, serial, method, params);
     },
     onRequest: (method, params, responder) =>
       handleChildRequest(args.threadId, serial, method, params, responder),
-    onExit: (info) => handleChildExit(args.threadId, serial, info),
+    onExit: (info) => {
+      void notifications.then(() =>
+        handleChildExit(args.threadId, serial, info),
+      );
+    },
   });
   session.connection = connection;
 
@@ -1189,31 +1227,6 @@ async function constructThreadSession(
       threadId: args.threadId,
     });
     announceSessionIdentity(session, codexThreadId);
-    void connection
-      .request({
-        method: "account/rateLimits/read",
-        resultSchema: codexRateLimitReadResponseSchema,
-        timeoutMs: RATE_LIMIT_HYDRATION_TIMEOUT_MS,
-      })
-      .then((snapshot) => {
-        if (currentSession(args.threadId, serial) === session) {
-          translator.hydrateRateLimits(snapshot);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        const notifications = pendingRateLimitNotifications;
-        pendingRateLimitNotifications = null;
-        for (const event of notifications ?? []) {
-          handleChildNotification(
-            args.threadId,
-            serial,
-            event.method,
-            event.params,
-          );
-        }
-      });
-
     return { session, codexThreadId };
   } catch (error) {
     const released = session.closing;
@@ -1256,6 +1269,8 @@ function registerResumableSession(session: CodexBridgeSession): void {
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
     pendingPreIdentityDeltas: [],
+    turnRateLimits: null,
+    quotaRecoveryAttempted: false,
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,

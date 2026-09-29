@@ -386,7 +386,6 @@ function main() {
   const liveIdByRecordedId = new Map();
   /** recorded bridge request ids this bridge never sent; their responses are dropped */
   const skippedRecordedIds = new Set();
-  const skippedRequests = [];
   let hookIds = new Map();
   let stallTimer = null;
   let lookaheadTimer = null;
@@ -535,7 +534,6 @@ function main() {
           if (between.dir === "bridge→provider") {
             if (between.classified.kind === "request") {
               skippedRecordedIds.add(String(between.classified.id));
-              skippedRequests.push(between);
             }
             skipped.push(between.classified.key);
           } else if (between.message === null) {
@@ -604,26 +602,6 @@ function main() {
 
   function onLiveMessage(message) {
     const live = { message, classified: dialect.classify(message) };
-    if (live.classified.kind === "request") {
-      const index = skippedRequests.findIndex(
-        (step) => step.classified.key === live.classified.key,
-      );
-      if (index !== -1) {
-        const [request] = skippedRequests.splice(index, 1);
-        const recordedId = String(request.classified.id);
-        const response = script.find(
-          (step) =>
-            step.dir === "provider→bridge" &&
-            step.classified.kind === "response" &&
-            String(step.classified.id) === recordedId,
-        );
-        if (response) {
-          liveIdByRecordedId.set(recordedId, live.classified.id);
-          emitRecorded(response);
-          return;
-        }
-      }
-    }
     if (
       !sawSessionDefiningRequest &&
       live.classified.kind === "request" &&
