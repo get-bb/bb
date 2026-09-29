@@ -321,6 +321,17 @@
       "persistent": true,
       "passThroughEnv": ["*"]
     },
+    "storybook:build": {
+      "dependsOn": ["topo", "@bb/templates#generate:templates"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/shared-ui/src/components/ui/*.stories.tsx",
+        "$TURBO_ROOT$/plugins/automations/*.stories.tsx",
+        "$TURBO_ROOT$/plugins/workflows/**/*.stories.tsx",
+        "$TURBO_ROOT$/plugins/provider-usage/*.stories.tsx"
+      ],
+      "outputs": ["build/**"]
+    },
     "@bb/host-daemon#dev": {
       // The source daemon injects apps/cli/bin/bb into agent shells. Build its
       // gitignored runtime before the daemon starts so a sandboxed thread never

@@ -249,6 +249,11 @@
       "types": "./src/lib/portal-scope.ts",
       "default": "./src/lib/portal-scope.ts"
     },
+    "./lib/story-card": {
+      "source": "./src/lib/story-card.tsx",
+      "types": "./src/lib/story-card.tsx",
+      "default": "./src/lib/story-card.tsx"
+    },
     "./question-form": {
       "source": "./src/components/ui/question-form.tsx",
       "types": "./src/components/ui/question-form.tsx",
