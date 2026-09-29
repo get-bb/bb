@@ -1,18 +1,27 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PendingInteraction } from "@bb/domain";
 import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { isHostDisconnectedError } from "@/lib/lifecycle-errors";
+import { wsManager } from "@/lib/ws";
 import { useEnvironment } from "../queries/environment-queries";
 import { useHosts } from "../queries/host-queries";
 import { useThread } from "../queries/thread-queries";
 import { invalidateThreadPendingInteractionResolutionQueries } from "../cache-owners/mutation-cache-effects";
+import {
+  applyResolvedThreadPendingInteraction,
+  beginResolveThreadPendingInteractionTransaction,
+  invalidateThreadPendingInteractionQueries,
+  rollbackResolveThreadPendingInteractionTransaction,
+} from "../cache-owners/thread-interaction-cache-owner";
 
 interface ResolveThreadPendingInteractionMutationRequest {
   threadId: string;
   interactionId: string;
   resolution: ResolvePendingInteractionRequest;
 }
+
+const CONFLICT_STATUS = 409;
 
 function useIsThreadHostConnected(threadId: string): boolean {
   const environmentId = useThread(threadId).data?.environmentId;
@@ -43,11 +52,43 @@ export function useResolveThreadPendingInteraction(threadId: string) {
         resolution,
         threadId,
       }),
+    onMutate: (variables) =>
+      beginResolveThreadPendingInteractionTransaction({
+        interactionId: variables.interactionId,
+        queryClient,
+        resolution: variables.resolution,
+        threadId: variables.threadId,
+      }),
+    onError: (error, variables, transaction) => {
+      rollbackResolveThreadPendingInteractionTransaction({
+        queryClient,
+        threadId: variables.threadId,
+        transaction,
+      });
+      if (error instanceof BbHttpError && error.status === CONFLICT_STATUS) {
+        invalidateThreadPendingInteractionQueries({
+          queryClient,
+          threadId: variables.threadId,
+        });
+      }
+    },
     onSuccess: (interaction, variables) => {
-      invalidateThreadPendingInteractionResolutionQueries({
+      applyResolvedThreadPendingInteraction({
+        interaction,
         queryClient,
         threadId: variables.threadId,
       });
+      if (wsManager.getConnectionState() === "connected") {
+        invalidateThreadPendingInteractionQueries({
+          queryClient,
+          threadId: variables.threadId,
+        });
+      } else {
+        invalidateThreadPendingInteractionResolutionQueries({
+          queryClient,
+          threadId: variables.threadId,
+        });
+      }
       return interaction;
     },
   });

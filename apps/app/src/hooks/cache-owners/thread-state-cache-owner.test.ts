@@ -14,8 +14,11 @@ import {
   threadQueryKey,
 } from "../queries/query-keys";
 import {
+  beginArchiveThreadAndChildrenTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
+  countCachedLiveChildThreads,
+  getCachedUnarchivedDescendantIds,
   rollbackThreadListMutationTransaction,
   rollbackThreadReadStateTransaction,
 } from "./thread-state-cache-owner";
@@ -68,6 +71,78 @@ function makeSidebarNavigation(
     ],
   });
 }
+
+describe("cached archive descendants", () => {
+  function seedSidebar(threads: ThreadListEntry[]) {
+    const { queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(threads),
+    );
+    return queryClient;
+  }
+
+  it("collects live children, grandchildren and lifecycle dependents", () => {
+    const queryClient = seedSidebar([
+      makeThreadListEntry({ id: "root" }),
+      makeThreadListEntry({ id: "child", parentThreadId: "root" }),
+      makeThreadListEntry({ id: "grandchild", parentThreadId: "child" }),
+      makeThreadListEntry({ id: "dependent", lifecycleOwnerThreadId: "root" }),
+      makeThreadListEntry({
+        id: "archived-child",
+        parentThreadId: "root",
+        archivedAt: 5,
+      }),
+      makeThreadListEntry({ id: "unrelated" }),
+    ]);
+
+    expect(
+      getCachedUnarchivedDescendantIds({ queryClient, threadId: "root" }),
+    ).toEqual(["child", "dependent", "grandchild"]);
+    expect(
+      countCachedLiveChildThreads({ queryClient, threadId: "root" }),
+    ).toBe(1);
+    expect(
+      getCachedUnarchivedDescendantIds({ queryClient, threadId: "unrelated" }),
+    ).toEqual([]);
+  });
+
+  it("reports unknown for a thread outside the sidebar cache", () => {
+    const queryClient = seedSidebar([makeThreadListEntry({ id: "root" })]);
+
+    expect(
+      getCachedUnarchivedDescendantIds({ queryClient, threadId: "elsewhere" }),
+    ).toBeNull();
+    expect(
+      countCachedLiveChildThreads({ queryClient, threadId: "elsewhere" }),
+    ).toBeNull();
+  });
+
+  it("optimistically archives the whole cached subtree", async () => {
+    const queryClient = seedSidebar([
+      makeThreadListEntry({ id: "root" }),
+      makeThreadListEntry({ id: "child", parentThreadId: "root" }),
+      makeThreadListEntry({ id: "grandchild", parentThreadId: "child" }),
+      makeThreadListEntry({ id: "unrelated" }),
+    ]);
+
+    const transaction = await beginArchiveThreadAndChildrenTransaction({
+      queryClient,
+      threadId: "root",
+    });
+
+    expect([...transaction.archivedThreadIds].sort()).toEqual([
+      "child",
+      "grandchild",
+      "root",
+    ]);
+    expect(
+      queryClient
+        .getQueryData<SidebarBootstrapResponse>(sidebarNavigationQueryKey())
+        ?.projects[0]?.threads.map((thread) => thread.id),
+    ).toEqual(["unrelated"]);
+  });
+});
 
 describe("thread state cache owner", () => {
   it.each([

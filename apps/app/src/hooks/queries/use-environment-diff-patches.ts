@@ -151,6 +151,7 @@ export function useEnvironmentDiffPatches(
   const targetIdentityRef = useRef(targetIdentity);
   const inFlightRef = useRef(inFlight);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dispatchedTargetIdentityRef = useRef<string | null>(null);
   const abortControllersRef = useRef<Set<AbortController>>(new Set());
 
   useEffect(() => {
@@ -341,13 +342,24 @@ export function useEnvironmentDiffPatches(
       };
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (
+        dispatchedTargetIdentityRef.current !== targetIdentity &&
+        targetIdentityRef.current === targetIdentity &&
+        environmentId &&
+        target !== undefined
+      ) {
+        dispatchedTargetIdentityRef.current = targetIdentity;
+        dispatchPending();
+        return;
       }
       debounceTimerRef.current = setTimeout(
         dispatchPending,
         PATCH_REQUEST_DEBOUNCE_MS,
       );
     },
-    [dispatchPending],
+    [dispatchPending, environmentId, target, targetIdentity],
   );
 
   const loadPathNow = useCallback(

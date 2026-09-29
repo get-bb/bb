@@ -1,3 +1,4 @@
+import type { AppCreateThreadRequest } from "@bb/client-core";
 import type { ThreadListEntry, ThreadQueuedMessage } from "@bb/domain";
 import type {
   SidebarBootstrapResponse,
@@ -15,7 +16,10 @@ import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
 } from "@/test/fixtures/projects";
-import { makeThreadTimelineResponse as makeTimelineResponse } from "@/test/fixtures/thread-responses";
+import {
+  makeThreadResponse,
+  makeThreadTimelineResponse as makeTimelineResponse,
+} from "@/test/fixtures/thread-responses";
 import {
   sidebarNavigationQueryKey,
   threadListQueryKey,
@@ -27,6 +31,7 @@ import {
 } from "../queries/query-keys";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
+  applyCreateThreadResult,
   applyQueuedMessageCreateResult,
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
@@ -1380,5 +1385,64 @@ describe("thread runtime cache owner", () => {
     for (const unsubscribe of unsubscribers) {
       unsubscribe();
     }
+  });
+});
+
+describe("applyCreateThreadResult timeline seed", () => {
+  function createRequest(
+    overrides: Partial<AppCreateThreadRequest> = {},
+  ): AppCreateThreadRequest {
+    return {
+      projectId: "project-1",
+      providerId: "codex",
+      input: [{ type: "text", text: "Fix the flaky test", mentions: [] }],
+      environment: { type: "project-default" },
+      ...overrides,
+    };
+  }
+
+  it("seeds the new thread's timeline with the submitted prompt as a stale page", () => {
+    const queryClient = createAppQueryClient();
+    const thread = makeThreadResponse({ id: "thread-new", createdAt: 42 });
+
+    applyCreateThreadResult({
+      queryClient,
+      request: createRequest(),
+      thread,
+    });
+
+    const timeline = queryClient.getQueryData<ThreadTimelineResponse>(
+      threadTimelineQueryKey("thread-new"),
+    );
+    expect(timeline?.rows).toHaveLength(1);
+    expect(timeline?.rows[0]).toMatchObject({
+      kind: "conversation",
+      role: "user",
+      text: "Fix the flaky test",
+      threadId: "thread-new",
+    });
+    expect(
+      queryClient.getQueryState(threadTimelineQueryKey("thread-new"))
+        ?.dataUpdatedAt,
+    ).toBe(0);
+  });
+
+  it.each<[string, Partial<AppCreateThreadRequest>]>([
+    ["an empty input", { input: [] }],
+    ["a draft", { draft: true }],
+    ["a scheduled first message", { sendAt: Date.now() + 60_000 }],
+  ])("does not seed a timeline for %s", (_label, overrides) => {
+    const queryClient = createAppQueryClient();
+    const thread = makeThreadResponse({ id: "thread-new" });
+
+    applyCreateThreadResult({
+      queryClient,
+      request: createRequest(overrides),
+      thread,
+    });
+
+    expect(
+      queryClient.getQueryData(threadTimelineQueryKey("thread-new")),
+    ).toBeUndefined();
   });
 });

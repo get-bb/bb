@@ -178,6 +178,40 @@ describe("thread runtime mutations", () => {
     expect(
       queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
     ).toEqual([makeQueuedMessage()]);
+    expect(
+      queryClient.getQueryData(threadTimelineQueryKey("thread-1")),
+    ).toBeUndefined();
+  });
+
+  it("has the prompt in the new thread's timeline when creation resolves for navigation", async () => {
+    vi.mocked(sdk.threads.spawn).mockResolvedValue(
+      makeThreadResponse({ id: "thread-new", queuedMessageCount: 0 }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useCreateThread(), { wrapper });
+
+    let timelineAtResolve: ThreadTimelineResponse | undefined;
+    await act(async () => {
+      await result.current
+        .mutateAsync({
+          projectId: "project-1",
+          environment: { type: "project-default" },
+          input: [{ type: "text", text: "Start the work", mentions: [] }],
+        })
+        .then((thread) => {
+          timelineAtResolve = queryClient.getQueryData(
+            threadTimelineQueryKey(thread.id),
+          );
+        });
+    });
+
+    expect(timelineAtResolve?.rows.map((row) => row.kind)).toEqual([
+      "conversation",
+    ]);
+    expect(timelineAtResolve?.rows[0]).toMatchObject({
+      role: "user",
+      text: "Start the work",
+    });
   });
 
   it("keeps the existing timeline while an edit is pending and lets connected realtime own success", async () => {

@@ -120,6 +120,11 @@ import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { PluginDetailOpenerBoundary } from "@/components/plugin/plugin-detail-opener";
+import {
+  preloadThreadSecondaryPanel,
+  preloadThreadTerminalPanel,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import { scheduleIdlePreload } from "@/lib/idle-preload";
 
 const LazyPluginPanelRightPanelHost = lazy(() =>
   import("@/components/plugin/PluginPanelRightPanelHost").then(
@@ -263,6 +268,11 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
   return { captureVisibleScrollPositions, workspaceRef };
 }
 
+function preloadThreadPanels(): void {
+  preloadThreadSecondaryPanel();
+  preloadThreadTerminalPanel();
+}
+
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
   return (
     <ThreadDetailWorkerPoolProvider>
@@ -273,6 +283,7 @@ export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
 
 function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const { projectId, threadId } = useRouteState();
+  const hasRouteThread = Boolean(threadId);
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const navigate = useImmediateRouteNavigate();
   const store = useStore();
@@ -293,6 +304,13 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     () => routeContent ?? (routeThread ? threadPaneContent(routeThread) : null),
     [routeContent, routeThread],
   );
+
+  useEffect(() => {
+    if (!hasRouteThread) {
+      return;
+    }
+    return scheduleIdlePreload(preloadThreadPanels);
+  }, [hasRouteThread]);
 
   useEffect(() => {
     if (currentContent === null) {

@@ -24,6 +24,7 @@ import type {
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@bb/client-core";
 import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
+import { DEFAULT_COMPLETED_TURN_DISPLAY } from "@bb/domain";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
@@ -54,6 +55,7 @@ import {
   threadQueuedMessagesQueryKey,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
+  threadTimelineQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
@@ -885,12 +887,85 @@ export function prefetchThreadQueuedMessages({
   });
 }
 
+interface ThreadResultCacheArgs {
+  queryClient: QueryClient;
+  thread: ThreadResponse;
+}
+
+function createThreadRequestStartsTurn(
+  request: AppCreateThreadRequest,
+): boolean {
+  return (
+    (request.originKind ?? null) === null &&
+    request.sourceThreadId === undefined &&
+    request.pluginSubmission === undefined &&
+    (request.sendAt === undefined || request.sendAt <= Date.now())
+  );
+}
+
+function buildSeedTimelineResponse(
+  row: TimelineRow,
+): ThreadTimelineResponse {
+  return {
+    rows: [row],
+    contextBoundarySeq: null,
+    completedTurnDisplay: DEFAULT_COMPLETED_TURN_DISPLAY,
+    activePromptMode: null,
+    activeThinking: null,
+    activeWorkflows: [],
+    activeBackgroundCommands: [],
+    pendingTodos: null,
+    goal: null,
+    modelFallback: null,
+    timelinePage: {
+      kind: "latest",
+      segmentLimit: 1,
+      returnedSegmentCount: 1,
+      hasOlderRows: false,
+      olderCursor: null,
+    },
+    maxSeq: 0,
+  };
+}
+
+function seedCreatedThreadTimeline({
+  queryClient,
+  request,
+  thread,
+}: CreateThreadSuccessArgs): void {
+  if (!createThreadRequestStartsTurn(request) || thread.queuedMessageCount > 0) {
+    return;
+  }
+  const hasVisibleInput = request.input.some(
+    (entry) =>
+      entry.type !== "text" ||
+      (entry.visibility !== "agent-only" && entry.text.length > 0),
+  );
+  const queryKey = threadTimelineQueryKey(thread.id);
+  if (!hasVisibleInput || queryClient.getQueryData(queryKey) !== undefined) {
+    return;
+  }
+  const row = buildOptimisticUserMessageRow({
+    createdAt: thread.createdAt,
+    input: request.input,
+    mode: "start",
+    threadId: thread.id,
+    threadStatus: null,
+  });
+  queryClient.setQueryData<ThreadTimelineResponse>(
+    queryKey,
+    buildSeedTimelineResponse(row),
+    { updatedAt: 0 },
+  );
+}
+
 export function applyCreateThreadResult({
   queryClient,
   request,
   thread,
 }: CreateThreadSuccessArgs): void {
   queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
+  seedCreatedThreadTimeline({ queryClient, request, thread });
   const environmentId =
     request.environment.type === "reuse"
       ? request.environment.environmentId

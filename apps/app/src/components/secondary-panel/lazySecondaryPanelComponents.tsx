@@ -18,7 +18,6 @@ import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
 type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
-
 export function SecondaryPanelContentSkeleton() {
   return (
     <div
@@ -169,6 +168,14 @@ export const LazyThreadTerminalPanel = defineSplit({
   ),
   preload: "render",
 });
+
+export function preloadThreadTerminalPanel(): void {
+  void Promise.all([
+    LazyThreadTerminalPanel.preload(),
+    import("@xterm/xterm"),
+    import("@xterm/addon-fit"),
+  ]).catch(() => {});
+}
 
 const BrowserTabDeckSplit = defineSplit({
   id: "browser-tab-deck",

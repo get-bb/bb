@@ -38,6 +38,7 @@ import {
   type CachedThreadListSnapshot,
 } from "./thread-list-cache-data";
 import {
+  getCachedLiveThreadDescendantIds,
   getCachedLiveThreadIdsMatching,
   getCachedThreadSnapshots,
   optimisticallyArchiveThreads,
@@ -789,6 +790,48 @@ export function beginUnarchiveThreadTransaction({
   });
 }
 
+function isLiveInCachedSidebarNavigation({
+  queryClient,
+  threadId,
+}: ThreadIdCacheArgs): boolean {
+  return getCachedSidebarNavigationThreads(queryClient).some(
+    (thread) => thread.id === threadId && thread.archivedAt === null,
+  );
+}
+
+export function getCachedUnarchivedDescendantIds({
+  queryClient,
+  threadId,
+}: ThreadIdCacheArgs): string[] | null {
+  if (!isLiveInCachedSidebarNavigation({ queryClient, threadId })) {
+    return null;
+  }
+  return getCachedLiveThreadDescendantIds({ queryClient, threadId });
+}
+
+export function getCachedArchiveThreadIds({
+  queryClient,
+  threadId,
+}: ThreadIdCacheArgs): string[] {
+  return [
+    ...getCachedLiveThreadDescendantIds({ queryClient, threadId }).reverse(),
+    threadId,
+  ];
+}
+
+export function countCachedLiveChildThreads({
+  queryClient,
+  threadId,
+}: ThreadIdCacheArgs): number | null {
+  if (!isLiveInCachedSidebarNavigation({ queryClient, threadId })) {
+    return null;
+  }
+  return getCachedLiveThreadIdsMatching({
+    matchesThread: (thread) => thread.parentThreadId === threadId,
+    queryClient,
+  }).length;
+}
+
 async function beginArchiveMatchingThreadsTransaction({
   matchesThread,
   queryClient,
@@ -836,9 +879,11 @@ export async function beginArchiveThreadAndChildrenTransaction({
 }: ArchiveThreadAndChildrenTransactionArgs): Promise<ArchiveThreadsTransaction> {
   await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
   await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
+  const archivedThreadIds = new Set(
+    getCachedArchiveThreadIds({ queryClient, threadId }),
+  );
   return beginArchiveMatchingThreadsTransaction({
-    matchesThread: (thread) =>
-      thread.id === threadId || thread.parentThreadId === threadId,
+    matchesThread: (thread) => archivedThreadIds.has(thread.id),
     queryClient,
   });
 }

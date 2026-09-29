@@ -14,6 +14,7 @@ interface ConfirmDeleteDialogContentProps {
   description: ReactNode;
   confirmLabel: string;
   pending: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
 }
@@ -23,6 +24,7 @@ export function ConfirmDeleteDialogContent({
   description,
   confirmLabel,
   pending,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDeleteDialogContentProps) {
@@ -46,7 +48,7 @@ export function ConfirmDeleteDialogContent({
         <Button
           type="button"
           variant="destructive"
-          disabled={pending}
+          disabled={pending || confirmDisabled}
           onClick={onConfirm}
         >
           {confirmLabel}

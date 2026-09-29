@@ -46,6 +46,48 @@ beforeEach(() => {
   vi.mocked(sdk.environments.diffPatch).mockReset();
 });
 
+describe("useEnvironmentDiffPatches request timing", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("fetches the first visible set for a target at once and debounces later sets", () => {
+    vi.useFakeTimers();
+    vi.mocked(sdk.environments.diffPatch).mockReturnValue(
+      createDeferredPromise<EnvironmentDiffPatchResponse>().promise,
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const changedTarget: WorkspaceDiffTarget = {
+      type: "branch_committed",
+      mergeBaseBranch: "main",
+    };
+    const { result, rerender } = renderHook(
+      ({ target }) => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target }),
+      { wrapper, initialProps: { target: TARGET as WorkspaceDiffTarget } },
+    );
+
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.requestPaths({ visible: ["second.ts"], overscan: [] });
+    });
+    expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+    act(() => {
+      vi.advanceTimersByTime(80);
+    });
+    expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
+
+    rerender({ target: changedTarget });
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe("useEnvironmentDiffPatches", () => {
   it("aborts in-flight patch fetches when the target changes", async () => {
     const { wrapper } = createQueryClientTestHarness();

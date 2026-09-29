@@ -7,6 +7,7 @@ import {
 export interface ThreadDeleteDialogTarget {
   thread: Thread;
   childThreadCount?: number;
+  childSummaryPending: boolean;
 }
 
 interface ThreadDeleteDialogProps {
@@ -61,6 +62,7 @@ export function ThreadDeleteDialogContent({
       description={sentences.join(" ")}
       confirmLabel={`Delete ${label}`}
       pending={pending}
+      confirmDisabled={target.childSummaryPending}
       onConfirm={() => onDelete(target)}
       onCancel={() => onOpenChange(false)}
     />

@@ -238,6 +238,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "TerminalQueryScope",
     "terminalsQueryKey",
   ],
+  "hooks/cache-owners/thread-interaction-cache-owner.ts": [
+    "threadPendingInteractionsQueryKey",
+  ],
   "hooks/cache-owners/thread-archive-cache.ts": [
     "threadQueryKey",
     "threadsQueryKey",
@@ -263,6 +266,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadQueryKey",
     "threadQueuedMessagesQueryKey",
     "threadSearchQueryKeyPrefix",
+    "threadTimelineQueryKey",
     "threadTimelineQueryKeyPrefix",
     "threadTimelineTurnSummaryDetailsQueryKeyPrefix",
     "threadsQueryKey",

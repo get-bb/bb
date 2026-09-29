@@ -25,7 +25,20 @@ export function Thread() {
       >
         <DialogStage>
           <ThreadDeleteDialogContent
-            target={{ thread: standardThread }}
+            target={{ thread: standardThread, childSummaryPending: false }}
+            pending={false}
+            onOpenChange={noop}
+            onDelete={noop}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="checking children"
+        hint="confirm waits for the child thread count"
+      >
+        <DialogStage>
+          <ThreadDeleteDialogContent
+            target={{ thread: standardThread, childSummaryPending: true }}
             pending={false}
             onOpenChange={noop}
             onDelete={noop}
@@ -35,7 +48,7 @@ export function Thread() {
       <StoryRow label="pending" hint="delete request in flight">
         <DialogStage>
           <ThreadDeleteDialogContent
-            target={{ thread: standardThread }}
+            target={{ thread: standardThread, childSummaryPending: false }}
             pending
             onOpenChange={noop}
             onDelete={noop}
@@ -55,7 +68,7 @@ export function Parent() {
       >
         <DialogStage>
           <ThreadDeleteDialogContent
-            target={{ thread: parentThread }}
+            target={{ thread: parentThread, childSummaryPending: false }}
             pending={false}
             onOpenChange={noop}
             onDelete={noop}
@@ -71,6 +84,7 @@ export function Parent() {
             target={{
               thread: parentThread,
               childThreadCount: 3,
+              childSummaryPending: false,
             }}
             pending={false}
             onOpenChange={noop}
@@ -87,6 +101,7 @@ export function Parent() {
             target={{
               thread: parentThread,
               childThreadCount: 1,
+              childSummaryPending: false,
             }}
             pending={false}
             onOpenChange={noop}
