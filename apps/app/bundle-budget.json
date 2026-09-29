@@ -171,6 +171,14 @@
     "src/components/pickers/ModelReasoningMenu.tsx": [
       "boot",
       "SplitWorkspaceRoute"
+    ],
+    "src/components/commands/CommandPaletteBody.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/commands/PaletteShell.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
     ]
   },
   "onDemandPackages": {
