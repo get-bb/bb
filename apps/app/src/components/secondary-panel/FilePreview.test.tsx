@@ -16,6 +16,7 @@ import {
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { HttpError } from "@/lib/api";
 import { BbHttpError } from "@bb/sdk/browser";
 import {
@@ -544,6 +545,70 @@ describe("FilePreview", () => {
     openSpy.mockRestore();
   });
 
+  it("keeps compact file actions available without crowding the preview controls", async () => {
+    const onRefresh = vi.fn();
+    const onOpenInEditor = vi.fn();
+    const view = render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <FilePreview
+          path="reports/gallery.html"
+          onRefresh={onRefresh}
+          onOpenInEditor={onOpenInEditor}
+          state={{
+            kind: "html",
+            file: { name: "gallery.html", contents: "<h1>Gallery</h1>" },
+            iframe: {
+              sandbox: "allow-scripts",
+              title: "Gallery",
+              url: "/gallery.html",
+            },
+            lineRange: null,
+          }}
+        />
+      </CompactViewportOverrideProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Copy HTML source" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh file" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    const refresh = await screen.findByRole("menuitem", {
+      name: "Refresh file",
+    });
+    expect(
+      screen.getByRole("menuitem", { name: "Copy HTML source" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Copy file path" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Open in external browser" }),
+    ).toBeTruthy();
+    expect(view.container.closest('[inert], [aria-hidden="true"]')).toBeNull();
+    fireEvent.click(refresh);
+    expect(onRefresh).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Open in editor" }),
+    );
+    expect(onOpenInEditor).toHaveBeenCalledWith("reports/gallery.html");
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    const wrap = await screen.findByRole("menuitemcheckbox", {
+      name: "Wrap lines",
+    });
+    expect(wrap.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(wrap);
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    expect(
+      (
+        await screen.findByRole("menuitemcheckbox", { name: "Wrap lines" })
+      ).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("enlarges the HTML file actions for narrow coarse pointers", () => {
     render(
       <FilePreview
@@ -1017,6 +1082,60 @@ describe("FilePreview", () => {
       expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy();
       expect(pierreMock.state.lastFile?.cacheKey).not.toBe(firstCacheKey);
     });
+  });
+
+  it("tracks preview loading across view changes, document revisions, and URLs", () => {
+    vi.useFakeTimers();
+    const preview = (revision: string, url = "/gallery.html") => (
+      <FilePreview
+        path="gallery.html"
+        state={{
+          kind: "html",
+          file: {
+            name: "gallery.html",
+            contents: "<h1>Gallery</h1>",
+            cacheKey: revision,
+          },
+          iframe: { sandbox: "allow-scripts", title: "Gallery", url },
+          lineRange: null,
+        }}
+      />
+    );
+    const view = render(
+      <FilePreview
+        path="gallery.html"
+        state={{ kind: "loading" }}
+        isRefreshing
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    act(() => vi.advanceTimersByTime(200));
+    const loadingStatus = screen.getByRole("status");
+    expect(loadingStatus.textContent).toBe("Loading preview…");
+    view.rerender(preview("first"));
+    expect(screen.getByRole("status")).toBe(loadingStatus);
+    const frame = screen.getByTitle("Gallery");
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    expect(screen.queryByRole("status")).toBeNull();
+    fireEvent.load(frame);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByTitle("Gallery")).toBe(frame);
+
+    view.rerender(preview("second"));
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.getByRole("status")).toBeTruthy();
+    fireEvent.load(screen.getByTitle("Gallery"));
+    expect(screen.queryByRole("status")).toBeNull();
+
+    view.rerender(preview("second", "/gallery.html?retry=1"));
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.getByRole("status")).toBeTruthy();
+    fireEvent.load(screen.getByTitle("Gallery"));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("reloads an HTML iframe only when the fetched source changes", () => {
