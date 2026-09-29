@@ -1,3 +1,4 @@
+import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
 import {
   lazy,
   Suspense,
@@ -19,25 +20,6 @@ import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
 type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
 
-let threadSecondaryPanelModulePromise: Promise<ThreadSecondaryPanelModule> | null =
-  null;
-
-function loadThreadSecondaryPanel(): Promise<ThreadSecondaryPanelModule> {
-  threadSecondaryPanelModulePromise ??= import("./ThreadSecondaryPanel");
-  return threadSecondaryPanelModulePromise;
-}
-
-export function preloadThreadSecondaryPanel(): void {
-  void loadThreadSecondaryPanel().catch(() => {
-    threadSecondaryPanelModulePromise = null;
-  });
-}
-
-const ThreadSecondaryPanelChunk = lazy(() =>
-  loadThreadSecondaryPanel().then(({ ThreadSecondaryPanel }) => ({
-    default: ThreadSecondaryPanel,
-  })),
-);
 const ThreadTerminalPanelChunk = lazy(() =>
   import("@/components/thread/terminal/ThreadTerminalPanel").then(
     ({ ThreadTerminalPanel }) => ({ default: ThreadTerminalPanel }),
@@ -50,11 +32,6 @@ const BrowserTabDeckChunk = lazy(() =>
 );
 const NewTabPageChunk = lazy(() =>
   import("./NewTabPage").then(({ NewTabPage }) => ({ default: NewTabPage })),
-);
-const FilePreviewChunk = lazy(() =>
-  import("./FilePreview").then(({ FilePreview }) => ({
-    default: FilePreview,
-  })),
 );
 const ThreadStorageFileTreeChunk = lazy(() =>
   import("./ThreadStorageFileTree").then(({ ThreadStorageFileTree }) => ({
@@ -128,12 +105,14 @@ interface ThreadSecondaryPanelInlinePlaceholderProps {
   isOpen: boolean;
   isConversationCollapsed: boolean;
   resizablePanelId: string | undefined;
+  children?: ReactNode;
 }
 
 function ThreadSecondaryPanelInlinePlaceholder({
   isOpen,
   isConversationCollapsed,
   resizablePanelId,
+  children,
 }: ThreadSecondaryPanelInlinePlaceholderProps) {
   const minimumSize = useSecondaryPanelMinimum();
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
@@ -161,7 +140,7 @@ function ThreadSecondaryPanelInlinePlaceholder({
     >
       {isOpen ? (
         <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background pt-12">
-          <SecondaryPanelContentSkeleton />
+          {children ?? <SecondaryPanelContentSkeleton />}
         </div>
       ) : null}
     </Panel>
@@ -174,24 +153,40 @@ type LazyThreadSecondaryPanelProps = ComponentProps<
   drawerFallback: ReactNode;
 };
 
-export function LazyThreadSecondaryPanel({
-  drawerFallback,
-  ...props
-}: LazyThreadSecondaryPanelProps) {
-  const fallback = props.renderAsDrawer ? (
-    drawerFallback
-  ) : (
-    <ThreadSecondaryPanelInlinePlaceholder
-      isOpen={props.isOpen}
-      isConversationCollapsed={props.isConversationCollapsed}
-      resizablePanelId={props.resizablePanelId}
-    />
-  );
-  return (
-    <Suspense fallback={fallback}>
-      <ThreadSecondaryPanelChunk {...props} />
-    </Suspense>
-  );
+export const LazyThreadSecondaryPanel =
+  defineSplit<LazyThreadSecondaryPanelProps>({
+    id: "thread-secondary-panel",
+    load: () =>
+      import("./ThreadSecondaryPanel").then(
+        (module) => module.ThreadSecondaryPanel,
+      ),
+    loading: ({ drawerFallback, ...props }) =>
+      props.renderAsDrawer ? (
+        drawerFallback
+      ) : (
+        <ThreadSecondaryPanelInlinePlaceholder
+          isOpen={props.isOpen}
+          isConversationCollapsed={props.isConversationCollapsed}
+          resizablePanelId={props.resizablePanelId}
+        />
+      ),
+    error: (props) =>
+      props.renderAsDrawer ? (
+        <SplitLoadFailure retry={props.retry} />
+      ) : (
+        <ThreadSecondaryPanelInlinePlaceholder
+          isOpen={props.isOpen}
+          isConversationCollapsed={props.isConversationCollapsed}
+          resizablePanelId={props.resizablePanelId}
+        >
+          <SplitLoadFailure retry={props.retry} />
+        </ThreadSecondaryPanelInlinePlaceholder>
+      ),
+    preload: "idle",
+  });
+
+export function preloadThreadSecondaryPanel(): void {
+  void LazyThreadSecondaryPanel.preload();
 }
 
 export const LazyThreadTerminalPanel = withSuspense(
@@ -206,10 +201,16 @@ export const LazyNewTabPage = withSuspense(
   <SecondaryPanelContentSkeleton />,
 );
 
-export const LazyFilePreview = withSuspense(
-  FilePreviewChunk,
-  <SecondaryPanelContentSkeleton />,
-);
+export const LazyFilePreview = defineSplit({
+  id: "file-preview",
+  load: () => import("./FilePreview").then((module) => module.FilePreview),
+  loading: () => (
+    <div role="status" aria-label="Loading file preview">
+      <SecondaryPanelContentSkeleton />
+    </div>
+  ),
+  preload: "render",
+});
 
 export function LazyThreadStorageFileTree({
   fallback,

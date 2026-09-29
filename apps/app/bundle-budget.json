@@ -110,6 +110,20 @@
     "rehype-katex",
     "shiki"
   ],
+  "splitBoundaries": {
+    "src/components/sidebar/SidebarFooterCustomize.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/secondary-panel/FilePreview.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/secondary-panel/ThreadSecondaryPanel.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ]
+  },
   "onDemandPackages": {
     "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
     "katex": "src/components/ui/markdown-katex.ts",

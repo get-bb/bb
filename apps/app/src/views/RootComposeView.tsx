@@ -1,3 +1,4 @@
+import { scheduleSplitPreloads } from "@/lib/define-split";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import {
   ThreadTitle,
@@ -57,6 +58,7 @@ import type {
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import {
   LazyBrowserTabDeck,
+  LazyThreadSecondaryPanel,
   preloadThreadSecondaryPanel,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
@@ -283,17 +285,7 @@ export function RootComposeRightPanelToggle({
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
 
-  useEffect(() => {
-    if (typeof window.requestIdleCallback === "function") {
-      const idleCallback = window.requestIdleCallback(
-        preloadThreadSecondaryPanel,
-        { timeout: 1000 },
-      );
-      return () => window.cancelIdleCallback(idleCallback);
-    }
-    const timeout = window.setTimeout(preloadThreadSecondaryPanel, 1000);
-    return () => window.clearTimeout(timeout);
-  }, []);
+  useEffect(() => scheduleSplitPreloads([LazyThreadSecondaryPanel]), []);
 
   return (
     <Button

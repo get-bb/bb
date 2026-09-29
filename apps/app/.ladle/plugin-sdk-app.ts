@@ -23,6 +23,7 @@ export const {
   useRealtimeConnectionState,
   useSettings,
   useBbContext,
+  experimental_usePluginId,
   useBbNavigate,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,

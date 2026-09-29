@@ -47,7 +47,7 @@ const chunks: BundleStatsChunkInput[] = [
   chunk("assets/route-only.js", {
     moduleIds: [
       "/repo/node_modules/.pnpm/@pierre+diffs@1/node_modules/@pierre/diffs/dist/index.js",
-      "/repo/apps/app/src/lib/x.ts",
+      resolve(import.meta.dirname, "lib/x.ts"),
     ],
   }),
   chunk("assets/only-behind-dynamic-import.js", {
@@ -77,6 +77,10 @@ describe("computeBundleStats", () => {
       "assets/route-only.js",
     ]);
     expect(route.chunks[1]?.packages).toEqual(["@pierre/diffs"]);
+    expect(
+      stats.chunks.find((entry) => entry.fileName === "assets/route-only.js")
+        ?.appModules,
+    ).toEqual(["src/lib/x.ts"]);
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -233,6 +237,7 @@ function statsChunk(
     packages: spec.packages ?? [],
     imports: spec.imports ?? [],
     facade: spec.facade ?? null,
+    appModules: [],
   };
 }
 
@@ -313,4 +318,55 @@ describe("check-bundle-budget on-demand packages", () => {
       `katex has no gate chunk for ${KATEX_GATE}`,
     );
   });
+});
+
+describe("split boundaries", () => {
+  it.each(["lazy", "boot", "route", "missing"])(
+    "checks an emitted %s gate even when byte budgets pass",
+    async (placement) => {
+      const gate = "assets/feature.js";
+      const source = "src/feature.tsx";
+      const input = [
+        chunk("assets/index.js", {
+          isEntry: true,
+          imports: placement === "boot" ? [gate] : [],
+        }),
+        chunk("assets/route.js", {
+          facadeModuleId: "/repo/apps/app/src/views/SplitWorkspaceRoute.tsx",
+          imports: placement === "route" ? [gate] : [],
+        }),
+        ...(placement === "missing"
+          ? []
+          : [
+              chunk(gate, {
+                moduleIds: [resolve(import.meta.dirname, "feature.tsx")],
+              }),
+            ]),
+      ];
+      const stats = computeBundleStats(
+        input,
+        { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+        () => {},
+      );
+      if (stats === null) throw new Error("missing stats");
+      const result = await runCheck(
+        await writeFixture(
+          {
+            ...passingBudget,
+            splitBoundaries: { [source]: ["boot", "SplitWorkspaceRoute"] },
+          },
+          stats,
+          input.map((entry) => entry.fileName),
+        ),
+      );
+      expect(result.code).toBe(placement === "lazy" ? 0 : 1);
+      if (placement !== "lazy") expect(result.output).toContain(source);
+      if (placement === "boot")
+        expect(result.output).toContain("eager in boot");
+      if (placement === "route")
+        expect(result.output).toContain("eager in SplitWorkspaceRoute");
+      if (placement === "missing")
+        expect(result.output).toContain("absent from bundle module metadata");
+    },
+  );
 });

@@ -12,6 +12,7 @@ interface BundleBootChunk {
 }
 
 export interface BundleChunk extends BundleBootChunk {
+  appModules: string[];
   imports: string[];
   facade: string | null;
 }
@@ -101,6 +102,10 @@ export function computeBundleStats(
     allChunks.push({
       ...describeChunk(chunk),
       imports: [...chunk.imports].sort(),
+      appModules: chunk.moduleIds
+        .map((id) => relative(appDir, id).split(sep).join("/"))
+        .filter((id) => id.startsWith("src/"))
+        .sort(),
       facade:
         chunk.facadeModuleId === null
           ? null
