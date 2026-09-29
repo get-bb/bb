@@ -122,6 +122,10 @@
     "src/components/secondary-panel/ThreadSecondaryPanel.tsx": [
       "boot",
       "SplitWorkspaceRoute"
+    ],
+    "src/components/sidebar/SidebarVisibilityCustomize.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
     ]
   },
   "onDemandPackages": {
