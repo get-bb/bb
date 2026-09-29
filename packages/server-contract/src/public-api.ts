@@ -197,6 +197,7 @@ import type {
   SystemConfigReloadResponse,
   SystemConfigResponse,
   SystemAndroidAppResponse,
+  SystemMobileAppReleasesResponse,
   AndroidAppPreparation,
   AndroidAppPrepareRequest,
   SystemCliSkillsStatusQuery,
@@ -1782,6 +1783,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemAttentionResponse>(),
+    }),
+    mobileAppReleases: defineRoute({
+      path: "/system/mobile-app-releases",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemMobileAppReleasesResponse>(),
     }),
     androidAppPreparation: defineRoute({
       path: "/system/android-app/preparation",

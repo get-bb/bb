@@ -24,6 +24,7 @@ import type {
   SystemConfigReloadResponse,
   SystemConfigResponse,
   SystemAndroidAppResponse,
+  SystemMobileAppReleasesResponse,
   AndroidAppPreparation,
   AndroidAppPrepareRequest,
   SystemExecutionOptionsQuery,
@@ -182,6 +183,7 @@ export interface SystemArea {
   ): Promise<AndroidAppPreparation>;
   androidApp(): Promise<SystemAndroidAppResponse>;
   mobileAppDownloads(): typeof mobileAppDownloads;
+  mobileAppReleases(): Promise<SystemMobileAppReleasesResponse>;
   updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
     args: AppSettingsUpdate,
@@ -358,6 +360,11 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async prepareAndroidApp(input) {
       return transport.readJson(
         transport.api.v1.system["android-app"].prepare.$post({ json: input }),
+      );
+    },
+    async mobileAppReleases() {
+      return transport.readJson(
+        transport.api.v1.system["mobile-app-releases"].$get(),
       );
     },
     mobileAppDownloads() {

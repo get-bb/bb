@@ -265,11 +265,15 @@ Mobile app downloads are always available in Settings → Mobile (`/settings/mob
 **Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
 **Download Android APK** downloads directly from the public `get-bb/bb` GitHub
 `android-testing` release's `bb-android.apk` asset. The APK does not pass through
-the bb server or bb connect. No experiment or Android developer tools are needed.
+the bb server or its remote-access tunnel. No experiment or Android developer tools are needed.
 Pair either app through Settings → Remote access → **Add mobile device**.
 
 Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
-both public links. Advanced server caching and local builds remain available via
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight. Advanced server caching and local builds remain available via
 `bb settings android-app-prepare github --json` (or `local`), followed by
 `bb settings android-app --json`. SDK equivalents are
 `system.prepareAndroidApp({ source })`, `system.androidAppPreparation()`, and

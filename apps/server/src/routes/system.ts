@@ -1,3 +1,4 @@
+import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import { createAndroidAppPreparationService } from "../services/install/android-app-preparation.js";
 import { readAndroidAppArtifact } from "../services/install/android-app-artifact.js";
 import {
@@ -153,6 +154,12 @@ export function registerSystemRoutes(
   const routes = publicApiRoutes.system;
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
+
+  const mobileAppReleases = createMobileAppReleaseService();
+  get(routes.mobileAppReleases, async (context) => {
+    context.header("cache-control", "no-store");
+    return context.json(await mobileAppReleases());
+  });
 
   const androidAppPreparation = createAndroidAppPreparationService({
     dataDir: deps.config.dataDir,

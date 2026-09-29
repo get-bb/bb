@@ -549,6 +549,10 @@ export const androidAppArtifactSchema = z.object({
 export type AndroidAppArtifact = z.infer<typeof androidAppArtifactSchema>;
 export type SystemAndroidAppResponse = AndroidAppArtifact | null;
 
+export interface SystemMobileAppReleasesResponse {
+  android: (AndroidAppArtifact & { updatedAt: string }) | null;
+}
+
 export const androidAppPrepareRequestSchema = z.object({
   source: z.enum(["github", "local"]),
 });

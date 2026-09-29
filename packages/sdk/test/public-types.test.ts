@@ -355,6 +355,8 @@ type ExpectedSystemKey =
   | "acknowledgeAppUpdate"
   | "androidApp"
   | "androidAppPreparation"
+  | "mobileAppDownloads"
+  | "mobileAppReleases"
   | "prepareAndroidApp"
   | "appUpdate"
   | "applyAppUpdate"
