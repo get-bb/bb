@@ -127,16 +127,10 @@ route closure; report both. Do not increase limits to hide a regression.
 
 ## Review loading states
 
-The Ladle stories under `performance/Split review` render the real pilot wrappers
-inside `SplitPreviewProvider`. Hold loading, show failure, then release to the
-real UI. Retry in the forced error state releases the preview. These controls
-work even after the module is cached and can be driven in desktop/mobile widths.
-
-The provider affects matching descendants, supports nested overrides, and does
-not reset browser module caches or cancel separately scheduled preloads. Forced
-loading/error does not invoke the target component loader itself. This is a
-rendering preview; verify actual cold-network loading separately using browser
-request interception against an isolated production build.
+Use browser request interception against an isolated production build to hold or
+fail the actual chunk download. Capture desktop and compact-width screenshots
+of loading, failure, and loaded states. Temporary review stories and fixtures
+belong in the review worktree, not the shipped change.
 
 Keep code-loading and data-loading reviews separate: releasing the split may
 reveal another loading state while the feature fetches data. Keep focus and
@@ -151,7 +145,8 @@ Each child returns:
 
 1. A focused diff and independent boundary guard, with an eager-import negative
    control and before/after boot and route sizes.
-2. A deterministic story using the real wrapper and its loading/error UI.
+2. Reproduction steps using the real wrapper and its loading/error UI; keep any
+   temporary review harness out of the final diff.
 3. Desktop and compact-width loading, failure, and loaded screenshots, plus
    observations about focus, close actions, layout shifts, and preserved input.
 4. A running isolated review server, its BB Connect URL, exact story/route and

@@ -497,7 +497,6 @@ update with the server; users do not update them separately.
 
 See [UI code splitting](ui-code-splitting.md) for the app's `defineSplit`
 contract, explicit preload scopes, bundle-boundary guards, and parallel worker
-handoff requirements. The Ladle `performance/Split review` stories hold the real
-footer/file-preview wrappers in loading or error states, then release to their
-actual UI. Use a production build with browser request interception separately
-to verify cold-download behavior.
+handoff requirements. Use an isolated production build with browser request
+interception to review loading and failure states and verify cold-download
+behavior. Keep temporary review stories and fixtures out of the final diff.
