@@ -216,12 +216,6 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
       getComposerEditorBridge(key)?.state ?? OFF_SCREEN_EDITOR_STATE,
     subscribeEditorState: (listener) =>
       subscribeComposerEditorBridge(key, listener),
-    applyCommand: (command) => {
-      const bridge = getComposerEditorBridge(key);
-      if (!bridge?.applyCommand) return false;
-      bridge.applyCommand(command);
-      return true;
-    },
     insertAtCursor: (value, block) => {
       const bridge = getComposerEditorBridge(key);
       if (bridge === null) return false;

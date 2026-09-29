@@ -2474,14 +2474,6 @@ export type ComposerInsertPart =
   | ComposerMention
   | PluginComposerMention;
 
-/** A command to apply at the composer cursor, without submitting it. */
-export interface ExperimentalComposerCommand {
-  trigger: "/" | "$";
-  name: string;
-  /** Whitespace after the command pill. */
-  trailingText: string;
-}
-
 /** Where `insert` puts its content. */
 export interface ComposerInsertOptions {
   /**
@@ -2627,13 +2619,6 @@ export interface PluginComposerApi {
     parts: ComposerInsertPart | readonly ComposerInsertPart[],
     options?: ComposerInsertOptions,
   ): void;
-  /**
-   * Apply a command pill using the host's prompt-action behavior: replace an
-   * active command query or immediately preceding prompt action, avoid a
-   * duplicate at the caret, dismiss completion, and focus the editor.
-   * Requires an on-screen composer. Does not submit or change execution settings.
-   */
-  experimental_applyCommand(command: ExperimentalComposerCommand): void;
   /**
    * Apply a host-rendered effect to this composer's editable text, or clear it.
    * Effects are scoped to the calling plugin and automatically clear when the

@@ -63,7 +63,6 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
   AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -115,7 +114,6 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -4639,70 +4637,6 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(changes).toHaveLength(0);
   });
 
-  it("replaces an active skills command token with plan mode", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("Start /");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Plan");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: "Start ".length,
-        end: "Start /plan".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "plan",
-          source: "command",
-          origin: "user",
-          label: "plan",
-          argumentHint: null,
-        },
-      },
-    ]);
-  });
-
-  it("replaces an active partial skills command token with plan mode", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("Start /pl");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Plan");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: "Start ".length,
-        end: "Start /plan".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "plan",
-          source: "command",
-          origin: "user",
-          label: "plan",
-          argumentHint: null,
-        },
-      },
-    ]);
-  });
-
-  it.each([
-    ["Start /", "Plan", "Start /plan "],
-    ["Start /p", "Plan", "Start /plan "],
-    ["Start /g", "Goal", "Start /goal "],
-  ])(
-    "replaces an active partial slash token %s with %s",
-    async (initialValue, actionLabel, expectedValue) => {
-      const { changes, promptBoxRef } = renderPromptBox(initialValue);
-
-      await focusPromptEnd(promptBoxRef);
-      await selectPromptAction(actionLabel);
-
-      await waitFor(() => expect(latestValue(changes)).toBe(expectedValue));
-    },
-  );
-
   it("inserts goal mode as a command pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
@@ -4754,28 +4688,66 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("seeds the plugin prompt as plain text and returns focus", async () => {
+  it("puts plan before existing text and keeps later pills on their text", async () => {
+    const project = {
+      kind: "project",
+      projectId: "proj_1",
+      label: "bb",
+    } as const;
+    const { changes, promptBoxRef } = renderPromptBox("fix @bb", {
+      initialMentionRanges: [{ start: 4, end: 7, resource: project }],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Plan");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan fix @bb"));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/plan".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+      {
+        start: "/plan fix ".length,
+        end: "/plan fix @bb".length,
+        resource: project,
+      },
+    ]);
+  });
+
+  it("replaces a leading command with the plugin prompt once", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Plugin");
+    await selectPromptAction("Plan");
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    await waitForPromptFocus();
+    await act(async () => {
+      promptBoxRef.current?.insertTextAtCursor("wraps CI");
+    });
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan wraps CI"));
 
+    await selectPromptAction("Plugin");
     await waitFor(() =>
-      expect(latestValue(changes)).toBe(CREATE_PLUGIN_PROMPT_ACTION.text),
+      expect(latestValue(changes)).toBe("Create a new bb plugin that wraps CI"),
     );
     expect(latestChange(changes)?.mentions).toEqual([]);
+
+    await selectPromptAction("Plugin");
+
+    expect(latestValue(changes)).toBe("Create a new bb plugin that wraps CI");
   });
 
-  it("does not duplicate command text immediately before the cursor", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("Start /goal ");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Goal");
-
-    expect(changes).toHaveLength(0);
-  });
-
-  it("replaces a just-selected plan action with goal at the cursor", async () => {
+  it("replaces a leading plan command with goal", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
@@ -4797,34 +4769,6 @@ describe("PromptBoxInternal prompt actions", () => {
           source: "command",
           origin: "user",
           label: "goal",
-          argumentHint: null,
-        },
-      },
-    ]);
-  });
-
-  it("replaces a just-selected skills trigger with plan at the cursor", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Skills");
-    await waitFor(() => expect(latestValue(changes)).toBe("/"));
-    await waitForPromptFocus();
-
-    await selectPromptAction("Plan");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: 0,
-        end: "/plan".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "plan",
-          source: "command",
-          origin: "user",
-          label: "plan",
           argumentHint: null,
         },
       },
@@ -4883,21 +4827,7 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("replaces a just-selected goal action with skills at the cursor", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Goal");
-    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
-    await waitForPromptFocus();
-
-    await selectPromptAction("Skills");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("/"));
-    expect(latestChange(changes)?.mentions).toEqual([]);
-  });
-
-  it("replaces a just-selected goal action with automation at the cursor", async () => {
+  it("replaces a leading goal command with automation", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
@@ -4995,7 +4925,7 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("keeps typed content after a prompt action when selecting another action", async () => {
+  it("keeps typed content when another command replaces the leading one", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
@@ -5010,8 +4940,7 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await selectPromptAction("Goal");
 
-    await waitFor(() => expect(latestValue(changes)).toContain("clean up"));
-    expect(latestValue(changes)).not.toBe("/goal ");
+    await waitFor(() => expect(latestValue(changes)).toBe("/goal clean up"));
   });
 });
 

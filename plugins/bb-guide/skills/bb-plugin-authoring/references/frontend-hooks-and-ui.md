@@ -168,13 +168,6 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   function of the composer, re-evaluated when the draft or selection changes),
   plus `run({ composer })`. `plusMenu` rows also appear in the sent-message
   editor (scope `thread`), where the other customizations do not mount.
-- `composer.experimental_applyCommand({ trigger, name, trailingText })` applies
-  a command pill through the editor's prompt-action path: replaces an active
-  command query or preceding prompt action, avoids duplicates at the caret,
-  dismisses completion, and restores focus. The composer must be on screen.
-  It does not submit or change execution settings. Use `insert` for ordinary
-  text and mention insertion. Automations owns the Automation row and BB Guide
-  owns Plugin creation.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the

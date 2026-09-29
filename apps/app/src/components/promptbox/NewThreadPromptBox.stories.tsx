@@ -14,7 +14,6 @@ import type {
 } from "@/components/promptbox/PromptBoxInternal";
 import {
   AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 } from "@/components/promptbox/PromptBoxActionsMenu";
 import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
@@ -112,7 +111,6 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 function useControlledValue(initial: string) {

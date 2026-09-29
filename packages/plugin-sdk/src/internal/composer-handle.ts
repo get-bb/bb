@@ -1,11 +1,9 @@
-import { z } from "zod";
 import {
   removeComposerMentions,
   setComposerText,
 } from "./composer-draft-transforms.js";
 export { reconcileComposerMentions } from "./composer-draft-transforms.js";
 import type {
-  ExperimentalComposerCommand,
   ComposerDraft,
   ComposerDraftReplacement,
   ComposerDraftSnapshot,
@@ -44,7 +42,6 @@ export interface ComposerHandleTarget {
   addQuote(text: string): void;
   getEditorState(): ComposerEditorState;
   subscribeEditorState(listener: () => void): () => void;
-  applyCommand?(command: ExperimentalComposerCommand): boolean;
   insertAtCursor(value: ComposerDraft, block: boolean): boolean;
   isAvailable(): boolean;
   focus(): void;
@@ -69,15 +66,6 @@ export interface ComposerHandleBinding {
   handle: PluginComposerApi;
   update(controller: ComposerHandleController): void;
 }
-
-const composerCommandSchema = z.object({
-  trigger: z.enum(["/", "$"]),
-  name: z
-    .string()
-    .min(1)
-    .regex(/^[^\s/$]+$/u),
-  trailingText: z.string().regex(/^\s*$/u),
-});
 
 const UNAVAILABLE_MESSAGE = "This composer is no longer available.";
 const OFF_SCREEN_MESSAGE = "This composer isn't on screen.";
@@ -439,14 +427,6 @@ export function createComposerHandleBinding(
       if (legacyAvailable("clear")) replaceText("");
     },
     insert,
-    experimental_applyCommand(command) {
-      requireAvailable();
-      const parsed = composerCommandSchema.safeParse(command);
-      if (!parsed.success)
-        throw new Error("The composer command is not valid.");
-      if (!target().applyCommand?.(parsed.data))
-        throw new Error(OFF_SCREEN_MESSAGE);
-    },
     setTextEffect: (effect) => controller.setTextEffect(effect),
     setInputLock: (locked) => controller.setInputLock(locked),
     addQuote: (text) => {

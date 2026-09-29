@@ -119,7 +119,6 @@ import {
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
   promptEditorValueFromSlice,
-  parsePromptEditorMentionAttrs,
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
@@ -962,168 +961,64 @@ function promptActionTextImmediatelyBeforeCursor(
   return before.endsWith(actionText);
 }
 
-function promptActionCommandSerializedText(action: PromptBoxAction): string {
-  if (!action.command) {
-    return action.text;
-  }
-  return `${action.command.trigger}${action.command.name}`;
-}
-
-function isPromptActionCommandMention(
-  node: ProseMirrorNode,
-  actions: readonly PromptBoxAction[],
-): boolean {
-  if (node.type.name !== "mention") {
-    return false;
-  }
-  const attrs = parsePromptEditorMentionAttrs(node.attrs);
-  if (!attrs || attrs.resource.kind !== "command") {
-    return false;
-  }
-  const resource = attrs.resource;
-  return actions.some((action) => {
-    const command = action.command;
-    if (!command) {
-      return false;
-    }
-    return (
-      resource.trigger === command.trigger &&
-      resource.name === command.name &&
-      attrs.serializedText === promptActionCommandSerializedText(action)
-    );
-  });
-}
-
-function findPromptActionTextSuffix(
-  text: string,
-  actions: readonly PromptBoxAction[],
-): PromptBoxAction | null {
-  return (
-    actions.find(
-      (action) =>
-        !action.command && action.text.length > 0 && text.endsWith(action.text),
-    ) ?? null
+function withLeadingCommand(
+  value: { text: string; mentions: readonly PromptTextMention[] },
+  command: PromptActionCommand,
+): PromptEditorValue {
+  const leadingCommand = value.mentions.find(
+    (mention) => mention.resource.kind === "command" && mention.start === 0,
   );
+  const rest = value.text.slice(leadingCommand?.end ?? 0).trimStart();
+  const prefix = `${command.serializedText}${command.trailingText}`;
+  const shift = prefix.length - (value.text.length - rest.length);
+  return {
+    text: `${prefix}${rest}`,
+    mentions: [
+      {
+        start: 0,
+        end: command.serializedText.length,
+        resource: promptCommandResourceFromSuggestion({
+          suggestion: command.suggestion,
+          trigger: command.trigger,
+        }),
+      },
+      ...value.mentions
+        .filter((mention) => mention !== leadingCommand)
+        .map((mention) => ({
+          ...mention,
+          start: mention.start + shift,
+          end: mention.end + shift,
+        })),
+    ],
+  };
 }
 
-function getPromptActionRangeImmediatelyBeforeCursor({
-  editor,
-  actions,
-}: {
-  editor: Editor;
-  actions: readonly PromptBoxAction[];
-}): PromptActionInsertionRange | null {
-  const selection = editor.state.selection;
-  if (!selection.empty) {
-    return null;
-  }
-
-  const { $from } = selection;
-  const cursorOffset = $from.parentOffset;
-  const parentStart = $from.start();
-  let searchOffset = cursorOffset;
-
-  while (searchOffset > 0) {
-    const previous = $from.parent.childBefore(searchOffset);
-    const node = previous.node;
-    if (!node) {
-      return null;
-    }
-    const sizeBeforeSearchOffset = searchOffset - previous.offset;
-    if (node.isText) {
-      const textBeforeCursor = (node.text ?? "").slice(
-        0,
-        sizeBeforeSearchOffset,
-      );
-      const textAction = findPromptActionTextSuffix(textBeforeCursor, actions);
-      if (textAction) {
-        return {
-          from:
-            parentStart +
-            previous.offset +
-            textBeforeCursor.length -
-            textAction.text.length,
-          to: selection.from,
-        };
-      }
-      if (/\S/u.test(textBeforeCursor)) {
-        return null;
-      }
-      searchOffset = previous.offset;
-      continue;
-    }
-    if (
-      sizeBeforeSearchOffset === node.nodeSize &&
-      isPromptActionCommandMention(node, actions)
-    ) {
-      return {
-        from: parentStart + previous.offset,
-        to: selection.from,
-      };
-    }
-    return null;
-  }
-
-  return null;
-}
-
-type PromptActionInput = Omit<PromptBoxAction, "kind"> & {
-  kind?: PromptBoxAction["kind"];
-};
-
-function getPromptActionInsertionRange({
-  editor,
-  action,
-  actions,
-  triggers,
-}: {
-  editor: Editor;
-  action: PromptActionInput;
-  actions: readonly PromptBoxAction[];
-  triggers: readonly TypeaheadTrigger[];
-}): PromptActionInsertionRange | null {
+function skillsTriggerInsertionRange(
+  editor: Editor,
+  action: PromptBoxAction,
+  triggers: readonly TypeaheadTrigger[],
+): PromptActionInsertionRange | null {
   const selection = editor.state.selection;
   if (!selection.empty) {
     return { from: selection.from, to: selection.to };
   }
-
-  const previousPromptActionRange = getPromptActionRangeImmediatelyBeforeCursor(
-    {
-      editor,
-      actions,
-    },
-  );
-  if (previousPromptActionRange !== null) {
-    return previousPromptActionRange;
+  if (promptActionTextImmediatelyBeforeCursor(editor, action.text)) {
+    return null;
   }
-
-  const activeCommandTrigger = findActiveTrigger(editor, triggers);
-  const isActiveCommand =
-    activeCommandTrigger !== null && activeCommandTrigger.kind === "command";
-
-  if (action.kind === "skills") {
-    if (
-      isActiveCommand &&
-      activeCommandTrigger.char === action.text &&
-      activeCommandTrigger.to === selection.from
-    ) {
-      return null;
-    }
-    return { from: selection.from, to: selection.to };
+  const activeTrigger = findActiveTrigger(editor, triggers);
+  if (
+    activeTrigger !== null &&
+    activeTrigger.kind === "command" &&
+    activeTrigger.char === action.text &&
+    activeTrigger.to === selection.from
+  ) {
+    return null;
   }
-
-  if (isActiveCommand && activeCommandTrigger.to === selection.from) {
-    return {
-      from: activeCommandTrigger.from,
-      to: activeCommandTrigger.to,
-    };
-  }
-
   return { from: selection.from, to: selection.to };
 }
 
 function promptActionCommandFromAction(
-  action: PromptActionInput,
+  action: PromptBoxAction,
 ): PromptActionCommand | null {
   if (action.kind === "skills" || !action.command) {
     return null;
@@ -1144,27 +1039,6 @@ function promptActionCommandFromAction(
       argumentHint: null,
     },
   };
-}
-
-function promptActionTriggers(
-  triggers: readonly TypeaheadTrigger[],
-  commandAction: PromptActionCommand | null,
-): readonly TypeaheadTrigger[] {
-  if (commandAction === null) {
-    return triggers;
-  }
-  if (
-    triggers.some(
-      (trigger) =>
-        trigger.kind === "command" && trigger.char === commandAction.trigger,
-    )
-  ) {
-    return triggers;
-  }
-  return [
-    ...triggers,
-    { kind: "command", char: commandAction.trigger },
-  ] satisfies TypeaheadTrigger[];
 }
 
 export function suppressPromptEditorAnchorActivation(event: Event): boolean {
@@ -2532,11 +2406,11 @@ export function PromptBoxInternal({
   );
 
   const focusAfterPromptAction = useCallback(
-    (currentEditor: Editor) => {
+    (currentEditor: Editor, position?: "end") => {
       const focusEditor = () => {
         promptActionFocusFrameRef.current = null;
         if (currentEditor.isDestroyed) return;
-        currentEditor.commands.focus();
+        currentEditor.commands.focus(position);
         syncTriggerState(currentEditor);
         scheduleRevealEditorSelection();
       };
@@ -2555,65 +2429,39 @@ export function PromptBoxInternal({
   );
 
   const applyPromptAction = useCallback(
-    (action: PromptActionInput) => {
+    (action: PromptBoxAction) => {
       if (action.text.length === 0) return;
+      const currentEditor = editorRef.current;
       const commandAction = promptActionCommandFromAction(action);
 
-      const currentEditor = editorRef.current;
-      if (!currentEditor || currentEditor.isDestroyed) {
-        const currentValue = valueRef.current;
-        if (currentValue.endsWith(action.text)) return;
-        if (commandAction) {
-          const start = currentValue.length;
-          const nextValue = `${currentValue}${commandAction.serializedText}${commandAction.trailingText}`;
-          onChangeRef.current(nextValue, [
-            ...mentionRangesRef.current,
-            {
-              start,
-              end: start + commandAction.serializedText.length,
-              resource: promptCommandResourceFromSuggestion({
-                suggestion: commandAction.suggestion,
-                trigger: commandAction.trigger,
-              }),
-            },
-          ]);
-        } else {
-          onChangeRef.current(`${currentValue}${action.text}`, [
-            ...mentionRangesRef.current,
-          ]);
+      if (commandAction) {
+        const next = withLeadingCommand(
+          { text: valueRef.current, mentions: mentionRangesRef.current },
+          commandAction,
+        );
+        onChangeRef.current(next.text, next.mentions);
+        if (currentEditor && !currentEditor.isDestroyed) {
+          focusAfterPromptAction(currentEditor, "end");
         }
         return;
       }
 
-      if (promptActionTextImmediatelyBeforeCursor(currentEditor, action.text)) {
-        focusAfterPromptAction(currentEditor);
+      if (!currentEditor || currentEditor.isDestroyed) {
+        const currentValue = valueRef.current;
+        if (currentValue.endsWith(action.text)) return;
+        onChangeRef.current(`${currentValue}${action.text}`, [
+          ...mentionRangesRef.current,
+        ]);
         return;
       }
 
-      const insertionRange = getPromptActionInsertionRange({
-        editor: currentEditor,
+      const insertionRange = skillsTriggerInsertionRange(
+        currentEditor,
         action,
-        actions: promptActions ?? [],
-        triggers: promptActionTriggers(triggers, commandAction),
-      });
+        triggers,
+      );
       if (insertionRange === null) {
         focusAfterPromptAction(currentEditor);
-        return;
-      }
-
-      if (commandAction) {
-        insertPromptMentionPill({
-          editor: currentEditor,
-          range: { from: insertionRange.from, to: insertionRange.to },
-          resource: promptCommandResourceFromSuggestion({
-            suggestion: commandAction.suggestion,
-            trigger: commandAction.trigger,
-          }),
-          serializedText: commandAction.serializedText,
-          trailingText: commandAction.trailingText,
-          dismissedTrigger: null,
-          clearQuery: () => onCommandQueryChange(null, null),
-        });
         return;
       }
 
@@ -2628,14 +2476,7 @@ export function PromptBoxInternal({
         .run();
       finishApply(currentEditor);
     },
-    [
-      finishApply,
-      focusAfterPromptAction,
-      insertPromptMentionPill,
-      onCommandQueryChange,
-      promptActions,
-      triggers,
-    ],
+    [finishApply, focusAfterPromptAction, triggers],
   );
 
   const getTextBeforeCursor = useCallback((): string | undefined => {
@@ -2740,15 +2581,9 @@ export function PromptBoxInternal({
             host: pluginComposerHost,
             pluginCustomizable: !suppressPluginComposerCustomizations,
             state: composerEditorState,
-            applyCommand: (command) =>
-              applyPromptAction({
-                command,
-                text: `${command.trigger}${command.name}${command.trailingText}`,
-              }),
             insertAtCursor: insertAtCursorForPlugin,
           },
     [
-      applyPromptAction,
       composerEditorState,
       insertAtCursorForPlugin,
       pluginComposerHost,

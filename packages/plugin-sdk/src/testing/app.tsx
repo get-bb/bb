@@ -2074,36 +2074,6 @@ export function renderSlot<
       };
     },
     subscribeEditorState: () => () => {},
-    applyCommand(command) {
-      const text = `${command.trigger}${command.name}`;
-      const current = composerDraft();
-      if (!current.text.endsWith(`${text}${command.trailingText}`)) {
-        composerTarget.setDraft(
-          appendComposerDraft(
-            current,
-            {
-              text: `${text}${command.trailingText}`,
-              mentions: [
-                {
-                  kind: "command",
-                  from: 0,
-                  to: text.length,
-                  label: command.name,
-                  trigger: command.trigger,
-                  name: command.name,
-                  source: "command",
-                  origin: "user",
-                  argumentHint: null,
-                },
-              ],
-            },
-            false,
-          ),
-        );
-      }
-      composerTarget.focus();
-      return true;
-    },
     insertAtCursor(value, block) {
       composerTarget.setDraft(
         appendComposerDraft(composerDraft(), value, block),

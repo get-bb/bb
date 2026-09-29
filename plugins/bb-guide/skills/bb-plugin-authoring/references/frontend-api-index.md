@@ -224,7 +224,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `ComposerSendMenuItem`
 - `ComposerSubmitOptions`
 - `ComposerSelection`
-- `ExperimentalComposerCommand`
 - `ComposerRichTextSpec`
 - `ComposerDraft`
 - `ComposerDraftSnapshot`

@@ -1,5 +1,4 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { ExperimentalComposerCommand } from "@get-bb/plugin-sdk";
 import type { PromptTextMention } from "@bb/domain";
 import type { ComposerEditorState } from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
@@ -14,7 +13,6 @@ export interface ComposerEditorBridge {
   host: PluginComposerHost;
   pluginCustomizable: boolean;
   state: ComposerEditorState;
-  applyCommand?(command: ExperimentalComposerCommand): void;
   insertAtCursor(value: ComposerEditorInsertValue, block: boolean): boolean;
 }
 

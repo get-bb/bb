@@ -518,7 +518,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds rows to the menu that opens from the + button beside the prompt box, or to the menu beside the send button. With this, a plugin can:",
         bullets: [
           "Supply each row's icon, label, and disabled state; bb renders the row itself",
-          "Apply a command with experimental_applyCommand to replace a partial slash query or preceding prompt action, preserve command pills, and return focus without submitting",
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
           "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",
@@ -529,8 +528,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ComposerPlusMenuItem",
           "ComposerSendMenuItem",
           "ComposerSubmitOptions",
-          "PluginComposerApi.experimental_applyCommand",
-          "ExperimentalComposerCommand",
         ],
         firstParty: ["Drafts", "Send later"],
       },

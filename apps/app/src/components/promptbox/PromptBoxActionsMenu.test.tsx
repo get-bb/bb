@@ -224,19 +224,6 @@ describe("PromptBoxActionsMenu", () => {
     },
   );
 
-  it("keeps a provider-owned action instead of the app copy", () => {
-    const providerPlugin = { kind: "plugin", text: "/plugin " } as const;
-
-    expect(withAppPromptActions([providerPlugin])).toEqual([
-      providerPlugin,
-      {
-        kind: "automation",
-        command: { trigger: "/", name: "automation", trailingText: " " },
-        text: "/automation ",
-      },
-    ]);
-  });
-
   it("restores composer focus after an update-only plugin item", async () => {
     const view: ComposerView = {
       scope: { kind: "new-thread", projectId: null },

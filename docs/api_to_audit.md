@@ -3506,8 +3506,8 @@ members introduced during this work were removed rather than retained as aliases
 Before stabilization, audit snapshot identity and updater failure/lifetime
 behavior across mounted, offscreen, and ephemeral editors, replay of attachment
 paths in their owning project, and migration of third-party text transforms to
-explicit mention ranges. Command application is now exposed separately through
-`experimental_applyCommand`; audit its trigger and caret semantics below. These operations edit client-local drafts; existing SDK/CLI
+explicit mention ranges. Decide whether command application merits a shared
+public operation. These operations edit client-local drafts; existing SDK/CLI
 thread creation and send surfaces still accept structured inputs.
 
 Core history conversion is centralized in the composer adapter; quoting operates
@@ -3525,25 +3525,3 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
-## Composer command actions
-
-`experimental_applyCommand({ trigger, name, trailingText })` uses the mounted
-editor's existing prompt-action path. It inserts a command pill, replaces an
-active query or preceding prompt action, avoids a duplicate at the caret, clears
-completion, and focuses the editor. It validates the trigger, command name, and
-whitespace suffix before touching the editor. Offscreen or unavailable composers
-reject; execution settings, attachments, and submission behavior are unchanged.
-The frontend harness has no caret and appends the command at the end.
-
-Automations contributes the Automation `+` menu row through this method; BB
-Guide contributes Plugin creation with ordinary cursor insertion. Both appear
-in every composer kind, matching the core rows they replaced, including the
-sent-message editor: plugin `+` menu rows are exempt from its customization
-suppression, while actions, banners, send-menu rows, and rich text remain
-suppressed there. Core keeps Skills, Attach files, and the provider-declared
-Plan/Goal rows. SDK version 0.6.2 is required by the migrated plugins.
-
-Before stabilization, audit generic command replacement semantics, unavailable
-editors, mobile focus restoration, and alignment with the forthcoming typeahead
-session API. These are client-local operations; existing CLI/SDK structured
-thread input surfaces are unchanged. There is no server/daemon wire change.
