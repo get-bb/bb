@@ -232,7 +232,7 @@ export interface NewThreadComposerState {
   setProviderModelReasoning: (selection: {
     providerId: string;
     model: string;
-    reasoningLevel: ReasoningLevel;
+    reasoningLevel: ReasoningLevel | undefined;
   }) => void;
   setPermissionMode: (value: PermissionMode) => void;
   setServiceTier: (value: ServiceTier | undefined) => void;
@@ -1767,8 +1767,10 @@ export function NewThreadComposer({
       supportsServiceTier,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(promptDraft.storageKey, composerSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    promptDraft.storageKey,
+    composerSelection,
+  );
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
     async (

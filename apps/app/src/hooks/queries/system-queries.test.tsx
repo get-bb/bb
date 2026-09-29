@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { AvailableModel } from "@bb/domain";
 import type {
   SystemExecutionOptionsResponse,
   SystemProviderStatesResponse,
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -309,6 +310,51 @@ describe("useSystemExecutionOptions", () => {
     await waitFor(() => {
       expect(result.current.isPlaceholderData).toBe(false);
     });
+  });
+
+  it("keeps selected-model responses separate during races and reuses cached selections", async () => {
+    const a = createDeferredPromise<SystemExecutionOptionsResponse>();
+    const b = createDeferredPromise<SystemExecutionOptionsResponse>();
+    vi.mocked(sdk.system.executionOptions).mockImplementation((args) =>
+      args?.selectedModel === "a" ? a.promise : b.promise,
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, rerender } = renderHook(
+      ({ selectedModel }) =>
+        useSystemExecutionOptions({
+          hostId: "host-selected",
+          providerId: "acp",
+          selectedModel,
+        }),
+      { wrapper, initialProps: { selectedModel: "a" } },
+    );
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1),
+    );
+    expect(result.current.data?.models ?? []).toEqual([]);
+    rerender({ selectedModel: "b" });
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledTimes(2),
+    );
+    await act(async () =>
+      b.resolve({ ...EXECUTION_OPTIONS_RESPONSE, permissionCeiling: "auto" }),
+    );
+    await waitFor(() =>
+      expect(result.current.data?.permissionCeiling).toBe("auto"),
+    );
+    await act(async () =>
+      a.resolve({ ...EXECUTION_OPTIONS_RESPONSE, permissionCeiling: "full" }),
+    );
+    expect(result.current.data?.permissionCeiling).toBe("auto");
+    rerender({ selectedModel: "a" });
+    await waitFor(() =>
+      expect(result.current.data?.permissionCeiling).toBe("full"),
+    );
+    rerender({ selectedModel: "b" });
+    await waitFor(() =>
+      expect(result.current.data?.permissionCeiling).toBe("auto"),
+    );
+    expect(sdk.system.executionOptions).toHaveBeenCalledTimes(2);
   });
 
   it("separates requests and cache entries for different hosts", async () => {

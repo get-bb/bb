@@ -245,7 +245,14 @@ function toRuntimeExecutionOptions(
 }
 
 export async function buildExecutionOptions(
-  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
+  deps: Pick<
+    AppDeps,
+    | "db"
+    | "hub"
+    | "providerRegistry"
+    | "pluginHostArtifacts"
+    | "lifecycleDedupers"
+  >,
   request: ExecutionOptionsRequest,
   args: BuildExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {

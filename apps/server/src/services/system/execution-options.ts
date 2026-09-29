@@ -406,7 +406,10 @@ export function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  return resolveExecutionOptions(deps, query, { kind: "picker" });
+  return resolveExecutionOptions(deps, query, {
+    kind: "picker",
+    selectedModel: query.selectedModel,
+  });
 }
 
 export function resolveSystemExecutionOptionsForValidation(

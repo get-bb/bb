@@ -21,9 +21,10 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 }
 
 describe("buildForkThreadRequest", () => {
-  it("preserves plugin submission data in a fork dispatch request", () => {
+  it("preserves plugin submission data and execution sources in a fork dispatch request", () => {
     const request = buildForkThreadRequest({
       environmentId: "env_source",
+      executionInputSources: { model: "explicit" },
       input: [{ type: "text", text: "Continue from here", mentions: [] }],
       model: "gpt-5",
       permissionMode: "accept-edits",
@@ -43,6 +44,7 @@ describe("buildForkThreadRequest", () => {
 
     expect(request).toEqual({
       environment: { type: "reuse", environmentId: "env_source" },
+      executionInputSources: { model: "explicit" },
       input: [{ type: "text", text: "Continue from here", mentions: [] }],
       model: "gpt-5",
       originKind: "fork",

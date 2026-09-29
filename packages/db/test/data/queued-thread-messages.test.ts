@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { threadScope, type PromptInput } from "@bb/domain";
+import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { insertEvents } from "../../src/data/events.js";
 import {
@@ -48,6 +49,35 @@ function setup() {
 }
 
 describe("queued thread messages", () => {
+  it("preserves queued groups and explicit reasoning through the nullable reasoning migration", () => {
+    const { db, thread } = setup();
+    try {
+      const first = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id, content: defaultInput, model: "late-model",
+        reasoningLevel: "high", permissionMode: "full", serviceTier: "default",
+        waitingOn: null, sendAt: null, payload: { kind: "inline" }, systemNotice: null,
+      });
+      createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id, content: altInput, model: "late-model",
+        reasoningLevel: "high", permissionMode: "full", serviceTier: "default",
+        waitingOn: null, sendAt: null, payload: { kind: "inline" }, systemNotice: null,
+      });
+      db.$client.prepare("UPDATE queued_thread_messages SET group_with_next = 1 WHERE id = ?").run(first.id);
+      const before = listQueuedThreadMessages(db, thread.id);
+      db.$client.prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?").run(1790724593074);
+      migrate(db);
+      expect(listQueuedThreadMessages(db, thread.id)).toEqual(before);
+      const unknown = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id, content: defaultInput, model: "late-model",
+        reasoningLevel: null, permissionMode: "full", serviceTier: "default",
+        waitingOn: null, sendAt: null, payload: { kind: "inline" }, systemNotice: null,
+      });
+      expect(getQueuedThreadMessage(db, unknown.id)?.reasoningLevel).toBeNull();
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("creates a queued message", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {

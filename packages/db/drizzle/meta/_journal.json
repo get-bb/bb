@@ -939,6 +939,13 @@
       "when": 1790613729994,
       "tag": "0133_remove_thread_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "6",
+      "when": 1790724593074,
+      "tag": "0134_queued_reasoning_optional",
+      "breakpoints": true
     }
   ]
 }

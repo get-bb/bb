@@ -210,7 +210,7 @@ export function queuedMessage(args: {
     senderThreadId: null,
     content: args.content,
     model: THREAD_DEFAULT_EXECUTION_OPTIONS.model,
-    reasoningLevel: THREAD_DEFAULT_EXECUTION_OPTIONS.reasoningLevel,
+    reasoningLevel: THREAD_DEFAULT_EXECUTION_OPTIONS.reasoningLevel ?? null,
     permissionMode: THREAD_DEFAULT_EXECUTION_OPTIONS.permissionMode,
     serviceTier: THREAD_DEFAULT_EXECUTION_OPTIONS.serviceTier,
     groupWithNext: false,

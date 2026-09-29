@@ -11,7 +11,10 @@ import type {
   ThreadCreateServiceRequest,
   ThreadCreateServiceRequestInput,
 } from "./thread-create-request.js";
-import { resolveCreateThreadExecutionDefaults } from "./thread-default-policy.js";
+import {
+  DEFAULT_REASONING_LEVEL,
+  resolveCreateThreadExecutionDefaults,
+} from "./thread-default-policy.js";
 
 interface RememberProjectExecutionDefaultsForCreateArgs {
   execution: ResolvedThreadExecutionOptions;
@@ -122,7 +125,7 @@ export function rememberProjectExecutionDefaultsForCreate(
     projectId: args.request.projectId,
     providerId: args.request.providerId,
     model: args.execution.model,
-    reasoningLevel: args.execution.reasoningLevel,
+    reasoningLevel: args.execution.reasoningLevel ?? DEFAULT_REASONING_LEVEL,
     permissionMode: args.execution.permissionMode,
     serviceTier: args.execution.serviceTier,
   });

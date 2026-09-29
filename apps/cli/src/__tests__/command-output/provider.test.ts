@@ -129,6 +129,7 @@ describe("bb provider command output", () => {
     expect(get).toHaveBeenCalledWith({
       query: {
         providerId: "claude-code",
+        selectedModel: "claude-opus-4-6",
       },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([

@@ -52,6 +52,7 @@ import {
 } from "./query-policies";
 
 interface UseSystemExecutionOptionsArgs {
+  selectedModel?: string;
   enabled?: boolean;
   environmentId?: string;
   hostId?: string;
@@ -59,6 +60,7 @@ interface UseSystemExecutionOptionsArgs {
 }
 
 interface SystemExecutionOptionsQueryArgs {
+  selectedModel?: string;
   environmentId: string | null;
   hostId: string | null;
   providerId: string | null;
@@ -277,19 +279,23 @@ function systemExecutionOptionsQueryOptions({
   hostId,
   providerId,
   writeLastKnown,
+  selectedModel,
 }: SystemExecutionOptionsQueryArgs) {
   return queryOptions<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({
       environmentId,
       hostId,
       providerId,
+      selectedModel,
     }),
-    queryFn: async ({ signal }) => {
+    queryFn: async (context) => {
+      const signal = selectedModel === undefined ? context.signal : undefined;
       const response = await sdk.system.executionOptions({
         environmentId: environmentId ?? undefined,
         hostId: hostId ?? undefined,
         providerId: providerId ?? undefined,
         signal,
+        selectedModel,
       });
       if (writeLastKnown) {
         writeCachedProviderList(
@@ -352,6 +358,7 @@ export function useSystemExecutionOptions(
       hostId,
       providerId,
       writeLastKnown: true,
+      selectedModel: args.selectedModel,
     }),
     enabled,
     placeholderData: (previousData, previousQuery) =>

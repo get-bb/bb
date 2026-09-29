@@ -113,12 +113,12 @@ function setupCatalogHost(
     setAnswer(next: ListModelsAnswer) {
       answer = next;
     },
-    read(providerId: string, environmentId?: string) {
+    read(providerId: string, environmentId?: string, selectedModel?: string) {
       return resolveSystemExecutionOptions(
         harness.deps,
         environmentId === undefined
-          ? { hostId: host.id, providerId }
-          : { environmentId, providerId },
+          ? { hostId: host.id, providerId, selectedModel }
+          : { environmentId, providerId, selectedModel },
       );
     },
   };
@@ -158,6 +158,112 @@ function seedEnvironmentPath(
 }
 
 describe("provider model catalog store", () => {
+  it("deduplicates selected-model probes and merges out-of-order results without changing catalog defaults", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-selected-race" });
+      const unknown = modelList("a", "b").map((model) => ({
+        ...model,
+        supportedReasoningEfforts: [],
+      }));
+      const a = createDeferredPromise<HostRpcHandlerResult>();
+      const b = createDeferredPromise<HostRpcHandlerResult>();
+      host.setAnswer((command) =>
+        command.selectedModel === "a"
+          ? a.promise
+          : command.selectedModel === "b"
+            ? b.promise
+            : catalogAnswer(unknown),
+      );
+      await host.read("codex");
+      const first = host.read("codex", undefined, "a");
+      const duplicate = host.read("codex", undefined, "a");
+      const second = host.read("codex", undefined, "b");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(3));
+      expect(
+        (await host.read("codex")).models.every(
+          (model) => model.supportedReasoningEfforts.length === 0,
+        ),
+      ).toBe(true);
+      b.resolve(
+        catalogAnswer(
+          modelList("a", "b").map((model) => ({
+            ...model,
+            isDefault: !model.isDefault,
+            supportedReasoningEfforts: [
+              { reasoningEffort: "high", description: "High" },
+            ],
+            defaultReasoningEffort: "high",
+          })),
+        ),
+      );
+      const bResult = await second;
+      expect(bResult.models[0]?.supportedReasoningEfforts).toEqual([]);
+      expect(
+        bResult.models[1]?.supportedReasoningEfforts.map(
+          (e) => e.reasoningEffort,
+        ),
+      ).toEqual(["high"]);
+      a.resolve(
+        catalogAnswer(
+          modelList("a").map((model) => ({
+            ...model,
+            supportedReasoningEfforts: (["low", "medium", "high"] as const).map(
+              (reasoningEffort) => ({
+                reasoningEffort,
+                description: reasoningEffort,
+              }),
+            ),
+            defaultReasoningEffort: "low",
+          })),
+        ),
+      );
+      await Promise.all([first, duplicate]);
+      const result = await host.read("codex", undefined, "a");
+      expect(
+        result.models.map((model) =>
+          model.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+        ),
+      ).toEqual([["low", "medium", "high"], ["high"]]);
+      expect(result.models.map((model) => model.isDefault)).toEqual(
+        unknown.map((model) => model.isDefault),
+      );
+      await host.read("codex", undefined, "b");
+      expect(host.listRequests()).toHaveLength(3);
+    });
+  });
+
+  it.each(["command_failed", "timeout"])(
+    "keeps reasoning unknown after %s and retries only after the per-model failure cache expires",
+    async (errorCode) => {
+      await withTestHarness(async (harness) => {
+        const host = setupCatalogHost(harness, { id: "host-selected-failure" });
+        const unknown = modelList("a").map((model) => ({
+          ...model,
+          supportedReasoningEfforts: [],
+        }));
+        host.setAnswer((command) =>
+          command.selectedModel
+            ? errorAnswer(errorCode)
+            : catalogAnswer(unknown),
+        );
+        await host.read("codex");
+        expect(
+          (await host.read("codex", undefined, "a")).models[0]
+            ?.supportedReasoningEfforts,
+        ).toEqual([]);
+        await host.read("codex", undefined, "a");
+        expect(host.listRequests()).toHaveLength(2);
+        host.clock.now += 31 * SECOND;
+        host.setAnswer(() => catalogAnswer(modelList("a")));
+        expect(
+          (await host.read("codex", undefined, "a")).models[0]
+            ?.supportedReasoningEfforts.length,
+        ).toBeGreaterThan(0);
+        expect(host.listRequests()).toHaveLength(3);
+      });
+    },
+  );
+
   it("keeps catalogs across a daemon reconnect, an unrelated registration and a capability-only re-registration", async () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, { id: "host-catalog-identity" });

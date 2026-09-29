@@ -1263,6 +1263,32 @@ const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
 const STAGED_THREAD_STORAGE_DELETED_AT_COLUMN =
   "_bb_thread_storage_deleted_at_pending";
 
+const STAGED_QUEUED_MESSAGE_GROUPS_TABLE = "_bb_queued_message_groups_pending";
+
+function stageQueuedMessageGroups(
+  db: DbConnection,
+  migrationsFolder: string,
+): boolean {
+  if (tableExists(db, STAGED_QUEUED_MESSAGE_GROUPS_TABLE)) return true;
+  if (!columnExists(db, "queued_thread_messages", "group_with_next"))
+    return false;
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0134_queued_reasoning_optional",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) return false;
+  db.$client.exec(`CREATE TABLE ${STAGED_QUEUED_MESSAGE_GROUPS_TABLE} AS
+    SELECT id FROM queued_thread_messages WHERE group_with_next = 1`);
+  return true;
+}
+
+function restoreQueuedMessageGroups(db: DbConnection): void {
+  applyQueuedMessageGroupingSchema(db);
+  db.$client.exec(`UPDATE queued_thread_messages SET group_with_next = 1
+    WHERE id IN (SELECT id FROM ${STAGED_QUEUED_MESSAGE_GROUPS_TABLE});
+    DROP TABLE ${STAGED_QUEUED_MESSAGE_GROUPS_TABLE};`);
+}
+
 function stageExistingConnectMachineIdColumn(
   db: DbConnection,
   migrationsFolder: string,
@@ -1584,9 +1610,14 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     );
     const stagedThreadStorageDeletedAt =
       stageExistingThreadStorageDeletedAtColumn(db, migrationsFolder);
+    const stagedQueuedMessageGroups = stageQueuedMessageGroups(
+      db,
+      migrationsFolder,
+    );
     try {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
+      if (stagedQueuedMessageGroups) restoreQueuedMessageGroups(db);
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
       if (stagedThreadStorageDeletedAt)
         restoreStagedThreadStorageDeletedAtColumn(db);

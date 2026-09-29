@@ -50,7 +50,7 @@ interface PersistedPermissionModeSelectionField {
 interface PromptBoxProviderModelReasoningPreference {
   providerId: string;
   model: string;
-  reasoningLevel: ReasoningLevel;
+  reasoningLevel: ReasoningLevel | undefined;
 }
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
@@ -304,7 +304,7 @@ export function useSetPromptBoxProviderModelReasoningPreference(): (
     ({ providerId, model, reasoningLevel }) => {
       if (providerId.length === 0) return;
       store.set(modelAtomFamily(providerId), model);
-      store.set(reasoningLevelAtomFamily(providerId), reasoningLevel);
+      store.set(reasoningLevelAtomFamily(providerId), reasoningLevel ?? "");
     },
     [store],
   );

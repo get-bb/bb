@@ -1015,8 +1015,10 @@ export function ThreadDetailPromptArea({
       supportsServiceTier,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(promptDraft.storageKey, composerSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    promptDraft.storageKey,
+    composerSelection,
+  );
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
     async (
@@ -1678,7 +1680,9 @@ export function ThreadDetailPromptArea({
       },
       reasoning: {
         ...compactExecutionConfig.reasoning,
-        value: inlineEditingQueuedMessage.reasoningLevel,
+        value:
+          inlineEditingQueuedMessage.reasoningLevel ??
+          compactExecutionConfig.reasoning.value,
       },
     };
   }, [compactExecutionConfig, inlineEditingQueuedMessage]);
@@ -1776,7 +1780,8 @@ export function ThreadDetailPromptArea({
         ? readExecutionSelection({
             selectedProviderId: thread.providerId,
             selectedThreadModel: inlineEditingQueuedMessage.model,
-            reasoningLevel: inlineEditingQueuedMessage.reasoningLevel,
+            reasoningLevel:
+              inlineEditingQueuedMessage.reasoningLevel ?? undefined,
             serviceTier: inlineEditingQueuedMessage.serviceTier,
             supportsServiceTier,
             permissionMode: inlineEditingQueuedMessage.permissionMode,

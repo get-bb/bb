@@ -71,7 +71,7 @@ export interface CreateQueuedThreadMessageInput {
    */
   requestedBy?: StartedOnBehalfOf | null;
   model: string;
-  reasoningLevel: string;
+  reasoningLevel: string | null;
   permissionMode: PermissionMode;
   serviceTier: string;
   /**

@@ -739,15 +739,18 @@ function EmbeddedThreadChatWithComposer({
       selectedProviderId,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(bottomComposerHostIdentity, bottomSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    bottomComposerHostIdentity,
+    bottomSelection,
+  );
   const queuedSelection = useMemo(
     () =>
       inlineEditingQueuedMessage
         ? readExecutionSelection({
             selectedProviderId,
             selectedThreadModel: inlineEditingQueuedMessage.model,
-            reasoningLevel: inlineEditingQueuedMessage.reasoningLevel,
+            reasoningLevel:
+              inlineEditingQueuedMessage.reasoningLevel ?? undefined,
             serviceTier: inlineEditingQueuedMessage.serviceTier,
             supportsServiceTier,
             permissionMode: inlineEditingQueuedMessage.permissionMode,
@@ -1067,7 +1070,9 @@ function EmbeddedThreadChatWithComposer({
             },
             reasoning: {
               ...bottomExecutionConfig.reasoning,
-              value: inlineEditingQueuedMessage.reasoningLevel,
+              value:
+                inlineEditingQueuedMessage.reasoningLevel ??
+                bottomExecutionConfig.reasoning.value,
             },
           }
         : null,

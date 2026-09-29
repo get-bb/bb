@@ -16,7 +16,7 @@ export interface ForkThreadCreateSeed {
   permissionMode: PermissionMode;
   projectId: string;
   providerId: string;
-  reasoningLevel: ReasoningLevel;
+  reasoningLevel: ReasoningLevel | undefined;
   serviceTier: ServiceTier | undefined;
   sourceSeqEnd: number | undefined;
   sourceThreadId: string;
@@ -24,12 +24,16 @@ export interface ForkThreadCreateSeed {
 }
 
 interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {
+  executionInputSources?: AppCreateThreadRequest["executionInputSources"];
   input: PromptInput[];
   pluginSubmission: AppCreateThreadRequest["pluginSubmission"];
   providerSupportsFork: boolean;
 }
 
-type ForkableThread = Pick<Thread, "archivedAt" | "environmentId" | "providerId">;
+type ForkableThread = Pick<
+  Thread,
+  "archivedAt" | "environmentId" | "providerId"
+>;
 
 export function isThreadForkable(
   sourceThread: ForkableThread | null,
@@ -46,6 +50,7 @@ export function isThreadForkable(
 }
 
 export function buildForkThreadRequest({
+  executionInputSources,
   environmentId,
   input,
   model,
@@ -65,6 +70,7 @@ export function buildForkThreadRequest({
 
   return {
     environment: { type: "reuse", environmentId },
+    ...(executionInputSources === undefined ? {} : { executionInputSources }),
     input,
     model,
     originKind: "fork",

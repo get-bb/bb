@@ -47,7 +47,7 @@ type ProviderModelCatalogFailureCode = Exclude<
 >;
 
 export type ProviderModelCatalogAccess =
-  | { kind: "picker" }
+  | { kind: "picker"; selectedModel?: string }
   | { kind: "validation"; requiredModel: string | null };
 
 type ProviderModelCatalogReadResult =
@@ -63,6 +63,18 @@ type ProviderModelCatalogReadResult =
     };
 
 export interface ProviderModelCatalogStore {
+  getCachedModel(
+    deps: Pick<
+      WorkSessionDeps,
+      "db" | "providerRegistry" | "pluginHostArtifacts"
+    >,
+    args: {
+      hostId: string;
+      providerId: string;
+      cwd: string | null;
+      model: string;
+    },
+  ): AvailableModel | null;
   read(
     deps: WorkSessionDeps,
     args: {
@@ -111,6 +123,7 @@ interface CatalogEntry {
   failure: CatalogFailure | null;
   unavailableDetail: string | null;
   refresh: CatalogRefresh | null;
+  selectedModels: Map<string, CatalogRefresh & { expiresAt: number }>;
 }
 
 type RefreshSettlement =
@@ -278,7 +291,7 @@ export function createProviderModelCatalogStore(options: {
   const pendingPushByHost = new Map<string, ReturnType<typeof setTimeout>>();
 
   function loadStoredGood(
-    deps: WorkSessionDeps,
+    deps: Pick<WorkSessionDeps, "db">,
     key: ProviderModelCatalogRowKey,
   ): CatalogGood | null {
     const row = getStoredProviderModelCatalog(deps.db, key);
@@ -301,7 +314,7 @@ export function createProviderModelCatalogStore(options: {
   }
 
   function loadEntry(
-    deps: WorkSessionDeps,
+    deps: Pick<WorkSessionDeps, "db">,
     key: ProviderModelCatalogRowKey,
   ): CatalogEntry {
     const mapKey = JSON.stringify([key.hostId, key.providerId, key.scopeKey]);
@@ -317,6 +330,7 @@ export function createProviderModelCatalogStore(options: {
       failure: null,
       unavailableDetail: null,
       refresh: null,
+      selectedModels: new Map(),
     };
     entries.set(mapKey, entry);
     for (const [victimKey, victim] of entries) {
@@ -324,6 +338,7 @@ export function createProviderModelCatalogStore(options: {
         break;
       }
       if (victim !== entry && victim.refresh === null) {
+        victim.selectedModels.clear();
         entries.delete(victimKey);
       }
     }
@@ -519,7 +534,135 @@ export function createProviderModelCatalogStore(options: {
       : startRefresh(deps, entry, fingerprint, bridgeLaunch);
   }
 
+  async function refineSelectedModel(
+    deps: WorkSessionDeps,
+    entry: CatalogEntry,
+    fingerprint: string,
+    bridgeLaunch: HostDaemonBridgeLaunch,
+    selectedModel: string,
+  ): Promise<void> {
+    const good = currentState(entry, fingerprint).servable;
+    const model = [
+      ...(good?.models ?? []),
+      ...(good?.selectedOnlyModels ?? []),
+    ].find((model) => model.model === selectedModel);
+    if (model === undefined || model.supportedReasoningEfforts.length > 0)
+      return;
+    const existing = entry.selectedModels.get(selectedModel);
+    if (
+      existing?.fingerprint === fingerprint &&
+      options.now() < existing.expiresAt
+    ) {
+      return existing.promise;
+    }
+    const refresh: CatalogRefresh & { expiresAt: number } = {
+      expiresAt: Infinity,
+      fingerprint,
+      sessionId: deps.hub.getDaemonSessionIdForHost(entry.key.hostId),
+      startedAt: options.now(),
+      markedStale: false,
+      promise: Promise.resolve(),
+    };
+    entry.selectedModels.set(selectedModel, refresh);
+    refresh.promise = (async () => {
+      try {
+        const result = await callHostOnlineRpc(deps, {
+          hostId: entry.key.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "provider.list_models",
+            providerId: entry.key.providerId,
+            bridgeLaunch,
+            selectedModel,
+            ...(entry.key.scopeKey === "" ? {} : { cwd: entry.key.scopeKey }),
+          },
+        });
+        if (
+          entry.selectedModels.get(selectedModel) !== refresh ||
+          refresh.markedStale ||
+          refresh.sessionId !==
+            deps.hub.getDaemonSessionIdForHost(entry.key.hostId) ||
+          entry.good?.fingerprint !== fingerprint
+        )
+          return;
+        const discovered = [
+          ...result.models,
+          ...result.selectedOnlyModels,
+        ].find((candidate) => candidate.model === selectedModel);
+        if (
+          discovered === undefined ||
+          discovered.supportedReasoningEfforts.length === 0
+        )
+          return;
+        const update = (models: AvailableModel[]) =>
+          models.map((candidate) =>
+            candidate.model === selectedModel
+              ? {
+                  ...candidate,
+                  supportedReasoningEfforts:
+                    discovered.supportedReasoningEfforts,
+                  defaultReasoningEffort: discovered.defaultReasoningEffort,
+                }
+              : candidate,
+          );
+        const models = update(entry.good.models);
+        const selectedOnlyModels = update(entry.good.selectedOnlyModels);
+        entry.good = {
+          ...entry.good,
+          models,
+          selectedOnlyModels,
+          modelsJson: JSON.stringify(models),
+          selectedOnlyModelsJson: JSON.stringify(selectedOnlyModels),
+        };
+        persistGood(deps, entry.key, entry.good);
+        schedulePush(deps, entry.key.hostId);
+      } catch (error) {
+        deps.logger.warn(
+          {
+            providerId: entry.key.providerId,
+            selectedModel,
+            ...runtimeErrorLogFields(deps.config, error),
+          },
+          "Selected model reasoning discovery failed",
+        );
+      } finally {
+        refresh.expiresAt = options.now() + FAILURE_TTL_MS;
+      }
+    })();
+    return refresh.promise;
+  }
+
   return {
+    getCachedModel(deps, args) {
+      const provider = deps.providerRegistry.get(args.providerId)?.info;
+      const bridgeLaunch = resolveBridgeLaunchForProviderId(
+        deps,
+        args.providerId,
+      );
+      if (provider === undefined || bridgeLaunch === null) return null;
+      const entry = loadEntry(deps, {
+        hostId: args.hostId,
+        providerId: args.providerId,
+        scopeKey:
+          args.cwd !== null &&
+          providerModelCatalogDependsOnWorkspace(
+            provider.capabilities.modelCatalogScope,
+          )
+            ? args.cwd
+            : "",
+      });
+      const { servable } = currentState(
+        entry,
+        catalogFingerprint(args.providerId, bridgeLaunch),
+      );
+      return (
+        [
+          ...(servable?.models ?? []),
+          ...(servable?.selectedOnlyModels ?? []),
+        ].find((model) => model.model === args.model) ?? null
+      );
+    },
+
     async read(deps, args) {
       const bridgeLaunch = requireBridgeLaunchForProviderId(
         deps,
@@ -548,6 +691,26 @@ export function createProviderModelCatalogStore(options: {
         if (decision.kind === "serve") {
           if (decision.backgroundRefresh) {
             void joinOrStartRefresh(deps, entry, fingerprint, bridgeLaunch);
+          }
+          if (
+            decision.result.kind === "catalog" &&
+            args.access.kind === "picker" &&
+            args.access.selectedModel
+          ) {
+            await refineSelectedModel(
+              deps,
+              entry,
+              fingerprint,
+              bridgeLaunch,
+              args.access.selectedModel,
+            );
+            const latest = currentState(entry, fingerprint).servable;
+            if (latest !== null)
+              return {
+                kind: "catalog",
+                models: latest.models,
+                selectedOnlyModels: latest.selectedOnlyModels,
+              };
           }
           return decision.result;
         }
@@ -599,6 +762,7 @@ export function createProviderModelCatalogStore(options: {
       for (const entry of entries.values()) {
         entry.failure = null;
         entry.unavailableDetail = null;
+        entry.selectedModels.clear();
         if (entry.good !== null) {
           entry.good.fetchedAt = 0;
         }
@@ -612,6 +776,7 @@ export function createProviderModelCatalogStore(options: {
       for (const [mapKey, entry] of entries) {
         if (entry.key.hostId === hostId) {
           entry.refresh = null;
+          entry.selectedModels.clear();
           entries.delete(mapKey);
         }
       }

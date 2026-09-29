@@ -29,7 +29,7 @@ interface StoredQueuedThreadMessageRow {
   groupWithNext: boolean;
   model: string;
   payloadKind: QueuedMessagePayloadKind;
-  reasoningLevel: string;
+  reasoningLevel: string | null;
   retryAttempt: number | null;
   retryOfTurnRequestId: string | null;
   retryReason: string | null;

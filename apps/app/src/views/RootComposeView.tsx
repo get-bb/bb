@@ -572,6 +572,7 @@ export function RootComposeView() {
           ? requestFields
           : buildForkThreadRequest({
               ...forkSeed,
+              executionInputSources: request.executionInputSources,
               input: request.input,
               model: request.model,
               permissionMode: request.permissionMode,

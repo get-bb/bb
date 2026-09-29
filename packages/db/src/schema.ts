@@ -996,7 +996,7 @@ export const queuedThreadMessages = sqliteTable(
     }),
     requestedByThreadId: text("requested_by_thread_id"),
     model: text("model").notNull(),
-    reasoningLevel: text("reasoning_level").notNull(),
+    reasoningLevel: text("reasoning_level"),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
     serviceTier: text("service_tier").notNull(),
     groupWithNext: integer("group_with_next", { mode: "boolean" })

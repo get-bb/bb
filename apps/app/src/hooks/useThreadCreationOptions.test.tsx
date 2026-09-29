@@ -13,6 +13,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   hostsQueryKey,
   systemConfigQueryKey,
+  systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
 } from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
@@ -21,6 +22,7 @@ import {
   providerListCacheKey,
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 
 const PROJECT_ID = "proj_prompt_defaults";
@@ -298,6 +300,119 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("seeds a provider and model without turning missing reasoning into an explicit choice", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID),
+    );
+    act(() =>
+      result.current.setProviderModelReasoning({
+        providerId: GLOBAL_PROVIDER_ID,
+        model: "global-model",
+        reasoningLevel: undefined,
+      }),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+    expect(result.current.executionInputSources.reasoningLevel).toBeUndefined();
+  });
+
+  it("keeps an unprobed selection without reasoning choices until its actual ladder arrives", async () => {
+    const discovery = createDeferredPromise<SystemExecutionOptionsResponse>();
+    const catalog = executionOptionsResponse();
+    const unknown = {
+      ...catalog,
+      models: catalog.models.map((model) => ({
+        ...model,
+        supportedReasoningEfforts: [],
+      })),
+    };
+    vi.mocked(sdk.system.executionOptions).mockImplementation((args) =>
+      args?.selectedModel === "global-model"
+        ? discovery.promise
+        : Promise.resolve(unknown),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "selected-model-discovery",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedModel: "global-model" }),
+      ),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+    expect(result.current.reasoningOptions).toEqual([]);
+    await act(async () => discovery.resolve(catalog));
+    await waitFor(() =>
+      expect(result.current.reasoningOptions.length).toBeGreaterThan(0),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+  });
+
+  it("uses refreshed catalog reasoning after selected-model discovery returned no choices", async () => {
+    const catalog = executionOptionsResponse();
+    const unknown = {
+      ...catalog,
+      models: catalog.models.map((model) => ({
+        ...model,
+        supportedReasoningEfforts: [],
+      })),
+    };
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(unknown);
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    const routing = {
+      environmentId: null,
+      hostId: null,
+      providerId: GLOBAL_PROVIDER_ID,
+    };
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "refreshed-model-discovery",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryState(
+          systemExecutionOptionsQueryKey({
+            ...routing,
+            selectedModel: "global-model",
+          }),
+        )?.status,
+      ).toBe("success"),
+    );
+    expect(result.current.reasoningOptions).toEqual([]);
+    await act(async () => {
+      queryClient.setQueryData(
+        systemExecutionOptionsQueryKey(routing),
+        catalog,
+      );
+    });
+    await waitFor(() =>
+      expect(result.current.reasoningOptions.length).toBeGreaterThan(0),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+  });
+
   it("keeps the selected remembered provider branded while models load", () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     writeCachedProviderList(
