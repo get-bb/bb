@@ -109,7 +109,6 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       status: () => tunnel.status(),
     });
 
-
     bb.rpc.register(
       connectRpcContract,
       createRpcHandlers({

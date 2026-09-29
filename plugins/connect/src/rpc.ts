@@ -76,7 +76,6 @@ const desktopSessionSchema: z.ZodType<DesktopSession> = z
   })
   .strict();
 
-
 const machineCodeSchema: z.ZodType<MachineCode> = z
   .object({
     code: z.string(),

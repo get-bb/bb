@@ -258,47 +258,87 @@ describe("connect settings section", () => {
   });
 
   it.each(["machines", "mobile"] as const)(
-    "completes inline server setup in the %s workflow",
+    "completes account sign-in inline in the %s workflow",
     async (purpose) => {
       let currentStatus = status();
+      const account = fakeAccountSdk({
+        "login.start": () => pendingLogin(),
+        "login.poll": () => {
+          currentStatus = connected();
+          return { login: pendingLogin("signed-in"), status: signedInAccount };
+        },
+      });
+      const slot = renderSlot(
+        app.serverAccess[0]!,
+        { purpose },
+        {
+          sdk: account.sdk,
+          rpc: { status: () => currentStatus },
+        },
+      );
+      if (purpose === "mobile") {
+        fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+        expect(
+          slot.getByRole("button", { name: "Sign in to your bb account" }),
+        ).toBeTruthy();
+        fireEvent.click(slot.getByRole("button", { name: "Close" }));
+        expect(
+          slot.queryByRole("button", { name: "Sign in to your bb account" }),
+        ).toBeNull();
+        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
+      }
+      fireEvent.click(
+        await slot.findByRole("button", { name: "Sign in to your bb account" }),
+      );
+      await slot.findByText("K7QP-2M4X");
+      await slot.findByText(
+        "https://workstation.getbb.app",
+        {},
+        { timeout: 4000 },
+      );
+      expect(account.calls.map((call) => call.method)).toEqual([
+        "login.start",
+        "login.poll",
+      ]);
+      expect(slot.navigateCalls).toEqual([]);
+      expect(
+        slot.queryByRole("button", { name: "Sign in to your bb account" }),
+      ).toBeNull();
+      expect(Boolean(slot.queryByRole("button", { name: "Pair phone" }))).toBe(
+        purpose === "mobile",
+      );
+    },
+  );
+
+  it.each(["machines", "mobile"] as const)(
+    "turns remote access back on without signing in again in %s",
+    async (purpose) => {
+      let currentStatus = connected({ enabled: false, state: "disconnected" });
       const slot = renderSlot(
         app.serverAccess[0]!,
         { purpose },
         {
           rpc: {
             status: () => currentStatus,
-            pair: () => {
+            setRemoteAccess: () => {
               currentStatus = connected();
-              return null;
+              return currentStatus;
             },
           },
         },
       );
-      if (purpose === "mobile") {
-        await slot.findByRole("button", { name: "Set up" });
-        expect(
-          slot.queryByRole("textbox", { name: "Connect code" }),
-        ).toBeNull();
-        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
-        expect(
-          slot.getByRole("textbox", { name: "Connect code" }),
-        ).toBeTruthy();
-        fireEvent.click(slot.getByRole("button", { name: "Close" }));
-        expect(
-          slot.queryByRole("textbox", { name: "Connect code" }),
-        ).toBeNull();
-        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
-      }
-      await slot.findByRole("textbox", { name: "Connect code" });
-      fireEvent.change(slot.getByLabelText("Connect code"), {
-        target: { value: "K7QP-2M4X" },
-      });
+      await slot.findByText("Remote access is off");
+      expect(slot.queryByText(/reconnecting/i)).toBeNull();
+      expect(
+        slot.queryByRole("button", { name: "Sign in to your bb account" }),
+      ).toBeNull();
+      fireEvent.click(slot.getByRole("button", { name: "Turn on" }));
       await slot.findByText("https://workstation.getbb.app");
+      expect(slot.rpcCalls).toContainEqual({
+        method: "setRemoteAccess",
+        input: { enabled: true },
+      });
       expect(slot.navigateCalls).toEqual([]);
-      expect(slot.queryByRole("textbox", { name: "Connect code" })).toBeNull();
-      expect(Boolean(slot.queryByRole("button", { name: "Pair phone" }))).toBe(
-        purpose === "mobile",
-      );
     },
   );
 
@@ -696,9 +736,11 @@ describe("connect settings section", () => {
         expect(slot.queryByRole("textbox")).toBeNull();
         fireEvent.click(slot.getByRole("button", { name: "Set up" }));
         expect(
-          slot.getByRole("link", { name: "Get a connect code" }),
+          slot.getByRole("button", { name: "Sign in to your bb account" }),
         ).toBeTruthy();
-        expect(slot.getByRole("textbox")).toBeTruthy();
+        expect(
+          slot.getByRole("button", { name: "Have a pairing code?" }),
+        ).toBeTruthy();
       }
       expect(
         slot.queryByRole("link", { name: "Manage remote access" }),

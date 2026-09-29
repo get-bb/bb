@@ -1503,7 +1503,7 @@ describe("connect plugin", () => {
 
   async function loadPlugin(options?: {
     remoteIdentity?: { label: string; baseDomain: string };
-      beforeLoad?: (current: FakePluginHost) => Promise<void> | void;
+    beforeLoad?: (current: FakePluginHost) => Promise<void> | void;
   }): Promise<FakePluginHost> {
     account = new FakeAccount();
     host = createConnectFakeHost({ ...options, account });
@@ -2505,7 +2505,7 @@ describe("connect CLI", () => {
   });
 
   async function loadCli(options?: {
-      remoteIdentity?: { label: string; baseDomain: string };
+    remoteIdentity?: { label: string; baseDomain: string };
   }): Promise<FakePluginHost> {
     account = new FakeAccount();
     host = createConnectFakeHost({ ...options, account });
@@ -2737,7 +2737,6 @@ describe("connect CLI", () => {
       "http://sawyer-desktop.localhost:59342",
     );
   });
-
 
   it("machine-code prints the pairing payload as text or json", async () => {
     const current = await loadCli();

@@ -168,14 +168,7 @@ export function registerConnectCli(args: {
   hostResolver: ShareHostResolver;
   remoteAccess: RemoteAccessSwitch;
 }): void {
-  const {
-    bb,
-    tunnel,
-    account,
-    hosted,
-    hostResolver,
-    remoteAccess,
-  } = args;
+  const { bb, tunnel, account, hosted, hostResolver, remoteAccess } = args;
   bb.cli.register(
     defineCli({
       name: "connect",
@@ -443,7 +436,7 @@ export function registerConnectCli(args: {
         }),
         "machine-code": cliCommand({
           summary:
-            'Mint a one-time code that enrolls the bb mobile app as a connect machine (needs the "Mobile app" experiment)',
+            "Mint a one-time code that enrolls the bb mobile app as a connect machine",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {

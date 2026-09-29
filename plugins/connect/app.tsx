@@ -1392,7 +1392,6 @@ function ConnectedContent({
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
 
-
       <SharedPortsSection shares={status.shares} dimmed={false} />
 
       <TurnOffControls
@@ -1557,6 +1556,9 @@ function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
         Loading connection status…
       </p>
     );
+  if (status.paired && !status.enabled) {
+    return <OffContent status={status} onChanged={refetch} />;
+  }
   if (purpose === "mobile") {
     if (status.paired && status.state === "connected") {
       return (
@@ -1589,7 +1591,7 @@ function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
               <ReconnectingContent
                 status={status}
                 onChanged={refetch}
-                onDisconnected={refetch}
+                onTurnedOff={refetch}
               />
             ) : (
               <NotPairedContent
@@ -1611,7 +1613,7 @@ function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
       <ReconnectingContent
         status={status}
         onChanged={refetch}
-        onDisconnected={refetch}
+        onTurnedOff={refetch}
       />
     );
   return (
@@ -1634,7 +1636,7 @@ function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
         <ConnectedContent
           status={status}
           onChanged={refetch}
-          onDisconnected={refetch}
+          onTurnedOff={refetch}
         />
       ) : null}
     </section>
