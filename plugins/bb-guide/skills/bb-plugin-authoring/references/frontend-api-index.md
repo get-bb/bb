@@ -26,6 +26,15 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_SourceCode`
 - `experimental_Diff`
 - `useRpc`
+- `experimental_useRpcQuery` — shared, read-only plugin RPC query
+- `experimental_useRpcInfiniteQuery` — shared paginated plugin RPC query
+- `experimental_useHosts` — shared core host list
+- `experimental_useProjects` — shared core project list
+- `experimental_useThread` — shared core thread detail
+- `experimental_useEnvironment` — shared core environment detail
+- `experimental_useProjectSourceBranches` — shared project branch search
+- `experimental_usePlugins` — shared installed-plugin inventory
+- `experimental_usePluginCatalogSearch` — shared plugin catalog search
 - `useRealtime`
 - `useRealtimeConnectionState`
 - `useSettings`
@@ -273,3 +282,26 @@ Read the installed SDK declarations for the exact current signatures.
 - `StandardSchemaV1InferOutput`
 - `StandardSchemaV1Issue`
 - `StandardSchemaV1Result`
+
+## Shared query types
+
+- `ExperimentalCoreQueryOptions` — enables or disables a core read.
+- `ExperimentalCoreQueryResult` — SDK-shaped data, error, loading/fetching,
+  placeholder state, and refetch.
+- `ExperimentalHostsQueryOptions` — host type and creating-host inclusion.
+- `ExperimentalProjectsQueryOptions` — personal-project and thread inclusion.
+- `ExperimentalPluginCatalogSearchInput` — SDK catalog-search input without a
+  caller-owned abort signal.
+- `ExperimentalProjectSourceBranchesQueryOptions` — branch search text, limit,
+  and selected branch.
+- `ExperimentalProjectSourceBranchesQueryResult` — core query result with
+  `refreshFromRemote`.
+- `ExperimentalRpcQuerySignal` — plugin signal channel and optional payload
+  predicate selecting which changes invalidate a query.
+- `ExperimentalRpcQueryOptions` — contract, method, input, enabled state,
+  freshness, deadline, and realtime invalidation.
+- `ExperimentalRpcQueryResult` — RPC data, error, loading/fetching, and refetch.
+- `ExperimentalRpcInfiniteQueryOptions` — RPC query options plus an initial
+  page parameter, page-input builder, and next-page parameter reader.
+- `ExperimentalRpcInfiniteQueryResult` — loaded pages and page parameters,
+  next-page availability, next-page loading/error state, and fetchNextPage.

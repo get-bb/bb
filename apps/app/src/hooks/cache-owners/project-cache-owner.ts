@@ -131,8 +131,12 @@ export function applyProjectUpdateResult({
   project,
   queryClient,
 }: ApplyProjectCreateResultArgs): void {
-  queryClient.setQueryData<ProjectResponse[]>(projectsQueryKey(), (projects) =>
-    projects?.map((current) => (current.id === project.id ? project : current)),
+  queryClient.setQueriesData<ProjectResponse[]>(
+    { queryKey: projectsQueryKey() },
+    (projects) =>
+      projects?.map((current) =>
+        current.id === project.id ? { ...current, ...project } : current,
+      ),
   );
   queryClient.setQueryData<SidebarBootstrapResponse>(
     sidebarNavigationQueryKey(),
@@ -152,8 +156,8 @@ export function applyProjectDeleteResult({
   projectId,
   queryClient,
 }: ApplyProjectDeleteResultArgs): void {
-  queryClient.setQueryData<ProjectResponse[]>(
-    projectsQueryKey(),
+  queryClient.setQueriesData<ProjectResponse[]>(
+    { queryKey: projectsQueryKey() },
     (currentProjects) =>
       currentProjects
         ? removeProjectFromProjectList(currentProjects, projectId)

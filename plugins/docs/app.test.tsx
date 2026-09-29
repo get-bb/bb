@@ -509,16 +509,25 @@ describe("Docs nav panel", () => {
         return { path: input.path };
       },
     };
-    const page = renderSlot(
-      docsRegistration,
+    function NotebookViews({ subPath }: { subPath: string }) {
+      return (
+        <>
+          <section data-testid="notebook-page">
+            <docsRegistration.component subPath={subPath} />
+          </section>
+          <section data-testid="notebook-navigation">
+            <navigationView.component subPath={subPath} />
+          </section>
+        </>
+      );
+    }
+    const slot = renderSlot(
+      { ...docsRegistration, component: NotebookViews },
       { subPath: "personal/personal.md" },
       { rpc },
     );
-    const navigation = renderSlot(
-      navigationRegistration,
-      { subPath: "personal/personal.md" },
-      { rpc },
-    );
+    const page = within(slot.getByTestId("notebook-page"));
+    const navigation = within(slot.getByTestId("notebook-navigation"));
     await waitFor(() => expect(pending).toHaveLength(1));
     expect(pending.map((request) => request.vaultId)).toEqual(["personal"]);
     for (const request of pending.splice(0))
@@ -526,16 +535,15 @@ describe("Docs nav panel", () => {
     await page.findByText("Personal document");
     await navigation.findByText("Personal note");
 
-    await page.emitRealtime("vault-changed", { vaultId: "personal" });
-    await navigation.emitRealtime("vault-changed", { vaultId: "personal" });
+    await slot.emitRealtime("vault-changed", { vaultId: "personal" });
+    await slot.emitRealtime("vault-changed", { vaultId: "personal" });
     await waitFor(() => expect(pending).toHaveLength(1));
     const latePersonalRequests = pending.splice(0);
     expect(latePersonalRequests.map((request) => request.vaultId)).toEqual([
       "personal",
     ]);
 
-    page.rerender(<docsRegistration.component subPath="work/work.md" />);
-    navigation.rerender(<navigationView.component subPath="work/work.md" />);
+    slot.rerender(<NotebookViews subPath="work/work.md" />);
     expect(page.queryByText("Personal document")).toBeNull();
     expect(navigation.queryByText("Personal note")).toBeNull();
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -556,7 +564,7 @@ describe("Docs nav panel", () => {
 
     fireEvent.click(navigation.getByRole("button", { name: "New note" }));
     await waitFor(() =>
-      expect(navigation.rpcCalls).toContainEqual({
+      expect(slot.rpcCalls).toContainEqual({
         method: "createNote",
         input: { vaultId: "work", parent: "", name: "Untitled" },
       }),

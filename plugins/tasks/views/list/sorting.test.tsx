@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withReadBatches } from "../../read-test-fixtures.js";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -75,7 +76,7 @@ function renderList() {
     app.navPanels[0]!,
     { subPath: PROJECT_ID },
     {
-      rpc: {
+      rpc: withReadBatches({
         listProjects: () => ({ projects: [project] }),
         listFolders: () => ({ folders: [] }),
         listPresets: () => ({ presets: [] }),
@@ -85,7 +86,7 @@ function renderList() {
         listTaskThreads: () => ({ taskThreads: [] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),
-      },
+      }),
     },
   );
 }

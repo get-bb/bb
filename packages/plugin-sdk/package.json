@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -121,6 +121,12 @@
       "types": "./bundled-types/bb-plugin-sdk-testing-host.d.ts",
       "import": "./dist/testing/host.js",
       "default": "./dist/testing/host.js"
+    },
+    "./internal/rpc-query-hooks": {
+      "source": "./src/internal/rpc-query-hooks.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-rpc-query-hooks.d.ts",
+      "import": "./dist/internal/rpc-query-hooks.js",
+      "default": "./dist/internal/rpc-query-hooks.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
@@ -134,6 +140,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
     "cross-spawn": "^7.0.6",
     "zod": "^4.3.6"
   },

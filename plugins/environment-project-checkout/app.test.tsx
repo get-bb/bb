@@ -1,8 +1,73 @@
+import type {
+  PluginBrowserBbSdk,
+  PluginEnvironmentProviderInputsProps,
+} from "@get-bb/plugin-sdk/app";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import {
+  loadPluginApp,
+  renderSlot as renderRawSlot,
+} from "@get-bb/plugin-sdk/testing/app";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
+
+type BranchData = Awaited<
+  ReturnType<PluginBrowserBbSdk["projects"]["branches"]>
+>;
+function branchSdk(overrides: Partial<BranchData> = {}) {
+  const data: BranchData = {
+    branches: ["main"],
+    remoteBranches: [],
+    branchesTruncated: false,
+    remoteBranchesTruncated: false,
+    selectedBranch: null,
+    checkout: { kind: "branch", branchName: "main", headSha: null },
+    defaultBranch: "main",
+    originDefaultBranch: "main",
+    defaultWorktreeBaseBranch: "main",
+    defaultBranchRelation: "equal",
+    isWorktree: false,
+    hasUncommittedChanges: false,
+    operation: { kind: "none" },
+    ...overrides,
+  };
+  return {
+    projects: {
+      branches: async () => data,
+      list: async (): Promise<
+        Awaited<ReturnType<PluginBrowserBbSdk["projects"]["list"]>>
+      > => [
+        {
+          id: "project-1",
+          name: "Project",
+          kind: "standard",
+          gitRemoteUrl: null,
+          createdAt: 0,
+          updatedAt: 0,
+          sources: [
+            {
+              id: "source-1",
+              projectId: "project-1",
+              type: "local_path",
+              hostId: "host-a",
+              path: "/project",
+              isDefault: true,
+              createdAt: 0,
+              updatedAt: 0,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+function renderSlot(
+  ...[registration, props, options]: Parameters<
+    typeof renderRawSlot<PluginEnvironmentProviderInputsProps>
+  >
+) {
+  return renderRawSlot(registration, props, { sdk: branchSdk(), ...options });
+}
 
 const app = await loadPluginApp(() => import("./app"));
 const { readCheckoutInputs } = await import("./app");
@@ -35,17 +100,22 @@ describe("checkout inputs control", () => {
         onChange,
       },
       {
-        branchesState: {
+        sdk: branchSdk({
           branches: ["local-only"],
           remoteBranches: ["origin/main", "origin/release"],
-        },
+        }),
       },
     );
     const trigger = slot.getByRole("combobox", { name: "Branch" });
     expect(trigger.textContent).toContain("Default branch");
     expect(trigger.hasAttribute("disabled")).toBe(false);
     fireEvent.click(trigger);
-    fireEvent.click(await slot.findByRole("button", { name: "Checkout" }));
+    await waitFor(() =>
+      expect(
+        slot.getByRole("button", { name: "Checkout" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Checkout" }));
     fireEvent.click(await slot.findByRole("button", { name: "release" }));
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
@@ -66,16 +136,18 @@ describe("checkout inputs control", () => {
     });
   });
 
-  it("renders the current checkout chip", () => {
+  it("renders the current checkout chip", async () => {
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
       target: { kind: "existing-host", hostId: "host-a" },
       value: null,
       onChange: vi.fn(),
     });
-    expect(
-      slot.getByRole("combobox", { name: "Branch" }).textContent,
-    ).toContain("Current (main)");
+    await waitFor(() =>
+      expect(
+        slot.getByRole("combobox", { name: "Branch" }).textContent,
+      ).toContain("Current (main)"),
+    );
   });
 
   it("renders an existing branch pick on the chip", () => {
@@ -112,10 +184,15 @@ describe("checkout inputs control", () => {
         value: { path: "/srv/other-checkout" },
         onChange,
       },
-      { branchesState: { branches: ["main", "release"] } },
+      { sdk: branchSdk({ branches: ["main", "release"] }) },
     );
     fireEvent.click(slot.getByRole("combobox", { name: "Branch" }));
-    fireEvent.click(await slot.findByRole("button", { name: "Checkout" }));
+    await waitFor(() =>
+      expect(
+        slot.getByRole("button", { name: "Checkout" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Checkout" }));
     fireEvent.click(await slot.findByRole("button", { name: "release" }));
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
@@ -152,15 +229,21 @@ describe("checkout inputs control", () => {
         value: null,
         onChange,
       },
-      { branchesState: { branches: ["main", "release"] } },
+      { sdk: branchSdk({ branches: ["main", "release"] }) },
     );
     const trigger = slot.getByRole("combobox", { name: "Branch" });
     fireEvent.click(trigger);
-    fireEvent.click(await slot.findByRole("button", { name: "Checkout" }));
+    await waitFor(() =>
+      expect(
+        slot.getByRole("button", { name: "Checkout" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Checkout" }));
     const search = await slot.findByRole("textbox", {
       name: "Search branches",
     });
     fireEvent.change(search, { target: { value: "release" } });
+    await slot.findByRole("button", { name: "release" });
     fireEvent.keyDown(search, { key: "Enter" });
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
@@ -179,7 +262,7 @@ describe("checkout inputs control", () => {
         value: { branch: { kind: "new", baseBranch: "main" } },
         onChange,
       },
-      { branchesState: { branches: ["main", "release"] } },
+      { sdk: branchSdk({ branches: ["main", "release"] }) },
     );
     const trigger = slot.getByRole("combobox", { name: "Branch" });
     fireEvent.click(trigger);
@@ -187,6 +270,7 @@ describe("checkout inputs control", () => {
       name: "Search branches",
     });
     fireEvent.change(search, { target: { value: "release" } });
+    await slot.findByRole("button", { name: "release" });
     fireEvent.keyDown(search, { key: "Enter" });
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
@@ -206,8 +290,10 @@ describe("checkout inputs control", () => {
         onChange,
       },
       {
-        branchesState: { branches: ["main", "release"] },
-        checkoutState: { dirty: true },
+        sdk: branchSdk({
+          branches: ["main", "release"],
+          hasUncommittedChanges: true,
+        }),
       },
     );
     await waitFor(() => {
@@ -226,9 +312,7 @@ describe("checkout inputs control", () => {
     expect(newBranch?.getAttribute("title")).toBe(
       "Checkout blocked by uncommitted changes",
     );
-    expect(
-      slot.getByRole("status").textContent,
-    ).toBe(
+    expect(slot.getByRole("status").textContent).toBe(
       "Commit or stash the uncommitted changes in this checkout to create or switch branches.",
     );
     expect(slot.queryByRole("button", { name: "release" })).toBeNull();
@@ -244,11 +328,7 @@ describe("checkout inputs control", () => {
         value: null,
         onChange: vi.fn(),
       },
-      {
-        checkoutState: {
-          operation: { kind: "merge", hasConflicts: true },
-        },
-      },
+      { sdk: branchSdk({ operation: { kind: "merge", hasConflicts: true } }) },
     );
     fireEvent.click(slot.getByRole("combobox", { name: "Branch" }));
     expect(
@@ -256,7 +336,7 @@ describe("checkout inputs control", () => {
         "disabled",
       ),
     ).toBe(true);
-    expect(slot.getByRole("status").textContent).toBe(
+    await slot.findByText(
       "Resolve the conflicts and finish or abort the Git operation to change branches.",
     );
   });
@@ -272,17 +352,19 @@ describe("checkout inputs control", () => {
         onChange,
       },
       {
-        branchesState: {
+        sdk: branchSdk({
           branches: ["main", "release"],
           remoteBranches: ["origin/main"],
-        },
+        }),
       },
     );
     const trigger = slot.getByRole("combobox", { name: "Branch" });
     fireEvent.click(trigger);
 
     expect(await slot.findByText("Start from:")).toBeTruthy();
-    expect(slot.getAllByTitle("Current: main")).toHaveLength(2);
+    await waitFor(() =>
+      expect(slot.getAllByTitle("Current: main")).toHaveLength(2),
+    );
     expect(slot.getByTitle("New branch")).toBeTruthy();
     expect(slot.getByTitle("Checkout an existing branch")).toBeTruthy();
     expect(slot.queryByRole("textbox", { name: "Search branches" })).toBeNull();

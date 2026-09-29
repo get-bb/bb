@@ -109,7 +109,8 @@ export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
 
 type HostsQueryKey =
   | readonly [typeof HOSTS_QUERY_KEY]
-  | readonly [typeof HOSTS_QUERY_KEY, true];
+  | readonly [typeof HOSTS_QUERY_KEY, true]
+  | readonly [typeof HOSTS_QUERY_KEY, boolean, "persistent" | "ephemeral"];
 type HostQueryId = string | null | undefined;
 type HostQueryKey = readonly [typeof HOST_QUERY_KEY, HostQueryId];
 type AllHostQueryKeyPrefix = readonly [typeof HOST_QUERY_KEY];
@@ -123,7 +124,12 @@ type HostCloneDefaultPathQueryKey = readonly [
   HostQueryId,
   string | null,
 ];
-type ProjectsQueryKey = readonly [typeof PROJECTS_QUERY_KEY];
+type ProjectsQueryKey =
+  | readonly [typeof PROJECTS_QUERY_KEY]
+  | readonly [
+      typeof PROJECTS_QUERY_KEY,
+      { includePersonal: boolean; include?: "threads" },
+    ];
 type AllProjectPathsQueryKeyPrefix = readonly [typeof PROJECT_PATHS_QUERY_KEY];
 type AllProjectSourceBranchesQueryKeyPrefix = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
@@ -510,7 +516,11 @@ interface ProjectDefaultExecutionOptionsQueryKeyArgs {
   projectId: string;
 }
 
-export function hostsQueryKey(includeCreating = false): HostsQueryKey {
+export function hostsQueryKey(
+  includeCreating = false,
+  type?: "persistent" | "ephemeral",
+): HostsQueryKey {
+  if (type !== undefined) return [HOSTS_QUERY_KEY, includeCreating, type];
   return includeCreating ? [HOSTS_QUERY_KEY, true] : [HOSTS_QUERY_KEY];
 }
 
@@ -536,8 +546,13 @@ export function hostCloneDefaultPathQueryKey(
   return [HOST_CLONE_DEFAULT_PATH_QUERY_KEY, hostId, projectId];
 }
 
-export function projectsQueryKey(): ProjectsQueryKey {
-  return [PROJECTS_QUERY_KEY];
+export function projectsQueryKey(
+  includePersonal = false,
+  include?: "threads",
+): ProjectsQueryKey {
+  return includePersonal || include
+    ? [PROJECTS_QUERY_KEY, { includePersonal, ...(include ? { include } : {}) }]
+    : [PROJECTS_QUERY_KEY];
 }
 
 export function projectPathsQueryKey(

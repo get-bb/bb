@@ -4,6 +4,7 @@ import {
   UrlLink as UrlLink,
   useRealtime,
   useRpc,
+  experimental_useRpcQuery,
 } from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
@@ -567,23 +568,11 @@ function MobilePairingCard({
 }
 
 function useMobilePairingEnabled(): boolean {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    rpc.call("mobilePairing").then(
-      (result) => {
-        if (!cancelled) setEnabled(result.enabled);
-      },
-      () => {
-        if (!cancelled) setEnabled(false);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [rpc]);
-  return enabled;
+  const query = experimental_useRpcQuery<
+    typeof connectRpcContract,
+    "mobilePairing"
+  >({ method: "mobilePairing", input: null });
+  return query.data?.enabled ?? false;
 }
 
 function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
@@ -1269,30 +1258,19 @@ function ReconnectingContent({
 }
 
 function ConnectSettingsSection() {
-  const rpc = useRpc<typeof connectRpcContract>();
+  const query = experimental_useRpcQuery<typeof connectRpcContract, "status">({
+    method: "status",
+    input: null,
+  });
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const refetch = useCallback(() => {
-    rpc.call("status").then(
-      (result) => {
-        const next = asStatus(result);
-        if (next !== null) {
-          setStatus(next);
-          setLoadError(null);
-        } else {
-          setLoadError("Unexpected status payload.");
-        }
-      },
-      (error: unknown) => setLoadError(errorText(error)),
-    );
-  }, [rpc]);
-
+  const refetch = query.refetch;
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    if (query.data !== undefined) setStatus(query.data);
+    setLoadError(query.error?.message ?? null);
+  }, [query.data, query.error]);
 
   useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
     const next = asStatus(payload);

@@ -1339,7 +1339,7 @@ describe("Theme Preview", () => {
 
     await waitFor(() => expect(catalogCalls).toBe(2));
     expect(
-      screen.getByRole("combobox", { name: /Endless Color/i }),
+      await screen.findByRole("combobox", { name: /Endless Color/i }),
     ).toBeDefined();
     expect(catalogCalls).toBe(2);
   });
@@ -1365,6 +1365,12 @@ describe("Theme Preview", () => {
       await vi.advanceTimersByTimeAsync(20_000);
     });
 
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
     expect(catalogCalls).toBe(2);
     expect(
       screen.getByRole("combobox", { name: /Endless Color/i }),

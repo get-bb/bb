@@ -1,3 +1,7 @@
+import type {
+  PluginBrowserBbSdk,
+  PluginEnvironmentProviderInputsProps,
+} from "@get-bb/plugin-sdk/app";
 // @vitest-environment jsdom
 import {
   act,
@@ -7,9 +11,70 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import {
+  loadPluginApp,
+  renderSlot as renderRawSlot,
+} from "@get-bb/plugin-sdk/testing/app";
 import type { JsonValue } from "@get-bb/plugin-sdk/app";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
+
+type BranchData = Awaited<
+  ReturnType<PluginBrowserBbSdk["projects"]["branches"]>
+>;
+function branchSdk(overrides: Partial<BranchData> = {}) {
+  const data: BranchData = {
+    branches: ["main"],
+    remoteBranches: [],
+    branchesTruncated: false,
+    remoteBranchesTruncated: false,
+    selectedBranch: null,
+    checkout: { kind: "branch", branchName: "main", headSha: null },
+    defaultBranch: "main",
+    originDefaultBranch: "main",
+    defaultWorktreeBaseBranch: "main",
+    defaultBranchRelation: "equal",
+    isWorktree: false,
+    hasUncommittedChanges: false,
+    operation: { kind: "none" },
+    ...overrides,
+  };
+  return {
+    projects: {
+      branches: async () => data,
+      list: async (): Promise<
+        Awaited<ReturnType<PluginBrowserBbSdk["projects"]["list"]>>
+      > => [
+        {
+          id: "project-1",
+          name: "Project",
+          kind: "standard",
+          gitRemoteUrl: null,
+          createdAt: 0,
+          updatedAt: 0,
+          sources: [
+            {
+              id: "source-1",
+              projectId: "project-1",
+              type: "local_path",
+              hostId: "host-a",
+              path: "/project",
+              isDefault: true,
+              createdAt: 0,
+              updatedAt: 0,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+function renderSlot(
+  ...[registration, props, options]: Parameters<
+    typeof renderRawSlot<PluginEnvironmentProviderInputsProps>
+  >
+) {
+  return renderRawSlot(registration, props, { sdk: branchSdk(), ...options });
+}
 
 const app = await loadPluginApp(() => import("./app"));
 const { selectedBranchName, selectedExistingPath, worktreePathLabel } =
@@ -56,12 +121,11 @@ function render(
     {
       rpc: {
         listExistingWorktrees: () => ({ worktrees }),
-        defaultBaseBranch: () => ({ branch: "main" }),
       },
-      branchesState: {
+      sdk: branchSdk({
         branches: ["main", "release"],
         remoteBranches: ["origin/main"],
-      },
+      }),
     },
   );
   return { slot, onChange };
@@ -103,13 +167,13 @@ describe("worktree inputs control", () => {
       within(slot.getByRole("dialog")).getByText("Branch from:"),
     ).toBeTruthy();
     expect(slot.getByRole("button", { name: "Default branch" })).toBeTruthy();
-    expect(slot.getByRole("button", { name: "release" })).toBeTruthy();
+    expect(await slot.findByRole("button", { name: "release" })).toBeTruthy();
   });
 
   it("names a picked branch and keeps the worktree new", async () => {
     const { slot, onChange } = render({ branch: { kind: "default" } });
     await openPicker(slot);
-    fireEvent.click(slot.getByRole("button", { name: "release" }));
+    fireEvent.click(await slot.findByRole("button", { name: "release" }));
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
       value: { branch: { kind: "named", name: "release" } },
@@ -122,7 +186,7 @@ describe("worktree inputs control", () => {
     fireEvent.change(slot.getByRole("textbox", { name: "Search branches" }), {
       target: { value: "origin/main" },
     });
-    fireEvent.click(slot.getByRole("button", { name: "origin/main" }));
+    fireEvent.click(await slot.findByRole("button", { name: "origin/main" }));
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
       value: { branch: { kind: "named", name: "origin/main" } },
@@ -153,7 +217,6 @@ describe("worktree inputs control", () => {
       },
       {
         rpc: {
-          defaultBaseBranch: () => ({ branch: "main" }),
           listExistingWorktrees: () => new Promise(() => {}),
         },
       },
@@ -283,7 +346,6 @@ describe("worktree inputs control", () => {
       {
         rpc: {
           listExistingWorktrees: list,
-          defaultBaseBranch: () => ({ branch: "main" }),
         },
       },
     );
@@ -329,22 +391,24 @@ describe("worktree discovery scope", () => {
       };
       const slot = renderSlot(inputsSlot(), props, {
         rpc: {
-          defaultBaseBranch: () => ({ branch: "main" }),
           listExistingWorktrees: () =>
             new Promise<{ worktrees: JsonValue[] }>((resolve, reject) => {
               requests.push({ resolve, reject });
             }),
         },
-        branchesState: { branches: ["main"] },
+        sdk: branchSdk({ branches: ["main"] }),
       });
       expect(requests).toHaveLength(0);
       await openPicker(slot);
       expect(requests).toHaveLength(0);
       fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
+      await waitFor(() => expect(requests).toHaveLength(1));
       await act(async () => requests[0]!.resolve({ worktrees: WORKTREES }));
-      expect(slot.getByRole("button", { name: /app-feature/u })).toBeTruthy();
+      expect(
+        await slot.findByRole("button", { name: /app-feature/u }),
+      ).toBeTruthy();
       fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
-      expect(requests).toHaveLength(2);
+      await waitFor(() => expect(requests).toHaveLength(2));
 
       const Component = inputsSlot().component;
       slot.rerender(
@@ -358,9 +422,9 @@ describe("worktree discovery scope", () => {
         />,
       );
       expect(slot.queryByRole("button", { name: /app-feature/u })).toBeNull();
-      expect(requests).toHaveLength(2);
+      await waitFor(() => expect(requests).toHaveLength(2));
       fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
-      expect(requests).toHaveLength(3);
+      await waitFor(() => expect(requests).toHaveLength(3));
       await act(async () =>
         requests[2]!.resolve({
           worktrees: [
@@ -373,7 +437,9 @@ describe("worktree discovery scope", () => {
           ],
         }),
       );
-      expect(slot.getByRole("button", { name: /new-target/u })).toBeTruthy();
+      expect(
+        await slot.findByRole("button", { name: /new-target/u }),
+      ).toBeTruthy();
       await act(async () => {
         if (failOldRequest)
           requests[1]!.reject(new Error("old machine disconnected"));
@@ -393,7 +459,7 @@ describe("default branch label scope", () => {
   it.each(["machine", "project"])(
     "ignores a previous %s label without changing default inputs",
     async (change) => {
-      const requests: ((value: { branch: string | null }) => void)[] = [];
+      const requests: ((value: BranchData) => void)[] = [];
       const onChange = vi.fn();
       const props = {
         projectId: "project-1",
@@ -403,13 +469,13 @@ describe("default branch label scope", () => {
       };
       const list = vi.fn(() => ({ worktrees: WORKTREES }));
       const slot = renderSlot(inputsSlot(), props, {
-        rpc: {
-          defaultBaseBranch: () =>
-            new Promise<{ branch: string | null }>((resolve) =>
-              requests.push(resolve),
-            ),
-          listExistingWorktrees: list,
+        sdk: {
+          projects: {
+            branches: () =>
+              new Promise<BranchData>((resolve) => requests.push(resolve)),
+          },
         },
+        rpc: { listExistingWorktrees: list },
       });
       expect(slot.getByRole("combobox").textContent).toContain(
         "Branch from:default",
@@ -425,13 +491,28 @@ describe("default branch label scope", () => {
           }}
         />,
       );
-      await act(async () => requests[1]!({ branch: "origin/main" }));
-      expect(slot.getByRole("combobox").textContent).toContain(
-        "Branch from:origin/main",
+      await waitFor(() => expect(requests).toHaveLength(2));
+      await act(async () =>
+        requests[1]!({
+          ...(await branchSdk().projects.branches()),
+          defaultWorktreeBaseBranch: "origin/main",
+        }),
       );
-      await act(async () => requests[0]!({ branch: "old-branch" }));
-      expect(slot.getByRole("combobox").textContent).toContain(
-        "Branch from:origin/main",
+      await waitFor(() =>
+        expect(slot.getByRole("combobox").textContent).toContain(
+          "Branch from:origin/main",
+        ),
+      );
+      await act(async () =>
+        requests[0]!({
+          ...(await branchSdk().projects.branches()),
+          defaultWorktreeBaseBranch: "old-branch",
+        }),
+      );
+      await waitFor(() =>
+        expect(slot.getByRole("combobox").textContent).toContain(
+          "Branch from:origin/main",
+        ),
       );
       expect(onChange).not.toHaveBeenCalled();
       expect(list).not.toHaveBeenCalled();

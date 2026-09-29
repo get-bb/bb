@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
-  useRealtime,
+  experimental_useRpcQuery,
   useRpc,
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
@@ -59,31 +59,33 @@ function ConcurrencyLimitSettings() {
     setDrafts(draftsFor(next));
   }, []);
 
-  const refetch = useCallback(() => {
-    if (savingRef.current) return;
-    void rpc.call("getConfiguration").then(
-      (configuration) => {
-        if (!activeRef.current || savingRef.current) return;
-        applyView(configuration);
-        setError(null);
-        setSaveState("saved");
-      },
-      (loadError: unknown) => {
-        if (!activeRef.current) return;
-        setError(errorMessage(loadError));
-        setSaveState("error");
-      },
-    );
-  }, [applyView, rpc]);
-
+  const query = experimental_useRpcQuery<
+    typeof concurrencyLimitRpcContract,
+    "getConfiguration"
+  >({
+    method: "getConfiguration",
+    input: null,
+    enabled: saveState !== "saving",
+    realtime: [{ channel: CONFIGURATION_CHANGED_CHANNEL }],
+  });
   useEffect(() => {
     activeRef.current = true;
-    refetch();
     return () => {
       activeRef.current = false;
     };
-  }, [refetch]);
-  useRealtime(CONFIGURATION_CHANGED_CHANNEL, refetch);
+  }, []);
+  useEffect(() => {
+    if (savingRef.current) return;
+    if (query.data) {
+      applyView(query.data);
+      setError(null);
+      setSaveState("saved");
+    }
+    if (query.error) {
+      setError(errorMessage(query.error));
+      setSaveState("error");
+    }
+  }, [query.data, query.error, applyView]);
 
   async function save(next: ConfigurationInput): Promise<void> {
     savingRef.current = true;

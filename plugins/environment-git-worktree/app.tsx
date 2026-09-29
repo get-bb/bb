@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
   BranchPickerRow,
@@ -31,14 +24,16 @@ import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   definePluginApp,
-  experimental_useBranches,
-  useRpc,
+  experimental_useProjects,
+  experimental_useProjectSourceBranches,
+  experimental_useRpcQuery,
   type JsonValue,
   type PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
-import type { DiscoveredWorktree } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import type { WorktreeInputs, worktreeRpcContract } from "./server.js";
+
+const EMPTY_BRANCHES: string[] = [];
 
 const DEFAULT_INPUTS: WorktreeInputs = { branch: { kind: "default" } };
 const NEW_WORKTREE_LABEL = "New worktree";
@@ -87,26 +82,6 @@ function WorktreeInputsControl({
   onChange,
 }: PluginEnvironmentProviderInputsProps) {
   const hostId = target.kind === "existing-host" ? target.hostId : null;
-  const rpc = useRpc<typeof worktreeRpcContract>();
-  const [worktreeResult, setWorktreeResult] = useState<{
-    projectId: string;
-    hostId: string;
-    worktrees: readonly DiscoveredWorktree[];
-    loading: boolean;
-    error: boolean;
-  } | null>(null);
-  const worktreeRequest = useRef(0);
-  const scopedWorktreeResult =
-    worktreeResult?.projectId === projectId && worktreeResult?.hostId === hostId
-      ? worktreeResult
-      : null;
-  const worktrees = scopedWorktreeResult?.worktrees ?? [];
-  const [baseResult, setBaseResult] = useState<{
-    projectId: string;
-    hostId: string | null;
-    branch: string | null;
-  } | null>(null);
-  const [baseRefresh, setBaseRefresh] = useState(0);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -119,78 +94,50 @@ function WorktreeInputsControl({
     existingPath === null ? "new" : "existing";
   const [intent, setIntent] = useState<WorktreeIntent>(selectedIntent);
 
-  const branchState = experimental_useBranches({
-    hostId,
-    projectId,
-    query: intent === "new" ? deferredQuery.trim().toLowerCase() : "",
+  const projects = experimental_useProjects({
+    enabled: hostId === null && projectId !== null,
   });
+  const sources = projects.data?.find(
+    (project) => project.id === projectId,
+  )?.sources;
+  const source =
+    sources?.find(
+      (source) => source.type === "local_path" && source.isDefault,
+    ) ?? sources?.find((source) => source.type === "local_path");
+  const branchesQuery = experimental_useProjectSourceBranches(
+    projectId,
+    hostId ?? source?.hostId ?? null,
+    {
+      query: intent === "new" ? deferredQuery.trim().toLowerCase() : "",
+    },
+  );
+  const branches = branchesQuery.data?.branches ?? EMPTY_BRANCHES;
+  const remoteBranches = branchesQuery.data?.remoteBranches ?? EMPTY_BRANCHES;
 
   useEffect(() => {
     if (value === null) onChange({ status: "ready", value: DEFAULT_INPUTS });
   }, [value, onChange]);
 
-  const refreshWorktrees = useCallback(async () => {
-    const request = ++worktreeRequest.current;
-    if (projectId === null || hostId === null) {
-      setWorktreeResult(null);
-      return;
-    }
-    setWorktreeResult({
-      projectId,
-      hostId,
-      worktrees: [],
-      loading: true,
-      error: false,
-    });
-    try {
-      const result = await rpc.call("listExistingWorktrees", {
-        projectId,
-        hostId,
-      });
-      if (request === worktreeRequest.current) {
-        setWorktreeResult({
-          projectId,
-          hostId,
-          worktrees: result.worktrees,
-          loading: false,
-          error: false,
-        });
-      }
-    } catch {
-      if (request === worktreeRequest.current)
-        setWorktreeResult({
-          projectId,
-          hostId,
-          worktrees: [],
-          loading: false,
-          error: true,
-        });
-    }
-  }, [projectId, hostId, rpc]);
-
-  useEffect(() => {
-    return () => {
-      worktreeRequest.current += 1;
-    };
-  }, [refreshWorktrees]);
-
-  useEffect(() => {
-    if (projectId === null || branchName !== null || existingPath !== null)
-      return;
-    let active = true;
-    void rpc
-      .call("defaultBaseBranch", { projectId, hostId })
-      .then((result) => {
-        if (active) setBaseResult({ projectId, hostId, branch: result.branch });
-      })
-      .catch(() => {
-        if (active) setBaseResult({ projectId, hostId, branch: null });
-      });
-    return () => {
-      active = false;
-    };
-  }, [projectId, hostId, branchName, existingPath, baseRefresh, rpc]);
-
+  const [worktreeTarget, setWorktreeTarget] = useState<{
+    projectId: string;
+    hostId: string;
+  } | null>(null);
+  const worktreeQuery = experimental_useRpcQuery<
+    typeof worktreeRpcContract,
+    "listExistingWorktrees"
+  >({
+    method: "listExistingWorktrees",
+    input: { projectId: projectId ?? "", hostId: hostId ?? "" },
+    enabled:
+      open &&
+      intent === "existing" &&
+      projectId !== null &&
+      hostId !== null &&
+      worktreeTarget?.projectId === projectId &&
+      worktreeTarget?.hostId === hostId,
+    staleTime: 0,
+  });
+  const worktrees = worktreeQuery.data?.worktrees ?? [];
   useEffect(() => {
     if (open) setIntent(selectedIntent);
   }, [open, selectedIntent]);
@@ -202,10 +149,10 @@ function WorktreeInputsControl({
   const branchOptions = useMemo(
     () =>
       filterBranches(
-        [...new Set([...branchState.branches, ...branchState.remoteBranches])],
+        [...new Set([...branches, ...remoteBranches])],
         deferredQuery,
       ),
-    [branchState.branches, branchState.remoteBranches, deferredQuery],
+    [branches, remoteBranches, deferredQuery],
   );
 
   const worktreeOptions = worktrees.filter((worktree) =>
@@ -214,10 +161,7 @@ function WorktreeInputsControl({
     ),
   );
 
-  const defaultBase =
-    baseResult?.projectId === projectId && baseResult?.hostId === hostId
-      ? baseResult.branch
-      : null;
+  const defaultBase = branchesQuery.data?.defaultWorktreeBaseBranch ?? null;
   const baseBranchLabel = branchName ?? defaultBase ?? "default";
   const triggerPrefix =
     existingPath === null ? BRANCH_FROM_PREFIX : REUSE_PREFIX;
@@ -231,10 +175,7 @@ function WorktreeInputsControl({
       blurActiveKeyboardInputWithin(inputRef.current);
       setQuery("");
     } else {
-      void branchState
-        .refresh()
-        .then(() => setBaseRefresh((value) => value + 1))
-        .catch(() => undefined);
+      void branchesQuery.refreshFromRemote().catch(() => undefined);
     }
     setOpen(nextOpen);
   };
@@ -349,7 +290,15 @@ function WorktreeInputsControl({
               onSelect={() => {
                 setIntent("existing");
                 setQuery("");
-                void refreshWorktrees();
+                if (projectId !== null && hostId !== null) {
+                  if (
+                    intent === "existing" &&
+                    worktreeTarget?.projectId === projectId &&
+                    worktreeTarget?.hostId === hostId
+                  )
+                    void worktreeQuery.refetch();
+                  else setWorktreeTarget({ projectId, hostId });
+                }
               }}
             >
               <span className="min-w-0 flex-1 truncate">
@@ -385,7 +334,7 @@ function WorktreeInputsControl({
                 ))}
                 {branchOptions.length === 0 ? (
                   <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                    {branchState.isLoading
+                    {branchesQuery.isFetching
                       ? "Loading branches..."
                       : "No branches found."}
                   </p>
@@ -396,11 +345,11 @@ function WorktreeInputsControl({
                 <BranchPickerSectionHeader label="Existing worktree:" />
                 {worktreeOptions.length === 0 ? (
                   <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                    {scopedWorktreeResult?.loading
+                    {worktreeQuery.isFetching
                       ? "Loading worktrees..."
-                      : scopedWorktreeResult?.error
+                      : worktreeQuery.error
                         ? "Could not load worktrees. Select Existing worktree to retry."
-                        : scopedWorktreeResult === null
+                        : worktreeQuery.data === undefined
                           ? "Select Existing worktree to load worktrees."
                           : worktrees.length === 0
                             ? "No existing worktrees found."

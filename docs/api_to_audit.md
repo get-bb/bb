@@ -3525,3 +3525,87 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
+## `experimental_useRpcQuery` / `experimental_useRpcInfiniteQuery` (`@get-bb/plugin-sdk/app`)
+
+Shared read-only plugin RPC queries, backed by the app QueryClient and the same
+realtime connection as `useRealtime`. A shared contract supplies method/input
+inference and optional local input validation. Callers may instead supply explicit
+contract/method type arguments and omit the runtime contract to keep schema code
+out of the frontend bundle; server input/output validation remains authoritative. The server validates/transforms output;
+the client preserves that result without applying output transformations twice. Cache identity includes plugin id, method,
+input, single/infinite mode, and the infinite query's initial page parameter.
+Callers for the same key must agree on output schema and pagination semantics.
+Signals are scoped to the owning plugin; optional payload predicates select
+relevant changes. Bursts coalesce, invalidation during a pending request causes
+a trailing refresh, and connection establishment refreshes active queries.
+Unmounted queries become stale so missed signals cannot leave a remount stale.
+
+Infinite queries retain loaded pages and rebuild their cursors sequentially on
+revalidation. Explicit load-more errors preserve earlier pages. These hooks do
+not add database filters, snapshots, totals, or pagination to an RPC method.
+They are inappropriate for writes or other side effects. Browser cancellation
+aborts transport only; no server cancellation protocol is implied. Optional positive
+`timeoutMs` bounds each shared request, including individual infinite-query pages.
+The observer starting a shared request supplies its deadline; timeout rejects even
+if a transport ignores abort, and a late response cannot overwrite a retry.
+
+Consumers: Tasks detail navigation, active summaries and individual reads, GitHub lists/details/pickers,
+Automations overview/detail/run history, Workflows active runs/details, Account Pool
+status/configuration, Connect status/mobile-pairing availability, Docs notebook,
+Memory, Keep Awake, Concurrency Limit, Modal launch options, worktree discovery,
+Monaco file tree, and Theme Preview catalog. Tasks composite labels/metadata/activity use batched
+RPCs instead of client fan-out for labels, initial board metadata, and activity.
+Tasks list/board loaders retain their incremental signal patches and open-first
+loading; they are not migrated to the shared infinite-query lifecycle. The app
+harness uses the same query implementation with an isolated QueryClient per
+rendered slot. Existing SDK/CLI RPC invocation remains the non-React surface.
+
+Before stabilization, validate plugin isolation, duplicate consumers, signal
+bursts during requests, reconnects, filter changes, unmount cancellation,
+pagination failures, changing cursors, request deadlines, and disagreement between
+observers about deadlines. Assess schema/version cache identity,
+freshness policy, signal predicate ergonomics, and whether further consumers
+need mutation invalidation or cache selectors. Measure Tasks and GitHub request
+counts before expanding the API. The Plugin Guide owns usage documentation.
+
+## Shared core data queries
+
+`experimental_useHosts`, `experimental_useProjects`, `experimental_useThread`,
+`experimental_useEnvironment`, and `experimental_useProjectSourceBranches`
+share the core frontend query cache and realtime subscriptions. Their `data`
+types derive from the corresponding SDK list/get/branches methods, without a
+plugin-specific entity projection. The common result exposes loading/fetching,
+error, placeholder state, and async refetch. Null detail IDs and disabled queries
+skip reads and imperative refresh; cached values can remain visible. Thread
+placeholders use core's provisional list-row projection and are explicitly marked.
+Project include/personal and host type/creating filters have distinct cache keys.
+Branch reads use core local/background refresh; `refreshFromRemote` waits for
+remote refresh. The testing harness accepts SDK method fakes and models query
+sharing and connection reconciliation, not core websocket events or branch policy.
+
+Before stabilizing, audit parameter-dependent SDK return types, placeholder
+semantics, null/disabled behavior, reconnect reconciliation, mutation propagation
+across list variants, and branch refresh errors. Core settings, timeline,
+secondary-panel and branch-picker consumers must continue using this same path.
+
+Core hooks live in their original query modules, shared directly by core and the
+plugin runtime. Git Worktree and Project Checkout consume SDK branch responses.
+The older branch/checkout hooks remain compatibility adapters for external plugins;
+audit their retirement separately from the shared core hooks.
+
+## Shared plugin inventory and catalog queries
+
+`experimental_usePlugins(options?)` and
+`experimental_usePluginCatalogSearch({ query }, options?)` expose the SDK
+`plugins.list` and `plugins.catalog.search` response shapes. Core screens and
+Plugin Guide share their cache owners; core presentation mappings remain local.
+Inventory retains core's 30-second freshness and catalog retains 30-minute
+freshness with focus refresh disabled. Core plugin mutations and reconciliation
+invalidate those same keys. Disabled queries do not fetch or manually refresh.
+Before stabilization, audit plugin activation changes, catalog refresh/search
+identity, cancellation, freshness, and combined core/plugin consumers.
+
+RPC queries now match core disabled semantics: both `refetch` and infinite
+`fetchNextPage` are no-ops while disabled. Provider Usage shares a plugin-local TanStack Query client between its background
+collector and React consumers; it uses public dependencies so it remains forkable.
+This is not a new public plugin API. Its sequential provider probes remain domain behavior.

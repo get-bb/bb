@@ -32,8 +32,7 @@ import {
   definePluginApp,
   useBbNavigate,
   useComposer,
-  useRealtime,
-  useRealtimeConnectionState,
+  experimental_useRpcQuery,
   useRpc,
   type PluginMessageDirectiveProps,
   type PluginThreadPanelProps,
@@ -351,43 +350,35 @@ function useWorkflowRun(
   threadId: string,
   runId: string | null,
 ): { state: RunLoadState; refresh: () => Promise<void> } {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<RunLoadState>({ status: "loading" });
-  const requestSequence = useRef(0);
-
-  const refresh = useCallback(async () => {
-    const sequence = ++requestSequence.current;
-    try {
-      const result = await rpc.call("workflowRunView", { threadId, runId });
-      if (sequence === requestSequence.current) {
-        setState({ status: "ready", run: result.run, refreshError: null });
-      }
-    } catch (error) {
-      if (sequence === requestSequence.current) {
-        const message = error instanceof Error ? error.message : String(error);
-        setState((current) =>
-          current.status === "ready" && current.run !== null
-            ? { ...current, refreshError: message }
-            : { status: "error", message },
-        );
-      }
-    }
-  }, [rpc, runId, threadId]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void refresh();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [refresh]);
-
-  const shouldPoll =
-    state.status === "error" ||
-    (state.status === "ready" && state.run !== null && isRunActive(state.run));
-  useVisibleActivePolling(refresh, shouldPoll);
-
-  return { state, refresh };
+  const query = experimental_useRpcQuery<
+    typeof workflowUiRpcContract,
+    "workflowRunView"
+  >({
+    method: "workflowRunView",
+    input: { threadId, runId },
+    realtime: [
+      {
+        channel: WORKFLOW_RUNS_REALTIME_CHANNEL,
+        affects: (payload) => workflowRunsSignalThreadId(payload) === threadId,
+      },
+    ],
+  });
+  const state: RunLoadState =
+    query.data !== undefined
+      ? {
+          status: "ready",
+          run: query.data.run,
+          refreshError: query.error?.message ?? null,
+        }
+      : query.error !== null
+        ? { status: "error", message: query.error.message }
+        : { status: "loading" };
+  useVisibleActivePolling(
+    query.refetch,
+    query.error !== null ||
+      (query.data?.run != null && isRunActive(query.data.run)),
+  );
+  return { state, refresh: query.refetch };
 }
 
 function subscribeDocumentVisibility(onChange: () => void): () => void {
@@ -412,9 +403,7 @@ function useVisibleActivePolling(
   active: boolean,
 ): void {
   const visible = useDocumentVisible();
-  const connection = useRealtimeConnectionState();
   const wasHidden = useRef(false);
-  const wasDisconnected = useRef(false);
 
   useEffect(() => {
     if (!visible) {
@@ -425,16 +414,6 @@ function useVisibleActivePolling(
     wasHidden.current = false;
     void refresh();
   }, [refresh, visible]);
-
-  useEffect(() => {
-    if (connection !== "connected") {
-      wasDisconnected.current = true;
-      return;
-    }
-    if (!wasDisconnected.current) return;
-    wasDisconnected.current = false;
-    void refresh();
-  }, [connection, refresh]);
 
   const enabled = active && visible;
   useEffect(() => {
@@ -457,42 +436,28 @@ function useVisibleActivePolling(
 }
 
 function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<ActiveRunsLoadState>({
-    status: "loading",
+  const query = experimental_useRpcQuery<
+    typeof workflowUiRpcContract,
+    "workflowActiveRuns"
+  >({
+    method: "workflowActiveRuns",
+    input: { threadId },
+    realtime: [
+      {
+        channel: WORKFLOW_RUNS_REALTIME_CHANNEL,
+        affects: (payload) => workflowRunsSignalThreadId(payload) === threadId,
+      },
+    ],
   });
-  const requestSequence = useRef(0);
-
-  const refresh = useCallback(async () => {
-    const sequence = ++requestSequence.current;
-    try {
-      const result = await rpc.call("workflowActiveRuns", { threadId });
-      if (sequence === requestSequence.current) {
-        setState({ status: "ready", runs: result.runs });
-      }
-    } catch {
-      if (sequence === requestSequence.current) setState({ status: "error" });
-    }
-  }, [rpc, threadId]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void refresh();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [refresh]);
-
-  useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
-    if (workflowRunsSignalThreadId(payload) === threadId) void refresh();
-  });
-
-  const shouldPoll =
-    state.status === "error" ||
-    (state.status === "ready" && state.runs.some(isRunActive));
-  useVisibleActivePolling(refresh, shouldPoll);
-
-  return state;
+  useVisibleActivePolling(
+    query.refetch,
+    query.error !== null || (query.data?.runs.some(isRunActive) ?? false),
+  );
+  return query.data !== undefined
+    ? { status: "ready", runs: query.data.runs }
+    : query.error !== null
+      ? { status: "error" }
+      : { status: "loading" };
 }
 
 export function EmptyOrError({ children }: { children: ReactNode }) {

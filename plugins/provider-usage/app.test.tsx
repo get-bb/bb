@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UsageProvider } from "./usage-schema.js";
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+
 import {
   loadPluginApp,
   mountPluginContentScripts,
@@ -15,53 +15,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-
-function threadOnMachine(
-  hostId: string,
-  hostName: string,
-): PluginSidebarThread {
-  return {
-    id: "thread-active",
-    projectId: "project-one",
-    title: "Active thread",
-    titleFallback: null,
-    displayTitle: "Active thread",
-    parentThreadId: null,
-    lifecycleOwnerThreadId: null,
-    sourceThreadId: null,
-    sectionId: null,
-    originKind: null,
-    originPluginId: null,
-    providerId: "codex",
-    status: "idle",
-    runtimeStatus: "idle",
-    queuedWork: "none",
-    hasPendingInteraction: false,
-    activity: {
-      workflows: 0,
-      backgroundAgents: 0,
-      backgroundCommands: 0,
-      planMode: 0,
-      goals: 0,
-    },
-    indicator: "none",
-    indicatorLabel: null,
-    isUnread: false,
-    isPinned: false,
-    pinnedAt: null,
-    pinSortKey: null,
-    isArchived: false,
-    archivedAt: null,
-    href: "/projects/project-one/threads/thread-active",
-    isHidden: false,
-    environment: null,
-    host: { id: hostId, name: hostName },
-    createdAt: 1,
-    updatedAt: 1,
-    lastReadAt: 1,
-    latestAttentionAt: 1,
-  };
-}
 
 describe("provider usage footer disclosure", () => {
   it("aggregates every machine and keeps machine and provider selection local to the card", async () => {
@@ -250,8 +203,65 @@ describe("provider usage footer disclosure", () => {
       { dismiss },
       {
         context: { threadId: "thread-active" },
-        sidebarThreads: {
-          threads: [threadOnMachine("host-m5", "M5")],
+        sdk: {
+          threads: {
+            get: async () => ({
+              id: "thread-active",
+              projectId: "proj_test",
+              environmentId: "env-m5",
+              providerId: "codex",
+              title: "Test thread",
+              titleFallback: "Test thread",
+              sectionId: null,
+              status: "idle",
+              parentThreadId: null,
+              lifecycleOwnerThreadId: null,
+              sourceThreadId: null,
+              originKind: null,
+              originPluginId: null,
+              visibility: "visible",
+              archivedAt: null,
+              pinnedAt: null,
+              deletedAt: null,
+              lastReadAt: 100,
+              latestAttentionAt: 100,
+              createdAt: 0,
+              updatedAt: 100,
+              runtime: { displayStatus: "idle" },
+              activeBackgroundAgentCount: 0,
+              queuedMessageCount: 0,
+              canRestoreEnvironment: false,
+              canSpawnChild: false,
+            }),
+          },
+          environments: {
+            get: async () => ({
+              id: "env-m5",
+              name: null,
+              projectId: "proj_test",
+              hostId: "host-m5",
+              path: "/workspace",
+              isGitRepo: true,
+              isWorktree: true,
+              branchName: "feature/test",
+              baseBranch: "main",
+              defaultBranch: "main",
+              mergeBaseBranch: null,
+              status: "ready",
+              environmentProviderId: "git-worktree",
+              environmentProviderSelection: {
+                machine: { type: "existing", hostId: "host-m5" },
+                inputs: { branch: { kind: "named", name: "main" } },
+              },
+              environmentProviderInstanceKey: null,
+              lifecycle: { phase: "active", retireAt: null, teardown: null },
+              hostLifecycle: "active",
+              managed: true,
+              workspaceProvisionType: "managed-worktree",
+              createdAt: 0,
+              updatedAt: 0,
+            }),
+          },
         },
       },
     );

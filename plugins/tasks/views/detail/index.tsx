@@ -6,9 +6,9 @@ import { errorMessage } from "../../shared/errors.js";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import {
-  listAllTasks,
   useMentionItems,
-  useTasksQuery,
+  useTasksRead,
+  useAllTasks,
   useTasksRpc,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
@@ -220,51 +220,54 @@ function TaskDetail({ task }: { task: Task }) {
     delayMs: DESCRIPTION_SAVE_DELAY_MS,
   });
 
-  const projects = useTasksQuery(
-    async (query) => (await query.call("listProjects", {})).projects,
+  const projects = useTasksRead(
+    "listProjects",
+    {},
+    (result) => result.projects,
     ["projects:changed"],
   );
   const project = projects.data?.find((entry) => entry.id === task.projectId);
 
-  const parent = useTasksQuery(
-    async (query) =>
-      task.parentTaskId
-        ? (await query.call("getTask", { taskId: task.parentTaskId })).task
-        : null,
+  const parent = useTasksRead(
+    "getTask",
+    { taskId: task.parentTaskId ?? "" },
+    (result) => result.task,
     ["tasks:changed"],
-    [task.parentTaskId],
+    { enabled: task.parentTaskId !== null },
   );
-  const subtasks = useTasksQuery(
-    async (query) => listAllTasks(query, { parentTaskId: task.id }),
-    ["tasks:changed"],
-    [task.id],
-  );
-  const labels = useTasksQuery(
-    async (query) =>
-      (await query.call("listLabels", { projectId: task.projectId })).labels,
-    ["projects:changed"],
-    [task.projectId],
-  );
-  const attachments = useTasksQuery(
-    async (query) =>
-      (await query.call("listAttachments", { taskId: task.id })).attachments,
-    ["tasks:changed"],
-    [task.id],
-  );
-  const threads = useTasksQuery(
-    async (query) =>
-      (await query.call("listTaskThreads", { taskId: task.id })).taskThreads,
-    ["threads:changed"],
-    [task.id],
-  );
-  const presets = useTasksQuery(
-    async (query) => (await query.call("listPresets")).presets,
+  const subtasks = useAllTasks({ parentTaskId: task.id }, [
+    "tasks:changed",
+    "threads:changed",
+  ]);
+  const labels = useTasksRead(
+    "listLabels",
+    { projectId: task.projectId },
+    (result) => result.labels,
     ["projects:changed"],
   );
-  const pullRequests = useTasksQuery(
-    async (query) => query.call("listTaskPullRequests", { taskId: task.id }),
+  const attachments = useTasksRead(
+    "listAttachments",
+    { taskId: task.id },
+    (result) => result.attachments,
+    ["tasks:changed"],
+  );
+  const threads = useTasksRead(
+    "listTaskThreads",
+    { taskId: task.id },
+    (result) => result.taskThreads,
     ["threads:changed"],
-    [task.id],
+  );
+  const presets = useTasksRead(
+    "listPresets",
+    null,
+    (result) => result.presets,
+    ["projects:changed"],
+  );
+  const pullRequests = useTasksRead(
+    "listTaskPullRequests",
+    { taskId: task.id },
+    (result) => result,
+    ["threads:changed"],
   );
   const refreshPullRequests = pullRequests.refresh;
   const hasActivePullRequest = (pullRequests.data?.pullRequests ?? []).some(
@@ -504,10 +507,11 @@ function TaskDetail({ task }: { task: Task }) {
 }
 
 export function DetailView({ taskKey }: DetailViewProps) {
-  const query = useTasksQuery(
-    async (rpc) => (await rpc.call("getTaskByKey", { taskKey })).task,
+  const query = useTasksRead(
+    "getTaskByKey",
+    { taskKey },
+    (result) => result.task,
     ["tasks:changed"],
-    [taskKey],
   );
 
   if (query.data === undefined) {

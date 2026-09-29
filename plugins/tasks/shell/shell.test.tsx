@@ -1,3 +1,4 @@
+import { withReadBatches } from "../read-test-fixtures.js";
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,13 +63,16 @@ const folder = {
 
 function seededRpc(overrides: Record<string, unknown> = {}) {
   return {
+    listLabels: () => ({ labels: [] }),
+    listTaskThreads: () => ({ taskThreads: [] }),
+    listAttachments: () => ({ attachments: [] }),
     listProjects: () => ({ projects: [project] }),
     listFolders: () => ({ folders: [folder] }),
     listPresets: () => ({ presets: [] }),
     sidebarSummary: () => ({
       projects: [{ projectId: PROJECT_ID, taskCount: 3, activeAgentCount: 1 }],
     }),
-    listTasks: () => ({ tasks: [] }),
+    listTasks: () => ({ tasks: [], nextCursor: null }),
     getTaskByKey: () => ({ task: null }),
     ...overrides,
   };
@@ -113,7 +117,9 @@ describe("project view preference", () => {
     renderSlot(
       app.navPanels[0]!,
       { subPath },
-      { rpc: seededRpc({ listLabels: () => ({ labels: [] }) }) },
+      {
+        rpc: withReadBatches(seededRpc({ listLabels: () => ({ labels: [] }) })),
+      },
     );
 
   it("restores the remembered view when the URL names none", async () => {
@@ -143,7 +149,7 @@ describe("project view preference", () => {
     const other = renderSlot(
       app.navPanels[0]!,
       { subPath: `${OTHER_PROJECT_ID}?view=list` },
-      { rpc: seededRpc() },
+      { rpc: withReadBatches(seededRpc()) },
     );
     fireEvent.click(await other.findByRole("button", { name: "List" }));
     expect(loadViewMode(OTHER_PROJECT_ID)).toBe("list");
@@ -154,7 +160,9 @@ describe("project view preference", () => {
     const slot = renderSlot(
       navigationRegistration,
       { subPath: "all" },
-      { rpc: seededRpc({ listLabels: () => ({ labels: [] }) }) },
+      {
+        rpc: withReadBatches(seededRpc({ listLabels: () => ({ labels: [] }) })),
+      },
     );
     fireEvent.click(await slot.findByText("Tasks Plugin"));
     expect(slot.navigateCalls).toContainEqual({
@@ -180,7 +188,7 @@ describe("project view preference", () => {
 
 function pagerTask(key: string, status: Task["status"], position: number) {
   return makeTask({
-    id: `01HZZZZZZZZZZZZZZZZZZZZ${key.replace("-", "")}`,
+    id: key.split("-")[1]!.padStart(26, "0"),
     projectId: PROJECT_ID,
     number: position,
     key,
@@ -225,13 +233,15 @@ describe("task pager", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-4" },
       {
-        rpc: seededRpc({
-          listTasks: () => ({ tasks }),
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => ({ tasks, nextCursor: null }),
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await slot.findByText("2 / 4");
@@ -256,7 +266,7 @@ describe("tasks app shell", () => {
     ]);
   });
 
-  it("does not treat the first connection as a reconnect", async () => {
+  it("reconciles reads made before the first connection and after reconnect", async () => {
     let requests = 0;
     let title = "Initial connection title";
     const task = {
@@ -269,24 +279,28 @@ describe("tasks app shell", () => {
       { subPath: "all" },
       {
         realtimeConnectionState: "connecting",
-        rpc: seededRpc({
-          listTasks: () => {
-            requests += 1;
-            return { tasks: [{ ...task, title }] };
-          },
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => {
+              requests += 1;
+              return { tasks: [{ ...task, title }], nextCursor: null };
+            },
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await slot.findByText("Initial connection title");
     const initialRequests = requests;
     expect(initialRequests).toBeGreaterThan(0);
 
+    title = "Changed before subscription";
     await slot.behavior.setRealtimeConnectionState("connected");
-    expect(requests).toBe(initialRequests);
+    await slot.findByText("Changed before subscription");
+    expect(requests).toBeGreaterThan(initialRequests);
 
     title = "Recovered from connecting state";
     await slot.behavior.setRealtimeConnectionState("connecting");
@@ -308,16 +322,18 @@ describe("tasks app shell", () => {
       { subPath: "all" },
       {
         realtimeConnectionState: "reconnecting",
-        rpc: seededRpc({
-          listTasks: async () => {
-            if (!serverAvailable) throw new Error("server unavailable");
-            return { tasks: [task] };
-          },
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: async () => {
+              if (!serverAvailable) throw new Error("server unavailable");
+              return { tasks: [task], nextCursor: null };
+            },
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await waitFor(() =>
@@ -344,13 +360,18 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listTasks: () => ({ tasks: [{ ...task, title }] }),
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => ({
+              tasks: [{ ...task, title }],
+              nextCursor: null,
+            }),
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await slot.findByText("Stale list title");
@@ -375,29 +396,33 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listTasks: () => {
-            listTaskCalls += 1;
-            return { tasks: [] };
-          },
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => {
+              listTaskCalls += 1;
+              return { tasks: [], nextCursor: null };
+            },
+          }),
+        ),
       },
     );
     const panel = renderSlot(
       navigationRegistration,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listProjects: async () => {
-            listProjectCalls += 1;
-            if (holdProjects) {
-              await new Promise<void>((resolve) => {
-                releaseProjects = resolve;
-              });
-            }
-            return { projects: [project] };
-          },
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listProjects: async () => {
+              listProjectCalls += 1;
+              if (holdProjects) {
+                await new Promise<void>((resolve) => {
+                  releaseProjects = resolve;
+                });
+              }
+              return { projects: [project] };
+            },
+          }),
+        ),
       },
     );
     await page.findByRole("button", { name: "Refresh tasks" });
@@ -432,22 +457,25 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listTasks: () => ({
-            tasks: [
-              {
-                ...pagerTask("TSK-4", "todo", 1),
-                title: "Order probe",
-                description: "",
-                labelIds: [],
-              },
-            ],
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => ({
+              nextCursor: null,
+              tasks: [
+                {
+                  ...pagerTask("TSK-4", "todo", 1),
+                  title: "Order probe",
+                  description: "",
+                  labelIds: [],
+                },
+              ],
+            }),
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
           }),
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        ),
       },
     );
     await slot.findByText("Order probe");
@@ -494,23 +522,25 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listTasks: () => {
-            listTasksCalls += 1;
-            if (!holdListTasks) {
-              return { tasks: [{ ...task, title }] };
-            }
-            return new Promise((resolve) => {
-              pendingResolvers.push(() =>
-                resolve({ tasks: [{ ...task, title }] }),
-              );
-            });
-          },
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => {
+              listTasksCalls += 1;
+              if (!holdListTasks) {
+                return { tasks: [{ ...task, title }], nextCursor: null };
+              }
+              return new Promise((resolve) => {
+                pendingResolvers.push(() =>
+                  resolve({ tasks: [{ ...task, title }], nextCursor: null }),
+                );
+              });
+            },
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await slot.findByText("Flight title A");
@@ -595,16 +625,18 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listTasks: () => {
-            if (shouldFail) throw new Error("refresh failed");
-            return { tasks: [{ ...task, title }] };
-          },
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listTasks: () => {
+              if (shouldFail) throw new Error("refresh failed");
+              return { tasks: [{ ...task, title }], nextCursor: null };
+            },
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await slot.findByText("Stable title");
@@ -641,14 +673,19 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-4" },
       {
-        rpc: seededRpc({
-          getTaskByKey: () => ({ task: { ...task, title } }),
-          listTasks: () => ({ tasks: [{ ...task, title }] }),
-          listLabels: () => ({ labels: [] }),
-          listAttachments: () => ({ attachments: [] }),
-          listTaskThreads: () => ({ taskThreads: [] }),
-          listComments: () => ({ comments: [] }),
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            getTaskByKey: () => ({ task: { ...task, title } }),
+            listTasks: () => ({
+              tasks: [{ ...task, title }],
+              nextCursor: null,
+            }),
+            listLabels: () => ({ labels: [] }),
+            listAttachments: () => ({ attachments: [] }),
+            listTaskThreads: () => ({ taskThreads: [] }),
+            listComments: () => ({ comments: [] }),
+          }),
+        ),
       },
     );
     await slot.findByRole("textbox", { name: "Task title" });
@@ -692,10 +729,12 @@ describe("tasks app shell", () => {
         app.navPanels[0]!,
         { subPath: "" },
         {
-          rpc: seededRpc({
-            listProjects: () => projects.promise,
-            sidebarSummary: () => ({ projects: [] }),
-          }),
+          rpc: withReadBatches(
+            seededRpc({
+              listProjects: () => projects.promise,
+              sidebarSummary: () => ({ projects: [] }),
+            }),
+          ),
         },
       );
       expect(slot.queryByText("No projects yet")).toBeNull();
@@ -712,10 +751,12 @@ describe("tasks app shell", () => {
         app.navPanels[0]!,
         { subPath: "" },
         {
-          rpc: seededRpc({
-            listProjects: () => projects.promise,
-            sidebarSummary: () => ({ projects: [] }),
-          }),
+          rpc: withReadBatches(
+            seededRpc({
+              listProjects: () => projects.promise,
+              sidebarSummary: () => ({ projects: [] }),
+            }),
+          ),
         },
       );
       expect(slot.getByText("No projects yet")).toBeTruthy();
@@ -730,9 +771,13 @@ describe("tasks app shell", () => {
       const panel = renderSlot(
         navigationRegistration,
         { subPath: "" },
-        { rpc },
+        { rpc: withReadBatches(rpc) },
       );
-      const page = renderSlot(app.navPanels[0]!, { subPath: "" }, { rpc });
+      const page = renderSlot(
+        app.navPanels[0]!,
+        { subPath: "" },
+        { rpc: withReadBatches(rpc) },
+      );
       expect(panel.getByText(project.name)).toBeTruthy();
       expect(page.queryByText("No projects yet")).toBeNull();
       projects.resolve({ projects: [project] });
@@ -749,7 +794,7 @@ describe("tasks app shell", () => {
       const slot = renderSlot(
         app.navPanels[0]!,
         { subPath: "" },
-        { rpc: emptyRpc },
+        { rpc: withReadBatches(emptyRpc) },
       );
       expect(slot.queryByText("No projects yet")).toBeNull();
       await slot.findByText("No projects yet");
@@ -764,7 +809,7 @@ describe("tasks app shell", () => {
       const slot = renderSlot(
         navigationRegistration,
         { subPath: "" },
-        { rpc: seededRpc() },
+        { rpc: withReadBatches(seededRpc()) },
       );
       await slot.findByText(project.name);
       expect(
@@ -777,7 +822,7 @@ describe("tasks app shell", () => {
       const slot = renderSlot(
         navigationRegistration,
         { subPath: "" },
-        { rpc: seededRpc() },
+        { rpc: withReadBatches(seededRpc()) },
       );
       await slot.findByText(project.name);
       await waitFor(() => {
@@ -804,11 +849,15 @@ describe("tasks app shell", () => {
           return calls === 1 ? older.promise : { projects: [newerProject] };
         },
       });
-      renderSlot(navigationRegistration, { subPath: "" }, { rpc });
+      renderSlot(
+        navigationRegistration,
+        { subPath: "" },
+        { rpc: withReadBatches(rpc) },
+      );
       const second = renderSlot(
         navigationRegistration,
         { subPath: "" },
-        { rpc },
+        { rpc: withReadBatches(rpc) },
       );
       await second.findByText("Newer truth");
       await waitFor(() =>
@@ -832,9 +881,11 @@ describe("tasks app shell", () => {
           navigationRegistration,
           { subPath: "all" },
           {
-            rpc: seededRpc({
-              [method]: () => Promise.reject(new Error("boom")),
-            }),
+            rpc: withReadBatches(
+              seededRpc({
+                [method]: () => Promise.reject(new Error("boom")),
+              }),
+            ),
           },
         );
         fireEvent.click(await slot.findByText(project.name));
@@ -861,10 +912,14 @@ describe("tasks app shell", () => {
       listTasks: (input: { activeOnly?: boolean }) =>
         input.activeOnly === true
           ? Promise.reject(new Error("active fetch failed"))
-          : { tasks },
+          : { tasks, nextCursor: null },
     });
     const Panel = app.navPanels[0]!.component;
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      { rpc: withReadBatches(rpc) },
+    );
     await slot.findByText("Scope truth");
 
     slot.lifecycle.rerender(<Panel subPath="active" />);
@@ -878,7 +933,7 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "" },
       {
-        rpc: emptyRpc,
+        rpc: withReadBatches(emptyRpc),
       },
     );
     await slot.findByText("No projects yet");
@@ -900,20 +955,24 @@ describe("tasks app shell", () => {
     const rpc = seededRpc({
       listLabels: () => ({ labels: [] }),
       listTasks: (input: { activeOnly?: boolean; statuses?: string[] }) => {
-        if (input.activeOnly === true) return { tasks: [] };
+        if (input.activeOnly === true) return { tasks: [], nextCursor: null };
         const matching = tasks.filter(
           (task) =>
             input.statuses === undefined ||
             input.statuses.includes(task.status),
         );
-        if (!deferAll) return { tasks: matching };
+        if (!deferAll) return { tasks: matching, nextCursor: null };
         return new Promise((resolve) => {
-          pendingAll.push(() => resolve({ tasks: matching }));
+          pendingAll.push(() => resolve({ tasks: matching, nextCursor: null }));
         });
       },
     });
     const Panel = app.navPanels[0]!.component;
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      { rpc: withReadBatches(rpc) },
+    );
     await slot.findByText("Scope truth");
 
     slot.lifecycle.rerender(<Panel subPath="active" />);
@@ -934,7 +993,7 @@ describe("tasks app shell", () => {
     const boardSlot = renderSlot(
       app.navPanels[0]!,
       { subPath: `${PROJECT_ID}?view=board` },
-      { rpc: seededRpc() },
+      { rpc: withReadBatches(seededRpc()) },
     );
     await boardSlot.findByText("Backlog");
     await boardSlot.findByText("In Review");
@@ -945,7 +1004,7 @@ describe("tasks app shell", () => {
     const taskSlot = renderSlot(
       app.navPanels[0]!,
       { subPath: "task/TSK-4" },
-      { rpc: seededRpc() },
+      { rpc: withReadBatches(seededRpc()) },
     );
     await taskSlot.findByText(/Task TSK-4 was not found/);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -961,7 +1020,7 @@ describe("tasks app shell", () => {
       navigationRegistration,
       { subPath: "all" },
       {
-        rpc: seededRpc(),
+        rpc: withReadBatches(seededRpc()),
       },
     );
     await slot.findByText("Tasks Plugin");
@@ -982,12 +1041,15 @@ describe("tasks app shell", () => {
       navigationRegistration,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listBbProjects: () => {
-            bbProjectCalls += 1;
-            return { bbProjects: [] };
+        rpc: withReadBatches(seededRpc()),
+        sdk: {
+          projects: {
+            list: async () => {
+              bbProjectCalls += 1;
+              return [];
+            },
           },
-        }),
+        },
       },
     );
     await slot.findByRole("button", { name: "New project" });
@@ -1004,7 +1066,7 @@ describe("tasks app shell", () => {
       navigationRegistration,
       { subPath: "all" },
       {
-        rpc: seededRpc(),
+        rpc: withReadBatches(seededRpc()),
       },
     );
     await panel.findByRole("button", { name: "Manage" });
@@ -1020,7 +1082,7 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "manage" },
       {
-        rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
+        rpc: withReadBatches(seededRpc({ listLabels: () => ({ labels: [] }) })),
       },
     );
     await slot.findByText("Labels, agent presets, and folders.");
@@ -1031,7 +1093,7 @@ describe("tasks app shell", () => {
       app.navPanels[0]!,
       { subPath: "all" },
       {
-        rpc: seededRpc(),
+        rpc: withReadBatches(seededRpc()),
       },
     );
     await slot.findByText("All tasks");
@@ -1061,20 +1123,22 @@ describe("tasks app shell", () => {
       navigationRegistration,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listPresets: () => ({
-            presets: [
-              basePreset,
-              {
-                ...basePreset,
-                id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
-                name: "Worktree env",
-                environmentKind: "new-worktree",
-                baseBranch: "main",
-              },
-            ],
+        rpc: withReadBatches(
+          seededRpc({
+            listPresets: () => ({
+              presets: [
+                basePreset,
+                {
+                  ...basePreset,
+                  id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
+                  name: "Worktree env",
+                  environmentKind: "new-worktree",
+                  baseBranch: "main",
+                },
+              ],
+            }),
           }),
-        }),
+        ),
       },
     );
     await slot.findByText("Worktree env");
@@ -1088,12 +1152,14 @@ describe("tasks app shell", () => {
       navigationRegistration,
       { subPath: "all" },
       {
-        rpc: seededRpc({
-          listProjects: () => {
-            projectCalls += 1;
-            return { projects: [project] };
-          },
-        }),
+        rpc: withReadBatches(
+          seededRpc({
+            listProjects: () => {
+              projectCalls += 1;
+              return { projects: [project] };
+            },
+          }),
+        ),
       },
     );
     await slot.findByText("Tasks Plugin");

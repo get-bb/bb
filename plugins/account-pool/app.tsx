@@ -26,7 +26,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   definePluginApp,
   useBbNavigate,
-  useRealtime,
+  experimental_useRpcQuery,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
@@ -847,9 +847,27 @@ function ConfigFieldRow({
 
 function AccountPoolSettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
+  const statusQuery = experimental_useRpcQuery<
+    typeof accountPoolRpcContract,
+    "status.get"
+  >({
+    method: "status.get",
+    input: null,
+    realtime: [{ channel: ACCOUNT_POOL_ACCOUNTS_CHANGED }],
+  });
+  const configQuery = experimental_useRpcQuery<
+    typeof accountPoolRpcContract,
+    "config.get"
+  >({
+    method: "config.get",
+    input: null,
+    realtime: [{ channel: ACCOUNT_POOL_CONFIG_CHANGED }],
+  });
   const navigate = useBbNavigate();
-  const [status, setStatus] = useState<PoolStatus | null>(readCachedStatus);
-  const [statusIsCached, setStatusIsCached] = useState(status !== null);
+  const [cachedStatus] = useState(readCachedStatus);
+  const status = statusQuery.data ?? cachedStatus;
+  const statusIsCached =
+    statusQuery.data === undefined && cachedStatus !== null;
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
   const [drafts, setDrafts] = useState<Record<ConfigField, string>>({
     anthropicUpstreamBaseUrl: "",
@@ -864,7 +882,12 @@ function AccountPoolSettings() {
     switchThreshold: null,
   });
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setError] = useState<string | null>(null);
+  const error =
+    actionError ??
+    statusQuery.error?.message ??
+    configQuery.error?.message ??
+    null;
   const [pending, setPending] = useState<string | null>(null);
   const [optimisticOrder, setOptimisticOrder] = useState<{
     provider: PoolProvider;
@@ -892,39 +915,20 @@ function AccountPoolSettings() {
     setConfig(next);
     setDrafts(configDrafts(next));
   }, []);
-  const refresh = useCallback(async () => {
-    try {
-      const next = await rpc.call("status.get", null);
-      writeCachedStatus(next);
-      if (!mounted.current) return;
-      setStatus(next);
-      setStatusIsCached(false);
-    } catch (loadError) {
-      if (mounted.current) setError(errorText(loadError));
-    }
-  }, [rpc]);
-  const refreshConfig = useCallback(async () => {
-    try {
-      const next = await rpc.call("config.get", null);
-      if (mounted.current) applyConfig(next);
-    } catch (loadError) {
-      if (mounted.current) setError(errorText(loadError));
-    }
-  }, [applyConfig, rpc]);
+  const refresh = statusQuery.refetch;
+  useEffect(() => {
+    if (statusQuery.data === undefined) return;
+    writeCachedStatus(statusQuery.data);
+  }, [statusQuery.data]);
+  useEffect(() => {
+    if (configQuery.data !== undefined) applyConfig(configQuery.data);
+  }, [configQuery.data, applyConfig]);
   useEffect(() => {
     mounted.current = true;
-    void refresh();
-    void refreshConfig();
     return () => {
       mounted.current = false;
     };
-  }, [refresh, refreshConfig]);
-  useRealtime(ACCOUNT_POOL_ACCOUNTS_CHANGED, () => {
-    void refresh();
-  });
-  useRealtime(ACCOUNT_POOL_CONFIG_CHANGED, () => {
-    void refreshConfig();
-  });
+  }, []);
   useEffect(() => {
     if (codexStep === null || loginDone !== null) return;
     const update = () =>

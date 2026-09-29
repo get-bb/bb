@@ -1,10 +1,11 @@
 import { composerCustomization, CREATE_AUTOMATION_PROMPT } from "./composer";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   definePluginApp,
   useBbNavigate,
-  useRealtime,
+  experimental_useRpcQuery,
+  experimental_useRpcInfiniteQuery,
   useRpc,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
@@ -15,9 +16,6 @@ import type {
   AutomationDetailResponse,
   AutomationResponse,
   AgentExecutionUpdate,
-  AutomationRunListResponse,
-  AutomationRunResponse,
-  AutomationsOverviewResponse,
 } from "./src/rpc-types";
 import { AutomationDetailView } from "./detail-view";
 import {
@@ -41,7 +39,6 @@ import { ResourceListState } from "@/components/ui/resource-list";
 import { cn } from "@/lib/utils";
 
 const PANEL_PATH = "automations";
-type OverviewEntry = AutomationsOverviewResponse["automations"][number];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -91,227 +88,88 @@ function asSignal(payload: unknown): AutomationSignal | null {
   return { projectId: record.projectId, kind: record.kind };
 }
 
-function useOverview(): {
-  entries: OverviewEntry[] | null;
-  error: string | null;
-  refetch: () => void;
-} {
-  const rpc = useRpc<typeof automationRpcContract>();
-  const [state, setState] = useState<{
-    entries: OverviewEntry[] | null;
-    error: string | null;
-  }>({ entries: null, error: null });
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const requestInFlightRef = useRef(false);
-  const trailingRefetchRef = useRef(false);
-
-  const runRefetch = useCallback(
-    function requestOverview(showLoading: boolean) {
-      if (requestInFlightRef.current) {
-        trailingRefetchRef.current = true;
-        return;
-      }
-      requestInFlightRef.current = true;
-      if (showLoading) {
-        setState({ entries: null, error: null });
-      }
-      rpc
-        .call("automations_overview")
-        .then(
-          (result) => {
-            const data = result as AutomationsOverviewResponse;
-            setState({ entries: data.automations, error: null });
-          },
-          (error: unknown) =>
-            setState((current) =>
-              !showLoading && current.entries !== null
-                ? current
-                : { entries: null, error: errorText(error) },
-            ),
-        )
-        .finally(() => {
-          requestInFlightRef.current = false;
-          if (trailingRefetchRef.current) {
-            trailingRefetchRef.current = false;
-            requestOverview(false);
-          }
-        });
-    },
-    [rpc],
-  );
-  const refetch = useCallback(() => runRefetch(true), [runRefetch]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useEffect(
-    () => () => {
-      if (refetchTimerRef.current !== null) {
-        clearTimeout(refetchTimerRef.current);
-      }
-    },
-    [],
-  );
-  const scheduleRefetch = useCallback(() => {
-    if (requestInFlightRef.current) {
-      trailingRefetchRef.current = true;
-      return;
-    }
-    if (refetchTimerRef.current !== null) return;
-    refetchTimerRef.current = setTimeout(() => {
-      refetchTimerRef.current = null;
-      runRefetch(false);
-    }, 75);
-  }, [runRefetch]);
-  useRealtime("automations", (payload) => {
-    if (asSignal(payload) !== null) scheduleRefetch();
+function useOverview() {
+  const query = experimental_useRpcQuery<
+    typeof automationRpcContract,
+    "automations_overview"
+  >({
+    method: "automations_overview",
+    input: null,
+    realtime: [
+      {
+        channel: "automations",
+        affects: (payload) => asSignal(payload) !== null,
+      },
+    ],
   });
-  return { ...state, refetch };
+  return {
+    entries: query.data?.automations ?? null,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 function useAutomation(route: DetailRoute): {
   automation: AutomationDetailReadResult | null;
   error: string | null;
-  refetch: () => void;
+  refetch: () => Promise<void>;
 } {
-  const rpc = useRpc<typeof automationRpcContract>();
-  const { projectId, automationId } = route;
-  const [state, setState] = useState<{
-    automation: AutomationDetailReadResult | null;
-    error: string | null;
-  }>({ automation: null, error: null });
-  const requestRef = useRef(0);
-
-  const refetch = useCallback(() => {
-    const requestId = ++requestRef.current;
-    setState((current) => ({ ...current, error: null }));
-    rpc.call("automations_get", { projectId, automationId }).then(
-      (result) => {
-        if (requestRef.current !== requestId) return;
-        setState({ automation: result, error: null });
+  const query = experimental_useRpcQuery<
+    typeof automationRpcContract,
+    "automations_get"
+  >({
+    method: "automations_get",
+    input: route,
+    realtime: [
+      {
+        channel: "automations",
+        affects: (payload) => asSignal(payload)?.projectId === route.projectId,
       },
-      (error: unknown) => {
-        if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error) });
-      },
-    );
-  }, [rpc, projectId, automationId]);
-
-  useEffect(() => {
-    setState({ automation: null, error: null });
-    refetch();
-    return () => {
-      requestRef.current += 1;
-    };
-  }, [refetch]);
-  useRealtime("automations", (payload) => {
-    const signal = asSignal(payload);
-    if (signal !== null && signal.projectId === projectId) refetch();
+    ],
   });
-  return { ...state, refetch };
+  return {
+    automation: query.data ?? null,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
-interface RunsState {
-  runs: AutomationRunResponse[];
-  nextCursor: string | null;
-  loading: boolean;
-  loadingMore: boolean;
-  error: string | null;
-}
-
-function useRuns(
-  route: DetailRoute,
-): RunsState & { loadMore: () => void; retry: () => void } {
-  const rpc = useRpc<typeof automationRpcContract>();
-  const { projectId, automationId } = route;
-  const [state, setState] = useState<RunsState>({
-    runs: [],
-    nextCursor: null,
-    loading: true,
-    loadingMore: false,
-    error: null,
-  });
-  const requestRef = useRef(0);
-  const loadMoreInFlightRef = useRef(false);
-
-  const loadFirstPage = useCallback(() => {
-    const requestId = ++requestRef.current;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    rpc.call("automations_runs", { projectId, automationId }).then(
-      (result) => {
-        if (requestRef.current !== requestId) return;
-        const page = result as AutomationRunListResponse;
-        setState({
-          runs: page.runs,
-          nextCursor: page.nextCursor,
-          loading: false,
-          loadingMore: false,
-          error: null,
-        });
-      },
-      (error: unknown) => {
-        if (requestRef.current !== requestId) return;
-        setState({
-          runs: [],
-          nextCursor: null,
-          loading: false,
-          loadingMore: false,
-          error: errorText(error),
-        });
-      },
-    );
-  }, [rpc, projectId, automationId]);
-
-  const loadMore = useCallback(() => {
-    if (
-      state.nextCursor === null ||
-      state.loadingMore ||
-      loadMoreInFlightRef.current
-    ) {
-      return;
-    }
-    const cursor = state.nextCursor;
-    const requestId = requestRef.current;
-    loadMoreInFlightRef.current = true;
-    setState((prev) => ({ ...prev, loadingMore: true }));
-    rpc
-      .call("automations_runs", { projectId, automationId, cursor })
-      .then(
-        (result) => {
-          if (requestRef.current !== requestId) return;
-          const page = result as AutomationRunListResponse;
-          setState((current) => ({
-            ...current,
-            runs: [...current.runs, ...page.runs],
-            nextCursor: page.nextCursor,
-            loadingMore: false,
-          }));
+function useRuns(route: DetailRoute) {
+  const query = experimental_useRpcInfiniteQuery<
+    typeof automationRpcContract,
+    "automations_runs",
+    string | null
+  >({
+    method: "automations_runs",
+    input: route,
+    initialPageParam: null,
+    getPageInput: (input, cursor: string | null) => ({
+      ...input,
+      ...(cursor === null ? {} : { cursor }),
+    }),
+    getNextPageParam: (page) => page.nextCursor,
+    realtime: [
+      {
+        channel: "automations",
+        affects: (payload) => {
+          const signal = asSignal(payload);
+          return (
+            signal?.projectId === route.projectId &&
+            signal.kind === "automation-runs-changed"
+          );
         },
-        (error: unknown) => {
-          if (requestRef.current !== requestId) return;
-          toast.error(errorText(error));
-          setState((current) => ({ ...current, loadingMore: false }));
-        },
-      )
-      .finally(() => {
-        loadMoreInFlightRef.current = false;
-      });
-  }, [rpc, projectId, automationId, state.nextCursor, state.loadingMore]);
-
-  useEffect(() => {
-    loadFirstPage();
-  }, [loadFirstPage]);
-  useRealtime("automations", (payload) => {
-    const signal = asSignal(payload);
-    if (
-      signal !== null &&
-      signal.kind === "automation-runs-changed" &&
-      signal.projectId === projectId
-    ) {
-      loadFirstPage();
-    }
+      },
+    ],
   });
-  return { ...state, loadMore, retry: loadFirstPage };
+  return {
+    runs: query.data?.pages.flatMap((page) => page.runs) ?? [],
+    nextCursor: query.data?.pages.at(-1)?.nextCursor ?? null,
+    loading: query.isLoading,
+    loadingMore: query.isFetchingNextPage,
+    error: query.error?.message ?? null,
+    loadMore: query.fetchNextPage,
+    retry: query.isFetchNextPageError ? query.fetchNextPage : query.refetch,
+  };
 }
 
 function useMutations() {

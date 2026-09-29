@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
   experimental_useCodeTheme,
+  experimental_useRpcQuery,
   useRpc,
   type PluginFileOpenerProps,
 } from "@get-bb/plugin-sdk/app";
@@ -17,7 +18,6 @@ import { applyCodeTheme, editorBackground } from "./lib/monaco-theme.js";
 import { cn } from "@/lib/utils";
 import { FileToolbar, type SaveIndicator } from "./components/FileToolbar.js";
 import { FileTreePanel } from "./components/FileTreePanel.js";
-import type { FlatEntry } from "./lib/file-tree.js";
 import {
   EDITOR_COMMANDS,
   forgetEditor,
@@ -81,18 +81,10 @@ function MonacoFileOpener({
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
-  const [tree, setTree] = useState<{
-    entries: readonly FlatEntry[];
-    root: string;
-    truncated: boolean;
-    isLoading: boolean;
-    error: string | null;
-  }>({
-    entries: [],
-    root: "",
-    truncated: false,
-    isLoading: false,
-    error: null,
+  const tree = experimental_useRpcQuery<typeof rpcContract, "tree">({
+    method: "tree",
+    input: { source },
+    enabled: isFilesOpen,
   });
   const [status, setStatus] = useState<
     | { kind: "loading" }
@@ -161,41 +153,6 @@ function MonacoFileOpener({
       setIsRefreshing(false);
     }
   }, [activePath, rpc, setSaveState, source]);
-
-  const treeRequestedRef = useRef(false);
-  useEffect(() => {
-    if (!isFilesOpen || treeRequestedRef.current) return;
-    treeRequestedRef.current = true;
-    let cancelled = false;
-    setTree((current) => ({ ...current, isLoading: true, error: null }));
-    void rpc
-      .call("tree", { source })
-      .then((result) => {
-        if (cancelled) return;
-        setTree({
-          entries: result.entries,
-          root: result.root,
-          truncated: result.truncated,
-          isLoading: false,
-          error: null,
-        });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        treeRequestedRef.current = false;
-        setTree({
-          entries: [],
-          root: "",
-          truncated: false,
-          isLoading: false,
-          error:
-            error instanceof Error ? error.message : "Could not list files",
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isFilesOpen, rpc, source]);
 
   const openFromTree = useCallback(
     (next: string) => {
@@ -329,13 +286,13 @@ function MonacoFileOpener({
         <FileTreePanel
           activePath={activePath}
           background={editorBackground(codeTheme.theme)}
-          entries={tree.entries}
-          error={tree.error}
+          entries={tree.data?.entries ?? []}
+          error={tree.error?.message ?? null}
           isLoading={tree.isLoading}
-          root={tree.root}
+          root={tree.data?.root ?? ""}
           onClose={() => setIsFilesOpen(false)}
           onOpenFile={openFromTree}
-          truncated={tree.truncated}
+          truncated={tree.data?.truncated ?? false}
         />
       ) : null}
       <FileToolbar

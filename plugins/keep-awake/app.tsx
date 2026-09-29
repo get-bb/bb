@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
   useRpc,
+  experimental_useRpcQuery,
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,28 +37,32 @@ function KeepAwakeSettings() {
   const latestRevisionRef = useRef(0);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
+  const query = experimental_useRpcQuery<
+    typeof keepAwakeRpcContract,
+    "getConfiguration"
+  >({
+    method: "getConfiguration",
+    input: null,
+    enabled: saveState !== "saving",
+  });
   useEffect(() => {
-    let loading = true;
     activeRef.current = true;
-    void rpc
-      .call("getConfiguration")
-      .then((configuration) => {
-        if (!loading || !activeRef.current) return;
-        viewRef.current = configuration;
-        confirmedRef.current = configuration;
-        setView(configuration);
-        setSaveState("saved");
-      })
-      .catch((loadError: unknown) => {
-        if (!loading || !activeRef.current) return;
-        setError(errorMessage(loadError));
-        setSaveState("error");
-      });
     return () => {
-      loading = false;
       activeRef.current = false;
     };
-  }, [rpc]);
+  }, []);
+  useEffect(() => {
+    if (query.data && latestRevisionRef.current === 0) {
+      viewRef.current = query.data;
+      confirmedRef.current = query.data;
+      setView(query.data);
+      setSaveState("saved");
+    }
+    if (query.error) {
+      setError(errorMessage(query.error));
+      setSaveState("error");
+    }
+  }, [query.data, query.error]);
 
   function updateConfiguration(
     update: (current: ConfigurationView) => ConfigurationView,

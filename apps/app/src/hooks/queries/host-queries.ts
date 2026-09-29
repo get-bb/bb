@@ -1,3 +1,4 @@
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import { useMemo } from "react";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
@@ -13,18 +14,20 @@ import {
 import type { QueryOptions } from "./query-helpers";
 
 export function useHosts(
-  options?: QueryOptions & { includeCreating?: boolean },
+  options?: QueryOptions & { includeCreating?: boolean; type?: Host["type"] },
 ) {
   const enabled = options?.enabled ?? true;
   const includeCreating = options?.includeCreating ?? false;
   useHostListRealtimeSubscription({ enabled });
 
-  return useQuery<Host[]>({
-    queryKey: hostsQueryKey(includeCreating),
-    queryFn: ({ signal }) => sdk.hosts.list({ signal, includeCreating }),
+  const query = useQuery<Host[]>({
+    queryKey: hostsQueryKey(includeCreating, options?.type),
+    queryFn: ({ signal }) =>
+      sdk.hosts.list({ signal, includeCreating, type: options?.type }),
     enabled,
     staleTime: 60_000,
   });
+  return useCoreQueryResult(query, enabled);
 }
 
 export type HostScope = "persistent" | "all";

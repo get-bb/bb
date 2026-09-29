@@ -50,15 +50,6 @@ type WorktreeOperation = Pick<
 >;
 
 export const worktreeRpcContract = defineRpcContract({
-  defaultBaseBranch: {
-    input: z
-      .object({
-        projectId: z.string().min(1),
-        hostId: z.string().min(1).nullable(),
-      })
-      .strict(),
-    output: z.object({ branch: z.string().min(1).nullable() }).strict(),
-  },
   listExistingWorktrees: {
     input: z
       .object({
@@ -243,22 +234,6 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
   });
 
   bb.rpc.register(worktreeRpcContract, {
-    async defaultBaseBranch({ projectId, hostId }) {
-      const project = await bb.sdk.projects.get({ projectId });
-      const sources = project.sources.filter(
-        (source) => source.type === "local_path",
-      );
-      const source =
-        hostId === null
-          ? (sources.find((source) => source.isDefault) ?? sources[0])
-          : sources.find((source) => source.hostId === hostId);
-      if (source === undefined) return { branch: null };
-      return host.call(
-        "defaultBaseBranch",
-        { sourcePath: source.path },
-        { hostId: source.hostId },
-      );
-    },
     async listExistingWorktrees({ projectId, hostId }) {
       const project = await bb.sdk.projects.get({ projectId });
       const source = project.sources.find(

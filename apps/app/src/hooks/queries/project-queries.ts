@@ -1,3 +1,5 @@
+import type { ExperimentalProjectsQueryOptions } from "@get-bb/plugin-sdk";
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 import type {
@@ -16,8 +18,12 @@ import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
 import { readProjectBranchOptions } from "@/lib/project-branch-options";
 import { sdk } from "@/lib/sdk";
-import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
+  useProjectDetailRealtimeSubscription,
+  useProjectListRealtimeSubscription,
+} from "@/hooks/useRealtimeSubscription";
+import {
+  projectsQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
   projectPathsQueryKey,
@@ -86,7 +92,7 @@ export function stripProjectThreads(
 }
 
 export function useProjectSourceBranches(
-  projectId: string | undefined,
+  projectId: string | null | undefined,
   hostId: string | null,
   options?: BranchQueryOptions,
 ) {
@@ -123,7 +129,10 @@ export function useProjectSourceBranches(
         ? sdk.projects.branches
         : readProjectBranchOptions;
       return readBranches({
-        projectId: requireProjectId(projectId, "useProjectSourceBranches"),
+        projectId: requireProjectId(
+          projectId ?? undefined,
+          "useProjectSourceBranches",
+        ),
         hostId: hostId ?? "",
         ...(query ? { query } : {}),
         ...(selectedBranch ? { selectedBranch } : {}),
@@ -148,6 +157,7 @@ export function useProjectSourceBranches(
   });
   const refetch = result.refetch;
   const refreshFromRemote = useCallback((): Promise<void> => {
+    if (!enabled) return Promise.resolve();
     const remoteRefresh = remoteRefreshRef.current;
     if (remoteRefresh.inFlight) return remoteRefresh.inFlight;
 
@@ -165,8 +175,8 @@ export function useProjectSourceBranches(
     };
     remoteRefresh.inFlight = run();
     return remoteRefresh.inFlight;
-  }, [refetch]);
-  return { ...result, refreshFromRemote };
+  }, [enabled, refetch]);
+  return { ...useCoreQueryResult(result, enabled), refreshFromRemote };
 }
 
 export function useProjectPromptHistory(
@@ -329,4 +339,18 @@ export function useProjectCommands(
     ...TYPEAHEAD_QUERY_POLICY,
     staleTime: 0,
   });
+}
+
+export function useProjects(options?: ExperimentalProjectsQueryOptions) {
+  const enabled = options?.enabled ?? true;
+  const includePersonal = options?.includePersonal ?? false;
+  useProjectListRealtimeSubscription({ enabled });
+  const query = useQuery({
+    queryKey: projectsQueryKey(includePersonal, options?.include),
+    queryFn: ({ signal }) =>
+      sdk.projects.list({ includePersonal, include: options?.include, signal }),
+    enabled,
+    staleTime: 60_000,
+  });
+  return useCoreQueryResult(query, enabled);
 }

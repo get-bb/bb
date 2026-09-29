@@ -17,7 +17,7 @@ import { TasksEditor } from "../../editor/tasks-editor.js";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import {
   useMentionItems,
-  useTasksQuery,
+  useTasksRead,
   useTasksRpc,
 } from "../../shell/data.js";
 import { Lightbox } from "../detail/attachments.js";
@@ -45,33 +45,16 @@ import {
 import { CommentAuthor } from "./comment-author.js";
 import { CommentProviderAvatar } from "./provider-logo.js";
 
-interface FeedEntry {
-  comment: DisplayComment;
-  attachments: Attachment[];
+function useActivityFeed(taskId: string) {
+  return useTasksRead("activityFeed", { taskId }, (result) => result.entries, [
+    "comments:changed",
+    "tasks:changed",
+  ]);
 }
 
-function useActivityFeed(taskId: string) {
-  return useTasksQuery<FeedEntry[]>(
-    async (rpc) => {
-      const { comments } = await rpc.call("listComments", { taskId });
-      const attachments = await Promise.all(
-        comments.map((comment) =>
-          comment.kind === "system"
-            ? Promise.resolve<Attachment[]>([])
-            : rpc
-                .call("listAttachments", { commentId: comment.id })
-                .then((result) => result.attachments),
-        ),
-      );
-      return comments.map((comment, index) => ({
-        comment,
-        attachments: attachments[index] ?? [],
-      }));
-    },
-    ["comments:changed", "tasks:changed"],
-    [taskId],
-  );
-}
+type FeedEntry = NonNullable<
+  ReturnType<typeof useActivityFeed>["data"]
+>[number];
 
 type AgentNotificationTarget =
   | { kind: "ready"; title: string }

@@ -1,3 +1,9 @@
+import { useMemo } from "react";
+import type {
+  ExperimentalCoreQueryOptions,
+  ExperimentalPluginCatalogSearchInput,
+} from "@get-bb/plugin-sdk";
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
@@ -319,15 +325,36 @@ export async function searchPluginCatalog(
 
 const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;
 
+export function usePluginCatalogQuery(
+  input: ExperimentalPluginCatalogSearchInput,
+  options: ExperimentalCoreQueryOptions = {},
+) {
+  const enabled = options.enabled ?? true;
+  const query = useQuery({
+    queryKey: pluginCatalogSearchQueryKey(input.query),
+    queryFn: ({ signal }) =>
+      createPluginsClient(fetch).catalog.search({ ...input, signal }),
+    enabled,
+    refetchOnWindowFocus: false,
+    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
+  });
+  return useCoreQueryResult(query, enabled);
+}
+
 export function usePluginCatalogSearch(
   query: string,
   options: { enabled: boolean },
 ) {
-  return useQuery({
-    queryKey: pluginCatalogSearchQueryKey(query),
-    queryFn: () => searchPluginCatalog(fetch, query),
-    enabled: options.enabled,
-    refetchOnWindowFocus: false,
-    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
-  });
+  const result = usePluginCatalogQuery({ query }, options);
+  const data = useMemo(
+    () =>
+      result.data === undefined
+        ? undefined
+        : {
+            entries: result.data.results.map(toPluginCatalogSearchEntry),
+            collections: result.data.collections,
+          },
+    [result.data],
+  );
+  return { ...result, data };
 }

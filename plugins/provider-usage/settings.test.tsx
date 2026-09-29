@@ -1,10 +1,34 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import {
+  loadPluginApp,
+  renderSlot as renderRawSlot,
+  type RenderSlotOptions,
+} from "@get-bb/plugin-sdk/testing/app";
 import type { UsageMachine, UsageProvider } from "./usage-schema.js";
 
-afterEach(cleanup);
+beforeEach(() => vi.resetModules());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function renderSlot(
+  registration: Parameters<typeof renderRawSlot>[0],
+  props: {},
+  options: RenderSlotOptions,
+) {
+  const rpcCalls: { input: unknown }[] = [];
+  vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+    const input: unknown = JSON.parse(String(init.body));
+    rpcCalls.push({ input });
+    const handler = options.rpc?.getUsage;
+    if (typeof handler !== "function") throw new Error("Missing usage fixture");
+    return Response.json({ ok: true, result: await handler(input) });
+  });
+  return { ...renderRawSlot(registration, props, options), rpcCalls };
+}
 
 function account(id: string, providerId = "codex"): UsageProvider {
   return {

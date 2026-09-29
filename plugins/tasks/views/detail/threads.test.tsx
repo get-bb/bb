@@ -1,3 +1,4 @@
+import { withReadBatches } from "../../read-test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -82,7 +83,6 @@ function detailRpc(overrides: Record<string, unknown> = {}) {
       unavailableThreadIds: [],
     }),
     listComments: () => ({ comments: [] }),
-    listBbProjects: () => ({ bbProjects: [] }),
     ...overrides,
   };
 }
@@ -94,21 +94,23 @@ describe("task detail pull request pills", () => {
       { subPath: "task/TSK-5" },
       {
         openUrl: () => true,
-        rpc: detailRpc({
-          listTaskPullRequests: () => ({
-            pullRequests: [
-              {
-                url: "https://github.com/acme/bb/pull/12",
-                number: 12,
-                title: "Ship the PR pill",
-                state: "merged",
-                updatedAt: "2026-07-16T10:00:00.000Z",
-                threadIds: ["thr_worker000"],
-              },
-            ],
-            unavailableThreadIds: [],
+        rpc: withReadBatches(
+          detailRpc({
+            listTaskPullRequests: () => ({
+              pullRequests: [
+                {
+                  url: "https://github.com/acme/bb/pull/12",
+                  number: 12,
+                  title: "Ship the PR pill",
+                  state: "merged",
+                  updatedAt: "2026-07-16T10:00:00.000Z",
+                  threadIds: ["thr_worker000"],
+                },
+              ],
+              unavailableThreadIds: [],
+            }),
           }),
-        }),
+        ),
       },
     );
 
@@ -128,18 +130,24 @@ describe("task detail pull request pills", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
       {
-        rpc: detailRpc({
-          listTaskThreads: () => ({
-            taskThreads: [
-              taskThreadRow(THREAD_ROW_ID, "thr_worker000", "Worker"),
-              taskThreadRow(OFFLINE_ROW_ID, "thr_offline00", "Offline worker"),
-            ],
+        rpc: withReadBatches(
+          detailRpc({
+            listTaskThreads: () => ({
+              taskThreads: [
+                taskThreadRow(THREAD_ROW_ID, "thr_worker000", "Worker"),
+                taskThreadRow(
+                  OFFLINE_ROW_ID,
+                  "thr_offline00",
+                  "Offline worker",
+                ),
+              ],
+            }),
+            listTaskPullRequests: () => ({
+              pullRequests: [],
+              unavailableThreadIds: ["thr_offline00"],
+            }),
           }),
-          listTaskPullRequests: () => ({
-            pullRequests: [],
-            unavailableThreadIds: ["thr_offline00"],
-          }),
-        }),
+        ),
       },
     );
 
@@ -154,17 +162,19 @@ describe("task detail pull request pills", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
       {
-        rpc: detailRpc({
-          listTaskThreads: () => ({
-            taskThreads: detached
-              ? []
-              : [taskThreadRow(THREAD_ROW_ID, "thr_worker000", "Worker")],
+        rpc: withReadBatches(
+          detailRpc({
+            listTaskThreads: () => ({
+              taskThreads: detached
+                ? []
+                : [taskThreadRow(THREAD_ROW_ID, "thr_worker000", "Worker")],
+            }),
+            taskThreadsDetach: (input: unknown) => {
+              detached = true;
+              return { threadId: rpcInput(input).threadId };
+            },
           }),
-          taskThreadsDetach: (input: unknown) => {
-            detached = true;
-            return { threadId: rpcInput(input).threadId };
-          },
-        }),
+        ),
       },
     );
 
@@ -193,20 +203,22 @@ describe("task detail pull request pills", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
       {
-        rpc: detailRpc({
-          listTaskPullRequests: () => {
-            lookupCount += 1;
-            return {
-              pullRequests: [
-                {
-                  ...basePullRequest,
-                  state: lookupCount === 1 ? "open" : "merged",
-                },
-              ],
-              unavailableThreadIds: [],
-            };
-          },
-        }),
+        rpc: withReadBatches(
+          detailRpc({
+            listTaskPullRequests: () => {
+              lookupCount += 1;
+              return {
+                pullRequests: [
+                  {
+                    ...basePullRequest,
+                    state: lookupCount === 1 ? "open" : "merged",
+                  },
+                ],
+                unavailableThreadIds: [],
+              };
+            },
+          }),
+        ),
       },
     );
 

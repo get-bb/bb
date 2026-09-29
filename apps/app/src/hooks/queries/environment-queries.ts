@@ -1,3 +1,4 @@
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import { useQuery } from "@tanstack/react-query";
 import type {
   Environment,
@@ -88,7 +89,7 @@ export function useEnvironment(
   const enabled = (options?.enabled ?? true) && Boolean(environmentId);
   useEnvironmentDetailRealtimeSubscription(environmentId, { enabled });
 
-  return useQuery<Environment>({
+  const query = useQuery<Environment>({
     queryKey: environmentQueryKey(environmentId),
     queryFn: ({ signal }) =>
       sdk.environments.get({
@@ -98,6 +99,7 @@ export function useEnvironment(
     enabled,
     staleTime: options?.staleTime,
   });
+  return useCoreQueryResult(query, enabled);
 }
 
 export function useEnvironmentWorkStatus(

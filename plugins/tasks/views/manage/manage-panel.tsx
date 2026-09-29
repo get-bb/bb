@@ -1,3 +1,4 @@
+import { experimental_useHosts } from "@get-bb/plugin-sdk/app";
 import { useMemo, useState } from "react";
 import type { Folder, Label, Preset } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
@@ -6,7 +7,7 @@ import {
   useFolders,
   usePresets,
   useProjects,
-  useTasksQuery,
+  useTasksRead,
   useTasksRpc,
 } from "../../shell/data.js";
 import {
@@ -107,13 +108,12 @@ function LabelsSection() {
     null,
   );
   const projectId = selectedProjectId ?? projectList[0]?.id ?? null;
-  const labels = useTasksQuery(
-    async (rpc) =>
-      projectId
-        ? (await rpc.call("listLabels", { projectId })).labels
-        : ([] as Label[]),
+  const labels = useTasksRead(
+    "listLabels",
+    { projectId: projectId ?? "" },
+    (result) => result.labels,
     ["projects:changed"],
-    [projectId],
+    { enabled: projectId !== null },
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const { error, run } = useActionError();
@@ -263,10 +263,7 @@ function LabelsSection() {
 function PresetsSection() {
   const rpc = useTasksRpc();
   const presets = usePresets();
-  const machines = useTasksQuery(
-    async (rpc) => (await rpc.call("listMachines", {})).machines,
-    [],
-  );
+  const machines = experimental_useHosts();
   const [dialog, setDialog] = useState<{
     key: number;
     editing: Preset | null;

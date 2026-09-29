@@ -1,8 +1,6 @@
+import { readUsage, useUsageSnapshot } from "./usage-client.js";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import {
-  useRpc,
-  experimental_ProviderIcon as ProviderIcon,
-} from "@get-bb/plugin-sdk/app";
+import { experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -12,7 +10,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { providerUsageRpcContract } from "./server.js";
 import {
   emptyUsageMessage,
   hasReportedUsage,
@@ -482,32 +479,30 @@ export function UsageSettingsContent({
 }
 
 export function UsageSettings() {
-  const rpc = useRpc<typeof providerUsageRpcContract>();
-  const [machines, setMachines] = useState<UsageMachine[]>([]);
+  const snapshot = useUsageSnapshot();
+  const machines = snapshot.data?.machines ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const forceGeneration = useRef(0);
   useEffect(() => {
-    let disposed = false;
+    const controller = new AbortController();
     let running = false;
     const force = refresh > forceGeneration.current;
     forceGeneration.current = refresh;
     async function load(force: boolean) {
       if (running) return;
       running = true;
-      setLoading(true);
-      setError(false);
       try {
-        const inventory = await rpc.call("getUsage", {
-          force: false,
-          machineIds: null,
-          providerId: null,
-          maxAgeMs: 60_000,
-        });
-        if (disposed) return;
-        setMachines(inventory.machines);
+        const inventory = await readUsage(
+          {
+            force: false,
+            machineIds: null,
+            providerId: null,
+            maxAgeMs: 60_000,
+          },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
         const selected = selectUsageMachine(
           inventory.machines,
           selectedId,
@@ -517,21 +512,21 @@ export function UsageSettings() {
           for (const providerId of new Set(
             selected.providers.map((provider) => provider.providerId),
           )) {
-            const result = await rpc.call("getUsage", {
-              force,
-              machineIds: [selected.id],
-              providerId,
-              maxAgeMs: 60_000,
-            });
-            if (disposed) return;
-            setMachines(result.machines);
+            await readUsage(
+              {
+                force,
+                machineIds: [selected.id],
+                providerId,
+                maxAgeMs: 60_000,
+              },
+              controller.signal,
+            );
+            if (controller.signal.aborted) return;
           }
         }
       } catch {
-        if (!disposed) setError(true);
       } finally {
         running = false;
-        if (!disposed) setLoading(false);
       }
     }
     void load(force);
@@ -539,16 +534,19 @@ export function UsageSettings() {
       if (document.visibilityState === "visible") void load(false);
     }, 60_000);
     return () => {
-      disposed = true;
+      controller.abort();
       window.clearInterval(timer);
     };
-  }, [rpc, selectedId, refresh]);
+  }, [selectedId, refresh]);
   return (
     <UsageSettingsContent
       machines={machines}
       selectedId={selectedId}
-      loading={loading}
-      error={error}
+      loading={
+        snapshot.isRefreshing ||
+        (snapshot.data === null && snapshot.error === null)
+      }
+      error={snapshot.error !== null}
       onSelect={setSelectedId}
       onRefresh={() => setRefresh((value) => value + 1)}
     />

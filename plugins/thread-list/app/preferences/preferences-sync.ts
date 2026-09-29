@@ -19,7 +19,6 @@ export function preferencesMirrorStorageKey(pluginId: string): string {
 }
 
 export interface PreferencesRpc {
-  call(method: "listPreferences", input: null): Promise<unknown>;
   call(
     method: "setPreference",
     input: { key: PreferenceKey; value: unknown },
@@ -36,7 +35,6 @@ interface SyncState {
   rpc: PreferencesRpc | null;
   store: PreferencesStore | null;
   pluginId: string | null;
-  hydrateGeneration: number;
 }
 
 function createSyncState(): SyncState {
@@ -47,7 +45,6 @@ function createSyncState(): SyncState {
     rpc: null,
     store: null,
     pluginId: null,
-    hydrateGeneration: 0,
   };
 }
 
@@ -174,11 +171,11 @@ export function hydratePreferencesFromMirror(): boolean {
   return true;
 }
 
-export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
+export function applyPreferenceSnapshot(
+  response: unknown,
+  rpc: PreferencesRpc,
+): void {
   state.rpc = rpc;
-  const generation = ++state.hydrateGeneration;
-  const response = await rpc.call("listPreferences", null);
-  if (generation !== state.hydrateGeneration) return;
   const preferences =
     typeof response === "object" && response !== null
       ? (response as { preferences?: unknown }).preferences
@@ -277,7 +274,6 @@ export function resetPreferencesSyncForTest(): void {
   }
   state.pendingWrites.clear();
   state.rpc = null;
-  state.hydrateGeneration += 1;
   const store = activeStore();
   for (const key of PREFERENCE_KEYS) {
     store.set(valueAtomFor(key), getPreferenceDefault(key));

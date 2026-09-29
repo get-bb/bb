@@ -1,7 +1,7 @@
 import {
   definePluginApp,
   useBbNavigate,
-  useRealtime,
+  experimental_useRpcQuery,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { Badge as BbBadge } from "@/components/ui/badge";
@@ -3480,8 +3480,6 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const [selectionSlow, setSelectionSlow] = useState(false);
   const catalogRequests = useRef(new LatestRequest());
   const selectionPending = useRef(false);
-  const catalogLoadPending = useRef(false);
-  const catalogLoadQueued = useRef(false);
 
   const requestedView = useMemo<View>(() => {
     const first = subPath.split("/").filter(Boolean)[0] ?? "";
@@ -3490,51 +3488,42 @@ function PreviewPage({ subPath }: { subPath: string }) {
       : "thread";
   }, [subPath]);
 
-  const loadRef = useRef<() => void>(() => {});
+  const catalogQuery = experimental_useRpcQuery<
+    typeof rpcContract,
+    "themeCatalog"
+  >({
+    method: "themeCatalog",
+    input: {},
+    enabled: pendingSelection === null,
+    staleTime: 0,
+    timeoutMs: CLIENT_RPC_TIMEOUT_MS,
+    realtime: [{ channel: "theme-preview:changed" }],
+  });
   useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      if (selectionPending.current || catalogLoadPending.current) {
-        catalogLoadQueued.current = true;
-        return;
-      }
-      catalogLoadQueued.current = false;
-      catalogLoadPending.current = true;
-      const request = catalogRequests.current.begin();
-      withRpcTimeout(rpc.call("themeCatalog", {}), "Theme catalog")
-        .then((c) => {
-          if (
-            !cancelled &&
-            !catalogLoadQueued.current &&
-            catalogRequests.current.isLatest(request)
-          ) {
-            commitCatalog(c, setCatalog);
-            setError(null);
-          }
-        })
-        .catch((e) => {
-          if (
-            !cancelled &&
-            !catalogLoadQueued.current &&
-            catalogRequests.current.isLatest(request)
-          ) {
-            setError(String(e));
-          }
-        })
-        .finally(() => {
-          catalogLoadPending.current = false;
-          if (!cancelled && catalogLoadQueued.current) load();
-        });
-    };
-    loadRef.current = load;
-    load();
-    const timer = setInterval(load, 8000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [rpc]);
-  useRealtime("theme-preview:changed", () => loadRef.current());
+    if (selectionPending.current) return;
+    if (catalogQuery.data) {
+      commitCatalog(catalogQuery.data, setCatalog);
+      setError(null);
+    }
+    if (catalogQuery.error) setError(catalogQuery.error.message);
+  }, [catalogQuery.data, catalogQuery.error]);
+  const refreshCatalog = catalogQuery.refetch;
+  const queuedPoll = useRef(false);
+  const fetchingCatalog = catalogQuery.isFetching;
+  useEffect(() => {
+    if (!fetchingCatalog && pendingSelection === null && queuedPoll.current) {
+      queuedPoll.current = false;
+      void refreshCatalog();
+    }
+  }, [fetchingCatalog, pendingSelection, refreshCatalog]);
+  useEffect(() => {
+    if (pendingSelection !== null) return;
+    const timer = setInterval(() => {
+      if (fetchingCatalog) queuedPoll.current = true;
+      else void refreshCatalog();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [fetchingCatalog, pendingSelection, refreshCatalog]);
 
   useEffect(() => {
     if (!pendingSelection) {
@@ -3603,7 +3592,6 @@ function PreviewPage({ subPath }: { subPath: string }) {
         if (catalogRequests.current.isLatest(request)) {
           selectionPending.current = false;
           setPendingSelection(null);
-          if (catalogLoadQueued.current) loadRef.current();
         }
       });
   };

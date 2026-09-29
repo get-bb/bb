@@ -1,3 +1,4 @@
+import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
   useCallback,
@@ -154,6 +155,7 @@ export async function callPluginRpc(
   pluginId: string,
   method: string,
   input?: unknown,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
@@ -162,6 +164,7 @@ export async function callPluginRpc(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: serializedInput,
+      ...(signal ? { signal } : {}),
     },
   );
   const body = (await response.json().catch(() => null)) as {
@@ -826,3 +829,22 @@ export function useComposers(): readonly PluginComposerApi[] {
     [hosts, pluginId],
   );
 }
+
+export const { experimental_useRpcQuery, experimental_useRpcInfiniteQuery } =
+  createRpcQueryHooks(function useRpcQueryHost() {
+    const pluginId = usePluginId();
+    return useMemo(
+      () => ({
+        pluginId,
+        call: (method: string, input: unknown, signal: AbortSignal) =>
+          callPluginRpc(fetch, pluginId, method, input, signal),
+        subscribe: (channel: string, handler: (payload: unknown) => void) =>
+          wsManager.onPluginSignal((event) => {
+            if (event.pluginId === pluginId && event.channel === channel)
+              handler(event.payload);
+          }),
+        onConnected: (handler: () => void) => wsManager.onConnected(handler),
+      }),
+      [pluginId],
+    );
+  });

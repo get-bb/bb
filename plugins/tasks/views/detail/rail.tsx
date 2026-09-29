@@ -1,3 +1,4 @@
+import { experimental_useProjects } from "@get-bb/plugin-sdk/app";
 import { useState } from "react";
 import type {
   Label,
@@ -10,7 +11,7 @@ import type {
 import { TASK_PRIORITIES, TASK_STATUSES } from "../../shared/contract.js";
 import type { Preset } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
-import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import { useTasksRpc } from "../../shell/data.js";
 import {
   PriorityIcon,
   StatusIcon,
@@ -26,7 +27,7 @@ import {
 import { DispatchControl } from "./threads.js";
 import { DEFAULT_COLOR } from "../manage/shared.js";
 import { BbProjectLinkPicker } from "../manage/bb-project-link.js";
-import type { BbProjectOption } from "../../shared/contract.js";
+import type { PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -323,7 +324,9 @@ function DispatchTargetMenu({
   triggerClassName,
 }: {
   project: Project;
-  bbProjects: readonly BbProjectOption[];
+  bbProjects: Readonly<
+    Awaited<ReturnType<PluginBrowserBbSdk["projects"]["list"]>>
+  >;
   onError: (message: string) => void;
   triggerClassName: string;
 }) {
@@ -435,10 +438,7 @@ export function PropertiesRail({
     task.labelIds.includes(label.id),
   );
   const active = threads.filter(isActiveThread);
-  const bbProjects = useTasksQuery(
-    async (query) => (await query.call("listBbProjects")).bbProjects,
-    ["projects:changed"],
-  );
+  const bbProjects = experimental_useProjects({ includePersonal: true });
   return (
     <aside className={cn("w-56 shrink-0 py-10 pl-2 pr-6", className)}>
       <h2 className="mb-1.5 text-xs font-semibold text-muted-foreground">

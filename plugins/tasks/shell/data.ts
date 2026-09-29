@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  experimental_useRpcQuery,
+  experimental_useRpcInfiniteQuery,
+  useRpc,
+  useRealtime,
+} from "@get-bb/plugin-sdk/app";
+import type { PluginRpcResult } from "@get-bb/plugin-sdk";
 import type { z } from "zod";
+import { errorMessage } from "../shared/errors.js";
 import {
   TASK_STATUSES,
   tasksRpcContract,
   type TasksRpcContract,
 } from "../shared/contract.js";
 import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
-import { errorMessage } from "../shared/errors.js";
 import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
 import type { MentionItem } from "../editor/extensions.js";
 import {
@@ -183,6 +189,34 @@ function useSignalBatches(
   useRealtime("threads:changed", (payload) => push("threads:changed", payload));
 }
 
+export function tasksQuerySignals(
+  channels: readonly InvalidationChannel[],
+  input: object | null,
+) {
+  return channels.map((channel) => ({
+    channel,
+    affects: (payload: unknown) => {
+      if (typeof payload !== "object" || payload === null || input === null)
+        return true;
+      const taskId = "taskId" in payload ? payload.taskId : null;
+      const projectId = "projectId" in payload ? payload.projectId : null;
+      if (typeof taskId === "string") {
+        if ("taskId" in input && typeof input.taskId === "string")
+          return taskId === input.taskId;
+        if ("taskIds" in input && Array.isArray(input.taskIds))
+          return input.taskIds.includes(taskId);
+      }
+      if (typeof projectId === "string") {
+        if ("projectId" in input && typeof input.projectId === "string")
+          return projectId === input.projectId;
+        if ("projectIds" in input && Array.isArray(input.projectIds))
+          return input.projectIds.includes(projectId);
+      }
+      return true;
+    },
+  }));
+}
+
 interface TasksQuery<T> {
   data: T | undefined;
   error: string | null;
@@ -330,16 +364,108 @@ export function useTasksQuery<T>(
   return { ...state, refresh };
 }
 
+export function useTasksRead<
+  Method extends keyof TasksRpcContract,
+  Data = PluginRpcResult<TasksRpcContract[Method]>,
+>(
+  method: Method,
+  input: z.input<TasksRpcContract[Method]["input"]>,
+  select: (result: PluginRpcResult<TasksRpcContract[Method]>) => Data,
+  channels: readonly InvalidationChannel[],
+  options: { snapshot?: TasksQuerySnapshot<Data>; enabled?: boolean } = {},
+): TasksQuery<Data> {
+  const query = experimental_useRpcQuery({
+    contract: tasksRpcContract,
+    method,
+    input,
+    enabled: options.enabled,
+    realtime: tasksQuerySignals(channels, input),
+  });
+  const enabled = options.enabled ?? true;
+  const refetch = query.refetch;
+  const refresh = useCallback(async () => {
+    if (enabled) await refetch();
+  }, [enabled, refetch]);
+  useTasksQueryRefresh(refresh);
+  const [snapshot] = useState(() =>
+    options.snapshot === undefined
+      ? undefined
+      : readQuerySnapshot(options.snapshot.name, options.snapshot.schema),
+  );
+  const data = !enabled
+    ? undefined
+    : query.data === undefined
+      ? snapshot
+      : select(query.data);
+  const snapshotName = options.snapshot?.name;
+  const selectRef = useRef(select);
+  useEffect(() => {
+    selectRef.current = select;
+  }, [select]);
+  useEffect(() => {
+    if (query.data === undefined || snapshotName === undefined) return;
+    writeQuerySnapshot(
+      snapshotName,
+      selectRef.current(query.data),
+      claimQuerySnapshotRevision(snapshotName),
+    );
+  }, [query.data, snapshotName]);
+  return {
+    data,
+    error: query.error?.message ?? null,
+    isLoading: query.isLoading,
+    refresh,
+  };
+}
+
+export function useAllTasks(
+  input: TaskListQuery,
+  channels: readonly InvalidationChannel[],
+) {
+  const query = experimental_useRpcInfiniteQuery<
+    TasksRpcContract,
+    "listTasks",
+    string | null
+  >({
+    contract: tasksRpcContract,
+    method: "listTasks",
+    input: { ...input, limit: TASKS_PAGE_MAX_LIMIT },
+    initialPageParam: null,
+    getPageInput: (input, cursor: string | null) => ({
+      ...input,
+      ...(cursor === null ? {} : { cursor }),
+    }),
+    getNextPageParam: (page) => page.nextCursor,
+    realtime: tasksQuerySignals(channels, input),
+  });
+  useTasksQueryRefresh(query.refetch);
+  const { hasNextPage, isFetching, error, fetchNextPage } = query;
+  useEffect(() => {
+    if (hasNextPage && !isFetching && error === null) void fetchNextPage();
+  }, [hasNextPage, isFetching, error, fetchNextPage]);
+  const data = useMemo(
+    () => query.data?.pages.flatMap((page) => page.tasks),
+    [query.data],
+  );
+  return {
+    data,
+    error: query.error?.message ?? null,
+    isLoading: query.isLoading || (query.hasNextPage && query.error === null),
+    refresh: query.isFetchNextPageError ? query.fetchNextPage : query.refetch,
+  };
+}
+
 const foldersSnapshot = {
   name: "folders",
   schema: tasksRpcContract.listFolders.output.shape.folders,
 };
 
 export function useFolders() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("listFolders")).folders,
+  return useTasksRead(
+    "listFolders",
+    null,
+    (result) => result.folders,
     ["projects:changed"],
-    [],
     { snapshot: foldersSnapshot },
   );
 }
@@ -350,19 +476,19 @@ const projectsSnapshot = {
 };
 
 export function useProjects() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("listProjects", {})).projects,
+  return useTasksRead(
+    "listProjects",
+    {},
+    (result) => result.projects,
     ["projects:changed"],
-    [],
     { snapshot: projectsSnapshot },
   );
 }
 
 export function usePresets() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("listPresets")).presets,
-    ["projects:changed"],
-  );
+  return useTasksRead("listPresets", null, (result) => result.presets, [
+    "projects:changed",
+  ]);
 }
 
 const sidebarSummarySnapshot = {
@@ -371,10 +497,11 @@ const sidebarSummarySnapshot = {
 };
 
 export function useSidebarSummary() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("sidebarSummary")).projects,
+  return useTasksRead(
+    "sidebarSummary",
+    null,
+    (result) => result.projects,
     ["tasks:changed", "projects:changed", "threads:changed"],
-    [],
     { snapshot: sidebarSummarySnapshot },
   );
 }
@@ -412,8 +539,20 @@ export function useMentionItems() {
 }
 
 export function useActiveTasks() {
-  return useTasksQuery(
-    async (rpc) => listAllTasks(rpc, { activeOnly: true }),
-    ["tasks:changed", "threads:changed"],
-  );
+  return useAllTasks({ activeOnly: true }, [
+    "tasks:changed",
+    "threads:changed",
+  ]);
+}
+
+export function useTasksQueryRefresh(refetch: () => Promise<void>): void {
+  const { manualGeneration, beginGenerationWork, endGenerationWork } =
+    useTasksRefresh();
+  const previous = useRef(manualGeneration);
+  useEffect(() => {
+    if (previous.current === manualGeneration) return;
+    previous.current = manualGeneration;
+    beginGenerationWork();
+    void refetch().finally(endGenerationWork);
+  }, [manualGeneration, refetch, beginGenerationWork, endGenerationWork]);
 }

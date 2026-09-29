@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { Host } from "@bb/domain";
-import type { ProjectWithThreadsResponse } from "@bb/server-contract";
+import type {
+  ProjectResponse,
+  ProjectWithThreadsResponse,
+} from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import "@bb/shared-ui/icon-extended";
 import { Icon } from "@bb/shared-ui/icon";
@@ -30,8 +33,9 @@ import {
   useReorderProject,
   useUpdateProject,
 } from "@/hooks/mutations/project-mutations";
-import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
-import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { selectHosts } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
+import { useProjects } from "@/hooks/queries/project-queries";
 import { useQuickCreateProject } from "@/hooks/useQuickCreateProject";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import {
@@ -87,7 +91,7 @@ interface ProjectSummary {
 }
 
 function summarizeMachines(
-  project: ProjectWithThreadsResponse,
+  project: ProjectResponse | ProjectWithThreadsResponse,
   hostById: ReadonlyMap<string, Host>,
 ): ProjectSummary {
   let configuredMachineCount = 0;
@@ -114,7 +118,7 @@ function machineLabel(summary: ProjectSummary): string {
 }
 
 interface SortableProjectRowProps {
-  project: ProjectWithThreadsResponse;
+  project: ProjectResponse | ProjectWithThreadsResponse;
   summary: ProjectSummary;
   dragDisabled: boolean;
   onRename: () => void;
@@ -186,7 +190,10 @@ function SortableProjectRow({
                   {machineLabel(summary)}
                 </span>
                 <span className="shrink-0">
-                  {pluralize(project.threads.length, "thread")}
+                  {pluralize(
+                    "threads" in project ? project.threads.length : 0,
+                    "thread",
+                  )}
                 </span>
               </div>
             </div>
@@ -213,7 +220,7 @@ function SortableProjectRow({
 }
 
 export function ProjectsSettingsSection() {
-  const sidebarNavigationQuery = useSidebarNavigation();
+  const projectsQuery = useProjects({ include: "threads" });
   const hostsQuery = useHosts();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
@@ -225,7 +232,7 @@ export function ProjectsSettingsSection() {
     useState<ProjectDeleteDialogTarget | null>(null);
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 
-  const serverProjects = sidebarNavigationQuery.data?.projects;
+  const serverProjects = projectsQuery.data;
   useEffect(() => {
     setOptimisticOrder(null);
   }, [serverProjects]);
@@ -288,7 +295,7 @@ export function ProjectsSettingsSection() {
           </Button>
         }
       >
-        {sidebarNavigationQuery.isError ? (
+        {projectsQuery.error !== null ? (
           <p className="text-sm text-destructive" role="alert">
             Couldn't load projects.
           </p>

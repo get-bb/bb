@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import {
   definePluginApp,
   useRpc,
+  experimental_useRpcQuery,
   type PluginRpcResult,
 } from "@get-bb/plugin-sdk/app";
 import type { memoryRpcContract } from "./server.js";
@@ -156,29 +157,16 @@ function MemoryEditor({
 
 function MemorySettings() {
   const rpc = useRpc<typeof memoryRpcContract>();
-  const [memories, setMemories] = useState<MemoryRecord[]>([]);
+  const query = experimental_useRpcQuery<
+    typeof memoryRpcContract,
+    "listMemories"
+  >({ method: "listMemories", input: null });
+  const memories = query.data?.memories ?? [];
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setMemories((await rpc.call("listMemories")).memories);
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [rpc]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
+  if (query.isLoading) {
     return <p className="text-sm text-muted-foreground">Loading memories…</p>;
   }
 
@@ -189,9 +177,9 @@ function MemorySettings() {
         provider-native memory under Settings → Providers to avoid duplicate or
         conflicting stores.
       </div>
-      {error ? (
+      {error || query.error ? (
         <p className="text-sm text-destructive" role="alert">
-          {error}
+          {error ?? query.error?.message}
         </p>
       ) : null}
       {memories.length === 0 ? (
@@ -274,11 +262,7 @@ function MemorySettings() {
                                 expectedVersion: memory.version,
                               })
                               .then(() => {
-                                setMemories((current) =>
-                                  current.filter(
-                                    (entry) => entry.id !== memory.id,
-                                  ),
-                                );
+                                void query.refetch();
                                 setEditingId((current) =>
                                   current === memory.id ? null : current,
                                 );
@@ -301,11 +285,7 @@ function MemorySettings() {
                           memory={memory}
                           onCancel={() => setEditingId(null)}
                           onSaved={(updated) => {
-                            setMemories((current) =>
-                              current.map((entry) =>
-                                entry.id === updated.id ? updated : entry,
-                              ),
-                            );
+                            void query.refetch();
                             setEditingId(null);
                           }}
                         />

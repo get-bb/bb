@@ -1,3 +1,4 @@
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
   useInfiniteQuery,
@@ -9,10 +10,7 @@ import {
 import { useCallback, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
-import type {
-  PendingInteraction,
-  ThreadListEntry,
-} from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -657,16 +655,16 @@ export function useThreadSearch({
   };
 }
 
-export function useThread(id: string, options?: QueryOptions) {
+export function useThread(id: string | null, options?: QueryOptions) {
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
 
-  return useQuery<ThreadResponse>({
-    queryKey: threadQueryKey(id),
+  const query = useQuery<ThreadResponse>({
+    queryKey: threadQueryKey(id ?? ""),
     queryFn: ({ signal }) =>
       sdk.threads.get({
-        threadId: requireThreadId(id, "useThread"),
+        threadId: requireThreadId(id ?? "", "useThread"),
         signal,
       }),
     enabled,
@@ -675,12 +673,17 @@ export function useThread(id: string, options?: QueryOptions) {
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
-      resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
+      resolveThreadPlaceholder(
+        previousData,
+        previousQuery?.queryKey,
+        id ?? "",
+      ) ??
       liftThreadListPlaceholder(
-        getCachedThreadListPlaceholder(queryClient, id) ??
-          findSidebarNavigationThreadPlaceholder(queryClient, id),
+        getCachedThreadListPlaceholder(queryClient, id ?? "") ??
+          findSidebarNavigationThreadPlaceholder(queryClient, id ?? ""),
       ),
   });
+  return useCoreQueryResult(query, enabled);
 }
 
 function liftThreadListPlaceholder(

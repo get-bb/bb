@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_useRpcQuery,
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
   UrlLink,
   useBbNavigate,
-  useRealtime,
   useRpc,
   type PluginNavPanelProps,
   type PluginRpcResult,
@@ -22,7 +22,7 @@ import {
   type Suggestion,
   type SuggestionIcon,
 } from "./app-logic.js";
-import type { githubRpcContract } from "./server.js";
+import { githubRpcContract } from "./rpc-contract.js";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -97,41 +97,26 @@ function useItems(kind: "issue" | "pr"): {
   items: Item[] | null;
   error: string | null;
 } {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [state, setState] = useState<{
-    items: Item[] | null;
-    error: string | null;
-  }>({
-    items: null,
-    error: null,
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "listItems",
+    input: { kind },
+    realtime: [{ channel: "data-changed" }],
   });
-  const refetch = useCallback(() => {
-    rpc.call("listItems", { kind }).then(
-      (result) => setState({ items: result.items, error: null }),
-      (error: unknown) => setState({ items: null, error: errorText(error) }),
-    );
-  }, [rpc, kind]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("data-changed", refetch);
-  return state;
+  return {
+    items: query.data?.items ?? null,
+    error: query.error?.message ?? null,
+  };
 }
 
 function useLinks(): LinksMap {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [links, setLinks] = useState<LinksMap>({});
-  const refetch = useCallback(() => {
-    rpc.call("listLinks").then(
-      (result) => setLinks(result.links),
-      () => {},
-    );
-  }, [rpc]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("links-changed", refetch);
-  return links;
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "listLinks",
+    input: null,
+    realtime: [{ channel: "links-changed" }],
+  });
+  return query.data?.links ?? {};
 }
 
 function useSpawn(): {
@@ -161,22 +146,13 @@ function useSpawn(): {
   return { spawn, spawningKey };
 }
 
-let viewerLogin: string | null = null;
-
 function useViewer(): string | null {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [login, setLogin] = useState<string | null>(viewerLogin);
-  useEffect(() => {
-    if (viewerLogin !== null) return;
-    rpc.call("viewer").then(
-      (result) => {
-        viewerLogin = result.login;
-        setLogin(result.login);
-      },
-      () => {},
-    );
-  }, [rpc]);
-  return login;
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "viewer",
+    input: null,
+  });
+  return query.data?.login ?? null;
 }
 
 function Avatar({
@@ -832,18 +808,20 @@ function AssigneePicker({
   assignees: string[];
   onToggle: (login: string, assigned: boolean) => void;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
   const viewer = useViewer();
-  const [users, setUsers] = useState<string[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (users !== null) return;
-    rpc.call("assignableUsers", { repo }).then(
-      (result) => setUsers(result.users),
-      (error: unknown) => setLoadError(errorText(error)),
-    );
-  }, [rpc, repo, users]);
+  const [opened, setOpened] = useState(false);
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "assignableUsers",
+    input: { repo },
+    enabled: opened,
+  });
+  const users = query.data?.users ?? null;
+  const loadError = query.error?.message ?? null;
+  const load = () => {
+    setOpened(true);
+    if (query.error !== null) void query.refetch();
+  };
 
   const ordered =
     users === null
@@ -904,17 +882,19 @@ function LabelPicker({
   labels: string[];
   onToggle: (label: string, enabled: boolean) => void;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [available, setAvailable] = useState<string[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (available !== null) return;
-    rpc.call("repositoryLabels", { repo }).then(
-      (result) => setAvailable(result.labels),
-      (error: unknown) => setLoadError(errorText(error)),
-    );
-  }, [rpc, repo, available]);
+  const [opened, setOpened] = useState(false);
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "repositoryLabels",
+    input: { repo },
+    enabled: opened,
+  });
+  const available = query.data?.labels ?? null;
+  const loadError = query.error?.message ?? null;
+  const load = () => {
+    setOpened(true);
+    if (query.error !== null) void query.refetch();
+  };
 
   const ordered =
     available === null
@@ -975,74 +955,70 @@ function IssueDetailView({
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
   const { setIssueState, setAssignees, setLabels } = useIssueMutations();
-  const [detail, setDetail] = useState<IssueDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "getIssue",
+    input: { repo, number },
+    realtime: [{ channel: "data-changed" }],
+  });
+  const [optimistic, setOptimistic] = useState<{
+    base: IssueDetail;
+    detail: IssueDetail;
+  } | null>(null);
+  const base = query.data?.issue ?? null;
+  const detail = optimistic?.base === base ? optimistic.detail : base;
+  const error = query.error?.message ?? null;
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
-
+  const refetch = query.refetch;
   const load = useCallback(() => {
-    rpc.call("getIssue", { repo, number }).then(
-      (result) => {
-        setDetail(result.issue);
-        setError(null);
-      },
-      (err: unknown) => setError(errorText(err)),
-    );
-  }, [rpc, repo, number]);
-  useEffect(() => {
-    setDetail(null);
-    load();
-  }, [load]);
+    setOptimistic(null);
+    void refetch();
+  }, [refetch]);
 
   const changeState = useCallback(
     (next: "open" | "closed") => {
-      setDetail((prev) =>
-        prev === null
-          ? prev
-          : { ...prev, state: next === "closed" ? "CLOSED" : "OPEN" },
-      );
+      if (base === null || detail === null) return;
+      setOptimistic({
+        base,
+        detail: { ...detail, state: next === "closed" ? "CLOSED" : "OPEN" },
+      });
       setIssueState(repo, number, next).catch((err: unknown) => {
         toast.error(errorText(err));
         load();
       });
     },
-    [setIssueState, repo, number, load],
+    [setIssueState, repo, number, load, base, detail],
   );
 
   const toggleAssignee = useCallback(
     (login: string, assigned: boolean) => {
-      let next: string[] = [];
-      setDetail((prev) => {
-        if (prev === null) return prev;
-        next = assigned
-          ? [...new Set([...prev.assignees, login])]
-          : prev.assignees.filter((entry) => entry !== login);
-        return { ...prev, assignees: next };
-      });
+      if (base === null || detail === null) return;
+      const next = assigned
+        ? [...new Set([...detail.assignees, login])]
+        : detail.assignees.filter((entry) => entry !== login);
+      setOptimistic({ base, detail: { ...detail, assignees: next } });
       setAssignees(repo, number, next).catch((err: unknown) => {
         toast.error(errorText(err));
         load();
       });
     },
-    [setAssignees, repo, number, load],
+    [setAssignees, repo, number, load, base, detail],
   );
 
   const toggleLabel = useCallback(
     (label: string, enabled: boolean) => {
-      let next: string[] = [];
-      setDetail((prev) => {
-        if (prev === null) return prev;
-        next = enabled
-          ? [...new Set([...prev.labels, label])]
-          : prev.labels.filter((entry) => entry !== label);
-        return { ...prev, labels: next };
-      });
+      if (base === null || detail === null) return;
+      const next = enabled
+        ? [...new Set([...detail.labels, label])]
+        : detail.labels.filter((entry) => entry !== label);
+      setOptimistic({ base, detail: { ...detail, labels: next } });
       setLabels(repo, number, next).catch((err: unknown) => {
         toast.error(errorText(err));
         load();
       });
     },
-    [setLabels, repo, number, load],
+    [setLabels, repo, number, load, base, detail],
   );
 
   const postComment = useCallback(() => {
@@ -1611,25 +1587,17 @@ function PullDetailView({
   compact?: boolean;
   workspaceEnvironmentId?: string | null;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
-  const [pull, setPull] = useState<PullDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    rpc.call("getPull", { repo, number }).then(
-      (result) => {
-        setPull(result.pull);
-        setError(null);
-      },
-      (err: unknown) => setError(errorText(err)),
-    );
-  }, [rpc, repo, number]);
-  useEffect(() => {
-    setPull(null);
-    load();
-  }, [load]);
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "getPull",
+    input: { repo, number },
+    realtime: [{ channel: "data-changed" }],
+  });
+  const pull = query.data?.pull ?? null;
+  const error = query.error?.message ?? null;
+  const load = query.refetch;
 
   if (error !== null) return <EmptyState message={error} />;
   if (pull === null) {
@@ -1844,30 +1812,24 @@ function PullPickerList({
 }
 
 function PullPanelTab({ threadId }: PluginThreadPanelProps) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [resolved, setResolved] = useState(false);
-  const [selected, setSelected] = useState<{
-    repo: string;
-    number: number;
-    environmentId: string | null;
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "pullForThread",
+    input: { threadId },
+    realtime: [{ channel: "links-changed" }],
+  });
+  const [selection, setSelection] = useState<{
+    threadId: string;
+    pull: { repo: string; number: number; environmentId: string | null } | null;
   } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    rpc.call("pullForThread", { threadId }).then(
-      (result) => {
-        if (cancelled) return;
-        if (result.pull !== null) setSelected(result.pull);
-        setResolved(true);
-      },
-      () => {
-        if (!cancelled) setResolved(true);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [rpc, threadId]);
+  const selected =
+    selection?.threadId === threadId
+      ? selection.pull
+      : (query.data?.pull ?? null);
+  const setSelected = (
+    pull: { repo: string; number: number; environmentId: string | null } | null,
+  ) => setSelection({ threadId, pull });
+  const resolved = !query.isLoading;
 
   if (!resolved) {
     return <DetailSkeleton />;
@@ -1968,19 +1930,13 @@ function NewIssueForm({
 }
 
 function useStatus(): { status: Status | null; refetch: () => void } {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [status, setStatus] = useState<Status | null>(null);
-  const refetch = useCallback(() => {
-    rpc.call("status").then(
-      (result) => setStatus(result),
-      () => {},
-    );
-  }, [rpc]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("data-changed", refetch);
-  return { status, refetch };
+  const query = experimental_useRpcQuery({
+    contract: githubRpcContract,
+    method: "status",
+    input: null,
+    realtime: [{ channel: "data-changed" }],
+  });
+  return { status: query.data ?? null, refetch: query.refetch };
 }
 
 function PanelHeader() {

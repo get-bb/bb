@@ -1,3 +1,4 @@
+import { withReadBatches } from "../../read-test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -54,7 +55,7 @@ function taskDetailRpc(getTaskByKey: () => { task: typeof task }) {
     getTaskByKey,
     listProjects: () => ({ projects: [] }),
     getTask: () => ({ task: null }),
-    listTasks: () => ({ tasks: [] }),
+    listTasks: () => ({ tasks: [], nextCursor: null }),
     listLabels: () => ({ labels: [] }),
     listAttachments: () => ({ attachments: [] }),
     listTaskThreads: () => ({ taskThreads: [] }),
@@ -81,7 +82,7 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
       {
-        rpc: { getTaskByKey: () => ({ task }) },
+        rpc: withReadBatches({ getTaskByKey: () => ({ task }) }),
       },
     );
 
@@ -101,7 +102,9 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
       {
-        rpc: { getTaskByKey: () => ({ task: { ...task, priority: "none" } }) },
+        rpc: withReadBatches({
+          getTaskByKey: () => ({ task: { ...task, priority: "none" } }),
+        }),
       },
     );
     const main = await slot.findByRole("button", {
@@ -115,7 +118,10 @@ describe("Task directive card", () => {
     const slot = renderSlot(
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
-      { openThreadPanel, rpc: { getTaskByKey: () => ({ task }) } },
+      {
+        openThreadPanel,
+        rpc: withReadBatches({ getTaskByKey: () => ({ task }) }),
+      },
     );
 
     fireEvent.click(await slot.findByText("Ship task embeds"));
@@ -138,7 +144,7 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
       {
-        rpc: { getTaskByKey: () => ({ task }) },
+        rpc: withReadBatches({ getTaskByKey: () => ({ task }) }),
       },
     );
     fireEvent.click(await slot.findByText("Ship task embeds"));
@@ -157,7 +163,7 @@ describe("Task directive card", () => {
     const slot = renderSlot(
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-9", title: "Old embed work" }),
-      { rpc: { getTaskByKey: () => pending } },
+      { rpc: withReadBatches({ getTaskByKey: () => pending }) },
     );
 
     const loading = slot.getByRole("status", { name: "Loading task TSK-9" });
@@ -178,7 +184,7 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-9" }),
       {
-        rpc: { getTaskByKey: () => ({ task: null }) },
+        rpc: withReadBatches({ getTaskByKey: () => ({ task: null }) }),
       },
     );
     await slot.findByText("Task not found — deleted, or its key changed");
@@ -195,7 +201,7 @@ describe("Task directive card", () => {
         app.messageDirectives[0]!,
         directiveProps(attributes),
         {
-          rpc: {},
+          rpc: withReadBatches({}),
         },
       );
       slot.getByText("Invalid task link. Expected a task key like TSK-4.");
@@ -210,12 +216,12 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
       {
-        rpc: {
+        rpc: withReadBatches({
           getTaskByKey: () => {
             if (fail) throw new Error("boom");
             return { task };
           },
-        },
+        }),
       },
     );
     const retry = await slot.findByRole("button", { name: "Retry" });
@@ -229,7 +235,7 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
       {
-        rpc: { getTaskByKey: () => ({ task }) },
+        rpc: withReadBatches({ getTaskByKey: () => ({ task }) }),
       },
     );
     await slot.findByText("Ship task embeds");
@@ -262,7 +268,9 @@ describe("Task directive card", () => {
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
       {
-        rpc: { getTaskByKey: () => ({ task: created ? task : null }) },
+        rpc: withReadBatches({
+          getTaskByKey: () => ({ task: created ? task : null }),
+        }),
       },
     );
     await slot.findByText("Task not found — deleted, or its key changed");
@@ -281,7 +289,7 @@ describe("Task embed panel", () => {
       app.threadPanelActions[0]!,
       { threadId: "thr_1", params: { taskKey: "TSK-4" } },
       {
-        rpc: taskDetailRpc(() => ({ task })),
+        rpc: withReadBatches(taskDetailRpc(() => ({ task }))),
       },
     );
     await slot.findByRole("textbox", { name: "Task title" });
@@ -300,7 +308,9 @@ describe("Task embed panel", () => {
       { threadId: "thr_1", params: { taskKey: "TSK-4" } },
       {
         realtimeConnectionState: "connected",
-        rpc: taskDetailRpc(() => ({ task: { ...task, title } })),
+        rpc: withReadBatches(
+          taskDetailRpc(() => ({ task: { ...task, title } })),
+        ),
       },
     );
     await slot.findByText("Stale embedded detail");
@@ -316,7 +326,7 @@ describe("Task embed panel", () => {
     const slot = renderSlot(
       app.threadPanelActions[0]!,
       { threadId: "thr_1", params: null },
-      { rpc: {} },
+      { rpc: withReadBatches({}) },
     );
     slot.getByText("Open a task card from a message to view it here.");
   });

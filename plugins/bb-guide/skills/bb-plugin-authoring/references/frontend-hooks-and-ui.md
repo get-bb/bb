@@ -1,6 +1,36 @@
 # Frontend hooks, composer, and UI
 
-Hooks:
+## Shared reads
+
+Use `experimental_useRpcQuery` for read-only plugin RPC methods and
+`experimental_useRpcInfiniteQuery` for paginated reads. Keep writes on `useRpc`.
+A runtime `contract` validates inputs locally; explicit contract/method type
+arguments allow a type-only contract import instead. Server output validation
+remains authoritative.
+
+Identical reads share requests within the plugin. Cache identity includes the
+method, input, single/infinite mode, and initial page parameter. Consumers of
+one key must agree on pagination semantics. `realtime` selects plugin signal
+channels and optional `affects(payload)` predicates; bursts coalesce and active
+queries reconcile on connection establishment. Infinite-query revalidation
+rebuilds loaded pages and cursors in order; a next-page failure preserves loaded
+pages. Supply a positive `timeoutMs` to bound each shared request. Aborting a
+browser request does not cancel server work.
+
+Use the shared core hooks for hosts, projects, thread/environment details,
+project branches, installed plugins, and plugin catalog search. Their data uses
+SDK response shapes and shares core query owners. Thread detail can expose
+provisional cached data: check `isPlaceholderData` before making decisions that
+require a full response. Null detail IDs disable reads. Branch reads use
+background remote refresh; `refreshFromRemote()` waits for remote refresh.
+
+Both core and RPC hooks treat `enabled: false` as disabling automatic reads and
+imperative refetch; infinite queries also disable fetchNextPage. Cached data
+can remain visible. Query errors are exposed in `error`, including errors from
+imperative refresh. See the Plugin Guide for the public API inventory and the
+installed SDK declarations for exact signatures.
+
+## Other hooks
 
 - `useSdk()` → bb's public API client bound to your plugin: the same areas
   the `bb` CLI and the backend `bb.sdk` expose (`threads`, `threadSections`,

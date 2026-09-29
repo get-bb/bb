@@ -143,6 +143,30 @@ export const experimental_SourceCode = runtimeComponent(
 );
 export const experimental_Diff = runtimeComponent("experimental_Diff");
 export const useRpc = runtimeFunction("useRpc");
+export const experimental_usePlugins = runtimeFunction(
+  "experimental_usePlugins",
+);
+export const experimental_usePluginCatalogSearch = runtimeFunction(
+  "experimental_usePluginCatalogSearch",
+);
+export const experimental_useHosts = runtimeFunction("experimental_useHosts");
+export const experimental_useProjects = runtimeFunction(
+  "experimental_useProjects",
+);
+export const experimental_useThread = runtimeFunction("experimental_useThread");
+export const experimental_useEnvironment = runtimeFunction(
+  "experimental_useEnvironment",
+);
+export const experimental_useProjectSourceBranches = runtimeFunction(
+  "experimental_useProjectSourceBranches",
+);
+
+export const experimental_useRpcQuery = runtimeFunction(
+  "experimental_useRpcQuery",
+);
+export const experimental_useRpcInfiniteQuery = runtimeFunction(
+  "experimental_useRpcInfiniteQuery",
+);
 export const useRealtime = runtimeFunction("useRealtime");
 export const useRealtimeConnectionState = runtimeFunction(
   "useRealtimeConnectionState",

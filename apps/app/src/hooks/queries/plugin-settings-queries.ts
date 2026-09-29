@@ -1,3 +1,6 @@
+import { useMemo } from "react";
+import type { ExperimentalCoreQueryOptions } from "@get-bb/plugin-sdk";
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import type {
   InstalledPlugin,
   PluginSafeModeUpdateResponse,
@@ -231,13 +234,25 @@ export function pluginListQueryOptions(args: { enabled: boolean }) {
   });
 }
 
-export function usePluginList(args: { enabled: boolean }) {
-  return useQuery({
-    ...pluginListQueryOptions(args),
-    select: (plugins): PluginListResult => ({
-      plugins: plugins.map(toPluginListItem),
-    }),
+export function usePlugins(options: ExperimentalCoreQueryOptions = {}) {
+  const enabled = options.enabled ?? true;
+  const query = useQuery({
+    ...pluginListQueryOptions({ enabled }),
+    select: (plugins) => ({ plugins }),
   });
+  return useCoreQueryResult(query, enabled);
+}
+
+export function usePluginList(args: { enabled: boolean }) {
+  const query = usePlugins(args);
+  const data = useMemo(
+    () =>
+      query.data === undefined
+        ? undefined
+        : { plugins: query.data.plugins.map(toPluginListItem) },
+    [query.data],
+  );
+  return { ...query, data };
 }
 
 export function usePluginSettingsView(

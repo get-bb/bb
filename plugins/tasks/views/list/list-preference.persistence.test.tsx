@@ -1,3 +1,4 @@
+import { withReadBatches } from "../../read-test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -68,7 +69,7 @@ function task(
 ): Task {
   const prefix = projectId === PROJECT_A ? "ALP" : "BET";
   return makeTask({
-    id: `01HZZZZZZZZZZZZZZZZZZZZT${projectId.slice(-2)}${number}`,
+    id: `${projectId.slice(-2)}${number}`.padStart(26, "0"),
     projectId,
     number,
     key: `${prefix}-${number}`,
@@ -103,8 +104,8 @@ function applyListFilters(
   return next;
 }
 
-const LABEL_BUG = "01HZZZZZZZZZZZZZZZZZZZZLB1";
-const LABEL_UX = "01HZZZZZZZZZZZZZZZZZZZZLB2";
+const LABEL_BUG = "01HZZZZZZZZZZZZZZZZZZZZBB1";
+const LABEL_UX = "01HZZZZZZZZZZZZZZZZZZZZBB2";
 
 const labelsA = [
   {
@@ -166,7 +167,7 @@ function baseRpc(
           );
         }
       }
-      return { tasks: next };
+      return { tasks: next, nextCursor: null };
     },
     listTaskThreads: () => ({ taskThreads: [] }),
     listComments: () => ({ comments: [] }),
@@ -179,7 +180,7 @@ function renderProject(projectId: string) {
   return renderSlot(
     app.navPanels[0]!,
     { subPath: projectId },
-    { rpc: baseRpc() },
+    { rpc: withReadBatches(baseRpc()) },
   );
 }
 
@@ -200,7 +201,7 @@ describe("list filter/sort preference persistence", () => {
     const slot = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await slot.findByText("ALP-1");
 
@@ -228,7 +229,7 @@ describe("list filter/sort preference persistence", () => {
     const remounted = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await remounted.findByText("ALP-3");
     expect(
@@ -247,7 +248,7 @@ describe("list filter/sort preference persistence", () => {
     const slotA = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await slotA.findByText("ALP-1");
     await selectSort(slotA, "Priority");
@@ -261,7 +262,7 @@ describe("list filter/sort preference persistence", () => {
     const slotB = renderSlot(
       registration,
       { subPath: PROJECT_B },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await slotB.findByText("BET-1");
     expect(
@@ -278,7 +279,7 @@ describe("list filter/sort preference persistence", () => {
     const backToA = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await backToA.findByText("ALP-1");
     expect(backToA.getByRole("button", { name: /Sort/ }).textContent).toContain(
@@ -311,7 +312,7 @@ describe("list filter/sort preference persistence", () => {
     const slot = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await slot.findByText("ALP-3");
     fireEvent.click(slot.getByRole("button", { name: /Clear/ }));
@@ -324,7 +325,7 @@ describe("list filter/sort preference persistence", () => {
     const remounted = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await remounted.findByText("ALP-1");
     expect(remounted.queryByRole("button", { name: /Clear/ })).toBeNull();
@@ -354,7 +355,7 @@ describe("list filter/sort preference persistence", () => {
     const allSlot = renderSlot(
       registration,
       { subPath: "all" },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await allSlot.findByText("ALP-1");
     await selectSort(allSlot, "Priority");
@@ -364,11 +365,14 @@ describe("list filter/sort preference persistence", () => {
       registration,
       { subPath: "active" },
       {
-        rpc: baseRpc({
-          listTasks: () => ({
-            tasks: [task(PROJECT_A, 9, "in_progress", "high")],
+        rpc: withReadBatches(
+          baseRpc({
+            listTasks: () => ({
+              nextCursor: null,
+              tasks: [task(PROJECT_A, 9, "in_progress", "high")],
+            }),
           }),
-        }),
+        ),
       },
     );
     await activeSlot.findByText("ALP-9");
@@ -381,7 +385,11 @@ describe("list filter/sort preference persistence", () => {
     const registration = app.navPanels[0]!;
     const listTasksCalls: Record<string, unknown>[] = [];
     const rpc = baseRpc({}, listTasksCalls);
-    const slot = renderSlot(registration, { subPath: PROJECT_A }, { rpc });
+    const slot = renderSlot(
+      registration,
+      { subPath: PROJECT_A },
+      { rpc: withReadBatches(rpc) },
+    );
     await slot.findByText("ALP-1");
 
     fireEvent.click(slot.getByRole("button", { name: /^Priority/ }));
@@ -422,7 +430,7 @@ describe("list filter/sort preference persistence", () => {
     const remounted = renderSlot(
       registration,
       { subPath: PROJECT_A },
-      { rpc: baseRpc() },
+      { rpc: withReadBatches(baseRpc()) },
     );
     await remounted.findByRole("button", { name: /Priority/ });
     expect(
@@ -452,7 +460,11 @@ describe("list filter/sort preference persistence", () => {
     );
     const listTasksCalls: Record<string, unknown>[] = [];
     const rpc = baseRpc({}, listTasksCalls);
-    const slot = renderSlot(app.navPanels[0]!, { subPath: PROJECT_A }, { rpc });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_A },
+      { rpc: withReadBatches(rpc) },
+    );
     await slot.findByRole("button", { name: /^Label/ });
     expect(slot.getByRole("button", { name: /^Label/ }).textContent).toContain(
       "DeletedLabel",

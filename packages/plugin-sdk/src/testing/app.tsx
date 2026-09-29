@@ -1,5 +1,15 @@
 import * as React from "react";
 import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  type QueryKey,
+} from "@tanstack/react-query";
+import {
+  createRpcQueryHooks,
+  useCoreQueryResult,
+} from "../internal/rpc-query-hooks.js";
+import {
   createContext,
   useContext,
   useEffect,
@@ -935,8 +945,156 @@ function TestDiff({
   );
 }
 
+function useTestCoreQuery<Data>(
+  queryKey: QueryKey,
+  read: (signal: AbortSignal) => Promise<Data>,
+  enabled: boolean,
+  placeholderScopeLength = 0,
+) {
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => read(signal),
+    enabled,
+    placeholderData: (previous, previousQuery) =>
+      placeholderScopeLength > 0 &&
+      queryKey
+        .slice(0, placeholderScopeLength)
+        .every((part, index) => part === previousQuery?.queryKey[index])
+        ? previous
+        : undefined,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const result = useCoreQueryResult(query, enabled);
+  const { refetch } = result;
+  const env = useSlotEnv("core query");
+  useEffect(() => {
+    let previous = env.realtimeConnection.getSnapshot();
+    return env.realtimeConnection.subscribe(() => {
+      const next = env.realtimeConnection.getSnapshot();
+      if (next === "connected" && next !== previous) void refetch();
+      previous = next;
+    });
+  }, [env, refetch]);
+  return result;
+}
+
 const testPluginSdkApp = {
   definePluginApp,
+  ...createRpcQueryHooks(function useRpcQueryHost() {
+    const env = useSlotEnv("experimental_useRpcQuery");
+    return useMemo(
+      () => ({
+        pluginId: env.pluginId,
+        call: (method: string, input: unknown, signal: AbortSignal) => {
+          signal.throwIfAborted();
+          return env.rpcClient.call(method, input);
+        },
+        subscribe: (channel: string, handler: (payload: unknown) => void) => {
+          let listeners = env.realtimeHandlers.get(channel);
+          if (!listeners) {
+            listeners = new Set();
+            env.realtimeHandlers.set(channel, listeners);
+          }
+          listeners.add(handler);
+          return () => {
+            listeners.delete(handler);
+          };
+        },
+        onConnected: (handler: () => void) => {
+          let previous = env.realtimeConnection.getSnapshot();
+          return env.realtimeConnection.subscribe(() => {
+            const current = env.realtimeConnection.getSnapshot();
+            if (current === "connected" && previous !== current) handler();
+            previous = current;
+          });
+        },
+      }),
+      [env],
+    );
+  }),
+  experimental_usePlugins(options) {
+    const { sdk } = useSlotEnv("experimental_usePlugins");
+    return useTestCoreQuery(
+      ["plugins"],
+      (signal) => sdk.plugins.list({ signal }),
+      options?.enabled ?? true,
+    );
+  },
+  experimental_usePluginCatalogSearch(input, options) {
+    const { sdk } = useSlotEnv("experimental_usePluginCatalogSearch");
+    return useTestCoreQuery(
+      ["plugin-catalog", input],
+      (signal) => sdk.plugins.catalog.search({ ...input, signal }),
+      options?.enabled ?? true,
+    );
+  },
+  experimental_useHosts(options) {
+    const { sdk } = useSlotEnv("experimental_useHosts");
+    const includeCreating = options?.includeCreating ?? false;
+    const type = options?.type;
+    return useTestCoreQuery(
+      ["hosts", includeCreating, type],
+      (signal) => sdk.hosts.list({ includeCreating, type, signal }),
+      options?.enabled ?? true,
+    );
+  },
+  experimental_useProjects(options) {
+    const { sdk } = useSlotEnv("experimental_useProjects");
+    const includePersonal = options?.includePersonal ?? false;
+    return useTestCoreQuery(
+      ["projects", includePersonal, options?.include],
+      (signal) =>
+        sdk.projects.list({
+          includePersonal,
+          include: options?.include,
+          signal,
+        }),
+      options?.enabled ?? true,
+    );
+  },
+  experimental_useThread(threadId, options) {
+    const { sdk } = useSlotEnv("experimental_useThread");
+    return useTestCoreQuery(
+      ["thread", threadId],
+      (signal) => sdk.threads.get({ threadId: threadId ?? "", signal }),
+      (options?.enabled ?? true) && Boolean(threadId),
+    );
+  },
+  experimental_useEnvironment(environmentId, options) {
+    const { sdk } = useSlotEnv("experimental_useEnvironment");
+    return useTestCoreQuery(
+      ["environment", environmentId],
+      (signal) =>
+        sdk.environments.get({ environmentId: environmentId ?? "", signal }),
+      (options?.enabled ?? true) && Boolean(environmentId),
+    );
+  },
+  experimental_useProjectSourceBranches(projectId, hostId, options) {
+    const { sdk } = useSlotEnv("experimental_useProjectSourceBranches");
+    const query = useTestCoreQuery(
+      [
+        "branches",
+        projectId,
+        hostId,
+        options?.query,
+        options?.limit,
+        options?.selectedBranch,
+      ],
+      (signal) =>
+        sdk.projects.branches({
+          projectId: projectId ?? "",
+          hostId: hostId ?? "",
+          query: options?.query,
+          limit: String(options?.limit ?? 50),
+          selectedBranch: options?.selectedBranch,
+          signal,
+        }),
+      (options?.enabled ?? true) && Boolean(projectId) && Boolean(hostId),
+      3,
+    );
+    return { ...query, refreshFromRemote: query.refetch };
+  },
   useRpc<
     Contract extends PluginRpcContract = PluginRpcContract,
   >(): PluginRpcClient<Contract> {
@@ -2235,11 +2393,16 @@ export function renderSlot<
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
   };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>
-      <SlotLifecycleGuard onUnmount={releaseComposerOwnership}>
-        {ui}
-      </SlotLifecycleGuard>
+      <QueryClientProvider client={queryClient}>
+        <SlotLifecycleGuard onUnmount={releaseComposerOwnership}>
+          {ui}
+        </SlotLifecycleGuard>
+      </QueryClientProvider>
     </SlotEnvContext.Provider>
   );
   const Component = registration.component;

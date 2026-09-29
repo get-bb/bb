@@ -402,66 +402,6 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
-  it("lists bb workspace projects as id/name options", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        projects: {
-          list: async () => [
-            { id: "proj_personal", name: "Personal", extra: "dropped" },
-            { id: "proj_bb", name: "bb" },
-          ],
-        },
-      },
-    });
-    registerTasksApi(bb, createStore(bb));
-
-    const result = tasksRpcContract.listBbProjects.output.parse(
-      await harness.callRpc("listBbProjects", null),
-    );
-    expect(result.bbProjects).toEqual([
-      { id: "proj_personal", name: "Personal" },
-      { id: "proj_bb", name: "bb" },
-    ]);
-    expect(harness.sdk.callsTo("projects.list")).toEqual([
-      [{ includePersonal: true }],
-    ]);
-    await harness.dispose();
-  });
-
-  it("lists machines as id/name options from the BB SDK", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        hosts: {
-          list: async () => [
-            {
-              id: "host_primary",
-              name: "Sawyer Air",
-              status: "connected",
-            },
-            {
-              id: "host_remote",
-              name: "Build box",
-              status: "disconnected",
-            },
-          ],
-        },
-      },
-    });
-    registerTasksApi(bb, createStore(bb));
-
-    await expect(harness.callRpc("listMachines", {})).resolves.toEqual({
-      machines: [
-        { id: "host_primary", name: "Sawyer Air" },
-        { id: "host_remote", name: "Build box" },
-      ],
-    });
-    expect(harness.sdk.callsTo("hosts.list")).toEqual([[]]);
-
-    await harness.dispose();
-  });
-
   it("searches threads and returns recent threads in updated order", async () => {
     const thread = (
       id: string,
@@ -1507,3 +1447,131 @@ function makePullRequest(
     ...overrides,
   };
 }
+
+it("batches requested task metadata and activity without mixing projects or attachment owners", async () => {
+  const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+  const store = createStore(bb);
+  registerTasksApi(bb, store);
+  const project = store.tasks.createProject({
+    name: "Batch",
+    prefix: "BAT",
+    color: "blue",
+  });
+  const other = store.tasks.createProject({
+    name: "Other",
+    prefix: "OTH",
+    color: "red",
+  });
+  const task = store.tasks.createTask({
+    projectId: project.id,
+    title: "Requested",
+  });
+  const unrelated = store.tasks.createTask({
+    projectId: other.id,
+    title: "Unrelated",
+  });
+  const label = store.tasks.createLabel({
+    projectId: project.id,
+    name: "Wanted",
+    color: "blue",
+  });
+  store.tasks.createLabel({
+    projectId: other.id,
+    name: "Other label",
+    color: "red",
+  });
+  const thread = store.tasks.upsertTaskThread({
+    taskId: task.id,
+    threadId: "thr_batch",
+    presetName: "Test",
+    title: "Working",
+    liveStatus: "working",
+  });
+  const comment = store.tasks.createComment({
+    taskId: task.id,
+    kind: "user",
+    authorName: "You",
+    body: "Note",
+  });
+  const attachment = {
+    fileName: "note.txt",
+    mime: "text/plain",
+    sizeBytes: 4,
+    blobPath: "attachments/private-blob",
+    isImage: false,
+  };
+  store.tasks.createAttachment({ ...attachment, taskId: task.id });
+  store.tasks.createAttachment({ ...attachment, taskId: unrelated.id });
+  const commentAttachment = store.tasks.createAttachment({
+    ...attachment,
+    commentId: comment.id,
+  });
+  const labels = tasksRpcContract.listLabelsForProjects.output.parse(
+    await harness.callRpc("listLabelsForProjects", {
+      projectIds: [project.id, project.id],
+    }),
+  );
+  expect(labels.labels).toEqual([label]);
+  const metadata = tasksRpcContract.taskMetadata.output.parse(
+    await harness.callRpc("taskMetadata", {
+      taskIds: [task.id, task.id],
+      includeAttachmentCounts: true,
+    }),
+  );
+  expect(metadata.items).toEqual([
+    { taskId: task.id, taskThreads: [thread], attachmentCount: 1 },
+  ]);
+  expect(await harness.callRpc("taskMetadata", { taskIds: [task.id] })).toEqual(
+    {
+      items: [
+        { taskId: task.id, taskThreads: [thread], attachmentCount: null },
+      ],
+    },
+  );
+  const feed = tasksRpcContract.activityFeed.output.parse(
+    await harness.callRpc("activityFeed", { taskId: task.id }),
+  );
+  expect(feed.entries).toHaveLength(1);
+  expect(feed.entries[0]?.comment.id).toBe(comment.id);
+  expect(feed.entries[0]?.attachments.map((row) => row.id)).toEqual([
+    commentAttachment.id,
+  ]);
+  expect(feed.entries[0]?.attachments[0]).not.toHaveProperty("blobPath");
+  await harness.dispose();
+});
+
+it("reads metadata for large task sets with a constant number of database queries", async () => {
+  const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+  const store = createStore(bb);
+  registerTasksApi(bb, store);
+  const project = store.tasks.createProject({
+    name: "Bulk",
+    prefix: "BULK",
+    color: "blue",
+  });
+  const ids = Array.from(
+    { length: 1100 },
+    (_, index) =>
+      store.tasks.createTask({ projectId: project.id, title: `Task ${index}` })
+        .id,
+  );
+  const prepare = vi.spyOn(bb.storage.database(), "prepare");
+  try {
+    const result = tasksRpcContract.taskMetadata.output.parse(
+      await harness.callRpc("taskMetadata", {
+        taskIds: ids,
+        includeAttachmentCounts: true,
+      }),
+    );
+    expect(result.items).toHaveLength(1100);
+    expect(
+      result.items.every(
+        (item) => item.attachmentCount === 0 && item.taskThreads.length === 0,
+      ),
+    ).toBe(true);
+    expect(prepare).toHaveBeenCalledTimes(2);
+  } finally {
+    prepare.mockRestore();
+    await harness.dispose();
+  }
+});

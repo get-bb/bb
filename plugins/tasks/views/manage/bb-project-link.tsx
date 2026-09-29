@@ -1,4 +1,4 @@
-import type { BbProjectOption } from "../../shared/contract.js";
+import type { PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 import {
   Select,
   SelectContent,
@@ -17,7 +17,9 @@ export function BbProjectLinkPicker({
 }: {
   value: string | null;
   onChange: (value: string | null) => void;
-  bbProjects: readonly BbProjectOption[];
+  bbProjects: Readonly<
+    Awaited<ReturnType<PluginBrowserBbSdk["projects"]["list"]>>
+  >;
   noneLabel?: string;
 }) {
   const unavailableSelection =

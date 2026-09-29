@@ -32,6 +32,7 @@ import type {
   PluginRpcCallArgs,
   PluginRpcContract,
   PluginRpcResult,
+  StandardSchemaV1InferInput,
 } from "./rpc-contract.js";
 
 /**
@@ -2287,6 +2288,110 @@ export interface PluginRpcClient<
   ): Promise<PluginRpcResult<Contract[Method]>>;
 }
 
+export interface ExperimentalCoreQueryOptions {
+  enabled?: boolean;
+}
+
+/** Data uses the SDK response shape. Undefined means no data is available yet; isPlaceholderData identifies provisional cached detail. */
+export interface ExperimentalCoreQueryResult<Data> {
+  data: Data | undefined;
+  error: Error | null;
+  isLoading: boolean;
+  isFetching: boolean;
+  /** Placeholder data may be incomplete; await an authoritative response for decisions. */
+  isPlaceholderData: boolean;
+  /** Refresh an enabled query. Errors are reported through error. */
+  refetch(): Promise<void>;
+}
+
+export type ExperimentalPluginCatalogSearchInput = Omit<
+  Parameters<BbSdkAreas["plugins"]["catalog"]["search"]>[0],
+  "signal"
+>;
+
+export interface ExperimentalHostsQueryOptions extends ExperimentalCoreQueryOptions {
+  includeCreating?: boolean;
+  type?: NonNullable<Parameters<BbSdkAreas["hosts"]["list"]>[0]>["type"];
+}
+
+export interface ExperimentalProjectsQueryOptions extends ExperimentalCoreQueryOptions {
+  include?: "threads";
+  includePersonal?: boolean;
+}
+
+export interface ExperimentalProjectSourceBranchesQueryOptions extends ExperimentalCoreQueryOptions {
+  query?: string;
+  limit?: number;
+  selectedBranch?: string;
+}
+
+export interface ExperimentalProjectSourceBranchesQueryResult extends ExperimentalCoreQueryResult<
+  Awaited<ReturnType<BbSdkAreas["projects"]["branches"]>>
+> {
+  refreshFromRemote(): Promise<void>;
+}
+
+export interface ExperimentalRpcQuerySignal {
+  channel: string;
+  /** Omitted means every signal on this channel invalidates the query. */
+  affects?: (payload: unknown) => boolean;
+}
+
+export interface ExperimentalRpcQueryOptions<
+  Contract extends PluginRpcContract,
+  Method extends Extract<keyof Contract, string>,
+> {
+  /** Optional local input validation. Omit with explicit contract/method type arguments to keep schemas on the server. */
+  contract?: Contract;
+  method: Method;
+  input: StandardSchemaV1InferInput<Contract[NoInfer<Method>]["input"]>;
+  enabled?: boolean;
+  /** Defaults to 30 seconds. Queries reconcile on connection establishment. */
+  staleTime?: number;
+  /** Optional positive deadline per RPC request. Aborts the browser request; server work may continue. */
+  timeoutMs?: number;
+  realtime?: readonly ExperimentalRpcQuerySignal[];
+}
+
+export interface ExperimentalRpcQueryResult<Data> {
+  data: Data | undefined;
+  error: Error | null;
+  isLoading: boolean;
+  isFetching: boolean;
+  /** Refresh this cached read; errors are reported in error. */
+  refetch(): Promise<void>;
+}
+
+export interface ExperimentalRpcInfiniteQueryOptions<
+  Contract extends PluginRpcContract,
+  Method extends Extract<keyof Contract, string>,
+  PageParam extends JsonValue,
+> extends ExperimentalRpcQueryOptions<Contract, Method> {
+  initialPageParam: PageParam;
+  /** Build the RPC input for each page; input identifies the entire collection. */
+  getPageInput(
+    input: StandardSchemaV1InferInput<Contract[NoInfer<Method>]["input"]>,
+    pageParam: PageParam,
+  ): StandardSchemaV1InferInput<Contract[NoInfer<Method>]["input"]>;
+  /** Return null when there are no more pages. */
+  getNextPageParam(
+    lastPage: PluginRpcResult<Contract[NoInfer<Method>]>,
+  ): PageParam | null;
+}
+
+export interface ExperimentalRpcInfiniteQueryResult<
+  Data,
+  PageParam,
+> extends ExperimentalRpcQueryResult<{
+  pages: Data[];
+  pageParams: PageParam[];
+}> {
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  isFetchNextPageError: boolean;
+  fetchNextPage(): Promise<void>;
+}
+
 export interface PluginSettingsState {
   /**
    * Effective non-secret setting values (secret settings are excluded —
@@ -3304,6 +3409,69 @@ export interface PluginSdkApp {
   useRpc<
     Contract extends PluginRpcContract = PluginRpcContract,
   >(): PluginRpcClient<Contract>;
+  /** Installed plugins from the core cache, matching sdk.plugins.list. */
+  experimental_usePlugins(
+    options?: ExperimentalCoreQueryOptions,
+  ): ExperimentalCoreQueryResult<
+    Awaited<ReturnType<BbSdkAreas["plugins"]["list"]>>
+  >;
+  /** Core catalog search, matching sdk.plugins.catalog.search. */
+  experimental_usePluginCatalogSearch(
+    input: ExperimentalPluginCatalogSearchInput,
+    options?: ExperimentalCoreQueryOptions,
+  ): ExperimentalCoreQueryResult<
+    Awaited<ReturnType<BbSdkAreas["plugins"]["catalog"]["search"]>>
+  >;
+  /** The host's shared host list, with the same entities returned by sdk.hosts.list. */
+  experimental_useHosts(
+    options?: ExperimentalHostsQueryOptions,
+  ): ExperimentalCoreQueryResult<
+    Awaited<ReturnType<BbSdkAreas["hosts"]["list"]>>
+  >;
+  /** The host's shared project list. Personal projects are excluded by default, like sdk.projects.list. */
+  experimental_useProjects(
+    options?: ExperimentalProjectsQueryOptions,
+  ): ExperimentalCoreQueryResult<
+    Awaited<ReturnType<BbSdkAreas["projects"]["list"]>>
+  >;
+  /** Thread detail from the host cache, in sdk.threads.get's shape. Null disables the read. */
+  experimental_useThread(
+    threadId: string | null,
+    options?: ExperimentalCoreQueryOptions,
+  ): ExperimentalCoreQueryResult<
+    Awaited<ReturnType<BbSdkAreas["threads"]["get"]>>
+  >;
+  /** Environment detail from the host cache, in sdk.environments.get's shape. Null disables the read. */
+  experimental_useEnvironment(
+    environmentId: string | null,
+    options?: ExperimentalCoreQueryOptions,
+  ): ExperimentalCoreQueryResult<
+    Awaited<ReturnType<BbSdkAreas["environments"]["get"]>>
+  >;
+  /** Core branch search with background remote refresh; data matches sdk.projects.branches. */
+  experimental_useProjectSourceBranches(
+    projectId: string | null,
+    hostId: string | null,
+    options?: ExperimentalProjectSourceBranchesQueryOptions,
+  ): ExperimentalProjectSourceBranchesQueryResult;
+  /** Shared read-only RPC query. Never use for methods with side effects. */
+  experimental_useRpcQuery<
+    Contract extends PluginRpcContract,
+    Method extends Extract<keyof Contract, string>,
+  >(
+    options: ExperimentalRpcQueryOptions<Contract, Method>,
+  ): ExperimentalRpcQueryResult<PluginRpcResult<Contract[Method]>>;
+  /** Shared cursor-paged RPC read. Revalidation rebuilds loaded pages in order. */
+  experimental_useRpcInfiniteQuery<
+    Contract extends PluginRpcContract,
+    Method extends Extract<keyof Contract, string>,
+    PageParam extends JsonValue,
+  >(
+    options: ExperimentalRpcInfiniteQueryOptions<Contract, Method, PageParam>,
+  ): ExperimentalRpcInfiniteQueryResult<
+    PluginRpcResult<Contract[Method]>,
+    PageParam
+  >;
   useRealtime(channel: string, handler: (payload: unknown) => void): void;
   /**
    * Observe the same shared connection that delivers `useRealtime` signals.

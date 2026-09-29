@@ -202,7 +202,7 @@ describe("workflow composer banner", () => {
       },
     );
 
-    await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     const toggle = slot.getByRole("button", {
       name: "Workflow: Review the release",
     });
@@ -245,7 +245,7 @@ describe("workflow composer banner", () => {
       },
     );
 
-    await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(slot.rpcCalls).toHaveLength(1);
     await act(async () => vi.advanceTimersByTimeAsync(5_000));
     expect(slot.rpcCalls).toHaveLength(1);
@@ -255,7 +255,7 @@ describe("workflow composer banner", () => {
 
     runs = [run];
     await slot.emitRealtime("workflow-runs", { threadId: "thr_idle" });
-    await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(100));
     expect(slot.rpcCalls).toHaveLength(2);
     expect(slot.getByText("Review the release")).toBeTruthy();
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
@@ -289,7 +289,7 @@ describe("workflow composer banner", () => {
       },
     );
     try {
-      await act(async () => Promise.resolve());
+      await act(async () => vi.advanceTimersByTimeAsync(1));
       expect(slot.rpcCalls).toHaveLength(1);
       await act(async () => vi.advanceTimersByTimeAsync(1_000));
       expect(slot.rpcCalls).toHaveLength(2);
@@ -303,7 +303,7 @@ describe("workflow composer banner", () => {
       await act(async () => {
         setVisibility("visible");
       });
-      await act(async () => Promise.resolve());
+      await act(async () => vi.advanceTimersByTimeAsync(1));
       expect(slot.rpcCalls).toHaveLength(3);
       await act(async () => vi.advanceTimersByTimeAsync(1_000));
       expect(slot.rpcCalls).toHaveLength(4);
@@ -537,7 +537,7 @@ describe("workflow-preview directive", () => {
       },
     );
 
-    await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(slot.getByRole("alert").textContent).toMatch(/initial outage/i);
 
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
@@ -602,7 +602,7 @@ describe("workflow-preview directive", () => {
       },
     );
 
-    await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(slot.getByText("Review the release")).toBeTruthy();
     expect(slot.queryByText("Complete")).toBeNull();
 
@@ -614,6 +614,7 @@ describe("workflow-preview directive", () => {
     await act(async () => {
       resolvePoll?.({ run: terminalRun });
       await delayedPoll;
+      await vi.advanceTimersByTimeAsync(1);
     });
     expect(slot.getByText("Complete")).toBeTruthy();
     await act(async () => vi.advanceTimersByTimeAsync(5_000));

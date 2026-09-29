@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
   useRpc,
+  experimental_useRpcQuery,
   type JsonValue,
   type PluginMachineProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
@@ -90,30 +91,19 @@ function ModalMachineInputsControl({
   value,
   onChange,
 }: PluginMachineProviderInputsProps) {
-  const rpc = useRpc<typeof modalRpcContract>();
+  const query = experimental_useRpcQuery<
+    typeof modalRpcContract,
+    "launch.options"
+  >({ method: "launch.options", input: {} });
   const selectedPresetName = selectedName(value, "preset");
   const selectedImageName = selectedName(value, "image");
-  const [options, setOptions] = useState<ModalLaunchOptions | null>(null);
+  const options = query.data ?? null;
   useEffect(() => {
     onChange({
       status: "ready",
       value: machineInputs(selectedPresetName, selectedImageName),
     });
   }, [onChange, selectedImageName, selectedPresetName]);
-  useEffect(() => {
-    let active = true;
-    void rpc.call("launch.options", {}).then(
-      (result) => {
-        if (active) setOptions(result);
-      },
-      () => {
-        if (active) setOptions(null);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [rpc]);
   if (
     options === null ||
     (options.presets.length <= 1 && options.images.length <= 1)
@@ -219,29 +209,26 @@ function replaceAt<T>(items: readonly T[], index: number, value: T): T[] {
 
 function LaunchOptionsSettings() {
   const rpc = useRpc<typeof modalRpcContract>();
+  const query = experimental_useRpcQuery<
+    typeof modalRpcContract,
+    "launch.options"
+  >({ method: "launch.options", input: {} });
   const [saved, setSaved] = useState<ModalLaunchOptions | null>(null);
   const [draft, setDraft] = useState<ModalLaunchOptions | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedImage, setSelectedImage] = useState(0);
+  const previousOptions = useRef(query.data);
   useEffect(() => {
-    let active = true;
-    void rpc.call("launch.options", {}).then(
-      (result) => {
-        if (!active) return;
-        setSaved(result);
-        setDraft(result);
-      },
-      (failure) => {
-        if (active) {
-          setError(errorMessage(failure));
-        }
-      },
+    const options = query.data;
+    if (!options) return;
+    const previous = previousOptions.current;
+    previousOptions.current = options;
+    setSaved(options);
+    setDraft((current) =>
+      current === null || current === previous ? options : current,
     );
-    return () => {
-      active = false;
-    };
-  }, [rpc]);
+  }, [query.data]);
   const save = async () => {
     if (draft === null) return;
     setSaving(true);
@@ -250,6 +237,7 @@ function LaunchOptionsSettings() {
       const result = await rpc.call("launch.options.set", draft);
       setSaved(result);
       setDraft(result);
+      await query.refetch();
     } catch (failure) {
       setError(errorMessage(failure));
     } finally {
@@ -257,13 +245,13 @@ function LaunchOptionsSettings() {
     }
   };
   if (draft === null) {
-    return error === null ? (
+    return error === null && query.error === null ? (
       <p className="text-sm text-muted-foreground" role="status">
         Loading launch options…
       </p>
     ) : (
       <p className="text-sm text-destructive-text" role="alert">
-        {error}
+        {error ?? query.error?.message}
       </p>
     );
   }

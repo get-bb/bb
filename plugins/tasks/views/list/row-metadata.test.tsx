@@ -1,3 +1,4 @@
+import { withReadBatches } from "../../read-test-fixtures.js";
 // @vitest-environment jsdom
 import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -74,7 +75,7 @@ function thread(
 
 function label(suffix: string, name: string): Label {
   return {
-    id: `01HZZZZZZZZZZZZZZZZZZZZZL${suffix}`,
+    id: `01HZZZZZZZZZZZZZZZZZZZZZB${suffix}`,
     projectId: PROJECT_ID,
     name,
     color: "#5e6ad2",
@@ -93,13 +94,13 @@ function renderList(fixture: ListFixture) {
     app.navPanels[0]!,
     { subPath: PROJECT_ID },
     {
-      rpc: {
+      rpc: withReadBatches({
         listProjects: () => ({ projects: [project] }),
         listFolders: () => ({ folders: [] }),
         listPresets: () => ({ presets: [] }),
         sidebarSummary: () => ({ projects: [] }),
         listLabels: () => ({ labels: fixture.labels ?? [] }),
-        listTasks: () => ({ tasks: fixture.tasks }),
+        listTasks: () => ({ tasks: fixture.tasks, nextCursor: null }),
         listTaskThreads: (input: unknown) => ({
           taskThreads:
             fixture.threadsByTask?.[String(rpcInput(input).taskId)] ?? [],
@@ -112,7 +113,7 @@ function renderList(fixture: ListFixture) {
           calls.listAttachments += 1;
           return { attachments: [] };
         },
-      },
+      }),
     },
   );
   return { slot, calls };

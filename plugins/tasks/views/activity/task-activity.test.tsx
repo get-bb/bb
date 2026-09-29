@@ -24,7 +24,7 @@ const { rpcCall } = vi.hoisted(() => ({ rpcCall: vi.fn() }));
 
 vi.mock("../../shell/data.js", () => ({
   useMentionItems: () => [],
-  useTasksQuery: () => ({ data: [] }),
+  useTasksRead: () => ({ data: [] }),
   useTasksRpc: () => ({ call: rpcCall }),
 }));
 

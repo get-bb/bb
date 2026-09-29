@@ -1277,6 +1277,65 @@ export function createTasksStore(db: PluginDatabase) {
     return requireLabel(id);
   }
 
+  function listLabelsForProjects(projectIds: string[]): Label[] {
+    if (projectIds.length === 0) return [];
+    return db
+      .prepare<[string], LabelRow>(
+        "SELECT * FROM labels WHERE project_id IN (SELECT value FROM json_each(?)) ORDER BY name COLLATE NOCASE, id",
+      )
+      .all(JSON.stringify(projectIds))
+      .map(labelFromRow);
+  }
+
+  function taskMetadata(taskIds: string[], includeAttachmentCounts: boolean) {
+    const ids = [...new Set(taskIds)];
+    if (ids.length === 0) return [];
+    const encoded = JSON.stringify(ids);
+    const threads = db
+      .prepare<[string], TaskThreadRow>(`
+      SELECT * FROM task_threads
+      WHERE task_id IN (SELECT value FROM json_each(?))
+      ORDER BY CASE WHEN live_status IN ('completed', 'failed') THEN 1 ELSE 0 END,
+        attached_at DESC, id DESC
+    `)
+      .all(encoded);
+    const byTask = new Map<string, TaskThread[]>();
+    for (const row of threads) {
+      const items = byTask.get(row.task_id) ?? [];
+      items.push(taskThreadFromRow(row));
+      byTask.set(row.task_id, items);
+    }
+    const counts = new Map(
+      includeAttachmentCounts
+        ? db
+            .prepare<[string], { task_id: string; count: number }>(`
+      SELECT task_id, COUNT(*) AS count FROM attachments
+      WHERE task_id IN (SELECT value FROM json_each(?)) GROUP BY task_id
+    `)
+            .all(encoded)
+            .map((row) => [row.task_id, row.count] as const)
+        : [],
+    );
+    return ids.map((taskId) => ({
+      taskId,
+      taskThreads: byTask.get(taskId) ?? [],
+      attachmentCount: includeAttachmentCounts
+        ? (counts.get(taskId) ?? 0)
+        : null,
+    }));
+  }
+
+  function listAttachmentsForComments(commentIds: string[]): Attachment[] {
+    if (commentIds.length === 0) return [];
+    return db
+      .prepare<[string], AttachmentRow>(`
+      SELECT * FROM attachments WHERE comment_id IN (SELECT value FROM json_each(?))
+      ORDER BY created_at, id
+    `)
+      .all(JSON.stringify(commentIds))
+      .map(attachmentFromRow);
+  }
+
   function listLabels(projectId: string): Label[] {
     return db
       .prepare<[string], LabelRow>(
@@ -1832,6 +1891,9 @@ export function createTasksStore(db: PluginDatabase) {
     createLabel,
     getLabel,
     listLabels,
+    listLabelsForProjects,
+    taskMetadata,
+    listAttachmentsForComments,
     updateLabel,
     deleteLabel,
     addTaskLabel,

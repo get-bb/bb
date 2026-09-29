@@ -1,16 +1,17 @@
+import { readUsage, useUsageSnapshot } from "./usage-client.js";
 import {
   useCallback,
   useEffect,
   useId,
   useMemo,
   useState,
-  useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
 import {
   definePluginApp,
   experimental_ProviderIcon as ProviderIcon,
-  experimental_useSidebarThreads,
+  experimental_useThread,
+  experimental_useEnvironment,
   experimental_usePluginId,
   type ExperimentalSidebarFooterDisclosureProps,
   useBbContext,
@@ -37,7 +38,6 @@ import {
 import {
   providerUsageTone,
   selectUsageMachine,
-  usageRpcSuccessSchema,
   type UsageMachine,
   type UsageProvider,
   type UsageSnapshot,
@@ -62,13 +62,6 @@ export interface UsageStoreSnapshot {
 const CARD_MAX_AGE_MS = 2 * 60_000;
 const FOCUS_MAX_AGE_MS = 5 * 60_000;
 const SAFETY_REFRESH_INTERVAL_MS = 30 * 60_000;
-const storeListeners = new Set<() => void>();
-let storeSnapshot: UsageStoreSnapshot = {
-  data: null,
-  error: null,
-  isRefreshing: false,
-};
-let activeRefreshCount = 0;
 let lastMachineId: string | null = null;
 let lastProviderIdByMachine = new Map<string, string>();
 
@@ -83,35 +76,10 @@ function readSelectedMachine(storageKey: string | null): string | null {
   return lastMachineId;
 }
 
-function updateStore(next: UsageStoreSnapshot): void {
-  storeSnapshot = next;
-  for (const listener of storeListeners) listener();
-}
-
-function subscribeStore(listener: () => void): () => void {
-  storeListeners.add(listener);
-  return () => storeListeners.delete(listener);
-}
-
-function getStoreSnapshot(): UsageStoreSnapshot {
-  return storeSnapshot;
-}
-
-function rpcErrorMessage(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
-  const error = Reflect.get(body, "error");
-  if (typeof error === "string") return error;
-  if (typeof error !== "object" || error === null) return null;
-  const message = Reflect.get(error, "message");
-  return typeof message === "string" ? message : null;
-}
-
-function refreshUsage({
-  force,
-  machineIds,
-  maxAgeMs,
-  providerId = null,
+async function refreshUsage({
   signal,
+  providerId = null,
+  ...input
 }: {
   force: boolean;
   machineIds: string[] | null;
@@ -119,52 +87,11 @@ function refreshUsage({
   providerId?: string | null;
   signal?: AbortSignal;
 }): Promise<void> {
-  activeRefreshCount += 1;
-  updateStore({ ...storeSnapshot, error: null, isRefreshing: true });
-  return (async () => {
-    try {
-      const response = await fetch(
-        "/api/v1/plugins/provider-usage/rpc/getUsage",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ force, machineIds, maxAgeMs, providerId }),
-          signal:
-            signal === undefined
-              ? AbortSignal.timeout(60_000)
-              : AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
-        },
-      );
-      if (!response.ok)
-        throw new Error(`Usage request returned HTTP ${response.status}.`);
-      const body: unknown = await response.json();
-      const parsed = usageRpcSuccessSchema.safeParse(body);
-      if (!parsed.success) {
-        throw new Error(
-          rpcErrorMessage(body) ?? "Provider usage could not be loaded.",
-        );
-      }
-      updateStore({
-        data: parsed.data.result,
-        error: null,
-        isRefreshing: activeRefreshCount > 1,
-      });
-    } catch (cause) {
-      if (signal?.aborted === true) {
-        return;
-      }
-      console.warn("Provider usage refresh failed", cause);
-      updateStore({
-        ...storeSnapshot,
-        error: "Couldn’t refresh usage.",
-      });
-    } finally {
-      activeRefreshCount -= 1;
-      if (activeRefreshCount === 0 && storeSnapshot.isRefreshing) {
-        updateStore({ ...storeSnapshot, isRefreshing: false });
-      }
-    }
-  })();
+  try {
+    await readUsage({ ...input, providerId }, signal);
+  } catch (error) {
+    if (!signal?.aborted) console.warn("Provider usage refresh failed", error);
+  }
 }
 
 function formatResetCountdown(resetsAt: string | null): string | null {
@@ -685,19 +612,13 @@ export function ProviderUsageStatusContent({
 
 function ProviderUsageStatus(props: ExperimentalSidebarFooterDisclosureProps) {
   const pluginId = experimental_usePluginId();
-  const snapshot = useSyncExternalStore(
-    subscribeStore,
-    getStoreSnapshot,
-    getStoreSnapshot,
-  );
+  const snapshot = useUsageSnapshot();
   const { threadId } = useBbContext();
-  const sidebarThreads = experimental_useSidebarThreads();
-  const threadMachineId = useMemo(
-    () =>
-      sidebarThreads.threads.find((thread) => thread.id === threadId)?.host
-        ?.id ?? null,
-    [sidebarThreads.threads, threadId],
+  const thread = experimental_useThread(threadId);
+  const environment = experimental_useEnvironment(
+    thread.data?.environmentId ?? null,
   );
+  const threadMachineId = environment.data?.hostId ?? null;
   return (
     <ProviderUsageStatusContent
       {...props}

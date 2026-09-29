@@ -1,3 +1,12 @@
+import { usePlugins } from "@/hooks/queries/plugin-settings-queries";
+import { usePluginCatalogQuery } from "@/hooks/queries/plugin-catalog-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
+import {
+  useProjects,
+  useProjectSourceBranches,
+} from "@/hooks/queries/project-queries";
+import { useThread } from "@/hooks/queries/thread-queries";
+import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
@@ -37,6 +46,8 @@ import {
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  experimental_useRpcQuery,
+  experimental_useRpcInfiniteQuery,
   useSdk,
   useSettings,
   experimental_useAppPanel,
@@ -81,6 +92,15 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     useRealtime,
     useRealtimeConnectionState,
     useRpc,
+    experimental_usePlugins: usePlugins,
+    experimental_usePluginCatalogSearch: usePluginCatalogQuery,
+    experimental_useHosts: useHosts,
+    experimental_useProjects: useProjects,
+    experimental_useThread: useThread,
+    experimental_useEnvironment: useEnvironment,
+    experimental_useProjectSourceBranches: useProjectSourceBranches,
+    experimental_useRpcQuery,
+    experimental_useRpcInfiniteQuery,
     useSettings,
     ThreadChat: PluginThreadChat,
     Markdown: PluginMarkdown,

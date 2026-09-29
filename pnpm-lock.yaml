@@ -2249,6 +2249,9 @@ importers:
 
   packages/plugin-sdk:
     dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.62.0
+        version: 5.90.20(react@19.2.4)
       cross-spawn:
         specifier: ^7.0.6
         version: 7.0.6
@@ -3686,6 +3689,12 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@testing-library/dom':
+        specifier: ^10.4.1
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
@@ -3707,6 +3716,9 @@ importers:
       hono:
         specifier: 4.11.9
         version: 4.11.9
+      jsdom:
+        specifier: ^29.0.1
+        version: 29.0.1(@noble/hashes@2.4.0)
       react:
         specifier: ^19.0.0
         version: 19.2.4
@@ -4564,6 +4576,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@tanstack/react-query':
+        specifier: ^5.62.0
+        version: 5.90.20(react@19.2.4)
       zod:
         specifier: 4.3.6
         version: 4.3.6

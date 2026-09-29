@@ -28,3 +28,19 @@ export function rpcInput(input: unknown): Record<string, unknown> {
   }
   return Object.fromEntries(Object.entries(input));
 }
+
+export function makeBbProject(
+  id: string,
+  name: string,
+  kind: "standard" | "personal" = "standard",
+) {
+  return {
+    id,
+    name,
+    kind,
+    gitRemoteUrl: null,
+    sources: [],
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}

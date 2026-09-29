@@ -12,7 +12,7 @@ import {
   useBbNavigate,
   useComposer,
   useRpc,
-  useRealtime,
+  experimental_useRpcQuery,
   type PluginFileOpenerProps,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
@@ -605,155 +605,18 @@ function TiptapEditor(props: {
   );
 }
 
-type DocsRpcClient = ReturnType<typeof useRpc<typeof docsRpcContract>>;
-
-interface NotebookStore {
-  consumers: Set<symbol>;
-  data: NotesData | null;
-  error: string | null;
-  inFlight: Promise<void> | null;
-  listeners: Set<() => void>;
-  owner: symbol | null;
-  pendingRefreshRpc: DocsRpcClient | null;
-  requestId: number;
-  vaultId: string | null;
-}
-
-const notebookStores = new Map<string | null, NotebookStore>();
-
-function getNotebookStore(vaultId: string | null): NotebookStore {
-  const existing = notebookStores.get(vaultId);
-  if (existing) return existing;
-  const store: NotebookStore = {
-    consumers: new Set(),
-    data: null,
-    error: null,
-    inFlight: null,
-    listeners: new Set(),
-    owner: null,
-    pendingRefreshRpc: null,
-    requestId: 0,
-    vaultId,
-  };
-  notebookStores.set(vaultId, store);
-  return store;
-}
-
-function notifyNotebookStore(store: NotebookStore): void {
-  for (const listener of store.listeners) listener();
-}
-
-function refreshNotebookStore(
-  store: NotebookStore,
-  rpc: DocsRpcClient,
-  { queueIfInFlight = true }: { queueIfInFlight?: boolean } = {},
-): Promise<void> {
-  if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
-  if (store.inFlight) {
-    if (queueIfInFlight) store.pendingRefreshRpc = rpc;
-    return store.inFlight;
-  }
-  if (store.error !== null) {
-    store.error = null;
-    notifyNotebookStore(store);
-  }
-  const requestId = ++store.requestId;
-  const request = rpc
-    .call("listNotes", store.vaultId ? { vaultId: store.vaultId } : {})
-    .then((value) => {
-      if (
-        requestId !== store.requestId ||
-        notebookStores.get(store.vaultId) !== store
-      )
-        return;
-      store.data = value;
-      store.error = null;
-      notifyNotebookStore(store);
-    })
-    .catch((error: unknown) => {
-      if (
-        requestId !== store.requestId ||
-        notebookStores.get(store.vaultId) !== store
-      )
-        return;
-      const message = errorMessage(error);
-      if (store.data === null) store.error = message;
-      else store.data = { ...store.data, error: message };
-      notifyNotebookStore(store);
-    })
-    .finally(() => {
-      if (store.inFlight !== request) return;
-      store.inFlight = null;
-      const pendingRefreshRpc = store.pendingRefreshRpc;
-      store.pendingRefreshRpc = null;
-      if (
-        pendingRefreshRpc !== null &&
-        store.consumers.size > 0 &&
-        notebookStores.get(store.vaultId) === store
-      ) {
-        void refreshNotebookStore(store, pendingRefreshRpc, {
-          queueIfInFlight: false,
-        });
-      }
-    });
-  store.inFlight = request;
-  return request;
-}
-
 function useNotebook(vaultId: string | null) {
-  const rpc = useRpc<typeof docsRpcContract>();
-  const rpcRef = useRef(rpc);
-  rpcRef.current = rpc;
-  const store = useMemo(() => getNotebookStore(vaultId), [vaultId]);
-  const consumerRef = useRef(Symbol("docs-notebook-consumer"));
-  const [, rerender] = useState(0);
-  const refresh = useCallback(() => {
-    void refreshNotebookStore(store, rpcRef.current);
-  }, [store]);
-
-  useEffect(() => {
-    const consumer = consumerRef.current;
-    const listener = () => rerender((version) => version + 1);
-    store.consumers.add(consumer);
-    store.listeners.add(listener);
-    store.owner ??= consumer;
-    if (store.data === null) {
-      void refreshNotebookStore(store, rpcRef.current, {
-        queueIfInFlight: false,
-      });
-    }
-    return () => {
-      store.consumers.delete(consumer);
-      store.listeners.delete(listener);
-      if (store.owner === consumer)
-        store.owner = store.consumers.values().next().value ?? null;
-      if (store.consumers.size === 0) {
-        queueMicrotask(() => {
-          if (
-            store.consumers.size !== 0 ||
-            notebookStores.get(store.vaultId) !== store
-          )
-            return;
-          store.requestId += 1;
-          store.pendingRefreshRpc = null;
-          notebookStores.delete(store.vaultId);
-        });
-      }
-    };
-  }, [store]);
-
-  useRealtime(
-    "vault-changed",
-    useCallback(() => {
-      if (store.owner === consumerRef.current) refresh();
-    }, [refresh, store]),
-  );
-
-  const data =
-    store.data && (vaultId === null || store.data.vault.id === vaultId)
-      ? store.data
-      : null;
-  return { data, error: store.error, refresh };
+  const query = experimental_useRpcQuery<typeof docsRpcContract, "listNotes">({
+    method: "listNotes",
+    input: vaultId ? { vaultId } : {},
+    realtime: [{ channel: "vault-changed" }],
+  });
+  const data = query.data ?? null;
+  return {
+    data: data && query.error ? { ...data, error: query.error.message } : data,
+    error: data ? null : (query.error?.message ?? null),
+    refresh: query.refetch,
+  };
 }
 
 function DocumentSkeleton() {
