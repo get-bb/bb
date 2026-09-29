@@ -106,6 +106,21 @@ export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
   }
 }
 
+export function refetchActiveRealtimeQueriesOnResume({
+  queryClient,
+}: QueryClientArg): void {
+  for (const queryKey of [
+    allThreadTimelineQueryKeyPrefix(),
+    allThreadQueryKeyPrefix(),
+    sidebarNavigationQueryKey(),
+  ]) {
+    void queryClient.refetchQueries(
+      { queryKey, type: "active" },
+      { cancelRefetch: false },
+    );
+  }
+}
+
 export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   invalidateQueryKeys({
     queryClient,

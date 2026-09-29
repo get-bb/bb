@@ -2921,6 +2921,92 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("refetches only active timeline, thread, and sidebar queries on resume without cancelling in-flight fetches", async () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    let resolveTimeline: (value: string) => void = () => {};
+    const timelineFn = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("timeline-1")
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveTimeline = resolve;
+          }),
+      );
+    const threadFn = vi.fn<() => Promise<string>>().mockResolvedValue("t");
+    const sidebarFn = vi.fn<() => Promise<string>>().mockResolvedValue("s");
+    const projectsFn = vi.fn<() => Promise<string>>().mockResolvedValue("p");
+    const observers = [
+      { queryKey: threadTimelineQueryKey("thr_1"), queryFn: timelineFn },
+      { queryKey: threadQueryKey("thr_1"), queryFn: threadFn },
+      { queryKey: sidebarNavigationQueryKey(), queryFn: sidebarFn },
+      { queryKey: projectsQueryKey(), queryFn: projectsFn },
+    ].map(
+      ({ queryKey, queryFn }) =>
+        new QueryObserver<string>(queryClient, {
+          queryKey,
+          queryFn,
+          staleTime: Infinity,
+          refetchOnWindowFocus: false,
+        }),
+    );
+    const unsubscribes = observers.map((observer) =>
+      observer.subscribe(() => {}),
+    );
+    const inactiveTimelineKey = threadTimelineQueryKey("thr_inactive");
+    queryClient.setQueryData(inactiveTimelineKey, "cached");
+    try {
+      await vi.waitFor(() =>
+        expect(
+          observers.every((observer) => observer.getCurrentResult().isSuccess),
+        ).toBe(true),
+      );
+
+      effects.handleResumed();
+      effects.handleResumed();
+
+      await vi.waitFor(() => expect(sidebarFn).toHaveBeenCalledTimes(2));
+      expect(threadFn).toHaveBeenCalledTimes(2);
+      expect(timelineFn).toHaveBeenCalledTimes(2);
+      expect(projectsFn).toHaveBeenCalledTimes(1);
+      expect(queryClient.getQueryState(inactiveTimelineKey)?.fetchStatus).toBe(
+        "idle",
+      );
+
+      resolveTimeline("timeline-2");
+      await vi.waitFor(() =>
+        expect(observers[0]?.getCurrentResult().data).toBe("timeline-2"),
+      );
+    } finally {
+      for (const unsubscribe of unsubscribes) {
+        unsubscribe();
+      }
+      effects.dispose();
+    }
+  });
+
+  it("skips the resume refetch while the document is hidden", () => {
+    const visibility = createFakeVisibility();
+    const { effects, queryClient } =
+      createRealtimeEffectsTestContext(visibility);
+    const sidebarFn = vi.fn<() => Promise<string>>().mockResolvedValue("s");
+    queryClient.setQueryData(sidebarNavigationQueryKey(), "cached");
+    const observer = new QueryObserver<string>(queryClient, {
+      queryKey: sidebarNavigationQueryKey(),
+      queryFn: sidebarFn,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    visibility.setVisible(false);
+
+    effects.handleResumed();
+
+    expect(sidebarFn).not.toHaveBeenCalled();
+    unsubscribe();
+    effects.dispose();
+  });
+
   describe("while the document is hidden", () => {
     it("merges thread changes and flushes them once on visible", () => {
       vi.useFakeTimers();
