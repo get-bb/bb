@@ -19,6 +19,7 @@ import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  ComposerView,
   ExperimentalComposerSelection,
   PluginComposerApi,
   PluginFileOpenerProps,
@@ -75,7 +76,10 @@ import {
 } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffects } from "@/lib/composer-text-effects";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import {
+  getPromptDraftAccessor,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
 import {
   PluginPanelTabContent,
   usePluginNewThreadPanelActions,
@@ -364,6 +368,70 @@ describe("useComposer", () => {
     const view = useComposerView();
     return <ComposerActionsSlot view={view} />;
   }
+
+  it("does not re-render a plugin that never reads the text while the draft changes", () => {
+    const quietRenders = vi.fn<(composer: PluginComposerApi) => void>();
+    const readingRenders = vi.fn();
+    function QuietProbe() {
+      const composer = useComposer();
+      quietRenders(composer);
+      return (
+        <button type="button" onClick={() => composer.updateText((t) => `${t}!`)}>
+          quiet-update
+        </button>
+      );
+    }
+    function ReadingProbe() {
+      const composer = useComposer();
+      readingRenders();
+      return <div data-testid="reading-text">{composer.text}</div>;
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [
+          {
+            id: "probe",
+            actions: [
+              { id: "quiet", component: QuietProbe },
+              { id: "reading", component: ReadingProbe },
+            ],
+          },
+        ],
+      }),
+    );
+    const staticView: ComposerView = {
+      scope: { kind: "thread", threadId: "thr_quiet" },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_quiet"]}>
+        <ComposerActionsSlot view={staticView} />
+      </MemoryRouter>,
+    );
+    const draft = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: PERSONAL_PROJECT_ID,
+      threadId: "thr_quiet",
+    });
+    const quietRendersBefore = quietRenders.mock.calls.length;
+    const readingRendersBefore = readingRenders.mock.calls.length;
+
+    for (const text of ["a", "ab", "abc", "abcd", "abcde"]) {
+      act(() => draft.setDraft({ text, mentions: [], attachments: [] }));
+    }
+
+    expect(quietRenders).toHaveBeenCalledTimes(quietRendersBefore);
+    expect(readingRenders).toHaveBeenCalledTimes(readingRendersBefore + 5);
+    expect(screen.getByTestId("reading-text").textContent).toBe("abcde");
+    expect(quietRenders.mock.lastCall?.[0].text).toBe("abcde");
+
+    fireEvent.click(screen.getByText("quiet-update"));
+    expect(draft.getCurrent().text).toBe("abcde!");
+    expect(screen.getByTestId("reading-text").textContent).toBe("abcde!");
+  });
 
   it("writes quotes into the thread draft and fires the focus bus", () => {
     registerComposerProbe("t");

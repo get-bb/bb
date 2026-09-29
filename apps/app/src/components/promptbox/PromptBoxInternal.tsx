@@ -403,6 +403,7 @@ export interface TypeaheadCommandConfig {
     trigger: PromptMentionCommandTrigger | null,
   ) => void;
   onEditorFocus?: () => void;
+  onEditorIntent?: () => void;
 }
 
 export interface TypeaheadConfig {
@@ -1156,11 +1157,16 @@ export function PromptBoxInternal({
     isError: commandError,
     onQueryChange: onCommandQueryChange,
     onEditorFocus: onCommandEditorFocus,
+    onEditorIntent: onCommandEditorIntent,
   } = typeahead.command;
   const onCommandEditorFocusRef = useRef(onCommandEditorFocus);
   useEffect(() => {
     onCommandEditorFocusRef.current = onCommandEditorFocus;
   }, [onCommandEditorFocus]);
+  const onCommandEditorIntentRef = useRef(onCommandEditorIntent);
+  useEffect(() => {
+    onCommandEditorIntentRef.current = onCommandEditorIntent;
+  }, [onCommandEditorIntent]);
   const {
     items: attachments = [],
     pendingUploads,
@@ -1795,6 +1801,9 @@ export function PromptBoxInternal({
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
+        if (nextValue.text.length > 0) {
+          onCommandEditorIntentRef.current?.();
+        }
         syncTriggerStateRef.current(updatedEditor);
         if (transaction.getMeta("uiEvent") !== undefined) {
           scheduleRevealEditorSelection();
@@ -2804,6 +2813,7 @@ export function PromptBoxInternal({
 
   const handlePromptBoxMouseDown = useCallback(
     (event: PromptBoxMouseDownEvent) => {
+      onCommandEditorIntentRef.current?.();
       if (!isPromptBoxChromeTarget(event.target)) return;
 
       const currentEditor = editorRef.current;

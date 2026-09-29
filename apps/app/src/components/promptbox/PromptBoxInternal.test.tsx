@@ -1134,6 +1134,32 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("reports composer intent on a mouse down and once text exists", async () => {
+    const onEditorIntent = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const typeahead = buildTypeaheadConfig();
+    const { container } = render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          promptBoxRef,
+          typeahead: {
+            ...typeahead,
+            command: { ...typeahead.command, onEditorIntent },
+          },
+        })}
+      />,
+    );
+
+    await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
+    expect(onEditorIntent).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(container.querySelector(".ProseMirror")!);
+    expect(onEditorIntent).toHaveBeenCalledTimes(1);
+
+    act(() => promptBoxRef.current?.insertTextAtCursor("h"));
+    expect(onEditorIntent).toHaveBeenCalledTimes(2);
+  });
+
   it("blurs the editor before starting voice input on coarse pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {

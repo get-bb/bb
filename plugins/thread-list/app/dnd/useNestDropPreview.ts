@@ -11,7 +11,6 @@ import type { SectionThreadDndState } from "./useSectionThreadDnd.js";
 
 interface UseNestDropPreviewArgs {
   compareThreads: ThreadComparator | undefined;
-  draftThreadIds: ReadonlySet<string>;
   pinnedRootNodes: readonly ProjectThreadNode[];
   sectionDnd: SectionThreadDndState | null;
   sections: readonly SidebarSectionDefinition[];
@@ -20,7 +19,6 @@ interface UseNestDropPreviewArgs {
 
 export function useNestDropPreview({
   compareThreads,
-  draftThreadIds,
   pinnedRootNodes,
   sectionDnd,
   sections,
@@ -37,7 +35,6 @@ export function useNestDropPreview({
     nestPreviewBeforeKey: resolveSidebarNestPreviewBeforeKey({
       activeThread,
       compareThreads,
-      draftThreadIds,
       groupThreadsByEnvironment,
       parentThreadId: nestTarget.threadId,
       pinnedRootNodes,

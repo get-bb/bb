@@ -85,6 +85,7 @@ export function useComposerTypeahead({
         loadMore: commandSuggestions.loadMore,
         onQueryChange: (query, trigger) => setCommandState({ query, trigger }),
         onEditorFocus: handleEditorFocus,
+        onEditorIntent: commandSuggestions.prefetchCatalog,
       },
     }),
     [
@@ -93,6 +94,7 @@ export function useComposerTypeahead({
       commandSuggestions.isLoading,
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
+      commandSuggestions.prefetchCatalog,
       commandSuggestions.suggestions,
       commandSuggestions.triggers,
       handleEditorFocus,

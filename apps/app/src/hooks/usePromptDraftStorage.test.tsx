@@ -8,7 +8,10 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPromptDraftAccessor,
+  usePromptDraftController,
+  usePromptDraftInputEmpty,
   usePromptDraftInputThreadIds,
+  usePromptDraftSnapshot,
   usePromptDraftStorage,
 } from "./usePromptDraftStorage";
 
@@ -394,5 +397,48 @@ describe("composer quote persistence", () => {
     act(() => addQuote(first.result.current, "shared selection"));
 
     expect(second.result.current.text).toBe("> shared selection\n");
+  });
+});
+
+describe("usePromptDraftController", () => {
+  it("returns stable methods and never re-renders its caller on draft writes", () => {
+    const scope = uniqueScope();
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      const controller = usePromptDraftController(scope);
+      return { controller, inputEmpty: usePromptDraftInputEmpty(controller) };
+    });
+    const initialController = result.current.controller;
+    const rendersBefore = renders;
+
+    act(() => initialController.setTextAndMentions("h", []));
+    const rendersAfterFirstKey = renders;
+    for (const text of ["he", "hel", "hell", "hello"]) {
+      act(() => initialController.setTextAndMentions(text, []));
+    }
+
+    expect(rendersAfterFirstKey).toBe(rendersBefore + 1);
+    expect(renders).toBe(rendersAfterFirstKey);
+    expect(result.current.inputEmpty).toBe(false);
+    expect(result.current.controller).toBe(initialController);
+    expect(initialController.getCurrent().text).toBe("hello");
+  });
+
+  it("follows the live draft through the snapshot hook", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() =>
+      usePromptDraftSnapshot(usePromptDraftController(scope)),
+    );
+
+    act(() =>
+      getPromptDraftAccessor(scope).setDraft({
+        text: "typed",
+        mentions: [],
+        attachments: [],
+      }),
+    );
+
+    expect(result.current.text).toBe("typed");
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { sdk } from "@/lib/sdk";
@@ -88,6 +88,70 @@ describe("useCommandSuggestions catalog prefetch", () => {
     );
 
     expect(sdk.projects.commands).not.toHaveBeenCalled();
+  });
+
+  it("warms the catalog once when the user reaches for a fine-pointer composer", async () => {
+    mockPointer(false);
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useCommandSuggestions({ ...BASE_ARGS, composerFocused: true }),
+      { wrapper },
+    );
+    await Promise.resolve();
+    expect(sdk.projects.commands).not.toHaveBeenCalled();
+
+    act(() => result.current.prefetchCatalog());
+    await waitFor(() => {
+      expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.prefetchCatalog();
+      result.current.prefetchCatalog();
+    });
+    await Promise.resolve();
+    expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves the first trigger from the intent prefetch", async () => {
+    mockPointer(false);
+    vi.mocked(sdk.projects.commands).mockResolvedValue({
+      commands: [
+        {
+          name: "plan",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+
+    interface TriggerProps {
+      activeTrigger: "/" | null;
+      query: string | null;
+    }
+    const initialProps: TriggerProps = { activeTrigger: null, query: null };
+    const { result, rerender } = renderHook(
+      (props: TriggerProps) =>
+        useCommandSuggestions({
+          ...BASE_ARGS,
+          ...props,
+          composerFocused: true,
+        }),
+      { wrapper, initialProps },
+    );
+    act(() => result.current.prefetchCatalog());
+    await waitFor(() => {
+      expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+    });
+    await Promise.resolve();
+
+    rerender({ activeTrigger: "/", query: "" });
+
+    expect(result.current.suggestions.map((s) => s.name)).toEqual(["plan"]);
   });
 
   it("still fetches on the first trigger without any focus signal", async () => {

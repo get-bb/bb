@@ -15,7 +15,6 @@ import { getCollapsedChildActivity } from "../model/thread-activity.js";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ContextMenuItem } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { useSidebarThreadDraftIds } from "@get-bb/plugin-sdk/app";
 import { ActionMenuSeparator } from "../ui/action-menu-items.js";
 import {
   SIDEBAR_CONTENT_SELECTOR,
@@ -258,11 +257,10 @@ export function ThreadListVisibilityMenuItems({
 }
 
 function GroupActivity({ threads }: { threads: readonly SidebarThread[] }) {
-  const drafts = useSidebarThreadDraftIds();
   const pluginStatus = usePluginThreadRowStatusForThreads(threads);
   return (
     <CollapsedThreadStatusGlyph
-      activity={getCollapsedChildActivity(threads, drafts)}
+      activity={getCollapsedChildActivity(threads)}
       pluginStatus={pluginStatus}
     />
   );

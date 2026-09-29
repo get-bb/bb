@@ -169,7 +169,6 @@ function MachineModeProbe({
     <TooltipProvider>
       <MachineModeSections
         threads={threads}
-        draftThreadIds={new Set()}
         effectivePinnedThreadIds={new Set()}
         status="ready"
         showPinnedSection={false}

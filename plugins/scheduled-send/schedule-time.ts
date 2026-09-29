@@ -133,32 +133,56 @@ export function parseCustomScheduleTime(
   return { ok: true, at };
 }
 
-export function formatScheduleTime(at: number, now: number): string {
-  const time = new Date(at).toLocaleTimeString([], {
+let timeFormatter: Intl.DateTimeFormat | null = null;
+let dateFormatter: Intl.DateTimeFormat | null = null;
+let dateWithYearFormatter: Intl.DateTimeFormat | null = null;
+let timeZoneNameFormatter: Intl.DateTimeFormat | null = null;
+let resolvedTimeZone: string | null = null;
+
+function getTimeFormatter(): Intl.DateTimeFormat {
+  timeFormatter ??= new Intl.DateTimeFormat([], {
     hour: "numeric",
     minute: "2-digit",
   });
+  return timeFormatter;
+}
+
+function getDateFormatter(includeYear: boolean): Intl.DateTimeFormat {
+  if (includeYear) {
+    dateWithYearFormatter ??= new Intl.DateTimeFormat([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    return dateWithYearFormatter;
+  }
+  dateFormatter ??= new Intl.DateTimeFormat([], {
+    month: "short",
+    day: "numeric",
+  });
+  return dateFormatter;
+}
+
+export function formatScheduleTime(at: number, now: number): string {
+  const time = getTimeFormatter().format(at);
   const days = calendarDaysBetween(now, at);
   if (days === 0) return `today at ${time}`;
   if (days === 1) return `tomorrow at ${time}`;
   if (days === -1) return `yesterday at ${time}`;
-  const date = new Date(at).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year:
-      new Date(at).getFullYear() === new Date(now).getFullYear()
-        ? undefined
-        : "numeric",
-  });
+  const date = getDateFormatter(
+    new Date(at).getFullYear() !== new Date(now).getFullYear(),
+  ).format(at);
   return `${date} at ${time}`;
 }
 
 export function formatScheduleTimeZone(at: number): string {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const timeZoneName = new Intl.DateTimeFormat(undefined, {
+  timeZoneNameFormatter ??= new Intl.DateTimeFormat(undefined, {
     timeZoneName: "short",
-  })
-    .formatToParts(new Date(at))
+  });
+  resolvedTimeZone ??= timeZoneNameFormatter.resolvedOptions().timeZone;
+  const timeZone = resolvedTimeZone;
+  const timeZoneName = timeZoneNameFormatter
+    .formatToParts(at)
     .find((part) => part.type === "timeZoneName")?.value;
   return timeZoneName === undefined || timeZoneName === timeZone
     ? `Local time · ${timeZone}`

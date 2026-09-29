@@ -45,6 +45,10 @@ import {
   type PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
+import {
+  NO_THREAD_IDS,
+  useThreadsHaveDraft,
+} from "../list/sidebarDraftPresence.js";
 import { useSidebarProjectName } from "../model/use-sidebar-data.js";
 import {
   sidebarShowProviderIconsAtom,
@@ -242,9 +246,10 @@ export function CollapsedThreadStatusGlyph({
   activity,
   pluginStatus = null,
 }: CollapsedThreadStatusGlyphProps) {
+  const hasUnsubmittedDraft = useThreadsHaveDraft(activity.threadIds);
   const statusProps: ThreadListIndicatorState = {
     hasPendingInteraction: activity.pending,
-    hasUnsubmittedDraft: activity.hasUnsubmittedDraft,
+    hasUnsubmittedDraft,
     hasUnreadError: activity.unreadError,
     hasUnreadSuccess: activity.unread,
     isBackgroundAgentActive: activity.backgroundAgent,
@@ -399,13 +404,16 @@ function ThreadRowComponent({
   const reserveActionSpace =
     crossProjectLabel !== null || (isParentRow && hasChildren);
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
+  const hiddenChildrenHaveDraft = useThreadsHaveDraft(
+    hasHiddenChildren ? childActivity.threadIds : NO_THREAD_IDS,
+  );
   const trailingIndicatorState: ThreadListIndicatorState = {
     hasPendingInteraction:
       threadStatus.hasPendingInteraction ||
       (hasHiddenChildren && childActivity.pending),
     hasUnsubmittedDraft:
       threadStatus.hasUnsubmittedDraft ||
-      (hasHiddenChildren && childActivity.hasUnsubmittedDraft),
+      hiddenChildrenHaveDraft,
     hasUnreadError:
       threadStatus.hasUnreadError ||
       (hasHiddenChildren && childActivity.unreadError),

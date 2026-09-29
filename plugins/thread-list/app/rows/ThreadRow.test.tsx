@@ -36,6 +36,9 @@ import {
 import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.js";
 
 installTestPluginRuntime();
+const { SidebarDraftPresenceSync } = await import(
+  "../list/sidebarDraftPresence.js"
+);
 const { ThreadSectionMoveProvider } = await import(
   "./ThreadSectionMoveProvider.js"
 );
@@ -98,6 +101,7 @@ function ThreadRowHarness({
   );
   return (
     <TooltipProvider>
+      <SidebarDraftPresenceSync />
       <CustomizeRowActionsContext.Provider value={onCustomizeRowActions ?? null}>
         <div onPointerDown={onRowEvent} onKeyDown={onRowEvent} onClick={onRowEvent}>
           {sectionDestinations ? (
@@ -116,6 +120,7 @@ function ThreadRowHarness({
 interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   thread?: PluginSidebarThread;
   hasComposerDraft?: boolean;
+  hiddenDraftThreadIds?: string[];
   shortcutKey?: string;
   pluginStatus?: PluginSidebarThreadRowStatus;
   splitLayout?: PluginSidebarSplitLayout;
@@ -127,6 +132,7 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
 function renderThreadRow({
   thread = createThread(),
   hasComposerDraft = false,
+  hiddenDraftThreadIds = [],
   shortcutKey,
   pluginStatus,
   splitLayout,
@@ -143,7 +149,10 @@ function renderThreadRow({
     {
       sidebarThreads: { threads: [thread], projects },
       providers: { providers },
-      sidebarDraftThreadIds: hasComposerDraft ? [thread.id] : [],
+      sidebarDraftThreadIds: [
+        ...(hasComposerDraft ? [thread.id] : []),
+        ...hiddenDraftThreadIds,
+      ],
       sidebarRowStatuses: pluginStatus ? { [thread.id]: pluginStatus } : {},
       sidebarShortcuts: shortcutKey
         ? {
@@ -1521,6 +1530,7 @@ describe("ThreadRow", () => {
   it("shows a working draft for collapsed descendants before named work", () => {
     renderThreadRow({
       thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+      hiddenDraftThreadIds: ["thr_hidden_child"],
       options: {
         kind: "parent",
         depth: 1,
@@ -1529,8 +1539,8 @@ describe("ThreadRow", () => {
         childCount: 1,
         childActivity: {
           ...NO_COLLAPSED_CHILD_ACTIVITY,
+          threadIds: ["thr_hidden_child"],
           working: true,
-          hasUnsubmittedDraft: true,
           planMode: true,
           goal: true,
         },

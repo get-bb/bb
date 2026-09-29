@@ -157,8 +157,14 @@ const PluginComposerHostContext = createContext<
   PluginComposerHost | null | undefined
 >(undefined);
 
-export const PluginComposerViewContext = createContext<
-  ComposerView | undefined
+export type PluginComposerStaticView = Omit<ComposerView, "draft">;
+
+const PluginComposerStaticViewContext = createContext<
+  PluginComposerStaticView | undefined
+>(undefined);
+
+const PluginComposerDraftViewContext = createContext<
+  ComposerView["draft"] | undefined
 >(undefined);
 
 export function PluginComposerViewProvider({
@@ -168,15 +174,40 @@ export function PluginComposerViewProvider({
   children: ReactNode;
   value: ComposerView;
 }) {
+  const { isRunning, isSubmitting } = value.run;
+  const staticView = useMemo<PluginComposerStaticView>(
+    () => ({
+      scope: value.scope,
+      layout: value.layout,
+      run: { isRunning, isSubmitting },
+    }),
+    [isRunning, isSubmitting, value.layout, value.scope],
+  );
   return (
-    <PluginComposerViewContext.Provider value={value}>
-      {children}
-    </PluginComposerViewContext.Provider>
+    <PluginComposerStaticViewContext.Provider value={staticView}>
+      <PluginComposerDraftViewContext.Provider value={value.draft}>
+        {children}
+      </PluginComposerDraftViewContext.Provider>
+    </PluginComposerStaticViewContext.Provider>
   );
 }
 
+export function useOptionalPluginComposerStaticView():
+  | PluginComposerStaticView
+  | undefined {
+  return useContext(PluginComposerStaticViewContext);
+}
+
 export function useOptionalPluginComposerView(): ComposerView | undefined {
-  return useContext(PluginComposerViewContext);
+  const staticView = useContext(PluginComposerStaticViewContext);
+  const draft = useContext(PluginComposerDraftViewContext);
+  return useMemo(
+    () =>
+      staticView === undefined || draft === undefined
+        ? undefined
+        : { ...staticView, draft },
+    [draft, staticView],
+  );
 }
 
 interface PluginComposerHostStore {

@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { fuzzyMatchPaths } from "@bb/fuzzy-match";
 import type { WorkspacePathEntry } from "@bb/server-contract";
 import { useEnvironmentPathSuggestions } from "./queries/environment-queries";
 import { useProjectPathSuggestions } from "./queries/project-queries";
@@ -42,6 +43,15 @@ interface UsePathSuggestionsResult {
   isError: boolean;
   isDebouncing: boolean;
 }
+
+interface SettledPathSet {
+  sourceKey: string;
+  query: string;
+  workspacePaths: readonly WorkspacePathEntry[];
+  threadStoragePaths: readonly WorkspacePathEntry[];
+}
+
+const NO_PATH_ENTRIES: readonly WorkspacePathEntry[] = [];
 
 interface RankedPathSuggestion extends PathSuggestion {
   sourceRank: number;
@@ -141,6 +151,35 @@ export function buildPathSuggestions(
     .map(toPathSuggestion);
 }
 
+export function refinePathEntries(
+  pathEntries: readonly WorkspacePathEntry[],
+  query: string,
+): WorkspacePathEntry[] {
+  return fuzzyMatchPaths({
+    items: pathEntries,
+    query,
+    getPath: (pathEntry) => pathEntry.path,
+    limit: pathEntries.length,
+  }).map((match) => ({
+    ...match.item,
+    score: match.score,
+    positions: match.positions,
+  }));
+}
+
+function isPrefixRefinement(
+  settled: SettledPathSet | null,
+  sourceKey: string,
+  query: string,
+): settled is SettledPathSet {
+  return (
+    settled !== null &&
+    settled.sourceKey === sourceKey &&
+    query.length > settled.query.length &&
+    query.startsWith(settled.query)
+  );
+}
+
 export function usePathSuggestions(
   args: UsePathSuggestionsArgs,
 ): UsePathSuggestionsResult {
@@ -205,27 +244,87 @@ export function usePathSuggestions(
     },
   );
 
+  const workspacePaths = includeWorkspace
+    ? (workspaceQuery.data?.paths ?? NO_PATH_ENTRIES)
+    : NO_PATH_ENTRIES;
+  const threadStoragePaths = includeThreadStorage
+    ? (threadStorageQuery.data?.paths ?? NO_PATH_ENTRIES)
+    : NO_PATH_ENTRIES;
+  const sourceKey = [
+    workspaceSource,
+    args.projectId ?? "",
+    args.environmentId ?? "",
+    args.currentThreadId ?? "",
+    args.includeDirectories ? "dirs" : "files",
+    oversampleLimit,
+  ].join(":");
+  const isWorkspaceSettled =
+    !isWorkspaceQueryEnabled ||
+    (workspaceQuery.data !== undefined && !workspaceQuery.isPlaceholderData);
+  const isThreadStorageSettled =
+    !isThreadStorageQueryEnabled ||
+    (threadStorageQuery.data !== undefined &&
+      !threadStorageQuery.isPlaceholderData);
+  const isCurrentSettled =
+    (isWorkspaceQueryEnabled || isThreadStorageQueryEnabled) &&
+    isWorkspaceSettled &&
+    isThreadStorageSettled;
+  const [lastSettled, setLastSettled] = useState<SettledPathSet | null>(null);
+  if (
+    isCurrentSettled &&
+    (lastSettled === null ||
+      lastSettled.sourceKey !== sourceKey ||
+      lastSettled.query !== debouncedTrimmedQuery ||
+      lastSettled.workspacePaths !== workspacePaths ||
+      lastSettled.threadStoragePaths !== threadStoragePaths)
+  ) {
+    setLastSettled({
+      sourceKey,
+      query: debouncedTrimmedQuery,
+      workspacePaths,
+      threadStoragePaths,
+    });
+  }
+  const hasCurrentServerData =
+    isCurrentSettled && debouncedTrimmedQuery === trimmedQuery;
+  const refinementSource =
+    hasQuery &&
+    !hasCurrentServerData &&
+    isPrefixRefinement(lastSettled, sourceKey, trimmedQuery)
+      ? lastSettled
+      : null;
+
   const suggestions = useMemo<PathSuggestion[]>(() => {
     if (!hasQuery) {
       return [];
     }
 
+    if (refinementSource !== null) {
+      return buildPathSuggestions({
+        workspacePaths: refinePathEntries(
+          refinementSource.workspacePaths,
+          trimmedQuery,
+        ),
+        threadStoragePaths: refinePathEntries(
+          refinementSource.threadStoragePaths,
+          trimmedQuery,
+        ),
+        limit,
+      });
+    }
+
     return buildPathSuggestions({
-      workspacePaths: includeWorkspace
-        ? (workspaceQuery.data?.paths ?? [])
-        : [],
-      threadStoragePaths: includeThreadStorage
-        ? (threadStorageQuery.data?.paths ?? [])
-        : [],
+      workspacePaths,
+      threadStoragePaths,
       limit,
     });
   }, [
     hasQuery,
-    includeThreadStorage,
-    includeWorkspace,
     limit,
-    threadStorageQuery.data?.paths,
-    workspaceQuery.data?.paths,
+    refinementSource,
+    threadStoragePaths,
+    trimmedQuery,
+    workspacePaths,
   ]);
 
   const isFetching =

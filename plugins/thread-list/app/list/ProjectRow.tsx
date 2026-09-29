@@ -47,7 +47,6 @@ import {
   useBbNavigate,
   useEnvironmentProviders,
   useSdk,
-  useSidebarThreadDraftIds,
 } from "@get-bb/plugin-sdk/app";
 import {
   findEnvironmentDisplayProvider,
@@ -170,6 +169,7 @@ import {
 } from "../rows/sidebarThreadRowDroppable.js";
 import { getSidebarItemKey } from "../rows/sidebarItemKeys.js";
 import { useNestDropPreview } from "../dnd/useNestDropPreview.js";
+import { NO_THREAD_IDS, useThreadsHaveDraft } from "./sidebarDraftPresence.js";
 import { useChronologicalSectionThreadDnd } from "../dnd/SectionThreadDndContext.js";
 import {
   renderBuiltInSidebarSection,
@@ -881,11 +881,14 @@ function EnvironmentThreadGroupHeader({
         : undefined,
   });
   const iconName = getEnvironmentLabelIconName(providerLookup);
+  const hiddenThreadsHaveDraft = useThreadsHaveDraft(
+    isCollapsed ? childActivity.threadIds : NO_THREAD_IDS,
+  );
   const showRollupGlyph =
     isCollapsed &&
     (childActivity.pending ||
       childActivity.working ||
-      childActivity.hasUnsubmittedDraft ||
+      hiddenThreadsHaveDraft ||
       childActivity.unread ||
       childActivity.unreadError);
   const className = cn(
@@ -1994,7 +1997,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const sectionDnd = useChronologicalSectionThreadDnd();
-  const draftThreadIds = useSidebarThreadDraftIds();
   const groupThreadsByEnvironment = useAtomValue(
     sidebarGroupThreadsByEnvironmentAtom,
   );
@@ -2004,12 +2006,10 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       buildProjectThreadGroups(
         projectThreads,
         compareThreads,
-        draftThreadIds,
         groupThreadsByEnvironment,
       ),
     [
       compareThreads,
-      draftThreadIds,
       groupThreadsByEnvironment,
       projectThreads,
       providedRootItems,
@@ -2097,7 +2097,6 @@ export const ChronologicalSectionThreadSections = memo(
       },
       [collapsedThreadIds, onToggleThreadCollapsed],
     );
-    const draftThreadIds = useSidebarThreadDraftIds();
     const groupThreadsByEnvironment = useAtomValue(
       sidebarGroupThreadsByEnvironmentAtom,
     );
@@ -2107,14 +2106,12 @@ export const ChronologicalSectionThreadSections = memo(
           threads,
           compareThreads,
           sections,
-          draftThreadIds,
           groupThreadsByEnvironment,
         ),
       [
         threads,
         compareThreads,
         sections,
-        draftThreadIds,
         groupThreadsByEnvironment,
       ],
     );
@@ -2133,7 +2130,6 @@ export const ChronologicalSectionThreadSections = memo(
     });
     const renderedSectionDnd = useNestDropPreview({
       compareThreads,
-      draftThreadIds,
       pinnedRootNodes,
       sectionDnd,
       sections,
@@ -2204,7 +2200,7 @@ export const ChronologicalSectionThreadSections = memo(
       pinned: builtInSections.pinned,
       threads: {
         ...builtInSections.threads,
-        activity: getCollapsedChildActivity(looseThreads, draftThreadIds),
+        activity: getCollapsedChildActivity(looseThreads),
         collapsedThreads: looseThreads,
         content: threadsContent,
       },
@@ -2364,7 +2360,6 @@ function ProjectRowComponent({
         : EMPTY_PROJECT_THREADS,
     [isCollapsed, threadListState],
   );
-  const draftThreadIds = useSidebarThreadDraftIds();
   const handleProjectRowToggle = useCallback(() => {
     onToggleProjectCollapsed(project.id);
   }, [onToggleProjectCollapsed, project.id]);
@@ -2391,8 +2386,8 @@ function ProjectRowComponent({
     if (!isCollapsed || threadListState.status !== "ready") {
       return NO_COLLAPSED_CHILD_ACTIVITY;
     }
-    return getCollapsedChildActivity(projectThreads, draftThreadIds);
-  }, [draftThreadIds, isCollapsed, projectThreads, threadListState.status]);
+    return getCollapsedChildActivity(projectThreads);
+  }, [isCollapsed, projectThreads, threadListState.status]);
   const projectActions = (
     <SidebarHeaderControls
       label={project.name}

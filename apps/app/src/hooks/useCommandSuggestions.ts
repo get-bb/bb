@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
@@ -35,6 +35,14 @@ interface UseCommandSuggestionsResult {
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMore: () => void;
+  prefetchCatalog: () => void;
+}
+
+interface CommandCatalogTarget {
+  projectId: string;
+  providerId: string;
+  environmentId: string | null;
+  hostId: string | null;
 }
 
 interface CommandSuggestionPromptAction {
@@ -133,38 +141,48 @@ export function useCommandSuggestions(
   );
   const queryClient = useQueryClient();
   const isPointerCoarse = usePointerCoarse();
-  const shouldPrefetchCatalog =
-    args.composerFocused === true &&
-    isPointerCoarse &&
-    args.projectId !== undefined &&
-    args.providerId !== undefined &&
-    args.skillsTriggers.length > 0;
-  const prefetchProjectId = args.projectId;
-  const prefetchProviderId = args.providerId;
-  const prefetchEnvironmentId = args.environmentId;
-  const prefetchHostId = args.hostId ?? null;
+  const catalogTarget = useMemo<CommandCatalogTarget | null>(
+    () =>
+      args.projectId !== undefined &&
+      args.providerId !== undefined &&
+      args.skillsTriggers.length > 0
+        ? {
+            projectId: args.projectId,
+            providerId: args.providerId,
+            environmentId: args.environmentId,
+            hostId: args.hostId ?? null,
+          }
+        : null,
+    [
+      args.environmentId,
+      args.hostId,
+      args.projectId,
+      args.providerId,
+      args.skillsTriggers.length,
+    ],
+  );
+  const catalogTargetRef = useRef(catalogTarget);
   useEffect(() => {
-    if (!shouldPrefetchCatalog) {
+    catalogTargetRef.current = catalogTarget;
+  }, [catalogTarget]);
+  const prefetchCatalog = useCallback(() => {
+    const target = catalogTargetRef.current;
+    if (target === null) {
       return;
     }
     void queryClient.prefetchQuery({
-      ...projectCommandsQueryOptions({
-        projectId: prefetchProjectId,
-        providerId: prefetchProviderId,
-        environmentId: prefetchEnvironmentId,
-        hostId: prefetchHostId,
-      }),
+      ...projectCommandsQueryOptions(target),
       retry: false,
       staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
     });
-  }, [
-    prefetchEnvironmentId,
-    prefetchHostId,
-    prefetchProjectId,
-    prefetchProviderId,
-    queryClient,
-    shouldPrefetchCatalog,
-  ]);
+  }, [queryClient]);
+  const shouldPrefetchOnFocus =
+    args.composerFocused === true && isPointerCoarse && catalogTarget !== null;
+  useEffect(() => {
+    if (shouldPrefetchOnFocus) {
+      prefetchCatalog();
+    }
+  }, [catalogTarget, prefetchCatalog, shouldPrefetchOnFocus]);
 
   const suggestions = useMemo<ProviderCommandSuggestion[]>(() => {
     if (!isActive) {
@@ -211,5 +229,6 @@ export function useCommandSuggestions(
     hasMore: false,
     isLoadingMore: false,
     loadMore: () => {},
+    prefetchCatalog,
   };
 }

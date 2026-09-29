@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultCustomSchedule,
   formatDateInputValue,
@@ -125,6 +125,10 @@ describe("custom schedules", () => {
 });
 
 describe("schedule confirmation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("names today, tomorrow, and later dates unambiguously", () => {
     expect(formatScheduleTime(at(18), NOON)).toMatch(/^today at /);
     expect(formatScheduleTime(localTime(NOON, 1, 9), NOON)).toMatch(
@@ -140,6 +144,58 @@ describe("schedule confirmation", () => {
     expect(formatScheduleTime(localTime(lateNight, 1, 1), lateNight)).toMatch(
       /^tomorrow at /,
     );
+  });
+
+  it("formats exactly like the per-call locale APIs", () => {
+    const legacyFormat = (scheduledAt: number, now: number): string => {
+      const time = new Date(scheduledAt).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const dayOffset = Math.round(
+        (new Date(scheduledAt).setHours(0, 0, 0, 0) -
+          new Date(now).setHours(0, 0, 0, 0)) /
+          86_400_000,
+      );
+      if (dayOffset === 0) return `today at ${time}`;
+      if (dayOffset === 1) return `tomorrow at ${time}`;
+      if (dayOffset === -1) return `yesterday at ${time}`;
+      const date = new Date(scheduledAt).toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year:
+          new Date(scheduledAt).getFullYear() === new Date(now).getFullYear()
+            ? undefined
+            : "numeric",
+      });
+      return `${date} at ${time}`;
+    };
+    for (const scheduledAt of [
+      at(18, 30),
+      localTime(NOON, 1, 9),
+      localTime(NOON, -1, 9),
+      localTime(NOON, 5, 21, 45),
+      localTime(NOON, 200, 7, 5),
+    ]) {
+      expect(formatScheduleTime(scheduledAt, NOON)).toBe(
+        legacyFormat(scheduledAt, NOON),
+      );
+    }
+  });
+
+  it("reuses its formatters across renders", () => {
+    formatScheduleTime(localTime(NOON, 5, 9), NOON);
+    formatScheduleTime(localTime(NOON, 400, 9), NOON);
+    formatScheduleTimeZone(NOON);
+    const constructor = vi.spyOn(Intl, "DateTimeFormat");
+
+    for (let minute = 0; minute < 5; minute += 1) {
+      formatScheduleTime(localTime(NOON, 5, 9, minute), NOON);
+      formatScheduleTime(localTime(NOON, 400, 9, minute), NOON);
+      formatScheduleTimeZone(NOON + minute);
+    }
+
+    expect(constructor).not.toHaveBeenCalled();
   });
 
   it("makes the browser timezone explicit", () => {
