@@ -126,6 +126,10 @@
     "src/components/sidebar/SidebarVisibilityCustomize.tsx": [
       "boot",
       "SplitWorkspaceRoute"
+    ],
+    "src/components/thread/timeline/TimelineFileDiffBlock.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
     ]
   },
   "onDemandPackages": {
