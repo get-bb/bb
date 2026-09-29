@@ -6,17 +6,20 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { SplitPreviewProvider } from "@/lib/define-split";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   PaneContext,
@@ -27,6 +30,7 @@ import {
   ModelReasoningPicker,
   type ModelReasoningPickerHandoff,
 } from "./ModelReasoningPicker";
+import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import type { PickerOption } from "./OptionPicker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
@@ -143,6 +147,22 @@ function executionOptions({
   };
 }
 
+function MenuHeldUntilReleased({ children }: { children: ReactNode }) {
+  const [held, setHeld] = useState(true);
+  return (
+    <SplitPreviewProvider
+      id={held ? ModelReasoningMenu.id : "released"}
+      state="loading"
+      onRetry={() => undefined}
+    >
+      <button type="button" onClick={() => setHeld(false)}>
+        Release menu code
+      </button>
+      {children}
+    </SplitPreviewProvider>
+  );
+}
+
 function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
@@ -162,6 +182,7 @@ function renderPicker({
   splitPane = false,
   muted = false,
   handoff,
+  menuCodeHeld = false,
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -181,6 +202,7 @@ function renderPicker({
   splitPane?: boolean;
   muted?: boolean;
   handoff?: ModelReasoningPickerHandoff;
+  menuCodeHeld?: boolean;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -227,12 +249,17 @@ function renderPicker({
       <button type="button">Composer action</button>
     </div>
   );
-  const pickerWithPane = splitPane ? (
-    <PaneContext.Provider value={splitPaneContext}>
-      {picker}
-    </PaneContext.Provider>
+  const pickerWithMenuCode = menuCodeHeld ? (
+    <MenuHeldUntilReleased>{picker}</MenuHeldUntilReleased>
   ) : (
     picker
+  );
+  const pickerWithPane = splitPane ? (
+    <PaneContext.Provider value={splitPaneContext}>
+      {pickerWithMenuCode}
+    </PaneContext.Provider>
+  ) : (
+    pickerWithMenuCode
   );
   render(
     compact ? (
@@ -255,6 +282,8 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
   it.each([
     ["ArrowRight", "medium", "high"],
     ["ArrowLeft", "high", "medium"],
@@ -999,6 +1028,33 @@ describe("ModelReasoningPicker", () => {
     fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter" });
 
+    expect(onModelChange).toHaveBeenCalledWith("o4-mini");
+  });
+
+  it("keeps search typing and keyboard selection while the menu code loads", async () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: manyCodexModels,
+      menuCodeHeld: true,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    const search = screen.getByPlaceholderText("Search models");
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(
+      screen.getByRole("status", { name: "Loading model picker" }),
+    ).not.toBeNull();
+    fireEvent.change(search, { target: { value: "o4m" } });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Release menu code" }));
+
+    expect(screen.getByText("o4-mini")).not.toBeNull();
+    expect(screen.queryByText("Sonnet")).toBeNull();
+    expect((search as HTMLInputElement).value).toBe("o4m");
+    fireEvent.keyDown(search, { key: "Enter" });
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
   });
 

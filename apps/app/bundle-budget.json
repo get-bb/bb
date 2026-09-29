@@ -112,8 +112,14 @@
     "shiki"
   ],
   "splitBoundaries": {
-    "src/components/code/BbDiff.tsx": ["boot", "SplitWorkspaceRoute"],
-    "src/components/code/BbSourceCode.tsx": ["boot", "SplitWorkspaceRoute"],
+    "src/components/code/BbDiff.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/code/BbSourceCode.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
     "src/components/sidebar/SidebarFooterCustomize.tsx": [
       "boot",
       "SplitWorkspaceRoute"
@@ -159,6 +165,10 @@
       "SplitWorkspaceRoute"
     ],
     "src/components/thread/timeline/TerminalOutputBlock.tsx": [
+      "boot",
+      "SplitWorkspaceRoute"
+    ],
+    "src/components/pickers/ModelReasoningMenu.tsx": [
       "boot",
       "SplitWorkspaceRoute"
     ]
