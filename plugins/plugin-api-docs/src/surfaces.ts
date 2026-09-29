@@ -452,7 +452,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use insert(parts, { at: cursor or end }) to add text and pills; use replace(current => next) for atomic transformations of the latest immutable text, mentions, and attachments",
           "Supply explicit mention ranges to replace: it does not infer or rebase pills from text edits; returning the current snapshot is a no-op, and throwing or returning invalid data leaves the draft unchanged",
           "Core quotes use replace to append blockquoted text and merge attachments by path, then focus; attachments belong to the draft, not to the quoted block",
-          "Migrate setText and updateText to replace with explicit mentions, clear to replace({ text: empty string, mentions: [] }), insertMention to insert(..., { at: end }) plus focus, and addQuote/removeMention to replacement transforms; legacy methods remain deprecated compatibility paths",
+          "Migrate setText and updateText to replace with explicit mentions, clear to replace({ text: empty string, mentions: [] }), insertMention to insert(..., { at: end }) plus focus, and addQuote/removeMention to replacement transforms; setText/updateText/clear remain deprecated in the types; addQuote/insertMention/removeMention are runtime-only compatibility paths",
           "Core prefills and prompt history use these same replacement operations; submission rollback and restore-if-empty initialization remain internal safeguards",
 
           "Read the prompt box's layout, whether the thread is running a turn, whether the composer is submitting, and whether submitting is blocked with the same reason bb's send button shows",

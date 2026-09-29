@@ -2621,19 +2621,19 @@ export interface PluginComposerApi {
    */
   setInputLock(locked: boolean): void;
   /**
-   * @deprecated Use `replace(current => next)` to append quoted text, then `focus()`.
+   * @internal Legacy quoting method; retained at runtime for older plugins.
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection
    * in chat" primitive.
    */
   addQuote(text: string): void;
   /**
-   * @deprecated Use `insert(mention, { at: "end" })`, then `focus()`. `insert` uses canonical pill text.
+   * @internal Legacy mention insertion; retained at runtime for older plugins.
    * Append an @-mention pill that resolves through this plugin's mention
    * provider at send time. `insert` places mentions at the cursor instead.
    */
   insertMention(mention: PluginComposerMention): void;
-  /** @deprecated Use `replace(current => next)` to remove matching pills and rebase surviving ranges. */
+  /** @internal Legacy mention removal; retained at runtime for older plugins. */
   removeMention(mention: { provider: string; id: string }): void;
   /** Subscribe to successful local submissions in this composer scope, including accepted queued messages. Failed sends and draft clearing do not notify. Dispose on unmount. */
   onSubmitted(listener: () => void): () => void;

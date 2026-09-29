@@ -3483,11 +3483,11 @@ remain beneath these actions. Command completion's trigger-range replacement and
 autocomplete dismissal remain a documented boundary, not a hidden option on
 `replace`.
 
-`setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and `removeMention`
-are deprecated compatibility methods. Their existing text reconciliation,
-formatting, focus, and plugin-ownership behavior is preserved for old plugins;
-core actions use insert/replace; annotations retain the existing plugin-owned
-mention-removal method. No runtime removal is scheduled
+`setText`, `updateText`, and `clear` remain deprecated typed compatibility
+methods. `addQuote`, `insertMention`, and `removeMention` are marked internal
+and stripped from published declarations, but remain at runtime for older
+plugins. Their existing formatting, focus, and ownership behavior is preserved.
+Core actions and annotations use insert/replace. No runtime removal is scheduled
 in this change. The unshipped experimental replacement, quote, and attachment
 members introduced during this work were removed rather than retained as aliases.
 

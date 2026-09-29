@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import {
   definePluginApp,
   useComposer,
+  experimental_usePluginId,
+  type ComposerDraftSnapshot,
   useRpc,
   type ExperimentalPluginBrowserPage,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -63,11 +65,48 @@ async function readReactComponents(
   }
 }
 
+function withoutAnnotation(
+  draft: ComposerDraftSnapshot,
+  pluginId: string,
+  id: string,
+): ComposerDraftSnapshot {
+  const removed = draft.mentions
+    .filter(
+      (mention) =>
+        mention.kind === "plugin" &&
+        mention.pluginId === pluginId &&
+        mention.provider === ANNOTATION_MENTION_PROVIDER_ID &&
+        mention.id === id,
+    )
+    .sort((a, b) => b.from - a.from);
+  let next = draft;
+  for (const match of removed) {
+    const length = match.to - match.from;
+    next = {
+      ...next,
+      text: next.text.slice(0, match.from) + next.text.slice(match.to),
+      mentions: next.mentions
+        .filter((mention) => mention !== match)
+        .map((mention) =>
+          mention.from >= match.to
+            ? {
+                ...mention,
+                from: mention.from - length,
+                to: mention.to - length,
+              }
+            : mention,
+        ),
+    };
+  }
+  return next;
+}
+
 export function AnnotateAction({
   url,
   experimental_page: page,
 }: ExperimentalPluginBrowserToolbarActionProps) {
   const composer = useComposer();
+  const pluginId = experimental_usePluginId();
   const rpc = useRpc<typeof agentAnnotationsRpcContract>();
   const pendingSaves = useRef(Promise.resolve());
   const [state, setState] = useState<PageState>(INACTIVE_STATE);
@@ -119,10 +158,9 @@ export function AnnotateAction({
       pendingSaves.current = pendingSaves.current
         .then(async () => {
           if (message.type === "annotation-delete") {
-            composer.removeMention({
-              provider: ANNOTATION_MENTION_PROVIDER_ID,
-              id: message.id,
-            });
+            composer.replace((draft) =>
+              withoutAnnotation(draft, pluginId, message.id),
+            );
           } else if (message.type === "annotation-update") {
             await rpc.call("update", {
               id: message.id,
@@ -137,7 +175,7 @@ export function AnnotateAction({
           setError(errorMessage(cause));
         });
     });
-  }, [addToPrompt, composer, page, rpc]);
+  }, [addToPrompt, composer, page, pluginId, rpc]);
 
   useEffect(() => {
     if (page === null) {
