@@ -252,6 +252,49 @@ describe("PromptBoxActionsMenu", () => {
     },
   );
 
+  it("shows the built-in plugin rows in a queued-message composer", async () => {
+    registerComposerMenuPlugins();
+    const draft = emptyPromptDraftState();
+    const selection: ComposerSelection = { providerId: "codex" };
+    const view: ComposerView = {
+      scope: {
+        kind: "queued-message",
+        threadId: "thread-1",
+        queuedMessageId: "queued-1",
+      },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    const host: PluginComposerHost = {
+      scope: view.scope,
+      textEffectKey: "queued-message:queued-1",
+      getCurrent: () => draft,
+      subscribeDraft: () => () => {},
+      setDraft: () => {},
+      focus: () => {},
+      getSelection: () => selection,
+      subscribeSelection: () => () => {},
+    };
+    render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={host}>
+          <PluginComposerViewProvider value={view}>
+            <ComposerPlusMenuSlot onAction={() => {}} />
+          </PluginComposerViewProvider>
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Prompt actions" }),
+      { button: 0 },
+    );
+
+    for (const name of ["Plan", "Goal", "Automation", "Plugin"]) {
+      expect(await screen.findByRole("menuitem", { name })).toBeTruthy();
+    }
+  });
+
   it("restores composer focus after an update-only plugin item", async () => {
     const view: ComposerView = {
       scope: { kind: "new-thread", projectId: null },

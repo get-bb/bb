@@ -4,7 +4,6 @@ import { composerActionKinds } from "./composer-actions.js";
 export default definePluginApp((app) => {
   app.composer.customize({
     id: "provider-actions",
-    scopes: ["thread", "new-thread"],
     plusMenu: composerActionKinds.map((kind) => ({
       id: kind,
       label: kind === "plan" ? "Plan" : "Goal",

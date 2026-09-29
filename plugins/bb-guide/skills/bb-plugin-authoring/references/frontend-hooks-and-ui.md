@@ -76,9 +76,11 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   - Selection: `selection` is the current picker snapshot and updates reactively
     when the user or `setSelection` changes it. It contains the provider, model,
     reasoning level, service tier, and permission mode where available, plus
-    project and environment in a new-thread composer. Missing keys mean the
-    corresponding picker has no selected value; `null` means this composer has
-    no pickers. Use `isSubmittingBlocked` for submission readiness.
+    project and environment in a new-thread composer. Queued-message and
+    sent-message editors report their read-only pickers: the thread's provider
+    with the queued message's or the thread composer's settings. Missing keys
+    mean the corresponding picker has no selected value; `null` means this
+    composer has no pickers. Use `isSubmittingBlocked` for submission readiness.
   - Editing: `insert(parts, { at?, block? })` inserts text and pills at the
     current selection (default) or at `"end"`; `block: true` places the content
     on its own paragraph. `replace(next)` atomically sets text and mentions;
@@ -165,6 +167,8 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   `visible` and `disabled` (booleans or functions of the live composer), plus
   `run({ composer })`. Visibility defaults to true and predicates re-evaluate
   when the draft, selection, or editor state changes. Labels and icons are static.
+  `plusMenu` rows also appear in the sent-message editor (scope `thread`),
+  where the other customizations do not mount.
 - `composer.experimental_applyCommand({ trigger, name, trailingText })` applies
   a command pill through the editor's prompt-action path: replaces an active
   command query or preceding prompt action, avoids duplicates at the caret,

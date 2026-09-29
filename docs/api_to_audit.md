@@ -2946,7 +2946,9 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
 member by the same explicit composer API naming exception as `setSelection`.
 It reports the current picker/submission selection as a stable snapshot and
 re-renders `useComposer()` and `useComposers()` consumers when a user or plugin
-changes a picker. It is `null` for composers without pickers. Missing fields
+changes a picker. Queued-message and sent-message editors report their
+read-only pickers: the thread's provider with the queued message's settings or
+the thread composer's settings. It is `null` for composers without pickers. Missing fields
 represent unavailable or unselected values; `isSubmittingBlocked` remains the
 submission readiness signal. Audit snapshot identity across provider catalog
 reconciliation and off-screen composer lifetimes before treating the read
@@ -3543,6 +3545,10 @@ The frontend harness has no caret and appends the command at the end.
 Codex and Claude Code contribute their Plan/Goal rows using the same action-kind
 lists as their provider declarations and show them only for their selected
 provider. Automations contributes Automation; BB Guide contributes Plugin.
+These rows appear in every composer kind, matching the core rows they replaced,
+including the sent-message editor: plugin `+` menu rows are exempt from its
+customization suppression, while actions, banners, send-menu rows, and rich
+text remain suppressed there.
 The core menu retains Skills and Attach files. Existing command discovery,
 paste conversion, and Skills completion remain in core for the typeahead follow-up.
 Plugin creation uses ordinary cursor insertion; command actions use the distinct

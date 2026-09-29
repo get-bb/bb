@@ -11,7 +11,12 @@ import {
 } from "react";
 import { defaultAppSettings, type PromptInput } from "@bb/domain";
 import type { SendMessageDelivery } from "@bb/server-contract";
-import type { ComposerSubmitOptions, JsonValue } from "@get-bb/plugin-sdk";
+import type {
+  ComposerSelection,
+  ComposerSubmitOptions,
+  JsonValue,
+} from "@get-bb/plugin-sdk";
+import { readExecutionSelection } from "@/components/promptbox/composer-selection-settle";
 import type {
   AttachmentsConfig,
   HistoryConfig,
@@ -84,6 +89,8 @@ import { useLatestRef } from "@/hooks/useLatestRef";
 import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
+
+const NO_QUEUED_EDITOR_SELECTION: ComposerSelection = {};
 
 function reportQueuedSendDelivery(delivery: SendMessageDelivery): void {
   if (delivery !== "queued") {
@@ -734,6 +741,24 @@ function EmbeddedThreadChatWithComposer({
   );
   const { getSelection, subscribeSelection } =
     useComposerHostSelection(bottomComposerHostIdentity, bottomSelection);
+  const queuedSelection = useMemo(
+    () =>
+      inlineEditingQueuedMessage
+        ? readExecutionSelection({
+            selectedProviderId,
+            selectedThreadModel: inlineEditingQueuedMessage.model,
+            reasoningLevel: inlineEditingQueuedMessage.reasoningLevel,
+            serviceTier: inlineEditingQueuedMessage.serviceTier,
+            supportsServiceTier,
+            permissionMode: inlineEditingQueuedMessage.permissionMode,
+          })
+        : NO_QUEUED_EDITOR_SELECTION,
+    [inlineEditingQueuedMessage, selectedProviderId, supportsServiceTier],
+  );
+  const queuedComposerSelection = useComposerHostSelection(
+    queuedComposerHostIdentity ?? "",
+    queuedSelection,
+  );
   const setStoredPromptDraft = promptDraft.setDraft;
   const getStoredPromptDraft = promptDraft.getCurrent;
   const storedPromptDraftKey = promptDraft.storageKey;
@@ -808,6 +833,8 @@ function EmbeddedThreadChatWithComposer({
           : initialDraft;
       },
       subscribeDraft: subscribeQueuedDraft,
+      getSelection: queuedComposerSelection.getSelection,
+      subscribeSelection: queuedComposerSelection.subscribeSelection,
       setDraft: (draft) => {
         if (activeQueuedComposerIdentityRef.current !== identity) {
           return;
@@ -829,6 +856,7 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessageRef,
     queuedComposerIdentity,
     queuedComposerHostIdentity,
+    queuedComposerSelection,
     subscribeQueuedDraft,
     updateInlineQueuedMessage,
   ]);

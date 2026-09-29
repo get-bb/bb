@@ -3474,9 +3474,6 @@ export function PromptBoxInternal({
                         : undefined
                     }
                     onAction={applyPromptAction}
-                    includePluginContributions={
-                      !suppressPluginComposerCustomizations
-                    }
                   />
                   {footerStart}
                 </div>

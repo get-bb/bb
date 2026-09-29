@@ -36,15 +36,12 @@ interface PromptBoxActionsMenuProps {
   pluginItems?: readonly PluginComposerPlusMenuContribution[];
 }
 
-export function ComposerPlusMenuSlot({
-  includePluginContributions = true,
-  ...props
-}: Omit<PromptBoxActionsMenuProps, "pluginItems"> & {
-  includePluginContributions?: boolean;
-}) {
+export function ComposerPlusMenuSlot(
+  props: Omit<PromptBoxActionsMenuProps, "pluginItems">,
+) {
   const view = useOptionalPluginComposerView();
   const pluginItems = useResolvedComposerPlusMenuItems(
-    includePluginContributions ? (view?.scope.kind ?? null) : null,
+    view?.scope.kind ?? null,
   );
   return <PromptBoxActionsMenu {...props} pluginItems={pluginItems} />;
 }

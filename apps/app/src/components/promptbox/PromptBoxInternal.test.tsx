@@ -632,7 +632,7 @@ describe("PromptBoxInternal controlled value sync", () => {
     ).toBe(false);
   });
 
-  it("suppresses and restores plugin customizations without remounting the editor", () => {
+  it("suppresses and restores plugin customizations without remounting the editor, keeping plus-menu rows", () => {
     setPluginSlotRegistrations(
       "pending-test",
       pluginRegistrationSet([
@@ -663,7 +663,7 @@ describe("PromptBoxInternal controlled value sync", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
     expect(getPromptEditorElement()).toBe(editor);
 
     view.rerender(
