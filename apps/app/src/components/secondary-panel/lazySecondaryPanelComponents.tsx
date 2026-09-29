@@ -131,11 +131,8 @@ export const LazyThreadTerminalPanel = defineSplit({
       (module) => module.ThreadTerminalPanel,
     ),
   loading: () => (
-    <div
-      role="status"
-      className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground"
-    >
-      Loading terminal…
+    <div role="status" aria-label="Loading terminal">
+      <SecondaryPanelContentSkeleton />
     </div>
   ),
   preload: "render",
@@ -157,9 +154,9 @@ export const LazyNewTabPage = defineSplit({
   id: "new-tab-page",
   load: () => import("./NewTabPage").then((module) => module.NewTabPage),
   loading: () => (
-    <p role="status" className="px-4 pt-1 text-sm text-muted-foreground">
-      Loading…
-    </p>
+    <div role="status" aria-label="Loading new tab">
+      <SecondaryPanelContentSkeleton />
+    </div>
   ),
   preload: "render",
 });

@@ -27,10 +27,11 @@ customize it when a panel needs structural layout or a feature
 needs a close button. Loading and error components must themselves be lightweight.
 
 Prefer real surrounding controls, stable dimensions, and minimal loading content.
-A muted Loading… label is usually enough; avoid imitating individual controls
-with detailed skeletons. Use a detailed skeleton only when it helps explain the
-content that is arriving. Footer customization keeps its real header and Done
-button and reserves the expected content height without fake icons or rows.
+Use simple abstract skeleton bars or blocks without imitating individual controls.
+Preserve established loading skeletons when migrating existing splits, including
+those shared with a renderer's worker or data-loading stage. Footer customization
+keeps its real header and Done button and reserves the expected content height
+with a simple skeleton bar, without fake icons or rows.
 
 The loader is shared between speculative preload and rendering. A failed import
 clears the helper's promise cache. Retry creates a fresh React lazy component,

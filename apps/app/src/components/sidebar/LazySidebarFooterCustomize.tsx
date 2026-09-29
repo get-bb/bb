@@ -1,3 +1,4 @@
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useRef } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SidebarFooterCustomizeHeader } from "./SidebarFooterCustomizeHeader";
@@ -38,9 +39,12 @@ function FooterCustomizePlaceholder({
             ref={footerRowRef}
             className="relative flex items-center gap-1 py-2 text-xs text-muted-foreground"
           >
-            <span className="flex h-8 items-center px-2 max-md:pointer-coarse:h-9">
-              Loading…
-            </span>
+            <div
+              aria-hidden="true"
+              className="flex h-8 w-full items-center px-2 max-md:pointer-coarse:h-9"
+            >
+              <Skeleton className="h-3 w-2/3 rounded-sm" />
+            </div>
             <span
               ref={moreGlyphRef}
               aria-hidden="true"

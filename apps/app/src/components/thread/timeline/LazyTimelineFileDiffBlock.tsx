@@ -1,3 +1,4 @@
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { defineSplit } from "@/lib/define-split";
 import type { TimelineFileDiffBlockProps } from "./TimelineFileDiffBlock.js";
 
@@ -5,9 +6,12 @@ function TimelineFileDiffBlockLoading() {
   return (
     <div
       role="status"
-      className="mt-1 rounded-lg border border-border bg-background py-1.5 pl-2 pr-3 text-xs leading-5 text-muted-foreground"
+      aria-label="Loading diff"
+      className="mt-1 space-y-1.5 rounded-lg border border-border bg-background px-3 py-3"
     >
-      <span className="pl-[1ch]">Loading diff…</span>
+      <Skeleton className="h-3 w-full rounded-sm" />
+      <Skeleton className="h-3 w-[93%] rounded-sm" />
+      <Skeleton className="h-3 w-[87%] rounded-sm" />
     </div>
   );
 }

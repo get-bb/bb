@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
 import type { SidebarVisibilityCustomize as SidebarVisibilityCustomizeView } from "./SidebarVisibilityCustomize";
@@ -37,10 +38,19 @@ function SidebarVisibilityCustomizePlaceholder({
       {retry ? (
         <SplitLoadFailure retry={retry} />
       ) : (
-        <div role="status" className="relative min-h-7 space-y-0.5 pb-0.5">
-          <span className="absolute inset-x-0 top-0 flex h-7 items-center px-2 text-xs text-muted-foreground max-md:pointer-coarse:h-9">
-            Loading…
-          </span>
+        <div
+          role="status"
+          aria-label="Loading sidebar customization"
+          className="relative min-h-7 space-y-0.5 pb-0.5"
+        >
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-2 top-2 space-y-3"
+          >
+            <Skeleton className="h-3 w-3/4 rounded-sm" />
+            <Skeleton className="h-3 w-1/2 rounded-sm" />
+            <Skeleton className="h-3 w-2/3 rounded-sm" />
+          </div>
           {items.map((item) => (
             <div
               key={item.id}

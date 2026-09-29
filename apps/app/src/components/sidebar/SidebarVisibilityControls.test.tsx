@@ -59,7 +59,9 @@ describe("shared sidebar visibility controls", () => {
 
     const done = screen.getByRole("button", { name: "Done" });
     expect(document.activeElement).toBe(done);
-    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(
+      screen.getByRole("status", { name: "Loading sidebar customization" }),
+    ).toBeTruthy();
     fireEvent.keyDown(done, { key: "Escape" });
     fireEvent.click(done);
     expect(onDone).toHaveBeenCalledTimes(2);
