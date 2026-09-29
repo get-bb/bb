@@ -110,25 +110,23 @@ function PreviewCard({
       <div
         className={`flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground ${collapsed ? "" : "border-b border-border"}`}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="shrink-0 font-semibold">inline-vis</span>
-          <span className="truncate opacity-70">{file}</span>
-        </div>
-        {action}
         <button
           type="button"
           aria-expanded={!collapsed}
           aria-label={`${collapsed ? "Expand" : "Collapse"} visualization ${file}`}
-          title={collapsed ? "Expand visualization" : "Collapse visualization"}
-          className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          title={collapsed ? "Expand preview here" : "Collapse preview"}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           onClick={() => onCollapsedChange(!collapsed)}
         >
           <Icon
             name={collapsed ? "ChevronRight" : "ChevronDown"}
             aria-hidden
-            className="size-3"
+            className="size-3 shrink-0"
           />
+          <span className="shrink-0 font-semibold">inline-vis</span>
+          <span className="truncate opacity-70">{file}</span>
         </button>
+        {action}
       </div>
       {collapsed ? null : children}
     </div>
