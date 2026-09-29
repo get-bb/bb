@@ -1832,16 +1832,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         });
         mod = (await jiti.import(serverEntry.path)) as { default?: unknown };
       } else if (serverEntry.loader === "cjs") {
+        const filename = runtimeRequire.resolve(serverEntry.path);
         try {
-          const exported: unknown = runtimeRequire(serverEntry.path);
+          const exported: unknown = runtimeRequire(filename);
           mod =
             typeof exported === "function"
               ? { default: exported }
               : (exported as { default?: unknown });
         } finally {
-          const entry = runtimeRequire.cache[serverEntry.path];
+          const entry = runtimeRequire.cache[filename];
           if (entry !== undefined) detachCommonJsModule(entry);
-          delete runtimeRequire.cache[serverEntry.path];
+          delete runtimeRequire.cache[filename];
         }
       } else {
         const mutation = setMutableRootVersion(
