@@ -301,7 +301,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       throw new ApiError(
         409,
         "invalid_request",
-        "Environment has no pending provider cleanup",
+        "Environment is not provider-managed",
       );
     return context.json({ ok: true } as const);
   });

@@ -133,20 +133,6 @@ export function registerHostRoutes(
       new ApiError(400, "invalid_request", message),
   });
   const routes = publicApiRoutes.hosts;
-  get(routes.paths, (context) => {
-    const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps, hostId);
-    const session = getLatestSessionForHost(deps.db, { hostId });
-    if (session === null)
-      throw new ApiError(
-        409,
-        "host_paths_unavailable",
-        "The machine has not reported its filesystem locations",
-      );
-    return context.json({
-      threadStorageRootPath: path.join(session.dataDir, "thread-storage"),
-    });
-  });
 
   post(routes.create, async (context, payload) => {
     assertHostManagementAllowed(context);
@@ -177,13 +163,17 @@ export function registerHostRoutes(
     ),
   );
 
-  get(routes.get, (context) =>
-    context.json({
-      ...requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
-      connectMachineId: requireMutableHost(deps, context.req.param("id"))
-        .connectMachineId,
-    }),
-  );
+  get(routes.get, (context) => {
+    const hostId = context.req.param("id");
+    const host = requireNonDestroyedHostWithStatus(deps, hostId);
+    const session = getLatestSessionForHost(deps.db, { hostId });
+    return context.json({
+      ...host,
+      connectMachineId: requireMutableHost(deps, hostId).connectMachineId,
+      threadStorageRootPath:
+        session === null ? null : path.join(session.dataDir, "thread-storage"),
+    });
+  });
 
   get(routes.enrollmentCommand, async (context) => {
     assertHostManagementAllowed(context);

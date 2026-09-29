@@ -820,12 +820,6 @@ export const publicApiRoutes = {
   },
 
   hosts: {
-    paths: defineRoute({
-      path: "/hosts/:id/paths",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<{ threadStorageRootPath: string }>(),
-    }),
     create: defineRoute({
       path: "/hosts",
       method: "post",
@@ -854,7 +848,12 @@ export const publicApiRoutes = {
       path: "/hosts/:id",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host & { connectMachineId: string | null }>(),
+      response: jsonResponse<
+        Host & {
+          connectMachineId: string | null;
+          threadStorageRootPath: string | null;
+        }
+      >(),
     }),
     enrollmentCommand: defineRoute({
       path: "/hosts/:id/enrollment-command",

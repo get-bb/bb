@@ -3042,17 +3042,17 @@ Before stabilization, audit cookie import authorization: any caller with server 
 
 ## Machine paths and environment cleanup
 
-`bb.sdk.hosts.experimental_paths({ hostId })` returns `threadStorageRootPath`
+`bb.sdk.hosts.get({ hostId })` includes nullable `threadStorageRootPath`
 from the machine's latest daemon session, even offline or without live threads.
-It returns 409 when no session has reported paths. It does not wake the machine
-or create directories. CLI: `bb machine paths <id> [--json]`.
+It is null before a session has reported paths. Reading details does not wake the
+machine or create directories. CLI: `bb machine show <id-or-name> [--json]`.
 
-`bb.sdk.environments.experimental_cleanup({ environmentId })` bypasses
-backoff for pending or failed provider cleanup and starts the existing lifecycle
-sweep. It rejects live threads, environments without pending cleanup, and
-already-removed environments. Acceptance is not completion; inspect the ordinary
-environment lifecycle fields for progress. CLI:
-`bb environment cleanup <id> [--json]`.
+`bb.sdk.environments.experimental_cleanup({ environmentId })` explicitly requests
+removal of an unused provider-managed environment, overriding automatic retention
+or keep policy and bypassing cleanup backoff. It rejects live threads and
+unmanaged environments; already-removed provider environments succeed without
+another removal. Acceptance is not completion; inspect the ordinary environment
+lifecycle fields for progress. CLI: `bb environment cleanup <id> [--json]`.
 
 Before stabilization, audit path portability and session freshness after machine
 re-enrollment, and cleanup retry behavior across unavailable providers, concurrent

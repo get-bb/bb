@@ -335,7 +335,7 @@ export function registerEnvironmentCommands(
 
   environment
     .command("cleanup <id>")
-    .description("Request pending provider cleanup of an unused environment")
+    .description("Clean up an unused provider-managed environment")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: { json?: boolean }) => {

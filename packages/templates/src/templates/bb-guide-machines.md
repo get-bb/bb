@@ -63,7 +63,6 @@ bb machine create --provider <id> Create a standalone machine
 bb machine enroll --bootstrap-file <path>
 --bootstrap-env <NAME> Alternative private bundle source
 bb machine show <id-or-name> Show machine details
-bb machine paths <id> [--json] Show the last reported thread-storage root
 bb machine rename <id-or-name> <name> Rename a machine
 bb machine retry-update <id-or-name> Retry a pending daemon update now
 bb machine reconcile <id-or-name> Reconcile compute with core’s recorded state
@@ -491,6 +490,6 @@ fails, the machine remains available for retry or explicit removal.
 `--new-machine <id>` requires an explicit `--environment-provider <id>`; machine
 providers do not implicitly choose an environment.
 
-`bb machine paths` reads the latest daemon session without waking the machine.
-It works offline and with no live threads; a machine that has never reported a
-session returns an error. The command does not create directories.
+`bb machine show` includes `threadStorageRootPath` from the latest daemon session
+without waking the machine. It works offline and with no live threads; the path
+is null before the first session. Reading details does not create directories.

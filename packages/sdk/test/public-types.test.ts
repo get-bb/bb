@@ -275,7 +275,6 @@ type ExpectedFilesKey =
 type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
-  | "experimental_paths"
   | "cloneDefaultPath"
   | "experimental_create"
   | "experimental_getEnrollmentCommand"

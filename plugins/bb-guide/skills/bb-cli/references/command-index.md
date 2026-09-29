@@ -83,7 +83,6 @@ This index lists every command path that the core CLI registers, including alias
 - `bb machine env unset`
 - `bb machine create`
 - `bb machine list`
-- `bb machine paths`
 - `bb machine show`
 - `bb machine reconnect`
 - `bb machine rename`
@@ -363,8 +362,9 @@ To enroll an existing machine, run `bb machine create --provider manual`, then
 run its printed enrollment command on the target. The CLI waits until the daemon
 connects. With `--no-wait`, it returns the creating host ID immediately.
 
-- `bb machine paths <id> [--json]`: read the latest reported thread-storage root,
-  including offline machines; unavailable until the first daemon session.
-- `bb environment cleanup <id> [--json]`: bypass backoff for pending or failed
-  provider cleanup; rejects live threads and environments without pending cleanup.
-  Inspect completion through `bb environment show <id>`.
+- `bb machine show <id-or-name> [--json]`: includes the latest reported
+  `threadStorageRootPath`, even offline; null before the first daemon session.
+- `bb environment cleanup <id> [--json]`: explicitly remove an unused
+  provider-managed environment, overriding retention/keep policy and cleanup
+  backoff; rejects live threads and unmanaged environments. Already-removed
+  provider environments succeed. Inspect completion through `bb environment show <id>`.

@@ -1454,7 +1454,8 @@ describe("core environment orchestration", () => {
             )
             .toBe("removed");
           expect(removes).toBe(2);
-          expect((await retryRequest()).status).toBe(409);
+          expect((await retryRequest()).status).toBe(200);
+          expect(removes).toBe(2);
         }
         expect(getEnvironment(harness.db, environmentId)).toMatchObject({
           status: "destroyed",
@@ -1463,7 +1464,25 @@ describe("core environment orchestration", () => {
       }),
   );
 
-  it("does not retire an environment under the keep policy", async () =>
+  it("rejects cleanup of an unmanaged checkout", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness);
+      const environment = seedEnvironment(harness.deps, {
+        hostId: fixture.host.id,
+        projectId: fixture.thread.projectId,
+      });
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/cleanup`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        message: "Environment is not provider-managed",
+      });
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
+    }));
+
+  it("keeps retained environments until explicitly asked to clean up", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness, { policy: { retireGraceMs: null } });
       fixture.ask();
@@ -1482,7 +1501,13 @@ describe("core environment orchestration", () => {
             { method: "POST" },
           )
         ).status,
-      ).toBe(409);
+      ).toBe(200);
+      await expect
+        .poll(() => getEnvironment(harness.db, environmentId)?.teardownStatus)
+        .toBe("removed");
+      expect(getEnvironment(harness.db, environmentId)?.status).toBe(
+        "destroyed",
+      );
     }));
 
   it("cancels retirement when a live thread returns", async () =>

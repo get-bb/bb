@@ -282,7 +282,8 @@ BB source checkout startup
   sequence and source programmatic helpers. These are repository maintenance
   commands, not environment lifecycle hooks or installed `bb` commands.
 
-`bb environment cleanup <id> [--json]` requests pending or failed provider
-cleanup immediately, bypassing backoff. It rejects live threads and environments
-without pending cleanup. Acceptance is not completion; inspect lifecycle state
-with `bb environment show <id>`.
+`bb environment cleanup <id> [--json]` explicitly removes an unused
+provider-managed environment, overriding automatic retention or keep policy and
+bypassing cleanup backoff. It rejects live threads and unmanaged environments;
+already-removed provider environments succeed without another removal. Acceptance
+is not completion; inspect lifecycle state with `bb environment show <id>`.

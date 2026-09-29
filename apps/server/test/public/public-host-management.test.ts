@@ -70,12 +70,10 @@ describe("public host management", () => {
   it("reads machine paths after an offline session without requiring threads", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_paths" });
-      const request = () =>
-        harness.app.request(`${API}/hosts/${host.id}/paths`);
-      const unavailable = await request();
-      expect(unavailable.status).toBe(409);
-      expect(await unavailable.json()).toMatchObject({
-        code: "host_paths_unavailable",
+      const response = await harness.app.request(`${API}/hosts/${host.id}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        threadStorageRootPath: null,
       });
       const session = seedSession(harness.deps, host.id);
       harness.hub.unregisterDaemon(session.id);
@@ -108,9 +106,7 @@ describe("public host management", () => {
             harness.app.fetch(new Request(input, init)),
         }),
       });
-      await expect(
-        sdk.hosts.experimental_paths({ hostId: host.id }),
-      ).resolves.toEqual({
+      await expect(sdk.hosts.get({ hostId: host.id })).resolves.toMatchObject({
         threadStorageRootPath: "/tmp/new-machine-data/thread-storage",
       });
     });

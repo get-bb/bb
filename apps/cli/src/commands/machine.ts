@@ -202,20 +202,6 @@ export function registerMachineCommands(
   registerMachineEnvironmentCommands(machine, getUrl);
 
   machine
-    .command("paths <id>")
-    .description("Show the machine filesystem locations")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: { json?: boolean }) => {
-        const result = await createCliBbSdk(getUrl()).hosts.experimental_paths({
-          hostId: id,
-        });
-        if (!outputJson(opts, result))
-          console.log(`Thread storage: ${result.threadStorageRootPath}`);
-      }),
-    );
-
-  machine
     .command("enroll")
     .description("Enroll this machine using a private bootstrap bundle")
     .option("--bootstrap-file <path>", "Read the bootstrap bundle from a file")

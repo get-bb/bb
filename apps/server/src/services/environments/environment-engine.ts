@@ -889,17 +889,11 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   if (
     row === null ||
     row.environmentProviderId === null ||
-    environmentHasLiveThreads(deps.db, environmentId) ||
-    row.teardownStatus === "removed" ||
-    (row.retireAt === null && row.teardownStatus === null)
+    environmentHasLiveThreads(deps.db, environmentId)
   )
     return false;
-  const now = Date.now();
-  if (
-    row.teardownStatus === "failed" ||
-    (row.retireAt !== null && row.retireAt > now)
-  )
-    writeEnvironment(deps, environmentId, { retireAt: now });
+  if (row.teardownStatus === "removed") return true;
+  writeEnvironment(deps, environmentId, { retireAt: Date.now() });
   void sweepProviderEnvironment(deps, environmentId).catch((error) => {
     deps.logger.warn(
       { environmentId, error: errorMessage(error) },
