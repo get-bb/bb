@@ -49,12 +49,10 @@ function buildClaudeSkillConfigParams(
   }
 
   return {
-    plugins: skillRoots.map(
-      (skillRoot): ClaudeLocalPluginConfig => ({
-        type: "local",
-        path: skillRoot.localPluginPath,
-      }),
-    ),
+    plugins: skillRoots.map((skillRoot): ClaudeLocalPluginConfig => ({
+      type: "local",
+      path: skillRoot.localPluginPath,
+    })),
   };
 }
 
@@ -77,6 +75,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   claudeCodePermissionMode?: "plan" | undefined;
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
+  disable1MContext: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
@@ -137,6 +136,7 @@ function buildInternalSessionParams(
     serviceTier: args.options.serviceTier ?? "default",
     workflowsEnabled: args.options.workflowsEnabled,
     chromeEnabled: args.options.chromeEnabled,
+    disable1MContext: args.options.disable1MContext,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
@@ -151,6 +151,7 @@ const claudeProviderOptionsSchema = z
     claudeCodePermissionMode: z.literal("plan").optional(),
     workflowsEnabled: z.boolean().optional(),
     chromeEnabled: z.boolean().optional(),
+    disable1MContext: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
@@ -197,6 +198,7 @@ export function buildClaudeSessionParams(
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
       chromeEnabled: providerOptions.chromeEnabled ?? false,
+      disable1MContext: providerOptions.disable1MContext ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     },
@@ -250,6 +252,7 @@ export function buildClaudeTurnParams(
       : {}),
     workflowsEnabled: providerOptions.workflowsEnabled,
     chromeEnabled: providerOptions.chromeEnabled,
+    disable1MContext: providerOptions.disable1MContext,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),

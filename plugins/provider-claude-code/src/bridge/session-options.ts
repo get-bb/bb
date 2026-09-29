@@ -28,6 +28,7 @@ export interface BuildSessionOptionsArgs {
   serviceTier: ServiceTier;
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
+  disable1MContext: boolean;
   memoryEnabled?: boolean;
 }
 
@@ -234,7 +235,10 @@ export function buildSessionOptions(
     cwd: params.cwd,
     systemPrompt,
     model,
-    env,
+    env: {
+      ...env,
+      CLAUDE_CODE_DISABLE_1M_CONTEXT: params.disable1MContext ? "1" : "0",
+    },
     permissionMode: params.permissionMode,
     ...(params.reasoningLevel
       ? { effort: toSdkEffort(params.reasoningLevel) }

@@ -12,6 +12,7 @@ const EXECUTION_CONTEXT = {
   claudeCodePermissionMode: "plan",
   workflowsEnabled: true,
   chromeEnabled: true,
+  disable1MContext: false,
   memoryEnabled: false,
   providerSubagentsEnabled: false,
   instructions: "Session instructions",
@@ -27,6 +28,7 @@ function toCanonicalWireOptions(options: typeof EXECUTION_CONTEXT) {
     claudeCodePermissionMode,
     workflowsEnabled,
     chromeEnabled,
+    disable1MContext,
     memoryEnabled,
     providerSubagentsEnabled,
     ...core
@@ -37,6 +39,7 @@ function toCanonicalWireOptions(options: typeof EXECUTION_CONTEXT) {
       claudeCodePermissionMode,
       workflowsEnabled,
       chromeEnabled,
+      disable1MContext,
       memoryEnabled,
       providerSubagentsEnabled,
     },

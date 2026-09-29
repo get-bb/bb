@@ -25,6 +25,13 @@ export default function plugin(bb: BbPluginApi) {
       description: "Hide Claude Code's native Workflow tool for bb threads.",
       default: false,
     },
+    disable1MContext: {
+      type: "boolean",
+      label: "Disable 1M context",
+      description:
+        "Disable the 1M-token context window for Claude Code threads. Applies on the next turn.",
+      default: false,
+    },
     chromeEnabled: {
       type: "boolean",
       label: "Claude in Chrome",
@@ -92,6 +99,7 @@ export default function plugin(bb: BbPluginApi) {
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
         workflowsEnabled: context.settings.workflowsDisabled !== true,
         chromeEnabled: context.settings.chromeEnabled === true,
+        disable1MContext: context.settings.disable1MContext === true,
         ...(context.promptMode === "plan"
           ? { claudeCodePermissionMode: "plan" }
           : {}),

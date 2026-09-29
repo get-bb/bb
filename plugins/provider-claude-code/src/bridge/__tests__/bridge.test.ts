@@ -903,6 +903,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a manager.",
@@ -928,6 +929,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -953,6 +955,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -978,6 +981,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         workflowsEnabled: false,
         serviceTier: "fast",
         cwd: "/tmp/worktree",
@@ -996,6 +1000,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1020,6 +1025,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         memoryEnabled: false,
@@ -1047,6 +1053,7 @@ describe("bridge", () => {
       instructionMode: "append",
       permissionMode: "default",
       permissionScope: "workspace",
+      disable1MContext: false,
     } satisfies Omit<BuildSessionOptionsArgs, "chromeEnabled">;
 
     expect(
@@ -1061,6 +1068,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1090,6 +1098,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1112,6 +1121,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1131,6 +1141,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1157,6 +1168,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1176,6 +1188,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1198,6 +1211,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1224,6 +1238,7 @@ describe("bridge", () => {
       buildSessionOptions(
         {
           chromeEnabled: false,
+          disable1MContext: false,
           serviceTier: "default",
           workflowsEnabled: false,
           baseInstructions: "You are a coder.",
@@ -1244,6 +1259,7 @@ describe("bridge", () => {
     const acceptEditsOptions = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1257,6 +1273,7 @@ describe("bridge", () => {
     const autoOptions = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1290,6 +1307,7 @@ describe("bridge", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
+        disable1MContext: false,
         serviceTier: "default",
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
@@ -3033,100 +3051,112 @@ describe("bridge", () => {
     }
   });
 
-  it("restarts the Claude process before the next turn when the Chrome setting changes", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-    const threadId = "thread-chrome-setting";
-
-    try {
-      bridge.sendRequest(1, "thread/start", {
-        threadId,
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        options: {
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-          permissionEscalation: "ask",
-          instructions: "test",
-          providerOptions: { workflowsEnabled: false, chromeEnabled: true },
-        },
+  it.each(["chromeEnabled", "disable1MContext"])(
+    "restarts the Claude process before the next turn when %s changes",
+    async (setting) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
       });
-      await bridge.waitForResponse(1);
-      expect(getLatestQueryOptions().extraArgs).toEqual({
-        chrome: null,
-        "replay-user-messages": null,
-      });
+      const threadId = `thread-${setting}`;
 
-      bridge.sendRequest(
-        2,
-        "turn/start",
-        canonicalTurnParams({
+      try {
+        bridge.sendRequest(1, "thread/start", {
           threadId,
-          providerThreadId: threadId,
-          input: [{ type: "text", text: "same chrome setting" }],
-          providerOptions: { chromeEnabled: true },
-        }),
-      );
-      await readNextPrompt(getLatestQueryCall());
-      await bridge.waitForResponse(2);
-      expect(queries).toHaveLength(1);
-      queries[0]?.emit(createSuccessfulResultMessage(threadId));
-      await bridge.flushWork();
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: {
+            permissionMode: "accept-edits",
+            permissionScope: "workspace",
+            approvalReviewer: "user",
+            permissionEscalation: "ask",
+            instructions: "test",
+            providerOptions: { workflowsEnabled: false, [setting]: true },
+          },
+        });
+        await bridge.waitForResponse(1);
+        if (setting === "chromeEnabled") {
+          expect(getLatestQueryOptions().extraArgs).toEqual({
+            chrome: null,
+            "replay-user-messages": null,
+          });
+        } else {
+          expect(
+            getLatestQueryOptions().env?.CLAUDE_CODE_DISABLE_1M_CONTEXT,
+          ).toBe("1");
+        }
 
-      bridge.sendRequest(
-        3,
-        "turn/start",
-        canonicalTurnParams({
-          threadId,
-          providerThreadId: threadId,
-          input: [{ type: "text", text: "chrome turned off" }],
-          providerOptions: { chromeEnabled: false },
-        }),
-      );
-      await bridge.flushWork();
-      expect(queries).toHaveLength(2);
-      expect(queries[0]?.close).toHaveBeenCalled();
-      expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
-      expect(getLatestQueryOptions().extraArgs).toEqual({
-        "replay-user-messages": null,
-      });
-      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-        "chrome turned off",
-      );
-      await bridge.waitForResponse(3);
-      expect(
-        bridge.messages.filter(
-          (message) => message.method === "session/replaced",
-        ),
-      ).toContainEqual(
-        expect.objectContaining({
-          params: expect.objectContaining({
-            contextLost: false,
-            providerThreadId: threadId,
+        bridge.sendRequest(
+          2,
+          "turn/start",
+          canonicalTurnParams({
             threadId,
+            providerThreadId: threadId,
+            input: [{ type: "text", text: "same setting" }],
+            providerOptions: { [setting]: true },
           }),
-        }),
-      );
-    } finally {
-      bridge.sendRequest(4, "thread/stop", {
-        threadId,
-        providerThreadId: threadId,
-        intent: "interrupt",
-        activeTurnId: null,
-      });
-      await bridge.flushWork();
-      queries.at(-1)?.finish();
-      await bridge.waitForResponse(4);
-      queries.forEach((query) => query.finish());
-      bridge.restore();
-    }
-  });
+        );
+        await readNextPrompt(getLatestQueryCall());
+        await bridge.waitForResponse(2);
+        expect(queries).toHaveLength(1);
+        queries[0]?.emit(createSuccessfulResultMessage(threadId));
+        await bridge.flushWork();
+
+        bridge.sendRequest(
+          3,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            providerThreadId: threadId,
+            input: [{ type: "text", text: "setting turned off" }],
+            providerOptions: { [setting]: false },
+          }),
+        );
+        await bridge.flushWork();
+        expect(queries).toHaveLength(2);
+        expect(queries[0]?.close).toHaveBeenCalled();
+        expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
+        expect(getLatestQueryOptions().extraArgs).toEqual({
+          "replay-user-messages": null,
+        });
+        expect(
+          getLatestQueryOptions().env?.CLAUDE_CODE_DISABLE_1M_CONTEXT,
+        ).toBe("0");
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "setting turned off",
+        );
+        await bridge.waitForResponse(3);
+        expect(
+          bridge.messages.filter(
+            (message) => message.method === "session/replaced",
+          ),
+        ).toContainEqual(
+          expect.objectContaining({
+            params: expect.objectContaining({
+              contextLost: false,
+              providerThreadId: threadId,
+              threadId,
+            }),
+          }),
+        );
+      } finally {
+        bridge.sendRequest(4, "thread/stop", {
+          threadId,
+          providerThreadId: threadId,
+          intent: "interrupt",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries.at(-1)?.finish();
+        await bridge.waitForResponse(4);
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
 
   it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4706,6 +4736,7 @@ describe("canonical model context-window hint", () => {
         options: {
           ...canonicalOptions,
           envVars: { PLUGIN_ACCESS_TOKEN: "first" },
+          providerOptions: { disable1MContext: true },
         },
       });
       const startResponse = await bridge.waitForResponse(1);
@@ -4726,7 +4757,10 @@ describe("canonical model context-window hint", () => {
       expect(queries).toHaveLength(2);
       expect(queries[0]?.close).toHaveBeenCalledOnce();
       expect(getLatestQueryOptions()).toMatchObject({
-        env: { PLUGIN_ACCESS_TOKEN: "second" },
+        env: {
+          PLUGIN_ACCESS_TOKEN: "second",
+          CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
+        },
         resume: providerThreadId,
       });
       await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
