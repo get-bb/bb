@@ -35,7 +35,7 @@ function renderSection() {
   );
 }
 
-it("shows Android release details and keeps iOS version information in TestFlight", async () => {
+it("shows Android release details and links to the TestFlight app", async () => {
   vi.spyOn(sdk.system, "mobileAppReleases").mockResolvedValue({
     android: {
       version: "0.39.0",
@@ -49,8 +49,10 @@ it("shows Android release details and keeps iOS version information in TestFligh
   await screen.findByText("0.39.0 (build 4)");
   expect(screen.getByText("141 MB")).toBeTruthy();
   expect(
-    screen.getByText(/Version and release date are shown in TestFlight/),
-  ).toBeTruthy();
+    screen
+      .getByRole("link", { name: "TestFlight", exact: true })
+      .getAttribute("href"),
+  ).toBe("https://apps.apple.com/app/testflight/id899247664");
   expect(document.querySelector("time")?.getAttribute("datetime")).toBe(
     "2026-09-29T19:28:00Z",
   );

@@ -22,8 +22,7 @@ export function MobileAppSection() {
       <div>
         <h2 className="text-base font-semibold">Mobile apps</h2>
         <p className="mt-1 text-sm text-subtle-foreground">
-          Read and steer your threads from your phone. Both apps are in
-          development.
+          Use bb from your phone
         </p>
       </div>
       <div
@@ -63,11 +62,16 @@ export function MobileAppSection() {
           bodyClassName="space-y-4"
         >
           <p className="text-sm text-subtle-foreground">
-            Install TestFlight, then join the bb beta to install the app on your
-            iPhone.
-          </p>
-          <p className="text-sm text-subtle-foreground">
-            Version and release date are shown in TestFlight.
+            Install{" "}
+            <a
+              href="https://apps.apple.com/app/testflight/id899247664"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              TestFlight
+            </a>
+            , then join the bb beta to install the app on your iPhone.
           </p>
           <a
             href={mobileAppDownloads.ios}
