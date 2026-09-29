@@ -4,6 +4,7 @@ import type {
   ComposerSelection,
   ComposerView,
   PluginComposerApi,
+  PluginComposerScope,
 } from "@get-bb/plugin-sdk";
 import {
   act,
@@ -18,11 +19,11 @@ import {
   collectPluginAppRegistrations,
   definePluginApp,
 } from "@/lib/plugin-app-definition";
-import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import {
-  setPluginSlotRegistrations,
   resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ComposerSendMenu } from "./ComposerSendMenu";
 import { MemoryRouter } from "react-router-dom";
@@ -38,8 +39,8 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import {
-  PromptBoxActionsMenu,
   ComposerPlusMenuSlot,
+  PromptBoxActionsMenu,
   withAppPromptActions,
 } from "./PromptBoxActionsMenu";
 
@@ -48,6 +49,32 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
 });
+
+function composerHost(
+  scope: PluginComposerScope,
+  selection: () => ComposerSelection,
+  subscribeSelection: PluginComposerHost["subscribeSelection"] = () => () => {},
+): { host: PluginComposerHost; view: ComposerView } {
+  const draft = { ...emptyPromptDraftState(), text: "Draft" };
+  return {
+    view: {
+      scope,
+      layout: "expanded",
+      draft: { text: "Draft", isEmpty: false, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    },
+    host: {
+      scope,
+      textEffectKey: `test-${scope.kind}`,
+      getCurrent: () => draft,
+      subscribeDraft: () => () => {},
+      setDraft: () => {},
+      focus: () => {},
+      getSelection: selection,
+      subscribeSelection,
+    },
+  };
+}
 
 describe("PromptBoxActionsMenu", () => {
   it("does not render when no prompt actions are provided", () => {
@@ -75,72 +102,61 @@ describe("PromptBoxActionsMenu", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
-  it("keeps only Skills in the core action rows", async () => {
-    const onAction = vi.fn();
-    render(
-      <PromptBoxActionsMenu
-        actions={withAppPromptActions([
-          { kind: "skills", text: "/skills " },
-          { kind: "plan", text: "/plan " },
-        ])}
-        onAction={onAction}
-      />,
-    );
+  it.each<PluginComposerScope>([
+    { kind: "new-thread", projectId: null },
+    { kind: "thread", threadId: "thread-1" },
+    { kind: "queued-message", threadId: "thread-1", queuedMessageId: "q-1" },
+  ])(
+    "lists provider actions before the Automation and Plugin rows in a $kind composer",
+    async (scope) => {
+      registerComposerMenuPlugins();
+      const selection: ComposerSelection = {};
+      const { host, view } = composerHost(scope, () => selection);
+      render(
+        <MemoryRouter>
+          <PluginComposerHostProvider value={host}>
+            <PluginComposerViewProvider value={view}>
+              <ComposerPlusMenuSlot
+                actions={withAppPromptActions([
+                  { kind: "skills", text: "/skills " },
+                  { kind: "plan", text: "/plan " },
+                ])}
+                onAction={() => {}}
+              />
+            </PluginComposerViewProvider>
+          </PluginComposerHostProvider>
+        </MemoryRouter>,
+      );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Prompt actions" }),
-      { button: 0 },
-    );
-    const menuItems = await screen.findAllByRole("menuitem");
-    expect(menuItems.map((item) => item.textContent)).toEqual(["Skills"]);
-    expect(
-      menuItems.map((item) =>
-        item.querySelector("[data-icon]")?.getAttribute("data-icon"),
-      ),
-    ).toEqual(["Zap"]);
-
-    fireEvent.click(screen.getByRole("menuitem", { name: "Skills" }));
-
-    expect(onAction).toHaveBeenCalledWith({ kind: "skills", text: "/skills " });
-  });
-
-  it("keeps a provider-owned action instead of the app copy", () => {
-    const providerPlugin = { kind: "plugin", text: "/plugin " } as const;
-
-    expect(withAppPromptActions([providerPlugin])).toEqual([
-      providerPlugin,
-      {
-        kind: "automation",
-        command: { trigger: "/", name: "automation", trailingText: " " },
-        text: "/automation ",
-      },
-    ]);
-  });
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Prompt actions" }),
+        { button: 0 },
+      );
+      const menuItems = await screen.findAllByRole("menuitem");
+      expect(menuItems.map((item) => item.textContent)).toEqual([
+        "Skills",
+        "Plan",
+        "Automation",
+        "Plugin",
+      ]);
+      expect(
+        menuItems.map((item) =>
+          item.querySelector("[data-icon]")?.getAttribute("data-icon"),
+        ),
+      ).toEqual(["Zap", "ListTodo", "Repeat", "Plug02"]);
+    },
+  );
 
   it.each(["plus", "send"] as const)(
-    "reacts to selection changes for %s-menu visibility and disabled state",
+    "re-renders %s-menu rows when the composer selection changes",
     async (menu) => {
-      registerComposerMenuPlugins();
       const definition = definePluginApp((app) =>
         app.composer.customize({
           id: "conditional",
           [menu === "plus" ? "plusMenu" : "sendMenu"]: [
             {
-              id: "hidden",
-              label: "Never shown",
-              visible: false,
-              run: () => {},
-            },
-            {
-              id: "conditional",
+              id: "codex-only",
               label: "Codex only",
-              visible: (composer: PluginComposerApi) =>
-                composer.selection?.providerId === "codex",
-              run: () => {},
-            },
-            {
-              id: "disabled",
-              label: "Selection-dependent",
               disabled: (composer: PluginComposerApi) =>
                 composer.selection?.providerId !== "codex",
               run: () => {},
@@ -154,26 +170,14 @@ describe("PromptBoxActionsMenu", () => {
       );
       let selection: ComposerSelection = { providerId: "codex" };
       const listeners = new Set<() => void>();
-      const draft = { ...emptyPromptDraftState(), text: "Draft" };
-      const view: ComposerView = {
-        scope: { kind: "new-thread", projectId: null },
-        layout: "expanded",
-        draft: { text: "Draft", isEmpty: false, attachmentCount: 0 },
-        run: { isRunning: false, isSubmitting: false },
-      };
-      const host: PluginComposerHost = {
-        scope: view.scope,
-        textEffectKey: `conditional-${menu}`,
-        getCurrent: () => draft,
-        subscribeDraft: () => () => {},
-        setDraft: () => {},
-        focus: () => {},
-        getSelection: () => selection,
-        subscribeSelection: (listener) => {
+      const { host, view } = composerHost(
+        { kind: "new-thread", projectId: null },
+        () => selection,
+        (listener) => {
           listeners.add(listener);
           return () => listeners.delete(listener);
         },
-      };
+      );
       render(
         <MemoryRouter>
           <PluginComposerHostProvider value={host}>
@@ -202,97 +206,35 @@ describe("PromptBoxActionsMenu", () => {
         }),
         { button: 0 },
       );
-      expect(
-        await screen.findByRole("menuitem", { name: "Codex only" }),
-      ).toBeTruthy();
-      expect(
-        screen.queryByRole("menuitem", { name: "Never shown" }),
-      ).toBeNull();
-      expect(
-        screen
-          .getByRole("menuitem", { name: "Selection-dependent" })
-          .getAttribute("aria-disabled"),
-      ).not.toBe("true");
-      if (menu === "plus") {
-        expect(screen.getAllByRole("menuitem", { name: "Plan" })).toHaveLength(
-          1,
-        );
-        expect(screen.getByRole("menuitem", { name: "Goal" })).toBeTruthy();
-      }
+      const row = await screen.findByRole("menuitem", { name: "Codex only" });
+      expect(row.getAttribute("aria-disabled")).not.toBe("true");
+
       act(() => {
         selection = { providerId: "claude-code" };
         for (const listener of listeners) listener();
       });
+
       await waitFor(() =>
         expect(
-          screen.queryByRole("menuitem", { name: "Codex only" }),
-        ).toBeNull(),
+          screen
+            .getByRole("menuitem", { name: "Codex only" })
+            .getAttribute("aria-disabled"),
+        ).toBe("true"),
       );
-      expect(
-        screen
-          .getByRole("menuitem", { name: "Selection-dependent" })
-          .getAttribute("aria-disabled"),
-      ).toBe("true");
-      if (menu === "plus") {
-        expect(screen.getAllByRole("menuitem", { name: "Plan" })).toHaveLength(
-          1,
-        );
-        expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-        act(() => {
-          selection = { providerId: "pi" };
-          for (const listener of listeners) listener();
-        });
-        await waitFor(() =>
-          expect(screen.queryByRole("menuitem", { name: "Plan" })).toBeNull(),
-        );
-        expect(
-          screen.getByRole("menuitem", { name: "Automation" }),
-        ).toBeTruthy();
-      }
     },
   );
 
-  it("shows the built-in plugin rows in a queued-message composer", async () => {
-    registerComposerMenuPlugins();
-    const draft = emptyPromptDraftState();
-    const selection: ComposerSelection = { providerId: "codex" };
-    const view: ComposerView = {
-      scope: {
-        kind: "queued-message",
-        threadId: "thread-1",
-        queuedMessageId: "queued-1",
-      },
-      layout: "expanded",
-      draft: { text: "", isEmpty: true, attachmentCount: 0 },
-      run: { isRunning: false, isSubmitting: false },
-    };
-    const host: PluginComposerHost = {
-      scope: view.scope,
-      textEffectKey: "queued-message:queued-1",
-      getCurrent: () => draft,
-      subscribeDraft: () => () => {},
-      setDraft: () => {},
-      focus: () => {},
-      getSelection: () => selection,
-      subscribeSelection: () => () => {},
-    };
-    render(
-      <MemoryRouter>
-        <PluginComposerHostProvider value={host}>
-          <PluginComposerViewProvider value={view}>
-            <ComposerPlusMenuSlot onAction={() => {}} />
-          </PluginComposerViewProvider>
-        </PluginComposerHostProvider>
-      </MemoryRouter>,
-    );
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Prompt actions" }),
-      { button: 0 },
-    );
+  it("keeps a provider-owned action instead of the app copy", () => {
+    const providerPlugin = { kind: "plugin", text: "/plugin " } as const;
 
-    for (const name of ["Plan", "Goal", "Automation", "Plugin"]) {
-      expect(await screen.findByRole("menuitem", { name })).toBeTruthy();
-    }
+    expect(withAppPromptActions([providerPlugin])).toEqual([
+      providerPlugin,
+      {
+        kind: "automation",
+        command: { trigger: "/", name: "automation", trailingText: " " },
+        text: "/automation ",
+      },
+    ]);
   });
 
   it("restores composer focus after an update-only plugin item", async () => {
@@ -396,7 +338,7 @@ describe("PromptBoxActionsMenu", () => {
         item: {
           id: "rewrite",
           label: "Rewrite prompt",
-          disabled: (composer: PluginComposerApi) => composer.isEmpty,
+          disabled: (composer) => composer.isEmpty,
           run: vi.fn(),
         },
       },
@@ -448,6 +390,7 @@ describe("PromptBoxActionsMenu", () => {
     );
     const menuItems = await screen.findAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
+      "Plan",
       "Improve prompt",
       "Rewrite prompt",
     ]);

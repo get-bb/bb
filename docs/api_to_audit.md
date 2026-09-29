@@ -3525,14 +3525,7 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
-## Composer menu visibility and command actions
-
-`ComposerPlusMenuItem.visible` and `ComposerSendMenuItem.visible` accept a
-boolean or synchronous predicate of the live composer and default to true.
-The user explicitly chose the final name `visible` alongside #4502's reactive
-selection, following #4474's final-named composer contract. Hidden rows do not
-participate in keyboard selection. Predicates run in the item's plugin boundary
-and react to draft, selection, and editor changes. Labels and icons remain static.
+## Composer command actions
 
 `experimental_applyCommand({ trigger, name, trailingText })` uses the mounted
 editor's existing prompt-action path. It inserts a command pill, replaces an
@@ -3542,20 +3535,15 @@ whitespace suffix before touching the editor. Offscreen or unavailable composers
 reject; execution settings, attachments, and submission behavior are unchanged.
 The frontend harness has no caret and appends the command at the end.
 
-Codex and Claude Code contribute their Plan/Goal rows using the same action-kind
-lists as their provider declarations and show them only for their selected
-provider. Automations contributes Automation; BB Guide contributes Plugin.
-These rows appear in every composer kind, matching the core rows they replaced,
-including the sent-message editor: plugin `+` menu rows are exempt from its
-customization suppression, while actions, banners, send-menu rows, and rich
-text remain suppressed there.
-The core menu retains Skills and Attach files. Existing command discovery,
-paste conversion, and Skills completion remain in core for the typeahead follow-up.
-Plugin creation uses ordinary cursor insertion; command actions use the distinct
-command operation. SDK version 0.6.2 is required by migrated plugins.
+Automations contributes the Automation `+` menu row through this method; BB
+Guide contributes Plugin creation with ordinary cursor insertion. Both appear
+in every composer kind, matching the core rows they replaced, including the
+sent-message editor: plugin `+` menu rows are exempt from its customization
+suppression, while actions, banners, send-menu rows, and rich text remain
+suppressed there. Core keeps Skills, Attach files, and the provider-declared
+Plan/Goal rows. SDK version 0.6.2 is required by the migrated plugins.
 
-Before stabilization, audit hidden-only menus, provider changes with keyboard
-selection, generic command replacement semantics, unavailable editors, mobile
-focus restoration, and alignment with the forthcoming typeahead session API.
-These are client-local operations; existing CLI/SDK structured thread input
-surfaces are unchanged. There is no server/daemon wire change.
+Before stabilization, audit generic command replacement semantics, unavailable
+editors, mobile focus restoration, and alignment with the forthcoming typeahead
+session API. These are client-local operations; existing CLI/SDK structured
+thread input surfaces are unchanged. There is no server/daemon wire change.

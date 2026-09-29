@@ -1,4 +1,3 @@
-import { composerActionKinds } from "./composer-actions.js";
 import { registerUsageSource } from "./src/usage-source.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
@@ -88,7 +87,7 @@ export default function plugin(bb: BbPluginApi) {
           "Faster responses on supported Opus models at a higher cost per token.",
       },
     ],
-    composerActions: [...composerActionKinds],
+    composerActions: ["plan"],
     completedTurnDisplay: "flat",
     env: {
       passthrough: ["BB_CLAUDE_CODE_EXECUTABLE", "CLAUDE_CODE_OAUTH_TOKEN"],

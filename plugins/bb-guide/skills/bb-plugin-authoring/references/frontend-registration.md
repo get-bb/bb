@@ -90,7 +90,6 @@ export default definePluginApp((app) => {
       {
         id: "append-checklist",
         label: "Append checklist",
-        visible: (composer) => composer.selection !== null,
         run: ({ composer }) =>
           composer.insert("- Verify behavior\n- Run checks", {
             at: "end",

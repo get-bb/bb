@@ -285,9 +285,6 @@ function PluginComposerPlusMenuEntryContent({
 }) {
   const composer = useComposer();
   const view = useComposerView();
-  const visible =
-    typeof item.visible === "function" ? item.visible(composer) : item.visible;
-  if (visible === false) return null;
   const disabled =
     typeof item.disabled === "function"
       ? item.disabled(composer)

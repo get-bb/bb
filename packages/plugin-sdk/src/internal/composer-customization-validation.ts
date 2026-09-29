@@ -215,16 +215,6 @@ function parseMenuItem(entryKind: string, value: unknown): ComposerMenuItem {
     "description",
     entry?.description,
   );
-  const visible = entry?.visible;
-  if (
-    visible !== undefined &&
-    typeof visible !== "boolean" &&
-    typeof visible !== "function"
-  ) {
-    throw new Error(
-      `${entryKind}: "visible" must be a boolean or function when set`,
-    );
-  }
   const disabled = entry?.disabled;
   if (
     disabled !== undefined &&
@@ -240,9 +230,6 @@ function parseMenuItem(entryKind: string, value: unknown): ComposerMenuItem {
     label: requireNonEmptyString(entryKind, "label", entry?.label),
     ...(icon !== undefined ? { icon } : {}),
     ...(description !== undefined ? { description } : {}),
-    ...(visible !== undefined
-      ? { visible: visible as NonNullable<ComposerMenuItem["visible"]> }
-      : {}),
     ...(disabled !== undefined
       ? { disabled: disabled as NonNullable<ComposerMenuItem["disabled"]> }
       : {}),

@@ -273,8 +273,6 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
   );
 }
 
-const actionSelection = { providerId: "codex", model: "gpt-6-sol" };
-
 function renderPromptBox(
   initialValue: string,
   options: {
@@ -312,7 +310,6 @@ function renderPromptBox(
           setValue(next.text);
           setMentionRanges(next.mentions);
         },
-        getSelection: () => actionSelection,
         focus: () => getPromptEditorElement().focus(),
       }),
       [draft],

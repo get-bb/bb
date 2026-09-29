@@ -2343,8 +2343,6 @@ export interface ComposerPlusMenuItem {
   icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
-  /** Whether to show this row. Defaults to true; predicates react to composer changes. */
-  visible?: boolean | ((composer: PluginComposerApi) => boolean);
   disabled?: boolean | ((composer: PluginComposerApi) => boolean);
   run(context: { composer: PluginComposerApi }): void | Promise<void>;
 }
@@ -2361,8 +2359,6 @@ export interface ComposerSendMenuItem {
   icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
-  /** Whether to show this row. Defaults to true; predicates react to composer changes. */
-  visible?: boolean | ((composer: PluginComposerApi) => boolean);
   disabled?: boolean | ((composer: PluginComposerApi) => boolean);
   run(context: { composer: PluginComposerApi }): void | Promise<void>;
 }

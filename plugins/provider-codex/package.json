@@ -6,7 +6,7 @@
   "description": "Run bb threads with Codex.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.2"
+    "bbPluginSdk": ">=0.5.23"
   },
   "bb": {
     "name": "Codex provider",
@@ -15,7 +15,6 @@
       "icon": "./icons/codex.svg"
     },
     "server": "./server.ts",
-    "app": "./app.ts",
     "host": "./src/host.ts"
   },
   "keywords": [
