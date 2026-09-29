@@ -1215,11 +1215,7 @@ variable. Android build, signing, and Play submission instructions are in
 The bb mobile app reaches a paired bb through the same connect route. It
 enrolls as a connect **machine** — its own credential on the getbb.app account,
 separate from the server's pairing secret and individually revocable — so
-pairing starts from the bb, not from the phone. Both pairing surfaces sit
-behind the `mobileApp` experiment (Settings → Experiments → **Mobile app**, or
-`bb settings experiment mobileApp true`) until the app is generally available;
-the connect plugin reads the experiment from `/system/config` on every call,
-so a toggle applies without a plugin reload:
+pairing starts from the bb, not from the phone. No experiment is required.
 
 - Settings → Remote access → **Add mobile device** mints a one-time code and
   shows it as a QR code plus copyable text with a countdown.
@@ -1256,10 +1252,6 @@ plugin server loader. Toggling it leaves running plugin instances unchanged;
 the selected loader applies on the next install, reload, enable, update, or
 server restart. Set it with `bb settings experiment legacyJitiPluginLoader
 <true|false>`.
-The `mobileApp` experiment turns on pairing for the bb mobile app: the
-**Add mobile device** card under Settings → Remote access and the
-`bb connect machine-code` command (see "Pairing the bb mobile app" above). It
-is off by default while the app is in early access.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
@@ -1847,18 +1839,25 @@ The desktop app's own profile is excluded. See `bb guide browser` for search
 bounds, encryption limitations, and the `import-sources` / `import-cookies`
 commands. No additional BB setting is required to enable discovery.
 
-### Android App experiment
+### Mobile app downloads
 
-Enable **Android App** in Settings → Experiments, or run
-`bb settings experiment androidTesting true`. The Android App section appears
-below the flags. **Download APK** fetches the build from the public
-`get-bb/bb` GitHub release tagged `android-testing`, verifies its SHA256 and size,
-and downloads it. Users and their servers need no Android tools for this path.
-The server caches completed APKs, checks the release manifest on each request,
-and reuses the cache when unchanged or GitHub is unavailable. Failed integrity
-checks never replace a cached APK. Concurrent requests share the in-flight work.
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Remote access → **Add mobile device**.
 
-If there is no release or usable cache, the page offers **Build on this server**.
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Advanced server caching and local builds remain available via
+`bb settings android-app-prepare github --json` (or `local`), followed by
+`bb settings android-app --json`. SDK equivalents are
+`system.prepareAndroidApp({ source })`, `system.androidAppPreparation()`, and
+`system.androidApp()`. Cached/local downloads use `/install/bb-android.apk` and
+still travel through the server; use the public link for remote release downloads.
+Local builds require `BB_ANDROID_SOURCE_DIR`, pnpm, Java 17+, and an Android SDK.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+
 Local builds never start automatically. Configure `BB_ANDROID_SOURCE_DIR` with
 an absolute path to a dedicated bb source checkout on the server host. Install
 its dependencies with pnpm, install JDK 17 or newer, and set `ANDROID_HOME` or
@@ -1872,32 +1871,5 @@ Failures point to missing tools or `android-testing/build.log` in the server dat
 directory. Local builds time out after 30 minutes. In-flight status is held in
 memory; completed APKs survive restarts.
 
-CLI equivalents (wait for completion, and exit nonzero on failure):
-
-```sh
-bb settings android-app-prepare github --json
-bb settings android-app-prepare local --json
-bb settings android-app --json
-```
-
-SDK: `system.prepareAndroidApp({ source: "github" | "local" })` starts work,
-`system.androidAppPreparation()` reads status, and `system.androidApp()` reads
-the cached build metadata. The HTTP routes are POST `/api/v1/system/android-app/prepare`,
-GET `/api/v1/system/android-app/preparation`, and GET `/api/v1/system/android-app`.
-The preparation routes and `/install/bb-android.apk` are disabled when the
-experiment is off. Through bb connect, they require the normal account session.
-
-To publish centrally, run the **Mobile Android (EAS)** workflow with profile
-`preview` and **publish** enabled. EAS builds the signed APK; the workflow verifies
-it and uploads its checksum-named APK before `latest.json` to the `android-testing`
-GitHub prerelease. It requires configured EAS credentials/`EXPO_TOKEN`; it does not
-submit to Play. Preview builds increment the remote Android version code.
-The first release must be published before release downloads are available.
-
-For manual publication, run
-`node apps/mobile/scripts/publish-android-apk.mjs APK OUTPUT_DIR` from a source
-checkout with Android SDK build-tools. Upload `OUTPUT_DIR/android-testing/*.apk`
-to the release, then upload `OUTPUT_DIR/android-testing/latest.json` last.
-Alternatively use a server data directory as OUTPUT_DIR to seed that server's cache.
-Keep signing keys consistent for updates. Old cached artifacts are retained so
-active downloads can finish.
+The publishing workflow verifies the signed APK and publishes both the checksum-named
+asset and the stable `bb-android.apk` alias, then `latest.json`.

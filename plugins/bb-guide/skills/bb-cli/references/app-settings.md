@@ -186,10 +186,8 @@ so they carry over between navigation plugins.
 
 ## Mobile app
 
-- The `mobileApp` experiment defaults to false while the bb mobile app is in
-  early access.
-- Enable it with `bb settings experiment mobileApp true`. It shows the
-  **Add mobile device** card under Settings → Remote access.
+- Downloads are available in Settings → Mobile without opting in.
+- Pair your phone under Settings → Remote access → **Add mobile device**.
 
 ## Changelog preview
 
@@ -263,20 +261,19 @@ Disable anonymous usage telemetry with `bb settings general telemetryEnabled fal
 or Settings → General → Privacy & diagnostics → Share anonymous usage data. This server-wide preference
 applies immediately and persists across restarts. `BB_TELEMETRY=false` overrides it.
 
-The default-off `androidTesting` experiment adds **Android App** below the flags
-in Settings → Experiments. **Download APK** fetches and caches a checksum-verified
-APK from the public `get-bb/bb` release tagged `android-testing`. No Android tools
-are required. If no release/cache is available, **Build on this server** explicitly
-runs a local arm64 build; it requires `BB_ANDROID_SOURCE_DIR` pointing to a dedicated
-source checkout with dependencies, pnpm, Java 17+, and `ANDROID_HOME` or
-`ANDROID_SDK_ROOT`. Missing tools and build failures are reported in the page.
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Remote access → **Add mobile device**.
 
-Use `bb settings experiment androidTesting true`, then
-`bb settings android-app-prepare github --json` (or `local`) to wait for a download
-or build. `bb settings android-app --json` reads cached version/download metadata.
-SDK equivalents: `system.prepareAndroidApp({ source })`,
-`system.androidAppPreparation()`, and `system.androidApp()`.
-Downloads use `/install/bb-android.apk`; remote access requires an account session.
-Publish the first release using **Mobile Android (EAS)** with profile `preview`
-and **publish** enabled. Local fallback APKs use the debug signing key, which may
-differ from the release key. See `docs/configuration.md` for setup and publishing.
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Advanced server caching and local builds remain available via
+`bb settings android-app-prepare github --json` (or `local`), followed by
+`bb settings android-app --json`. SDK equivalents are
+`system.prepareAndroidApp({ source })`, `system.androidAppPreparation()`, and
+`system.androidApp()`. Cached/local downloads use `/install/bb-android.apk` and
+still travel through the server; use the public link for remote release downloads.
+Local builds require `BB_ANDROID_SOURCE_DIR`, pnpm, Java 17+, and an Android SDK.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.

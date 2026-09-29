@@ -45,7 +45,6 @@ const REMOTE_HOST_NAME = "Sawyer Air";
 
 function createConnectFakeHost(options?: {
   remoteIdentity?: { label: string; baseDomain: string };
-  mobileApp?: boolean;
   account?: FakeAccount;
 }): FakePluginHost {
   const account = options?.account ?? new FakeAccount();
@@ -59,7 +58,6 @@ function createConnectFakeHost(options?: {
         config: async () =>
           ({
             primaryHostId: SERVER_HOST_ID,
-            experiments: { mobileApp: options?.mobileApp ?? true },
           }) as never,
       },
       hosts: {
@@ -1505,8 +1503,7 @@ describe("connect plugin", () => {
 
   async function loadPlugin(options?: {
     remoteIdentity?: { label: string; baseDomain: string };
-    mobileApp?: boolean;
-    beforeLoad?: (current: FakePluginHost) => Promise<void> | void;
+      beforeLoad?: (current: FakePluginHost) => Promise<void> | void;
   }): Promise<FakePluginHost> {
     account = new FakeAccount();
     host = createConnectFakeHost({ ...options, account });
@@ -2508,8 +2505,7 @@ describe("connect CLI", () => {
   });
 
   async function loadCli(options?: {
-    mobileApp?: boolean;
-    remoteIdentity?: { label: string; baseDomain: string };
+      remoteIdentity?: { label: string; baseDomain: string };
   }): Promise<FakePluginHost> {
     account = new FakeAccount();
     host = createConnectFakeHost({ ...options, account });
@@ -2742,14 +2738,6 @@ describe("connect CLI", () => {
     );
   });
 
-  it("machine-code is off until the mobileApp experiment is on", async () => {
-    const { harness } = await loadCli({ mobileApp: false });
-    const result = await harness.runCli(["machine-code"]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('"Mobile app" experiment');
-    expect(result.stderr).toContain("bb settings experiment mobileApp true");
-    expect(account.fetches).toEqual([]);
-  });
 
   it("machine-code prints the pairing payload as text or json", async () => {
     const current = await loadCli();

@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { setExperiments, getExperiments } from "@bb/db";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const bytes = Buffer.from("test-apk-bytes");
@@ -21,29 +20,9 @@ async function publish(dataDir: string) {
 }
 
 describe("Android testing downloads", () => {
-  it("hides a published build until enabled, streams it, and hides it again when disabled", async () => {
-    await withTestHarness(async ({ app, deps, config }) => {
+  it("streams cached builds without an experiment and supports conditional requests", async () => {
+    await withTestHarness(async ({ app, config }) => {
       await publish(config.dataDir);
-      expect(
-        (await app.request("/api/v1/system/android-app/preparation")).status,
-      ).toBe(404);
-      expect(
-        (
-          await app.request("/api/v1/system/android-app/prepare", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ source: "local" }),
-          })
-        ).status,
-      ).toBe(404);
-      expect((await app.request("/install/bb-android.apk")).status).toBe(404);
-      expect(
-        await (await app.request("/api/v1/system/android-app")).json(),
-      ).toBeNull();
-      setExperiments(deps.db, {
-        ...getExperiments(deps.db),
-        androidTesting: true,
-      });
       expect(
         await (await app.request("/api/v1/system/android-app")).json(),
       ).toEqual(manifest);
@@ -64,26 +43,11 @@ describe("Android testing downloads", () => {
           })
         ).status,
       ).toBe(304);
-      setExperiments(deps.db, {
-        ...getExperiments(deps.db),
-        androidTesting: false,
-      });
-      expect(
-        (
-          await app.request("/install/bb-android.apk", {
-            headers: { "if-none-match": etag },
-          })
-        ).status,
-      ).toBe(404);
     });
   });
 
   it("does not offer missing or incomplete builds", async () => {
-    await withTestHarness(async ({ app, deps, config }) => {
-      setExperiments(deps.db, {
-        ...getExperiments(deps.db),
-        androidTesting: true,
-      });
+    await withTestHarness(async ({ app, config }) => {
       expect((await app.request("/install/bb-android.apk")).status).toBe(404);
       await publish(config.dataDir);
       await writeFile(

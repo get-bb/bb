@@ -617,6 +617,20 @@ export function registerSettingsCommands(
     );
 
   settings
+    .command("mobile-app")
+    .description("Show iOS TestFlight and Android APK download links")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonOptions) => {
+        const links = createCliBbSdk(getUrl()).system.mobileAppDownloads();
+        if (outputJson(opts, links)) return;
+        console.log(
+          `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
+        );
+      }),
+    );
+
+  settings
     .command("android-app-prepare <source>")
     .description(
       "Prepare an Android APK from github or explicitly build locally",
@@ -661,7 +675,7 @@ export function registerSettingsCommands(
         if (outputJson(opts, result)) return;
         console.log(
           result === null
-            ? "No Android build is available. Enable the Android testing experiment and publish an APK."
+            ? "No cached Android build is available. Run bb settings mobile-app for public downloads, or bb settings android-app-prepare to prepare a server copy."
             : `${result.version} (build ${result.versionCode})\n${result.downloadUrl}`,
         );
       }),

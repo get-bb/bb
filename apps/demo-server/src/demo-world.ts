@@ -51,7 +51,7 @@ import {
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
   generalSettings: defaultAppSettings,
-  experiments: { ...defaultExperiments, mobileApp: true },
+  experiments: { ...defaultExperiments },
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",

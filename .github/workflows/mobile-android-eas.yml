@@ -111,4 +111,6 @@ jobs:
             gh release create android-testing --target "$GITHUB_SHA" --title "bb Android testing" --notes "Android APKs for the Android App experiment." --prerelease --latest=false
           fi
           gh release upload android-testing android-release/android-testing/*.apk --clobber
+          cp android-release/build.apk android-release/bb-android.apk
+          gh release upload android-testing android-release/bb-android.apk --clobber
           gh release upload android-testing android-release/android-testing/latest.json --clobber

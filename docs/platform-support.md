@@ -49,8 +49,7 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
   allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
   hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
   machine (QR / code from Settings → Remote access or
-  `bb connect machine-code`, both behind the `mobileApp` experiment during
-  early access), keeps the credential in the device keychain, and mints
+  `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
   short-lived sessions; see [multiple-devices.md](multiple-devices.md).
 - Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
   runtime) today; TestFlight / Play builds go through EAS once the Expo

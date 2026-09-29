@@ -76,11 +76,6 @@ const desktopSessionSchema: z.ZodType<DesktopSession> = z
   })
   .strict();
 
-const mobilePairingSchema = z
-  .object({
-    enabled: z.boolean(),
-  })
-  .strict();
 
 const machineCodeSchema: z.ZodType<MachineCode> = z
   .object({
@@ -118,7 +113,6 @@ export const connectRpcContract = defineRpcContract({
     output: listAccountServersResultSchema,
   },
   createDesktopSession: { input: z.null(), output: desktopSessionSchema },
-  mobilePairing: { input: z.null(), output: mobilePairingSchema },
   createMachineCode: { input: z.null(), output: machineCodeSchema },
   revokeMachine: {
     input: revokeMachineInputSchema,
@@ -140,10 +134,6 @@ async function rethrowErrorCode<T>(
   }
 }
 
-export interface MobilePairingGate {
-  enabled(): Promise<boolean>;
-}
-
 export interface RemoteAccessSwitch {
   set(enabled: boolean): Promise<ConnectStatus>;
 }
@@ -152,10 +142,9 @@ export function createRpcHandlers(args: {
   tunnel: ConnectTunnel;
   hosted: HostedConnectApi;
   hostResolver: ShareHostResolver;
-  mobilePairing: MobilePairingGate;
   remoteAccess: RemoteAccessSwitch;
 }): ConnectRpcHandlers {
-  const { tunnel, hosted, hostResolver, mobilePairing, remoteAccess } = args;
+  const { tunnel, hosted, hostResolver, remoteAccess } = args;
   const identity = () => {
     const current = tunnel.getIdentity();
     if (current === null) {
@@ -206,9 +195,6 @@ export function createRpcHandlers(args: {
         },
         (error) => error instanceof ConnectListError,
       );
-    },
-    async mobilePairing() {
-      return { enabled: await mobilePairing.enabled() };
     },
     async createMachineCode() {
       return rethrowErrorCode(

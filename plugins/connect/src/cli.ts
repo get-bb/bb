@@ -18,7 +18,7 @@ import {
 import type { HostedConnectApi } from "./hosted.js";
 import type { ShareHostResolver } from "./hosts.js";
 import { MachineCodeError } from "./machine-code.js";
-import type { MobilePairingGate, RemoteAccessSwitch } from "./rpc.js";
+import type { RemoteAccessSwitch } from "./rpc.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
@@ -166,7 +166,6 @@ export function registerConnectCli(args: {
   account: AccountClient;
   hosted: HostedConnectApi;
   hostResolver: ShareHostResolver;
-  mobilePairing: MobilePairingGate;
   remoteAccess: RemoteAccessSwitch;
 }): void {
   const {
@@ -175,7 +174,6 @@ export function registerConnectCli(args: {
     account,
     hosted,
     hostResolver,
-    mobilePairing,
     remoteAccess,
   } = args;
   bb.cli.register(
@@ -449,12 +447,6 @@ export function registerConnectCli(args: {
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              if (!(await mobilePairing.enabled())) {
-                throw new PluginCliError(
-                  'mobile pairing is off — turn on the "Mobile app" experiment in Settings → Experiments (or `bb settings experiment mobileApp true`), then run this again',
-                  { code: "mobile_pairing_disabled" },
-                );
-              }
               if (tunnel.getIdentity() === null) throw notPairedError();
               let payload: MobilePairingPayload;
               try {

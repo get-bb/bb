@@ -638,37 +638,7 @@ function MobilePairingCard({
   );
 }
 
-function useMobilePairingEnabled(): boolean {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    rpc.call("mobilePairing").then(
-      (result) => {
-        if (!cancelled) setEnabled(result.enabled);
-      },
-      () => {
-        if (!cancelled) setEnabled(false);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [rpc]);
-  return enabled;
-}
-
 function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
-  const enabled = useMobilePairingEnabled();
-  if (!enabled) return null;
-  return <AddMobileDeviceSectionContent dashboardUrl={dashboardUrl} />;
-}
-
-function AddMobileDeviceSectionContent({
-  dashboardUrl,
-}: {
-  dashboardUrl: string;
-}) {
   const rpc = useRpc<typeof connectRpcContract>();
   const [payload, setPayload] = useState<MobilePairingPayload | null>(null);
   const [minting, setMinting] = useState(false);

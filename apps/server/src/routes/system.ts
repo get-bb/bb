@@ -157,30 +157,18 @@ export function registerSystemRoutes(
   const androidAppPreparation = createAndroidAppPreparationService({
     dataDir: deps.config.dataDir,
   });
-  const requireAndroidApp = () => {
-    if (!getExperiments(deps.db).androidTesting)
-      throw new ApiError(
-        404,
-        "not_found",
-        "Enable Android App in Settings → Experiments first.",
-      );
-  };
   get(routes.androidAppPreparation, async (context) => {
-    requireAndroidApp();
     context.header("cache-control", "no-store");
     return context.json(await androidAppPreparation.status());
   });
   post(routes.prepareAndroidApp, (context, input) => {
-    requireAndroidApp();
     context.header("cache-control", "no-store");
     return context.json(androidAppPreparation.start(input.source));
   });
 
   get(routes.androidApp, async (context) => {
     context.header("cache-control", "no-store");
-    const artifact = getExperiments(deps.db).androidTesting
-      ? await readAndroidAppArtifact(deps.config.dataDir)
-      : null;
+    const artifact = await readAndroidAppArtifact(deps.config.dataDir);
     return context.json(artifact?.manifest ?? null);
   });
 

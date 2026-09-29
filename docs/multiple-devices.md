@@ -100,14 +100,11 @@ and can revoke.
 
 1. Sign the bb server in to your bb account first (Settings → Remote
    access, `bb account login`, or `bb connect --code …`).
-2. Turn on the **Mobile app** experiment (Settings → Experiments, or
-   `bb settings experiment mobileApp true`). Mobile pairing stays hidden
-   without it while the app is in early access.
-3. Mint a pairing code for the phone: Settings → Remote access → **Add mobile
+2. Mint a pairing code for the phone: Settings → Remote access → **Add mobile
    device** (QR code plus the code as text, with a countdown), or run
    `bb connect machine-code` (`--json` prints
    `{code, serverUrl, apex, expiresAt}`).
-4. In the mobile app, add a server over bb connect and scan the QR code or type
+3. In the mobile app, add a server over bb connect and scan the QR code or type
    the code. Codes last 10 minutes and work once.
 
 The phone keeps its credential in the device keychain and mints short-lived
