@@ -606,9 +606,7 @@ function resolveInlineCodeMarkdownFileHref({
   if (
     localFileRouting === undefined ||
     codeText.length === 0 ||
-    codeText.trim() !== codeText ||
-    codeText.includes("\n") ||
-    codeText.includes("\r")
+    /\s/u.test(codeText)
   ) {
     return null;
   }

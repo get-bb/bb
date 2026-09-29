@@ -336,6 +336,29 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("src/app.ts").tagName).toBe("CODE");
   });
 
+  it("preserves inline commands ending in Markdown paths as code", () => {
+    render(
+      <MarkdownPreview
+        content={
+          "Added `orange` and ran `cat things.md`:\n\n```text\nasdf\napple\npear\norange\n```\n\n`cat /workspace/things.md` and `git diff docs/guide.markdown:4`. See [my notes](<notes/my notes.md>)."
+        }
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    for (const command of [
+      "cat things.md",
+      "cat /workspace/things.md",
+      "git diff docs/guide.markdown:4",
+    ]) {
+      expect(screen.getByText(command).tagName).toBe("CODE");
+      expect(screen.queryByRole("link", { name: command })).toBeNull();
+    }
+    expect(
+      screen.getByRole("link", { name: "my notes" }).getAttribute("href"),
+    ).toBe("file:///workspace/notes/my%20notes.md");
+  });
+
   it("shows a context menu on local file links when the context provides items", () => {
     const openBuiltin = vi.fn();
     const openFinder = vi.fn();
