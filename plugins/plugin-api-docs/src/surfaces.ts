@@ -203,7 +203,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarFooterDisclosureController",
           "PluginSidebarFooterActionRegistration",
         ],
-        firstParty: ["Remote access"],
+        firstParty: ["Provider usage"],
         experimental: true,
       },
       {

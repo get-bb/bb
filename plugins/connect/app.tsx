@@ -1731,13 +1731,4 @@ export default definePluginApp((app) => {
     providerId: "connect",
     component: ServerAccessSection,
   });
-  app.experimental_sidebarFooter.register({
-    kind: "action",
-    id: "remote-access",
-    label: "Remote access",
-    icon: "Smartphone",
-    onActivate({ openPluginDetails }) {
-      openPluginDetails();
-    },
-  });
 });
