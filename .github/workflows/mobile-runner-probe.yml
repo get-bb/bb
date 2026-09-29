@@ -1,7 +1,7 @@
 name: Mobile Runner Probe
 
 # Manual probe of the macOS runner before we commit to an iOS simulator e2e
-# job for apps/mobile (see plans/bb-mobile-expo.md, Phase 0). Prints the
+# job for apps/mobile. Prints the
 # toolchain versions Maestro/Expo need and times a Release iOS build.
 on:
   workflow_dispatch:

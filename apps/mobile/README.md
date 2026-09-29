@@ -1,7 +1,7 @@
 # @bb/mobile
 
 Native iOS/Android client for bb (Expo SDK 57, React Native 0.86, Expo
-Router, NativeWind v5). Plan and decisions: `plans/bb-mobile-expo.md`.
+Router, NativeWind v5).
 
 Status: a native shell around the web interface (#2515). `app/webview.tsx`
 loads the active server's web app in `react-native-webview` and talks to it
