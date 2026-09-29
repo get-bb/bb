@@ -47,9 +47,21 @@ it.each([
   "credits",
   "expired",
   "model-bucket",
+  "pooled",
 ] as const)(
   "keeps quota ahead of failure and reads only missing failure metadata (%s)",
   async (outcome) => {
+    const options = {
+      ...FULL_ACCESS_SESSION_OPTIONS,
+      ...(outcome === "pooled"
+        ? {
+            envVars: {
+              CODEX_OPENAI_BASE_URL: "http://127.0.0.1:1/v1",
+              CODEX_POOL_AUTH_TOKEN: "quota-test",
+            },
+          }
+        : {}),
+    };
     const scriptPath = join(workspaceDir, "script.json");
     const requestLogPath = join(workspaceDir, "requests.jsonl");
     const resetsAt = Math.floor(Date.now() / 1000) + 3600;
@@ -157,7 +169,7 @@ it.each([
       threadId: THREAD_ID,
       cwd: workspaceDir,
       instructionMode: "append",
-      options: FULL_ACCESS_SESSION_OPTIONS,
+      options,
     });
     const response = await harness.waitForResponse(1);
     expect(requests().some((r) => r.method === "account/rateLimits/read")).toBe(
@@ -171,7 +183,7 @@ it.each([
       providerThreadId,
       input: [{ type: "text", text: "Hello" }],
       clientRequestId: "creq_abcdefghjk",
-      options: FULL_ACCESS_SESSION_OPTIONS,
+      options,
     });
     await harness.waitForResponse(2);
     if (outcome === "release") {
@@ -208,7 +220,9 @@ it.each([
     const quotas = events
       .slice(0, completed)
       .filter((e) => e.type === "provider/rateLimits/updated");
-    const shouldRead = !["native", "credits", "other-error"].includes(outcome);
+    const shouldRead = !["native", "credits", "other-error", "pooled"].includes(
+      outcome,
+    );
     expect(
       requests().filter((r) => r.method === "account/rateLimits/read"),
     ).toHaveLength(shouldRead ? 1 : 0);
@@ -220,7 +234,7 @@ it.each([
           windows: [{ resetsAtMs: resetsAt * 1000 }],
         },
       });
-    if (["error", "timeout", "no-update-error"].includes(outcome))
+    if (["error", "timeout", "no-update-error", "pooled"].includes(outcome))
       expect(quotas.at(-1)).toMatchObject({
         rateLimits: { status: "unknown", windows: [] },
       });

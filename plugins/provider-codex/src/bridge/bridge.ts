@@ -471,6 +471,7 @@ interface CodexBridgeSession {
   pendingPreIdentityDeltas: ThreadDelta[];
   turnRateLimits: ProviderRateLimitState | null;
   quotaRecoveryAttempted: boolean;
+  quotaRecoveryAllowed: boolean;
   rebuildBeforeNextTurnReason: string | null;
   closing: boolean;
   previousChildExit: Promise<void> | null;
@@ -726,17 +727,19 @@ async function handleChildNotification(
   if (
     quotaFailure &&
     !quotaExplainsFailure &&
-    !session.quotaRecoveryAttempted &&
-    session.connection !== null
+    !session.quotaRecoveryAttempted
   ) {
     session.quotaRecoveryAttempted = true;
     try {
-      const snapshot = await session.connection.request({
-        method: "account/rateLimits/read",
-        params: { excludeResetCreditDetails: true },
-        resultSchema: codexRateLimitReadResponseSchema,
-        timeoutMs: RATE_LIMIT_RECOVERY_TIMEOUT_MS,
-      });
+      const snapshot =
+        session.quotaRecoveryAllowed && session.connection !== null
+          ? await session.connection.request({
+              method: "account/rateLimits/read",
+              params: { excludeResetCreditDetails: true },
+              resultSchema: codexRateLimitReadResponseSchema,
+              timeoutMs: RATE_LIMIT_RECOVERY_TIMEOUT_MS,
+            })
+          : null;
       if (currentSession(bbThreadId, serial) !== session) return;
       sendThreadDeltas(session, session.translator.recoverRateLimits(snapshot));
     } catch {
@@ -1074,6 +1077,7 @@ async function constructThreadSession(
         : { presentation: tool.presentation }),
     })),
   );
+  const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:
@@ -1099,6 +1103,9 @@ async function constructThreadSession(
     pendingPreIdentityDeltas: [],
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
+    quotaRecoveryAllowed: !(
+      launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV]
+    ),
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,
@@ -1275,6 +1282,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     pendingPreIdentityDeltas: [],
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
+    quotaRecoveryAllowed: session.quotaRecoveryAllowed,
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,
