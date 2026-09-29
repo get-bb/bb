@@ -87,6 +87,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Android SDK for APK verification
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: "build-tools;36.0.0"
+          log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-eas-build
@@ -94,7 +99,6 @@ jobs:
       - name: Download and verify the signed APK
         run: |
           set -euo pipefail
-          sdkmanager "build-tools;36.0.0"
           apk_url="$(jq -er 'map(select(.platform == "ANDROID" and .status == "FINISHED")) | first | .artifacts.buildUrl | select(type == "string" and startswith("https://"))' android-release/eas-build.json)"
           curl --fail --location --retry 3 --max-time 900 --proto '=https' --proto-redir '=https' "$apk_url" -o android-release/build.apk
           node apps/mobile/scripts/publish-android-apk.mjs android-release/build.apk android-release
