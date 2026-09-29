@@ -43,8 +43,10 @@ it.each([
   "timeout",
   "release",
   "other-error",
+  "no-update-error",
   "credits",
   "expired",
+  "model-bucket",
 ] as const)(
   "keeps quota ahead of failure and reads only missing failure metadata (%s)",
   async (outcome) => {
@@ -82,9 +84,26 @@ it.each([
         requestLogPath,
         rateLimitRead: {
           hang: outcome === "timeout" || outcome === "release",
-          error: outcome === "error",
+          error: outcome === "error" || outcome === "no-update-error",
           delayMs: 20,
-          result: { rateLimits: recovered },
+          result:
+            outcome === "model-bucket"
+              ? {
+                  rateLimits: { limitId: "codex" },
+                  rateLimitsByLimitId: {
+                    codex: { limitId: "codex" },
+                    premium: { ...recovered, limitId: "premium" },
+                    unrelated: {
+                      ...recovered,
+                      limitId: "unrelated",
+                      primary: {
+                        ...recovered.primary,
+                        resetsAt: resetsAt + 86400,
+                      },
+                    },
+                  },
+                }
+              : { rateLimits: recovered },
         },
         turns: [
           [
@@ -97,7 +116,10 @@ it.each([
             },
             {
               method: "account/rateLimits/updated",
-              params: { rateLimits: native },
+              params: {
+                rateLimits:
+                  outcome === "model-bucket" ? { limitId: "premium" } : native,
+              },
             },
             {
               method: "error",
@@ -115,7 +137,11 @@ it.each([
                 turn: { id: "turn-limit", status: "failed", error },
               },
             },
-          ],
+          ].filter(
+            (entry) =>
+              outcome !== "no-update-error" ||
+              entry.method !== "account/rateLimits/updated",
+          ),
         ],
       }),
     );
@@ -187,12 +213,16 @@ it.each([
       requests().filter((r) => r.method === "account/rateLimits/read"),
     ).toHaveLength(shouldRead ? 1 : 0);
     expect(quotas.length).toBeGreaterThan(0);
-    if (["native", "recover", "expired"].includes(outcome))
+    if (["native", "recover", "expired", "model-bucket"].includes(outcome))
       expect(quotas.at(-1)).toMatchObject({
         rateLimits: {
           status: "blocked",
           windows: [{ resetsAtMs: resetsAt * 1000 }],
         },
+      });
+    if (["error", "timeout", "no-update-error"].includes(outcome))
+      expect(quotas.at(-1)).toMatchObject({
+        rateLimits: { status: "unknown", windows: [] },
       });
     expect(events[completed]).toMatchObject({ status: "failed" });
     expect(events.some((e) => e.type === "provider/error")).toBe(true);

@@ -601,6 +601,7 @@ function sendThreadDeltas(
       session.turnRateLimits = delta.rateLimits;
     }
     if (delta.kind === "turn.open") {
+      session.translator.resetRateLimits();
       session.turnRateLimits = null;
       session.quotaRecoveryAttempted = false;
       session.awaitingReplayedUsage = false;
@@ -738,7 +739,10 @@ async function handleChildNotification(
       });
       if (currentSession(bbThreadId, serial) !== session) return;
       sendThreadDeltas(session, session.translator.recoverRateLimits(snapshot));
-    } catch {}
+    } catch {
+      if (currentSession(bbThreadId, serial) !== session) return;
+      sendThreadDeltas(session, session.translator.recoverRateLimits(null));
+    }
     if (currentSession(bbThreadId, serial) !== session) return;
   }
   sendThreadDeltas(session, deltas);

@@ -1609,13 +1609,22 @@ export function createCodexEventTranslator(
     return repairedDeltas;
   }
 
+  function resetRateLimits(): void {
+    eventTranslationState.rateLimitsByLimitId.clear();
+    eventTranslationState.latestRateLimitId = "codex";
+  }
+
   function recoverRateLimits(
-    response: z.output<typeof codexRateLimitReadResponseSchema>,
+    response: z.output<typeof codexRateLimitReadResponseSchema> | null,
   ): ThreadDelta[] {
     const preferredLimitId = eventTranslationState.latestRateLimitId;
     eventTranslationState.rateLimitsByLimitId.clear();
-    const snapshots = response.rateLimitsByLimitId;
-    if (snapshots === null || Object.keys(snapshots).length === 0) {
+    const snapshots = response?.rateLimitsByLimitId ?? null;
+    if (response === null) {
+      applyCodexRateLimitUpdate(eventTranslationState, {
+        limitId: preferredLimitId,
+      });
+    } else if (snapshots === null || Object.keys(snapshots).length === 0) {
       applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
     } else {
       for (const [limitId, snapshot] of Object.entries(snapshots)) {
@@ -1681,6 +1690,7 @@ export function createCodexEventTranslator(
   return {
     activateThreadGitWritableRoots,
     recoverRateLimits,
+    resetRateLimits,
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
