@@ -3546,7 +3546,7 @@ provider. Automations contributes Automation; BB Guide contributes Plugin.
 The core menu retains Skills and Attach files. Existing command discovery,
 paste conversion, and Skills completion remain in core for the typeahead follow-up.
 Plugin creation uses ordinary cursor insertion; command actions use the distinct
-command operation. SDK version 0.6.1 is required by migrated plugins.
+command operation. SDK version 0.6.2 is required by migrated plugins.
 
 Before stabilization, audit hidden-only menus, provider changes with keyboard
 selection, generic command replacement semantics, unavailable editors, mobile
