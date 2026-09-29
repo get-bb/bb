@@ -26,6 +26,12 @@ component receives the props plus `retry`. The default error UI is one red line 
 customize it when a panel needs structural layout or a feature
 needs a close button. Loading and error components must themselves be lightweight.
 
+Prefer real surrounding controls, stable dimensions, and minimal loading content.
+A muted Loading… label is usually enough; avoid imitating individual controls
+with detailed skeletons. Use a detailed skeleton only when it helps explain the
+content that is arriving. Footer customization keeps its real header and Done
+button and reserves the expected content height without fake icons or rows.
+
 The loader is shared between speculative preload and rendering. A failed import
 clears the helper's promise cache. Retry creates a fresh React lazy component,
 so a rejected lazy instance does not permanently trap the feature in its error
