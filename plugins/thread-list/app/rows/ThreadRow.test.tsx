@@ -219,7 +219,7 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
-  it("shows a labeled provider icon only for a registered provider when enabled", () => {
+  it("keeps the registered provider icon visible during inline rename when enabled", async () => {
     const provider: PluginProvidersState["providers"][number] = {
       id: "provider-test",
       pluginId: "provider-test",
@@ -246,6 +246,15 @@ describe("ThreadRow", () => {
     act(() => getDefaultStore().set(sidebarShowProviderIconsAtom, true));
     expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
     expect(slot.container.querySelector('[data-provider-logo="/provider-test.svg"]')).toBeTruthy();
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
+    expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
+    fireEvent.change(input, { target: { value: "Scratch name" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
+    expect(slot.inspection.sidebarActionCalls).toEqual([]);
 
     slot.rerenderThreadRow(createThread({ providerId: "missing" }));
     expect(screen.queryByRole("img", { name: "Test Provider" })).toBeNull();

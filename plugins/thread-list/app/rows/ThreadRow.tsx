@@ -563,49 +563,45 @@ function ThreadRowComponent({
               "flex-1",
           )}
         >
+          {provider ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  data-sidebar-thread-provider={provider.id}
+                  role="img"
+                  aria-label={provider.displayName}
+                  className="pointer-events-auto relative z-[31] flex size-4 shrink-0 items-center justify-center mr-1.5 text-muted-foreground"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    rowLinkRef.current?.click();
+                  }}
+                >
+                  <ProviderIcon
+                    providerKind="agent"
+                    provider={provider}
+                    className="size-4"
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">{provider.displayName}</TooltipContent>
+            </Tooltip>
+          ) : null}
           {isEditing ? (
             <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
               {editor}
             </span>
           ) : (
-            <>
-              {provider ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      data-sidebar-thread-provider={provider.id}
-                      role="img"
-                      aria-label={provider.displayName}
-                      className="pointer-events-auto relative z-[31] flex size-4 shrink-0 items-center justify-center mr-1.5 text-muted-foreground"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        rowLinkRef.current?.click();
-                      }}
-                    >
-                      <ProviderIcon
-                        providerKind="agent"
-                        provider={provider}
-                        className="size-4"
-                      />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {provider.displayName}
-                  </TooltipContent>
-                </Tooltip>
-              ) : null}
-              <span
-                className={cn(
-                  "bb-thread-title",
-                  crossProjectLabel !== null && "min-w-0 truncate",
-                )}
-                title={labelTitle}
-                onDoubleClick={startTitleEditing}
-              >
-                <ThreadTitle threadId={thread.id} />
-              </span>
-            </>
+            <span
+              className={cn(
+                "bb-thread-title",
+                crossProjectLabel !== null && "min-w-0 truncate",
+              )}
+              title={labelTitle}
+              onDoubleClick={startTitleEditing}
+            >
+              <ThreadTitle threadId={thread.id} />
+            </span>
           )}
         </span>
         {crossProjectLabel !== null ? (
