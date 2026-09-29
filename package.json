@@ -89,7 +89,8 @@
       "@react-native-cookies/cookies@6.2.1": "patches/@react-native-cookies__cookies@6.2.1.patch",
       "react-native-screens@4.26.2": "patches/react-native-screens@4.26.2.patch",
       "@hugeicons/react-native@1.0.15": "patches/@hugeicons__react-native@1.0.15.patch",
-      "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch"
+      "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch",
+      "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch"
     }
   }
 }

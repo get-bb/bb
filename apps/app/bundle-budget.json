@@ -87,7 +87,14 @@
     "panel/browser mounts. Compared with fc92e220a6, the integrated changes saved",
     "13,894 boot raw / 3,514 boot brotli bytes and",
     "175,237 thread-route raw / 41,117 thread-route brotli bytes.",
-    "All four limits dropped by those net measured savings; none were raised."
+    "All four limits dropped by those net measured savings; none were raised.",
+    "",
+    "On 2026-09-29 the follow-up removes unused editor extensions, deduplicates",
+    "ProseMirror in blockquote, and separates thread detail, plugin ThreadChat,",
+    "and Markdown HTML from the workspace route. The route limits drop by",
+    "1,075,985 raw and 272,230 Brotli bytes, preserving prior headroom.",
+    "HTML bytes warm on idle without importing; actual thread visits still load",
+    "ThreadDetailView. PluginFrontend is also measured for split guards."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -187,18 +194,35 @@
     "src/components/commands/PaletteShell.tsx": [
       "boot",
       "SplitWorkspaceRoute"
+    ],
+    "src/components/ui/markdown-html.tsx": [
+      "boot",
+      "SplitWorkspaceRoute",
+      "PluginFrontend"
+    ],
+    "src/views/thread-detail/ThreadDetailView.tsx": [
+      "boot",
+      "SplitWorkspaceRoute",
+      "PluginFrontend"
+    ],
+    "src/components/plugin/PluginThreadChat.tsx": [
+      "boot",
+      "SplitWorkspaceRoute",
+      "PluginFrontend"
     ]
   },
   "onDemandPackages": {
     "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
     "ansi-to-html": "src/components/thread/timeline/TerminalOutputBlock.tsx",
     "katex": "src/components/ui/markdown-katex.ts",
-    "rehype-katex": "src/components/ui/markdown-katex.ts"
+    "rehype-katex": "src/components/ui/markdown-katex.ts",
+    "rehype-raw": "src/components/ui/markdown-html.tsx",
+    "rehype-sanitize": "src/components/ui/markdown-html.tsx"
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 2163849,
-      "maxBrotliBytes": 589508,
+      "maxBytes": 1087864,
+      "maxBrotliBytes": 317278,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
@@ -212,12 +236,21 @@
         "@shikijs/engine-oniguruma",
         "@shikijs/langs",
         "@shikijs/vscode-textmate",
+        "@tiptap/extension-code-block",
+        "@tiptap/extension-horizontal-rule",
+        "@tiptap/extension-link",
+        "@tiptap/extension-strike",
+        "@tiptap/extension-underline",
+        "@tiptap/starter-kit",
         "@xterm/xterm",
         "ansi-to-html",
         "katex",
+        "linkifyjs",
         "mermaid",
         "oniguruma-to-es",
         "rehype-katex",
+        "rehype-raw",
+        "rehype-sanitize",
         "shiki"
       ]
     }

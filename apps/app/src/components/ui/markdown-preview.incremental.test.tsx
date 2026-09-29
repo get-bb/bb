@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { LazyMarkdownHtml } from "./lazy-markdown-html";
+
 import { act, cleanup, render, waitFor, within } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -25,6 +27,8 @@ import {
   MESSAGE_DIRECTIVE_MOUNT_LIMIT,
 } from "./markdown-message-directives";
 import { MarkdownPreview } from "./markdown-preview";
+
+beforeAll(() => LazyMarkdownHtml.preload());
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();

@@ -81,9 +81,23 @@ code when the right panel opens.
 `.preload()` uses dynamic import: it downloads, parses, compiles and evaluates
 the module graph. An idle callback only schedules its start; it cannot guarantee
 that later evaluation happens while the main thread is idle. Download-only
-prefetch would defer parsing and execution until use, trading less speculative
-CPU work for a slower first interaction. `modulepreload` parses/compiles early
-but defers evaluation. Neither alternative is implemented by this helper.
+prefetch defers parsing and execution until use, trading less speculative CPU
+work for a slower first interaction. `modulepreload` parses/compiles early but
+defers evaluation.
+
+For download-only warming, register the split ID and implementation path with
+`splitPrefetch` in `vite.config.ts`. The build embeds its hashed asset URLs and
+static dependencies as inert JSON in the HTML. Create `idleSplitDownload(id)` at module scope and pass it to `useSplitPreload`
+in the owning page. IDs must uniquely identify a split. This lightweight descriptor
+avoids importing the component or its fallback just to schedule a download. It makes low
+priority fetches into the HTTP cache without importing modules; the real split
+keeps `preload: "render"`. An import already started suppresses speculative
+downloads; an import that follows a pending download waits for its bytes, avoiding
+duplicate transfers. Asset responses must be cacheable for subsequent
+imports to reuse them. BB serves hashed assets with immutable caching. Development
+HTML has no manifest, so dev servers retain demand loading. This is currently
+used only for Markdown's sanitized HTML pipeline; other preload policies still
+import and execute their modules.
 
 Downloading and mounting are separate. Keep the existing persistent responsive
 drawer's deferred realization and retained content. Preloading must not mount

@@ -157,3 +157,17 @@ The request-abort retry check used the real sidebar module on the Ladle server.
 Phone-width checks used Chromium and verified the app root stayed free of inert
 and aria-hidden. Native browser views and iOS Safari were not reverified in this
 audit. The drawer realization mechanism itself was preserved.
+
+## Bundle follow-up
+
+- Markdown HTML: fetch the parser/sanitizer's bytes at workspace idle without
+  importing them. Parse and execute only when HTML-enabled Markdown contains
+  `<`. A cold first use preserves safe Markdown text with a small skeleton;
+  the sanitizer remains mandatory. Fetch failures do not poison the module
+  cache; the ordinary split loader owns actual import retries.
+- Thread detail: load on thread demand. AppRoutes starts the import immediately
+  on thread URLs, alongside the workspace route, including direct visits.
+  New-thread and plugin-only pages do not import the thread detail screen.
+- Plugin SDK ThreadChat: load when a plugin renders it. Its props and public API
+  are unchanged. Registration alone no longer imports the conversation renderer.
+  The SDK runtime closure is measured for split-boundary checks as PluginFrontend.

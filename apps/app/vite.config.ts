@@ -4,6 +4,7 @@ import { defineConfig, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { bundleStats } from "./vite-bundle-stats.js";
+import { splitPrefetch } from "./vite-split-prefetch.js";
 import { fontPreload } from "./vite-font-preload.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 import { cachedReactCompiler } from "./vite-react-compiler.js";
@@ -18,6 +19,7 @@ export const sharedViteConfig = {
     tailwindcss(),
     bundleStats(),
     fontPreload(),
+    splitPrefetch({ "markdown-html": "src/components/ui/markdown-html.tsx" }),
   ],
   cacheDir: "node_modules/.vite/app",
   build: {

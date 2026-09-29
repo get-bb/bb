@@ -8,6 +8,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { idleSplitDownload } from "./split-prefetch";
 import { defineSplit, useSplitPreload } from "./define-split";
 
 afterEach(() => {
@@ -15,6 +16,77 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("downloads bytes without importing and shares an in-flight download with first use", async () => {
+  const manifest = document.createElement("script");
+  manifest.id = "bb-prefetch-download-only";
+  manifest.textContent = JSON.stringify(["/assets/download-only.js"]);
+  document.head.append(manifest);
+  let finish!: () => void;
+  const body = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const fetch = vi.fn(async () => ({ ok: true, arrayBuffer: () => body }));
+  vi.stubGlobal("fetch", fetch);
+  const load = vi.fn(async () => () => <p>Downloaded editor</p>);
+  const Split = defineSplit({
+    id: "download-only",
+    load,
+    loading: () => <p>Waiting for bytes</p>,
+    preload: "render",
+  });
+  try {
+    const downloading = idleSplitDownload("download-only").preload();
+    await act(async () => {});
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(load).not.toHaveBeenCalled();
+    render(<Split />);
+    await act(async () => {});
+    expect(screen.getByText("Waiting for bytes")).toBeTruthy();
+    expect(load).not.toHaveBeenCalled();
+    await act(async () => {
+      finish();
+      await downloading;
+    });
+    expect(await screen.findByText("Downloaded editor")).toBeTruthy();
+    await idleSplitDownload("download-only").preload();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledOnce();
+  } finally {
+    manifest.remove();
+  }
+});
+
+it("does not start a speculative download after an import has started", async () => {
+  const manifest = document.createElement("script");
+  manifest.id = "bb-prefetch-import-first";
+  manifest.textContent = JSON.stringify(["/assets/import-first.js"]);
+  document.head.append(manifest);
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  let finish!: () => void;
+  const held = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const Split = defineSplit({
+    id: "import-first",
+    load: async () => {
+      await held;
+      return () => null;
+    },
+    loading: () => null,
+    preload: "render",
+  });
+  try {
+    const importing = Split.preload();
+    await idleSplitDownload("import-first").preload();
+    expect(fetch).not.toHaveBeenCalled();
+    finish();
+    await importing;
+  } finally {
+    manifest.remove();
+  }
 });
 
 it("shares a pending intent preload with rendering, preserves props, and stays mounted across parent renders", async () => {

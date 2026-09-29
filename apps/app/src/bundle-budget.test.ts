@@ -84,6 +84,17 @@ describe("computeBundleStats", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it("measures a shared runtime chunk even when bundling removes its facade", () => {
+    const stats = computeBundleStats(
+      chunks,
+      { Runtime: "/src/lib/x.ts" },
+      vi.fn(),
+    );
+    expect(
+      stats?.routeClosures.Runtime?.chunks.map((chunk) => chunk.fileName),
+    ).toEqual(["assets/route-only.js"]);
+  });
+
   it("warns instead of throwing when a measured route has no chunk", () => {
     const warn = vi.fn();
     const stats = computeBundleStats(chunks, { Missing: "/nope.tsx" }, warn);

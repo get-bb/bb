@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { LazyThreadDetailView } from "./LazyThreadDetailView";
+
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
@@ -9,6 +11,8 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { SplitThreadArea } from "./SplitThreadArea";
+
+beforeAll(() => LazyThreadDetailView.preload());
 
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: (props: { threadId?: string }) => (

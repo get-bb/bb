@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { LazyMarkdownHtml } from "./lazy-markdown-html";
+
 import {
   act,
   cleanup,
@@ -8,7 +10,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
 import {
@@ -28,6 +30,8 @@ const workspaceLinkRouting = {
     onOpenLink: vi.fn(() => true),
   },
 } satisfies MarkdownLinkRouting;
+
+beforeAll(() => LazyMarkdownHtml.preload());
 
 afterEach(() => {
   cleanup();

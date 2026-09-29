@@ -1,3 +1,4 @@
+import { prepareSplitImport } from "./split-prefetch";
 import {
   Component,
   lazy,
@@ -77,7 +78,7 @@ export function defineSplit<P extends object>({
   let pending: Promise<{ default: ComponentType<P> }> | null = null;
   let loaded: ComponentType<P> | null = null;
   const loadModule = () => {
-    pending ??= Promise.resolve()
+    pending ??= prepareSplitImport(id)
       .then(() => loadWithDownloadRetries(load))
       .then((component) => {
         loaded = component;

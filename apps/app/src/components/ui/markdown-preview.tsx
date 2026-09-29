@@ -32,8 +32,7 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import { LazyMarkdownHtml } from "./lazy-markdown-html";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -289,63 +288,15 @@ const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
-const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
-  rehypeRaw,
-  [
-    rehypeSanitize,
-    {
-      ...defaultSchema,
-      tagNames: [
-        ...(defaultSchema.tagNames ?? []),
-        "video",
-        "bb-thread-mention",
-        "bb-prompt-mention",
-        "bb-message-directive",
-      ],
-      protocols: { ...defaultSchema.protocols, poster: ["http", "https"] },
-      attributes: {
-        ...defaultSchema.attributes,
-        source: [
-          ...(defaultSchema.attributes?.source ?? []),
-          "src",
-          "type",
-          "media",
-        ],
-        video: [
-          "src",
-          "controls",
-          "playsInline",
-          "preload",
-          "poster",
-          "width",
-          "height",
-          "title",
-          "ariaLabel",
-        ],
-        "bb-thread-mention": [
-          "dataThreadId",
-          "dataRawThreadId",
-          "dataRawThreadInlineCode",
-        ],
-        "bb-prompt-mention": ["dataMentionIndex"],
-        "bb-message-directive": ["dataDirectiveIndex"],
-      },
-    },
-  ],
-];
 
 const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
 
 function resolveRehypePlugins({
-  allowHtml,
   rehypeKatex,
 }: {
-  allowHtml: boolean;
   rehypeKatex: RehypeKatex | null;
 }): MarkdownRehypePlugins {
-  const base = allowHtml
-    ? MARKDOWN_HTML_REHYPE_PLUGINS
-    : MARKDOWN_PLAIN_REHYPE_PLUGINS;
+  const base = MARKDOWN_PLAIN_REHYPE_PLUGINS;
   return rehypeKatex === null ? base : [...base, rehypeKatex];
 }
 
@@ -1836,8 +1787,8 @@ function MarkdownPreviewComponent({
 
   const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
   const rehypePlugins = useMemo(
-    () => resolveRehypePlugins({ allowHtml: rendersHtml, rehypeKatex }),
-    [rendersHtml, rehypeKatex],
+    () => resolveRehypePlugins({ rehypeKatex }),
+    [rehypeKatex],
   );
 
   const markdownPieceRenderConfig = useMemo(
@@ -1860,16 +1811,17 @@ function MarkdownPreviewComponent({
     ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
     : null;
 
+  const Markdown = rendersHtml ? LazyMarkdownHtml : ReactMarkdown;
   const renderedMarkdown =
     markdownPieces === null ? (
-      <ReactMarkdown
+      <Markdown
         rehypePlugins={rehypePlugins}
         remarkPlugins={remarkPlugins}
         components={markdownComponents}
         urlTransform={resolvedUrlTransform}
       >
         {body}
-      </ReactMarkdown>
+      </Markdown>
     ) : (
       markdownPieces.children
     );

@@ -1,3 +1,5 @@
+import { LazyThreadDetailView } from "./views/thread-detail/LazyThreadDetailView";
+import { useRouteState } from "./hooks/useRouteState";
 import { lazy, Suspense, useEffect } from "react";
 import {
   matchPath,
@@ -265,6 +267,10 @@ export function HashNavigationScroll() {
 }
 
 export function AppRoutes() {
+  const { isThreadView } = useRouteState();
+  useEffect(() => {
+    if (isThreadView) void LazyThreadDetailView.preload();
+  }, [isThreadView]);
   return (
     <AppLayout>
       <Suspense fallback={null}>
