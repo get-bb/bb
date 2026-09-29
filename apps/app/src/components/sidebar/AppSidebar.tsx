@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
@@ -46,11 +53,16 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
-import { SidebarFooterCustomize } from "./SidebarFooterCustomize";
 import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
+
+const SidebarFooterCustomize = lazy(() =>
+  import("./SidebarFooterCustomize").then(({ SidebarFooterCustomize }) => ({
+    default: SidebarFooterCustomize,
+  })),
+);
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -228,12 +240,14 @@ export function AppSidebar({
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {isFooterCustomizing ? (
           <div className="max-h-[50svh] overflow-y-auto">
-            <SidebarFooterCustomize
-              onDone={() => {
-                flushSync(() => setFooterCustomizing(false));
-                document.getElementById(SIDEBAR_FOOTER_MORE_ID)?.focus();
-              }}
-            />
+            <Suspense fallback={<span role="status">Loading…</span>}>
+              <SidebarFooterCustomize
+                onDone={() => {
+                  flushSync(() => setFooterCustomizing(false));
+                  document.getElementById(SIDEBAR_FOOTER_MORE_ID)?.focus();
+                }}
+              />
+            </Suspense>
           </div>
         ) : (
           <PluginSidebarFooterDisclosure

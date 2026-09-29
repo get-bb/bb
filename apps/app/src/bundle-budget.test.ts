@@ -154,6 +154,37 @@ describe("check-bundle-budget", () => {
     expect(result.code).toBe(0);
   });
 
+  it("fails when a forbidden package reaches a chunk the boot entry imports", async () => {
+    const stats = computeBundleStats(
+      chunks.map((c) =>
+        c.fileName === "assets/boot-shared.js"
+          ? {
+              ...c,
+              moduleIds: [
+                ...c.moduleIds,
+                "/repo/node_modules/.pnpm/@dnd-kit+core@6/node_modules/@dnd-kit/core/dist/core.esm.js",
+              ],
+            }
+          : c,
+      ),
+      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      () => undefined,
+    );
+    const result = await runCheck(
+      await writeFixture(
+        {
+          ...passingBudget,
+          forbiddenBootPackages: ["@dnd-kit/core"],
+        },
+        stats,
+      ),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      "@dnd-kit/core is in the boot payload (assets/boot-shared.js)",
+    );
+  });
+
   it("fails when a forbidden package reaches the route closure", async () => {
     const result = await runCheck(
       await writeFixture({
