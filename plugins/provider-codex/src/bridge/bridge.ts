@@ -42,7 +42,6 @@ import {
   type BridgeJsonRpcResponse,
   type DecodedInteractiveRequest,
   type PreparedProviderCommandDispatch,
-  type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
   type ProviderRecoveryHint,
@@ -60,7 +59,12 @@ import {
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
-import { codexTurnSchema } from "../schemas.js";
+import {
+  codexTurnSchema,
+  codexHandledEventSchema,
+  codexRateLimitReadResponseSchema,
+  type CodexHandledEvent,
+} from "../schemas.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -280,6 +284,7 @@ const CODEX_INITIALIZE_PARAMS = {
 };
 
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
+const RATE_LIMIT_HYDRATION_TIMEOUT_MS = 5_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
@@ -927,39 +932,13 @@ const ignoredChildResultSchema = z.unknown();
 
 async function initializeChild(
   connection: CodexAppServerConnection,
-  postInitializeRequests?: readonly ProviderPostInitializeRequest[],
-): Promise<{ optionalRequestsSettled: Promise<void> }> {
+): Promise<void> {
   await connection.request({
     method: "initialize",
     params: CODEX_INITIALIZE_PARAMS,
     resultSchema: ignoredChildResultSchema,
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
-  const optionalRequests: Promise<void>[] = [];
-  for (const request of postInitializeRequests ?? []) {
-    const pending = (async () => {
-      try {
-        const result = await connection.request({
-          method: request.plan.method,
-          ...("params" in request.plan && request.plan.params !== undefined
-            ? { params: request.plan.params }
-            : {}),
-          resultSchema: ignoredChildResultSchema,
-          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-        });
-        request.onResult(result);
-      } catch (error) {
-        if (request.required) {
-          throw error;
-        }
-      }
-    })();
-    if (request.required) {
-      await pending;
-    } else {
-      optionalRequests.push(pending);
-    }
-  }
   if (configuredSkillExtraRoots !== null) {
     await connection.request({
       method: "skills/extraRoots/set",
@@ -968,11 +947,6 @@ async function initializeChild(
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
   }
-  return {
-    optionalRequestsSettled: Promise.all(optionalRequests).then(
-      () => undefined,
-    ),
-  };
 }
 
 const codexThreadIdentityResultSchema = z
@@ -1103,21 +1077,31 @@ async function constructThreadSession(
   }
   sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
-  let pendingRateLimitNotifications: (() => void)[] | null = [];
+  let pendingRateLimitNotifications:
+    | Extract<CodexHandledEvent, { method: "account/rateLimits/updated" }>[]
+    | null = [];
   const connection = spawnChildConnection({
     envVars: decoded.sessionOptions.envVars,
     recordThreadId: args.threadId,
     onNotification: (method, params) => {
-      const deliver = () =>
-        handleChildNotification(args.threadId, serial, method, params);
       if (
         method === "account/rateLimits/updated" &&
         pendingRateLimitNotifications !== null
       ) {
-        pendingRateLimitNotifications.push(deliver);
-      } else {
-        deliver();
+        const parsed = codexHandledEventSchema.safeParse({
+          jsonrpc: "2.0",
+          method,
+          params,
+        });
+        if (
+          parsed.success &&
+          parsed.data.method === "account/rateLimits/updated"
+        ) {
+          pendingRateLimitNotifications.push(parsed.data);
+          return;
+        }
       }
+      handleChildNotification(args.threadId, serial, method, params);
     },
     onRequest: (method, params, responder) =>
       handleChildRequest(args.threadId, serial, method, params, responder),
@@ -1126,17 +1110,7 @@ async function constructThreadSession(
   session.connection = connection;
 
   try {
-    const { optionalRequestsSettled } = await initializeChild(
-      connection,
-      translator.buildPostInitializeRequests(),
-    );
-    void optionalRequestsSettled.then(() => {
-      const notifications = pendingRateLimitNotifications;
-      pendingRateLimitNotifications = null;
-      for (const deliver of notifications ?? []) {
-        deliver();
-      }
-    });
+    await initializeChild(connection);
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       command: {
@@ -1215,6 +1189,31 @@ async function constructThreadSession(
       threadId: args.threadId,
     });
     announceSessionIdentity(session, codexThreadId);
+    void connection
+      .request({
+        method: "account/rateLimits/read",
+        resultSchema: codexRateLimitReadResponseSchema,
+        timeoutMs: RATE_LIMIT_HYDRATION_TIMEOUT_MS,
+      })
+      .then((snapshot) => {
+        if (currentSession(args.threadId, serial) === session) {
+          translator.hydrateRateLimits(snapshot);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        const notifications = pendingRateLimitNotifications;
+        pendingRateLimitNotifications = null;
+        for (const event of notifications ?? []) {
+          handleChildNotification(
+            args.threadId,
+            serial,
+            event.method,
+            event.params,
+          );
+        }
+      });
+
     return { session, codexThreadId };
   } catch (error) {
     const released = session.closing;

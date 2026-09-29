@@ -514,14 +514,19 @@ async function handleRequest(message) {
         for (const rateLimits of script.deferredRateLimitRead.updates) {
           notify("account/rateLimits/updated", { rateLimits });
         }
-        if (script.deferredRateLimitRead.error) {
-          respondError(
-            pendingRateLimitReadId,
-            -32603,
-            "Quota read unavailable",
-          );
-        } else {
-          respond(pendingRateLimitReadId, script.deferredRateLimitRead.result);
+        if (!script.deferredRateLimitRead.hang) {
+          if (script.deferredRateLimitRead.error) {
+            respondError(
+              pendingRateLimitReadId,
+              -32603,
+              "Quota read unavailable",
+            );
+          } else {
+            respond(
+              pendingRateLimitReadId,
+              script.deferredRateLimitRead.result,
+            );
+          }
         }
         pendingRateLimitReadId = null;
       }

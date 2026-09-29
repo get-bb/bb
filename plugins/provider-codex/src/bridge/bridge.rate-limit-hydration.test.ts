@@ -26,6 +26,7 @@ beforeEach(() => {
 afterEach(async () => {
   harness.sendRequest(99, "thread/stop", {
     threadId: THREAD_ID,
+    providerThreadId: "quota-cleanup",
     intent: "release",
     activeTurnId: null,
   });
@@ -35,15 +36,16 @@ afterEach(async () => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it.each([false, true])(
-  "starts before quota hydration settles and preserves rolling updates (read fails: %s)",
-  async (error) => {
+it.each(["success", "error", "timeout", "release"] as const)(
+  "starts before quota hydration settles and preserves rolling updates (read outcome: %s)",
+  async (outcome) => {
     const scriptPath = join(workspaceDir, "script.json");
     writeFileSync(
       scriptPath,
       JSON.stringify({
         deferredRateLimitRead: {
-          error,
+          error: outcome === "error",
+          hang: outcome === "timeout" || outcome === "release",
           result: {
             rateLimits: {
               primary: { usedPercent: 20, resetsAt: 1_781_120_400 },
@@ -91,23 +93,44 @@ it.each([false, true])(
     await vi.waitFor(() => {
       const events = assembleCapturedThreadEvents(harness.messages, "codex");
       expect(events.some((event) => event.type === "turn/started")).toBe(true);
-      const quotas = events.filter(
-        (event) => event.type === "provider/rateLimits/updated",
-      );
-      expect(quotas).toHaveLength(2);
-      expect(quotas[0]).toMatchObject({
-        rateLimits: { status: error ? "warning" : "blocked" },
-      });
-      expect(quotas[1]).toMatchObject({
-        rateLimits: {
-          status: "warning",
-          reachedReason: null,
-          windows: [
-            { providerKey: "primary", status: "warning" },
-            { providerKey: "secondary", status: "allowed" },
-          ],
-        },
-      });
     });
+    if (outcome === "release") {
+      harness.sendRequest(3, "thread/stop", {
+        threadId: THREAD_ID,
+        providerThreadId,
+        intent: "release",
+        activeTurnId: null,
+      });
+      expect(await harness.waitForResponse(3)).not.toHaveProperty("error");
+      const events = assembleCapturedThreadEvents(harness.messages, "codex");
+      expect(
+        events.filter((event) => event.type === "provider/rateLimits/updated"),
+      ).toEqual([]);
+      return;
+    }
+    await vi.waitFor(
+      () => {
+        const events = assembleCapturedThreadEvents(harness.messages, "codex");
+        const quotas = events.filter(
+          (event) => event.type === "provider/rateLimits/updated",
+        );
+        expect(quotas).toHaveLength(2);
+        expect(quotas[0]).toMatchObject({
+          rateLimits: { status: outcome === "success" ? "blocked" : "warning" },
+        });
+        expect(quotas[1]).toMatchObject({
+          rateLimits: {
+            status: "warning",
+            reachedReason: null,
+            windows: [
+              { providerKey: "primary", status: "warning" },
+              { providerKey: "secondary", status: "allowed" },
+            ],
+          },
+        });
+      },
+      { timeout: 7_000 },
+    );
   },
+  10_000,
 );

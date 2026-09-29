@@ -5,7 +5,6 @@ import {
   type ThreadEventItemStatus,
   extractResultText,
   type PreparedProviderCommandDispatch,
-  type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
@@ -1609,33 +1608,20 @@ export function createCodexEventTranslator(
     return repairedDeltas;
   }
 
-  function buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[] {
-    return [
-      {
-        plan: {
-          kind: "request" as const,
-          method: "account/rateLimits/read",
-        },
-        required: false,
-        onResult(result: unknown) {
-          const response = codexRateLimitReadResponseSchema.parse(result);
-          const snapshots = response.rateLimitsByLimitId;
-          if (snapshots === null || Object.keys(snapshots).length === 0) {
-            applyCodexRateLimitUpdate(
-              eventTranslationState,
-              response.rateLimits,
-            );
-            return;
-          }
-          for (const [limitId, snapshot] of Object.entries(snapshots)) {
-            applyCodexRateLimitUpdate(eventTranslationState, {
-              ...snapshot,
-              limitId: snapshot.limitId ?? limitId,
-            });
-          }
-        },
-      },
-    ];
+  function hydrateRateLimits(
+    response: z.output<typeof codexRateLimitReadResponseSchema>,
+  ): void {
+    const snapshots = response.rateLimitsByLimitId;
+    if (snapshots === null || Object.keys(snapshots).length === 0) {
+      applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
+      return;
+    }
+    for (const [limitId, snapshot] of Object.entries(snapshots)) {
+      applyCodexRateLimitUpdate(eventTranslationState, {
+        ...snapshot,
+        limitId: snapshot.limitId ?? limitId,
+      });
+    }
   }
 
   function translateEvent(event: ProviderRuntimeEvent): ThreadDelta[] {
@@ -1681,7 +1667,7 @@ export function createCodexEventTranslator(
 
   return {
     activateThreadGitWritableRoots,
-    buildPostInitializeRequests,
+    hydrateRateLimits,
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
