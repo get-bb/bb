@@ -633,9 +633,12 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           paneId={firstPane.paneId}
           isFocused
           isSplitPane={false}
+          timelineEnabled
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
-          onClosePane={firstPane.content.kind === "new-thread" ? null : closePane}
+          onClosePane={
+            firstPane.content.kind === "new-thread" ? null : closePane
+          }
           isMaximized={false}
           onToggleMaximizePane={null}
           isBoundedPane={false}
@@ -816,6 +819,7 @@ function SplitTree(props: SplitTreeProps) {
           paneId={node.paneId}
           isFocused={isFocused}
           isSplitPane
+          timelineEnabled={!isHiddenByMaximize}
           secondaryPanelRegistry={props.secondaryPanelRegistry}
           reservesWindowPanelToggle={isMaximized || (isTopRow && isRightEdge)}
           onClosePane={props.onClosePane}
@@ -892,6 +896,7 @@ interface WorkspacePaneContentProps {
   paneId: string;
   isFocused: boolean;
   isSplitPane: boolean;
+  timelineEnabled: boolean;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry | null;
   reservesWindowPanelToggle: boolean;
   onClosePane: ((paneId: string) => void) | null;
@@ -910,6 +915,7 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
   paneId,
   isFocused,
   isSplitPane,
+  timelineEnabled,
   secondaryPanelRegistry,
   reservesWindowPanelToggle,
   onClosePane,
@@ -1016,6 +1022,7 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
         surface="pane"
         projectId={content.projectId}
         threadId={content.threadId}
+        timelineEnabled={timelineEnabled}
       />
     </PaneContext.Provider>
   );
@@ -1554,7 +1561,13 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     ) {
       onStaleRef.current();
     }
-  }, [isConfirmedArchived, isDeleted, isGone, isUnarchived, unarchivesInFlight]);
+  }, [
+    isConfirmedArchived,
+    isDeleted,
+    isGone,
+    isUnarchived,
+    unarchivesInFlight,
+  ]);
 
   return null;
 }

@@ -383,6 +383,7 @@ interface ThreadDetailViewPageProps {
 
 interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
   surface: "pane";
+  timelineEnabled: boolean;
 }
 
 type ThreadDetailViewProps =
@@ -501,7 +502,11 @@ function RoutedThreadDetailView({
 
   return (
     <DefaultPaneContextProvider onRequestClose={onRequestClose}>
-      <ThreadDetailViewInternal projectId={projectId} threadId={threadId} />
+      <ThreadDetailViewInternal
+        projectId={projectId}
+        threadId={threadId}
+        timelineEnabled
+      />
     </DefaultPaneContextProvider>
   );
 }
@@ -513,8 +518,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   return <RoutedThreadDetailView onRequestClose={props.onRequestClose} />;
 }
 
-function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
-  const { projectId, threadId } = props;
+function ThreadDetailViewInternal(
+  props: ThreadRoutePathArgs & { timelineEnabled: boolean },
+) {
+  const { projectId, threadId, timelineEnabled } = props;
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useImmediateRouteNavigate();
@@ -866,6 +873,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     timelineRows,
   } = useThreadTimelineController({
     threadId,
+    enabled: timelineEnabled,
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();

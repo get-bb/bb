@@ -12,7 +12,7 @@ import {
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useContext, useMemo, useState, type ReactNode } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
@@ -74,6 +74,10 @@ const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 const paneContextRenders = vi.hoisted(
   () => new Map<string, Array<PaneContextValue | null>>(),
 );
+const timelineProbe = vi.hoisted(() => ({
+  active: false,
+  calls: new Map<string, number>(),
+}));
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
   label: string;
@@ -291,10 +295,21 @@ vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: ({
     projectId = "proj_personal",
     threadId = "thr-a",
+    timelineEnabled = true,
   }: {
     projectId: string;
     threadId: string;
+    timelineEnabled?: boolean;
   }) => {
+    useQuery({
+      queryKey: ["timeline-probe", threadId],
+      queryFn: () => {
+        const next = (timelineProbe.calls.get(threadId) ?? 0) + 1;
+        timelineProbe.calls.set(threadId, next);
+        return next;
+      },
+      enabled: timelineProbe.active && timelineEnabled,
+    });
     const pane = useContext(PaneContext);
     paneContextRenders.set(threadId, [
       ...(paneContextRenders.get(threadId) ?? []),
@@ -705,6 +720,8 @@ beforeEach(() => {
   panelGroupLayoutState.layout = [100, 0];
   commandHandlers.clear();
   paneContextRenders.clear();
+  timelineProbe.active = false;
+  timelineProbe.calls.clear();
   commandPresentationState.isModifierHeld = false;
   commandPresentationState.shortcut = null;
   threadStore.set("thr-a", { archivedAt: null, deletedAt: null });
@@ -857,6 +874,30 @@ describe("SplitThreadArea", () => {
     fireEvent.change(screen.getByTestId("draft-thr-b"), {
       target: { value: "" },
     });
+  });
+
+  it("pauses a hidden pane timeline and refreshes it when restored", async () => {
+    timelineProbe.active = true;
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+
+    await waitFor(() => {
+      expect(timelineProbe.calls.get("thr-a")).toBe(1);
+      expect(timelineProbe.calls.get("thr-b")).toBe(1);
+    });
+
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["timeline-probe", "thr-b"],
+      });
+    });
+    expect(timelineProbe.calls.get("thr-b")).toBe(1);
+
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    await waitFor(() => expect(timelineProbe.calls.get("thr-b")).toBe(2));
   });
 
   it("temporarily replaces panel full screen with a clean thread full screen", async () => {
@@ -2279,8 +2320,8 @@ describe("SplitThreadArea", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getAllByRole("button", { name: "Close pane" })[0]
-          ?.parentElement?.nextElementSibling,
+        screen.getAllByRole("button", { name: "Close pane" })[0]?.parentElement
+          ?.nextElementSibling,
       ).toBeNull(),
     );
   });
