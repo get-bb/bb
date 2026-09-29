@@ -22,15 +22,15 @@ export const Editor = defineSplit({
 
 The returned component accepts the implementation's props and owns its Suspense
 and error boundaries. `loading` receives those props. An optional `error`
-component receives the props plus `retry`. The default error UI offers Try again
-and Reload app; customize it when a panel needs structural layout or a feature
+component receives the props plus `retry`. The default error UI is one red line with an inline Try again action;
+customize it when a panel needs structural layout or a feature
 needs a close button. Loading and error components must themselves be lightweight.
 
 The loader is shared between speculative preload and rendering. A failed import
 clears the helper's promise cache. Retry creates a fresh React lazy component,
 so a rejected lazy instance does not permanently trap the feature in its error
 state. Browser module caching can still prevent recovery from a failed download, module
-evaluation, or stale deployment URL; Reload app remains available. A blocked
+evaluation, or stale deployment URL; use the browser reload in that case. A blocked
 chunk request in Chromium demonstrated this: retry stayed local but required
 a reload to recover. Errors thrown
 while rendering the loaded subtree are also contained locally.

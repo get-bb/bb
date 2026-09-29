@@ -40,21 +40,12 @@ type FailureProps = { retry: () => void };
 
 export function SplitLoadFailure({ retry }: FailureProps) {
   return (
-    <div role="alert" className="space-y-2 p-3 text-sm">
-      <p>This part of the app could not load.</p>
-      <div className="flex gap-3">
-        <button type="button" className="underline" onClick={retry}>
-          Try again
-        </button>
-        <button
-          type="button"
-          className="underline"
-          onClick={() => window.location.reload()}
-        >
-          Reload app
-        </button>
-      </div>
-    </div>
+    <p role="alert" className="p-3 text-sm text-destructive">
+      Could not load.{" "}
+      <button type="button" className="underline" onClick={retry}>
+        Try again
+      </button>
+    </p>
   );
 }
 
