@@ -240,7 +240,7 @@ Remote access (bb connect):
   the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
   The bb mobile app pairs with a paired bb through bb connect.
-  Settings → Remote access → Add mobile device shows a QR code plus the code as text.
+  Settings → Mobile → Add mobile device shows a QR code plus the code as text.
   `bb connect machine-code` prints the same code, server URL, apex, and expiry
   (`--json` for `{code, serverUrl, apex, expiresAt}`). The phone scans or
   types the code and enrolls as a connect machine on the account with its own

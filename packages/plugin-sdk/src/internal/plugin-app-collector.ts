@@ -570,8 +570,13 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
+        const page = registration.experimental_page;
+        if (page !== undefined && page !== "mobile") {
+          throw new Error(`${kind}: unsupported experimental_page "${page}"`);
+        }
         collected.settingsSections.push({
           id,
+          ...(page !== undefined ? { experimental_page: page } : {}),
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),

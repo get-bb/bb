@@ -7,10 +7,21 @@ import { PluginSlotMount } from "./PluginSlotMount";
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(
-    (section) => section.pluginId === pluginId,
+    (section) =>
+      section.pluginId === pluginId && section.experimental_page === undefined,
   );
   if (sections.length === 0) return null;
   return <PluginSettingsSectionList sections={sections} />;
+}
+
+export function PluginMobileSettingsSections() {
+  const { settingsSections } = usePluginSlots();
+  const sections = settingsSections.filter(
+    (section) => section.experimental_page === "mobile",
+  );
+  return sections.length > 0 ? (
+    <PluginSettingsSectionList sections={sections} />
+  ) : null;
 }
 
 function PluginSettingsSectionList({

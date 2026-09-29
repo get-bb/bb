@@ -334,7 +334,7 @@ as the first argument drives a dev client through Metro instead.
 
 ## bb connect (Phase 5)
 
-- Pair through Settings → Remote access → Add mobile device or `bb connect machine-code`. No experiment is required.
+- Pair through Settings → Mobile → Add mobile device or `bb connect machine-code`. No experiment is required.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
   "Add server" offers "Connect with bb connect" above the Direct URL form.
   The screen scans the pairing QR (`expo-camera`; payload = the connect
@@ -665,7 +665,7 @@ Mobile app downloads are always available in Settings → Mobile (`/settings/mob
 **Download Android APK** downloads directly from the public `get-bb/bb` GitHub
 `android-testing` release's `bb-android.apk` asset. The APK does not pass through
 the bb server or bb connect. No experiment or Android developer tools are needed.
-Pair either app through Settings → Remote access → **Add mobile device**.
+Pair either app through Settings → Mobile → **Add mobile device**.
 
 Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
 both public links. Add `--details --json` or call `system.mobileAppReleases()`

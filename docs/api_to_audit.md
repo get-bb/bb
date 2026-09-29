@@ -1,5 +1,9 @@
 # APIs To Audit
 
+## `PluginSettingsSectionRegistration.experimental_page`
+
+`experimental_page: "mobile"` places a settings section on Settings → Mobile instead of the plugin detail page. Omission retains the existing plugin-page placement. Registrations keep their plugin context, CSS lifecycle, error boundary, and registration order. Before stabilization, verify disabled/uninstalled plugins disappear, multiple connection plugins coexist, navigation stays accessible on phones, and pairing state does not leak between pages.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard

@@ -1,13 +1,21 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
+import { MemoryRouter } from "react-router-dom";
+import {
+  setPluginSlotRegistrations,
+  resetPluginSlotStoreForTest,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { MobileAppSection } from "./MobileAppSection";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  resetPluginSlotStoreForTest();
 });
 
 function renderSection() {
@@ -17,7 +25,12 @@ function renderSection() {
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <MobileAppSection />
+      <MemoryRouter>
+        <MobileAppSection />
+        <section aria-label="Plugin settings">
+          <PluginSettingsSections pluginId="connection" />
+        </section>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -62,4 +75,42 @@ it("keeps both install links available when release metadata cannot be loaded", 
     "https://github.com/get-bb/bb/releases/download/android-testing/bb-android.apk",
   );
   expect(screen.queryByText("Download ready APK")).toBeNull();
+});
+
+it("renders connection plugins only on their chosen page and removes disabled registrations", async () => {
+  vi.spyOn(sdk.system, "mobileAppReleases").mockResolvedValue({
+    android: null,
+  });
+  setPluginSlotRegistrations(
+    "connection",
+    makePluginRegistrationSet({
+      settingsSections: [
+        { id: "manage", component: () => <p>Manage the connection</p> },
+        {
+          id: "pair",
+          experimental_page: "mobile",
+          component: () => <button>Pair this phone</button>,
+        },
+      ],
+    }),
+  );
+  renderSection();
+  const mobile = within(
+    screen.getByRole("region", { name: "Mobile app downloads" }),
+  );
+  const plugin = within(
+    screen.getByRole("region", { name: "Plugin settings" }),
+  );
+  expect(mobile.getByRole("button", { name: "Pair this phone" })).toBeTruthy();
+  expect(mobile.queryByText("Manage the connection")).toBeNull();
+  expect(plugin.getByText("Manage the connection")).toBeTruthy();
+  expect(plugin.queryByRole("button", { name: "Pair this phone" })).toBeNull();
+  act(() =>
+    setPluginSlotRegistrations("connection", makePluginRegistrationSet()),
+  );
+  expect(mobile.queryByRole("button", { name: "Pair this phone" })).toBeNull();
+  expect(
+    mobile.getByRole("link", { name: "Download Android APK" }),
+  ).toBeTruthy();
+  await screen.findByText(/Release details are unavailable/);
 });

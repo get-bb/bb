@@ -681,6 +681,8 @@ export interface PluginHomepageSectionRegistration {
 }
 
 export interface PluginSettingsSectionRegistration {
+  /** Render on Settings → Mobile instead of the plugin detail page. Omit for plugin settings. */
+  experimental_page?: "mobile";
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** Optional host-rendered section heading. */

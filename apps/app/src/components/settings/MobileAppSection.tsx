@@ -1,3 +1,5 @@
+import { Icon } from "@bb/shared-ui/icon";
+import { PluginMobileSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -21,7 +23,7 @@ export function MobileAppSection() {
           development.
         </p>
       </div>
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="space-y-5">
         <SettingsSection
           title="iOS"
           description="Available through TestFlight"
@@ -96,10 +98,27 @@ export function MobileAppSection() {
           </p>
         </SettingsSection>
       </div>
-      <p className="text-sm text-subtle-foreground">
-        After installing, pair your phone from Settings → Remote access → Add
-        mobile device.
-      </p>
+      <div
+        role="note"
+        aria-label="Connect your phone"
+        className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
+      >
+        <Icon
+          name="Info"
+          className="mt-0.5 size-4 shrink-0 text-subtle-foreground"
+          aria-hidden
+        />
+        <div className="min-w-0 space-y-1 text-sm text-subtle-foreground">
+          <p className="font-medium text-foreground">Connect your phone</p>
+          <p>
+            Your phone connects to your existing bb server, where your threads
+            and settings are stored. Keep that server awake and online to use
+            the app. After installing, pair your phone below with bb connect, or
+            enter a server URL that your phone can reach.
+          </p>
+        </div>
+      </div>
+      <PluginMobileSettingsSections />
     </section>
   );
 }

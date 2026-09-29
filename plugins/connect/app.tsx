@@ -664,8 +664,8 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
   return (
     <div className="space-y-2.5 border-t border-border-seam pt-4">
       <div className="flex items-center">
-        <h3 className="text-2xs font-semibold uppercase tracking-wide text-subtle-foreground">
-          Mobile app
+        <h3 className="text-sm font-medium text-subtle-foreground">
+          Pair your phone
         </h3>
         <span className="flex-1" />
         {payload === null ? (
@@ -1390,7 +1390,6 @@ function ConnectedContent({
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
 
-      <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
 
       <SharedPortsSection shares={status.shares} dimmed={false} />
 
@@ -1502,12 +1501,10 @@ function OffContent({
   );
 }
 
-function ConnectSettingsSection() {
+function useConnectStatus() {
   const rpc = useRpc<typeof connectRpcContract>();
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetch = useCallback(() => {
     rpc.call("status").then(
@@ -1536,6 +1533,69 @@ function ConnectSettingsSection() {
     }
   });
 
+  return { status, loadError, refetch };
+}
+
+function MobileConnectionSection() {
+  const { status, loadError, refetch } = useConnectStatus();
+  return (
+    <section
+      aria-label="bb connect"
+      className="space-y-4 rounded-lg border border-border p-4"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">bb connect</h3>
+        <UrlLink
+          href="/settings/plugins/connect"
+          className="text-sm underline underline-offset-2"
+        >
+          Manage remote access
+        </UrlLink>
+      </div>
+      {loadError !== null ? (
+        <div role="alert" className="space-y-2 text-sm">
+          <p className="text-destructive-text">
+            Could not load connection status: {loadError}
+          </p>
+          <Button variant="outline" onClick={refetch}>
+            Try again
+          </Button>
+        </div>
+      ) : status === null ? (
+        <p role="status" className="text-sm text-subtle-foreground">
+          Loading connection status…
+        </p>
+      ) : !status.paired ? (
+        <p className="text-sm text-subtle-foreground">
+          Set up bb connect in Remote access to pair your phone from anywhere.
+        </p>
+      ) : status.state !== "connected" ? (
+        <p role="status" className="text-sm text-subtle-foreground">
+          bb connect is reconnecting. Pair your phone once the connection is
+          ready.
+        </p>
+      ) : (
+        <>
+          <div className="space-y-1 text-sm">
+            <p className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-success" />
+              Connected
+            </p>
+            {status.url ? (
+              <p className="break-all text-subtle-foreground">{status.url}</p>
+            ) : null}
+          </div>
+          <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
+        </>
+      )}
+    </section>
+  );
+}
+
+function ConnectSettingsSection() {
+  const { status, loadError, refetch } = useConnectStatus();
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showTurnedOff = useCallback(() => {
     setFlash("Remote access turned off");
     if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
@@ -1591,6 +1651,19 @@ function ConnectSettingsSection() {
           onTurnedOff={showTurnedOff}
         />
       )}
+      <div className="space-y-2 border-t border-border-seam pt-4">
+        <h3 className="text-sm font-medium">Mobile app</h3>
+        <p className="text-sm text-subtle-foreground">
+          Install the iOS or Android app and pair your phone from Mobile
+          settings.
+        </p>
+        <UrlLink
+          href="/settings/mobile"
+          className="text-sm underline underline-offset-2"
+        >
+          Open Mobile settings
+        </UrlLink>
+      </div>
     </div>
   );
 }
@@ -1601,6 +1674,11 @@ export default definePluginApp((app) => {
     description:
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
+  });
+  app.slots.settingsSection({
+    id: "mobile-connection",
+    experimental_page: "mobile",
+    component: MobileConnectionSection,
   });
   app.experimental_sidebarFooter.register({
     kind: "action",

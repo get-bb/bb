@@ -614,10 +614,56 @@ describe("connect settings section", () => {
     await slot.findByText(/this bb is not connected to getbb.app/);
   });
 
+  it.each([status(), connected(), connected({ state: "reconnecting" })])(
+    "links remote access to Mobile settings without duplicating pairing controls",
+    async (currentStatus) => {
+      const slot = renderSlot(
+        app.settingsSections[0]!,
+        {},
+        {
+          rpc: { status: () => currentStatus },
+        },
+      );
+      const link = await slot.findByRole("link", {
+        name: "Open Mobile settings",
+      });
+      expect(link.getAttribute("href")).toBe("/settings/mobile");
+      expect(
+        slot.queryByRole("button", { name: "Add mobile device" }),
+      ).toBeNull();
+    },
+  );
+
+  it.each([status(), connected({ state: "reconnecting" })])(
+    "routes unavailable mobile connections to remote access without offering a pairing code",
+    async (currentStatus) => {
+      const slot = renderSlot(
+        app.settingsSections.find(
+          (section) => section.experimental_page === "mobile",
+        )!,
+        {},
+        { rpc: { status: () => currentStatus } },
+      );
+      await waitFor(() =>
+        expect(slot.queryByText("Loading connection status…")).toBeNull(),
+      );
+      expect(
+        slot
+          .getByRole("link", { name: "Manage remote access" })
+          .getAttribute("href"),
+      ).toBe("/settings/plugins/connect");
+      expect(
+        slot.queryByRole("button", { name: "Add mobile device" }),
+      ).toBeNull();
+    },
+  );
+
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
     const expiresAt = Date.now() + 600_000;
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections.find(
+        (section) => section.experimental_page === "mobile",
+      )!,
       {},
       {
         rpc: {
@@ -656,7 +702,9 @@ describe("connect settings section", () => {
   it("an expired mobile pairing code offers a fresh one", async () => {
     let minted = 0;
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections.find(
+        (section) => section.experimental_page === "mobile",
+      )!,
       {},
       {
         rpc: {
@@ -692,7 +740,9 @@ describe("connect settings section", () => {
 
   it("explains the account machine limit with a dashboard link", async () => {
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections.find(
+        (section) => section.experimental_page === "mobile",
+      )!,
       {},
       {
         rpc: {

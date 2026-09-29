@@ -666,13 +666,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "settings-section",
         title: "Custom settings section",
         summary:
-          "Renders your own React component on the plugin's settings page, below the [fields bb generated](declarative-settings). Use it for anything that is not a value in a form. With this, a plugin can:",
+          "Renders your own React component on the plugin's settings page, below the [fields bb generated](declarative-settings), or on Settings → Mobile with experimental_page. Use it for anything that is not a value in a form. With this, a plugin can:",
         bullets: [
           "Render whatever UI it needs, such as a connect-account button, a test-connection result, or a preview",
           "Run in the browser, so it stores nothing itself. It calls the plugin's own backend to do that",
           "Supply a heading and a one-line description for bb to render above it",
+          "Set experimental_page to mobile to render connection and pairing controls on Settings → Mobile instead of the plugin page",
         ],
-        apiSymbols: ["PluginSettingsSectionRegistration"],
+        apiSymbols: [
+          "PluginSettingsSectionRegistration",
+          "PluginSettingsSectionRegistration.experimental_page",
+        ],
         firstParty: [
           "Account Pooler [Experimental]",
           "Keep Awake",
