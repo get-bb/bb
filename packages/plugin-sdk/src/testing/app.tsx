@@ -50,6 +50,7 @@ import {
   type PluginRpcClient,
   type PluginSdkApp,
   type PluginSettingsSectionRegistration,
+  type ExperimentalServerAccessRegistration,
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
   type ExperimentalSidebarNavigationRegistration,
@@ -1228,6 +1229,7 @@ export function installTestPluginRuntime(): void {
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
+  serverAccess: ExperimentalServerAccessRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];

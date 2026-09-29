@@ -15,6 +15,7 @@ import type {
   PluginNewThreadPanelActionRegistration,
   ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
+  ExperimentalServerAccessRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
   ExperimentalSidebarHeaderRegistration,
@@ -38,6 +39,7 @@ import {
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
   settingsSections: readonly PluginSettingsSectionRegistration[];
+  serverAccess?: readonly ExperimentalServerAccessRegistration[];
   appOverlays?: readonly ExperimentalAppOverlayRegistration[];
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
@@ -71,6 +73,8 @@ interface PluginSlotBase {
 
 export interface PluginHomepageSectionSlot
   extends PluginHomepageSectionRegistration, PluginSlotBase {}
+export interface ExperimentalServerAccessSlot
+  extends ExperimentalServerAccessRegistration, PluginSlotBase {}
 export interface PluginSettingsSectionSlot
   extends PluginSettingsSectionRegistration, PluginSlotBase {}
 export interface ExperimentalAppOverlaySlot
@@ -122,6 +126,7 @@ export interface PluginMachineProviderInputsSlot
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
   settingsSections: readonly PluginSettingsSectionSlot[];
+  serverAccess: readonly ExperimentalServerAccessSlot[];
   appOverlays: readonly ExperimentalAppOverlaySlot[];
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
@@ -150,6 +155,7 @@ export interface PluginSlotSnapshot {
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   homepageSections: [],
   settingsSections: [],
+  serverAccess: [],
   appOverlays: [],
   navPanels: [],
   threadPanelActions: [],
@@ -185,6 +191,7 @@ type SlotKind = keyof PluginSlotSnapshot;
 const SLOT_KINDS: readonly SlotKind[] = [
   "homepageSections",
   "settingsSections",
+  "serverAccess",
   "appOverlays",
   "navPanels",
   "threadPanelActions",
@@ -244,6 +251,7 @@ function flattenRegistrations(
   return {
     homepageSections: stamp(set.homepageSections),
     settingsSections: stamp(set.settingsSections),
+    serverAccess: stamp(set.serverAccess),
     appOverlays: stamp(set.appOverlays),
     navPanels: stamp(set.navPanels),
     threadPanelActions: stamp(set.threadPanelActions),

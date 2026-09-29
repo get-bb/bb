@@ -1,7 +1,5 @@
-import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
-import AndroidIcon from "@hugeicons/core-free-icons/AndroidIcon";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { MobileConnectionSettings } from "./MobileConnectionSettings";
+import { MobilePlatformIcon } from "./MobilePlatformIcon";
+import { ServerAccessSettings } from "./ServerAccessSettings";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -24,18 +22,12 @@ export function MobileAppSection() {
           Use bb from your phone
         </p>
       </div>
-      <MobileConnectionSettings />
+      <ServerAccessSettings purpose="mobile" />
       <div className="space-y-5">
         <SettingsSection
           title={
-            <span className="flex items-center gap-1.5">
-              <HugeiconsIcon
-                icon={AppleIcon}
-                size={16}
-                strokeWidth={1.5}
-                className="shrink-0"
-                aria-hidden="true"
-              />
+            <span className="flex items-center gap-2">
+              <MobilePlatformIcon platform="ios" />
               iOS
             </span>
           }
@@ -65,14 +57,8 @@ export function MobileAppSection() {
         </SettingsSection>
         <SettingsSection
           title={
-            <span className="flex items-center gap-1.5">
-              <HugeiconsIcon
-                icon={AndroidIcon}
-                size={16}
-                strokeWidth={1.5}
-                className="shrink-0"
-                aria-hidden="true"
-              />
+            <span className="flex items-center gap-2">
+              <MobilePlatformIcon platform="android" />
               Android
             </span>
           }

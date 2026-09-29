@@ -5,6 +5,7 @@ import {
   useRealtime,
   useRpc,
   useSdk,
+  type ExperimentalServerAccessProps,
 } from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
@@ -1536,56 +1537,62 @@ function useConnectStatus() {
   return { status, loadError, refetch };
 }
 
-function MobileConnectionSection() {
+function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
   const { status, loadError, refetch } = useConnectStatus();
+  const [manage, setManage] = useState(false);
+  if (loadError !== null)
+    return (
+      <div role="alert" className="space-y-2 text-sm">
+        <p>Could not load connection status: {loadError}</p>
+        <Button variant="outline" onClick={refetch}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (status === null)
+    return (
+      <p role="status" className="text-sm text-subtle-foreground">
+        Loading connection status…
+      </p>
+    );
+  if (!status.paired)
+    return (
+      <NotPairedContent dashboardUrl={status.dashboardUrl} onPaired={refetch} />
+    );
+  if (status.state !== "connected")
+    return (
+      <ReconnectingContent
+        status={status}
+        onChanged={refetch}
+        onDisconnected={refetch}
+      />
+    );
   return (
     <section aria-label="bb connect" className="space-y-4">
-      <div className="flex justify-end">
-        <UrlLink
-          href="/settings/plugins/connect"
-          className="text-sm underline underline-offset-2"
-        >
-          {status && !status.paired
-            ? "Set up bb connect"
-            : "Manage remote access"}
-        </UrlLink>
-      </div>
-      {loadError !== null ? (
-        <div role="alert" className="space-y-2 text-sm">
-          <p className="text-destructive-text">
-            Could not load connection status: {loadError}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 space-y-1 text-sm">
+          <p className="flex items-center gap-2">
+            <StatusDot tone="ok" />
+            Connected
           </p>
-          <Button variant="outline" onClick={refetch}>
-            Try again
-          </Button>
+          {status.url ? (
+            <p className="break-all text-subtle-foreground">{status.url}</p>
+          ) : null}
         </div>
-      ) : status === null ? (
-        <p role="status" className="text-sm text-subtle-foreground">
-          Loading connection status…
-        </p>
-      ) : !status.paired ? (
-        <p className="text-sm text-subtle-foreground">
-          Set up bb connect in Remote access to pair your phone from anywhere.
-        </p>
-      ) : status.state !== "connected" ? (
-        <p role="status" className="text-sm text-subtle-foreground">
-          bb connect is reconnecting. Pair your phone once the connection is
-          ready.
-        </p>
-      ) : (
-        <>
-          <div className="space-y-1 text-sm">
-            <p className="flex items-center gap-2">
-              <span className="size-2 rounded-full bg-success" />
-              Connected
-            </p>
-            {status.url ? (
-              <p className="break-all text-subtle-foreground">{status.url}</p>
-            ) : null}
-          </div>
-          <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
-        </>
-      )}
+        <Button variant="outline" onClick={() => setManage(!manage)}>
+          {manage ? "Done" : "Manage"}
+        </Button>
+      </div>
+      {manage ? (
+        <ConnectedContent
+          status={status}
+          onChanged={refetch}
+          onDisconnected={refetch}
+        />
+      ) : null}
+      {purpose === "mobile" ? (
+        <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
+      ) : null}
     </section>
   );
 }
@@ -1673,11 +1680,10 @@ export default definePluginApp((app) => {
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
   });
-  app.slots.settingsSection({
-    id: "mobile-connection",
-    title: "bb connect",
-    experimental_page: "mobile",
-    component: MobileConnectionSection,
+  app.slots.experimental_serverAccess({
+    id: "server-access",
+    providerId: "connect",
+    component: ServerAccessSection,
   });
   app.experimental_sidebarFooter.register({
     kind: "action",

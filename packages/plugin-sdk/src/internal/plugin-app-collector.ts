@@ -24,6 +24,7 @@ import type {
   PluginProviderIconRegistration,
   ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
+  ExperimentalServerAccessRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
   ExperimentalSidebarHeaderRegistration,
@@ -339,6 +340,7 @@ export interface CollectedPluginCommandRegistration extends Omit<
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
+  serverAccess: ExperimentalServerAccessRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
@@ -465,6 +467,7 @@ export function collectPluginAppRegistrations(
   const collected: CollectedPluginAppRegistrations = {
     homepageSections: [],
     settingsSections: [],
+    serverAccess: [],
     appOverlays: [],
     navPanels: [],
     threadPanelActions: [],
@@ -495,6 +498,7 @@ export function collectPluginAppRegistrations(
   const seenIds = {
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
+    serverAccess: new Set<string>(),
     appOverlay: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
@@ -560,6 +564,28 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_serverAccess(registration) {
+        const kind = "slots.experimental_serverAccess";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.serverAccess, id);
+        const providerId = requireNonEmptyString(
+          kind,
+          "providerId",
+          registration.providerId,
+        );
+        if (
+          collected.serverAccess.some(
+            (entry) => entry.providerId === providerId,
+          )
+        ) {
+          throw new Error(`${kind}: duplicate providerId "${providerId}"`);
+        }
+        collected.serverAccess.push({
+          id,
+          providerId,
+          component: requireComponent(kind, registration.component),
+        });
+      },
       settingsSection(registration) {
         const kind = "slots.settingsSection";
         const id = requireSlotId(kind, registration?.id);
@@ -570,13 +596,8 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
-        const page = registration.experimental_page;
-        if (page !== undefined && page !== "mobile") {
-          throw new Error(`${kind}: unsupported experimental_page "${page}"`);
-        }
         collected.settingsSections.push({
           id,
-          ...(page !== undefined ? { experimental_page: page } : {}),
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),

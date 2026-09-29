@@ -257,6 +257,36 @@ describe("connect settings section", () => {
     slot.getByRole("button", { name: "Copy URL" });
   });
 
+  it.each(["machines", "mobile"] as const)(
+    "completes inline server setup in the %s workflow",
+    async (purpose) => {
+      let currentStatus = status();
+      const slot = renderSlot(
+        app.serverAccess[0]!,
+        { purpose },
+        {
+          rpc: {
+            status: () => currentStatus,
+            pair: () => {
+              currentStatus = connected();
+              return null;
+            },
+          },
+        },
+      );
+      await slot.findByRole("textbox", { name: "Connect code" });
+      fireEvent.change(slot.getByLabelText("Connect code"), {
+        target: { value: "K7QP-2M4X" },
+      });
+      await slot.findByText("Connected");
+      expect(slot.navigateCalls).toEqual([]);
+      expect(slot.queryByRole("textbox", { name: "Connect code" })).toBeNull();
+      expect(
+        Boolean(slot.queryByRole("button", { name: "Add mobile device" })),
+      ).toBe(purpose === "mobile");
+    },
+  );
+
   it("does not auto-submit an incomplete code", async () => {
     const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
     const slot = renderSlot(
@@ -635,27 +665,27 @@ describe("connect settings section", () => {
   );
 
   it.each([status(), connected({ state: "reconnecting" })])(
-    "routes unavailable mobile connections to remote access without offering a pairing code",
+    "keeps setup and recovery inline without offering phone pairing until connected",
     async (currentStatus) => {
       const slot = renderSlot(
-        app.settingsSections.find(
-          (section) => section.experimental_page === "mobile",
-        )!,
-        {},
+        app.serverAccess[0]!,
+        { purpose: "mobile" as const },
         { rpc: { status: () => currentStatus } },
       );
       await waitFor(() =>
         expect(slot.queryByText("Loading connection status…")).toBeNull(),
       );
+      if (currentStatus.paired) {
+        expect(slot.getByText("Reconnecting…")).toBeTruthy();
+      } else {
+        expect(
+          slot.getByRole("link", { name: "Get a connect code" }),
+        ).toBeTruthy();
+        expect(slot.getByRole("textbox")).toBeTruthy();
+      }
       expect(
-        slot
-          .getByRole("link", {
-            name: currentStatus.paired
-              ? "Manage remote access"
-              : "Set up bb connect",
-          })
-          .getAttribute("href"),
-      ).toBe("/settings/plugins/connect");
+        slot.queryByRole("link", { name: "Manage remote access" }),
+      ).toBeNull();
       expect(
         slot.queryByRole("button", { name: "Add mobile device" }),
       ).toBeNull();
@@ -665,10 +695,8 @@ describe("connect settings section", () => {
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
     const expiresAt = Date.now() + 600_000;
     const slot = renderSlot(
-      app.settingsSections.find(
-        (section) => section.experimental_page === "mobile",
-      )!,
-      {},
+      app.serverAccess[0]!,
+      { purpose: "mobile" as const },
       {
         rpc: {
           status: () => connected(),
@@ -706,10 +734,8 @@ describe("connect settings section", () => {
   it("an expired mobile pairing code offers a fresh one", async () => {
     let minted = 0;
     const slot = renderSlot(
-      app.settingsSections.find(
-        (section) => section.experimental_page === "mobile",
-      )!,
-      {},
+      app.serverAccess[0]!,
+      { purpose: "mobile" as const },
       {
         rpc: {
           status: () => connected(),
@@ -744,10 +770,8 @@ describe("connect settings section", () => {
 
   it("explains the account machine limit with a dashboard link", async () => {
     const slot = renderSlot(
-      app.settingsSections.find(
-        (section) => section.experimental_page === "mobile",
-      )!,
-      {},
+      app.serverAccess[0]!,
+      { purpose: "mobile" as const },
       {
         rpc: {
           status: () => connected(),

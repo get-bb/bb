@@ -89,7 +89,7 @@ it("keeps both install links available when release metadata cannot be loaded", 
   expect(screen.queryByText("Download ready APK")).toBeNull();
 });
 
-it("renders connection plugins only on their chosen page and removes disabled registrations", async () => {
+it("renders provider-owned connection UI without changing the default on mobile", async () => {
   vi.spyOn(sdk.system, "mobileAppReleases").mockResolvedValue({
     android: null,
   });
@@ -98,10 +98,18 @@ it("renders connection plugins only on their chosen page and removes disabled re
     makePluginRegistrationSet({
       settingsSections: [
         { id: "manage", component: () => <p>Manage the connection</p> },
+      ],
+      serverAccess: [
         {
           id: "pair",
-          experimental_page: "mobile",
-          component: () => <button>Pair this phone</button>,
+          providerId: "relay",
+          component: ({ purpose }) => (
+            <button>
+              {purpose === "mobile"
+                ? "Pair this phone"
+                : "Manage server access"}
+            </button>
+          ),
         },
       ],
     }),
@@ -109,8 +117,26 @@ it("renders connection plugins only on their chosen page and removes disabled re
   vi.mocked(sdk.system.config).mockResolvedValue(
     makeSystemConfig({
       serverAccess: {
-        providers: [],
-        defaultProviderId: "direct",
+        providers: [
+          {
+            id: "relay",
+            displayName: "Relay",
+            description: "Relay",
+            pluginId: "connection",
+            availability: {
+              status: "setup-required",
+              message: "Pair the relay",
+            },
+          },
+          {
+            id: "direct",
+            displayName: "Direct",
+            description: "Direct",
+            pluginId: null,
+            availability: null,
+          },
+        ],
+        defaultProviderId: "relay",
         effectiveUrl: "https://bb.example.ts.net",
         urlSource: "setting",
       },
@@ -124,7 +150,9 @@ it("renders connection plugins only on their chosen page and removes disabled re
   const plugin = within(
     screen.getByRole("region", { name: "Plugin settings" }),
   );
-  expect(mobile.getByRole("button", { name: "Pair this phone" })).toBeTruthy();
+  expect(
+    await mobile.findByRole("button", { name: "Pair this phone" }),
+  ).toBeTruthy();
   expect(mobile.queryByText("Manage the connection")).toBeNull();
   expect(plugin.getByText("Manage the connection")).toBeTruthy();
   expect(plugin.queryByRole("button", { name: "Pair this phone" })).toBeNull();
@@ -132,7 +160,7 @@ it("renders connection plugins only on their chosen page and removes disabled re
     mobile.getByRole("button", { name: "Connection method" }),
     { button: 0, ctrlKey: false },
   );
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Direct" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /^Direct/ }));
   await mobile.findByText("https://bb.example.ts.net");
   expect(mobile.getByRole("button", { name: "Copy URL" })).toBeTruthy();
   expect(mobile.queryByRole("button", { name: "Pair this phone" })).toBeNull();

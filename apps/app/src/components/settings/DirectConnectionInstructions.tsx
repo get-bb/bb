@@ -1,15 +1,10 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
-import { OptionPicker } from "@/components/pickers/OptionPicker";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { SettingsSection } from "@/components/ui/settings-section";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useClipboardCopy } from "@/lib/clipboard";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
-import { usePluginSlots } from "@/lib/plugin-slots";
 
-function DirectConnectionInstructions() {
+export function DirectConnectionInstructions() {
   const config = useSystemConfig();
   const configuredUrl = config.data?.serverAccess.effectiveUrl;
   const url =
@@ -47,61 +42,11 @@ function DirectConnectionInstructions() {
             to="/settings/machines"
             className="underline underline-offset-2"
           >
-            Machine access
+            Server access
           </Link>
           .
         </p>
       )}
     </div>
-  );
-}
-
-export function MobileConnectionSettings() {
-  const { settingsSections } = usePluginSlots();
-  const sections = settingsSections.filter(
-    (section) => section.experimental_page === "mobile",
-  );
-  const options = [
-    ...sections.map((section) => ({
-      value: `${section.pluginId}/${section.id}`,
-      label: section.title ?? section.pluginId,
-    })),
-    { value: "direct", label: "Direct" },
-  ];
-  const [choice, setChoice] = useState<string | null>(null);
-  const selected =
-    options.find((option) => option.value === choice)?.value ??
-    options[0]!.value;
-  const section = sections.find(
-    (entry) => `${entry.pluginId}/${entry.id}` === selected,
-  );
-  return (
-    <SettingsSection
-      title="Connect your phone"
-      actionPlacement="inline"
-      action={
-        <OptionPicker
-          label="Connection method"
-          value={selected}
-          options={options}
-          onChange={setChoice}
-          modal={false}
-          align="end"
-        />
-      }
-    >
-      {section ? (
-        <PluginSlotMount
-          key={`${section.pluginId}/${section.id}/${section.generation}`}
-          pluginId={section.pluginId}
-          slotKind="settingsSection"
-          slotId={section.id}
-        >
-          <section.component />
-        </PluginSlotMount>
-      ) : (
-        <DirectConnectionInstructions />
-      )}
-    </SettingsSection>
   );
 }

@@ -7,8 +7,7 @@ import { PluginSlotMount } from "./PluginSlotMount";
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(
-    (section) =>
-      section.pluginId === pluginId && section.experimental_page === undefined,
+    (section) => section.pluginId === pluginId,
   );
   if (sections.length === 0) return null;
   return <PluginSettingsSectionList sections={sections} />;

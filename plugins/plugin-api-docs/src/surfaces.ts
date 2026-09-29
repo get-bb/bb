@@ -666,17 +666,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "settings-section",
         title: "Custom settings section",
         summary:
-          "Renders your own React component on the plugin's settings page, below the [fields bb generated](declarative-settings), or on Settings → Mobile with experimental_page. Use it for anything that is not a value in a form. With this, a plugin can:",
+          "Renders your own React component on the plugin's settings page, below the [fields bb generated](declarative-settings). Use it for anything that is not a value in a form. With this, a plugin can:",
         bullets: [
           "Render whatever UI it needs, such as a connect-account button, a test-connection result, or a preview",
           "Run in the browser, so it stores nothing itself. It calls the plugin's own backend to do that",
           "Supply a heading and a one-line description for bb to render above it",
-          "Set experimental_page to mobile to render connection and pairing controls on Settings → Mobile instead of the plugin page",
         ],
-        apiSymbols: [
-          "PluginSettingsSectionRegistration",
-          "PluginSettingsSectionRegistration.experimental_page",
-        ],
+        apiSymbols: ["PluginSettingsSectionRegistration"],
         firstParty: [
           "Account Pooler [Experimental]",
           "Keep Awake",
@@ -1073,11 +1069,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       {
         id: "server-access",
         tagline: "Connect machines to their server",
-        title: "Machine server access",
+        title: "Server access",
         summary:
-          "Registers server access for enrolment and ongoing machine runtime requests. With this, a plugin can:",
+          "Registers server access for enrollment, mobile pairing, and ongoing machine runtime requests. With this, a plugin can:",
         bullets: [
           "Register bb.experimental_serverAccess with picker copy, availability (including an optional public serverUrl), idempotent acquire and release",
+          "Embed setup, status, and recovery inline with app.slots.experimental_serverAccess; providerId must match a backend provider owned by the same plugin",
+          "Use the slot’s purpose prop to offer phone pairing on Mobile; the same slot renders in Machines and Add machine, while Mobile selection leaves the saved machine-access default unchanged",
           "Call recheck when access is gained or lost; refreshed configuration checks availability for Machines settings, manual setup and creation banners",
           "Return { id, serverUrl, headers? }; machines attach headers to all server requests without provider-specific redemption",
           "Choose a General default; core retains the selection for each machine; automatic selection uses the first registered provider, or direct when none are registered",
@@ -1088,6 +1086,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginServerAccess",
           "ServerAccessProviderDeclaration",
           "ServerAccessGrant",
+          "app.slots.experimental_serverAccess",
+          "ExperimentalServerAccessRegistration",
+          "ExperimentalServerAccessProps",
         ],
         firstParty: ["Remote access"],
         experimental: true,

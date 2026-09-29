@@ -1,8 +1,8 @@
 # APIs To Audit
 
-## `PluginSettingsSectionRegistration.experimental_page`
+## `app.slots.experimental_serverAccess`
 
-`experimental_page: "mobile"` places a settings section on Settings → Mobile instead of the plugin detail page. Omission retains the existing plugin-page placement. Registrations keep their plugin context, CSS lifecycle, error boundary, and registration order. Before stabilization, verify disabled/uninstalled plugins disappear, multiple connection plugins coexist, navigation stays accessible on phones, and pairing state does not leak between pages.
+Registers provider-owned setup, status, and recovery UI for the shared Server access component. The registration's `providerId` must match a backend server-access provider owned by the same plugin. The host passes `purpose: "machines" | "mobile"`; Mobile can offer phone pairing while Machines retains enrollment actions. UI selection on Mobile does not change the saved machine-access default. Slots retain plugin context, CSS lifecycle, and error boundaries. Before stabilization, verify inline setup and recovery, provider ownership, multiple providers, disabling/uninstalling plugins, and isolated state when mounted in multiple workflows.
 
 ## `app.commands.register`
 
