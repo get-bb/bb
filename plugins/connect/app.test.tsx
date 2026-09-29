@@ -649,7 +649,11 @@ describe("connect settings section", () => {
       );
       expect(
         slot
-          .getByRole("link", { name: "Manage remote access" })
+          .getByRole("link", {
+            name: currentStatus.paired
+              ? "Manage remote access"
+              : "Set up bb connect",
+          })
           .getAttribute("href"),
       ).toBe("/settings/plugins/connect");
       expect(

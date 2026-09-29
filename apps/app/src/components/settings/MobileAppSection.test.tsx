@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
 import { MemoryRouter } from "react-router-dom";
@@ -10,7 +17,12 @@ import {
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MobileAppSection } from "./MobileAppSection";
+
+beforeEach(() => {
+  vi.spyOn(sdk.system, "config").mockResolvedValue(makeSystemConfig());
+});
 
 afterEach(() => {
   cleanup();
@@ -49,9 +61,7 @@ it("shows Android release details and links to the TestFlight app", async () => 
   await screen.findByText("0.39.0 (build 4)");
   expect(screen.getByText("141 MB")).toBeTruthy();
   expect(
-    screen
-      .getByRole("link", { name: "TestFlight", exact: true })
-      .getAttribute("href"),
+    screen.getByRole("link", { name: "TestFlight" }).getAttribute("href"),
   ).toBe("https://apps.apple.com/app/testflight/id899247664");
   expect(document.querySelector("time")?.getAttribute("datetime")).toBe(
     "2026-09-29T19:28:00Z",
@@ -96,6 +106,17 @@ it("renders connection plugins only on their chosen page and removes disabled re
       ],
     }),
   );
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({
+      serverAccess: {
+        providers: [],
+        defaultProviderId: "direct",
+        effectiveUrl: "https://bb.example.ts.net",
+        urlSource: "setting",
+      },
+    }),
+  );
+  const updateSettings = vi.spyOn(sdk.system, "updateGeneralSettings");
   renderSection();
   const mobile = within(
     screen.getByRole("region", { name: "Mobile app downloads" }),
@@ -107,6 +128,15 @@ it("renders connection plugins only on their chosen page and removes disabled re
   expect(mobile.queryByText("Manage the connection")).toBeNull();
   expect(plugin.getByText("Manage the connection")).toBeTruthy();
   expect(plugin.queryByRole("button", { name: "Pair this phone" })).toBeNull();
+  fireEvent.pointerDown(
+    mobile.getByRole("button", { name: "Connection method" }),
+    { button: 0, ctrlKey: false },
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Direct" }));
+  await mobile.findByText("https://bb.example.ts.net");
+  expect(mobile.getByRole("button", { name: "Copy URL" })).toBeTruthy();
+  expect(mobile.queryByRole("button", { name: "Pair this phone" })).toBeNull();
+  expect(updateSettings).not.toHaveBeenCalled();
   act(() =>
     setPluginSlotRegistrations("connection", makePluginRegistrationSet()),
   );

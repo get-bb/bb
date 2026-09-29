@@ -14,16 +14,6 @@ export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   return <PluginSettingsSectionList sections={sections} />;
 }
 
-export function PluginMobileSettingsSections() {
-  const { settingsSections } = usePluginSlots();
-  const sections = settingsSections.filter(
-    (section) => section.experimental_page === "mobile",
-  );
-  return sections.length > 0 ? (
-    <PluginSettingsSectionList sections={sections} />
-  ) : null;
-}
-
 function PluginSettingsSectionList({
   sections,
 }: {

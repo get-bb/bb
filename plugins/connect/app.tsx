@@ -1539,17 +1539,15 @@ function useConnectStatus() {
 function MobileConnectionSection() {
   const { status, loadError, refetch } = useConnectStatus();
   return (
-    <section
-      aria-label="bb connect"
-      className="space-y-4 rounded-lg border border-border p-4"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">bb connect</h3>
+    <section aria-label="bb connect" className="space-y-4">
+      <div className="flex justify-end">
         <UrlLink
           href="/settings/plugins/connect"
           className="text-sm underline underline-offset-2"
         >
-          Manage remote access
+          {status && !status.paired
+            ? "Set up bb connect"
+            : "Manage remote access"}
         </UrlLink>
       </div>
       {loadError !== null ? (
@@ -1677,6 +1675,7 @@ export default definePluginApp((app) => {
   });
   app.slots.settingsSection({
     id: "mobile-connection",
+    title: "bb connect",
     experimental_page: "mobile",
     component: MobileConnectionSection,
   });

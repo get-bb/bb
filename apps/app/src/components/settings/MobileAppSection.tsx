@@ -1,8 +1,7 @@
 import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
 import AndroidIcon from "@hugeicons/core-free-icons/AndroidIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Icon } from "@bb/shared-ui/icon";
-import { PluginMobileSettingsSections } from "@/components/plugin/PluginSettingsSections";
+import { MobileConnectionSettings } from "./MobileConnectionSettings";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -25,34 +24,16 @@ export function MobileAppSection() {
           Use bb from your phone
         </p>
       </div>
-      <div
-        role="note"
-        aria-label="Connect your phone"
-        className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
-      >
-        <Icon
-          name="Info"
-          className="mt-0.5 size-4 shrink-0 text-subtle-foreground"
-          aria-hidden
-        />
-        <div className="min-w-0 space-y-1 text-sm text-subtle-foreground">
-          <p className="font-medium text-foreground">Connect your phone</p>
-          <p>
-            Your phone connects to your existing bb server, where your threads
-            and settings are stored. Keep that server awake and online to use
-            the app. After installing, pair your phone below with bb connect, or
-            enter a server URL that your phone can reach.
-          </p>
-        </div>
-      </div>
-      <PluginMobileSettingsSections />
+      <MobileConnectionSettings />
       <div className="space-y-5">
         <SettingsSection
           title={
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
               <HugeiconsIcon
                 icon={AppleIcon}
-                className="size-4 shrink-0"
+                size={16}
+                strokeWidth={1.5}
+                className="shrink-0"
                 aria-hidden="true"
               />
               iOS
@@ -81,17 +62,15 @@ export function MobileAppSection() {
           >
             Join iOS TestFlight
           </a>
-          <p className="text-sm text-subtle-foreground">
-            Get new builds through TestFlight. Enable automatic updates there to
-            stay up to date.
-          </p>
         </SettingsSection>
         <SettingsSection
           title={
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
               <HugeiconsIcon
                 icon={AndroidIcon}
-                className="size-4 shrink-0"
+                size={16}
+                strokeWidth={1.5}
+                className="shrink-0"
                 aria-hidden="true"
               />
               Android
@@ -102,7 +81,7 @@ export function MobileAppSection() {
         >
           <p className="text-sm text-subtle-foreground">
             Download the APK, open it on your phone, and allow installation from
-            your browser if prompted.
+            your browser if prompted. Download new builds here to update.
           </p>
           {android ? (
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -138,10 +117,6 @@ export function MobileAppSection() {
           >
             Download Android APK
           </a>
-          <p className="text-sm text-subtle-foreground">
-            Return here to download updates. We’re working on Google Play
-            distribution.
-          </p>
         </SettingsSection>
       </div>
     </section>
