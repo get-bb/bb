@@ -399,8 +399,41 @@ export function createComposerHandleBinding(
     }
     return hostSetSelection(selection);
   };
-  const onSubmitted = (listener: () => void) =>
-    controller.onSubmitted(listener);
+  const submittedListeners = new Set<() => void>();
+  let submittedSubscription: {
+    scope: string;
+    unsubscribe: () => void;
+  } | null = null;
+  const syncSubmittedSubscription = () => {
+    const scope =
+      submittedListeners.size === 0 ? null : JSON.stringify(target().scope);
+    if (submittedSubscription?.scope === scope) return;
+    submittedSubscription?.unsubscribe();
+    submittedSubscription =
+      scope === null
+        ? null
+        : {
+            scope,
+            unsubscribe: controller.onSubmitted(() => {
+              for (const listener of [...submittedListeners]) {
+                try {
+                  listener();
+                } catch (error) {
+                  console.error("Composer submission listener failed", error);
+                }
+              }
+            }),
+          };
+  };
+  const onSubmitted = (listener: () => void) => {
+    const entry = () => listener();
+    submittedListeners.add(entry);
+    syncSubmittedSubscription();
+    return () => {
+      submittedListeners.delete(entry);
+      syncSubmittedSubscription();
+    };
+  };
 
   const handle: PluginComposerApi = {
     get scope() {
@@ -501,6 +534,7 @@ export function createComposerHandleBinding(
     handle,
     update(next) {
       controller = next;
+      syncSubmittedSubscription();
     },
   };
 }

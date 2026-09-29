@@ -709,7 +709,7 @@ export function useComposer(): PluginComposerApi {
       for (const unsubscribe of submissionSubscriptions.current) unsubscribe();
       submissionSubscriptions.current.clear();
     },
-    [scope],
+    [],
   );
   const onSubmitted = useCallback(
     (listener: () => void) => {

@@ -2745,23 +2745,34 @@ export function PromptBoxInternal({
       suppressPluginComposerCustomizations,
     ],
   );
-  const publishedComposerEditorBridgeRef = useRef<ComposerEditorBridge | null>(
-    null,
-  );
+  const publishedComposerEditorBridgeRef = useRef<{
+    key: string;
+    bridge: ComposerEditorBridge;
+  } | null>(null);
   useLayoutEffect(() => {
-    if (composerEditorKey === null || composerEditorBridge === null) return;
+    const previous = publishedComposerEditorBridgeRef.current;
+    if (previous !== null && previous.key !== composerEditorKey) {
+      clearComposerEditorBridge(previous.key, previous.bridge);
+    }
+    if (composerEditorKey === null || composerEditorBridge === null) {
+      publishedComposerEditorBridgeRef.current = null;
+      return;
+    }
     publishComposerEditorBridge(composerEditorKey, composerEditorBridge);
-    publishedComposerEditorBridgeRef.current = composerEditorBridge;
+    publishedComposerEditorBridgeRef.current = {
+      key: composerEditorKey,
+      bridge: composerEditorBridge,
+    };
   }, [composerEditorBridge, composerEditorKey]);
-  useEffect(() => {
-    if (composerEditorKey === null) return;
-    return () => {
+  useEffect(
+    () => () => {
       const published = publishedComposerEditorBridgeRef.current;
       if (published !== null) {
-        clearComposerEditorBridge(composerEditorKey, published);
+        clearComposerEditorBridge(published.key, published.bridge);
       }
-    };
-  }, [composerEditorKey]);
+    },
+    [],
+  );
   const showStop = Boolean(
     isRunning && onStop && !canSubmit && !isAttaching && !showVoiceActionGroup,
   );

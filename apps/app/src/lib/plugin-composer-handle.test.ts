@@ -8,6 +8,11 @@ import {
   type ComposerEditorBridge,
 } from "./composer-editor-registry";
 import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
+import type { PluginComposerScope } from "@get-bb/plugin-sdk";
+import {
+  notifyComposerSubmitted,
+  subscribeComposerSubmitted,
+} from "./composer-submissions";
 import {
   composerHandleController,
   type ComposerSource,
@@ -346,6 +351,37 @@ describe("composer handle", () => {
     await expect(handle.submit({ sendAt: Date.now() + 1 })).rejects.toThrow(
       /no longer available/,
     );
+  });
+
+  it("keeps onSubmitted listeners when the composer's scope changes", () => {
+    const controllerFor = (scope: PluginComposerScope) =>
+      composerHandleController(
+        "demo",
+        makeTarget(emptyDraft, { scope }).target,
+        {
+          setTextEffect: () => {},
+          setInputLock: () => {},
+          onSubmitted: (listener) =>
+            subscribeComposerSubmitted(scope, listener),
+        },
+      );
+    const first: PluginComposerScope = { kind: "new-thread", projectId: "a" };
+    const second: PluginComposerScope = { kind: "new-thread", projectId: "b" };
+    const binding = createComposerHandleBinding(KEY, controllerFor(first));
+    const listener = vi.fn();
+    const unsubscribe = binding.handle.onSubmitted(listener);
+
+    notifyComposerSubmitted(first);
+    expect(listener).toHaveBeenCalledTimes(1);
+    binding.update(controllerFor(second));
+    notifyComposerSubmitted(first);
+    expect(listener).toHaveBeenCalledTimes(1);
+    notifyComposerSubmitted(second);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    notifyComposerSubmitted(second);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it("keeps one handle object while reading the latest target", () => {
