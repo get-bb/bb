@@ -126,6 +126,7 @@ export function quotaFromHeaders(
     scoped !== null;
   return {
     accountId,
+    usageRestriction: previous.usageRestriction,
     extraUsage,
     fiveHourUtilization: fiveHourUtilization ?? previous.fiveHourUtilization,
     fiveHourResetAt: fiveHourResetAt ?? previous.fiveHourResetAt,
@@ -173,6 +174,8 @@ export function blockingResetAt(
   threshold: number,
   now: number,
 ): number | null {
+  if (isUsageRestricted(quota, now))
+    return quota.usageRestriction?.resetAt ?? null;
   let latest: number | null = null;
   let unknown = false;
   const include = (
@@ -257,13 +260,27 @@ export function isQuotaExhausted(
   now: number,
 ): boolean {
   return (
+    isUsageRestricted(quota, now) ||
     isSharedQuotaExhausted(quota, threshold, now) ||
     activeFamilyWindow(quota.familyWeekly[family], threshold, now)
   );
 }
 
+export function isUsageRestricted(
+  quota: AccountQuota | AccountSummary,
+  now: number,
+): boolean {
+  return (
+    quota.usageRestriction !== null &&
+    (quota.usageRestriction.resetAt === null ||
+      quota.usageRestriction.resetAt > now)
+  );
+}
+
 export function hasExtraUsage(quota: AccountQuota): boolean {
-  return quota.extraUsage?.status === "allowed";
+  return (
+    quota.extraUsage?.status === "allowed" && quota.usageRestriction === null
+  );
 }
 
 export function isQuotaRejection(headers: Headers): boolean {
@@ -302,6 +319,7 @@ export function accountStatus(
   if (!account.enabled) return "disabled";
   if (quota.error !== null) return "error";
   if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
+  if (isUsageRestricted(quota, now)) return "exhausted";
   if (isSharedQuotaExhausted(quota, threshold, now) && !hasExtraUsage(quota))
     return "exhausted";
   return "ready";

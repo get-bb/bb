@@ -185,6 +185,10 @@ export const extraUsageSchema = z
   .strict();
 
 const quotaFieldsShape = {
+  usageRestriction: z
+    .object({ reason: z.string().min(1), resetAt: z.number().int().nullable() })
+    .strict()
+    .nullable(),
   extraUsage: extraUsageSchema.nullable(),
   fiveHourUtilization: z.number().nullable(),
   fiveHourResetAt: z.number().int().nullable(),

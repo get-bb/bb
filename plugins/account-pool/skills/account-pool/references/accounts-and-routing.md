@@ -102,6 +102,17 @@ plugin RPCs expose `extraUsage` with status, observation time, and source.
 This state survives hub restarts. Model entitlement differences between plans
 are not inferred from missing quota buckets.
 
+Codex credits use the same fallback policy and availability pill. The pool reads
+`credits.has_credits` and `credits.unlimited` from usage responses and the
+corresponding `x-codex-credits-*` headers. Credit-only updates are accepted;
+omitted fields preserve prior observations. Explicit credit-depletion or spending
+restrictions block routing even below the subscription switch threshold and
+survive restarts. A refreshed allowance or spending-control observation can
+clear the matching restriction. JSON account/status responses expose
+`usageRestriction` (reason and optional reset time); the pool does not change
+workspace spending controls or purchase credits. Availability is not current
+billing activity.
+
 Drag an account’s handle in Account Pooler settings (or focus the handle and use
 Space, arrow keys, and Space again), or
 `bb pool account reorder <claude|codex> <id>...`, to set the complete order for

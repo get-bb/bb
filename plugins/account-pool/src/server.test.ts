@@ -5993,6 +5993,202 @@ describe("sequential pool recovery", () => {
   });
 
   it.each([
+    ["funded", { has_credits: true, unlimited: false }, null, 200],
+    ["unlimited", { has_credits: false, unlimited: true }, null, 200],
+    ["depleted", { has_credits: false, unlimited: false }, null, 429],
+    ["unknown", null, null, 429],
+    [
+      "spending cap",
+      { has_credits: true, unlimited: true },
+      { reached: true },
+      429,
+    ],
+    [
+      "individual cap",
+      { has_credits: true, unlimited: false },
+      {
+        reached: false,
+        individual_limit: { remaining_percent: 0, reset_at: 4102444800 },
+      },
+      429,
+    ],
+  ])(
+    "routes Codex credit fallback with %s allowance",
+    async (_label, credits, spendControl, expected) => {
+      let calls = 0;
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        provider: "codex",
+        source: "import",
+        options: {
+          codexUsageUrl: "https://upstream.example/usage",
+          importCodexCredentials: async () => ({
+            accessToken: "codex-credit",
+            refreshToken: "refresh",
+            expiresAt: Date.now() + 3600000,
+            idToken: null,
+            accountId: "codex-qa",
+            email: null,
+          }),
+          fetch: async (input) => {
+            if (new URL(String(input)).pathname === "/usage")
+              return Response.json({
+                rate_limit: {
+                  primary_window: {
+                    used_percent: spendControl === null ? 100 : 10,
+                    reset_at: 4102444800,
+                  },
+                },
+                credits,
+                spend_control: spendControl,
+              });
+            calls++;
+            return Response.json({ ok: true });
+          },
+        },
+      });
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        { headers: authHeaders(fixture.key), body: "{}" },
+      );
+      expect(response.status).toBe(expected);
+      await response.text();
+      expect(calls).toBe(expected === 200 ? 1 : 0);
+      const report = statusSchema.parse(
+        await fixture.host.harness.behavior.callRpc("status.get", null),
+      );
+      expect(report.accounts[0]?.extraUsage?.status ?? null).toBe(
+        credits === null ? null : expected === 200 ? "allowed" : "rejected",
+      );
+    },
+  );
+
+  it("returns Codex paid pins to recovered subscriptions and persists spending restrictions", async () => {
+    let now = Date.now();
+    let imports = 0;
+    let includedPercent = 10;
+    let spendingBlocked = false;
+    const calls: string[] = [];
+    const options: AccountPoolPluginOptions = {
+      now: () => now,
+      codexUsageUrl: "https://upstream.example/usage",
+      importCodexCredentials: async () => ({
+        accessToken: ++imports === 1 ? "paid" : "included",
+        refreshToken: "refresh",
+        expiresAt: now + 3600000,
+        idToken: null,
+        accountId: "codex-qa",
+        email: null,
+      }),
+      fetch: async (input, init) => {
+        const auth = new Headers(init?.headers).get("authorization") ?? "";
+        if (new URL(String(input)).pathname === "/usage")
+          return Response.json({
+            rate_limit: {
+              primary_window: {
+                used_percent: auth === "Bearer paid" ? 100 : includedPercent,
+                reset_at: 4102444800,
+              },
+            },
+            credits: {
+              has_credits: auth === "Bearer paid",
+              unlimited: false,
+            },
+          });
+        calls.push(auth);
+        return spendingBlocked
+          ? Response.json(
+              {},
+              {
+                status: 429,
+                headers: {
+                  "x-codex-rate-limit-reached-type":
+                    "workspace_member_usage_limit_reached",
+                },
+              },
+            )
+          : Response.json({ ok: true });
+      },
+    };
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      provider: "codex",
+      source: "import",
+      priority: 1,
+      options,
+    });
+    const second = accountSchema.parse(
+      await fixture.host.harness.behavior.callRpc("account.add", {
+        provider: "codex",
+        source: { kind: "import" },
+        label: "Included",
+        priority: 2,
+      }),
+    );
+    let host = fixture.host;
+    const send = async () => {
+      const response = await host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        {
+          headers: {
+            ...authHeaders(fixture.key),
+            "session-id": "credit-session",
+          },
+          body: "{}",
+        },
+      );
+      await response.text();
+      return response.status;
+    };
+    expect(await send()).toBe(200);
+    includedPercent = 100;
+    await host.harness.behavior.callRpc("account.refreshUsage", {
+      accountId: second.id,
+    });
+    expect(await send()).toBe(200);
+    includedPercent = 10;
+    now += 30000;
+    expect(await send()).toBe(200);
+    expect(calls).toEqual([
+      "Bearer included",
+      "Bearer paid",
+      "Bearer included",
+    ]);
+    includedPercent = 100;
+    await host.harness.behavior.callRpc("account.refreshUsage", {
+      accountId: second.id,
+    });
+    spendingBlocked = true;
+    expect(await send()).toBe(429);
+    host = await host.harness.lifecycle.reload(
+      createAccountPoolPlugin(options),
+    );
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+    });
+    await vi.waitFor(async () =>
+      expect(
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
+      ).toBe(true),
+    );
+    expect(await send()).toBe(429);
+    expect(calls).toHaveLength(4);
+    expect(
+      statusSchema
+        .parse(await host.harness.behavior.callRpc("status.get", null))
+        .accounts.find((a) => a.id === fixture.account.id)?.usageRestriction
+        ?.reason,
+    ).toBe("workspace_member_usage_limit_reached");
+  });
+
+  it.each([
     [
       "enabled",
       {

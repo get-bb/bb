@@ -24,6 +24,7 @@ function emptyQuota(): AccountQuota {
     },
     limitWindows: [],
     extraUsage: null,
+    usageRestriction: null,
     observedAt: null,
     heldUntil: null,
     error: null,
@@ -33,6 +34,129 @@ function emptyQuota(): AccountQuota {
 const adapter = createCodexAdapter({
   refreshUrl: "https://auth.example/oauth/token",
   usageUrl: "https://usage.example/usage",
+});
+
+describe("Codex credit observations", () => {
+  it("accepts credit-only usage and headers without erasing allowance on unrelated updates", () => {
+    const quota = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      { credits: { has_credits: true, unlimited: false, balance: "20" } },
+      emptyQuota(),
+      1000,
+    );
+    expect(quota?.extraUsage).toEqual({
+      status: "allowed",
+      source: "usage",
+      observedAt: 1000,
+    });
+    if (quota === null) throw new Error("Expected credit observation");
+    const updated = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-primary-used-percent": "100",
+        "x-codex-primary-reset-at": "4102444800",
+      }),
+      quota,
+      "other",
+      2000,
+    );
+    expect(updated.extraUsage).toEqual(quota.extraUsage);
+    const spent = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-credits-has-credits": "0",
+        "x-codex-credits-unlimited": "FALSE",
+      }),
+      updated,
+      "other",
+      3000,
+    );
+    expect(spent.extraUsage?.status).toBe("rejected");
+    expect(
+      adapter.quotaFromHeaders(
+        ACCOUNT_ID,
+        new Headers({ "x-codex-credits-has-credits": "true" }),
+        spent,
+        "other",
+        4000,
+      ).extraUsage,
+    ).toEqual(spent.extraUsage);
+    const unlimited = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-credits-has-credits": "false",
+        "x-codex-credits-unlimited": "1",
+      }),
+      spent,
+      "other",
+      5000,
+    );
+    expect(unlimited.extraUsage?.status).toBe("allowed");
+  });
+
+  it("keeps restrictions through unrelated observations and clears them on explicit recovery", () => {
+    const blocked = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-rate-limit-reached-type": "workspace_owner_credits_depleted",
+      }),
+      emptyQuota(),
+      "other",
+      1000,
+    );
+    expect(blocked.usageRestriction?.reason).toBe(
+      "workspace_owner_credits_depleted",
+    );
+    const headerRecovery = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-credits-has-credits": "true",
+        "x-codex-credits-unlimited": "false",
+      }),
+      blocked,
+      "other",
+      1500,
+    );
+    expect(headerRecovery.usageRestriction).toBeNull();
+    expect(headerRecovery.extraUsage?.status).toBe("allowed");
+    const unrelated = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      { rate_limit: { primary_window: { used_percent: 0 } } },
+      blocked,
+      2000,
+    );
+    expect(unrelated?.usageRestriction).toEqual(blocked.usageRestriction);
+    const recovered = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      { credits: { has_credits: true, unlimited: false } },
+      blocked,
+      3000,
+    );
+    expect(recovered?.usageRestriction).toBeNull();
+    expect(recovered?.extraUsage?.status).toBe("allowed");
+    const spending = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      {
+        spend_control: { reached: true },
+        credits: { has_credits: true, unlimited: true },
+      },
+      emptyQuota(),
+      4000,
+    );
+    if (spending === null) throw new Error("Expected spending restriction");
+    expect(spending.usageRestriction?.reason).toBe("spend_control_reached");
+    const reset = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      {
+        spend_control: { reached: false },
+        credits: { has_credits: true, unlimited: true },
+      },
+      spending,
+      5000,
+    );
+    expect(reset?.usageRestriction).toBeNull();
+    expect(reset?.extraUsage?.status).toBe("allowed");
+  });
 });
 
 describe("codexQuotaFromUsage", () => {

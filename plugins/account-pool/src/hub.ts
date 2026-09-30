@@ -27,6 +27,7 @@ import {
   hasExtraUsage,
   isQuotaExhausted,
   isSharedQuotaExhausted,
+  isUsageRestricted,
   retryAfterMilliseconds,
 } from "./quota.js";
 import type {
@@ -841,7 +842,9 @@ export class AccountPoolHub {
         account,
         quota: this.options.quotas.get(account.id),
       }))
-      .filter(({ quota }) => quota.error === null)
+      .filter(
+        ({ quota }) => quota.error === null && !isUsageRestricted(quota, now),
+      )
       .filter(
         ({ quota }) =>
           !isSharedQuotaExhausted(quota, threshold, now) ||
