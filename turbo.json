@@ -1252,14 +1252,14 @@
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
-    "bb-plugin-provider-usage#typecheck": {
+    "bb-plugin-bb--provider-usage#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
-    "bb-plugin-provider-usage#test": {
+    "bb-plugin-bb--provider-usage#test": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",

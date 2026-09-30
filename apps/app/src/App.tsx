@@ -280,7 +280,7 @@ export function AppRoutes() {
             element={
               <Navigate
                 to={getPluginConfigurationRoutePath({
-                  pluginId: "provider-usage",
+                  pluginId: "bb--provider-usage",
                 })}
                 replace
               />

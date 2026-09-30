@@ -417,7 +417,7 @@ appears only when hidden actions are available and links back to customization.
 Preferences survive plugin reloads and temporarily unavailable plugins; new items
 are visible by default. Example:
 
-  bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'
+  bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'
   bb settings ui reset sidebar.hiddenFooterItems
 
 Client-local UI preferences

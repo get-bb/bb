@@ -1795,6 +1795,21 @@ describe("plugin install flows", () => {
     expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
   });
 
+  it("refuses a path plugin whose id uses the reserved bb-- prefix", async () => {
+    const rootDir = join(workDir, "bb-plugin-bb--notes");
+    await writePluginFixture(rootDir, { name: "bb-plugin-bb--notes" });
+    await expect(service.installPath(rootDir)).rejects.toThrowError(
+      /ids starting with "bb--" are reserved/,
+    );
+    expect(getInstalledPluginRegistration(db, "bb--notes")).toBeUndefined();
+  });
+
+  it("refuses an npm package whose derived id uses the reserved bb-- prefix before install", async () => {
+    await expect(
+      service.install("npm:@acme/bb-plugin-bb--notes@1.2.3", { kind: "root" }),
+    ).rejects.toThrowError(/ids starting with "bb--" are reserved/);
+  });
+
   it("the bb plugin new scaffold installs and loads through the plugin service", async () => {
     const targetDir = join(workDir, "bb-plugin-scaffolded");
     await scaffoldPlugin({

@@ -17,6 +17,7 @@ import {
   type PluginSourceIntent,
 } from "@bb/db";
 import {
+  BUILTIN_PLUGIN_ID_PREFIX,
   BUNDLED_PLUGINS,
   builtinPluginSource,
   type BundledPluginRegistration,
@@ -127,7 +128,12 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
 
   function refuseBuiltinShadow(pluginId: string): void {
     const bundledName = bundledPluginNamesById.get(pluginId);
-    if (bundledName === undefined) return;
+    if (bundledName === undefined) {
+      if (!pluginId.startsWith(BUILTIN_PLUGIN_ID_PREFIX)) return;
+      throw new Error(
+        `install refused: plugin ids starting with "${BUILTIN_PLUGIN_ID_PREFIX}" are reserved for plugins bundled with bb; rename the package so its id "${pluginId}" does not start with "${BUILTIN_PLUGIN_ID_PREFIX}"`,
+      );
+    }
     throw new Error(
       `install refused: plugin id "${pluginId}" is reserved by the bundled plugin "${bundledName}"; install "builtin:${bundledName}" instead`,
     );
