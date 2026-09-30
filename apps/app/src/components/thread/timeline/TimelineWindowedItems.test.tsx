@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 import {
   TimelineWindowedItemsLoader,
@@ -138,6 +138,10 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 200));
 });
 
 describe("TimelineWindowedItems", () => {
