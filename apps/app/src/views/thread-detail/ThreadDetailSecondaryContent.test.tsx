@@ -335,7 +335,9 @@ function renderThreadDetail(
   if (!hosted) {
     return render(
       <MemoryRouter>
-        <DefaultPaneContextProvider>{content}</DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
+          {content}
+        </DefaultPaneContextProvider>
       </MemoryRouter>,
     );
   }
@@ -436,7 +438,7 @@ describe("ThreadDetailSecondaryContent", () => {
 
     render(
       <MemoryRouter>
-        <DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
           <CompactViewportOverrideProvider isCompactViewport={false}>
             <ThreadDetailSecondaryContent {...props} />
           </CompactViewportOverrideProvider>
@@ -476,7 +478,7 @@ describe("ThreadDetailSecondaryContent", () => {
     const props = createProps();
     const { rerender } = render(
       <MemoryRouter>
-        <DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
           <CompactViewportOverrideProvider isCompactViewport={false}>
             <ThreadDetailSecondaryContent {...props} />
           </CompactViewportOverrideProvider>
@@ -498,7 +500,7 @@ describe("ThreadDetailSecondaryContent", () => {
     } as ThreadDetailSecondaryContentProps["timeline"];
     rerender(
       <MemoryRouter>
-        <DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
           <CompactViewportOverrideProvider isCompactViewport={false}>
             <ThreadDetailSecondaryContent {...nextProps} />
           </CompactViewportOverrideProvider>
@@ -517,7 +519,7 @@ describe("ThreadDetailSecondaryContent", () => {
     const props = createProps();
     const { rerender } = render(
       <MemoryRouter>
-        <DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
           <CompactViewportOverrideProvider isCompactViewport={false}>
             <ThreadDetailSecondaryContent
               {...props}
@@ -540,7 +542,7 @@ describe("ThreadDetailSecondaryContent", () => {
 
     rerender(
       <MemoryRouter>
-        <DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
           <CompactViewportOverrideProvider isCompactViewport={false}>
             <ThreadDetailSecondaryContent {...props} isSecondaryPanelOpen />
           </CompactViewportOverrideProvider>
@@ -558,7 +560,7 @@ describe("ThreadDetailSecondaryContent", () => {
     props.footer = <FooterComposerHostPublisher threadId="thread-1" />;
     render(
       <MemoryRouter>
-        <DefaultPaneContextProvider>
+        <DefaultPaneContextProvider onRequestClose={null} navigateInPane={noop}>
           <CompactViewportOverrideProvider isCompactViewport={false}>
             <ThreadDetailSecondaryContent {...props} />
           </CompactViewportOverrideProvider>
