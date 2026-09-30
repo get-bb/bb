@@ -1,5 +1,9 @@
 # APIs To Audit
 
+## `settingsSection.experimental_page`
+
+`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard
@@ -2385,7 +2389,7 @@ and inert actions.
 
 `experimental_useSidebarNavigationSplit(id)` mirrors
 `experimental_useSidebarThreadSplit`. `experimental_SidebarNavigationIcon`
-renders bb's glyphs for its own items and plugin branding for panels.
+renders bb's glyphs for its own items and explicit panel icons with plugin branding as fallback.
 
 **Audit before stabilizing.**
 
@@ -3040,6 +3044,27 @@ modes. The testing harness records accepted calls in `composer.selections`.
 
 Before stabilization, audit cookie import authorization: any caller with server access can copy the desktop user's browser sessions into a BB profile, including an automation profile an agent controls, with OS consent only where the platform demands it (macOS Keychain for Chromium, Full Disk Access for Safari; none for Firefox or keyring-free Linux Chromium). Decide whether imports into automation profiles need an explicit handoff like personal-tab control, and whether the daemon should require a desktop-side confirmation. Also audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
 
+## Machine paths and environment cleanup
+
+`bb.sdk.hosts.get({ hostId })` includes nullable `threadStorageRootPath`
+from the machine's latest daemon session, even offline or without live threads.
+It is null before a session has reported paths. Reading details does not wake the
+machine or create directories. CLI: `bb machine show <id-or-name> [--json]`.
+
+`bb.sdk.environments.experimental_cleanup({ environmentId })` explicitly requests
+removal of an unused provider-managed environment, overriding automatic retention
+or keep policy and bypassing cleanup backoff. Normal retirement and failed-cleanup
+retries remain automatic; callers do not need to invoke this during routine
+thread work. It rejects live threads and
+unmanaged environments; already-removed provider environments succeed without
+another removal. Acceptance is not completion; inspect the ordinary environment
+lifecycle fields for progress. CLI: `bb environment cleanup <id> [--json]`.
+
+Before stabilization, audit path portability and session freshness after machine
+re-enrollment, and cleanup retry behavior across unavailable providers, concurrent
+attempts, and environments shared by archived and live threads. These APIs reuse
+existing session data and provider lifecycle state.
+
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
 `experimental_spawnPortableOutputProcess`,
@@ -3419,6 +3444,19 @@ Missing references try the fallback, then the built-in `Zap`. Recursive
 components terminate at the underlying built-in or `Zap`; throwing components
 are contained and recover when their registration is replaced. Mounted icons
 subscribe to changes in their requested and fallback definitions.
+
+Per-item icon precedence changed in #4443: resolved explicit names win over
+plugin branding for mentions, message actions (including text selection), nav
+panels and fixed tabs, thread/new-thread panel launchers and their opened tabs,
+and legacy sidebar-footer actions. Unknown or omitted names fall back to
+branding, then `Zap`. This changes the documented branding-first behavior of
+`threadPanelAction`, `experimental_newThreadPanelAction`, and
+`sidebarFooterAction`; plugins that depended on their hints being hidden now
+show those hints. Omit optional icons or use the branding glyph explicitly to
+retain that appearance. Plugin identity surfaces (Tools, Settings, and plugin
+detail tabs) remain branding-first. No new API fields or wire changes are
+introduced. Verify icon precedence and load/unload fallback across these
+surfaces before stabilizing the icon API.
 
 This is an app registry, independent of all manifest branding and declared SVG
 asset contracts. It adds no server/daemon wire fields, persisted icon definitions,

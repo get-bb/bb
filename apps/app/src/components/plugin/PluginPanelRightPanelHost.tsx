@@ -19,7 +19,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
@@ -796,7 +796,7 @@ export function PluginPanelRightPanelHost({
             contentFillsRegion: registration.layout === "flush",
             label: registration.title,
             leadingVisual: (
-              <PluginIcon
+              <PluginItemIcon
                 pluginId={pluginId}
                 icon={registration.icon}
                 className="size-3.5"

@@ -2665,47 +2665,76 @@ describe("DesktopBrowserViewManager", () => {
         dispatchAppCommand,
         focusHostWebContents,
         partition: "persist:test",
-        resolveAppCommand: (input, hostWebContentsId) => resolveDesktopBrowserAppCommand({
-          input,
-          isMac: true,
-          splitNavigationEnabled: splitNavigationEnabled && hostWebContentsId === 51,
-          keybindings: [{
-            command,
-            desktopOnly: false,
-            shortcut: {
-              key: "ArrowRight", mod: true, control: true,
-              meta: false, alt: false, shift: false,
-            },
-            when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-          }],
-        }),
+        resolveAppCommand: (input, hostWebContentsId) =>
+          resolveDesktopBrowserAppCommand({
+            input,
+            platform: "darwin",
+            splitNavigationEnabled:
+              splitNavigationEnabled && hostWebContentsId === 51,
+            keybindings: [
+              {
+                command,
+                desktopOnly: false,
+                shortcut: {
+                  key: "ArrowRight",
+                  mod: true,
+                  control: true,
+                  meta: false,
+                  alt: false,
+                  shift: false,
+                },
+                when: {
+                  all: ["mainSurface", "splitActive"],
+                  none: ["modalOpen"],
+                },
+              },
+            ],
+          }),
       });
       const hostWindow = new FakeHostWindow({
         contentBounds: { width: 700, height: 450 },
         webContentsId: 51,
       });
       attachBrowserTab({
-        manager, hostWindow, tabId: "browser:a", url: "https://example.com",
+        manager,
+        hostWindow,
+        tabId: "browser:a",
+        url: "https://example.com",
       });
       const webContents = requireFakeView(0).webContents;
 
-      expect(webContents.emitBeforeInput({
-        key: "ArrowRight", meta: true, control: true,
-      })).toBe(false);
+      expect(
+        webContents.emitBeforeInput({
+          key: "ArrowRight",
+          meta: true,
+          control: true,
+        }),
+      ).toBe(false);
       expect(focusHostWebContents).not.toHaveBeenCalled();
       expect(dispatchAppCommand).not.toHaveBeenCalled();
 
       splitNavigationEnabled = true;
-      expect(webContents.emitBeforeInput({
-        key: "ArrowRight", meta: true, control: true,
-      })).toBe(true);
+      expect(
+        webContents.emitBeforeInput({
+          key: "ArrowRight",
+          meta: true,
+          control: true,
+        }),
+      ).toBe(true);
       expect(focusHostWebContents).toHaveBeenCalledWith(51);
-      expect(dispatchAppCommand).toHaveBeenCalledWith({ command, hostWebContentsId: 51 });
+      expect(dispatchAppCommand).toHaveBeenCalledWith({
+        command,
+        hostWebContentsId: 51,
+      });
 
       splitNavigationEnabled = false;
-      expect(webContents.emitBeforeInput({
-        key: "ArrowRight", meta: true, control: true,
-      })).toBe(false);
+      expect(
+        webContents.emitBeforeInput({
+          key: "ArrowRight",
+          meta: true,
+          control: true,
+        }),
+      ).toBe(false);
       expect(focusHostWebContents).toHaveBeenCalledTimes(1);
       expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
     },

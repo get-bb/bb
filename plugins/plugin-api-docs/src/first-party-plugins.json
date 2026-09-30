@@ -106,8 +106,8 @@
   },
   {
     "id": "connect",
-    "name": "Remote access",
-    "icon": "Smartphone"
+    "name": "bb connect",
+    "icon": "ComputerCloud"
   },
   {
     "id": "secrets",

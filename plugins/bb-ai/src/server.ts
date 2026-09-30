@@ -19,7 +19,6 @@ import {
   type AccountFetchOutput,
   type AccountStatus,
 } from "./account-contract.js";
-import { BB_CLOUD_DISCLOSURE, BB_CLOUD_OFF_MESSAGE } from "./disclosure.js";
 import { formatResetTime, formatUsage } from "./format.js";
 
 export const BB_AI_SERVICE_ID = "bb";
@@ -30,6 +29,7 @@ const COMPLETE_TIMEOUT_MS = 5_000;
 const TRANSCRIBE_TIMEOUT_MS = 10_000;
 export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 const ENABLED_KEY = "enabled";
+const BB_CLOUD_OFF_MESSAGE = "bb cloud is off. Turn it on with `bb ai on`.";
 const SIGN_IN_MESSAGE = "Sign in to your bb account";
 const ACCOUNT_DOWN_MESSAGE = "The bb account plugin is not running";
 
@@ -179,7 +179,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
   const stored = z
     .boolean()
     .safeParse(await bb.storage.kv.get<unknown>(ENABLED_KEY));
-  let enabled = stored.success && stored.data;
+  let enabled = stored.success ? stored.data : true;
   let exhaustion: Exhaustion | null = null;
 
   async function accountStatus(): Promise<AccountStatus | null> {
@@ -373,7 +373,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
     setEnabled: ({ enabled: next }, context) => {
       if (context.experimental_caller.kind !== "client") {
         throw new Error(
-          "only you can turn bb cloud on or off, from Settings or `bb ai on|off`",
+          "only you can turn bb cloud on or off, with `bb ai on|off`",
         );
       }
       return setEnabled(next);
@@ -384,8 +384,8 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
     defineCli({
       name: "ai",
       summary:
-        "Turn on or check bb cloud AI for titles, commit messages, and voice input",
-      description: `bb cloud writes thread titles and commit messages and transcribes voice input for signed-in bb accounts. It is off until you run \`bb ai on\` or turn it on in Settings → bb cloud AI. Choose which tasks use it with \`bb settings ai-services set\`.\n\n${BB_CLOUD_DISCLOSURE}`,
+        "Manage bb cloud AI for titles, commit messages, and voice input",
+      description: `bb cloud writes thread titles and commit messages and transcribes voice input for signed-in bb accounts. It is on by default; turn it off with \`bb ai off\`. Choose which tasks use it with \`bb settings ai-services set\`.`,
       commands: {
         status: cliCommand({
           summary: "Show whether bb cloud is on and ready, and today's usage",
@@ -421,7 +421,6 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
         on: cliCommand({
           summary:
             "Turn bb cloud on for thread titles, commit messages, and voice input",
-          description: BB_CLOUD_DISCLOSURE,
           options: { json: JSON_OPTION },
           async run(input) {
             const view = await setEnabled(true);

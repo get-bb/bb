@@ -58,11 +58,17 @@ export function TimelineWindowedItems({
 }: TimelineWindowedItemsProps) {
   const configured =
     itemKeys.length >= minItemCount && getScrollElement !== null;
-  const [scrollRootUsable, setScrollRootUsable] = useState(true);
+  const [scrollRootStatus, setScrollRootStatus] = useState<
+    "pending" | "usable" | "unusable"
+  >("pending");
+  const [initialRect] = useState(() => ({
+    width: 0,
+    height: typeof window === "undefined" ? 800 : window.innerHeight,
+  }));
   const [scrollMargin, setScrollMargin] = useState(0);
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);
   const containerElementRef = useRef<HTMLDivElement>(null);
-  const windowingEnabled = configured && scrollRootUsable;
+  const windowingEnabled = configured && scrollRootStatus !== "unusable";
   const resolvedGetScrollElement = getScrollElement ?? GET_NO_SCROLL_ELEMENT;
 
   const indexByKey = useMemo(
@@ -137,6 +143,7 @@ export function TimelineWindowedItems({
     getItemKey,
     getScrollElement: resolvedGetScrollElement,
     initialOffset,
+    initialRect,
     measureElement,
     overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
@@ -168,31 +175,37 @@ export function TimelineWindowedItems({
     const updateRootUsability = () => {
       const scrollElement = resolvedGetScrollElement();
       if (scrollElement !== null) {
-        setScrollRootUsable(scrollElement.clientHeight > 0);
+        setScrollRootStatus(
+          scrollElement.clientHeight > 0 ? "usable" : "unusable",
+        );
       }
     };
-    const scrollElement = resolvedGetScrollElement();
-    if (scrollElement === null) {
-      setScrollRootUsable(false);
-      const frame = requestAnimationFrame(() => {
+    let frame: number | undefined;
+    let observer: ResizeObserver | undefined;
+    const attach = () => {
+      const scrollElement = resolvedGetScrollElement();
+      if (scrollElement === null) {
+        frame = requestAnimationFrame(attach);
+        return;
+      }
+      updateRootUsability();
+      updateScrollGeometry();
+      if (typeof ResizeObserver === "undefined") return;
+      observer = new ResizeObserver(() => {
         updateRootUsability();
         updateScrollGeometry();
       });
-      return () => cancelAnimationFrame(frame);
-    }
-    updateRootUsability();
-    updateScrollGeometry();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      updateRootUsability();
-      updateScrollGeometry();
-    });
-    observer.observe(scrollElement);
-    const containerParent = containerElementRef.current?.parentElement;
-    if (containerParent !== null && containerParent !== undefined) {
-      observer.observe(containerParent);
-    }
-    return () => observer.disconnect();
+      observer.observe(scrollElement);
+      const containerParent = containerElementRef.current?.parentElement;
+      if (containerParent !== null && containerParent !== undefined) {
+        observer.observe(containerParent);
+      }
+    };
+    attach();
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
   }, [configured, resolvedGetScrollElement, updateScrollGeometry]);
 
   useLayoutEffect(updateScrollGeometry);
@@ -222,7 +235,7 @@ export function TimelineWindowedItems({
   const virtualItems = [...virtualItemsByIndex.values()].sort(
     (left, right) => left.index - right.index,
   );
-  const renderWindow = windowingEnabled && virtualizer.range !== null;
+  const renderWindow = windowingEnabled;
   const indexes = renderWindow
     ? virtualItems.map((item) => item.index)
     : itemKeys.map((_, index) => index);

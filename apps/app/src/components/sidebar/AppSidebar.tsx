@@ -270,6 +270,14 @@ export function AppSidebar({
                 },
               },
               {
+                id: "mobile",
+                href: "/settings/mobile",
+                onActivate: () => {
+                  closeOnMobile();
+                  void navigate("/settings/mobile");
+                },
+              },
+              {
                 id: "report-bug",
                 onActivate: () => {
                   closeOnMobile();

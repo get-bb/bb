@@ -1,4 +1,4 @@
-import { AndroidTestingSection } from "@/components/settings/AndroidTestingSection";
+import { MobileAppSection } from "@/components/settings/MobileAppSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useMemo, useRef, useState, type ReactNode } from "react";
@@ -1057,16 +1057,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Load plugin server code with the legacy JITI runtime. Takes effect the next time a plugin loads.",
   },
-  androidTesting: {
-    label: "Android App",
-    description:
-      "Download a test build of the Android app below the experiment flags.",
-  },
-  mobileApp: {
-    label: "Mobile app",
-    description:
-      "Pair the bb mobile app over bb connect: shows Add mobile device under Remote access and enables bb connect machine-code.",
-  },
   serverMove: {
     label: "Server move",
     description:
@@ -1111,7 +1101,6 @@ export function ExperimentsSettingsSection({
           })}
         </div>
       </SettingsSection>
-      {experiments.androidTesting ? <AndroidTestingSection /> : null}
     </>
   );
 }
@@ -1263,6 +1252,8 @@ export function SettingsView() {
         showChangelogPreview={experiments.changelogPreview}
       />
     );
+  } else if (activeSection === "mobile") {
+    content = <MobileAppSection />;
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection

@@ -12,7 +12,9 @@ afterEach(() => {
 function renderDialog({
   childThreadCount = 1,
   status = "idle",
+  pending = false,
 }: {
+  pending?: boolean;
   childThreadCount?: number;
   status?: "idle" | "starting" | "active" | "stopping";
 } = {}) {
@@ -22,7 +24,7 @@ function renderDialog({
   const view = render(
     <ThreadArchiveDialog
       target={{ thread, childThreadCount }}
-      pending={false}
+      pending={pending}
       onOpenChange={onOpenChange}
       onArchive={onArchive}
     />,
@@ -66,6 +68,26 @@ describe("ThreadArchiveDialog", () => {
   it("omits the active-work warning for an idle thread", () => {
     renderDialog();
     expect(screen.queryByText(/This will stop current work\./)).toBeNull();
+  });
+
+  it("focuses the archive action when opened for keyboard confirmation", () => {
+    renderDialog();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Archive 2 threads" }),
+    );
+  });
+
+  it("cancels with Escape without archiving", () => {
+    const { onArchive, onOpenChange } = renderDialog();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onArchive).not.toHaveBeenCalled();
+  });
+
+  it("ignores confirmation while archiving is pending", () => {
+    const { onArchive } = renderDialog({ pending: true });
+    fireEvent.click(screen.getByRole("button", { name: "Archive 2 threads" }));
+    expect(onArchive).not.toHaveBeenCalled();
   });
 
   it("archives only when confirmation is accepted", () => {

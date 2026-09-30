@@ -240,9 +240,8 @@ Opening threads and files in the app:
   bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
-  the thread ID argument is omitted for file-only opens. Pass an explicit thread
-  ID with --split to open another thread. Outside a BB thread, pass the thread ID
-  as the first argument. A thread already open in a pane is focused instead of
+  the thread ID argument is omitted for file-only opens. Outside a BB thread,
+  pass the thread ID as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
   Pane actions broadcast to connected BB app windows and affect the matching

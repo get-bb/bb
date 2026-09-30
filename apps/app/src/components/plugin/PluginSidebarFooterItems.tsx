@@ -17,7 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar.js";
-import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   usePluginSlots,
@@ -351,9 +351,7 @@ export function PluginSidebarFooterItems({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </ContextMenuTrigger>
-                <ContextMenuContent
-                  onCloseAutoFocus={handleCloseAutoFocus}
-                >
+                <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
                   <ContextMenuItem
                     onSelect={() => preferences.hideFromFooter(item.key)}
                   >
@@ -449,7 +447,7 @@ function FooterCommandObserver({
 export function FooterItemIcon({ item }: { item: FooterItem }) {
   return item.kind === "plugin" &&
     item.slot.source === "sidebarFooterAction" ? (
-    <PluginIcon pluginId={item.slot.pluginId} icon={item.icon} />
+    <PluginItemIcon pluginId={item.slot.pluginId} icon={item.icon} />
   ) : (
     <Icon
       name={pluginIconName(item.icon)}

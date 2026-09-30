@@ -1,4 +1,3 @@
-import { androidAppPrepareRequestSchema } from "./api/system.js";
 import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
@@ -196,9 +195,7 @@ import type {
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
-  SystemAndroidAppResponse,
-  AndroidAppPreparation,
-  AndroidAppPrepareRequest,
+  SystemMobileAppReleasesResponse,
   SystemCliSkillsStatusQuery,
   SystemCliSkillsStatusResponse,
   SystemInstallCliSkillsRequest,
@@ -848,7 +845,12 @@ export const publicApiRoutes = {
       path: "/hosts/:id",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host & { connectMachineId: string | null }>(),
+      response: jsonResponse<
+        Host & {
+          connectMachineId: string | null;
+          threadStorageRootPath: string | null;
+        }
+      >(),
     }),
     enrollmentCommand: defineRoute({
       path: "/hosts/:id/enrollment-command",
@@ -1076,6 +1078,12 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    cleanup: defineRoute({
+      path: "/environments/:id/cleanup",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     list: defineRoute({
       path: "/environments",
       method: "get",
@@ -1772,25 +1780,11 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<SystemAttentionResponse>(),
     }),
-    androidAppPreparation: defineRoute({
-      path: "/system/android-app/preparation",
+    mobileAppReleases: defineRoute({
+      path: "/system/mobile-app-releases",
       method: "get",
       request: noRequest(),
-      response: jsonResponse<AndroidAppPreparation>(),
-    }),
-    prepareAndroidApp: defineRoute({
-      path: "/system/android-app/prepare",
-      method: "post",
-      request: jsonRequest<EmptyInput, AndroidAppPrepareRequest>(
-        androidAppPrepareRequestSchema,
-      ),
-      response: jsonResponse<AndroidAppPreparation>(),
-    }),
-    androidApp: defineRoute({
-      path: "/system/android-app",
-      method: "get",
-      request: noRequest(),
-      response: jsonResponse<SystemAndroidAppResponse>(),
+      response: jsonResponse<SystemMobileAppReleasesResponse>(),
     }),
     config: defineRoute({
       path: "/system/config",

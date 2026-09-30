@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
 import {
+  setPluginLogoUrls,
+  resetPluginLogoStoreForTest,
+} from "@/lib/plugin-logos";
+import {
   act,
   cleanup,
   fireEvent,
@@ -368,6 +372,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     fixedTabs: Array<{
       tab: { id: string };
       title: string;
+      leadingVisual?: ReactNode;
       onSelect: () => void;
       contentFillsRegion?: boolean;
       renderContent?: (pane: {
@@ -422,6 +427,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
         ))}
         {fixedTabs.map((tab) => (
           <button key={tab.tab.id} type="button" onClick={tab.onSelect}>
+            {tab.leadingVisual}
             {tab.title}
           </button>
         ))}
@@ -734,6 +740,7 @@ describe("PluginPanelRightPanelHost", () => {
 
   afterEach(() => {
     cleanup();
+    resetPluginLogoStoreForTest();
   });
 
   it("shows the side-panel glyph on the trigger for a compact viewport", async () => {
@@ -904,7 +911,22 @@ describe("PluginPanelRightPanelHost", () => {
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 
-  it("uses the shared panel state and chrome for plugin fixed tabs", async () => {
+  it("uses the shared panel state and explicit icons for plugin fixed tabs", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "demo",
+          {
+            displayName: "Demo",
+            icon: "Check",
+            compactIconUrl: "/demo.svg",
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
     function Navigation({ subPath }: { subPath: string }) {
       return <div>Navigation for {subPath}</div>;
     }
@@ -952,6 +974,11 @@ describe("PluginPanelRightPanelHost", () => {
         .hasAttribute("hidden"),
     ).toBe(false);
     expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Navigation" })
+        .querySelector('[data-icon="PanelRight"]'),
+    ).not.toBeNull();
     expect(screen.queryByText("Details for task/123")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));

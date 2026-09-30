@@ -1,5 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "@/components/ui/icon";
+import {
+  CONTEXT_CARD_CLASS,
+  CONTEXT_CARD_INSET_CLASS,
+  CONTEXT_CARD_SEGMENT_CLASS,
+  CONTEXT_CARD_CHEVRON_CLASS,
+} from "@/components/ui/chrome-style-tokens";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   definePluginApp,
@@ -106,27 +113,42 @@ function PreviewCard({
   children: ReactNode;
 }) {
   return (
-    <div className="my-2 overflow-hidden rounded-lg border border-border bg-background">
+    <div className={cn("my-2 overflow-hidden", CONTEXT_CARD_CLASS)}>
       <div
-        className={`flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground ${collapsed ? "" : "border-b border-border"}`}
+        className={cn(
+          "flex items-stretch text-xs text-muted-foreground",
+          !collapsed && "border-b border-border",
+        )}
       >
         <button
           type="button"
           aria-expanded={!collapsed}
           aria-label={`${collapsed ? "Expand" : "Collapse"} visualization ${file}`}
           title={collapsed ? "Expand preview here" : "Collapse preview"}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className={cn(
+            "flex cursor-pointer items-center text-xs",
+            CONTEXT_CARD_SEGMENT_CLASS,
+            "min-w-0 flex-1 gap-1.5 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+            collapsed ? "text-muted-foreground" : "text-foreground",
+          )}
           onClick={() => onCollapsedChange(!collapsed)}
         >
+          <span className="shrink-0">inline-vis</span>
+          <span className="truncate">{file}</span>
           <Icon
-            name={collapsed ? "ChevronRight" : "ChevronDown"}
+            name="ChevronDown"
             aria-hidden
-            className="size-3 shrink-0"
+            className={cn(
+              CONTEXT_CARD_CHEVRON_CLASS,
+              !collapsed && "rotate-180",
+            )}
           />
-          <span className="shrink-0 font-semibold">inline-vis</span>
-          <span className="truncate opacity-70">{file}</span>
         </button>
-        {action}
+        <div
+          className={cn("flex shrink-0 items-center", CONTEXT_CARD_INSET_CLASS)}
+        >
+          {action}
+        </div>
       </div>
       {collapsed ? null : children}
     </div>
@@ -227,7 +249,7 @@ function InlineVisDirective({
     return (
       <PreviewCard
         file={state.file}
-        action={<span aria-hidden className="size-5 shrink-0" />}
+        action={<span aria-hidden className="h-6 w-7 shrink-0" />}
         collapsed={collapsed}
         onCollapsedChange={handleCollapsedChange}
       >
@@ -266,7 +288,11 @@ function InlineVisDirective({
           type="button"
           aria-label={`Open ${state.file} in sidebar`}
           title="Open in sidebar"
-          className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className={cn(
+            "flex cursor-pointer items-center text-xs",
+            CONTEXT_CARD_SEGMENT_CLASS,
+            "shrink-0 justify-center text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          )}
           onClick={() => {
             navigate.experimental_openFilePreview({
               target: state.target,

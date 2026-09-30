@@ -939,6 +939,13 @@
       "when": 1790613729994,
       "tag": "0133_remove_thread_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "6",
+      "when": 1790738477751,
+      "tag": "0134_preserve_pane_focus_bindings",
+      "breakpoints": true
     }
   ]
 }

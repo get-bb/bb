@@ -198,7 +198,7 @@ import {
 } from "@/lib/side-chat-plugin";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import {
   PluginPanelTabContent,
   usePluginPanelActions,
@@ -306,7 +306,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
+import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
@@ -378,11 +378,11 @@ function getPullRequestMergeLoadingTitle(
 
 interface ThreadDetailViewPageProps {
   surface: "page";
-  onRequestClose?: (() => void) | null;
 }
 
 interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
   surface: "pane";
+  timelineEnabled: boolean;
 }
 
 type ThreadDetailViewProps =
@@ -488,11 +488,7 @@ function ThreadDetailNotFound() {
   );
 }
 
-function RoutedThreadDetailView({
-  onRequestClose,
-}: {
-  onRequestClose?: (() => void) | null;
-}) {
+function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
   if (!projectId || !threadId) {
@@ -500,9 +496,11 @@ function RoutedThreadDetailView({
   }
 
   return (
-    <DefaultPaneContextProvider onRequestClose={onRequestClose}>
-      <ThreadDetailViewInternal projectId={projectId} threadId={threadId} />
-    </DefaultPaneContextProvider>
+    <ThreadDetailViewInternal
+      projectId={projectId}
+      threadId={threadId}
+      timelineEnabled
+    />
   );
 }
 
@@ -510,11 +508,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
   }
-  return <RoutedThreadDetailView onRequestClose={props.onRequestClose} />;
+  return <RoutedThreadDetailView />;
 }
 
-function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
-  const { projectId, threadId } = props;
+function ThreadDetailViewInternal(
+  props: ThreadRoutePathArgs & { timelineEnabled: boolean },
+) {
+  const { projectId, threadId, timelineEnabled } = props;
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useImmediateRouteNavigate();
@@ -866,6 +866,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     timelineRows,
   } = useThreadTimelineController({
     threadId,
+    enabled: timelineEnabled,
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();
@@ -2854,7 +2855,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             ...shared,
             label: tab.title,
             leadingVisual: (
-              <PluginIcon
+              <PluginItemIcon
                 pluginId={tab.pluginId}
                 icon={pluginAction?.icon ?? null}
                 className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}

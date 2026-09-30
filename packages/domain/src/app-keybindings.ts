@@ -131,6 +131,8 @@ const APP_COMMAND_CONTEXT_KEYS = [
   "splitActive",
   "webSurface",
   "macPlatform",
+  "windowsPlatform",
+  "linuxPlatform",
 ] as const;
 
 const appCommandContextKeySchema = z.enum(APP_COMMAND_CONTEXT_KEYS);
@@ -205,6 +207,36 @@ export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
     : input.key;
 }
 
+export const keyboardPlatformSchema = z.enum(["mac", "windows", "linux"]);
+export type KeyboardPlatform = z.infer<typeof keyboardPlatformSchema>;
+
+export function keyboardPlatform(platform: string): KeyboardPlatform {
+  if (
+    isMacKeyboardPlatform(platform) ||
+    platform === "darwin" ||
+    platform === "mac"
+  )
+    return "mac";
+  return /Win|windows|win32/u.test(platform) ? "windows" : "linux";
+}
+
+export function findAppKeybindingOverride(
+  overrides: AppKeybindingOverrides,
+  command: KeyboardCommandId,
+  platform: KeyboardPlatform,
+): AppKeybindingOverrides[number] | undefined {
+  return (
+    overrides.find(
+      (override) =>
+        override.command === command && override.platform === platform,
+    ) ??
+    overrides.find(
+      (override) =>
+        override.command === command && override.platform === undefined,
+    )
+  );
+}
+
 export function isMacKeyboardPlatform(platform: string): boolean {
   return /Mac|iPhone|iPad|iPod/u.test(platform);
 }
@@ -250,18 +282,24 @@ export type AppDefaultKeybinding = z.infer<typeof appDefaultKeybindingSchema>;
 
 export function isAppKeybindingAvailableForClient(
   binding: AppKeybinding | AppDefaultKeybinding,
-  client: { isDesktop: boolean; isMac: boolean },
+  client: { isDesktop: boolean; platform: string },
 ): boolean {
+  const platform = keyboardPlatform(client.platform);
   if (binding.desktopOnly && !client.isDesktop) return false;
   if (binding.when.all.includes("webSurface") && client.isDesktop) return false;
   if (binding.when.none.includes("webSurface") && !client.isDesktop)
     return false;
-  if (binding.when.all.includes("macPlatform") && !client.isMac) return false;
-  if (binding.when.none.includes("macPlatform") && client.isMac) return false;
+  for (const candidate of keyboardPlatformSchema.options) {
+    const context = `${candidate}Platform` as const;
+    if (binding.when.all.includes(context) && platform !== candidate)
+      return false;
+    if (binding.when.none.includes(context) && platform === candidate)
+      return false;
+  }
   return true;
 }
 
-export const appKeybindingsSchema = z.array(appKeybindingSchema).max(256);
+export const appKeybindingsSchema = z.array(appKeybindingSchema).max(1024);
 export type AppKeybindings = z.infer<typeof appKeybindingsSchema>;
 
 export const appDefaultKeybindingsSchema = z
@@ -273,6 +311,7 @@ const appKeybindingOverrideSchema = z
   .object({
     command: keyboardCommandIdSchema,
     shortcut: appShortcutSchema.nullable(),
+    platform: keyboardPlatformSchema.optional(),
   })
   .strict();
 
@@ -280,16 +319,17 @@ export const appKeybindingOverridesSchema = z
   .array(appKeybindingOverrideSchema)
   .max(1024)
   .superRefine((overrides, context) => {
-    const seen = new Set<KeyboardCommandId>();
+    const seen = new Set<string>();
     for (const [index, override] of overrides.entries()) {
-      if (seen.has(override.command)) {
+      const key = `${override.command}:${override.platform ?? "all"}`;
+      if (seen.has(key)) {
         context.addIssue({
           code: "custom",
           message: `Duplicate override for ${override.command}`,
           path: [index, "command"],
         });
       }
-      seen.add(override.command);
+      seen.add(key);
     }
   });
 export type AppKeybindingOverrides = z.infer<
@@ -301,11 +341,49 @@ export function applyAppKeybindingOverrides(
   overrides: AppKeybindingOverrides,
 ): AppKeybindings {
   return defaults.flatMap((binding) => {
-    const override = overrides.find(
-      (candidate) => candidate.command === binding.command,
-    );
-    const shortcut =
-      override === undefined ? binding.shortcut : override.shortcut;
-    return shortcut === null ? [] : [{ ...binding, shortcut }];
+    if (
+      !overrides.some(
+        (override) =>
+          override.command === binding.command &&
+          override.platform !== undefined,
+      )
+    ) {
+      const override = overrides.find(
+        (override) => override.command === binding.command,
+      );
+      const shortcut =
+        override === undefined ? binding.shortcut : override.shortcut;
+      return shortcut === null ? [] : [{ ...binding, shortcut }];
+    }
+    return keyboardPlatformSchema.options.flatMap((platform) => {
+      const context = `${platform}Platform` as const;
+      if (
+        binding.when.none.includes(context) ||
+        keyboardPlatformSchema.options.some(
+          (other) =>
+            other !== platform && binding.when.all.includes(`${other}Platform`),
+        )
+      )
+        return [];
+      const override = findAppKeybindingOverride(
+        overrides,
+        binding.command,
+        platform,
+      );
+      const shortcut =
+        override === undefined ? binding.shortcut : override.shortcut;
+      return shortcut === null
+        ? []
+        : [
+            {
+              ...binding,
+              shortcut,
+              when: {
+                ...binding.when,
+                all: [...new Set([...binding.when.all, context])],
+              },
+            },
+          ];
+    });
   });
 }

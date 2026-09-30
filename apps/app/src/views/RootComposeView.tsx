@@ -77,7 +77,7 @@ import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -192,7 +192,10 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import {
+  useOptionalPaneContext,
+  usePaneContext,
+} from "./thread-detail/PaneContext";
 import {
   PluginDetailPanelContext,
   usePluginDetailPanelState,
@@ -536,10 +539,10 @@ export function LegacyProjectComposeRedirect({
 }
 
 export function RootComposeView() {
+  const { navigateInPane } = usePaneContext();
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
   const [placement, setPlacement] = useRootComposePlacement();
@@ -592,19 +595,14 @@ export function RootComposeView() {
       setForkSeed(null);
       setPlacement(DEFAULT_THREAD_CREATION_PLACEMENT);
       if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
+        navigateInPane({ projectId: thread.projectId, threadId: thread.id });
       }
     },
     [
       createThread,
       forkSeed,
       queryClient,
-      navigate,
+      navigateInPane,
       navigateToThreadAfterCreate,
       placement,
       setForkSeed,
@@ -1771,7 +1769,7 @@ function RootComposeSurface({
               ...shared,
               label: tab.title,
               leadingVisual: (
-                <PluginIcon
+                <PluginItemIcon
                   pluginId={tab.pluginId}
                   icon={pluginAction?.icon ?? null}
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}

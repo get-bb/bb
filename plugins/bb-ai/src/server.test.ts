@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin, { TRANSCRIBE_MAX_BYTES, audioFormat } from "./server.js";
-import { BB_CLOUD_OFF_MESSAGE } from "./disclosure.js";
 import { formatDollars, formatUsage } from "./format.js";
 
 function signedIn(userId: string, baseUrl = "https://getbb.app") {
@@ -21,6 +20,8 @@ function signedIn(userId: string, baseUrl = "https://getbb.app") {
     },
   };
 }
+
+const BB_CLOUD_OFF_MESSAGE = "bb cloud is off. Turn it on with `bb ai on`.";
 
 const SIGNED_IN = signedIn("user_1");
 const SIGNED_OUT = { state: "signed-out", revision: 4, account: null };
@@ -105,8 +106,8 @@ async function setup(options: {
     pluginId: "bb-ai",
     sdk: { plugins: { callRpc } },
   });
-  if (options.enabled !== false) {
-    await host.bb.storage.kv.set("enabled", true);
+  if (options.enabled !== undefined) {
+    await host.bb.storage.kv.set("enabled", options.enabled);
   }
   await plugin(host.bb);
   const [service] = host.harness.registrations.aiServiceRegistrations;
@@ -131,8 +132,19 @@ async function setup(options: {
 
 const signal = new AbortController().signal;
 
-describe("bb cloud opt-in", () => {
-  it("is off until the user turns it on and sends nothing while off", async () => {
+describe("bb cloud preference", () => {
+  it("is ready by default for a signed-in account and completes requests", async () => {
+    const { host, status, complete } = await setup({ fetch: () => COMPLETED });
+    await expect(status()).resolves.toEqual({ ready: true });
+    await expect(
+      host.harness.behavior.callRpc("overview", null),
+    ).resolves.toMatchObject({ enabled: true, status: { ready: true } });
+    await expect(complete("Write a title", { signal })).resolves.toBe(
+      "Fix the flaky login test",
+    );
+  });
+
+  it("preserves a saved opt-out and sends nothing while off", async () => {
     const { status, complete, fetchCalls } = await setup({
       enabled: false,
       fetch: () => COMPLETED,
@@ -190,6 +202,17 @@ describe("bb cloud opt-in", () => {
       service?.complete?.("Write a title", { signal }),
     ).rejects.toThrow(BB_CLOUD_OFF_MESSAGE);
     expect(fetchCalls).toHaveLength(fetchesAfterOff);
+    const reloadedOff = await reloaded.harness.lifecycle.reload(plugin);
+    const [offService] =
+      reloadedOff.harness.registrations.aiServiceRegistrations;
+    await expect(offService?.status?.()).resolves.toEqual({
+      ready: false,
+      message: BB_CLOUD_OFF_MESSAGE,
+    });
+    await expect(
+      offService?.complete?.("Write a title", { signal }),
+    ).rejects.toThrow(BB_CLOUD_OFF_MESSAGE);
+    expect(fetchCalls).toHaveLength(fetchesAfterOff);
   });
 
   it("explains how to turn it on in `bb ai status`", async () => {
@@ -214,7 +237,7 @@ describe("bb cloud opt-in", () => {
     ).resolves.toMatchObject({ enabled: false });
   });
 
-  it("turns on through the settings RPC", async () => {
+  it("turns on through the client RPC", async () => {
     const { host } = await setup({ enabled: false, status: SIGNED_OUT });
     await expect(
       host.harness.behavior.callRpc("setEnabled", { enabled: true }),
@@ -487,7 +510,7 @@ describe("bb ai CLI", () => {
     expect(result.stderr).toContain("Not signed in to a bb account");
   });
 
-  it("serves the overview RPC for the settings section", async () => {
+  it("serves account readiness and usage through the overview RPC", async () => {
     const { host } = await setup({
       fetch: () => ({ status: 200, body: usageBody }),
     });

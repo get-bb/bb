@@ -2,8 +2,14 @@
 set -euo pipefail
 
 if [[ "${CACHE_RESTORE_OUTCOME:-success}" != "success" ]]; then
-  echo "::warning::Workspace cache restoration failed or exceeded its budget; discarding partial restores."
-  node --input-type=module -e 'import { rmSync } from "node:fs"; rmSync(".turbo/cache", { recursive: true, force: true }); rmSync(process.argv[1], { recursive: true, force: true });' "$(pnpm store path --silent)"
+  echo "::warning::Workspace cache restoration failed or exceeded its budget; using fresh cache directories."
+  fallback_cache=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/bb-cache-fallback.XXXXXX")
+  export npm_config_store_dir="$fallback_cache/pnpm"
+  export TURBO_CACHE_DIR="$fallback_cache/turbo"
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "npm_config_store_dir=$npm_config_store_dir" >> "$GITHUB_ENV"
+    echo "TURBO_CACHE_DIR=$TURBO_CACHE_DIR" >> "$GITHUB_ENV"
+  fi
 fi
 
 started=$SECONDS

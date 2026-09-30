@@ -276,3 +276,32 @@ export function PluginFormSettled() {
     </StoryCard>
   );
 }
+
+export function ManySecretsInThread() {
+  usePluginBranding();
+  useSecretsFormRegistered();
+  useSettledPluginFrontends(true);
+  return (
+    <div className="mx-auto flex h-dvh max-w-3xl flex-col overflow-hidden p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+        <p>Enter the credentials from each service dashboard below.</p>
+      </div>
+      <div className="shrink-0">
+        <PluginPendingInteractionComposer
+          interaction={pluginInteraction("many-secrets-demo")}
+          origin="plugin"
+          request={{
+            ...secretsRequest,
+            data: {
+              ...secretsRequest.data,
+              fields: Array.from({ length: 12 }, (_, index) => ({
+                name: `SERVICE_${index + 1}_KEY`,
+                description: `API key from service ${index + 1}`,
+              })),
+            },
+          }}
+        />
+      </div>
+    </div>
+  );
+}

@@ -283,7 +283,6 @@ function CollapsibleMessageText({
           <span>{body.text}</span>
         ) : (
           <MarkdownPreview
-            allowHtml
             content={
               collapsedPreview?.wasCapped === true
                 ? closeUnterminatedMarkdownCodeSpan(body.text)

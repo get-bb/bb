@@ -1,4 +1,13 @@
-import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -281,6 +290,68 @@ export default function plugin() {
         .flatMap((entry) => entry?.children ?? [])
         .filter((entry) => entry.filename.startsWith(cacheRoot)),
     ).toEqual([]);
+  });
+
+  it("re-evaluates and evicts compiled modules when the data directory is a symlink", async () => {
+    const realDataDir = join(workDir, "real-data");
+    const linkedDataDir = join(workDir, "linked-data");
+    await mkdir(realDataDir);
+    await symlink(realDataDir, linkedDataDir, "dir");
+    const linkedDb = createConnection(":memory:");
+    migrate(linkedDb);
+    const linkedService = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db: linkedDb,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: linkedDataDir,
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+    const state = globalThis as Record<string, unknown>;
+    state.__symlinkEvaluations = 0;
+    try {
+      const rootDir = await writePrebuiltPlugin("bb-plugin-symlink-data");
+      const sourcePath = join(rootDir, "server.ts");
+      await writeFile(
+        sourcePath,
+        `globalThis.__symlinkEvaluations += 1;\nexport default function plugin() {}\n`,
+      );
+      await linkedService.installPath(rootDir);
+      await linkedService.reload("symlink-data");
+      await linkedService.reload("symlink-data");
+      expect(state.__symlinkEvaluations).toBe(3);
+
+      for (let generation = 0; generation < 3; generation += 1) {
+        await writeFile(
+          sourcePath,
+          `globalThis.__symlinkEvaluations += 1;\nexport const generation = ${generation};\nexport default function plugin() {}\n`,
+        );
+        await linkedService.reload("symlink-data");
+      }
+      expect(state.__symlinkEvaluations).toBe(6);
+
+      const cacheRoot = await realpath(
+        join(realDataDir, "plugins", "runtime", "server"),
+      );
+      const cache = createRequire(import.meta.url).cache;
+      expect(
+        Object.keys(cache).filter((path) => path.startsWith(cacheRoot)),
+      ).toEqual([]);
+      expect(
+        Object.values(cache)
+          .flatMap((entry) => entry?.children ?? [])
+          .filter((entry) => entry.filename.startsWith(cacheRoot)),
+      ).toEqual([]);
+    } finally {
+      await linkedService.stop();
+      delete state.__symlinkEvaluations;
+    }
   });
 
   it("pre-1.0: falls back to source when the dist SDK version differs within major 0", async () => {

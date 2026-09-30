@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
+import { ProjectSelector } from "@/components/pickers/ProjectSelector";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -136,16 +137,6 @@ export function ArchivedThreadsSettingsSection() {
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
   );
-  const projectOptions = useMemo(
-    () => [
-      { label: "All projects", value: ALL_PROJECTS },
-      ...projects.map((project) => ({
-        label: project.name,
-        value: project.id,
-      })),
-    ],
-    [projects],
-  );
 
   const archivedThreads = useMemo(() => {
     const threads = searchIsActive
@@ -185,9 +176,6 @@ export function ArchivedThreadsSettingsSection() {
   const selectedKindLabel =
     KIND_OPTIONS.find((option) => option.value === kind)?.label ??
     "All threads";
-  const selectedProjectLabel =
-    projectOptions.find((option) => option.value === projectId)?.label ??
-    "All projects";
   const isInitialLoading = searchIsActive
     ? threadSearch.isDebouncing ||
       (threadSearch.isLoading && threadSearch.data === undefined)
@@ -225,12 +213,14 @@ export function ArchivedThreadsSettingsSection() {
           options={KIND_OPTIONS}
           value={kind}
         />
-        <ArchiveFilterMenu
-          icon="Folder"
-          label={selectedProjectLabel}
-          onChange={setProjectId}
-          options={projectOptions}
+        <ProjectSelector
+          projects={projects}
           value={projectId}
+          onChange={(value) => setProjectId(value ?? ALL_PROJECTS)}
+          allProjectsValue={ALL_PROJECTS}
+          variant="outline"
+          modal={false}
+          className="min-w-36 justify-between gap-2 px-3 font-normal"
         />
       </div>
 

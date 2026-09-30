@@ -490,6 +490,55 @@ describe("startup reconciliation", () => {
 });
 
 describe("schedule helpers", () => {
+  it.each([
+    [
+      "0 9 * * *",
+      "America/Chicago",
+      "2027-03-13T16:00:00Z",
+      "2027-03-14T14:00:00.000Z",
+    ],
+    [
+      "0 3 * * *",
+      "America/Chicago",
+      "2027-03-13T16:00:00Z",
+      "2027-03-14T08:00:00.000Z",
+    ],
+    [
+      "0 1 * * *",
+      "America/Chicago",
+      "2027-03-13T16:00:00Z",
+      "2027-03-14T07:00:00.000Z",
+    ],
+    [
+      "0 9 * * *",
+      "America/New_York",
+      "2027-03-13T16:00:00Z",
+      "2027-03-14T13:00:00.000Z",
+    ],
+    [
+      "0 9 * * *",
+      "Europe/London",
+      "2027-03-27T16:00:00Z",
+      "2027-03-28T08:00:00.000Z",
+    ],
+    [
+      "0 9 * * 0",
+      "America/Chicago",
+      "2027-03-13T16:00:00Z",
+      "2027-03-14T14:00:00.000Z",
+    ],
+  ])(
+    "keeps the spring-forward run for %s in %s",
+    (cron, timezone, now, expected) => {
+      const next = computeNextScheduledTime({
+        cron,
+        timezone,
+        now: Date.parse(now),
+      });
+      expect(new Date(next).toISOString()).toBe(expected);
+    },
+  );
+
   it("computes cron next runs with timezone", () => {
     const next = computeNextScheduledTime({
       cron: "30 9 * * *",

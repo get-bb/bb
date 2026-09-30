@@ -118,6 +118,10 @@ beforeEach(() => {
         const index = Number(match[1]);
         return index < 4 ? rect(index * 40, 32) : rect(2_000, 32);
       }
+      const windowMatch = rowId?.match(/^window-message-(\d+)$/);
+      if (windowMatch?.[1] !== undefined) {
+        return rect(Number(windowMatch[1]) * 400, 400);
+      }
       const searchMatch = rowId?.match(/^search-message-(\d+)$/);
       if (searchMatch?.[1] !== undefined) {
         return rect(Number(searchMatch[1]) * 100, 32);
@@ -155,6 +159,71 @@ describe("ThreadTimelineRows windowing", () => {
       expect(nestedList?.textContent).not.toContain("Nested message 20");
     });
   });
+
+  it.each([
+    { count: 19, compact: false },
+    { count: 20, compact: false },
+    { count: 59, compact: false },
+    { count: 19, compact: true },
+    { count: 20, compact: true },
+    { count: 39, compact: true },
+  ])(
+    "bounds mounted content for $count top-level rows (compact: $compact)",
+    async ({ count, compact }) => {
+      const scrollElement = document.createElement("div");
+      scrollElement.setAttribute("data-test-main-scroll", "");
+      const bottomAnchor: BottomAnchorContextValue = {
+        captureScrollAnchor: vi.fn(),
+        getScrollElement: () => scrollElement,
+        isAtBottom: false,
+        scrollElementIntoView: vi.fn(),
+        scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+        scrollToBottom: vi.fn(),
+      };
+      const rows = Array.from({ length: count }, (_, index) =>
+        conversationRow({
+          id: `window-message-${index}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          seq: index + 1,
+          text: `Window message ${index}\n\n${"A paragraph of detailed output.\n\n".repeat(15)}`,
+        }),
+      );
+      const view = render(
+        <MemoryRouter>
+          <QueryClientProvider client={new QueryClient()}>
+            <BottomAnchorContext.Provider value={bottomAnchor}>
+              <CompactViewportOverrideProvider isCompactViewport={compact}>
+                <ThreadTimelineRows
+                  timelineRows={rows}
+                  threadRuntimeDisplayStatus="idle"
+                  workspaceRootPath={undefined}
+                />
+              </CompactViewportOverrideProvider>
+            </BottomAnchorContext.Provider>
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        const mountedRows = view.container.querySelectorAll(
+          "[data-timeline-row-id]",
+        );
+        expect(view.container.textContent).toContain("Window message 0");
+        expect(view.container.textContent).toContain(
+          `Window message ${count - 1}`,
+        );
+        if (count < 20) {
+          expect(mountedRows.length).toBe(count);
+          expect(
+            view.container.querySelector("[data-timeline-virtual-spacer]"),
+          ).toBeNull();
+        } else {
+          expect(mountedRows.length).toBeLessThan(count);
+          expect(view.container.textContent).not.toContain("Window message 15");
+        }
+      });
+    },
+  );
 
   it("keeps offscreen search and outline targets realized", async () => {
     const scrollElement = document.createElement("div");

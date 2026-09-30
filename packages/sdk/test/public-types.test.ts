@@ -242,6 +242,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_cleanup"
   | "archiveThreads"
   | "commit"
   | "delete"
@@ -352,9 +353,8 @@ type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
   | "acknowledgeAppUpdate"
-  | "androidApp"
-  | "androidAppPreparation"
-  | "prepareAndroidApp"
+  | "mobileAppDownloads"
+  | "mobileAppReleases"
   | "appUpdate"
   | "applyAppUpdate"
   | "setMachineEnvironmentVariable"

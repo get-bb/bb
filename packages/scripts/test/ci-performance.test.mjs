@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -16,7 +17,7 @@ import {
   listActionsCaches,
 } from "../../../scripts/lib/actions-cache.mjs";
 
-it("uses a real frozen install after discarding a timed-out restore, while preserving successful restores", () => {
+it("uses a real frozen install with isolated caches after a timed-out restore, while preserving successful restores", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-ci-cache-fallback-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(
@@ -27,6 +28,8 @@ it("uses a real frozen install after discarding a timed-out restore, while prese
     ...process.env,
     npm_config_store_dir: join(root, "store"),
     GITHUB_STEP_SUMMARY: join(root, "summary.md"),
+    GITHUB_ENV: join(root, "github-env"),
+    RUNNER_TEMP: root,
   };
   const options = {
     cwd: root,
@@ -63,8 +66,28 @@ it("uses a real frozen install after discarding a timed-out restore, while prese
     ...options,
     env: { ...env, CACHE_RESTORE_OUTCOME: "failure" },
   });
-  expect(sentinels.map(existsSync)).toEqual([false, false]);
-});
+  expect(sentinels.map(existsSync)).toEqual([true, true]);
+  const fallback = Object.fromEntries(
+    readFileSync(env.GITHUB_ENV, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }),
+  );
+  expect(fallback.npm_config_store_dir).not.toBe(env.npm_config_store_dir);
+  expect(fallback.TURBO_CACHE_DIR).not.toBe(join(root, ".turbo/cache"));
+  expect(fallback.npm_config_store_dir).toMatch(
+    /bb-cache-fallback[^/]*\/pnpm$/,
+  );
+  expect(fallback.TURBO_CACHE_DIR).toMatch(/bb-cache-fallback[^/]*\/turbo$/);
+  const nextStore = execFileSync("pnpm", ["store", "path", "--silent"], {
+    ...options,
+    env: { ...env, ...fallback },
+  }).trim();
+  expect(nextStore.startsWith(fallback.npm_config_store_dir)).toBe(true);
+}, 30_000);
 
 it("checks both sides of plugin renames and falls back to full coverage for shared or unavailable changes", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-ci-selection-"));
