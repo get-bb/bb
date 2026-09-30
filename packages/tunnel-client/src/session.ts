@@ -355,6 +355,9 @@ export class TunnelSession {
       }
     } catch (e) {
       if (!stream.abort.signal.aborted) {
+        this.options.log.warn(
+          `origin http error on ${meta.method} ${meta.path}: ${String(e)}`,
+        );
         this.send({
           type: "close-stream",
           streamId,
