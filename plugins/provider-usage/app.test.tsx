@@ -273,6 +273,21 @@ describe("provider usage footer disclosure", () => {
       "Claude Code claude-team@example.com",
     ]);
     expect(slot.queryByRole("heading")).toBeNull();
+    for (const providerId of ["codex", "claude-code"]) {
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/v1/plugins/provider-usage/rpc/getUsage",
+          expect.objectContaining({
+            body: JSON.stringify({
+              force: false,
+              machineIds: ["source:account-pool"],
+              maxAgeMs: 2 * 60_000,
+              providerId,
+            }),
+          }),
+        ),
+      );
+    }
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
       { button: 0 },

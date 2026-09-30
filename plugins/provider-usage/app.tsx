@@ -705,19 +705,26 @@ export function ProviderUsageStatusContent({
   const panelId = useId();
   const activeMachineId = activeMachine?.id ?? null;
   const activeProviderId = activeProvider?.id ?? null;
+  const refreshProviderIds = isAllTab
+    ? providers.map((provider) => provider.id)
+    : activeProviderId === null
+      ? []
+      : [activeProviderId];
+  const refreshProviderKey = refreshProviderIds.join("\n");
 
   useEffect(() => {
     if (!refreshEnabled) return;
-    if (activeMachineId === null || (activeProviderId === null && !isAllTab))
-      return;
+    if (activeMachineId === null || refreshProviderKey === "") return;
     const refresh = () => {
       if (document.visibilityState === "hidden") return;
-      void refreshUsage({
-        force: false,
-        machineIds: [activeMachineId],
-        providerId: activeProviderId,
-        maxAgeMs: CARD_MAX_AGE_MS,
-      });
+      for (const providerId of refreshProviderKey.split("\n")) {
+        void refreshUsage({
+          force: false,
+          machineIds: [activeMachineId],
+          providerId,
+          maxAgeMs: CARD_MAX_AGE_MS,
+        });
+      }
     };
     refresh();
     const timer = window.setInterval(refresh, CARD_MAX_AGE_MS);
@@ -726,7 +733,7 @@ export function ProviderUsageStatusContent({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [activeMachineId, activeProviderId, isAllTab, refreshEnabled]);
+  }, [activeMachineId, refreshProviderKey, refreshEnabled]);
 
   const selectMachine = useCallback(
     (machineId: string) => {
@@ -754,13 +761,18 @@ export function ProviderUsageStatusContent({
     [activeMachine],
   );
 
-  const reload = () =>
-    void refreshUsage({
-      force: true,
-      machineIds: activeMachineId === null ? null : [activeMachineId],
-      maxAgeMs: 0,
-      providerId: activeProviderId,
-    });
+  const reload = () => {
+    for (const providerId of refreshProviderIds.length === 0
+      ? [null]
+      : refreshProviderIds) {
+      void refreshUsage({
+        force: true,
+        machineIds: activeMachineId === null ? null : [activeMachineId],
+        maxAgeMs: 0,
+        providerId,
+      });
+    }
+  };
 
   const handleTabKeyDown = (
     event: KeyboardEvent<HTMLButtonElement>,
