@@ -367,10 +367,10 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       }
     };
     window.addEventListener("keydown", handlePaneNavigation, true);
-    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handlePaneNavigation, true);
-      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [getShortcutCommand, handleKeyboardEvent]);
 
