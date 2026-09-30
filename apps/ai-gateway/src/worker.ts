@@ -3,7 +3,7 @@ import { schema } from "@bb/connect-db";
 import { type Env, type GatewayConfig, parseGatewayConfig } from "./config.js";
 import { routeGatewayRequest, unavailableResponse } from "./gateway.js";
 import { pruneAiUsage } from "./metering.js";
-import { UPSTREAM_TIMEOUT_MS } from "./upstream.js";
+import { TRANSCRIBE_TIMEOUT_MS, UPSTREAM_TIMEOUT_MS } from "./upstream.js";
 
 function loadConfig(env: Env): GatewayConfig | null {
   try {
@@ -31,6 +31,7 @@ export default {
       fetch: (input, init) => fetch(input, init),
       now: () => Date.now(),
       upstreamTimeoutMs: UPSTREAM_TIMEOUT_MS,
+      transcribeTimeoutMs: TRANSCRIBE_TIMEOUT_MS,
       waitUntil: (promise) => ctx.waitUntil(promise),
     });
   },

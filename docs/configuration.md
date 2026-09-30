@@ -241,7 +241,7 @@ happens often, run `codex login --with-api-key` on the primary machine, or pick
 another voice service.
 
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
-Codex transcribes recordings up to 20 MB.
+Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as

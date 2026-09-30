@@ -23,7 +23,7 @@ function accountLine(overview: BbAiOverview): string {
 function statusLine(overview: BbAiOverview): string {
   if (!overview.enabled) return "Off. bb sends nothing to bb cloud.";
   return overview.status.ready
-    ? "Ready for thread titles and commit messages."
+    ? "Ready for thread titles, commit messages, and voice input."
     : overview.status.message;
 }
 

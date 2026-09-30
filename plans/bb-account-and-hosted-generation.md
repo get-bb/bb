@@ -42,7 +42,8 @@ reasoning off): `AI_MODELS` is now `inception/mercury-2.5`,
 the real ones. Nemotron hit upstream 429s and a ~4 s p95. `openai/gpt-oss-20b`
 refuses to turn reasoning off and `qwen/qwen3.7-flash` has no ZDR endpoint.
 
-Still to do: deploying the migration and the gateway; phase 2 voice.
+Still to do: deploying the migration and the gateway; the phase 2 voice model
+eval on real dictation (the code is in; see Part 8).
 
 ## Goals
 
@@ -175,12 +176,12 @@ path that never accepted the credential does not sign the server out.
 Discoverable methods publish their JSON Schema so third-party plugins can use
 them.
 
-| Method                                 | Discoverable | What it does                                                                                                                                                                                                                |
-| -------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bb-account.v1.status`                 | yes          | Returns `{state: "signed-out" \| "signed-in" \| "revoked" \| "held", revision, account?}`.                                                                                                                                  |
-| `bb-account.v1.waitForStatusChange`    | yes          | Long-poll. Resolves when `revision` passes `afterRevision`, or after 25 s. Connect uses it to start the tunnel the moment the user signs in, with no event bus.                                                             |
+| Method                                 | Discoverable | What it does                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bb-account.v1.status`                 | yes          | Returns `{state: "signed-out" \| "signed-in" \| "revoked" \| "held", revision, account?}`.                                                                                                                                                                                                                   |
+| `bb-account.v1.waitForStatusChange`    | yes          | Long-poll. Resolves when `revision` passes `afterRevision`, or after 25 s. Connect uses it to start the tunnel the moment the user signs in, with no event bus.                                                                                                                                              |
 | `bb-account.v1.fetch`                  | yes          | `{target: "api" \| "gate", method, path, body?}` → `{status, body}`. The origin is fixed to the getbb.app apex or this account's gate host. Paths under `/api/ai/` for any caller; `/api/connect/` only for the connect plugin. Optional `timeoutMs` (1–15 s). JSON only, 1 MB cap. Attaches the credential. |
-| `bb-account.v1.adoptConnectCredential` | no           | Connect plugin only. One-time migration from connect's KV. Validates against `/api/account/me` and stores the credential only when signed out. Removed after two releases.                                                                       |
+| `bb-account.v1.adoptConnectCredential` | no           | Connect plugin only. One-time migration from connect's KV. Validates against `/api/account/me` and stores the credential only when signed out. Removed after two releases.                                                                                                                                   |
 
 The plugin also has private methods for its own UI: `login.start`,
 `login.poll`, `login.cancel`, `redeemCode` and `signOut`.
@@ -485,11 +486,11 @@ A new Settings section, **AI services**, works like the sidebar pickers
 (`ReplacementProviderSetting`). It is now the only place this choice is made.
 It has one row per task:
 
-| Row             | Lists services with | Notes                                                  |
-| --------------- | ------------------- | ------------------------------------------------------ |
-| Thread titles   | `complete`          | Branch names follow the title.                         |
-| Commit messages | `complete`          |                                                        |
-| Voice input     | `transcribe`        | Codex already serves voice. bb cloud joins in phase 2. |
+| Row             | Lists services with | Notes                           |
+| --------------- | ------------------- | ------------------------------- |
+| Thread titles   | `complete`          | Branch names follow the title.  |
+| Commit messages | `complete`          |                                 |
+| Voice input     | `transcribe`        | Codex, then bb cloud (phase 2). |
 
 **What each row's dropdown offers.**
 
@@ -568,7 +569,7 @@ A small builtin plugin, enabled by default.
 - CLI: `bb ai status | usage | on | off`.
 
 It is separate from bb-account so users can turn hosted generation off without
-signing out or losing Connect. In phase 2 it adds `transcribe`.
+signing out or losing Connect. Phase 2 adds `transcribe`.
 
 ## Part 8: voice transcription (phase 2)
 
@@ -576,28 +577,47 @@ Phase 1 already provides the pieces voice needs: the account, the metered
 gateway, the `transcribe` function, the Voice input row and the Automatic
 chain. Phase 2 adds:
 
-- **Gateway.** `POST /api/ai/v1/transcribe`, which proxies to OpenRouter's
-  `POST /api/v1/audio/transcriptions` (base64 `input_audio` in JSON). The
-  response carries `usage: {seconds, cost}`, so metering is unchanged.
-  - Caps: 5 minutes of audio and 10 MB per request.
+- **Gateway.** `POST /api/ai/v1/transcribe` takes `{audio, format, hint}`
+  (base64 audio) and proxies to OpenRouter's `POST /api/v1/audio/transcriptions`
+  (`input_audio` in JSON). The response carries `usage.cost`, so metering is
+  unchanged.
+  - Caps: 10 MB of audio (a 14 MB body) per request. Duration is not checked
+    before the call; bb's 10 second voice timeout bounds it in practice.
   - Reserve 2¢ per call, then settle to the actual cost.
   - Voice draws from the same 50¢ daily budget.
-- **Vocabulary hints.** `hint` goes through `provider.options.<slug>.prompt`,
-  because OpenRouter ignores the top-level `prompt` field.
-- **bb-ai.** Registers `transcribe`. Voice's Automatic chain then becomes
-  Codex, then bb cloud, and `resolveVoiceTranscriptionEnabled` shows the mic
-  when the Voice input selection resolves to a ready service.
-- **Model.** Evaluate these two on real bb dictation, which is full of code
-  identifiers, file paths and product names:
+  - `AI_TRANSCRIBE_MODELS` lists the models in order. The transcription
+    endpoint has no `models` fallback, so the gateway tries the next model
+    itself when one answers with an HTTP error, within one 8 second deadline.
+- **Vocabulary hints.** `hint` goes through `provider.options.groq.prompt`,
+  the only provider option OpenRouter documents for it; OpenRouter ignores a
+  top-level `prompt`.
+- **bb-account.** `bb-account.v1.fetch` accepts request bodies up to 16 MB
+  (responses stay at 1 MB).
+- **bb-ai.** Registers `transcribe`. Voice's Automatic chain is Codex, then bb
+  cloud, and `resolveVoiceTranscriptionEnabled` shows the mic when the Voice
+  input selection resolves to a ready service.
+- **Model.** Transcription models with ZDR endpoints on OpenRouter
+  (2026-09-29):
 
-  | Model                               | $/min  | ZDR endpoints   |
-  | ----------------------------------- | ------ | --------------- |
-  | `openai/whisper-large-v3-turbo`     | 0.0002 | Groq, DeepInfra |
-  | `mistralai/voxtral-mini-transcribe` | 0.003  | Mistral         |
+  | Model                               | $/min         | ZDR endpoints   | Notes                                                     |
+  | ----------------------------------- | ------------- | --------------- | --------------------------------------------------------- |
+  | `microsoft/mai-transcribe-2`        | 0.0017        | Azure           | #1 FLEURS, #2 AA-WER (2.0%); promo price until 2026-12-31 |
+  | `openai/whisper-large-v3-turbo`     | 0.0002–0.0007 | Groq, DeepInfra | Takes a vocabulary prompt on Groq                         |
+  | `mistralai/voxtral-mini-transcribe` | 0.003         | Mistral (EU)    |                                                           |
+  | `deepgram/nova-3`                   | 0.0043        | Deepgram        |                                                           |
+  | `assemblyai/universal-3-5-pro`      | 0.0038        | AssemblyAI      | Sync API caps clips at 120 s                              |
 
-  For reference, `openai/gpt-transcribe`, the model Codex uses, costs
-  $0.0045/min on OpenRouter and has no ZDR endpoint. Even at $0.003/min, 30
-  minutes of dictation a day costs 9¢.
+  The default is MAI-Transcribe 2, then Whisper Large V3 Turbo. A local
+  end-to-end run through OpenRouter (2026-09-29) found that MAI answers 400 for
+  WebM and MP4 audio and accepts the same speech as Ogg or MP3, so Chrome
+  (WebM) and Safari (MP4) recordings are refused by MAI and transcribed by
+  Whisper after one wasted call. Either put Whisper first or convert recordings
+  to Ogg before upload.
+  `openai/gpt-transcribe` (what Codex uses), `google/gemini-3.5-transcribe`,
+  and `x-ai/grok-stt-1.0` have no ZDR endpoint. Before release, compare the
+  first two on real bb dictation, which is full of code identifiers, file
+  paths and product names, and reorder `AI_TRANSCRIBE_MODELS` if Whisper with
+  hints wins.
 
 - **Verification.** Sign in with no Codex login and the mic appears. A
   recording transcribes. `bb ai usage` counts it. With the budget exhausted,
@@ -625,8 +645,9 @@ chain. Phase 2 adds:
    in this release.
 5. **Two releases later.** Remove raw-credential tunnel dials from the gate and
    `adoptConnectCredential` from bb-account.
-6. **Phase 2: voice** (Part 8). Ship the transcribe endpoint and bb-ai's
-   `transcribe` after the voice model eval.
+6. **Phase 2: voice** (Part 8). Deploy the gateway with the transcribe
+   endpoint, then release bb-ai's `transcribe` and bb-account's larger request
+   cap, after the voice model eval.
 
 ## Verification
 

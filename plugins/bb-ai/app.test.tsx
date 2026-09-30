@@ -75,7 +75,9 @@ describe("bb cloud settings section", () => {
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
     expect(
-      slot.getByText("Ready for thread titles and commit messages."),
+      slot.getByText(
+        "Ready for thread titles, commit messages, and voice input.",
+      ),
     ).toBeTruthy();
     expect(
       slot.getByText("$0.03 of $0.50 today, resets 00:00 UTC"),

@@ -7,6 +7,7 @@ import {
 } from "@bb/connect-db";
 
 export const RESERVE_MICROS = 5_000;
+export const TRANSCRIBE_RESERVE_MICROS = 20_000;
 export const RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

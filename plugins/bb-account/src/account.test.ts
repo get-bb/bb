@@ -449,7 +449,7 @@ describe("bb-account.v1.fetch", () => {
     expect(stub.requests.length).toBe(requestsBefore);
   });
 
-  it("caps request and response bodies at 1 MB and never follows redirects", async () => {
+  it("caps request bodies at 16 MB, responses at 1 MB, and never follows redirects", async () => {
     const host = await loadAccount();
     await signInWithCode(host);
     stub.route("GET", "/api/ai/huge", () => ({
@@ -463,9 +463,9 @@ describe("bb-account.v1.fetch", () => {
         target: "api",
         method: "POST",
         path: "/api/ai/echo",
-        body: { blob: "x".repeat(1024 * 1024) },
+        body: { blob: "x".repeat(16 * 1024 * 1024) },
       }),
-    ).rejects.toThrow("1 MB");
+    ).rejects.toThrow("16 MB");
     expect(stub.requestsTo("/api/ai/echo")).toEqual([]);
     await expect(
       host.harness.callRpc(FETCH_METHOD, {
