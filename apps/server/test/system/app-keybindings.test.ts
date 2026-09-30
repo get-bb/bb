@@ -14,10 +14,10 @@ import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const DEFAULT_KEYBINDING_CLIENTS = [
-  { name: "desktop-mac", isDesktop: true, isMac: true },
-  { name: "desktop-other", isDesktop: true, isMac: false },
-  { name: "web-mac", isDesktop: false, isMac: true },
-  { name: "web-other", isDesktop: false, isMac: false },
+  { name: "desktop-mac", isDesktop: true, isMac: true, platform: "mac" },
+  { name: "desktop-other", isDesktop: true, isMac: false, platform: "linux" },
+  { name: "web-mac", isDesktop: false, isMac: true, platform: "mac" },
+  { name: "web-other", isDesktop: false, isMac: false, platform: "linux" },
 ] as const;
 
 function shortcutIdentity(
@@ -106,7 +106,7 @@ describe("app keybindings", () => {
 
   it("preserves non-Mac Ctrl arrow editing while keeping navigation rebindable", () => {
     const defaults = applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, []);
-    const client = { isDesktop: false, isMac: false };
+    const client = { isDesktop: false, isMac: false, platform: "linux" };
     for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
       for (const shiftKey of [false, true]) {
         const input = {
@@ -852,3 +852,54 @@ it.each(["left", "right", "up", "down"] as const)(
     }
   },
 );
+
+it("resolves platform overrides before general bindings regardless of ordering", () => {
+  const base = DEFAULT_APP_KEYBINDINGS.find(
+    (binding) => binding.command === "thread.search",
+  )!;
+  const shortcut = {
+    key: "g",
+    mod: true,
+    meta: false,
+    control: false,
+    alt: false,
+    shift: false,
+  };
+  const overrides = appKeybindingOverridesSchema.parse([
+    { command: "thread.search", shortcut },
+    {
+      command: "thread.search",
+      platform: "windows",
+      shortcut: { ...shortcut, key: "w" },
+    },
+    { command: "thread.search", platform: "linux", shortcut: null },
+  ]);
+  for (const ordered of [overrides, [...overrides].reverse()]) {
+    const bindings = applyAppKeybindingOverrides([base], ordered);
+    for (const [platform, keys] of [
+      ["MacIntel", ["g"]],
+      ["Win32", ["w"]],
+      ["Linux", []],
+    ] as const) {
+      expect(
+        bindings
+          .filter((binding) =>
+            isAppKeybindingAvailableForClient(binding, {
+              isDesktop: false,
+              platform,
+            }),
+          )
+          .map((binding) => binding.shortcut.key),
+      ).toEqual(keys);
+    }
+  }
+  expect(
+    appKeybindingOverridesSchema.safeParse([...overrides, overrides[1]])
+      .success,
+  ).toBe(false);
+  expect(
+    appKeybindingOverridesSchema.safeParse([
+      { command: "thread.search", shortcut, platform: "other" },
+    ]).success,
+  ).toBe(false);
+});

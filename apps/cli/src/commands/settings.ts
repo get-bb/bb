@@ -6,6 +6,7 @@ import {
   aiTaskSchema,
   aiTextTaskSchema,
   keyboardCommandIdSchema,
+  keyboardPlatformSchema,
   appShortcutSchema,
   appSettingsSchema,
   completedTurnDisplaySchema,
@@ -723,18 +724,29 @@ export function registerSettingsCommands(
   keyboard
     .command("set <command> <shortcut>")
     .description("Set a command shortcut; use 'disabled' to clear it")
+    .option(
+      "--platform <platform>",
+      "Scope to mac, windows, or linux",
+      (value: string) => keyboardPlatformSchema.parse(value),
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (commandInput: string, shortcut: string, opts: JsonOptions) => {
+        async (
+          commandInput: string,
+          shortcut: string,
+          opts: JsonOptions & { platform?: "mac" | "windows" | "linux" },
+        ) => {
           const command = keyboardCommandIdSchema.parse(commandInput);
           const sdk = createCliBbSdk(getUrl());
           const config = await sdk.system.config();
           const next = config.keybindingOverrides.filter(
-            (item) => item.command !== command,
+            (item) =>
+              item.command !== command || item.platform !== opts.platform,
           );
           next.push({
             command,
+            ...(opts.platform === undefined ? {} : { platform: opts.platform }),
             shortcut: shortcut === "disabled" ? null : parseShortcut(shortcut),
           });
           const result = await sdk.system.updateKeyboardSettings(next);
@@ -746,26 +758,38 @@ export function registerSettingsCommands(
   keyboard
     .command("reset [command]")
     .description("Reset one command override or all keyboard overrides")
+    .option(
+      "--platform <platform>",
+      "Scope to mac, windows, or linux",
+      (value: string) => keyboardPlatformSchema.parse(value),
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (commandInput: string | undefined, opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        const next =
-          commandInput === undefined
-            ? []
-            : config.keybindingOverrides.filter(
-                (item) =>
-                  item.command !== keyboardCommandIdSchema.parse(commandInput),
-              );
-        const result = await sdk.system.updateKeyboardSettings(next);
-        if (outputJson(opts, result)) return;
-        console.log(
-          commandInput
-            ? `Shortcut for ${commandInput} reset`
-            : "Keyboard overrides reset",
-        );
-      }),
+      action(
+        async (
+          commandInput: string | undefined,
+          opts: JsonOptions & { platform?: "mac" | "windows" | "linux" },
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const config = await sdk.system.config();
+          const command =
+            commandInput === undefined
+              ? undefined
+              : keyboardCommandIdSchema.parse(commandInput);
+          const next = config.keybindingOverrides.filter(
+            (item) =>
+              (command !== undefined && item.command !== command) ||
+              (opts.platform !== undefined && item.platform !== opts.platform),
+          );
+          const result = await sdk.system.updateKeyboardSettings(next);
+          if (outputJson(opts, result)) return;
+          console.log(
+            commandInput
+              ? `Shortcut for ${commandInput} reset`
+              : "Keyboard overrides reset",
+          );
+        },
+      ),
     );
 
   settings

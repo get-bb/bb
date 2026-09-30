@@ -45,6 +45,8 @@ const CONTEXT: AppCommandContext = {
   splitActive: false,
   webSurface: false,
   macPlatform: false,
+  windowsPlatform: false,
+  linuxPlatform: false,
 };
 
 describe("app keybindings", () => {

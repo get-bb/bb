@@ -213,6 +213,43 @@ afterEach(() => {
 });
 
 describe("KeyboardSettingsSection", () => {
+  it("edits the selected platform and resets to its general fallback without changing other platforms", () => {
+    const general = { command: "thread.new", shortcut: null } as const;
+    const mac = {
+      command: "thread.new",
+      platform: "mac",
+      shortcut: null,
+    } as const;
+    testState.keybindingOverrides = [general, mac];
+    render(<KeyboardSettingsSection />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Windows" }),
+    );
+    const recorder = screen.getByRole("button", {
+      name: "Record shortcut for New thread, current shortcut unassigned",
+    });
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, { key: "y", ctrlKey: true, shiftKey: true });
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      general,
+      mac,
+      {
+        command: "thread.new",
+        platform: "windows",
+        shortcut: expect.objectContaining({ key: "y", mod: true, shift: true }),
+      },
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset shortcut for New thread" }),
+    );
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([general, mac]);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut unassigned",
+      }),
+    ).toBeTruthy();
+  });
+
   it("ranks visible label matches ahead of description matches across groups", () => {
     render(<KeyboardSettingsSection />);
 

@@ -58,7 +58,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
     expect(
       resolveDesktopBrowserAppCommand({
         input,
-        isMac: true,
+        platform: "darwin",
         keybindings: [binding],
         splitNavigationEnabled: true,
       }),
@@ -68,46 +68,55 @@ describe("resolveDesktopBrowserAppCommand", () => {
   it.each([
     { command: "panel.nextTab", control: true, shift: false },
     { command: "pane.focus.right", control: true, shift: true },
-  ] as const)("respects platform scope for $command", ({ command, control, shift }) => {
-    const binding: AppKeybindings[number] = {
-      ...keybindings[0]!,
-      command,
-      shortcut: {
-        ...keybindings[0]!.shortcut,
-        key: "ArrowRight",
-        control,
-        shift,
-      },
-      when: { all: ["mainSurface", "macPlatform"], none: [] },
-    };
-    const args = {
-      input: {
-        key: "ArrowRight",
-        code: "ArrowRight",
-        altKey: false,
-        ctrlKey: true,
-        metaKey: false,
-        shiftKey: shift,
-      },
-      isMac: false,
-      keybindings: [binding],
-      splitNavigationEnabled: true,
-      splitNavigationCommands: [command],
-    };
-    expect(resolveDesktopBrowserAppCommand(args)).toBeNull();
-    expect(resolveDesktopBrowserAppCommand({
-      ...args,
-      isMac: true,
-      input: { ...args.input, metaKey: true, ctrlKey: control },
-    })).toBe(command);
-    expect(resolveDesktopBrowserAppCommand({
-      ...args,
-      keybindings: [{
-        ...binding,
-        when: { all: ["mainSurface"], none: ["macPlatform"] },
-      }],
-    })).toBe(command);
-  });
+  ] as const)(
+    "respects platform scope for $command",
+    ({ command, control, shift }) => {
+      const binding: AppKeybindings[number] = {
+        ...keybindings[0]!,
+        command,
+        shortcut: {
+          ...keybindings[0]!.shortcut,
+          key: "ArrowRight",
+          control,
+          shift,
+        },
+        when: { all: ["mainSurface", "macPlatform"], none: [] },
+      };
+      const args = {
+        input: {
+          key: "ArrowRight",
+          code: "ArrowRight",
+          altKey: false,
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: shift,
+        },
+        platform: "win32",
+        keybindings: [binding],
+        splitNavigationEnabled: true,
+        splitNavigationCommands: [command],
+      };
+      expect(resolveDesktopBrowserAppCommand(args)).toBeNull();
+      expect(
+        resolveDesktopBrowserAppCommand({
+          ...args,
+          platform: "darwin",
+          input: { ...args.input, metaKey: true, ctrlKey: control },
+        }),
+      ).toBe(command);
+      expect(
+        resolveDesktopBrowserAppCommand({
+          ...args,
+          keybindings: [
+            {
+              ...binding,
+              when: { all: ["mainSurface"], none: ["macPlatform"] },
+            },
+          ],
+        }),
+      ).toBe(command);
+    },
+  );
 
   it("only intercepts a directional shortcut when that neighbor exists", () => {
     const binding: AppKeybindings[number] = {
@@ -124,7 +133,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
         metaKey: true,
         shiftKey: true,
       },
-      isMac: true,
+      platform: "darwin",
       keybindings: [binding],
       splitNavigationEnabled: true,
     };
@@ -161,7 +170,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
           metaKey: false,
           shiftKey: false,
         },
-        isMac: false,
+        platform: "win32",
         keybindings: [
           {
             command: "plugin:example/open",
@@ -192,7 +201,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
           metaKey: true,
           shiftKey: false,
         },
-        isMac: true,
+        platform: "darwin",
         keybindings,
       }),
     ).toBe("browser.focusLocation");
@@ -206,7 +215,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
           metaKey: true,
           shiftKey: false,
         },
-        isMac: true,
+        platform: "darwin",
         keybindings,
       }),
     ).toBeNull();
@@ -220,7 +229,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
           metaKey: false,
           shiftKey: false,
         },
-        isMac: false,
+        platform: "win32",
         keybindings,
       }),
     ).toBe("browser.focusLocation");
@@ -254,7 +263,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
           metaKey: true,
           shiftKey: true,
         },
-        isMac: true,
+        platform: "darwin",
         keybindings: [...keybindings, focusBinding, reloadBinding],
       }),
     ).toBe("browser.reload");
