@@ -40,6 +40,8 @@ interface ProjectSelectorProps {
   value: string | null;
   onChange: (projectId: string | null) => void;
   allowNoProject?: boolean;
+  allProjectsValue?: string;
+  variant?: "ghost" | "outline";
   createProject?: ProjectSelectorCreateProjectConfig;
   disabled?: boolean;
   isLoading?: boolean;
@@ -54,6 +56,8 @@ export function ProjectSelector({
   value,
   onChange,
   allowNoProject = false,
+  allProjectsValue,
+  variant = "ghost",
   createProject,
   disabled: disabledProp = false,
   isLoading = false,
@@ -82,18 +86,24 @@ export function ProjectSelector({
     [projects, searchQuery, showSearch],
   );
   const selected = value !== null ? projects.find((p) => p.id === value) : null;
-  const fallback = !allowNoProject && !selected ? projects[0] : null;
+  const allProjectsSelected =
+    allProjectsValue !== undefined && value === allProjectsValue;
+  const fallback =
+    !allowNoProject && !allProjectsSelected && !selected ? projects[0] : null;
   const noProjectSelected = allowNoProject && value === null;
   const triggerLabel = isLoading
     ? "Loading projects…"
     : (selected?.name ??
       fallback?.name ??
+      (allProjectsSelected ? "All projects" : undefined) ??
       (noProjectSelected ? "No project" : "Work in a project"));
   const compactTriggerLabel = isLoading
     ? "Loading…"
-    : (selected?.name ?? fallback?.name ?? "No project");
+    : (selected?.name ??
+      fallback?.name ??
+      (allProjectsSelected ? "All projects" : "No project"));
   const triggerIcon =
-    isLoading || selected || fallback
+    isLoading || selected || fallback || allProjectsSelected
       ? "Folder"
       : noProjectSelected
         ? "FolderMinus"
@@ -121,7 +131,7 @@ export function ProjectSelector({
       <PopoverTrigger asChild disabled={disabled}>
         <Button
           type="button"
-          variant="ghost"
+          variant={variant}
           size="sm"
           aria-label={`Project: ${triggerLabel}`}
           aria-busy={isLoading || undefined}
@@ -129,9 +139,9 @@ export function ProjectSelector({
           data-promptbox-project-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
-            !disabled && OPTION_INTERACTIVE_CLASS_NAME,
+            variant === "ghost" && !disabled && OPTION_INTERACTIVE_CLASS_NAME,
             disabled && "cursor-default disabled:opacity-100",
-            OPTION_MUTED_CLASS_NAME,
+            variant === "ghost" && OPTION_MUTED_CLASS_NAME,
             className,
           )}
         >
@@ -193,6 +203,27 @@ export function ProjectSelector({
             ref={listRef}
             className="min-h-0 max-h-none flex-1 overscroll-contain"
           >
+            {allProjectsValue !== undefined &&
+            "all projects".includes(searchQuery.trim().toLocaleLowerCase()) ? (
+              <CommandGroup>
+                <CommandItem
+                  value={allProjectsValue}
+                  aria-current={allProjectsSelected ? "true" : undefined}
+                  onSelect={() => selectProject(allProjectsValue)}
+                  className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                >
+                  <Icon
+                    name="Folder"
+                    className="text-muted-foreground"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1">All projects</span>
+                  {allProjectsSelected ? (
+                    <Icon name="Check" aria-hidden />
+                  ) : null}
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
             {projects.length > 0 ? (
               <CommandGroup heading="Project">
                 {filteredProjects.map((project) => (

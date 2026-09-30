@@ -1,17 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@bb/shared-ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
-import { useResetPickerScroll } from "@/components/pickers/useResetPickerScroll";
+import { ProjectSelector } from "@/components/pickers/ProjectSelector";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -99,88 +90,6 @@ function ArchiveFilterMenu<T extends string>({
   );
 }
 
-function ArchiveProjectFilter({
-  label,
-  onChange,
-  options,
-  value,
-}: Omit<ArchiveFilterMenuProps<string>, "icon">) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useResetPickerScroll<HTMLDivElement>(search);
-  const query = search.trim().toLocaleLowerCase();
-  const filteredOptions = options.filter((option) =>
-    option.label.toLocaleLowerCase().includes(query),
-  );
-  const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
-    if (!nextOpen) setSearch("");
-  };
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          aria-label={`Project: ${label}`}
-          className="h-8 min-w-36 max-w-full justify-between gap-2 px-3 text-xs font-normal"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon name="Folder" className="size-3.5 shrink-0" />
-            <span className="truncate">{label}</span>
-          </span>
-          <Icon name="ChevronDown" className="size-3.5 shrink-0" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        aria-label="Filter by project"
-        mobileTitle="Filter by project"
-        autoFocusRef={inputRef}
-        className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] w-64 max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 max-md:min-h-0 max-md:flex-1"
-      >
-        <Command shouldFilter={false} className="min-h-0">
-          <CommandInput
-            ref={inputRef}
-            aria-label="Search projects"
-            placeholder="Search projects…"
-            value={search}
-            onValueChange={setSearch}
-          />
-          <CommandList
-            ref={listRef}
-            className="min-h-0 flex-1 overscroll-contain"
-          >
-            <CommandEmpty>No projects found.</CommandEmpty>
-            <CommandGroup>
-              {filteredOptions.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={option.value}
-                  aria-current={option.value === value ? "true" : undefined}
-                  onSelect={() => {
-                    onChange(option.value);
-                    handleOpenChange(false);
-                  }}
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {option.label}
-                  </span>
-                  {option.value === value ? (
-                    <Icon name="Check" className="size-3.5 shrink-0" />
-                  ) : null}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function filterArchivedThreadsBySearch(
   threads: ThreadListEntry[],
   search: string,
@@ -228,16 +137,6 @@ export function ArchivedThreadsSettingsSection() {
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
   );
-  const projectOptions = useMemo(
-    () => [
-      { label: "All projects", value: ALL_PROJECTS },
-      ...projects.map((project) => ({
-        label: project.name,
-        value: project.id,
-      })),
-    ],
-    [projects],
-  );
 
   const archivedThreads = useMemo(() => {
     const threads = searchIsActive
@@ -277,9 +176,6 @@ export function ArchivedThreadsSettingsSection() {
   const selectedKindLabel =
     KIND_OPTIONS.find((option) => option.value === kind)?.label ??
     "All threads";
-  const selectedProjectLabel =
-    projectOptions.find((option) => option.value === projectId)?.label ??
-    "All projects";
   const isInitialLoading = searchIsActive
     ? threadSearch.isDebouncing ||
       (threadSearch.isLoading && threadSearch.data === undefined)
@@ -317,11 +213,14 @@ export function ArchivedThreadsSettingsSection() {
           options={KIND_OPTIONS}
           value={kind}
         />
-        <ArchiveProjectFilter
-          label={selectedProjectLabel}
-          onChange={setProjectId}
-          options={projectOptions}
+        <ProjectSelector
+          projects={projects}
           value={projectId}
+          onChange={(value) => setProjectId(value ?? ALL_PROJECTS)}
+          allProjectsValue={ALL_PROJECTS}
+          variant="outline"
+          modal={false}
+          className="min-w-36 justify-between gap-2 px-3 font-normal"
         />
       </div>
 
