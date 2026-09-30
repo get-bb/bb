@@ -66,9 +66,12 @@ in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
 a running background delegation that started on an older page. Each update
 keeps only the nested children that reach the window start.
 `mergeLoadedTimelineWithLatest` joins each update into the loaded row with the
-same id and ignores rows it has not loaded. Updates larger than the page byte
-budget, and leaves omitted by a content cut, still count toward
-`olderRowsSourceSeqEnd`.
+same id and ignores rows it has not loaded, including on repeat refreshes of
+the same snapshot. Updates share the page byte budget
+with the returned rows. Updates that do not fit the remaining budget, and leaves
+omitted by a content cut, still count toward `olderRowsSourceSeqEnd`.
+
+`summaryOnly=true` returns head state without timeline rows or older-row updates.
 
 `completedTurnDisplay` reports whether the page projected finished turns as
 collapsed "Worked for" rows or flat rows. It is part of the display surface: a

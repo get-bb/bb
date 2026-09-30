@@ -43,7 +43,9 @@ function steerRow(args: {
   };
 }
 
-function assistantRow(seq: number): TimelineRow {
+function assistantRow(
+  seq: number,
+): Extract<TimelineRow, { kind: "conversation"; role: "assistant" }> {
   return {
     id: `thread-1:assistant:${seq}`,
     kind: "conversation",
@@ -180,6 +182,40 @@ describe("paginateTimelineRows", () => {
     expect(page.olderRowsSourceSeqEnd).toBe(1);
     expect(page.olderRowUpdates).toEqual([lateOlderRow]);
   });
+
+  it.each([1_000, 2_000])(
+    "shares a %i byte budget between page rows and older updates",
+    (maxBytes) => {
+      const older: TimelineRow = {
+        ...assistantRow(2),
+        sourceSeqEnd: 21,
+        text: "a".repeat(500),
+      };
+      const latest = userRow({ id: "latest", seq: 20, text: "b".repeat(500) });
+      const page = paginateTimelineRows({
+        knownHasOlderSegments: true,
+        maxLeaves: 1_000,
+        maxBytes,
+        ownedSequenceStart: 20,
+        ownedSequenceEnd: 22,
+        page: { kind: "latest", segmentLimit: 1 },
+        rows: [older, latest],
+      });
+
+      expect(page.rows).toEqual([latest]);
+      expect(
+        Buffer.byteLength(JSON.stringify(page.rows)) +
+          Buffer.byteLength(JSON.stringify(page.olderRowUpdates ?? [])),
+      ).toBeLessThanOrEqual(maxBytes);
+      if (maxBytes === 1_000) {
+        expect(page.olderRowUpdates).toBeUndefined();
+        expect(page.olderRowsSourceSeqEnd).toBe(21);
+      } else {
+        expect(page.olderRowUpdates).toEqual([older]);
+        expect(page.olderRowsSourceSeqEnd).toBeNull();
+      }
+    },
+  );
 
   it("sends omitted rows cut to the children changed inside the latest window", () => {
     const child = (seq: number, sourceSeqEnd = seq): TimelineRow => ({

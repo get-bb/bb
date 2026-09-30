@@ -144,6 +144,7 @@ export function paginateTimelineRows(
   const segments = buildTimelineLogicalSegments(args);
   const selectedSegments = segments.slice(-page.segmentLimit);
   const returnedRows = new Map<string, TimelineRow>();
+  let remainingBytes = args.maxBytes;
   const collectRows = (): TimelineRow[] => {
     const collected = new Set<string>();
     return rows.flatMap((row) => {
@@ -172,7 +173,9 @@ export function paginateTimelineRows(
       timelineRowChangesFrom(row, windowStart),
     );
     const reported =
-      Buffer.byteLength(JSON.stringify(updates)) > args.maxBytes ? [] : changed;
+      Buffer.byteLength(JSON.stringify(updates)) > remainingBytes
+        ? []
+        : changed;
     return {
       olderRowsSourceSeqEnd: omitted
         .filter((row) => !reported.includes(row))
@@ -196,7 +199,6 @@ export function paginateTimelineRows(
     };
   }
   let remainingLeaves = args.maxLeaves;
-  let remainingBytes = args.maxBytes;
   let returnedSegmentCount = 0;
   for (let index = selectedSegments.length - 1; index >= 0; index -= 1) {
     const segment = selectedSegments[index]!;

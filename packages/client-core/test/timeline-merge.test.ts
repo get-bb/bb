@@ -859,7 +859,7 @@ describe("snapshot content pagination", () => {
     expect(next.historySnapshot).toBe("snapshot-2");
   });
 
-  it("keeps loaded history and applies updates to rows the latest page omitted", () => {
+  it("keeps omitted-row updates through streaming and repeat refreshes", () => {
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const earlyChild = commandRow({ id: "early-command", sequence: 3 });
     const liveChild = commandRow({ id: "live-command", sequence: 4 });
@@ -899,16 +899,22 @@ describe("snapshot content pagination", () => {
       surfaceKey: current.surfaceKey,
     });
 
-    expect(next.rows.map((row) => row.id)).toEqual([
-      "older-user",
-      "summary",
-      "latest-user",
-    ]);
-    expect(next.rows[1]).toEqual({
-      ...summary,
-      sourceSeqEnd: 12,
-      children: [earlyChild, updatedChild, newChild],
+    const expectedRows = [
+      olderUser,
+      {
+        ...summary,
+        sourceSeqEnd: 12,
+        children: [earlyChild, updatedChild, newChild],
+      },
+      latestUser,
+    ];
+    expect(next.rows).toEqual(expectedRows);
+    const refreshed = mergeLoadedTimelineWithLatest({
+      current: next,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
     });
+    expect(refreshed.rows).toEqual(expectedRows);
     expect(next.olderCursor).toEqual(walkCursor);
     expect(next.latestWindowEndSequence).toBe(12);
   });

@@ -60,7 +60,7 @@ interface MergeLoadedTimelineWithLatestArgs {
   surfaceKey: string;
 }
 
-interface MergeAdvancedSnapshotTimelineRowsArgs {
+interface MergeSnapshotTimelineRowsArgs {
   current: LoadedTimelineState;
   latestRows: readonly TimelineRow[];
   latestTimeline: ThreadTimelineResponse;
@@ -380,11 +380,11 @@ function applyOlderRowUpdates(
   });
 }
 
-function mergeAdvancedSnapshotTimelineRows({
+function mergeSnapshotTimelineRows({
   current,
   latestRows,
   latestTimeline,
-}: MergeAdvancedSnapshotTimelineRowsArgs): MergeLatestTimelineRowsResult {
+}: MergeSnapshotTimelineRowsArgs): MergeLatestTimelineRowsResult {
   const latestWindowStartSequence = timelineWindowStartSequence(latestTimeline);
   const { olderRowUpdates, olderRowsSourceSeqEnd } =
     latestTimeline.timelinePage;
@@ -478,14 +478,15 @@ export function mergeLoadedTimelineWithLatest({
               })[0]!;
         });
   const latestMerge =
-    current.historySnapshot === latestHistorySnapshot
+    current.historySnapshot === latestHistorySnapshot &&
+    latestTimeline.timelinePage.olderRowUpdates === undefined
       ? mergeLatestTimelineRows({
           latestRows,
           latestWindowStartSequence:
             timelineWindowStartSequence(latestTimeline),
           loadedRows: current.rows,
         })
-      : mergeAdvancedSnapshotTimelineRows({
+      : mergeSnapshotTimelineRows({
           current,
           latestRows,
           latestTimeline,
