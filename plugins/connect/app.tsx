@@ -1203,8 +1203,13 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
 
   if (login === null) {
     return (
-      <div className="space-y-2">
-        <Button type="button" disabled={starting} onClick={start}>
+      <div className="min-w-0 space-y-2">
+        <Button
+          type="button"
+          className="h-auto min-h-9 max-w-full whitespace-normal"
+          disabled={starting}
+          onClick={start}
+        >
           {starting ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
           ) : null}
@@ -1298,22 +1303,21 @@ function NotPairedContent({
         . Your code and data stay on this machine.
       </p>
 
-      <AccountSignInCard onSignedIn={onPaired} />
-
-      <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <AccountSignInCard onSignedIn={onPaired} />
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="-ml-2 text-muted-foreground"
+          className="text-muted-foreground"
           onClick={() => setCodeOpen((open) => !open)}
         >
           Have a pairing code?
         </Button>
-        {codeOpen ? (
-          <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
-        ) : null}
       </div>
+      {codeOpen ? (
+        <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
+      ) : null}
 
       <p className="flex items-start gap-1.5 text-xs text-subtle-foreground">
         <Icon
