@@ -77,7 +77,7 @@ import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -1771,7 +1771,7 @@ function RootComposeSurface({
               ...shared,
               label: tab.title,
               leadingVisual: (
-                <PluginIcon
+                <PluginItemIcon
                   pluginId={tab.pluginId}
                   icon={pluginAction?.icon ?? null}
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}

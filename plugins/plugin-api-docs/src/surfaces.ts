@@ -87,6 +87,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:",
         bullets: [
           "Render any React you write across that whole area",
+          "Give the panel and each fixed tab their own icons; resolved names override plugin branding in navigation, headers, and tabs",
           "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
           "Register ordered, non-closable fixed tabs beside Browser and Terminal; bb persists selection and mounts each component only while its tab is visible in an open pane",
           "Open an owned fixed tab with experimental_useAppPanel and read its validated JSON target with experimental_useFixedTabTarget; targets survive route changes in the current session, but not a refresh",
@@ -255,6 +256,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Appear in the row that shows under messages on hover, or in the toolbar that appears when text in an agent's message is selected",
           "Receive the message, plus the selected text when the action was run from a selection",
+          "Show the action’s explicit icon in both menus, with plugin branding as the fallback for omitted or unknown names",
           "Open one of the plugin's own [side-panel tabs](thread-panel) with what it received",
           "Write into the composer of the message's thread through the same composer handle useComposer() returns",
         ],
@@ -331,6 +333,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds a tab to the side panel that opens to the right of a thread. With this, a plugin can:",
         bullets: [
           "Render the tab's contents and receive the id of the thread it was opened from",
+          "Show the action’s explicit icon in the launcher and opened tab; omitted or unknown names fall back to plugin branding",
           "Open the tab from a [message action](message-actions), from the + button in the side panel, or from its own code",
         ],
         apiSymbols: ["PluginThreadPanelActionRegistration"],
@@ -483,6 +486,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds results to the menu that opens when someone types a trigger character in the prompt box. On a trigger bb does not use itself, your plugin opens that menu and owns it. With this, a plugin can:",
         bullets: [
           "Answer each keystroke after the trigger with a list of items to show",
+          "Give each item a built-in or registered icon that takes precedence over plugin branding in the menu, composer, and sent messages; omitted or unknown names fall back to plugin branding, then the generic plugin icon",
           "Claim one or more of the trigger characters @, #, $, !, and ~. Omit them to answer the default @",
           "Turn a picked item into a chip in the draft prompt, and resolve its content once per unique mention when the message is sent; a resolution failure blocks sending",
         ],
@@ -617,6 +621,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Render before a thread exists, so it receives no thread id",
           "Host setup the person does while writing the first prompt",
+          "Show the action’s explicit icon in the launcher and opened tab; omitted or unknown names fall back to plugin branding",
           "Receive the project selected in the prompt box",
         ],
         apiSymbols: ["PluginNewThreadPanelActionRegistration"],
@@ -1261,7 +1266,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render experimental_ProviderIcon with required providerKind (agent, machine, environment), provider={provider}, and optional fallback (Code by default). Pass an existing provider record: it reads id, logoUrl, icon, and strings.iconTint, resolving the matching kind/id slot override, then legacy unscoped overrides, then declared artwork. It fetches no metadata. Marks are decorative by default; pass aria-label for a meaningful standalone image",
           "Provider icons update on plugin load/reload/unload; throwing or recursive overrides fall back to supplied artwork. Use the same component for agent, machine, and environment providers",
           "Use the same icon names in experimental_Icon and host-rendered icon fields: registered React artwork wins over built-in names, followed by namespaced <pluginId>/<name> assets from bb.branding.experimental_icons. Missing names use the surface's fallback",
-          "Prefer bb.branding.icon on plugin-badged rows such as panel launchers and composer menu items; draft-row status uses its supplied icon directly",
+          "Explicit resolved icons take precedence over bb.branding.icon for mentions, message actions, navigation panels, fixed tabs, panel launchers and their opened tabs, and legacy sidebar-footer actions; omitted or unknown names fall back to plugin branding, then Zap. Plugin identity in Tools and Settings keeps its branding. Composer menu items and draft-row status continue using their supplied icons",
           "Return nothing from icon registration: bb replaces React artwork on reload and removes it on unload. Declared SVG icons need no app bundle and remain available while the plugin is stopped; React artwork receives className and should use currentColor",
           "Load the same registrations in web, desktop, and mobile's web app; manage their plugin through bb plugin build, install, reload, and remove",
         ],

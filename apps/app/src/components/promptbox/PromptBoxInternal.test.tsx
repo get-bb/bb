@@ -3954,7 +3954,22 @@ describe("PromptBoxInternal mention triggers", () => {
     });
   });
 
-  it("renders a plugin mention's named icon hint", async () => {
+  it("renders a plugin mention's named icon ahead of branding", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "github",
+          {
+            displayName: "GitHub",
+            icon: "Check",
+            compactIconUrl: "/github.svg",
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
     const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
     const { promptBoxRef } = renderPromptBox("@fix", {
       mentionSuggestions: [suggestion],
@@ -3965,8 +3980,22 @@ describe("PromptBoxInternal mention triggers", () => {
     expect(row.querySelector('[data-icon="FileText"]')).not.toBeNull();
   });
 
-  it("keeps a plugin mention's named icon hint in the inserted pill", async () => {
-    setPluginLogoUrls(new Map());
+  it("keeps a plugin mention's named icon ahead of branding in the inserted pill", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "github",
+          {
+            displayName: "GitHub",
+            icon: "Check",
+            compactIconUrl: "/github.svg",
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
     const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
     const { promptBoxRef } = renderPromptBox("@fix", {
       mentionSuggestions: [suggestion],

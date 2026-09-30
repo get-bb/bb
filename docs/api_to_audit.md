@@ -2385,7 +2385,7 @@ and inert actions.
 
 `experimental_useSidebarNavigationSplit(id)` mirrors
 `experimental_useSidebarThreadSplit`. `experimental_SidebarNavigationIcon`
-renders bb's glyphs for its own items and plugin branding for panels.
+renders bb's glyphs for its own items and explicit panel icons with plugin branding as fallback.
 
 **Audit before stabilizing.**
 
@@ -3419,6 +3419,19 @@ Missing references try the fallback, then the built-in `Zap`. Recursive
 components terminate at the underlying built-in or `Zap`; throwing components
 are contained and recover when their registration is replaced. Mounted icons
 subscribe to changes in their requested and fallback definitions.
+
+Per-item icon precedence changed in #4443: resolved explicit names win over
+plugin branding for mentions, message actions (including text selection), nav
+panels and fixed tabs, thread/new-thread panel launchers and their opened tabs,
+and legacy sidebar-footer actions. Unknown or omitted names fall back to
+branding, then `Zap`. This changes the documented branding-first behavior of
+`threadPanelAction`, `experimental_newThreadPanelAction`, and
+`sidebarFooterAction`; plugins that depended on their hints being hidden now
+show those hints. Omit optional icons or use the branding glyph explicitly to
+retain that appearance. Plugin identity surfaces (Tools, Settings, and plugin
+detail tabs) remain branding-first. No new API fields or wire changes are
+introduced. Verify icon precedence and load/unload fallback across these
+surfaces before stabilizing the icon API.
 
 This is an app registry, independent of all manifest branding and declared SVG
 asset contracts. It adds no server/daemon wire fields, persisted icon definitions,

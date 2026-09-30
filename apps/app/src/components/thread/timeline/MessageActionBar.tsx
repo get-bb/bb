@@ -30,7 +30,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 
 function PluginActionIcon({
@@ -49,7 +49,7 @@ function PluginActionIcon({
       aria-hidden="true"
     />
   ) : (
-    <PluginIcon pluginId={pluginId} icon={icon} className={className} />
+    <PluginItemIcon pluginId={pluginId} icon={icon} className={className} />
   );
 }
 
@@ -640,10 +640,7 @@ export function MessageActionBar({
         ref={desktopSlotRef}
         className={cn(slotClass, "h-5 max-md:pointer-coarse:h-7")}
       >
-        <div
-          className={rowClass}
-          data-menu-open={isMenuOpen ? "" : undefined}
-        >
+        <div className={rowClass} data-menu-open={isMenuOpen ? "" : undefined}>
           {actions.slice(0, layout.inlineCount).map((action) => (
             <DesktopMessageAction
               key={action.key ?? action.label}

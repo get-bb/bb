@@ -260,7 +260,7 @@ describe("PluginSidebarFooterItems", () => {
     ]);
   });
 
-  it("prefers branding.icon over the logo and contribution icon", () => {
+  it("prefers the footer action icon over plugin branding", () => {
     setPluginLogoUrls(
       new Map([
         [
@@ -295,8 +295,8 @@ describe("PluginSidebarFooterItems", () => {
     expect(screen.getByRole("button", { name: "Remote" }).dataset.testid).toBe(
       "plugin-sidebar-footer-action-remote-open",
     );
-    expect(document.querySelector('[data-icon="FileText"]')).not.toBeNull();
-    expect(document.querySelector('[data-icon="Smartphone"]')).toBeNull();
+    expect(document.querySelector('[data-icon="FileText"]')).toBeNull();
+    expect(document.querySelector('[data-icon="Smartphone"]')).not.toBeNull();
     expect(document.querySelector("img")).toBeNull();
   });
 
