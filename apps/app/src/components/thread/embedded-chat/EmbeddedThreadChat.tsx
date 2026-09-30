@@ -1,3 +1,5 @@
+import { captureComposerCustomOptions } from "@/lib/composer-custom-options";
+import type { ComposerHostSubmitOptions } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
@@ -11,11 +13,7 @@ import {
 } from "react";
 import { defaultAppSettings, type PromptInput } from "@bb/domain";
 import type { SendMessageDelivery } from "@bb/server-contract";
-import type {
-  ComposerSelection,
-  ComposerSubmitOptions,
-  JsonValue,
-} from "@get-bb/plugin-sdk";
+import type { ComposerSelection, JsonValue } from "@get-bb/plugin-sdk";
 import { readExecutionSelection } from "@/components/promptbox/composer-selection-settle";
 import type {
   AttachmentsConfig,
@@ -432,12 +430,16 @@ function EmbeddedThreadChatWithComposer({
   );
 
   const defaultSendOrQueueInput = useCallback(
-    async (input: PromptInput[]) => {
+    async (
+      input: PromptInput[],
+      customOptionsByPlugin: import("@bb/domain").CustomOptionsByPlugin,
+    ) => {
       if (shouldQueueFollowUpMessage(displayStatus)) {
         await createQueuedMessage.mutateAsync({
           id: threadId,
           input,
           ...executionRequestFields,
+          experimental_customOptionsByPlugin: customOptionsByPlugin,
         });
         return;
       }
@@ -445,6 +447,7 @@ function EmbeddedThreadChatWithComposer({
         id: threadId,
         input,
         mode: "queue-if-active",
+        experimental_customOptionsByPlugin: customOptionsByPlugin,
         ...executionRequestFields,
       });
       reportQueuedSendDelivery(result.delivery);
@@ -459,7 +462,7 @@ function EmbeddedThreadChatWithComposer({
   );
   const submitProgrammatically = useCallback(
     async (
-      options: ComposerSubmitOptions,
+      options: ComposerHostSubmitOptions,
       pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
     ) => {
       const submittedDraft = promptDraft.getCurrent();
@@ -477,6 +480,10 @@ function EmbeddedThreadChatWithComposer({
           input,
           mode: "queue-if-active",
           ...executionRequestFields,
+          experimental_customOptionsByPlugin: captureComposerCustomOptions(
+            submittedDraft,
+            options,
+          ),
           ...(options.sendAt === undefined ? {} : { sendAt: options.sendAt }),
           ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
         });
@@ -516,7 +523,10 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
-    void defaultSendOrQueueInput(submittedInput)
+    void defaultSendOrQueueInput(
+      submittedInput,
+      captureComposerCustomOptions(submittedDraft),
+    )
       .catch((error) => {
         if (!isMountedRef.current) {
           return;
@@ -739,8 +749,10 @@ function EmbeddedThreadChatWithComposer({
       selectedProviderId,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(bottomComposerHostIdentity, bottomSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    bottomComposerHostIdentity,
+    bottomSelection,
+  );
   const queuedSelection = useMemo(
     () =>
       inlineEditingQueuedMessage

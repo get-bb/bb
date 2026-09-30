@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  customOptionsByPluginSchema,
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
   completedTurnDisplaySchema,
@@ -119,6 +120,7 @@ export const createThreadRequestSchema = z
      * created and creation runs exactly as it did before the queue existed.
      */
     sendAt: z.number().int().nonnegative().optional(),
+    experimental_customOptionsByPlugin: customOptionsByPluginSchema.optional(),
     pluginSubmission: z
       .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
       .optional(),
@@ -180,6 +182,7 @@ const agentOnlyPromptInputSchema = promptInputSchema.and(
 
 export const forkThreadRequestSchema = z
   .object({
+    experimental_customOptionsByPlugin: customOptionsByPluginSchema.optional(),
     sourceThreadId: z.string().min(1),
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     input: z.array(promptInputSchema).min(1).optional(),
@@ -240,6 +243,7 @@ const sendMessageRequestFieldsSchema = z.object({
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
+  experimental_customOptionsByPlugin: customOptionsByPluginSchema.optional(),
   pluginSubmission: z
     .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
     .optional(),
@@ -284,7 +288,12 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestFieldsSchema
-  .omit({ mode: true, sendAt: true, pluginSubmission: true })
+  .omit({
+    mode: true,
+    sendAt: true,
+    pluginSubmission: true,
+    experimental_customOptionsByPlugin: true,
+  })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -362,6 +371,7 @@ export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
 
 export const createQueuedMessageRequestSchema = z.object({
+  experimental_customOptionsByPlugin: customOptionsByPluginSchema.optional(),
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),

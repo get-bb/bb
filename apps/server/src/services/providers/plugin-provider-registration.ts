@@ -1,3 +1,4 @@
+import { snapshotCustomOptions } from "@bb/domain";
 import {
   EMPTY_PROVIDER_NATIVE_ROOTS,
   isNamespacedGlyph,
@@ -232,7 +233,13 @@ export function buildPluginProviderRegistration(args: {
     deriveProviderOptions: (context) =>
       deriveValidatedProviderOptions({
         declaration,
-        context: { ...context, settings: args.readSettings() },
+        context: {
+          ...context,
+          experimental_customOptions: snapshotCustomOptions(
+            context.experimental_customOptions ?? {},
+          ),
+          settings: args.readSettings(),
+        },
       }),
   };
 }

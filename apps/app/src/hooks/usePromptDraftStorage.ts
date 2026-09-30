@@ -193,7 +193,11 @@ function writePromptDraft(
 
   promptDraftCache.set(storageKey, {
     rawValue: null,
-    draft: isPromptDraftEmpty(value) ? EMPTY_PROMPT_DRAFT : value,
+    draft:
+      isPromptDraftEmpty(value) &&
+      Object.keys(value.customOptionsByPlugin ?? {}).length === 0
+        ? EMPTY_PROMPT_DRAFT
+        : value,
   });
   if (options.persist === "deferred") {
     schedulePromptDraftPersist(storageKey);
@@ -219,7 +223,10 @@ function restorePromptDraftIfEmpty(
     return false;
   }
 
-  writePromptDraft(storageKey, value);
+  writePromptDraft(storageKey, {
+    ...value,
+    customOptionsByPlugin: readPromptDraft(storageKey).customOptionsByPlugin,
+  });
   return true;
 }
 
@@ -332,8 +339,11 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const clear = useCallback(() => {
-    setDraftAndPersist(EMPTY_PROMPT_DRAFT);
-  }, [setDraftAndPersist]);
+    setDraftAndPersist({
+      ...EMPTY_PROMPT_DRAFT,
+      customOptionsByPlugin: readPromptDraft(storageKey).customOptionsByPlugin,
+    });
+  }, [setDraftAndPersist, storageKey]);
 
   const clearIfCurrentMatches = useCallback(
     (expectedDraft: PromptDraftState): boolean => {
@@ -343,7 +353,11 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         return false;
       }
 
-      setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+      setDraftAndPersist({
+        ...EMPTY_PROMPT_DRAFT,
+        customOptionsByPlugin:
+          readPromptDraft(storageKey).customOptionsByPlugin,
+      });
       return true;
     },
     [setDraftAndPersist, storageKey],
@@ -371,6 +385,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       storageKey,
       getCurrent,
       subscribe,
+      customOptionsByPlugin: draft.customOptionsByPlugin,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
@@ -388,6 +403,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       addAttachment,
       clear,
       clearIfCurrentMatches,
+      draft.customOptionsByPlugin,
       draft.attachments,
       draft.mentions,
       draft.text,

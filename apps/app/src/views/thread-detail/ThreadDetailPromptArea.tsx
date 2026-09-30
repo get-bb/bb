@@ -1,3 +1,5 @@
+import { captureComposerCustomOptions } from "@/lib/composer-custom-options";
+import type { ComposerHostSubmitOptions } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
@@ -39,10 +41,7 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import type {
-  ExperimentalComposerSelection,
-  ExperimentalComposerSubmitOptions,
-} from "@get-bb/plugin-sdk";
+import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
   readExecutionSelection,
@@ -962,13 +961,13 @@ export function ThreadDetailPromptArea({
   );
   const submitProgrammaticallyRef = useRef<
     (
-      options: ExperimentalComposerSubmitOptions,
+      options: ComposerHostSubmitOptions,
       pluginSubmission: SendMessageRequest["pluginSubmission"],
     ) => Promise<void>
   >(async () => {});
   const submitProgrammaticallyThroughRef = useCallback(
     (
-      options: ExperimentalComposerSubmitOptions,
+      options: ComposerHostSubmitOptions,
       pluginSubmission: SendMessageRequest["pluginSubmission"],
     ) => submitProgrammaticallyRef.current(options, pluginSubmission),
     [],
@@ -1015,8 +1014,10 @@ export function ThreadDetailPromptArea({
       supportsServiceTier,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(promptDraft.storageKey, composerSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    promptDraft.storageKey,
+    composerSelection,
+  );
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
     async (
@@ -1161,6 +1162,7 @@ export function ThreadDetailPromptArea({
       submittedDraft: PromptDraftState,
       sendAt?: number,
       pluginSubmission?: SendMessageRequest["pluginSubmission"],
+      submitOptions?: ComposerHostSubmitOptions,
     ) => {
       const baseRequest = buildThreadHandoffCreateRequest({
         execution: {
@@ -1180,6 +1182,11 @@ export function ThreadDetailPromptArea({
       }
       const request = {
         ...baseRequest,
+        experimental_customOptionsByPlugin: captureComposerCustomOptions(
+          submittedDraft,
+          submitOptions,
+        ),
+        composerCustomOptionsByPlugin: submittedDraft.customOptionsByPlugin,
         ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
       };
       const clearedSubmittedDraft =
@@ -1244,7 +1251,11 @@ export function ThreadDetailPromptArea({
           execution: followUpExecutionSelection,
         });
         if (request) {
-          await createQueuedMessage.mutateAsync(request);
+          await createQueuedMessage.mutateAsync({
+            ...request,
+            experimental_customOptionsByPlugin:
+              submittedDraft.customOptionsByPlugin ?? {},
+          });
         }
       } else {
         const request = buildAutoFollowUpRequest({
@@ -1253,7 +1264,11 @@ export function ThreadDetailPromptArea({
           execution: followUpExecutionSelection,
         });
         if (request) {
-          await sendMessage.mutateAsync(request);
+          await sendMessage.mutateAsync({
+            ...request,
+            experimental_customOptionsByPlugin:
+              submittedDraft.customOptionsByPlugin ?? {},
+          });
         }
       }
     } catch (nextError) {
@@ -1282,7 +1297,7 @@ export function ThreadDetailPromptArea({
   ]);
   const submitProgrammatically = useCallback(
     async (
-      submitOptions: ExperimentalComposerSubmitOptions,
+      submitOptions: ComposerHostSubmitOptions,
       pluginSubmission: SendMessageRequest["pluginSubmission"],
     ) => {
       if (shouldHideComposer) throw new Error("This thread is read-only.");
@@ -1296,6 +1311,7 @@ export function ThreadDetailPromptArea({
             promptDraft.getCurrent(),
             submitOptions.sendAt,
             pluginSubmission,
+            submitOptions,
           );
         } catch (submitError) {
           throw new Error(
@@ -1329,6 +1345,10 @@ export function ThreadDetailPromptArea({
       try {
         await sendMessage.mutateAsync({
           ...request,
+          experimental_customOptionsByPlugin: captureComposerCustomOptions(
+            submittedDraft,
+            submitOptions,
+          ),
           ...(submitOptions.sendAt === undefined
             ? {}
             : { sendAt: submitOptions.sendAt }),
@@ -1388,7 +1408,11 @@ export function ThreadDetailPromptArea({
         setIsFollowUpShortcutSending,
         async () => {
           try {
-            await sendMessage.mutateAsync(shortcutRequest.request);
+            await sendMessage.mutateAsync({
+              ...shortcutRequest.request,
+              experimental_customOptionsByPlugin:
+                submittedDraft.customOptionsByPlugin ?? {},
+            });
           } catch (nextError) {
             promptDraft.restoreIfEmpty(submittedDraft);
             showMutationErrorToast({

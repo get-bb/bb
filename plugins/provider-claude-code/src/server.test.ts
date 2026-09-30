@@ -28,6 +28,7 @@ function providerOptions(
     projectId: "project-1",
     model: "claude-sonnet-5",
     permissionMode: "accept-edits",
+    experimental_customOptions: {},
     settings,
   });
 }

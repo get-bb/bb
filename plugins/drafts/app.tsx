@@ -18,7 +18,7 @@ const saveDraft: ComposerSendMenuItem = {
       return;
     }
     try {
-      await composer.submit({ experimental_data: { kind: "draft" } });
+      await composer.submit({ experimental_customOptions: { kind: "draft" } });
       toast.success("Draft saved");
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : String(error));

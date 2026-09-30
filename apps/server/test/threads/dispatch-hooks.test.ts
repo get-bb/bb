@@ -206,7 +206,10 @@ describe("message.dispatch hook context", () => {
           {
             pluginId: "drafts",
             handler: (context) => {
-              seen.push(context.experimental_submission);
+              seen.push([
+                context.experimental_submission,
+                context.experimental_customOptions,
+              ]);
               return { action: "proceed" };
             },
           },
@@ -228,6 +231,7 @@ describe("message.dispatch hook context", () => {
           workspace: { type: "unmanaged", path: WORKSPACE_PATH },
         },
         input: textInput("new thread draft"),
+        experimental_customOptionsByPlugin: { drafts: { mode: "research" } },
         origin: "app",
         pluginSubmission,
         projectId: project.id,
@@ -235,7 +239,7 @@ describe("message.dispatch hook context", () => {
         startedOnBehalfOf: null,
       });
 
-      expect(seen).toEqual([pluginSubmission]);
+      expect(seen).toEqual([[pluginSubmission, { mode: "research" }]]);
     });
   });
 
@@ -1223,6 +1227,52 @@ describe("message.dispatch grouped authors", () => {
 });
 
 describe("message.dispatch hooks on the queue drain", () => {
+  it("persists per-plugin snapshots across queue attempts and isolates hook reads", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: unknown[] = [];
+      const registry = emptyRegistry();
+      for (const pluginId of ["research", "other"])
+        registry["message.dispatch"].push({
+          pluginId,
+          handler: (context) => {
+            seen.push([pluginId, context.experimental_customOptions]);
+            expect(Object.isFrozen(context.experimental_customOptions)).toBe(
+              true,
+            );
+            return { action: "wait", reason: "Inspect later" };
+          },
+        });
+      installHooks(registry);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-custom-options",
+        status: "idle",
+      });
+      const options = {
+        research: { mode: "research" },
+        other: { mode: "other" },
+      };
+      await acceptThreadSendRequest(harness.deps, {
+        thread,
+        payload: {
+          input: textInput("research"),
+          mode: "auto",
+          experimental_customOptionsByPlugin: options,
+        },
+      });
+      options.research.mode = "review";
+      expect(
+        onlyQueuedRow(harness, thread.id).experimental_customOptionsByPlugin,
+      ).toEqual({ research: { mode: "research" }, other: { mode: "other" } });
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+      expect(seen).toEqual([
+        ["research", { mode: "research" }],
+        ["other", { mode: "other" }],
+        ["research", { mode: "research" }],
+        ["other", { mode: "other" }],
+      ]);
+    });
+  });
+
   it("uses the durable plugin wait after submission data expires", async () => {
     await withTestHarness(async (harness) => {
       const seen: unknown[] = [];

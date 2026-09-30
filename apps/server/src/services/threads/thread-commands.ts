@@ -1,3 +1,4 @@
+import { customOptionsForPlugin } from "@bb/domain";
 import { environments, events, threads } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
@@ -48,7 +49,9 @@ import {
   resolveBridgeLaunchForProviderId,
 } from "../system/provider-bridge-launch.js";
 
-type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
+type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest & {
+  experimental_customOptionsByPlugin?: import("@bb/domain").CustomOptionsByPlugin;
+};
 
 export interface ThreadStopCommandArgs {
   environmentId: string;
@@ -202,8 +205,13 @@ function toRuntimeExecutionOptions(
     input: args.input,
     providerId: args.providerId,
   });
+  const provider = args.deps.providerRegistry.get(args.providerId);
   const providerOptions =
-    args.deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
+    provider?.deriveProviderOptions({
+      experimental_customOptions: customOptionsForPlugin(
+        args.execution.experimental_customOptionsByPlugin,
+        provider.pluginId,
+      ),
       threadId: args.threadId,
       projectId: args.projectId,
       model: args.execution.model,
@@ -258,7 +266,11 @@ export async function buildExecutionOptions(
     input: buildExistingThreadExecutionInput(request),
     threadId: args.threadId,
   });
-  return plan.resolvedExecution;
+  return {
+    ...plan.resolvedExecution,
+    experimental_customOptionsByPlugin:
+      request.experimental_customOptionsByPlugin ?? {},
+  };
 }
 
 export async function buildThreadStartCommand(

@@ -1,3 +1,4 @@
+import type { ComposerHostSubmitOptions } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   createContext,
   useCallback,
@@ -12,7 +13,6 @@ import {
 } from "react";
 import type {
   ComposerSelection,
-  ComposerSubmitOptions,
   ComposerView,
   JsonValue,
   PluginComposerScope,
@@ -31,7 +31,7 @@ export interface PluginComposerHost {
   isAvailable?(): boolean;
   focus(): void;
   submit?(
-    options: ComposerSubmitOptions,
+    options: ComposerHostSubmitOptions,
     pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
   ): Promise<void>;
   setSelection?(selection: ComposerSelection): Promise<ComposerSelection>;

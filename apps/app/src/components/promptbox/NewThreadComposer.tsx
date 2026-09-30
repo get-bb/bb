@@ -1,3 +1,5 @@
+import { captureComposerCustomOptions } from "@/lib/composer-custom-options";
+import type { ComposerHostSubmitOptions } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import { usePendingAttachmentUploads } from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
@@ -59,7 +61,6 @@ import {
   type PluginComposerHost,
   useComposerHostSelection,
 } from "@/components/plugin/plugin-composer-host";
-import type { ExperimentalComposerSubmitOptions } from "@get-bb/plugin-sdk";
 import {
   readExecutionSelection,
   resolveComposerSelectionDeadline,
@@ -250,6 +251,8 @@ export function resolveSubmittedExecutionSources(
 }
 
 export interface NewThreadComposerSubmission extends NewThreadRequest {
+  composerCustomOptionsByPlugin?: import("@bb/domain").CustomOptionsByPlugin;
+  experimental_customOptionsByPlugin?: CreateThreadRequest["experimental_customOptionsByPlugin"];
   pluginSubmission?: CreateThreadRequest["pluginSubmission"];
   sendAt?: number;
 }
@@ -1521,13 +1524,13 @@ export function NewThreadComposer({
   );
   const submitProgrammaticallyRef = useRef<
     (
-      options: ExperimentalComposerSubmitOptions,
+      options: ComposerHostSubmitOptions,
       pluginSubmission: NewThreadComposerSubmission["pluginSubmission"],
     ) => Promise<void>
   >(async () => {});
   const submitProgrammaticallyThroughRef = useCallback(
     (
-      options: ExperimentalComposerSubmitOptions,
+      options: ComposerHostSubmitOptions,
       pluginSubmission: NewThreadComposerSubmission["pluginSubmission"],
     ) => submitProgrammaticallyRef.current(options, pluginSubmission),
     [],
@@ -1584,7 +1587,7 @@ export function NewThreadComposer({
   const submitDraft = useCallback(
     async (
       blockedReason: string | null,
-      submitOptions: ExperimentalComposerSubmitOptions | null,
+      submitOptions: ComposerHostSubmitOptions | null,
       pluginSubmission?: NewThreadComposerSubmission["pluginSubmission"],
     ) => {
       const submittedDraft = promptDraft.getCurrent();
@@ -1612,6 +1615,16 @@ export function NewThreadComposer({
         ...seededExecutionInputSources,
       };
       const request: NewThreadComposerSubmission = {
+        ...(submittedDraft.customOptionsByPlugin === undefined
+          ? {}
+          : {
+              composerCustomOptionsByPlugin:
+                submittedDraft.customOptionsByPlugin,
+            }),
+        experimental_customOptionsByPlugin: captureComposerCustomOptions(
+          submittedDraft,
+          submitOptions,
+        ),
         projectId,
         providerId: selectedProviderId,
         model: selectedThreadModel,
@@ -1767,8 +1780,10 @@ export function NewThreadComposer({
       supportsServiceTier,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(promptDraft.storageKey, composerSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    promptDraft.storageKey,
+    composerSelection,
+  );
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
     async (

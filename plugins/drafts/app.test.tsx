@@ -46,7 +46,9 @@ describe("saving", () => {
         },
       }),
     });
-    expect(submits).toEqual([{ experimental_data: { kind: "draft" } }]);
+    expect(submits).toEqual([
+      { experimental_customOptions: { kind: "draft" } },
+    ]);
   });
 
   it("does not submit an empty draft", async () => {

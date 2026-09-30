@@ -1,3 +1,4 @@
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -158,6 +159,39 @@ afterEach(() => {
 });
 
 describe("thread runtime mutations", () => {
+  it("carries persistent options into a new composer without carrying one-submit overrides", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const thread = makeThreadResponse({ id: "thread-custom-options" });
+    vi.mocked(sdk.threads.spawn).mockResolvedValueOnce(thread);
+    const { result } = renderHook(() => useCreateThread(), { wrapper });
+    const persistent = { research: { mode: "research" } };
+    const submitted = { ...persistent, drafts: { kind: "draft" } };
+    await act(async () => {
+      await result.current.mutateAsync({
+        projectId: thread.projectId,
+        environment: { type: "project-default" },
+        input: [{ type: "text", text: "Research", mentions: [] }],
+        experimental_customOptionsByPlugin: submitted,
+        composerCustomOptionsByPlugin: persistent,
+      });
+    });
+    expect(sdk.threads.spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        experimental_customOptionsByPlugin: submitted,
+      }),
+    );
+    expect(vi.mocked(sdk.threads.spawn).mock.calls[0]?.[0]).not.toHaveProperty(
+      "composerCustomOptionsByPlugin",
+    );
+    expect(
+      getPromptDraftAccessor({
+        kind: "thread",
+        projectId: thread.projectId,
+        threadId: thread.id,
+      }).getCurrent().customOptionsByPlugin,
+    ).toEqual(persistent);
+  });
+
   it("prefetches queued message detail as soon as a queued thread is created", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(() => useCreateThread(), { wrapper });

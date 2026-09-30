@@ -17,6 +17,10 @@ import {
 } from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import {
+  customOptionsForPlugin,
+  customOptionsByPluginSchema,
+  snapshotCustomOptions,
+  deepFreezePluginMetadata,
   permissionModeSchema,
   reasoningLevelSchema,
   serviceTierSchema,
@@ -207,6 +211,26 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
     scope: source.scope,
     getAttachmentCount: () => source.getCurrent().attachments.length,
     getSelection: () => source.getSelection?.() ?? null,
+    getCustomOptions: (pluginId) =>
+      deepFreezePluginMetadata(
+        customOptionsForPlugin(
+          source.getCurrent().customOptionsByPlugin,
+          pluginId,
+        ),
+      ),
+    setCustomOptions: (pluginId, options) => {
+      if (source.scope.kind === "queued-message")
+        throw new Error(
+          "Custom options cannot be changed while editing a queued message.",
+        );
+      const current = source.getCurrent();
+      const next = { ...current.customOptionsByPlugin };
+      const snapshot = snapshotCustomOptions(options);
+      if (Object.keys(snapshot).length === 0) delete next[pluginId];
+      else next[pluginId] = snapshot;
+      customOptionsByPluginSchema.parse(next);
+      source.setDraft({ ...current, customOptionsByPlugin: next });
+    },
     addQuote: (text) => {
       const current = source.getCurrent();
       const next = appendQuoteAndAttachmentsToDraft(current, text, []);

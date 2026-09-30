@@ -104,6 +104,9 @@ it.each([false, true])(
         .all();
       expect(queueBefore).toHaveLength(alreadyMigrated ? 2 : 5);
 
+      db.$client.exec(
+        "ALTER TABLE queued_thread_messages DROP COLUMN custom_options_json",
+      );
       migrate(db);
       migrate(db);
 

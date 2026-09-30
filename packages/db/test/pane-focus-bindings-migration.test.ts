@@ -40,8 +40,11 @@ const custom: AppKeybindingOverrides = [
 function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   const db = createConnection(":memory:");
   migrate(db);
+  db.$client.exec(
+    "ALTER TABLE queued_thread_messages DROP COLUMN custom_options_json",
+  );
   db.$client
-    .prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?")
+    .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(migrationTimestamp);
   if (overrides !== undefined) setAppKeybindingOverrides(db, overrides);
   return db;

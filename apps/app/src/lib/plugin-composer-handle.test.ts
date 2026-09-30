@@ -1,3 +1,4 @@
+import { captureComposerCustomOptions } from "./composer-custom-options";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PromptTextMention } from "@bb/domain";
@@ -149,6 +150,45 @@ const emptyDraft: PromptDraftState = {
 };
 
 describe("composer handle", () => {
+  it("replaces only the caller’s options and captures a detached submission snapshot", async () => {
+    const { target, current } = makeTarget({
+      text: "hello",
+      mentions: [],
+      attachments: [],
+    });
+    const first = makeHandle(target, "first").handle;
+    const second = makeHandle(target, "second").handle;
+    expect(
+      makeHandle(target, "constructor").handle.experimental_customOptions,
+    ).toEqual({});
+    const options = { nested: { mode: "research" }, removed: true };
+    first.experimental_setCustomOptions(options);
+    second.experimental_setCustomOptions({ mode: "other" });
+    options.nested.mode = "mutated";
+    expect(first.experimental_customOptions).toEqual({
+      nested: { mode: "research" },
+      removed: true,
+    });
+    const captured = captureComposerCustomOptions(current());
+    first.experimental_setCustomOptions({ mode: "review" });
+    expect(captured.first).toEqual({
+      nested: { mode: "research" },
+      removed: true,
+    });
+    expect(first.experimental_customOptions).toEqual({ mode: "review" });
+    first.experimental_setCustomOptions({});
+    expect(first.experimental_customOptions).toEqual({});
+    expect(second.experimental_customOptions).toEqual({ mode: "other" });
+    const oneShot = captureComposerCustomOptions(current(), {
+      customOptionsOverride: { pluginId: "first", options: { draft: true } },
+    });
+    expect(oneShot).toEqual({
+      first: { draft: true },
+      second: { mode: "other" },
+    });
+    expect(first.experimental_customOptions).toEqual({});
+  });
+
   it("round-trips every mention kind from draft through insert", () => {
     const source = makeTarget({
       text: "x".repeat(44),

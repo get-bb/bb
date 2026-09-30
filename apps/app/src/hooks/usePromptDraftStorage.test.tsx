@@ -1,9 +1,7 @@
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 // @vitest-environment jsdom
 
-import {
-  createCoreComposerActions,
-} from "@/lib/plugin-composer-handle";
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -39,6 +37,36 @@ afterEach(() => {
 });
 
 describe("usePromptDraftStorage", () => {
+  it("persists options without text and preserves newer choices when restoring a failed send", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+    const submitted = {
+      text: "research this",
+      mentions: [],
+      attachments: [],
+      customOptionsByPlugin: { research: { mode: "research" } },
+    };
+    act(() => result.current.setDraft(submitted));
+    act(() => {
+      expect(result.current.clearIfCurrentMatches(submitted)).toBe(true);
+    });
+    expect(result.current.text).toBe("");
+    expect(
+      JSON.parse(window.localStorage.getItem(result.current.storageKey)!),
+    ).toMatchObject({ customOptionsByPlugin: submitted.customOptionsByPlugin });
+    act(() =>
+      result.current.setDraft({
+        ...result.current.getCurrent(),
+        customOptionsByPlugin: { research: { mode: "review" } },
+      }),
+    );
+    act(() => result.current.restoreIfEmpty(submitted));
+    expect(result.current.getCurrent()).toMatchObject({
+      text: "research this",
+      customOptionsByPlugin: { research: { mode: "review" } },
+    });
+  });
+
   it("keeps deferred text writes readable and serializes at the persist boundary", () => {
     vi.useFakeTimers();
     const scope = uniqueScope();
@@ -281,7 +309,9 @@ function addQuote(
   attachments?: Parameters<typeof appendQuoteAndAttachmentsToDraft>[2],
 ) {
   const composer = createCoreComposerActions({ ...source, focus: () => {} });
-  composer.replace((current) => appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []));
+  composer.replace((current) =>
+    appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
+  );
 }
 
 describe("composer quote persistence", () => {

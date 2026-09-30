@@ -1,3 +1,4 @@
+import { parseCustomOptions } from "./custom-options.js";
 import { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import {
@@ -89,6 +90,7 @@ interface ThreadTellCommandOptions {
   plan?: boolean;
   file?: string[];
   image?: string[];
+  customOptions?: string;
   sendAt?: string;
 }
 
@@ -128,6 +130,7 @@ interface PostThreadMessageArgs {
   plan?: boolean;
   files?: readonly string[];
   images?: readonly string[];
+  customOptionsByPlugin?: import("@bb/domain").CustomOptionsByPlugin;
   sendAt?: number;
 }
 
@@ -498,6 +501,7 @@ export function registerActionsCommands(
       "--mode <mode>",
       "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
     )
+    .option("--custom-options <json>", "Submission options keyed by plugin ID")
     .option("--send-at <when>", SEND_AT_HELP)
     .option("--plan", PLAN_HELP)
     .option(
@@ -529,6 +533,7 @@ export function registerActionsCommands(
             getUrl,
             threadId: id,
             message,
+            customOptionsByPlugin: parseCustomOptions(opts.customOptions),
             mode: resolveThreadMessageMode(opts.mode),
             model: opts.model,
             permissionMode: parsePermissionMode(opts.permissionMode),
@@ -648,6 +653,7 @@ async function postThreadMessage(
   let response: ThreadSendResult;
   try {
     response = await sdk.threads.send({
+      experimental_customOptionsByPlugin: args.customOptionsByPlugin,
       threadId: args.threadId,
       input,
       mode:

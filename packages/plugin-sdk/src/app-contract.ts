@@ -27,7 +27,7 @@ import type {
   ThreadPluginMetadataResult,
   ThreadPluginMetadataUpdateArgs,
 } from "@bb/sdk";
-import type { JsonValue } from "./json-value.js";
+import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
   PluginRpcContract,
@@ -2576,6 +2576,12 @@ export interface PluginComposerApi {
   readonly draft: ComposerDraftSnapshot;
   /** Current picker values, or null when this composer has no pickers. Stable until a picker value changes. */
   readonly selection: ComposerSelection | null;
+  /** This plugin’s reactive JSON options. Captured separately for every submission. */
+  readonly experimental_customOptions: Readonly<
+    Record<string, ReadonlyJsonValue>
+  >;
+  /** Replace this plugin’s options. Omitted keys disappear; an empty object clears them. */
+  experimental_setCustomOptions(options: Record<string, JsonValue>): void;
   /**
    * Replace text and mentions together in one committed change. An updater
    * receives the latest immutable snapshot, including attachments, and must
@@ -2772,9 +2778,12 @@ export interface ComposerSelection {
  * associates it with the calling plugin automatically for the initial
  * dispatch attempt.
  */
-export type ComposerSubmitOptions =
-  | { sendAt: number; experimental_data?: JsonValue }
-  | { experimental_data: JsonValue; sendAt?: never };
+export interface ComposerSubmitOptions {
+  sendAt?: number;
+  experimental_data?: JsonValue;
+  /** Replace this plugin’s options for this submission only. Does not change the composer. */
+  experimental_customOptions?: Record<string, JsonValue>;
+}
 
 /** @internal Old name of {@link ComposerSelection}. */
 export type ExperimentalComposerSelection = ComposerSelection;

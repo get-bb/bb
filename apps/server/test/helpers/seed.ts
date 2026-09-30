@@ -357,6 +357,7 @@ export function seedThreadIdentity(
 export function seedThreadRuntimeState(
   deps: Pick<AppDeps, "db" | "hub">,
   args: {
+    customOptionsByPlugin?: import("@bb/domain").CustomOptionsByPlugin;
     environmentId: string | null;
     inputText?: string;
     model?: string;
@@ -396,6 +397,7 @@ export function seedThreadRuntimeState(
       ],
       target: { kind: "new-turn" },
       execution: {
+        experimental_customOptionsByPlugin: args.customOptionsByPlugin,
         model: args.model ?? "gpt-5",
         serviceTier: args.serviceTier ?? "default",
         reasoningLevel: args.reasoningLevel ?? "medium",

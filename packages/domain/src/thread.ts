@@ -1,3 +1,4 @@
+import { customOptionsByPluginSchema } from "./custom-options.js";
 import { z } from "zod";
 import { threadCreateOriginSchema } from "./thread-create-origin.js";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
@@ -376,6 +377,7 @@ export const threadQueuedMessageSchema = z.object({
    * failure stored there would not survive the next attempt.
    */
   failureReason: queuedMessageFailureReasonSchema.nullable(),
+  experimental_customOptionsByPlugin: customOptionsByPluginSchema.optional(),
   payload: queuedMessagePayloadSchema,
   /**
    * Whether the sender may still rewrite this row's input. Not derivable from

@@ -1,3 +1,4 @@
+import { customOptionsByPluginSchema } from "@bb/domain";
 import {
   promptInputSchema,
   queuedMessageWaitingOnSchema,
@@ -23,6 +24,7 @@ interface StoredQueuedThreadMessageRow {
   originPluginId: string | null;
   claimedAt: number | null;
   content: string;
+  customOptionsJson: string;
   createdAt: number;
   failureReason: string | null;
   id: string;
@@ -175,6 +177,9 @@ export function toThreadQueuedMessage(
     senderThreadId: author.senderThreadId,
     threadId: row.threadId,
     content: parseStoredQueuedThreadMessageContent(row),
+    experimental_customOptionsByPlugin: customOptionsByPluginSchema.parse(
+      JSON.parse(row.customOptionsJson),
+    ),
     model: row.model,
     reasoningLevel: row.reasoningLevel,
     permissionMode: row.permissionMode,

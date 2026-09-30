@@ -1,3 +1,4 @@
+import { customOptionsByPluginSchema } from "./custom-options.js";
 import { z } from "zod";
 import { jsonObjectSchema } from "./json-value.js";
 
@@ -461,6 +462,7 @@ export type CallerExecutionInputSource = z.infer<
 >;
 
 const threadExecutionOptionsSchema = z.object({
+  experimental_customOptionsByPlugin: customOptionsByPluginSchema.optional(),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),

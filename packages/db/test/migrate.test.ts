@@ -878,6 +878,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
   for (const name of [
+    "custom_options_json",
     "origin",
     "origin_plugin_id",
     "requested_by_initiator",

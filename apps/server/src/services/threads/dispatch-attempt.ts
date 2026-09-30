@@ -540,6 +540,8 @@ async function runDispatchAttempt(
       startedOnBehalfOf: args.startedOnBehalfOf,
       parentThreadId: thread.parentThreadId,
       queuedMessages: claimed?.map(toThreadQueuedMessage) ?? [],
+      customOptionsByPlugin: execution.experimental_customOptionsByPlugin ?? {},
+      isRetry: args.queuePayload.kind === "retry",
       pluginSubmission: args.pluginSubmission,
       continueAfterHooks: continueThroughCoreWaits,
     });

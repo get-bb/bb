@@ -5,7 +5,9 @@ export type AppCreateThreadRequest = Omit<
   CreateThreadRequest,
   "origin" | "startedOnBehalfOf" | "originKind"
 > &
-  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "originKind">>;
+  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "originKind">> & {
+    composerCustomOptionsByPlugin?: import("@bb/domain").CustomOptionsByPlugin;
+  };
 
 export interface ThreadListFilters {
   projectId?: string;

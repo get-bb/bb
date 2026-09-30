@@ -1,4 +1,8 @@
 import {
+  customOptionsByPluginSchema,
+  type CustomOptionsByPlugin,
+} from "@bb/domain";
+import {
   promptTextMentionSchema,
   type PromptInput,
   type PromptTextMention,
@@ -12,12 +16,14 @@ import { z } from "zod";
 export type PromptDraftAttachment = UploadedPromptAttachment;
 
 export interface PromptDraftState {
+  customOptionsByPlugin?: CustomOptionsByPlugin;
   text: string;
   mentions: PromptTextMention[];
   attachments: PromptDraftAttachment[];
 }
 
 const promptDraftStorageSchema = z.object({
+  customOptionsByPlugin: customOptionsByPluginSchema.optional(),
   text: z.string().default(""),
   mentions: z
     .array(z.unknown())
@@ -144,10 +150,14 @@ export function serializePromptDraftStorage(
   const text = draft.text;
   const mentions = draft.mentions;
   const attachments = draft.attachments;
-  if (isPromptDraftEmpty(draft)) {
+  if (
+    isPromptDraftEmpty(draft) &&
+    Object.keys(draft.customOptionsByPlugin ?? {}).length === 0
+  ) {
     return null;
   }
   return JSON.stringify({
+    customOptionsByPlugin: draft.customOptionsByPlugin,
     text,
     ...(mentions.length > 0 ? { mentions } : {}),
     attachments,

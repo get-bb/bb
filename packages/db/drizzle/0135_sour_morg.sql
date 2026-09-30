@@ -1,0 +1,1 @@
+ALTER TABLE `queued_thread_messages` ADD `custom_options_json` text DEFAULT '{}' NOT NULL;

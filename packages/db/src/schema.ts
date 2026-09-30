@@ -978,6 +978,7 @@ export const queuedThreadMessages = sqliteTable(
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
+    customOptionsJson: text("custom_options_json").notNull().default("{}"),
     senderThreadId: text("sender_thread_id"),
     // How the dispatch this row was queued from was requested, and the plugin
     // that requested it. On the row rather than read from the request, so a

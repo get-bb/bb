@@ -1,3 +1,5 @@
+import { serializeCustomOptions } from "@bb/domain";
+import type { CustomOptionsByPlugin } from "@bb/domain";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -82,6 +84,7 @@ export interface CreateQueuedThreadMessageInput {
    */
   waitingOn: QueuedMessageWaitingOn | null;
   sendAt: number | null;
+  experimental_customOptionsByPlugin?: CustomOptionsByPlugin;
   payload: QueuedMessagePayload;
   /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
@@ -351,7 +354,8 @@ function queuedMessageGroupingEnvelopeMatches(
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
-    queuedMessage.serviceTier === firstQueuedMessage.serviceTier
+    queuedMessage.serviceTier === firstQueuedMessage.serviceTier &&
+    queuedMessage.customOptionsJson === firstQueuedMessage.customOptionsJson
   );
 }
 
@@ -619,6 +623,7 @@ export function createQueuedThreadMessageInTransaction(
       id,
       threadId: input.threadId,
       content: JSON.stringify(input.content),
+      customOptionsJson: serializeCustomOptions(input.experimental_customOptionsByPlugin ?? {}),
       senderThreadId: input.senderThreadId ?? null,
       origin: input.origin ?? null,
       originPluginId: input.originPluginId ?? null,

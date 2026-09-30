@@ -1,3 +1,9 @@
+import {
+  customOptionsForPlugin,
+  snapshotCustomOptions,
+  customOptionsByPluginSchema,
+  type CustomOptionsByPlugin,
+} from "@bb/domain";
 import * as React from "react";
 import {
   createContext,
@@ -2032,6 +2038,7 @@ export function renderSlot<
   const composerIsAvailable = () =>
     composerOwnership.active || composerScope.kind !== "queued-message";
   const submissionListeners = new Set<() => void>();
+  let composerCustomOptions: CustomOptionsByPlugin = {};
   const composerTarget: ComposerHandleTarget = {
     get key() {
       return testComposerKey(composerScope);
@@ -2042,6 +2049,17 @@ export function renderSlot<
     getDraft: composerDraft,
     getAttachmentCount: () => composerAttachmentCount,
     getSelection: () => composerSelection,
+    getCustomOptions: (pluginId) =>
+      customOptionsForPlugin(composerCustomOptions, pluginId),
+    setCustomOptions: (pluginId, options) => {
+      const next = {
+        ...composerCustomOptions,
+        [pluginId]: snapshotCustomOptions(options),
+      };
+      customOptionsByPluginSchema.parse(next);
+      composerCustomOptions = next;
+      notifyComposerListeners();
+    },
     setDraft: (next) => {
       if (next.attachments !== undefined) {
         composerAttachments = [...next.attachments];

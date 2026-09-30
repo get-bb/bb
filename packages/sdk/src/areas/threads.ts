@@ -693,6 +693,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     reasoningLevel: args.reasoningLevel,
     senderThreadId: args.senderThreadId,
     serviceTier: args.serviceTier,
+    experimental_customOptionsByPlugin: args.experimental_customOptionsByPlugin,
     pluginSubmission: args.pluginSubmission,
     executionInputSources: args.executionInputSources,
     // Present ⇒ the message joins the queue waiting for the clock instead

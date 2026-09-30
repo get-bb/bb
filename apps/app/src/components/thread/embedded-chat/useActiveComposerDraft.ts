@@ -40,11 +40,17 @@ export function useActiveComposerDraft({
 
   const currentPromptDraft = useMemo(
     () => ({
+      customOptionsByPlugin: promptDraft.customOptionsByPlugin,
       text: promptDraft.text,
       mentions: promptDraft.mentions,
       attachments: promptDraft.attachments,
     }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+    [
+      promptDraft.customOptionsByPlugin,
+      promptDraft.attachments,
+      promptDraft.mentions,
+      promptDraft.text,
+    ],
   );
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),

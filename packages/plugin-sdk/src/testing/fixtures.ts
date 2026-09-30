@@ -222,6 +222,8 @@ export function makeMessageDispatchHookContext(
     senderThreadId: null,
     queuedMessages: [],
     experimental_submission: null,
+    experimental_customOptions: {},
+    experimental_isRetry: false,
     origin: null,
     originPluginId: null,
     parentThreadId: null,

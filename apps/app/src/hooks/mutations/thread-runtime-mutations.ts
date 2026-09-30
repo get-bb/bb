@@ -1,3 +1,4 @@
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { notifyComposerSubmitted } from "@/lib/composer-submissions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
@@ -129,7 +130,10 @@ export function useCreateThread() {
       errorMessage: "Failed to create thread.",
       lifecycleOperation: "create_thread",
     },
-    mutationFn: (request: AppCreateThreadRequest) =>
+    mutationFn: ({
+      composerCustomOptionsByPlugin: _composerOptions,
+      ...request
+    }: AppCreateThreadRequest) =>
       sdk.threads.spawn({
         ...request,
         origin: "app",
@@ -138,6 +142,19 @@ export function useCreateThread() {
       }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),
     onSuccess: (thread, variables) => {
+      if (variables.composerCustomOptionsByPlugin !== undefined) {
+        const draft = getPromptDraftAccessor({
+          kind: "thread",
+          projectId: thread.projectId,
+          threadId: thread.id,
+        });
+        const current = draft.getCurrent();
+        if (current.customOptionsByPlugin === undefined)
+          draft.setDraft({
+            ...current,
+            customOptionsByPlugin: variables.composerCustomOptionsByPlugin,
+          });
+      }
       notifyComposerSubmitted({
         kind: "new-thread",
         projectId: variables.projectId,
@@ -182,6 +199,7 @@ export function useSendThreadMessage() {
       sendAt,
       senderThreadId,
       pluginSubmission,
+      experimental_customOptionsByPlugin,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
       return await sdk.threads.send({
@@ -193,6 +211,7 @@ export function useSendThreadMessage() {
         permissionMode,
         ...(sendAt === undefined ? {} : { sendAt }),
         ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
+        experimental_customOptionsByPlugin,
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
@@ -262,6 +281,7 @@ export function useCreateThreadQueuedMessage() {
       reasoningLevel,
       permissionMode,
       senderThreadId,
+      experimental_customOptionsByPlugin,
       executionInputSources,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
       sdk.threads.queuedMessages.create({
@@ -271,6 +291,7 @@ export function useCreateThreadQueuedMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
+        experimental_customOptionsByPlugin,
         executionInputSources,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
       }),

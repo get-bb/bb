@@ -202,3 +202,13 @@ For review or fix pipelines, get the environment ID from
   same scope, size, and title. It does not replay the original launch command.
 
 Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.
+
+### Plugin submission options
+
+`bb thread spawn` and `bb thread tell` accept
+`--custom-options '{"provider-example":{"mode":"research"}}'`.
+The JSON object is keyed by plugin ID; each value is that plugin’s options
+object. Options apply to this submission, survive queueing and retries, and do
+not update thread metadata or defaults for later sends. The aggregate limit is
+256 KiB. SDK callers use `experimental_customOptionsByPlugin` on `threads.spawn`,
+`threads.fork`, `threads.send`, or `threads.queuedMessages.create`.

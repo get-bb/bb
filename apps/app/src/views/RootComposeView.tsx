@@ -588,6 +588,9 @@ export function RootComposeView() {
       if (createRequest === null) return;
       const thread = await createThread.mutateAsync({
         ...createRequest,
+        experimental_customOptionsByPlugin:
+          request.experimental_customOptionsByPlugin,
+        composerCustomOptionsByPlugin: request.composerCustomOptionsByPlugin,
         ...placement,
         ...(sendAt === undefined ? {} : { sendAt }),
       });

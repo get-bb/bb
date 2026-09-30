@@ -15,6 +15,31 @@ function setup() {
 }
 
 describe("draft dispatch gate", () => {
+  it("holds new custom-option drafts but does not re-hold released messages or retries", () => {
+    const hook = setup();
+    const options = { experimental_customOptions: { kind: "draft" } };
+    expect(hook(makeMessageDispatchHookContext(options))).toEqual({
+      action: "wait",
+      reason: "Draft",
+    });
+    expect(
+      hook(
+        makeMessageDispatchHookContext({
+          ...options,
+          experimental_isRetry: true,
+        }),
+      ),
+    ).toEqual({ action: "proceed" });
+    expect(
+      hook(
+        makeMessageDispatchHookContext({
+          ...options,
+          queuedMessages: [makeQueueEntry({ waitingOn: null })],
+        }),
+      ),
+    ).toEqual({ action: "proceed" });
+  });
+
   it("waits for a submission tagged as a draft by this plugin", () => {
     const hook = setup();
     expect(

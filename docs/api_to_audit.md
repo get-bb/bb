@@ -3588,3 +3588,39 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
+## Composer custom options
+
+`PluginComposerApi.experimental_customOptions` is the calling plugin’s reactive
+JSON object. `experimental_setCustomOptions(object)` replaces that namespace;
+omitted keys disappear and `{}` clears it. Options are persisted with the
+composer draft, including an otherwise empty draft, and survive sending or text
+clearing. The root new-thread composer carries persistent choices into the new
+thread’s composer. Queued-message editors cannot modify options.
+
+`ComposerSubmitOptions.experimental_customOptions` replaces only the caller’s
+namespace for one submission, without changing persistent choices. Ordinary
+Enter also captures all plugins’ options. Requests expose
+`experimental_customOptionsByPlugin` on SDK spawn, fork, send and queue-create;
+CLI spawn/tell accept `--custom-options` with that namespaced object.
+
+The server persists snapshots in queue rows and turn-request execution records.
+Retries reuse them; text-only queue edits preserve them. Different snapshots
+cannot be grouped. Provider `deriveProviderOptions` and message-dispatch hooks
+receive their own frozen `experimental_customOptions` object. Dispatch hooks
+also receive `experimental_isRetry`, including queued retries, to distinguish
+retrying execution from accepting new submission intent. Drafts uses it to avoid
+holding an already released draft again. Existing `experimental_data` remains
+initial-attempt-only for compatibility.
+
+The map is JSON, capped at 256 KiB in aggregate. Namespaces identify ownership,
+not an authorization boundary. Clients can explicitly supply plugin IDs.
+Plugins validate their own values; data is user-writable and unsuitable for
+secrets. Raw options stay on the server; only derived provider options travel
+to the daemon, so this adds no daemon wire field.
+
+Before stabilization, audit replacement/empty-object behavior, new-thread and
+handoff draft transfer, failure restoration during newer edits, queue/retry
+persistence and grouping, disabled-plugin namespaces, SDK/CLI parity, provider
+validation and options on join-turn submissions. Verify Plan/Goal command
+behavior continues to compose with these options. No generic thread-metadata
+seeding, lifetime declarations, or separate actions API is introduced.

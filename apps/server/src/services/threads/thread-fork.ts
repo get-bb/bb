@@ -81,6 +81,8 @@ export async function createThreadForkFromRequest(
         environmentId: sourceEnvironment.id,
       },
       input,
+      experimental_customOptionsByPlugin:
+        request.experimental_customOptionsByPlugin ?? {},
       origin: request.origin,
       ...(request.originPluginId === undefined
         ? {}

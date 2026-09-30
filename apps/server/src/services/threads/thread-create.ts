@@ -429,6 +429,8 @@ async function createPendingThreadAndAttemptFirstDispatch(
     await attemptDispatch(deps, {
       thread,
       payload: {
+        experimental_customOptionsByPlugin:
+          args.request.experimental_customOptionsByPlugin ?? {},
         input: args.request.input,
         mode: "start",
         model: execution.model,

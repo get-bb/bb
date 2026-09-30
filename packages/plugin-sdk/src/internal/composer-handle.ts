@@ -32,12 +32,21 @@ export interface ComposerEditorState {
   attachmentError: string | null;
 }
 
+export type ComposerHostSubmitOptions = ComposerSubmitOptions & {
+  customOptionsOverride?: {
+    pluginId: string;
+    options: Record<string, JsonValue>;
+  };
+};
+
 export interface ComposerHandleTarget {
   key: string;
   scope: PluginComposerScope;
   getDraft(): ComposerDraftSnapshot;
   getAttachmentCount(): number;
   getSelection(): ComposerSelection | null;
+  getCustomOptions?(pluginId: string): Readonly<Record<string, JsonValue>>;
+  setCustomOptions?(pluginId: string, options: Record<string, JsonValue>): void;
   setDraft(next: ComposerDraftReplacement): void;
   addQuote(text: string): void;
   getEditorState(): ComposerEditorState;
@@ -46,7 +55,7 @@ export interface ComposerHandleTarget {
   isAvailable(): boolean;
   focus(): void;
   submit?(
-    options: ComposerSubmitOptions,
+    options: ComposerHostSubmitOptions,
     pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
   ): Promise<void>;
   setSelection?(selection: ComposerSelection): Promise<ComposerSelection>;
@@ -66,6 +75,8 @@ export interface ComposerHandleBinding {
   handle: PluginComposerApi;
   update(controller: ComposerHandleController): void;
 }
+
+const EMPTY_CUSTOM_OPTIONS = Object.freeze({});
 
 const UNAVAILABLE_MESSAGE = "This composer is no longer available.";
 const OFF_SCREEN_MESSAGE = "This composer isn't on screen.";
@@ -320,7 +331,17 @@ export function createComposerHandleBinding(
       );
     }
     await hostSubmit(
-      options,
+      {
+        ...options,
+        ...(options.experimental_customOptions === undefined
+          ? {}
+          : {
+              customOptionsOverride: {
+                pluginId: controller.pluginId,
+                options: options.experimental_customOptions,
+              },
+            }),
+      },
       options.experimental_data === undefined
         ? undefined
         : { pluginId: controller.pluginId, data: options.experimental_data },
@@ -408,6 +429,18 @@ export function createComposerHandleBinding(
         draftActions.draft,
         target().getAttachmentCount(),
       );
+    },
+    get experimental_customOptions() {
+      return (
+        target().getCustomOptions?.(controller.pluginId) ?? EMPTY_CUSTOM_OPTIONS
+      );
+    },
+    experimental_setCustomOptions: (options) => {
+      requireAvailable();
+      const set = target().setCustomOptions;
+      if (!set)
+        throw new Error("This composer does not support custom options.");
+      set(controller.pluginId, options);
     },
     get selection() {
       return target().getSelection();

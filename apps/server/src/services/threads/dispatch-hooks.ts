@@ -1,3 +1,8 @@
+import {
+  customOptionsForPlugin,
+  snapshotCustomOptions,
+  type CustomOptionsByPlugin,
+} from "@bb/domain";
 import { getEnvironment } from "@bb/db";
 import {
   QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH,
@@ -103,6 +108,8 @@ export interface MessageDispatchHookPassRequest {
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
   queuedMessages: ThreadQueuedMessage[];
+  customOptionsByPlugin?: CustomOptionsByPlugin;
+  isRetry?: boolean;
   pluginSubmission: MessageDispatchHookContext["experimental_submission"];
   continueAfterHooks?: () => Promise<void>;
 }
@@ -375,6 +382,7 @@ function buildHookContext(
     parentThreadId: request.parentThreadId,
     queuedMessages: request.queuedMessages,
     experimental_submission: request.pluginSubmission,
+    experimental_isRetry: request.isRetry ?? false,
   };
 }
 
@@ -413,7 +421,16 @@ export async function runMessageDispatchHookPass(
         "message.dispatch hook",
         () =>
           decideWithinBox(
-            async () => hook.handler(context),
+            async () =>
+              hook.handler({
+                ...context,
+                experimental_customOptions: snapshotCustomOptions(
+                  customOptionsForPlugin(
+                    request.customOptionsByPlugin,
+                    hook.pluginId,
+                  ),
+                ),
+              }),
             provider.decisionTimeoutMs,
           ),
       );

@@ -1,3 +1,4 @@
+import { parseCustomOptions } from "./custom-options.js";
 import { Command } from "commander";
 import {
   jsonValueSchema,
@@ -73,6 +74,7 @@ interface ThreadSpawnCommandOptions {
   sourceThread?: string;
   sourceSeqEnd?: string;
   visibility?: string;
+  customOptions?: string;
   sendAt?: string;
 }
 
@@ -393,6 +395,7 @@ export function registerSpawnCommand(
       "--environment-inputs <json>",
       "JSON value for an --environment-provider that declares inputs (`bb environment providers --json` shows the schema)",
     )
+    .option("--custom-options <json>", "Submission options keyed by plugin ID")
     .option("--send-at <when>", SEND_AT_HELP)
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
@@ -577,6 +580,9 @@ export function registerSpawnCommand(
             sdk,
           });
           thread = await sdk.threads.spawn({
+            experimental_customOptionsByPlugin: parseCustomOptions(
+              opts.customOptions,
+            ),
             origin: "cli",
             projectId,
             ...(providerId ? { providerId } : {}),

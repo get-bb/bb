@@ -668,6 +668,11 @@ export interface MessageDispatchHookContext {
    * double-count.
    */
   queuedMessages: ThreadQueuedMessage[];
+  /** This plugin’s immutable options captured for this submission. */
+  experimental_customOptions?: Readonly<Record<string, ReadonlyJsonValue>>;
+  /** True when reattempting an already executed turn, including a queued retry. */
+  experimental_isRetry?: boolean;
+
   /**
    * Opaque JSON supplied by a plugin through the composer's
    * `submit`, paired with that plugin's id. Null for ordinary
@@ -1353,6 +1358,8 @@ export interface PluginProviderExtensionKindDeclaration {
  * thread of this provider.
  */
 export interface PluginProviderOptionsContext {
+  /** This provider plugin’s immutable options captured for this submission. */
+  experimental_customOptions: Readonly<Record<string, ReadonlyJsonValue>>;
   threadId: string;
   projectId: string;
   /** The resolved model id for this command. */

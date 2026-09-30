@@ -471,3 +471,14 @@ Lifecycle ownership:
   recursively deletes them after runtime/storage cleanup. Failed cleanup retries
   durably. Unarchive the owner before explicitly restoring a dependent. Stop does
   not cascade. Sidebar parents and ordinary forks retain their existing policies.
+
+
+### Plugin submission options
+
+`bb thread spawn` and `bb thread tell` accept
+`--custom-options '{"provider-example":{"mode":"research"}}'`.
+The JSON object is keyed by plugin ID; each value is that plugin’s options
+object. Options apply to this submission, survive queueing and retries, and do
+not update thread metadata or defaults for later sends. The aggregate limit is
+256 KiB. SDK callers use `experimental_customOptionsByPlugin` on `threads.spawn`,
+`threads.fork`, `threads.send`, or `threads.queuedMessages.create`.

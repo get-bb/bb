@@ -112,6 +112,7 @@ function seedFailableThread(harness: TestAppHarness, hostId: string) {
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
     inputText: "Do the thing",
+    customOptionsByPlugin: { "provider-codex": { mode: "research" } },
     providerThreadId: `provider-${hostId}`,
     threadId: thread.id,
   });
@@ -125,7 +126,10 @@ function seedFailableThread(harness: TestAppHarness, hostId: string) {
 }
 
 interface StoredTurnRequest {
-  execution: { model: string };
+  execution: {
+    model: string;
+    experimental_customOptionsByPlugin?: import("@bb/domain").CustomOptionsByPlugin;
+  };
   initiator: string;
   input: { text: string; visibility?: string }[];
   requestId: string;
@@ -472,6 +476,9 @@ describe("retrying a failed turn", () => {
       // The provider is asked the identical question...
       expect(data.input[0]?.text).toBe("Do the thing");
       expect(data.execution.model).toBe("gpt-5");
+      expect(data.execution.experimental_customOptionsByPlugin).toEqual({
+        "provider-codex": { mode: "research" },
+      });
       // ...but nothing re-enters the conversation as the user: the retry is a
       // system dispatch whose blocks are agent-only, which is what keeps the
       // timeline from showing "Do the thing" twice.

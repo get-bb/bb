@@ -145,6 +145,9 @@ function retryInput(
  * is the one field left to re-resolution.
  */
 function retryExecution(failed: FailedTurnRecord): {
+  experimental_customOptionsByPlugin: NonNullable<
+    SendMessageRequest["experimental_customOptionsByPlugin"]
+  >;
   model: string;
   reasoningLevel: SendMessageRequest["reasoningLevel"];
   serviceTier: SendMessageRequest["serviceTier"];
@@ -155,6 +158,8 @@ function retryExecution(failed: FailedTurnRecord): {
     execution.permissionMode,
   ).data;
   return {
+    experimental_customOptionsByPlugin:
+      execution.experimental_customOptionsByPlugin ?? {},
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
     serviceTier: execution.serviceTier,

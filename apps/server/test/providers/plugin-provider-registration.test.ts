@@ -103,6 +103,7 @@ describe("buildPluginProviderRegistration", () => {
         projectId: "proj_1",
         model: "m",
         permissionMode: "full",
+        experimental_customOptions: {},
       }),
     ).toStrictEqual({});
   });
@@ -185,6 +186,11 @@ describe("buildPluginProviderRegistration", () => {
         },
         env: { passthrough: ["BB_MY_AGENT_EXECUTABLE"] },
         deriveProviderOptions: (context) => ({
+          customMode:
+            typeof context.experimental_customOptions.mode === "string"
+              ? context.experimental_customOptions.mode
+              : "default",
+          customFrozen: Object.isFrozen(context.experimental_customOptions),
           memory: context.settings.memoryEnabled !== false,
           plan: context.promptMode === "plan",
           thread: context.threadId,
@@ -199,9 +205,16 @@ describe("buildPluginProviderRegistration", () => {
         projectId: "proj_1",
         model: "m-1",
         permissionMode: "auto",
+        experimental_customOptions: { mode: "research" },
         promptMode: "plan",
       }),
-    ).toStrictEqual({ memory: false, plan: true, thread: "thr_1" });
+    ).toStrictEqual({
+      customMode: "research",
+      customFrozen: true,
+      memory: false,
+      plan: true,
+      thread: "thr_1",
+    });
     expect(registration.envPassthrough).toStrictEqual([
       "BB_MY_AGENT_EXECUTABLE",
     ]);
@@ -239,6 +252,7 @@ describe("buildPluginProviderRegistration", () => {
         projectId: "proj_1",
         model: "m",
         permissionMode: "full",
+        experimental_customOptions: {},
       }),
     ).toThrow(/deriveProviderOptions result/);
   });
