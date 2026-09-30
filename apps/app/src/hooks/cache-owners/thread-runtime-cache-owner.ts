@@ -887,11 +887,6 @@ export function prefetchThreadQueuedMessages({
   });
 }
 
-interface ThreadResultCacheArgs {
-  queryClient: QueryClient;
-  thread: ThreadResponse;
-}
-
 function createThreadRequestStartsTurn(
   request: AppCreateThreadRequest,
 ): boolean {

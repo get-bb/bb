@@ -92,6 +92,9 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
+const subscribeToNoComposerSelection = () => () => {};
+const getNoComposerSelection = () => null;
+
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
     matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
@@ -638,6 +641,8 @@ export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
   const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
+  const tracksDraft = useRef(false);
+  const tracksSelection = useRef(false);
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
     () =>
@@ -647,6 +652,24 @@ export function useComposer(): PluginComposerApi {
     [projectId, threadId],
   );
   const routeDraft = usePromptDraftController(routeScope);
+  const draftSource = useComposerDraftSource(composerHost, routeDraft);
+  const draftSnapshot = useCallback(
+    () => (tracksDraft.current ? draftSource.getCurrent() : null),
+    [draftSource],
+  );
+  useSyncExternalStore(draftSource.subscribe, draftSnapshot, draftSnapshot);
+  const selectionSnapshot = useCallback(
+    () =>
+      tracksSelection.current
+        ? (composerHost?.getSelection?.() ?? null)
+        : null,
+    [composerHost],
+  );
+  useSyncExternalStore(
+    composerHost?.subscribeSelection ?? subscribeToNoComposerSelection,
+    selectionSnapshot,
+    getNoComposerSelection,
+  );
   const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   useComposerEditorBridge(textEffectKey);
 
@@ -786,7 +809,26 @@ export function useComposer(): PluginComposerApi {
     setBinding(currentBinding);
   }
   currentBinding.update(controller);
-  return currentBinding.handle;
+  return useMemo(
+    () =>
+      new Proxy(currentBinding.handle, {
+        get(target, property, receiver) {
+          if (
+            property === "text" ||
+            property === "draft" ||
+            property === "isEmpty" ||
+            property === "attachmentCount"
+          ) {
+            tracksDraft.current = true;
+          }
+          if (property === "selection") {
+            tracksSelection.current = true;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    [currentBinding],
+  );
 }
 
 function createComposerDraftsStore(hosts: readonly PluginComposerHost[]) {

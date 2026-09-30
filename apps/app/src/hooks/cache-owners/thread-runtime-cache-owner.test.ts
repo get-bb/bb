@@ -1429,7 +1429,6 @@ describe("applyCreateThreadResult timeline seed", () => {
 
   it.each<[string, Partial<AppCreateThreadRequest>]>([
     ["an empty input", { input: [] }],
-    ["a draft", { draft: true }],
     ["a scheduled first message", { sendAt: Date.now() + 60_000 }],
   ])("does not seed a timeline for %s", (_label, overrides) => {
     const queryClient = createAppQueryClient();

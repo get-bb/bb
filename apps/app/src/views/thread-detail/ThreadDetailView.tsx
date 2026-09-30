@@ -3042,10 +3042,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
                   thread.runtime.displayStatus,
                 ) &&
                 !isThreadTimelinePending,
-              ongoingIndicatorLabel:
-                thread.runtime.displayStatus === "host-reconnecting"
-                  ? "Waiting for reconnection"
-                  : undefined,
               timelineRows: paneTimelineRows,
               isStopping: thread.status === "stopping",
               stoppingAnchorAt: thread.updatedAt,
