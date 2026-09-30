@@ -4,6 +4,7 @@ The sidebar navigation, as a plugin.
 
 - **New thread**, **Search threads**, **Plugins**, **Skills**, and a row for every plugin panel.
 - Drag plugin rows to reorder them, hide any row, and reach hidden rows from **More**.
+- When every row is visible, **More** becomes **Customize sidebar** so the editor is always one click away.
 - Open panels in a split, see where they are open, and read each panel's live count.
 
 ## How it works
