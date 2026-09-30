@@ -79,6 +79,7 @@ describe("createSessionScheduler", () => {
     expect(state).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     expect(fetchSession).toHaveBeenCalledWith({
       serverUrl: profile.serverUrl,
@@ -125,6 +126,7 @@ describe("createSessionScheduler", () => {
     expect(await scheduler.verifySession()).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     expect(cookies.slice(-2).map((c) => c.cookie.value)).toEqual([
       "two",
@@ -141,6 +143,7 @@ describe("createSessionScheduler", () => {
     expect(await scheduler.verifySession()).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     expect(scheduler.getState().status).toBe("authenticated");
     fetchSession.mockResolvedValueOnce(session(Date.now() + 2 * HOUR, "three"));
@@ -196,6 +199,7 @@ describe("createSessionScheduler", () => {
     expect(await relaunch.scheduler.start(profile)).toEqual({
       status: "authenticated",
       expiresAt: Date.UTC(2026, 7, 25, 10),
+      restored: true,
     });
     expect(relaunch.fetchSession).not.toHaveBeenCalled();
     expect(relaunch.states).toEqual([
@@ -356,6 +360,7 @@ describe("createSessionScheduler", () => {
     expect(await second).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     resolveFirst(session(Date.now() + HOUR, "one"));
     await first;

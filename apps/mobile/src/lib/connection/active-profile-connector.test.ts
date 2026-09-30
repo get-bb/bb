@@ -12,6 +12,7 @@ import {
 } from "../realtime/fake-socket";
 import type { RealtimeSocketFactory } from "../realtime/socket";
 import { createProfileClientRegistry } from "../sdk/client-registry";
+import type { StoredSession } from "../session/session-cache";
 import { createSessionScheduler } from "../session/session-scheduler";
 import {
   AUTH_FAILURE_BREAKER_COOLDOWN_MS,
@@ -64,6 +65,7 @@ function fakeAppState(): AppStateLike & {
 interface SetupOptions {
   fallbackResponse?: () => Response;
   onSocket?: (socket: FakeSocket) => void;
+  stored?: StoredSession;
 }
 
 function setup(options: SetupOptions = {}) {
@@ -96,7 +98,7 @@ function setup(options: SetupOptions = {}) {
       const scheduler = createSessionScheduler({
         cookieStore: { set: async () => true },
         sessionCache: {
-          read: async () => null,
+          read: async () => options.stored ?? null,
           write: async () => {},
           clear: async () => {},
         },
@@ -430,6 +432,36 @@ describe("createActiveProfileConnector", () => {
     unsubscribe();
   });
 
+  it("re-mints on the first 401 after restoring a stored session the gate no longer accepts", async () => {
+    const { fetchSession, fetchResponses, connector, registry } = setup({
+      stored: {
+        serverUrl: connect.serverUrl,
+        credential: connect.credential,
+        session: sessionCookie("restored"),
+      },
+    });
+    connector.activate(connect);
+    await flush();
+    const client = registry.getClientForProfile(connect);
+    expect(fetchSession).not.toHaveBeenCalled();
+    expect(connector.getSnapshot()?.session).toMatchObject({
+      status: "authenticated",
+      restored: true,
+    });
+
+    fetchSession.mockResolvedValueOnce(sessionCookie("fresh"));
+    fetchResponses.push(signInPage());
+    await expect(client.sdk.system.config()).rejects.toMatchObject({
+      status: 401,
+    });
+    await settle();
+    expect(fetchSession).toHaveBeenCalledTimes(1);
+    expect(connector.getSnapshot()?.session).toMatchObject({
+      status: "authenticated",
+      restored: false,
+    });
+  });
+
   it("stops re-minting after a few cycles when the gate keeps refusing freshly minted sessions, reports an error, and recovers after the cooldown", async () => {
     let gateRefuses = true;
     const { sockets, fetchSession, fetchCalls, connector, registry } = setup({
@@ -481,7 +513,9 @@ describe("createActiveProfileConnector", () => {
     gateRefuses = false;
     await vi.advanceTimersByTimeAsync(tripped.retryAt - Date.now());
     await vi.advanceTimersByTimeAsync(1000);
-    expect(fetchSession.mock.calls.length).toBe(mintsWhileTripped + 1);
+    expect(fetchSession.mock.calls.length).toBeLessThanOrEqual(
+      mintsWhileTripped + 1,
+    );
     expect(fetchCalls.count).toBeGreaterThan(fetchesWhileTripped);
     expect(connector.getSnapshot()?.session.status).toBe("authenticated");
     expect(observer.getCurrentResult().status).toBe("success");

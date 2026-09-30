@@ -3,6 +3,7 @@ import type { SessionState } from "../session/session-scheduler";
 import {
   resolveShellLoadPath,
   resolveShellScreenState,
+  revealsShellFailure,
   shouldReloadForSession,
   type ShellLoadPhase,
 } from "./shell-state";
@@ -12,6 +13,7 @@ const IDLE: SessionState = { status: "idle" };
 const AUTHENTICATED: SessionState = {
   status: "authenticated",
   expiresAt: 1_000,
+  restored: false,
 };
 
 const BASE = { storeReady: true, hasAnyProfile: true, requiresSession: false };
@@ -150,6 +152,28 @@ describe("resolveShellScreenState", () => {
   });
 });
 
+describe("revealsShellFailure", () => {
+  const page = (serverErrorStatus: number | null) =>
+    ({ kind: "webview", serverErrorStatus }) as const;
+
+  it("reveals error screens and server error pages", () => {
+    expect(
+      revealsShellFailure(
+        { kind: "error", title: "", detail: "", action: "retry" },
+        true,
+      ),
+    ).toBe(true);
+    expect(revealsShellFailure(page(500), true)).toBe(true);
+    expect(revealsShellFailure(page(401), false)).toBe(true);
+    expect(revealsShellFailure(page(null), true)).toBe(false);
+  });
+
+  it("keeps a bb connect page the gate rejected covered while the session is repaired", () => {
+    expect(revealsShellFailure(page(401), true)).toBe(false);
+    expect(revealsShellFailure(page(403), true)).toBe(false);
+  });
+});
+
 describe("resolveShellLoadPath", () => {
   it("reloads the page where the user is, not where it was first opened", () => {
     expect(
@@ -180,7 +204,11 @@ describe("resolveShellLoadPath", () => {
 });
 
 describe("shouldReloadForSession", () => {
-  const RENEWED: SessionState = { status: "authenticated", expiresAt: 2_000 };
+  const RENEWED: SessionState = {
+    status: "authenticated",
+    expiresAt: 2_000,
+    restored: false,
+  };
 
   it("reloads when the cookie the page loaded with has expired", () => {
     expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_000, READY)).toBe(

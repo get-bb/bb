@@ -16,7 +16,7 @@ const SESSION_RETRY_DELAY_MS = 30 * 1000;
 export type SessionState =
   | { status: "idle" }
   | { status: "authenticating" }
-  | { status: "authenticated"; expiresAt: number }
+  | { status: "authenticated"; expiresAt: number; restored: boolean }
   | { status: "auth-required"; detail: string }
   | { status: "error"; detail: string; retryAt: number };
 
@@ -103,7 +103,7 @@ export function createSessionScheduler(
           session,
         })
         .catch(() => undefined);
-      authenticate(expiresAt, startedGeneration);
+      authenticate(expiresAt, false, startedGeneration);
       return state;
     } catch (error) {
       if (!isCurrent()) return state;
@@ -121,8 +121,12 @@ export function createSessionScheduler(
     }
   }
 
-  function authenticate(expiresAt: number, startedGeneration: number): void {
-    setState({ status: "authenticated", expiresAt });
+  function authenticate(
+    expiresAt: number,
+    restored: boolean,
+    startedGeneration: number,
+  ): void {
+    setState({ status: "authenticated", expiresAt, restored });
     scheduleAt(
       Math.max(
         Date.now() + SESSION_MIN_RENEWAL_DELAY_MS,
@@ -159,7 +163,7 @@ export function createSessionScheduler(
         : state;
     }
     if (!isCurrent()) return state;
-    authenticate(stored.session.cookie.expiresAt, startedGeneration);
+    authenticate(stored.session.cookie.expiresAt, true, startedGeneration);
     return state;
   }
 

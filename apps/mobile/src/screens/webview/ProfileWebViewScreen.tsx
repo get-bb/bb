@@ -31,6 +31,7 @@ import {
   isShellNavigation,
   resolveShellLoadPath,
   resolveShellScreenState,
+  revealsShellFailure,
   shellPathFromUrl,
   shouldReloadForSession,
   subscribeToShellCommands,
@@ -227,9 +228,7 @@ export function ProfileWebViewScreen() {
     load,
   });
 
-  const showsFailure =
-    screen.kind === "error" ||
-    (screen.kind === "webview" && screen.serverErrorStatus !== null);
+  const showsFailure = revealsShellFailure(screen, profile?.mode === "connect");
   useEffect(() => {
     if (showsFailure) revealApp();
   }, [showsFailure]);

@@ -80,6 +80,20 @@ export function resolveShellScreenState(
   }
 }
 
+export function revealsShellFailure(
+  screen: ShellScreenState,
+  requiresSession: boolean,
+): boolean {
+  if (screen.kind === "error") return true;
+  if (screen.kind !== "webview" || screen.serverErrorStatus === null) {
+    return false;
+  }
+  return !(
+    requiresSession &&
+    (screen.serverErrorStatus === 401 || screen.serverErrorStatus === 403)
+  );
+}
+
 export function resolveShellLoadPath(input: {
   visitedPath: string | null;
   requestedPath: string | undefined;
