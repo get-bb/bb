@@ -34,6 +34,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 
 interface DetailViewProps {
   taskKey: string;
+  onCanonicalKey?: (taskKey: string) => void;
 }
 
 const DESCRIPTION_SAVE_DELAY_MS = 800;
@@ -528,8 +529,7 @@ function TaskDetail({ task }: { task: Task }) {
   );
 }
 
-export function DetailView({ taskKey }: DetailViewProps) {
-  const navigation = useTasksNavigation();
+export function DetailView({ taskKey, onCanonicalKey }: DetailViewProps) {
   const query = useTasksQuery(
     async (rpc) => (await rpc.call("getTaskByKey", { taskKey })).task,
     ["tasks:changed"],
@@ -537,10 +537,8 @@ export function DetailView({ taskKey }: DetailViewProps) {
   );
   const canonicalKey = query.data?.key;
   useEffect(() => {
-    if (canonicalKey && canonicalKey.toUpperCase() !== taskKey.toUpperCase()) {
-      navigation.go({ kind: "task", taskKey: canonicalKey }, { replace: true });
-    }
-  }, [canonicalKey, navigation, taskKey]);
+    if (canonicalKey) onCanonicalKey?.(canonicalKey);
+  }, [canonicalKey, onCanonicalKey]);
 
   if (query.data === undefined) {
     return query.error ? (

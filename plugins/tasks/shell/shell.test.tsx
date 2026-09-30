@@ -949,6 +949,28 @@ describe("tasks app shell", () => {
     });
   });
 
+  it("replaces an old task key with its canonical key on the full Tasks page", async () => {
+    const slot = renderSlot(
+      tasksRegistration,
+      { subPath: "task/OLD-4" },
+      {
+        rpc: seededRpc({
+          getTaskByKey: () => ({ task: makeTask({ key: "TSK-4" }) }),
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByRole("textbox", { name: "Task title" });
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: "task/TSK-4", replace: true },
+    });
+  });
+
   it("renders right-panel navigation and routes through the plugin panel", async () => {
     const slot = renderSlot(
       navigationRegistration,

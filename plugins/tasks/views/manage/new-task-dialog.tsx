@@ -106,7 +106,16 @@ export function NewTaskDialog({
     change: (current: NewTaskDraft) => Partial<NewTaskDraft>,
   ) =>
     setDraft((current) => {
-      const next = { ...current, ...change(current) };
+      const resolved = {
+        ...current,
+        projectId: effectiveProjectId,
+        labelIds: labels.data
+          ? current.labelIds.filter((id) =>
+              labels.data?.some((label) => label.id === id),
+            )
+          : current.labelIds,
+      };
+      const next = { ...resolved, ...change(resolved) };
       storeNewTaskDraft(next);
       return next;
     });
@@ -114,11 +123,7 @@ export function NewTaskDialog({
   useEffect(() => {
     if (!open) return;
     const restored = loadNewTaskDraft();
-    setDraft(
-      restored
-        ? { ...restored, projectId: restored.projectId ?? projectId }
-        : blankDraft(projectId, defaultStatus),
-    );
+    setDraft(restored ?? blankDraft(projectId, defaultStatus));
     setLabelQuery("");
     setPendingFiles([]);
     setCreatedTask(null);
@@ -126,26 +131,46 @@ export function NewTaskDialog({
     // oxlint-disable-next-line react/exhaustive-deps
   }, [open]);
 
-  const { title, description, status, priority, labelIds, dueDate } = draft;
+  const { title, description, status, priority, dueDate } = draft;
   const projectList = projects.data ?? [];
-  const selectedProjectId =
-    projects.data &&
-    !projects.data.some((entry) => entry.id === draft.projectId)
-      ? null
-      : draft.projectId;
-  const effectiveProjectId =
-    selectedProjectId ?? projectId ?? projectList[0]?.id ?? null;
   const project =
-    projectList.find((entry) => entry.id === effectiveProjectId) ?? null;
+    projectList.find((entry) => entry.id === draft.projectId) ??
+    projectList.find((entry) => entry.id === projectId) ??
+    projectList[0] ??
+    null;
+  const effectiveProjectId = project?.id ?? null;
 
-  const labels = useTasksQuery(
-    async (rpc) =>
-      effectiveProjectId
+  useEffect(() => {
+    if (!open || draft.projectId !== null || effectiveProjectId === null)
+      return;
+    setDraft((current) => {
+      if (current.projectId !== null) return current;
+      const next = { ...current, projectId: effectiveProjectId };
+      storeNewTaskDraft(next);
+      return next;
+    });
+  }, [open, draft.projectId, effectiveProjectId]);
+
+  const labelsQuery = useTasksQuery(
+    async (rpc) => ({
+      projectId: effectiveProjectId,
+      labels: effectiveProjectId
         ? (await rpc.call("listLabels", { projectId: effectiveProjectId }))
             .labels
         : [],
+    }),
     ["projects:changed"],
     [effectiveProjectId],
+  );
+  const labels = {
+    ...labelsQuery,
+    data:
+      labelsQuery.data?.projectId === effectiveProjectId
+        ? labelsQuery.data.labels
+        : undefined,
+  };
+  const labelIds = draft.labelIds.filter((id) =>
+    labels.data?.some((label) => label.id === id),
   );
 
   const changeProject = (id: string) =>
@@ -222,6 +247,9 @@ export function NewTaskDialog({
     effectiveProjectId !== null &&
     title.trim().length > 0 &&
     !submitting &&
+    !labels.isLoading &&
+    labels.data !== undefined &&
+    labels.error === null &&
     !hasOversized &&
     createdTask === null;
 
@@ -552,9 +580,12 @@ export function NewTaskDialog({
             className="h-7 rounded-md border border-input bg-transparent px-2 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
-        {error ? (
-          <p role="alert" className="shrink-0 px-4 pt-2 text-xs text-destructive">
-            {error}
+        {error || labels.error ? (
+          <p
+            role="alert"
+            className="shrink-0 px-4 pt-2 text-xs text-destructive"
+          >
+            {error ?? labels.error}
           </p>
         ) : null}
         <DialogFooter className="mt-4 shrink-0 flex-row items-center border-t border-border-hairline px-4 py-3 sm:justify-between">

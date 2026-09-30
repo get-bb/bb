@@ -352,6 +352,136 @@ describe("NewTaskDialog drafts", () => {
     expect(window.localStorage.getItem(NEW_TASK_DRAFT_STORAGE_KEY)).toBeNull();
   });
 
+  it("keeps the default project and labels when reopened from another project", async () => {
+    const createCalls: Array<Record<string, unknown>> = [];
+    const otherProject = {
+      ...project,
+      id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+      name: "Personal",
+      prefix: "HOME",
+    };
+    const label = {
+      id: "01HZZZZZZZZZZZZZZZZZZZZZL1",
+      projectId: PROJECT_ID,
+      name: "Automation",
+      color: "blue",
+    };
+    const rpc = {
+      ...draftRpc(createCalls),
+      listProjects: () => ({ projects: [project, otherProject] }),
+      listLabels: ({ projectId }: { projectId: string }) => ({
+        labels: projectId === PROJECT_ID ? [label] : [],
+      }),
+    };
+    const initial = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
+    fireEvent.click(await initial.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await initial.findByLabelText("Task title"), {
+      target: { value: "Preserve my project" },
+    });
+    fireEvent.click(initial.getByRole("button", { name: "Labels" }));
+    fireEvent.click(await initial.findByRole("option", { name: "Automation" }));
+    initial.unmount();
+    const restored = renderSlot(
+      app.navPanels[0]!,
+      { subPath: otherProject.id },
+      { rpc },
+    );
+    fireEvent.click(await restored.findByRole("button", { name: /New task/ }));
+    await restored.findByLabelText("Task title");
+    fireEvent.click(restored.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(createCalls).toHaveLength(1));
+    expect(createCalls[0]).toMatchObject({
+      projectId: PROJECT_ID,
+      labelIds: [label.id],
+      title: "Preserve my project",
+    });
+  });
+
+  it("persists the default project when projects load after typing begins", async () => {
+    let resolveProjects: (value: {
+      projects: (typeof project)[];
+    }) => void = () => {};
+    const projects = new Promise<{ projects: (typeof project)[] }>(
+      (resolve) => {
+        resolveProjects = resolve;
+      },
+    );
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: {
+          ...draftRpc([]),
+          listProjects: () => projects,
+        },
+      },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Started before projects loaded" },
+    });
+    resolveProjects({ projects: [project] });
+    await waitFor(() =>
+      expect(
+        JSON.parse(window.localStorage.getItem(NEW_TASK_DRAFT_STORAGE_KEY)!),
+      ).toMatchObject({
+        projectId: PROJECT_ID,
+        title: "Started before projects loaded",
+      }),
+    );
+  });
+
+  it.each(["project", "label"])(
+    "drops a restored label when its %s was deleted",
+    async (removed) => {
+      const createCalls: Array<Record<string, unknown>> = [];
+      const otherProject = {
+        ...project,
+        id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+        name: "Personal",
+        prefix: "HOME",
+      };
+      window.localStorage.setItem(
+        NEW_TASK_DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          version: 1,
+          projectId: PROJECT_ID,
+          title: "Recovered draft",
+          description: "Keep this body",
+          status: "todo",
+          priority: "none",
+          labelIds: ["01HZZZZZZZZZZZZZZZZZZZZZL1"],
+          dueDate: "",
+        }),
+      );
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: otherProject.id },
+        {
+          rpc: {
+            ...draftRpc(createCalls),
+            listProjects: () => ({
+              projects:
+                removed === "project"
+                  ? [otherProject]
+                  : [project, otherProject],
+            }),
+          },
+        },
+      );
+      fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+      await slot.findByLabelText("Task title");
+      fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+      await waitFor(() => expect(createCalls).toHaveLength(1));
+      expect(createCalls[0]).toMatchObject({
+        projectId: removed === "project" ? otherProject.id : PROJECT_ID,
+        labelIds: [],
+        title: "Recovered draft",
+        description: "Keep this body",
+      });
+    },
+  );
+
   it("starts empty after Discard draft", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -363,9 +493,9 @@ describe("NewTaskDialog drafts", () => {
       target: { value: "Throwaway" },
     });
     fireEvent.click(slot.getByRole("button", { name: "Discard draft" }));
-    expect(
-      (slot.getByLabelText("Task title") as HTMLInputElement).value,
-    ).toBe("");
+    expect((slot.getByLabelText("Task title") as HTMLInputElement).value).toBe(
+      "",
+    );
     expect(slot.queryByRole("button", { name: "Discard draft" })).toBeNull();
 
     const title = await reopen(slot);
