@@ -31,7 +31,8 @@ const TUNNEL_LOST_AT_KEY = "tunnelLostAt";
 const VANISHED_TUNNEL_GRACE_MS = 5_000;
 const TUNNEL_RETURN_GRACE_MS = 15_000;
 const RESP_HEAD_TIMEOUT_MS = 30_000;
-const PRESENCE_INTERVAL_MS = 50_000;
+const PRESENCE_INTERVAL_MIN_MS = 40_000;
+const PRESENCE_INTERVAL_JITTER_MS = 20_000;
 const CLEAN_CLOSE_CODE = 1000;
 
 const WS_READY_STATE_OPEN = 1;
@@ -284,8 +285,8 @@ export class TunnelDO {
       this.clientProtocolVersion = 0;
       return;
     }
+    await this.state.storage.setAlarm(nextPresenceAlarmAt());
     await this.markPresence();
-    await this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
   }
 
   private async acceptTunnel(
@@ -310,12 +311,12 @@ export class TunnelDO {
       void this.state.storage.put("serverId", serverId);
       void this.state.storage.delete("machineId");
       void this.markPresence();
-      void this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
+      void this.state.storage.setAlarm(nextPresenceAlarmAt());
     } else if (machineId) {
       void this.state.storage.put("machineId", machineId);
       void this.state.storage.delete("serverId");
       void this.markPresence();
-      void this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
+      void this.state.storage.setAlarm(nextPresenceAlarmAt());
     }
     void this.state.storage.put(TUNNEL_OPENED_AT_KEY, Date.now());
     void this.state.storage.delete(TUNNEL_LOST_AT_KEY);
@@ -679,6 +680,14 @@ export class TunnelDO {
   webSocketError(ws: WebSocket): void {
     this.webSocketClose(ws, 1011, "socket error");
   }
+}
+
+function nextPresenceAlarmAt(now: number = Date.now()): number {
+  return (
+    now +
+    PRESENCE_INTERVAL_MIN_MS +
+    Math.floor(Math.random() * PRESENCE_INTERVAL_JITTER_MS)
+  );
 }
 
 function safeCloseCode(code: number): number {
