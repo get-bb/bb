@@ -680,21 +680,6 @@ export interface PluginHomepageSectionRegistration {
   component: ComponentType<PluginHomepageSectionProps>;
 }
 
-/** Props for a provider's server-access setup and status UI. */
-export interface ExperimentalServerAccessProps {
-  /** The workflow hosting this slot. Phone pairing is offered only for mobile. */
-  purpose: "machines" | "mobile";
-}
-
-/** Provider-owned UI embedded wherever the host requires server access. */
-export interface ExperimentalServerAccessRegistration {
-  /** Unique within the plugin. */
-  id: string;
-  /** ID registered by this plugin through bb.experimental_serverAccess.register. */
-  providerId: string;
-  component: ComponentType<ExperimentalServerAccessProps>;
-}
-
 export interface PluginSettingsSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -2035,10 +2020,6 @@ export interface PluginMachineProviderInputsRegistration {
 export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   settingsSection(registration: PluginSettingsSectionRegistration): void;
-  /** Render provider setup and status inline in server-access workflows. */
-  experimental_serverAccess(
-    registration: ExperimentalServerAccessRegistration,
-  ): void;
   /**
    * Render one app-wide overlay component (see
    * {@link ExperimentalAppOverlayRegistration}). Experimental: see

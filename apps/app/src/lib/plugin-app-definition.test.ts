@@ -31,34 +31,6 @@ describe("definePluginApp", () => {
   });
 });
 
-describe("server access slots", () => {
-  it("rejects ambiguous provider registrations and empty provider ids", () => {
-    const duplicate = definePluginApp((app) => {
-      app.slots.experimental_serverAccess({
-        id: "first",
-        providerId: "relay",
-        component: Component,
-      });
-      app.slots.experimental_serverAccess({
-        id: "second",
-        providerId: "relay",
-        component: Component,
-      });
-    });
-    expect(() => collectPluginAppRegistrations(duplicate)).toThrow(
-      /duplicate providerId/,
-    );
-    const empty = definePluginApp((app) => {
-      app.slots.experimental_serverAccess({
-        id: "first",
-        providerId: "",
-        component: Component,
-      });
-    });
-    expect(() => collectPluginAppRegistrations(empty)).toThrow(/providerId/);
-  });
-});
-
 describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
   it("collects additive app overlays", () => {
     const definition = definePluginApp((app) => {

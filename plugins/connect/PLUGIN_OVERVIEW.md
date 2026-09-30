@@ -19,4 +19,4 @@ When you view bb remotely, agents are told to share servers with `bb connect exp
 
 ## Requirements
 
-A getbb.app account and the bb account plugin. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing is available under Mobile → Pair phone.
+A getbb.app account and the bb account plugin. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing is available under Remote access → Add mobile device.

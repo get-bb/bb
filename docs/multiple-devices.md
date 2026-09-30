@@ -98,8 +98,8 @@ bb connect it pairs the same way the desktop app does: the phone enrolls as a
 connect machine with its own credential, which the getbb.app dashboard lists
 and can revoke.
 
-1. Sign the bb server in to your bb account first (Settings → Mobile, `bb account login`, or `bb connect --code …`).
-2. Mint a pairing code for the phone: Settings → Mobile → **Pair phone** (QR code plus the code as text, with a countdown), or run
+1. Sign the bb server in to your bb account first (Settings → bb account, `bb account login`, or `bb connect --code …`).
+2. Mint a pairing code for the phone: Settings → Remote access → **Add mobile device** (QR code plus the code as text, with a countdown), or run
    `bb connect machine-code` (`--json` prints
    `{code, serverUrl, apex, expiresAt}`).
 3. In the mobile app, add a server over bb connect and scan the QR code or type

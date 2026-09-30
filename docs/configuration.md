@@ -1217,7 +1217,7 @@ enrolls as a connect **machine** — its own credential on the getbb.app account
 separate from the server's pairing secret and individually revocable — so
 pairing starts from the bb, not from the phone. No experiment is required.
 
-- Settings → Mobile → **Pair phone** mints a one-time code and
+- Settings → Remote access → **Add mobile device** mints a one-time code and
   shows it as a QR code plus copyable text with a countdown.
 - `bb connect machine-code` prints the same code, server URL, connect apex,
   and expiry; `bb connect machine-code --json` returns
@@ -1846,7 +1846,7 @@ Mobile app downloads are always available in Settings → Mobile (`/settings/mob
 **Download Android APK** downloads directly from the public `get-bb/bb` GitHub
 `android-testing` release's `bb-android.apk` asset. The APK does not pass through
 the bb server or bb connect. No experiment or Android developer tools are needed.
-Pair either app through Settings → Mobile → **Pair phone**.
+Pair either app through Settings → Remote access → **Add mobile device**.
 
 Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
 both public links. Add `--details --json` or call `system.mobileAppReleases()`

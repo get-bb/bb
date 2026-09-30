@@ -83,7 +83,7 @@ export function ConnectScanner({ onScanned, active }: ConnectScannerProps) {
       <Text variant="footnote" tone="muted" className="px-4">
         {lastIgnored
           ? `Not a bb pairing code: ${lastIgnored}`
-          : "Point the camera at the QR code from bb Settings → Mobile → Pair phone."}
+          : "Point the camera at the QR code from bb Settings → Remote access → Add mobile device."}
       </Text>
     </View>
   );

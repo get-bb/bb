@@ -24,7 +24,6 @@ import type {
   PluginProviderIconRegistration,
   ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
-  ExperimentalServerAccessRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
   ExperimentalSidebarHeaderRegistration,
@@ -340,7 +339,6 @@ export interface CollectedPluginCommandRegistration extends Omit<
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
-  serverAccess: ExperimentalServerAccessRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
@@ -467,7 +465,6 @@ export function collectPluginAppRegistrations(
   const collected: CollectedPluginAppRegistrations = {
     homepageSections: [],
     settingsSections: [],
-    serverAccess: [],
     appOverlays: [],
     navPanels: [],
     threadPanelActions: [],
@@ -498,7 +495,6 @@ export function collectPluginAppRegistrations(
   const seenIds = {
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
-    serverAccess: new Set<string>(),
     appOverlay: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
@@ -561,28 +557,6 @@ export function collectPluginAppRegistrations(
         collected.homepageSections.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          component: requireComponent(kind, registration.component),
-        });
-      },
-      experimental_serverAccess(registration) {
-        const kind = "slots.experimental_serverAccess";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.serverAccess, id);
-        const providerId = requireNonEmptyString(
-          kind,
-          "providerId",
-          registration.providerId,
-        );
-        if (
-          collected.serverAccess.some(
-            (entry) => entry.providerId === providerId,
-          )
-        ) {
-          throw new Error(`${kind}: duplicate providerId "${providerId}"`);
-        }
-        collected.serverAccess.push({
-          id,
-          providerId,
           component: requireComponent(kind, registration.component),
         });
       },

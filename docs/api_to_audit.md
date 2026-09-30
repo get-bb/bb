@@ -1,9 +1,5 @@
 # APIs To Audit
 
-## `app.slots.experimental_serverAccess`
-
-Registers provider-owned setup, status, and recovery UI for the shared Server access component. The registration's `providerId` must match a backend server-access provider owned by the same plugin. The host passes `purpose: "machines" | "mobile"`; Mobile can offer phone pairing while Machines retains enrollment actions. UI selection on Mobile does not change the saved machine-access default. Slots retain plugin context, CSS lifecycle, and error boundaries. Before stabilization, verify inline setup and recovery, provider ownership, multiple providers, disabling/uninstalling plugins, and isolated state when mounted in multiple workflows.
-
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard

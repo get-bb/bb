@@ -1,22 +1,13 @@
 // @vitest-environment jsdom
 import {
-  act,
   cleanup,
-  fireEvent,
   render,
   screen,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
 import { MemoryRouter } from "react-router-dom";
-import {
-  setPluginSlotRegistrations,
-  resetPluginSlotStoreForTest,
-} from "@/lib/plugin-slots";
-import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MobileAppSection } from "./MobileAppSection";
 
@@ -27,7 +18,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  resetPluginSlotStoreForTest();
 });
 
 function renderSection() {
@@ -39,9 +29,6 @@ function renderSection() {
     >
       <MemoryRouter>
         <MobileAppSection />
-        <section aria-label="Plugin settings">
-          <PluginSettingsSections pluginId="connection" />
-        </section>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -87,90 +74,4 @@ it("keeps both install links available when release metadata cannot be loaded", 
     "https://github.com/get-bb/bb/releases/download/android-testing/bb-android.apk",
   );
   expect(screen.queryByText("Download ready APK")).toBeNull();
-});
-
-it("renders provider-owned connection UI without changing the default on mobile", async () => {
-  vi.spyOn(sdk.system, "mobileAppReleases").mockResolvedValue({
-    android: null,
-  });
-  setPluginSlotRegistrations(
-    "connection",
-    makePluginRegistrationSet({
-      settingsSections: [
-        { id: "manage", component: () => <p>Manage the connection</p> },
-      ],
-      serverAccess: [
-        {
-          id: "pair",
-          providerId: "relay",
-          component: ({ purpose }) => (
-            <button>
-              {purpose === "mobile"
-                ? "Pair this phone"
-                : "Manage server access"}
-            </button>
-          ),
-        },
-      ],
-    }),
-  );
-  vi.mocked(sdk.system.config).mockResolvedValue(
-    makeSystemConfig({
-      serverAccess: {
-        providers: [
-          {
-            id: "relay",
-            displayName: "Relay",
-            description: "Relay",
-            pluginId: "connection",
-            availability: {
-              status: "setup-required",
-              message: "Pair the relay",
-            },
-          },
-          {
-            id: "direct",
-            displayName: "Direct",
-            description: "Direct",
-            pluginId: null,
-            availability: null,
-          },
-        ],
-        defaultProviderId: "relay",
-        effectiveUrl: "https://bb.example.ts.net",
-        urlSource: "setting",
-      },
-    }),
-  );
-  const updateSettings = vi.spyOn(sdk.system, "updateGeneralSettings");
-  renderSection();
-  const mobile = within(
-    screen.getByRole("region", { name: "Mobile app downloads" }),
-  );
-  const plugin = within(
-    screen.getByRole("region", { name: "Plugin settings" }),
-  );
-  expect(
-    await mobile.findByRole("button", { name: "Pair this phone" }),
-  ).toBeTruthy();
-  expect(mobile.queryByText("Manage the connection")).toBeNull();
-  expect(plugin.getByText("Manage the connection")).toBeTruthy();
-  expect(plugin.queryByRole("button", { name: "Pair this phone" })).toBeNull();
-  fireEvent.pointerDown(
-    mobile.getByRole("button", { name: "Connection method" }),
-    { button: 0, ctrlKey: false },
-  );
-  fireEvent.click(await screen.findByRole("menuitem", { name: /^Direct/ }));
-  await mobile.findByText("https://bb.example.ts.net");
-  expect(mobile.getByRole("button", { name: "Copy URL" })).toBeTruthy();
-  expect(mobile.queryByRole("button", { name: "Pair this phone" })).toBeNull();
-  expect(updateSettings).not.toHaveBeenCalled();
-  act(() =>
-    setPluginSlotRegistrations("connection", makePluginRegistrationSet()),
-  );
-  expect(mobile.queryByRole("button", { name: "Pair this phone" })).toBeNull();
-  expect(
-    mobile.getByRole("link", { name: "Download Android APK" }),
-  ).toBeTruthy();
-  await screen.findByText(/Release details are unavailable/);
 });

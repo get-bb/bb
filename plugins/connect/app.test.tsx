@@ -257,91 +257,6 @@ describe("connect settings section", () => {
     slot.getByRole("button", { name: "Copy URL" });
   });
 
-  it.each(["machines", "mobile"] as const)(
-    "completes account sign-in inline in the %s workflow",
-    async (purpose) => {
-      let currentStatus = status();
-      const account = fakeAccountSdk({
-        "login.start": () => pendingLogin(),
-        "login.poll": () => {
-          currentStatus = connected();
-          return { login: pendingLogin("signed-in"), status: signedInAccount };
-        },
-      });
-      const slot = renderSlot(
-        app.serverAccess[0]!,
-        { purpose },
-        {
-          sdk: account.sdk,
-          rpc: { status: () => currentStatus },
-        },
-      );
-      if (purpose === "mobile") {
-        fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
-        expect(
-          slot.getByRole("button", { name: "Sign in to your bb account" }),
-        ).toBeTruthy();
-        fireEvent.click(slot.getByRole("button", { name: "Close" }));
-        expect(
-          slot.queryByRole("button", { name: "Sign in to your bb account" }),
-        ).toBeNull();
-        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
-      }
-      fireEvent.click(
-        await slot.findByRole("button", { name: "Sign in to your bb account" }),
-      );
-      await slot.findByText("K7QP-2M4X");
-      await slot.findByText(
-        "https://workstation.getbb.app",
-        {},
-        { timeout: 4000 },
-      );
-      expect(account.calls.map((call) => call.method)).toEqual([
-        "login.start",
-        "login.poll",
-      ]);
-      expect(slot.navigateCalls).toEqual([]);
-      expect(
-        slot.queryByRole("button", { name: "Sign in to your bb account" }),
-      ).toBeNull();
-      expect(Boolean(slot.queryByRole("button", { name: "Pair phone" }))).toBe(
-        purpose === "mobile",
-      );
-    },
-  );
-
-  it.each(["machines", "mobile"] as const)(
-    "turns remote access back on without signing in again in %s",
-    async (purpose) => {
-      let currentStatus = connected({ enabled: false, state: "disconnected" });
-      const slot = renderSlot(
-        app.serverAccess[0]!,
-        { purpose },
-        {
-          rpc: {
-            status: () => currentStatus,
-            setRemoteAccess: () => {
-              currentStatus = connected();
-              return currentStatus;
-            },
-          },
-        },
-      );
-      await slot.findByText("Remote access is off");
-      expect(slot.queryByText(/reconnecting/i)).toBeNull();
-      expect(
-        slot.queryByRole("button", { name: "Sign in to your bb account" }),
-      ).toBeNull();
-      fireEvent.click(slot.getByRole("button", { name: "Turn on" }));
-      await slot.findByText("https://workstation.getbb.app");
-      expect(slot.rpcCalls).toContainEqual({
-        method: "setRemoteAccess",
-        input: { enabled: true },
-      });
-      expect(slot.navigateCalls).toEqual([]);
-    },
-  );
-
   it("does not auto-submit an incomplete code", async () => {
     const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
     const slot = renderSlot(
@@ -699,61 +614,11 @@ describe("connect settings section", () => {
     await slot.findByText(/this bb is not connected to getbb.app/);
   });
 
-  it.each([status(), connected(), connected({ state: "reconnecting" })])(
-    "links remote access to Mobile settings without duplicating pairing controls",
-    async (currentStatus) => {
-      const slot = renderSlot(
-        app.settingsSections[0]!,
-        {},
-        {
-          rpc: { status: () => currentStatus },
-        },
-      );
-      const link = await slot.findByRole("link", {
-        name: "Open Mobile settings",
-      });
-      expect(link.getAttribute("href")).toBe("/settings/mobile");
-      expect(slot.queryByRole("button", { name: "Pair phone" })).toBeNull();
-    },
-  );
-
-  it.each([status(), connected({ state: "reconnecting" })])(
-    "keeps setup and recovery inline without offering phone pairing until connected",
-    async (currentStatus) => {
-      const slot = renderSlot(
-        app.serverAccess[0]!,
-        { purpose: "mobile" as const },
-        { rpc: { status: () => currentStatus } },
-      );
-      await waitFor(() =>
-        expect(slot.queryByText("Loading connection status…")).toBeNull(),
-      );
-      if (currentStatus.paired) {
-        expect(slot.getByText("bb connect is reconnecting.")).toBeTruthy();
-        fireEvent.click(slot.getByRole("button", { name: "Details" }));
-        expect(slot.getByText("Reconnecting…")).toBeTruthy();
-      } else {
-        expect(slot.queryByRole("textbox")).toBeNull();
-        fireEvent.click(slot.getByRole("button", { name: "Set up" }));
-        expect(
-          slot.getByRole("button", { name: "Sign in to your bb account" }),
-        ).toBeTruthy();
-        expect(
-          slot.getByRole("button", { name: "Have a pairing code?" }),
-        ).toBeTruthy();
-      }
-      expect(
-        slot.queryByRole("link", { name: "Manage remote access" }),
-      ).toBeNull();
-      expect(slot.queryByRole("button", { name: "Pair phone" })).toBeNull();
-    },
-  );
-
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
     const expiresAt = Date.now() + 600_000;
     const slot = renderSlot(
-      app.serverAccess[0]!,
-      { purpose: "mobile" as const },
+      app.settingsSections[0]!,
+      {},
       {
         rpc: {
           status: () => connected(),
@@ -766,9 +631,11 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("https://workstation.getbb.app");
+    await slot.findByText("Connected");
     expect(slot.queryByText("K7QP-2M4X")).toBeNull();
-    fireEvent.click(await slot.findByRole("button", { name: "Pair phone" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Add mobile device" }),
+    );
 
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
@@ -789,8 +656,8 @@ describe("connect settings section", () => {
   it("an expired mobile pairing code offers a fresh one", async () => {
     let minted = 0;
     const slot = renderSlot(
-      app.serverAccess[0]!,
-      { purpose: "mobile" as const },
+      app.settingsSections[0]!,
+      {},
       {
         rpc: {
           status: () => connected(),
@@ -806,8 +673,10 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("https://workstation.getbb.app");
-    fireEvent.click(await slot.findByRole("button", { name: "Pair phone" }));
+    await slot.findByText("Connected");
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Add mobile device" }),
+    );
     await slot.findByText("AAAA-1111");
 
     await slot.findByText("Code expired", undefined, { timeout: 4_000 });
@@ -823,8 +692,8 @@ describe("connect settings section", () => {
 
   it("explains the account machine limit with a dashboard link", async () => {
     const slot = renderSlot(
-      app.serverAccess[0]!,
-      { purpose: "mobile" as const },
+      app.settingsSections[0]!,
+      {},
       {
         rpc: {
           status: () => connected(),
@@ -835,8 +704,10 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("https://workstation.getbb.app");
-    fireEvent.click(await slot.findByRole("button", { name: "Pair phone" }));
+    await slot.findByText("Connected");
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Add mobile device" }),
+    );
 
     await slot.findByText(/reached its machine limit/);
     const link = slot.getByRole("link", {
@@ -844,7 +715,7 @@ describe("connect settings section", () => {
     }) as HTMLAnchorElement;
     expect(link.href).toBe("https://getbb.app/dashboard");
     expect(slot.queryByText("machine_limit")).toBeNull();
-    slot.getByRole("button", { name: "Pair phone" });
+    slot.getByRole("button", { name: "Add mobile device" });
   });
 
   it("turn off confirms, keeps the account, and shows the off card with a receipt", async () => {

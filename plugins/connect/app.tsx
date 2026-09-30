@@ -5,7 +5,6 @@ import {
   useRealtime,
   useRpc,
   useSdk,
-  type ExperimentalServerAccessProps,
 } from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
@@ -641,10 +640,8 @@ function MobilePairingCard({
 
 function AddMobileDeviceSection({
   dashboardUrl,
-  serverUrl,
 }: {
   dashboardUrl: string;
-  serverUrl: string | null;
 }) {
   const rpc = useRpc<typeof connectRpcContract>();
   const [payload, setPayload] = useState<MobilePairingPayload | null>(null);
@@ -669,16 +666,16 @@ function AddMobileDeviceSection({
   }, [minting, rpc]);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex min-w-0 items-center gap-2 text-sm text-subtle-foreground">
-          <StatusDot tone="ok" />
-          <span className="break-all">{serverUrl ?? "Connected"}</span>
-        </p>
+    <div className="space-y-2.5 border-t border-border-seam pt-4">
+      <div className="flex items-center">
+        <h3 className="text-2xs font-semibold uppercase tracking-wide text-subtle-foreground">
+          Mobile app
+        </h3>
+        <span className="flex-1" />
         {payload === null ? (
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             className="text-muted-foreground"
             disabled={minting}
@@ -689,12 +686,12 @@ function AddMobileDeviceSection({
             ) : (
               <Icon name="Plus" className="size-3.5" />
             )}
-            Pair phone
+            Add mobile device
           </Button>
         ) : (
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             className="text-muted-foreground"
             onClick={() => {
@@ -715,7 +712,12 @@ function AddMobileDeviceSection({
           minting={minting}
           onRenew={mint}
         />
-      ) : null}
+      ) : (
+        <p className="text-xs text-subtle-foreground/75">
+          Pair the bb mobile app with this bb. It gets a one-time code to scan
+          or type; the phone then reaches this bb through {dashboardHost}.
+        </p>
+      )}
 
       {errorCode === "machine_limit" ? (
         <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
@@ -1392,6 +1394,8 @@ function ConnectedContent({
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
 
+      <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
+
       <SharedPortsSection shares={status.shares} dimmed={false} />
 
       <TurnOffControls
@@ -1502,10 +1506,12 @@ function OffContent({
   );
 }
 
-function useConnectStatus() {
+function ConnectSettingsSection() {
   const rpc = useRpc<typeof connectRpcContract>();
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetch = useCallback(() => {
     rpc.call("status").then(
@@ -1534,119 +1540,6 @@ function useConnectStatus() {
     }
   });
 
-  return { status, loadError, refetch };
-}
-
-function ServerAccessSection({ purpose }: ExperimentalServerAccessProps) {
-  const { status, loadError, refetch } = useConnectStatus();
-  const [manage, setManage] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  if (loadError !== null)
-    return (
-      <div role="alert" className="space-y-2 text-sm">
-        <p>Could not load connection status: {loadError}</p>
-        <Button variant="outline" onClick={refetch}>
-          Try again
-        </Button>
-      </div>
-    );
-  if (status === null)
-    return (
-      <p role="status" className="text-sm text-subtle-foreground">
-        Loading connection status…
-      </p>
-    );
-  if (status.paired && !status.enabled) {
-    return <OffContent status={status} onChanged={refetch} />;
-  }
-  if (purpose === "mobile") {
-    if (status.paired && status.state === "connected") {
-      return (
-        <AddMobileDeviceSection
-          dashboardUrl={status.dashboardUrl}
-          serverUrl={status.url}
-        />
-      );
-    }
-    return (
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 text-sm text-subtle-foreground">
-            {status.paired
-              ? "bb connect is reconnecting."
-              : "Use bb connect to pair your phone from anywhere."}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            aria-expanded={setupOpen}
-            onClick={() => setSetupOpen(!setupOpen)}
-          >
-            {setupOpen ? "Close" : status.paired ? "Details" : "Set up"}
-          </Button>
-        </div>
-        {setupOpen ? (
-          <div className="border-t border-border-seam pt-4">
-            {status.paired ? (
-              <ReconnectingContent
-                status={status}
-                onChanged={refetch}
-                onTurnedOff={refetch}
-              />
-            ) : (
-              <NotPairedContent
-                dashboardUrl={status.dashboardUrl}
-                onPaired={refetch}
-              />
-            )}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-  if (!status.paired)
-    return (
-      <NotPairedContent dashboardUrl={status.dashboardUrl} onPaired={refetch} />
-    );
-  if (status.state !== "connected")
-    return (
-      <ReconnectingContent
-        status={status}
-        onChanged={refetch}
-        onTurnedOff={refetch}
-      />
-    );
-  return (
-    <section aria-label="bb connect" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 space-y-1 text-sm">
-          <p className="flex items-center gap-2">
-            <StatusDot tone="ok" />
-            Connected
-          </p>
-          {status.url ? (
-            <p className="break-all text-subtle-foreground">{status.url}</p>
-          ) : null}
-        </div>
-        <Button variant="outline" onClick={() => setManage(!manage)}>
-          {manage ? "Done" : "Manage"}
-        </Button>
-      </div>
-      {manage ? (
-        <ConnectedContent
-          status={status}
-          onChanged={refetch}
-          onTurnedOff={refetch}
-        />
-      ) : null}
-    </section>
-  );
-}
-
-function ConnectSettingsSection() {
-  const { status, loadError, refetch } = useConnectStatus();
-  const [flash, setFlash] = useState<string | null>(null);
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showTurnedOff = useCallback(() => {
     setFlash("Remote access turned off");
     if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
@@ -1702,19 +1595,6 @@ function ConnectSettingsSection() {
           onTurnedOff={showTurnedOff}
         />
       )}
-      <div className="space-y-2 border-t border-border-seam pt-4">
-        <h3 className="text-sm font-medium">Mobile app</h3>
-        <p className="text-sm text-subtle-foreground">
-          Install the iOS or Android app and pair your phone from Mobile
-          settings.
-        </p>
-        <UrlLink
-          href="/settings/mobile"
-          className="text-sm underline underline-offset-2"
-        >
-          Open Mobile settings
-        </UrlLink>
-      </div>
     </div>
   );
 }
@@ -1725,10 +1605,5 @@ export default definePluginApp((app) => {
     description:
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
-  });
-  app.slots.experimental_serverAccess({
-    id: "server-access",
-    providerId: "connect",
-    component: ServerAccessSection,
   });
 });
