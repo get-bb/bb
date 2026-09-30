@@ -81,10 +81,6 @@ function requireAbsoluteHostRoot(rootPath: string): string {
   return normalizeHostPath(rootPath);
 }
 
-function filePreviewLeaseKey(root: { hostId: string; rootPath: string }) {
-  return JSON.stringify([root.hostId, root.rootPath]);
-}
-
 function createInvalidFilePathError(): ApiError {
   return new ApiError(400, "invalid_path", "Invalid file path", false);
 }
@@ -171,7 +167,6 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   const environmentRoutes = publicApiRoutes.environments;
   const projectRoutes = publicApiRoutes.projects;
   const previewLeases = new Map<string, FilePreviewLease>();
-  const previewLeaseIdsByKey = new Map<string, string>();
 
   const resolveHostId = (hostId: string | undefined): string => {
     const resolved = hostId ?? requirePrimaryHostId(deps);
@@ -369,25 +364,15 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   );
 
   post(fileRoutes.createPreview, (context, payload) => {
-    const root = {
-      hostId: resolveHostId(payload.hostId),
-      rootPath: requireAbsoluteHostRoot(payload.rootPath),
-    };
+    const hostId = resolveHostId(payload.hostId);
+    const rootPath = requireAbsoluteHostRoot(payload.rootPath);
     const now = Date.now();
     for (const [id, lease] of previewLeases) {
-      if (lease.expiresAtMs <= now) {
-        previewLeases.delete(id);
-        previewLeaseIdsByKey.delete(filePreviewLeaseKey(lease));
-      }
+      if (lease.expiresAtMs <= now) previewLeases.delete(id);
     }
-    const key = filePreviewLeaseKey(root);
-    const id = previewLeaseIdsByKey.get(key) ?? randomUUID();
-    const expiresAtMs = Math.max(
-      now + (payload.ttlMs ?? FILE_PREVIEW_TTL_MS),
-      previewLeases.get(id)?.expiresAtMs ?? 0,
-    );
-    previewLeases.set(id, { ...root, expiresAtMs });
-    previewLeaseIdsByKey.set(key, id);
+    const id = randomUUID();
+    const expiresAtMs = now + (payload.ttlMs ?? FILE_PREVIEW_TTL_MS);
+    previewLeases.set(id, { hostId, rootPath, expiresAtMs });
     return context.json({
       baseUrl: `/api/v1/file-previews/${encodeURIComponent(id)}`,
       expiresAtMs,

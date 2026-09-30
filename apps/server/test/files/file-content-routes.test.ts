@@ -23,37 +23,6 @@ interface HostFile {
 
 const REVISION = "0".repeat(64);
 
-function postJson(path: string, body: unknown): [string, RequestInit] {
-  return [
-    path,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  ];
-}
-
-async function createLease(
-  harness: TestHarness,
-  body: unknown,
-): Promise<string> {
-  const response = await harness.app.request(
-    ...postJson("/api/v1/files/previews", body),
-  );
-  expect(response.status).toBe(200);
-  const lease = await readJson(response);
-  if (
-    typeof lease !== "object" ||
-    lease === null ||
-    !("baseUrl" in lease) ||
-    typeof lease.baseUrl !== "string"
-  ) {
-    throw new Error("Preview response missing baseUrl");
-  }
-  return lease.baseUrl;
-}
-
 function serveFiles(
   harness: TestHarness,
   args: {
@@ -484,23 +453,6 @@ describe("file content routes", () => {
       );
       expect(traversal.status).toBe(400);
       expect(commands).toHaveLength(commandCount);
-    });
-  });
-
-  it("reuses one lease URL per host root", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      seedPrimaryHost(harness.deps, host.id);
-
-      const first = await createLease(harness, { rootPath: "/notes" });
-      const second = await createLease(harness, {
-        hostId: host.id,
-        rootPath: "/notes",
-      });
-      const other = await createLease(harness, { rootPath: "/other" });
-
-      expect(second).toBe(first);
-      expect(other).not.toBe(first);
     });
   });
 });

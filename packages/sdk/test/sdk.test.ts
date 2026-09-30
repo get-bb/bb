@@ -708,6 +708,13 @@ describe("@bb/sdk", () => {
       "http://bb.test/api/v1/environments/env_remote/files/remote.txt",
       "http://bb.test/api/v1/projects/proj_remote/hosts/host_remote/files/image.bin",
     ]);
+
+    for (const path of ["../../hosts", "docs/./a.md", "/etc/hosts", "a\\b"]) {
+      await expect(
+        sdk.projects.fileContent({ projectId: "proj_remote", path }),
+      ).rejects.toThrow(`Invalid file path: ${path}`);
+    }
+    expect(requests).toHaveLength(3);
   });
 
   it("routes provider list and model discovery through portable host selectors", async () => {

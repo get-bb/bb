@@ -321,6 +321,20 @@ function resolveAttachmentFilename(input: ProjectAttachmentUploadArgs): string {
   return filename;
 }
 
+function encodeProjectFilePath(path: string): string {
+  const segments = path.split("/");
+  if (
+    path.includes("\0") ||
+    path.includes("\\") ||
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
+  ) {
+    throw new Error(`Invalid file path: ${path}`);
+  }
+  return segments.map(encodeURIComponent).join("/");
+}
+
 function isUtf8FileContent(bytes: Uint8Array, mimeType: string): boolean {
   if (mimeType.startsWith("image/") && !mimeType.startsWith("image/svg+xml")) {
     return false;
@@ -489,7 +503,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
     },
     async fileContent(input) {
       const { projectId, path, signal, environmentId, hostId } = input;
-      const filePath = path.split("/").map(encodeURIComponent).join("/");
+      const filePath = encodeProjectFilePath(path);
       const routePath =
         environmentId !== undefined
           ? `/environments/${encodeURIComponent(environmentId)}/files/${filePath}`
