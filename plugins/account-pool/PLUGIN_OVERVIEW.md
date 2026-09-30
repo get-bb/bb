@@ -29,7 +29,7 @@ Proxied traffic authenticates as the parent machine's token, so the parent attri
 
 Accounts you own and are permitted to use this way.
 
-This plugin is experimental. Routing behavior, stored data, and the CLI can change between releases.
+Experimental: routing, storage, and CLI may change.
 
 ## For agents
 
