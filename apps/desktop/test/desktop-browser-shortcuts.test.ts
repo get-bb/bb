@@ -67,7 +67,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
 
   it.each([
     { command: "panel.nextTab", control: true, shift: false },
-    { command: "pane.focus.right", control: false, shift: true },
+    { command: "pane.focus.right", control: true, shift: true },
   ] as const)("respects platform scope for $command", ({ command, control, shift }) => {
     const binding: AppKeybindings[number] = {
       ...keybindings[0]!,

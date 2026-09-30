@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { focusPaneComposer } from "@/lib/pane-composer-focus";
 import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type { PromptTextMention } from "@bb/domain";
@@ -543,6 +544,32 @@ afterEach(async () => {
 });
 
 describe("suppressPromptEditorAnchorActivation", () => {
+  it("restores the editor selection when pane navigation returns focus", async () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ value: "Retained draft" })}
+      />,
+    );
+    const element = getPromptEditorElement() as TiptapEditorHTMLElement;
+    const editor = element.editor;
+    if (!editor) throw new Error("Editor was not mounted");
+    act(() => {
+      editor.commands.setTextSelection({ from: 3, to: 7 });
+    });
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    outside.focus();
+    act(() => {
+      focusPaneComposer(element);
+    });
+    expect(document.activeElement).toBe(element);
+    expect(editor.state.selection.from).toBe(3);
+    expect(editor.state.selection.to).toBe(7);
+    expect(window.getSelection()?.toString()).toBe("tain");
+    expect(editor.getText()).toBe("Retained draft");
+    outside.remove();
+  });
+
   it("cancels anchor clicks inside the prompt editor", () => {
     const anchor = document.createElement("a");
     anchor.href = "https://example.com";

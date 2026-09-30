@@ -56,6 +56,7 @@ describe("app keybindings", () => {
       const overrides = [
         {
           command: "plugin:example/open",
+          platform: "mac",
           shortcut: {
             key: "i",
             mod: true,
@@ -517,7 +518,7 @@ describe("app keybindings", () => {
           key,
           desktopOnly: false,
           mod: true,
-          control: false,
+          control: true,
           shift: true,
           when: {
             all: ["mainSurface", "splitActive", "macPlatform"],
@@ -787,3 +788,67 @@ describe("app keybindings", () => {
     });
   });
 });
+
+it.each(["left", "right", "up", "down"] as const)(
+  "scopes migrated %s bindings to macOS and resets to the new chord",
+  (direction) => {
+    const command = `pane.focus.${direction}` as const;
+    const key = `Arrow${direction[0].toUpperCase()}${direction.slice(1)}`;
+    const overrides = appKeybindingOverridesSchema.parse([
+      {
+        command,
+        platform: "mac",
+        shortcut: {
+          key,
+          mod: true,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: true,
+        },
+      },
+    ]);
+    const input = {
+      key,
+      code: key,
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: true,
+    };
+    for (const client of DEFAULT_KEYBINDING_CLIENTS) {
+      const effective = applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        overrides,
+      ).filter(
+        (binding) =>
+          binding.command === command &&
+          isAppKeybindingAvailableForClient(binding, client),
+      );
+      expect(effective).toHaveLength(client.isMac ? 1 : 0);
+      if (client.isMac)
+        expect(matchesAppShortcut(input, effective[0]!.shortcut, true)).toBe(
+          true,
+        );
+      const reset = applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        [],
+      ).filter(
+        (binding) =>
+          binding.command === command &&
+          isAppKeybindingAvailableForClient(binding, client),
+      );
+      expect(reset).toHaveLength(client.isMac ? 1 : 0);
+      if (client.isMac) {
+        expect(matchesAppShortcut(input, reset[0]!.shortcut, true)).toBe(false);
+        expect(
+          matchesAppShortcut(
+            { ...input, ctrlKey: true },
+            reset[0]!.shortcut,
+            true,
+          ),
+        ).toBe(true);
+      }
+    }
+  },
+);

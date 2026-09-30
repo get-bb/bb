@@ -1,3 +1,4 @@
+import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type {
@@ -1818,6 +1819,13 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     editorRef.current = editor;
+  }, [editor]);
+
+  useLayoutEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    return registerPaneComposerFocus(editor.view.dom, () => {
+      if (!editor.isDestroyed && editor.isEditable) editor.view.focus();
+    });
   }, [editor]);
 
   useEffect(() => {

@@ -95,7 +95,10 @@ export function getCommandShortcut(
     }
   }
   if (!available) return null;
-  const override = overrides.find((candidate) => candidate.command === command);
+  const override = overrides.find(
+    (candidate) =>
+      candidate.command === command && (candidate.platform !== "mac" || isMac),
+  );
   return override === undefined ? defaultShortcut : override.shortcut;
 }
 
@@ -133,12 +136,12 @@ export function setCommandShortcutOverride(
     defaultShortcut !== null &&
     areAppShortcutsEqual(shortcut, defaultShortcut);
   const byCommand = new Map(
-    overrides.map((override) => [override.command, override.shortcut]),
+    overrides.map((override) => [override.command, override]),
   );
   if (shouldUseDefault) {
     byCommand.delete(command);
   } else {
-    byCommand.set(command, shortcut);
+    byCommand.set(command, { command, shortcut });
   }
   return [
     ...new Set<KeyboardCommandId>([
@@ -146,8 +149,8 @@ export function setCommandShortcutOverride(
       ...[...byCommand.keys()].sort(),
     ]),
   ].flatMap((candidate) => {
-    if (!byCommand.has(candidate)) return [];
-    return [{ command: candidate, shortcut: byCommand.get(candidate) ?? null }];
+    const override = byCommand.get(candidate);
+    return override === undefined ? [] : [override];
   });
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   APP_COMMAND_IDS,
   type AppDefaultKeybindings,
+  type AppKeybindingOverrides,
   type AppKeybindings,
 } from "@bb/domain";
 import { APP_COMMAND_GROUPS } from "./app-command-metadata";
@@ -229,4 +230,41 @@ describe("keyboard shortcut settings", () => {
       getCommandShortcut(platformDefaults, [], "thread.new", true, "MacIntel"),
     ).toEqual(platformDefaults[2]!.shortcut);
   });
+});
+
+it("shows compatibility bindings only on macOS and preserves their scope while editing another command", () => {
+  const overrides: AppKeybindingOverrides = [
+    {
+      command: "thread.new",
+      shortcut: { ...defaults[0]!.shortcut, key: "o" },
+      platform: "mac",
+    },
+  ];
+  expect(
+    getCommandShortcut(defaults, overrides, "thread.new", false, "MacIntel")
+      ?.key,
+  ).toBe("o");
+  expect(
+    getCommandShortcut(defaults, overrides, "thread.new", false, "Linux")?.key,
+  ).toBe("n");
+  const edited = setCommandShortcutOverride(
+    defaults,
+    overrides,
+    "pane.focus.left",
+    null,
+    false,
+    "MacIntel",
+  );
+  expect(edited.find((binding) => binding.command === "thread.new")).toEqual(
+    overrides[0],
+  );
+  expect(
+    getCommandShortcut(
+      defaults,
+      resetCommandShortcutOverride(edited, "thread.new"),
+      "thread.new",
+      false,
+      "MacIntel",
+    )?.key,
+  ).toBe("n");
 });

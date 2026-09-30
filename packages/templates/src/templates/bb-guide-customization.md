@@ -239,11 +239,18 @@ move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
-`Command+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+`Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the
 layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
 commands still cycle in reading order. On Windows/Linux, these arrow navigation
 commands start unassigned to preserve native Control-arrow editing shortcuts.
+Existing installations retain their previous directional bindings through a one-time
+migration to explicit macOS-only overrides (`platform: "mac"`); custom and disabled
+bindings remain unchanged. Fresh installations use the new defaults. Resetting a
+directional command in Settings → Keyboard or with `bb settings keyboard reset
+pane.focus.left` adopts its new default permanently, including after restart.
+Overrides without a `platform` apply on all platforms; the optional `"mac"` scope
+is also accepted by SDK `system.updateKeyboardSettings`.
 Rebind any of these commands in Settings → Keyboard, via
 `bb settings keyboard set <command> <shortcut|disabled>`, or SDK
 `system.updateKeyboardSettings`; read bindings with `system.config`.

@@ -273,6 +273,7 @@ const appKeybindingOverrideSchema = z
   .object({
     command: keyboardCommandIdSchema,
     shortcut: appShortcutSchema.nullable(),
+    platform: z.literal("mac").optional(),
   })
   .strict();
 
@@ -306,6 +307,39 @@ export function applyAppKeybindingOverrides(
     );
     const shortcut =
       override === undefined ? binding.shortcut : override.shortcut;
+    if (override?.platform === "mac") {
+      const macBindings: AppKeybindings =
+        shortcut === null || binding.when.none.includes("macPlatform")
+          ? []
+          : [
+              {
+                ...binding,
+                shortcut,
+                when: {
+                  ...binding.when,
+                  all: [
+                    ...new Set([...binding.when.all, "macPlatform" as const]),
+                  ],
+                },
+              },
+            ];
+      const otherBindings: AppKeybindings =
+        binding.shortcut === null || binding.when.all.includes("macPlatform")
+          ? []
+          : [
+              {
+                ...binding,
+                shortcut: binding.shortcut,
+                when: {
+                  ...binding.when,
+                  none: [
+                    ...new Set([...binding.when.none, "macPlatform" as const]),
+                  ],
+                },
+              },
+            ];
+      return [...macBindings, ...otherBindings];
+    }
     return shortcut === null ? [] : [{ ...binding, shortcut }];
   });
 }
