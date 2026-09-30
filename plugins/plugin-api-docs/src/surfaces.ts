@@ -542,7 +542,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds an agent to bb's model picker and runs the threads started with it. With this, a plugin can:",
         bullets: [
           "Appear in the model picker beside bb's built-in providers",
-          "Declare bb.experimental_providers: [{ kind: \"agent\", id, displayName }] in package.json to keep agent providers discoverable in Settings → Providers before the plugin runs. Runtime registration remains authoritative; metadata does not register an executable provider. Core enable/disable preferences preserve other providers from the same plugin",
+          'Declare bb.experimental_providers: [{ kind: "agent", id, displayName }] in package.json to keep agent providers discoverable in Settings → Providers before the plugin runs. Runtime registration remains authoritative; metadata does not register an executable provider. Core enable/disable preferences preserve other providers from the same plugin',
           "Declare what the provider supports, then serve its model list at runtime",
           "Supply a small icon that appears next to its name; React icon overrides require providerKind and providerId",
           "Publish context snapshots through contextWindow deltas, with provider-defined category IDs and labels. Each category declares used, free, reserved, or deferred accounting; entries are included in its total and may be partial. Snapshots include capture time, session identity, model, totals, and an optional auto-compaction threshold",
@@ -1216,12 +1216,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Controls a selected desktop window through bb.sdk.experimental_desktopBrowsers. With this, a plugin can:",
         bullets: [
-          "Discover instances on an explicit host and create thread-owned tabs with separate automation profiles",
-          "Acquire expiring control; reveal the first tab and new CDP pages only in the already focused thread, without activating the desktop window. Personal tabs require an explicit handoff",
+          "Discover instances on an explicit host and create thread-owned tabs in the BB browser profile",
+          "Acquire expiring control; reveal the first tab and new CDP pages only in the already focused thread, without activating the desktop window. Controlled tabs carry the BB browser profile's signed-in cookies",
           "Give a worker on that host a private, scoped CDP WebSocket connection for DevBrowser or agent-browser",
           "Capture or reveal a tab and release control while preserving the tab and its login",
           "Observe changed tab and control state with a disposable two-second polling subscription; report disconnect errors",
-          "List known browsers and schema-detected Chromium/Firefox profiles belonging to registered browsers on the desktop host; use the returned source ID to copy a profile's signed-in cookies into the personal BB browser or an automation profile",
+          "List known browsers and schema-detected Chromium/Firefox profiles belonging to registered browsers on the desktop host; use the returned source ID to copy a profile's signed-in cookies into the BB browser profile",
         ],
         apiSymbols: [
           "ExperimentalDesktopBrowsersArea",

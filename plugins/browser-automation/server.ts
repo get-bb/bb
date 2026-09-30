@@ -31,7 +31,7 @@ const desktopSchema = z
     leaseId: z.string(),
     tabId: z.string(),
     owned: z.boolean(),
-    profileId: z.string().nullable(),
+    leasedTabIds: z.array(z.string()),
   })
   .strict();
 const recordSchema = z
@@ -43,6 +43,7 @@ const recordSchema = z
   })
   .strict();
 type RecordEntry = z.infer<typeof recordSchema>;
+type DesktopTarget = z.infer<typeof desktopSchema>;
 const ttlMs = 30 * 60_000;
 const idleTimeoutMs = 5 * 60_000;
 const previewWaitMs = 5_000;
@@ -64,6 +65,18 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       keyFor(record.session.threadId, record.session.id),
       record,
     );
+  function trackLeasedTabs(
+    target: DesktopTarget,
+    tabs: Array<{ tabId: string; control: { leaseId: string } | null }>,
+  ) {
+    const added = tabs.filter(
+      (tab) =>
+        tab.control?.leaseId === target.leaseId &&
+        !target.leasedTabIds.includes(tab.tabId),
+    );
+    target.leasedTabIds.push(...added.map((tab) => tab.tabId));
+    return added.length > 0;
+  }
   async function owned(threadId: string, sessionId: string) {
     const record = recordSchema.parse(
       await bb.storage.kv.get(keyFor(threadId, sessionId)),
@@ -112,6 +125,11 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
             threadId: target.threadId,
           }
         : null;
+      if (target && scope)
+        await desktop.listTabs(scope).then(
+          ({ tabs }) => trackLeasedTabs(target, tabs),
+          () => {},
+        );
       const results = await Promise.allSettled([
         host.call(
           "close",
@@ -122,14 +140,13 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           ? [desktop.releaseControl({ ...scope, leaseId: target.leaseId })]
           : []),
       ]);
-      if (state === "closed" && target?.owned && scope) {
+      const createdTabIds = new Set(target?.leasedTabIds);
+      if (target?.owned) createdTabIds.add(target.tabId);
+      else if (target) createdTabIds.delete(target.tabId);
+      if (state === "closed" && scope && createdTabIds.size > 0) {
         const tabs = await desktop.listTabs(scope);
-        const ownedTabs = tabs.tabs.filter(
-          (tab) =>
-            tab.tabId === target.tabId ||
-            (target.profileId !== null &&
-              tab.profile.kind === "automation" &&
-              tab.profile.id === target.profileId),
+        const ownedTabs = tabs.tabs.filter((tab) =>
+          createdTabIds.has(tab.tabId),
         );
         results.push(
           ...(await Promise.allSettled(
@@ -227,7 +244,6 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           threadId: input.threadId,
         };
         let tabId = selection.tabId;
-        let profileId: string | null = null;
         if (!tabId) {
           const result = await desktop.createTab({
             ...scope,
@@ -235,10 +251,6 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
             presentation: "hidden",
           });
           tabId = result.tab.tabId;
-          profileId =
-            result.tab.profile.kind === "automation"
-              ? result.tab.profile.id
-              : null;
           created = { ...scope, tabId };
         }
         const lease = await desktop.acquireControl({
@@ -246,14 +258,13 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           tabIds: [tabId],
           controllerLabel: "Browser Automation",
           ttlMs,
-          allowPersonal: selection.tabId !== undefined,
         });
         record.desktop = {
           ...scope,
           leaseId: lease.leaseId,
           tabId,
           owned: selection.tabId === undefined,
-          profileId,
+          leasedTabIds: [],
         };
         const connection = await desktop.openConnection({
           ...scope,
@@ -304,6 +315,8 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
             generation: target.generation,
             threadId: target.threadId,
             onChange(result) {
+              if (trackLeasedTabs(target, result.tabs))
+                void save(record).catch(() => {});
               if (
                 !result.tabs.some(
                   (tab) => tab.control?.leaseId === target.leaseId,

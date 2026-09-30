@@ -698,7 +698,11 @@ const electronMock = vi.hoisted(() => {
 
     constructor(
       public readonly options: {
-        webPreferences: { partition: string; preload?: string };
+        webPreferences: {
+          partition: string;
+          preload?: string;
+          backgroundThrottling?: boolean;
+        };
       },
     ) {
       this.webContents = new FakeWebContents(nextWebContentsId);
@@ -2006,7 +2010,6 @@ describe("DesktopBrowserViewManager", () => {
         ...scope,
         tabId: "automation",
         url: "about:blank",
-        profile: { kind: "automation", id: "profile" },
         presentation: "hidden",
       });
       await broker.execute({
@@ -2156,39 +2159,31 @@ describe("DesktopBrowserViewManager", () => {
     }
   });
 
-  it("creates hidden automation tabs in isolated hardened profiles and preserves them on presentation attach", () => {
+  it("creates hidden automation tabs in the hardened browser session and preserves them on presentation attach", () => {
     const { manager, hostWindow } = createRendererRecoveryFixture(91);
-    const create = (tabId: string, profileId: string) =>
+    const create = (tabId: string) =>
       manager.createTab({
         hostWindow,
         tabId,
         threadId: "thread-1",
         url: "about:blank",
-        profile: { kind: "automation", id: profileId },
         viewport: { width: 640, height: 400 },
       });
-    const first = create("automation:first", "profile-1");
-    create("automation:same", "profile-1");
-    create("automation:other", "profile-2");
-    const personal = requireFakeView(0);
+    const first = create("automation:first");
+    create("automation:second");
+    const userTab = requireFakeView(0);
     const automated = requireFakeView(1);
     expect(automated.visible).toBe(false);
     expect(automated.webContents.focusCalls).toBe(0);
-    expect(automated.options.webPreferences.partition).not.toBe(
-      personal.options.webPreferences.partition,
-    );
-    expect(requireFakeView(2).options.webPreferences.partition).toBe(
-      automated.options.webPreferences.partition,
-    );
-    expect(requireFakeView(3).options.webPreferences.partition).not.toBe(
-      automated.options.webPreferences.partition,
-    );
-    expect(electronMock.fakeSessions).toHaveLength(3);
-    expect(
-      electronMock.fakeSessions.every(
-        (session) => session.permissionCheckHandler !== null,
-      ),
-    ).toBe(true);
+    for (const view of [automated, requireFakeView(2)]) {
+      expect(view.options.webPreferences.partition).toBe(
+        userTab.options.webPreferences.partition,
+      );
+      expect(view.options.webPreferences.backgroundThrottling).toBe(false);
+    }
+    expect(userTab.options.webPreferences.backgroundThrottling).toBe(true);
+    expect(electronMock.fakeSessions).toHaveLength(1);
+    expect(electronMock.fakeSessions[0]?.permissionCheckHandler).not.toBeNull();
     attachBrowserTab({
       manager,
       hostWindow,
@@ -2198,8 +2193,8 @@ describe("DesktopBrowserViewManager", () => {
     expect(
       manager
         .listTabs({ hostWebContentsId: 91, threadId: "thread-1" })
-        .find((tab) => tab.tabId === first.tabId)?.profile,
-    ).toEqual(first.profile);
+        .find((tab) => tab.tabId === first.tabId)?.generation,
+    ).toBe(first.generation);
     expect(automated.webContents.loadURLCalls).toEqual(["about:blank"]);
     manager.closeTab({
       hostWebContentsId: 91,
@@ -2207,7 +2202,7 @@ describe("DesktopBrowserViewManager", () => {
       tabId: first.tabId,
       generation: first.generation,
     });
-    const replacement = create(first.tabId, "profile-1");
+    const replacement = create(first.tabId);
     expect(replacement.generation).not.toBe(first.generation);
     expect(() =>
       manager.closeTab({

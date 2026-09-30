@@ -177,7 +177,6 @@ describe.sequential("suspended machine lifecycle policy", () => {
                     threadId: thread.id,
                     url: "https://example.com",
                     title: "Example",
-                    profile: { kind: "automation", id: "profile-1" },
                     presentation: "hidden",
                     control: null,
                   },

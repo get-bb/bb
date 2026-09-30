@@ -186,7 +186,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       threadId: "thread",
       title: "",
       url: "about:blank",
-      profile: { kind: "personal" },
       presentation: "hidden",
       control: null,
     },
@@ -1144,7 +1143,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(221);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(222);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

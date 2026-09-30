@@ -50,7 +50,6 @@ function fixture(harness: TestAppHarness) {
       threadId: scope.threadId,
       url: "https://example.com",
       title: "Example",
-      profile: { kind: "automation", id: "automation-profile" },
       presentation: "hidden",
       control: null,
     },
@@ -89,7 +88,6 @@ function fixture(harness: TestAppHarness) {
             threadId: command.threadId,
             url: command.url,
             title: "",
-            profile: command.profile,
             presentation: command.presentation,
             control: null,
           };
@@ -334,7 +332,7 @@ describe("desktop browser public API", () => {
     });
   });
 
-  it("creates an isolated automation profile by default and persists its desktop target", async () => {
+  it("creates a browser tab and persists its desktop target", async () => {
     await withBrowserTest(async (test) => {
       const response = await test.post("create");
       expect(response.status).toBe(200);
@@ -349,13 +347,8 @@ describe("desktop browser public API", () => {
         threadId: test.scope.threadId,
         url: "about:blank",
         presentation: "hidden",
-        profile: { kind: "automation", id: expect.any(String) },
       });
       expect(tab.tabId).toMatch(/^[0-9a-f-]{36}$/u);
-      expect(tab.profile).toEqual({
-        kind: "automation",
-        id: expect.stringMatching(/^[0-9a-f-]{36}$/u),
-      });
       expect(test.stored()).toEqual([
         expect.objectContaining({
           id: tab.tabId,
@@ -455,26 +448,15 @@ describe("desktop browser public API", () => {
     });
   });
 
-  it("requires explicit personal handoff and rejects missing or foreign tabs", async () => {
+  it("rejects missing tabs before granting control", async () => {
     await withBrowserTest(async (test) => {
-      const tab = { ...test.tab(), profile: { kind: "personal" as const } };
-      test.setTabs([tab]);
-      const denied = await test.post("acquire", {
-        ...test.scope,
-        tabIds: [tab.tabId],
-        controllerLabel: "Agent",
-      });
-      expect(denied.status).toBe(403);
-      expect(await denied.json()).toMatchObject({
-        code: "desktop_personal_handoff_required",
-      });
+      const tab = test.tab();
       expect(
         (
           await test.post("acquire", {
             ...test.scope,
             tabIds: ["missing"],
             controllerLabel: "Agent",
-            allowPersonal: true,
           })
         ).status,
       ).toBe(403);
@@ -483,7 +465,7 @@ describe("desktop browser public API", () => {
           ({ command }) => command.type === "desktop.browser.list_tabs",
         ),
       ).toBe(true);
-      const lease = await test.acquire({ allowPersonal: true });
+      const lease = await test.acquire();
       expect(lease.tabIds).toEqual([tab.tabId]);
       expect(lease.controllerLabel).toBe("Test agent");
       expect(lease.expiresAt - Date.now()).toBeGreaterThan(290000);
@@ -568,7 +550,7 @@ describe("desktop browser public API", () => {
     });
   });
 
-  it("lists import sources and forwards cookie imports with a personal default target", async () => {
+  it("lists import sources and forwards cookie imports into the browser profile", async () => {
     await withBrowserTest(async (test) => {
       const instance = {
         hostId: test.scope.hostId,
@@ -605,7 +587,6 @@ describe("desktop browser public API", () => {
         generation: instance.generation,
         sourceId: "firefox",
         sourceProfileDirectory: "Profiles/p1",
-        profile: { kind: "personal" },
       });
       const rejected = await test.post("import-cookies", {
         ...instance,
