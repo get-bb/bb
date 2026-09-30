@@ -356,7 +356,7 @@ export class TunnelSession {
     } catch (e) {
       if (!stream.abort.signal.aborted) {
         this.options.log.warn(
-          `origin http error on ${meta.method} ${meta.path}: ${String(e)}`,
+          `origin http error on ${meta.method} ${new URL(meta.path, "http://bb.local").pathname}: ${String(e)}`,
         );
         this.send({
           type: "close-stream",
