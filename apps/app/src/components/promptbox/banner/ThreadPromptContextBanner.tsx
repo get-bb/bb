@@ -356,9 +356,6 @@ function shouldShowPullRequestAttentionLabel(
   pullRequest: ThreadPullRequest,
 ): boolean {
   return (
-    pullRequest.attention === "queued" ||
-    pullRequest.attention === "checks_pending" ||
-    pullRequest.attention === "ready_to_merge" ||
     pullRequest.attention === "checks_failed" ||
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested" ||

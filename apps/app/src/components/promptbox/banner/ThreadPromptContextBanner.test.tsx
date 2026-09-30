@@ -259,7 +259,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("disabled");
   });
 
-  it("labels a standalone pull request ready for manual merge", () => {
+  it("keeps ready-to-merge status out of standalone visible labels", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -276,7 +276,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("PR #128");
     expect(markup).not.toContain("PR #128 · Open");
-    expect(markup).toContain("· Ready to merge");
+    expect(markup).not.toContain("· Ready to merge");
     expect(markup).not.toContain('alt="Checks success"');
   });
 
@@ -304,42 +304,50 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Squash merge");
   });
 
-  it("labels standalone auto-merge waiting on pending checks", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={null}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={{
-          pullRequest: {
-            ...pullRequestFixture,
-            autoMerge: true,
-            review: { state: "approved", reviewRequestCount: 0 },
-            checks: {
-              state: "pending",
-              totalCount: 1,
-              passedCount: 0,
-              failedCount: 0,
-              pendingCount: 1,
+  it.each(["checks_pending", "queued"] as const)(
+    "keeps %s auto-merge status in the tooltip only",
+    (attention) => {
+      const markup = renderToStaticMarkup(
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={{
+            pullRequest: {
+              ...pullRequestFixture,
+              autoMerge: true,
+              inMergeQueue: attention === "queued",
+              review: { state: "approved", reviewRequestCount: 0 },
+              checks: {
+                state: "pending",
+                totalCount: 1,
+                passedCount: 0,
+                failedCount: 0,
+                pendingCount: 1,
+              },
+              attention,
             },
-            attention: "checks_pending",
-          },
-        }}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
+          }}
+          expandedSection={null}
+          onToggleSection={noop}
+        />,
+      );
 
-    expect(markup).toContain("PR #128");
-    expect(markup).not.toContain("PR #128 · Open");
-    expect(markup).toContain(
-      'text-attention">· Auto-merge on · Approved · Checks pending</span>',
-    );
-    expect(markup).not.toContain('alt="Checks pending"');
-  });
+      expect(markup).toContain("PR #128");
+      expect(markup).not.toContain("PR #128 · Open");
+      expect(markup).not.toContain('text-attention">·');
+      expect(markup).toContain(
+        attention === "queued"
+          ? 'title="Queued to merge"'
+          : 'title="Auto-merge on · Approved · Checks pending"',
+      );
+      expect(markup).toContain('class="fill-attention"');
+      expect(markup).not.toContain('alt="Checks pending"');
+    },
+  );
 
   it("keeps useful standalone terminal pull request state labels", () => {
     const markup = renderToStaticMarkup(
@@ -593,7 +601,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("PR #128");
     expect(markup).not.toContain("Open PR #128");
-    expect(markup).toContain("· Ready to merge");
+    expect(markup).not.toContain("· Ready to merge");
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
   });
