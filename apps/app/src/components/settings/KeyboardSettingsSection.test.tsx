@@ -303,6 +303,43 @@ describe("KeyboardSettingsSection", () => {
     ).toBeDefined();
   });
 
+  it.each([",", "[", "]", "\\", "/", "+"])(
+    "finds the literal %s key without matching unrelated modifier shortcuts",
+    (key) => {
+      testState.keybindingOverrides = [
+        {
+          command: "thread.new",
+          shortcut: {
+            key,
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: false,
+          },
+        },
+      ];
+      render(<KeyboardSettingsSection />);
+      const search = screen.getByRole("textbox", {
+        name: "Search keyboard shortcuts",
+      });
+
+      for (const query of [key, `ctrl+${key}`]) {
+        fireEvent.change(search, { target: { value: query } });
+        expect(
+          screen.getByRole("button", {
+            name: /^Record shortcut for New thread,/,
+          }),
+        ).toBeDefined();
+        expect(
+          screen.queryByRole("button", {
+            name: /^Record shortcut for Open thread 1,/,
+          }),
+        ).toBeNull();
+      }
+    },
+  );
+
   it("restores category and command order when the search is cleared", () => {
     render(<KeyboardSettingsSection />);
     const originalLabels = screen

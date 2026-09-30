@@ -109,8 +109,9 @@ export function appShortcutMatchesQuery(
 ): boolean {
   const tokens = query
     .toLowerCase()
-    .split(/[^a-z0-9]+/u)
+    .split(/[\s+]+/u)
     .filter((token) => token.length > 0);
+  if (query.trimEnd().endsWith("+")) tokens.push("+");
   if (tokens.length === 0) return false;
   const useMetaForMod = isMacKeyboardPlatform(platform);
   const modifiers = new Set<string>();

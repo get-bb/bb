@@ -30,7 +30,11 @@ import {
   resetCommandShortcutOverride,
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
-import { browserPlatform, presentAppShortcut, appShortcutMatchesQuery } from "@/lib/app-keybindings";
+import {
+  browserPlatform,
+  presentAppShortcut,
+  appShortcutMatchesQuery,
+} from "@/lib/app-keybindings";
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
@@ -553,7 +557,11 @@ export function KeyboardSettingsSection() {
     (command: KeyboardCommandId, query: string): boolean => {
       const model = commandRowModels.get(command);
       if (model === undefined) return false;
-      return [model.shortcut, model.webDefaultShortcut, model.desktopDefaultShortcut]
+      return [
+        model.shortcut,
+        model.webDefaultShortcut,
+        model.desktopDefaultShortcut,
+      ]
         .filter((shortcut): shortcut is AppShortcut => shortcut !== null)
         .some((shortcut) => appShortcutMatchesQuery(shortcut, platform, query));
     },
