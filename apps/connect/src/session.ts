@@ -14,6 +14,7 @@ import {
 
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
+const MACHINE_CREDENTIAL_TTL_MS = 20_000;
 const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
@@ -277,12 +278,37 @@ export async function verifyMachineCredential(
   return (await verifyMachineCredentialDetails(credential, db))?.userId ?? null;
 }
 
+interface VerifiedMachine {
+  machineId: string;
+  userId: string;
+}
+
+const machineCredentialCache = new Map<
+  string,
+  CacheEntry<VerifiedMachine | null>
+>();
+
 export async function verifyMachineCredentialDetails(
   credential: string,
   db: ConnectDb,
-): Promise<{ machineId: string; userId: string } | null> {
+): Promise<VerifiedMachine | null> {
   if (!credential) return null;
   const hash = await sha256Hex(credential);
+  const now = Date.now();
+  const cached = cacheGet(machineCredentialCache, hash, now);
+  if (cached !== undefined) return cached;
+  return cacheStore(
+    machineCredentialCache,
+    hash,
+    lookupMachineCredential(hash, db),
+    now + MACHINE_CREDENTIAL_TTL_MS,
+  );
+}
+
+async function lookupMachineCredential(
+  hash: string,
+  db: ConnectDb,
+): Promise<VerifiedMachine | null> {
   const row = await db
     .select({ machineId: machine.id, userId: machine.userId })
     .from(machine)
