@@ -201,6 +201,17 @@ install's `~/.bb`. Each instance keeps its own `bb-app` under that data
 directory and self-updates against its own server, so servers running different
 bb versions on one machine remain isolated.
 
+On Linux, the installer uses the current user's systemd manager (or a system
+unit when run as root on a non-container systemd host). If the user bus is not
+reachable from the installer's environment, it retries using the current
+user's runtime path reported by `loginctl`. If the bus remains unavailable,
+installation fails before creating or enabling a unit; rerun it from a systemd
+user session. Set `BB_INSTALL_SKIP_SERVICE=1` only when a detached daemon is
+acceptable: no service starts it after a reboot. The temporary daemon used
+for a first join is not supervised. When the installer starts a previously
+joined daemon without a service, its launcher restarts it after crashes and
+self-updates while the launcher remains running.
+
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads the server artifact,
 verifies its SHA-256 digest, updates its private install, then exits so the

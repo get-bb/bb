@@ -33,6 +33,16 @@ removes that worktree. See [Worktrees, setup scripts, and teardown
 scripts](worktrees.md) for the lifecycle, environment, timeout, and failure
 contracts.
 
+## Linux machine installer
+
+The machine installer normally installs a persistent systemd user service. If
+the current user's bus is unavailable, it retries using the runtime path from
+`loginctl` and fails if the bus still cannot be reached. Set
+`BB_INSTALL_SKIP_SERVICE=1` on the installer command only when running without
+a service is intentional. No service starts the daemon after a reboot. The
+temporary daemon used for a first join is not supervised; a previously joined
+daemon started by the installer is supervised while its launcher runs.
+
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
 
