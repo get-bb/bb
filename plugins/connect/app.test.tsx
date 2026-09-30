@@ -682,7 +682,6 @@ describe("connect settings section", () => {
       name: "QR code to pair the bb mobile app",
     })) as HTMLImageElement;
     expect(qr.src.startsWith("data:image/png")).toBe(true);
-    slot.getByText(/bb connect machine-code/);
   });
 
   it("an expired mobile pairing code offers a fresh one", async () => {

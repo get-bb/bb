@@ -576,7 +576,12 @@ function MobilePairingCard({
   const qrText = encodeMobilePairingPayload(payload);
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-recessed/50 px-3 py-3 sm:flex-row sm:items-start">
-      <div className={cn("shrink-0", expired && "opacity-40 saturate-0")}>
+      <div
+        className={cn(
+          "shrink-0 self-center sm:self-start",
+          expired && "opacity-40 saturate-0",
+        )}
+      >
         <QrCodeImage
           value={qrText}
           alt="QR code to pair the bb mobile app"
@@ -585,7 +590,9 @@ function MobilePairingCard({
       </div>
       <div className="min-w-0 flex-1 space-y-2">
         <p className="text-sm">
-          Scan this with the bb mobile app, or enter the code by hand.
+          {expired
+            ? "Generate a new code, then scan it or enter it in the bb mobile app."
+            : "Scan this with the bb mobile app, or enter the code by hand."}
         </p>
         <div className="flex max-w-xs items-center gap-1 rounded-lg border border-border bg-surface-recessed py-1 pl-3.5 pr-1">
           <span
@@ -603,7 +610,7 @@ function MobilePairingCard({
             <QuietCopyButton text={payload.code} label="Copy pairing code" />
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-subtle-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle-foreground">
           {expired ? (
             <>
               <span>Code expired</span>
@@ -628,10 +635,8 @@ function MobilePairingCard({
           ) : null}
         </div>
         <p className="text-xs text-subtle-foreground/75">
-          The code works once. Your phone gets its own credential on your{" "}
-          {dashboardHost} account — it shows up in the dashboard&apos;s machine
-          list, where you can revoke it. Same thing from a terminal:{" "}
-          <span className="font-mono">bb connect machine-code</span>.
+          {expired ? "Each new code works once." : "This code works once."} You
+          can revoke your phone’s access from the {dashboardHost} dashboard.
         </p>
       </div>
     </div>
@@ -662,10 +667,16 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
   }, [minting, rpc]);
 
   return (
-    <div className="space-y-2.5 border-t border-border-seam pt-4">
-      <div className="flex items-center">
-        <h3 className="text-xs font-medium">Pair your phone</h3>
-        <span className="flex-1" />
+    <div className="mt-3 space-y-2.5 border-t border-border-seam pt-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <div className="min-w-0">
+          <h3 className="text-xs font-medium">Pair your phone</h3>
+          {payload === null ? (
+            <p className="mt-1 text-xs text-subtle-foreground/75">
+              Scan or enter a code.
+            </p>
+          ) : null}
+        </div>
         {payload === null ? (
           <Button
             type="button"
@@ -678,9 +689,12 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
             {minting ? (
               <Icon name="Spinner" className="size-3.5 animate-spin" />
             ) : (
-              <Icon name="Plus" className="size-3.5" />
+              <Icon
+                name={errorCode === "network" ? "RotateCcw" : "Plus"}
+                className="size-3.5"
+              />
             )}
-            Add mobile device
+            {errorCode === "network" ? "Try again" : "Add mobile device"}
           </Button>
         ) : (
           <Button
@@ -706,31 +720,28 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
           minting={minting}
           onRenew={mint}
         />
-      ) : (
-        <p className="text-xs text-subtle-foreground/75">
-          After installing the app, scan or enter a one-time code to connect
-          your phone.
-        </p>
-      )}
+      ) : null}
 
-      {errorCode === "machine_limit" ? (
-        <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
-          Your {dashboardHost} account has reached its machine limit.{" "}
-          <UrlLink
-            href={dashboardUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold underline underline-offset-2"
-          >
-            Revoke a device you no longer use
-          </UrlLink>{" "}
-          in the dashboard, then try again.
-        </div>
-      ) : errorCode !== null ? (
-        <p className="text-xs text-destructive-text">
-          {errorCode === "not_paired"
-            ? "This bb is no longer signed in to a bb account — sign in, then try again."
-            : "Couldn't reach the Connect service to create a code — check your connection, then try again."}
+      {errorCode !== null ? (
+        <p role="alert" className="text-xs text-destructive-text">
+          {errorCode === "machine_limit" ? (
+            <>
+              Your {dashboardHost} account has reached its machine limit.{" "}
+              <UrlLink
+                href={dashboardUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold underline underline-offset-2"
+              >
+                Revoke a device you no longer use
+              </UrlLink>{" "}
+              in the dashboard, then try again.
+            </>
+          ) : errorCode === "not_paired" ? (
+            "This bb is signed out. Open Manage to sign in, then try again."
+          ) : (
+            "Couldn't reach the Connect service to create a code — check your connection, then try again."
+          )}
         </p>
       ) : null}
     </div>
@@ -1537,11 +1548,16 @@ function MobilePairingSection() {
   const { status, loadError, refetch } = useConnectStatus();
   if (loadError !== null)
     return (
-      <div role="alert" className="space-y-2 text-sm">
-        <p>Could not load phone pairing: {loadError}</p>
-        <Button variant="outline" onClick={refetch}>
-          Try again
-        </Button>
+      <div className="mt-3 space-y-2 border-t border-border-seam pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-xs font-medium">Pair your phone</h3>
+          <Button variant="ghost" size="sm" onClick={refetch}>
+            Try again
+          </Button>
+        </div>
+        <p role="alert" className="text-xs text-destructive-text">
+          Could not load phone pairing: {loadError}
+        </p>
       </div>
     );
   if (!status?.paired || !status.enabled || status.state !== "connected")
