@@ -142,9 +142,7 @@ For review or fix pipelines, get the environment ID from
   an already-open thread is focused. Edge splits create panes through the
   eighth pane; at eight panes, they replace the focused pane.
 - A file path is optional when a thread ID is explicit:
-  `bb thread open <thread-id> [path] [--split <placement>]`. Inside a BB
-  thread, a lone thread ID opens that thread and any other lone argument opens
-  that file in the current thread; `--split` only controls placement.
+  `bb thread open <thread-id> [path] [--split <placement>]`.
 - Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
