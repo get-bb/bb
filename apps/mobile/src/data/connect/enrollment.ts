@@ -33,7 +33,7 @@ export function describeEnrollmentError(error: unknown): EnrollmentFailure {
           code: "invalid_code",
           title: "Code not recognized",
           message:
-            "Check the pairing code and the bb connect address. Codes come from bb Settings → Remote access or `bb connect machine-code`.",
+            "Check the pairing code and the bb connect address. Codes come from bb Settings → Mobile or `bb connect machine-code`.",
         };
       case "expired":
         return {

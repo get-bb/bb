@@ -28,6 +28,7 @@ async function bundleWorker(): Promise<string> {
 const VARS = {
   AI_DAILY_BUDGET_MICROS: "2000000",
   AI_MODELS: "nvidia/nemotron-3.5-lightning,inception/mercury-2.5",
+  AI_TRANSCRIBE_MODELS: "microsoft/mai-transcribe-2",
   AI_UPSTREAM_BASE_URL: "https://openrouter.test/api/v1",
 };
 
@@ -43,6 +44,15 @@ function gateway(script: string, bindings: Record<string, string>) {
     bindings,
     outboundService: async (request: MiniflareRequest) => {
       upstreamBodies.push(await request.json());
+      if (request.url.endsWith("/audio/transcriptions")) {
+        return new MiniflareResponse(
+          JSON.stringify({
+            text: "open the settings page",
+            usage: { seconds: 60, cost: 0.0001 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
       await upstreamGate;
       return new MiniflareResponse(
         JSON.stringify({
@@ -136,6 +146,36 @@ describe("bb-ai-gateway worker on D1", () => {
     expect(await usage.json()).toMatchObject({
       spentMicros: 10,
       limitMicros: 2_000_000,
+    });
+  });
+
+  it("transcribes a recording larger than a completion body and meters it", async () => {
+    const audio = Buffer.alloc(3 * 1024 * 1024, 7).toString("base64");
+    const response = await mf.dispatchFetch(
+      "https://getbb.app/api/ai/v1/transcribe",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${CREDENTIAL}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ audio, format: "webm", hint: null }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      text: "open the settings page",
+      model: "microsoft/mai-transcribe-2",
+      usage: {
+        costMicros: 100,
+        spentTodayMicros: 110,
+        limitMicros: 2_000_000,
+      },
+    });
+    expect(upstreamBodies.at(-1)).toMatchObject({
+      model: "microsoft/mai-transcribe-2",
+      input_audio: { format: "webm" },
+      provider: { zdr: true, data_collection: "deny" },
     });
   });
 

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { Command } from "commander";
+import { isRawThreadId } from "@bb/domain";
 import {
   threadOpenSplitSchema,
   type PanelFileSource,
@@ -7,10 +8,7 @@ import {
 } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import {
-  resolveContextThreadId,
-  resolveExplicitIdFlag,
-} from "../../context-env.js";
+import { requireThreadId, resolveContextThreadId } from "../../context-env.js";
 import {
   outputJson,
   printThreadContextLabel,
@@ -44,7 +42,10 @@ export function registerOpenCommand(
     .command("open")
     .description("Open a BB thread, optionally with a file in its panel")
     .usage("[id] [path] [options]")
-    .argument("[id]", "Thread ID. Omit inside a BB thread.")
+    .argument(
+      "[id]",
+      "Thread ID. Inside a BB thread, omit it to target the current thread; a lone argument that is not a thread ID opens that file in the current thread",
+    )
     .argument("[path]", "Thread-relative or absolute file path to open")
     .option("--line <number>", "Line number to focus")
     .option(
@@ -59,11 +60,7 @@ export function registerOpenCommand(
           second: string | undefined,
           opts: ThreadOpenCommandOptions,
         ) => {
-          const target = resolveThreadOpenTarget(
-            first,
-            second,
-            opts.split !== undefined,
-          );
+          const target = resolveThreadOpenTarget(first, second);
           const lineNumber = parseLineNumber(opts.line);
           const requestedSplit =
             opts.split === undefined
@@ -122,81 +119,29 @@ export function registerOpenCommand(
 function resolveThreadOpenTarget(
   first: string | undefined,
   second: string | undefined,
-  allowsExplicitThreadTarget: boolean,
 ): ThreadOpenTarget {
   const contextThreadId = resolveContextThreadId();
-  if (contextThreadId) {
-    if (first === undefined) {
-      return {
-        threadId: contextThreadId,
-        inputPath: null,
-        resolved: { id: contextThreadId, source: "env" },
-      };
-    }
-
-    if (second !== undefined) {
-      const explicitThreadId = resolveExplicitIdFlag({
-        flagName: "<threadId> argument",
-        value: first,
-      });
-      if (!explicitThreadId) {
-        throw new Error("Missing thread ID. Pass <threadId>.");
-      }
-      if (explicitThreadId !== contextThreadId && !allowsExplicitThreadTarget) {
-        throw new Error(
-          "BB_THREAD_ID is set, so bb thread open targets the current thread. Omit the thread ID.",
-        );
-      }
-      return {
-        threadId: allowsExplicitThreadTarget
-          ? explicitThreadId
-          : contextThreadId,
-        inputPath: second,
-        resolved: allowsExplicitThreadTarget
-          ? { id: explicitThreadId, source: "arg" }
-          : { id: contextThreadId, source: "env" },
-      };
-    }
-
-    if (allowsExplicitThreadTarget) {
-      const threadId = resolveExplicitIdFlag({
-        flagName: "<threadId> argument",
-        value: first,
-      });
-      if (!threadId) {
-        throw new Error("Missing thread ID. Pass <threadId>.");
-      }
-      return {
-        threadId,
-        inputPath: null,
-        resolved: { id: threadId, source: "arg" },
-      };
-    }
-
+  if (
+    first !== undefined &&
+    (second !== undefined || !contextThreadId || isRawThreadId(first))
+  ) {
+    const threadId = requireThreadId(first);
     return {
-      threadId: contextThreadId,
-      inputPath: first,
-      resolved: { id: contextThreadId, source: "env" },
+      threadId,
+      inputPath: second ?? null,
+      resolved: { id: threadId, source: "arg" },
     };
   }
 
-  if (first === undefined) {
+  if (!contextThreadId) {
     throw new Error(
       "Missing thread ID. Pass <threadId> [path], or run inside a BB thread.",
     );
   }
-
-  const threadId = resolveExplicitIdFlag({
-    flagName: "<threadId> argument",
-    value: first,
-  });
-  if (!threadId) {
-    throw new Error("Missing thread ID. Pass <threadId>.");
-  }
   return {
-    threadId,
-    inputPath: second ?? null,
-    resolved: { id: threadId, source: "arg" },
+    threadId: contextThreadId,
+    inputPath: first ?? null,
+    resolved: { id: contextThreadId, source: "env" },
   };
 }
 

@@ -17,23 +17,16 @@ controls. The generator emits both palettes into `theme.native.ts`; edit
 
 ```tsx
 import "../global.css";
-import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useAppBoot } from "@/app-shell";
+import { holdLaunchSplash, LaunchSplash, useAppBoot } from "@/app-shell";
 import { ThemeProvider } from "@/theme";
 import { SheetProvider, Toaster } from "@/ui";
 
-// Fonts are the platform system faces (nothing to load), so the splash is
-// gated on boot alone.
-void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+holdLaunchSplash();
 
 export default function RootLayout() {
   const { ready } = useAppBoot();
-  useEffect(() => {
-    if (ready) void SplashScreen.hideAsync().catch(() => undefined);
-  }, [ready]);
   if (!ready) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -46,6 +39,7 @@ export default function RootLayout() {
           <SheetProvider>
             <Stack />
             <Toaster />
+            <LaunchSplash />
           </SheetProvider>
         </ThemeProvider>
       </SafeAreaProvider>
@@ -53,6 +47,14 @@ export default function RootLayout() {
   );
 }
 ```
+
+The native splash stays up until boot finishes, then `LaunchSplash` takes over
+with a pixel-identical React Native copy so the app keeps drawing underneath
+(Android's native splash blocks all drawing while it is up).
+Native screens fade the copy out on mount; `/` and `/webview` keep it until the
+web app reports ready or the shell shows an error (`revealApp()`), capped at
+eight seconds. Keep its logo sizes and colors in sync with the
+`expo-splash-screen` config in `app.json`.
 
 `SheetProvider` is the `BottomSheetModalProvider` host; `Toaster` must sit
 inside it.

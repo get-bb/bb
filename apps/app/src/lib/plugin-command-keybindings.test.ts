@@ -84,11 +84,9 @@ describe("plugin command keybindings", () => {
   it("preserves disabled-plugin overrides when editing another command", () => {
     const overrides = [{ command: "plugin:disabled/open" as const, shortcut }];
     const next = setCommandShortcutOverride(
-      [binding("thread.new", null)],
       overrides,
       "thread.new",
       { ...shortcut, key: "n" },
-      false,
       "Linux",
     );
     expect(next).toContainEqual(overrides[0]);

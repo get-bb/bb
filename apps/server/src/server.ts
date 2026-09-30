@@ -1,5 +1,3 @@
-import { getExperiments } from "@bb/db";
-import { androidApkResponse } from "./services/install/android-app-artifact.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import { enrolledInstallerScript } from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
@@ -17,7 +15,7 @@ import { terminalWebSocketQuerySchema } from "@bb/server-contract";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import type { ServerAppDeps } from "./types.js";
-import { ApiError, errorToResponse } from "./errors.js";
+import { ApiError, createServerErrorHandler } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
@@ -513,7 +511,7 @@ export function createApp(
       await compressApiJson(context, next);
     });
   });
-  app.onError((error) => errorToResponse(error, deps.logger));
+  app.onError(createServerErrorHandler(deps.logger));
   app.get("/health", async (context) => {
     const serverMove = await readServerMoveHealth({
       dataDir: deps.config.dataDir,
@@ -574,15 +572,6 @@ export function createApp(
         },
       },
     );
-  });
-  app.get("/install/bb-android.apk", (context) => {
-    if (!getExperiments(deps.db).androidTesting) {
-      return new Response("Android testing is disabled.", {
-        status: 404,
-        headers: { "cache-control": "no-store" },
-      });
-    }
-    return androidApkResponse(deps.config.dataDir, context.req.raw);
   });
   app.get("/install/version", async (context) => {
     return context.json({

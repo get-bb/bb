@@ -233,7 +233,6 @@ Remote access (bb connect):
   bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
   bb connect machine-code                 Mint a one-time code that pairs the bb mobile app
-                                          (needs the mobileApp experiment)
 
   Port sharing works from threads on any enrolled host. In a thread,
   `bb connect expose <port>` resolves the thread environment's host; outside a
@@ -248,10 +247,8 @@ Remote access (bb connect):
   `bb connect status` shows all shares with host + URL. `shares --json` returns
   the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
-  The bb mobile app pairs with a paired bb through bb connect. Turn on the
-  `mobileApp` experiment first (`bb settings experiment mobileApp true`, or
-  Settings → Experiments → Mobile app); the surfaces below stay hidden without
-  it. Settings → Remote access → Add mobile device shows a QR code plus the code as text;
+  The bb mobile app pairs with a paired bb through bb connect.
+  Settings → Mobile → Add mobile device shows a QR code plus the code as text.
   `bb connect machine-code` prints the same code, server URL, apex, and expiry
   (`--json` for `{code, serverUrl, apex, expiresAt}`). The phone scans or
   types the code and enrolls as a connect machine on the account with its own
@@ -267,6 +264,13 @@ Remote access (bb connect):
   `bb plugin enable connect`.
 
 Core owns environment retirement and teardown. After the last live thread is archived or deleted, the provider policy sets the retirement deadline. `bb environment show <id>` reports lifecycle phase and teardown status, attempt and failure message. Failed teardown retries automatically; checkout environments do not retire.
+
+`bb environment cleanup <id> [--json]` is an explicit override for removing an
+unused provider-managed environment before its policy would do so. Normal
+retirement and cleanup retries are automatic; this command is not a routine
+end-of-task step. It overrides retention/keep policy and backoff, rejects live
+threads and unmanaged environments, and succeeds if already removed. The request
+is asynchronous; `bb environment show <id>` reports completion.
 
 Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
 

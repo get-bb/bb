@@ -614,41 +614,46 @@ describe("connect settings section", () => {
     await slot.findByText(/this bb is not connected to getbb.app/);
   });
 
-  it("hides mobile pairing unless the mobileApp experiment is on", async () => {
+  it("only offers phone pairing while bb connect is connected", async () => {
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
-        rpc: {
-          status: () => connected(),
-          mobilePairing: () => ({ enabled: false }),
-        },
+        rpc: { status: () => status() },
       },
     );
-
-    await slot.findByText("Connected");
     await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "mobilePairing",
-        input: null,
-      }),
+      expect(slot.rpcCalls).toContainEqual({ method: "status", input: null }),
     );
-    expect(slot.queryByText("Mobile app")).toBeNull();
     expect(
       slot.queryByRole("button", { name: "Add mobile device" }),
     ).toBeNull();
-    expect(slot.queryByRole("button", { name: "Re-pair" })).toBeNull();
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, connected());
+    await slot.findByRole("button", { name: "Add mobile device" });
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+      ...connected(),
+      enabled: false,
+    });
+    expect(
+      slot.queryByRole("button", { name: "Add mobile device" }),
+    ).toBeNull();
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+      ...connected(),
+      state: "reconnecting",
+    });
+    expect(
+      slot.queryByRole("button", { name: "Add mobile device" }),
+    ).toBeNull();
   });
 
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
     const expiresAt = Date.now() + 600_000;
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
         rpc: {
           status: () => connected(),
-          mobilePairing: () => ({ enabled: true }),
           createMachineCode: () => ({
             code: "K7QP-2M4X",
             expiresAt,
@@ -658,7 +663,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByRole("button", { name: "Add mobile device" });
     expect(slot.queryByText("K7QP-2M4X")).toBeNull();
     fireEvent.click(
       await slot.findByRole("button", { name: "Add mobile device" }),
@@ -677,18 +682,16 @@ describe("connect settings section", () => {
       name: "QR code to pair the bb mobile app",
     })) as HTMLImageElement;
     expect(qr.src.startsWith("data:image/png")).toBe(true);
-    slot.getByText(/bb connect machine-code/);
   });
 
   it("an expired mobile pairing code offers a fresh one", async () => {
     let minted = 0;
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
         rpc: {
           status: () => connected(),
-          mobilePairing: () => ({ enabled: true }),
           createMachineCode: () => {
             minted += 1;
             return {
@@ -701,7 +704,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByRole("button", { name: "Add mobile device" });
     fireEvent.click(
       await slot.findByRole("button", { name: "Add mobile device" }),
     );
@@ -720,12 +723,11 @@ describe("connect settings section", () => {
 
   it("explains the account machine limit with a dashboard link", async () => {
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
         rpc: {
           status: () => connected(),
-          mobilePairing: () => ({ enabled: true }),
           createMachineCode: () => {
             throw new Error("machine_limit");
           },
@@ -733,7 +735,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByRole("button", { name: "Add mobile device" });
     fireEvent.click(
       await slot.findByRole("button", { name: "Add mobile device" }),
     );

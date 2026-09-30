@@ -64,6 +64,7 @@ vi.mock("@/app-shell", () => {
       profiles: [profile],
       status: "ready",
     }),
+    useAppRevealed: () => true,
     useRealtimeConnectionState: () => "disconnected",
   };
 });

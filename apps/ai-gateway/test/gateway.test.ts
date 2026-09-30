@@ -17,18 +17,31 @@ import {
 import type { GatewayConfig } from "../src/config.js";
 import {
   COMPLETE_PATH,
+  MAX_AUDIO_BYTES,
+  MAX_HINT_BYTES,
   MAX_PROMPT_BYTES,
+  TRANSCRIBE_PATH,
   USAGE_PATH,
   type GatewayDeps,
   routeGatewayRequest,
 } from "../src/gateway.js";
-import { RESERVE_MICROS, pruneAiUsage, utcDay } from "../src/metering.js";
+import {
+  RESERVE_MICROS,
+  TRANSCRIBE_RESERVE_MICROS,
+  pruneAiUsage,
+  utcDay,
+} from "../src/metering.js";
 
 const MODELS = [
   "nvidia/nemotron-3.5-lightning",
   "inception/mercury-2.5",
   "openai/gpt-oss-20b",
 ];
+const TRANSCRIBE_MODELS = [
+  "microsoft/mai-transcribe-2",
+  "openai/whisper-large-v3-turbo",
+];
+const AUDIO = Buffer.from("fake opus frames").toString("base64");
 const NOON = Date.UTC(2026, 8, 22, 12);
 
 let sqlite: Database.Database;
@@ -59,6 +72,7 @@ function harness(
     upstream?: UpstreamHandler;
     allow?: () => boolean;
     upstreamTimeoutMs?: number;
+    transcribeTimeoutMs?: number;
   } = {},
 ) {
   const calls: UpstreamCall[] = [];
@@ -69,6 +83,7 @@ function harness(
     config: {
       dailyBudgetMicros: 2_000_000,
       models: MODELS,
+      transcribeModels: TRANSCRIBE_MODELS,
       upstreamBaseUrl: "https://openrouter.test/api/v1",
       apiKey: "sk-or-test",
       ...over.config,
@@ -89,6 +104,7 @@ function harness(
     },
     now: () => clock,
     upstreamTimeoutMs: over.upstreamTimeoutMs ?? 4_000,
+    transcribeTimeoutMs: over.transcribeTimeoutMs ?? 8_000,
     waitUntil: (promise) => {
       extended.push(promise);
     },
@@ -112,6 +128,27 @@ function complete(
     }),
     deps,
   );
+}
+
+function transcribe(deps: GatewayDeps, body: unknown) {
+  return routeGatewayRequest(
+    new Request(`https://getbb.app${TRANSCRIBE_PATH}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer bbcred_u1",
+      },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }),
+    deps,
+  );
+}
+
+function okTranscript(cost: number, text = "rename useVoiceInput") {
+  return Response.json({
+    text,
+    usage: { seconds: 9, input_tokens: 90, output_tokens: 4, cost },
+  });
 }
 
 function usage(deps: GatewayDeps, credential = "bbcred_u1") {
@@ -597,6 +634,187 @@ describe("POST /api/ai/v1/complete", () => {
   });
 });
 
+describe("POST /api/ai/v1/transcribe", () => {
+  it("sends the audio to OpenRouter with zero data retention and meters the reported cost", async () => {
+    const { deps, calls } = harness({ upstream: () => okTranscript(0.00025) });
+    const response = await transcribe(deps, {
+      audio: AUDIO,
+      format: "webm",
+      hint: "  useVoiceInput, bb-ai  ",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      text: "rename useVoiceInput",
+      model: TRANSCRIBE_MODELS[0],
+      usage: { costMicros: 250, spentTodayMicros: 250, limitMicros: 2_000_000 },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(
+      "https://openrouter.test/api/v1/audio/transcriptions",
+    );
+    expect(calls[0].headers.get("authorization")).toBe("Bearer sk-or-test");
+    expect(calls[0].body).toEqual({
+      model: TRANSCRIBE_MODELS[0],
+      input_audio: { data: AUDIO, format: "webm" },
+      provider: {
+        zdr: true,
+        data_collection: "deny",
+        options: { groq: { prompt: "useVoiceInput, bb-ai" } },
+      },
+    });
+    expect(usageRow("u1", utcDay(NOON))).toEqual({
+      userId: "u1",
+      day: utcDay(NOON),
+      spentMicros: 250,
+      reservedMicros: 0,
+      requests: 1,
+    });
+    const logs = db.select().from(aiRequestLog).all();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      model: TRANSCRIBE_MODELS[0],
+      promptTokens: 90,
+      completionTokens: 4,
+      costMicros: 250,
+      outcome: "ok",
+    });
+    expect(JSON.stringify(logs)).not.toContain(AUDIO);
+    expect(JSON.stringify(logs)).not.toContain("useVoiceInput");
+  });
+
+  it("omits provider options without a hint", async () => {
+    const { deps, calls } = harness({ upstream: () => okTranscript(0.0001) });
+    await transcribe(deps, { audio: AUDIO, format: "m4a", hint: "   " });
+    await transcribe(deps, { audio: AUDIO, format: "wav" });
+    for (const call of calls) {
+      expect(call.body.provider).toEqual({
+        zdr: true,
+        data_collection: "deny",
+      });
+    }
+  });
+
+  it("falls back to the next model when one refuses, but not after a timeout", async () => {
+    const { deps, calls } = harness({
+      upstream: ({ body }) =>
+        body.model === TRANSCRIBE_MODELS[0]
+          ? Response.json(
+              { error: { code: 503, message: "no endpoint" } },
+              { status: 503 },
+            )
+          : okTranscript(0.00004, "fallback text"),
+    });
+    const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      text: "fallback text",
+      model: TRANSCRIBE_MODELS[1],
+      usage: { costMicros: 40 },
+    });
+    expect(calls.map((call) => call.body.model)).toEqual(TRANSCRIBE_MODELS);
+
+    const slow = harness({
+      transcribeTimeoutMs: 20,
+      upstream: ({ signal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    });
+    const timedOut = await transcribe(slow.deps, {
+      audio: AUDIO,
+      format: "ogg",
+    });
+    expect(timedOut.status).toBe(504);
+    expect(slow.calls).toHaveLength(1);
+    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+      spentMicros: 40 + TRANSCRIBE_RESERVE_MICROS,
+      reservedMicros: 0,
+    });
+  });
+
+  it("answers 503 and charges nothing when every model refuses", async () => {
+    const { deps, calls } = harness({
+      upstream: () => new Response("bad gateway", { status: 502 }),
+    });
+    const response = await transcribe(deps, { audio: AUDIO, format: "mp3" });
+    expect(response.status).toBe(503);
+    expect(calls).toHaveLength(TRANSCRIBE_MODELS.length);
+    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+      spentMicros: 0,
+      reservedMicros: 0,
+    });
+  });
+
+  it("validates audio, format, and hint before calling upstream", async () => {
+    const { deps, calls } = harness({ upstream: () => okTranscript(0.0001) });
+    const tooLarge = "A".repeat(Math.ceil((MAX_AUDIO_BYTES + 1) / 3) * 4);
+    const cases: [unknown, string][] = [
+      [{ format: "webm" }, "audio must be non-empty base64"],
+      [
+        { audio: "not base64!", format: "webm" },
+        "audio must be non-empty base64",
+      ],
+      [{ audio: "abc", format: "webm" }, "audio must be non-empty base64"],
+      [
+        { audio: tooLarge, format: "webm" },
+        `audio exceeds ${MAX_AUDIO_BYTES} bytes`,
+      ],
+      [{ audio: AUDIO, format: "mp4" }, "format must be one of"],
+      [
+        { audio: AUDIO, format: "webm", hint: 3 },
+        "hint must be a string or null",
+      ],
+      [
+        { audio: AUDIO, format: "webm", hint: "x".repeat(MAX_HINT_BYTES + 1) },
+        `hint exceeds ${MAX_HINT_BYTES} bytes`,
+      ],
+      ["{", "request body must be JSON"],
+    ];
+    for (const [body, message] of cases) {
+      const response = await transcribe(deps, body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: {
+          code: "invalid_request",
+          message: expect.stringContaining(message),
+        },
+      });
+    }
+    expect(calls).toHaveLength(0);
+    expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
+  });
+
+  it("reserves 2 cents, so a nearly spent budget still allows a title but not a recording", async () => {
+    const { deps, calls } = harness({
+      config: { dailyBudgetMicros: TRANSCRIBE_RESERVE_MICROS - 1 },
+      upstream: ({ url }) =>
+        url.endsWith("/audio/transcriptions")
+          ? okTranscript(0.0001)
+          : okCompletion(0.000001),
+    });
+    const recording = await transcribe(deps, { audio: AUDIO, format: "webm" });
+    expect(recording.status).toBe(402);
+    expect((await complete(deps, { prompt: "a" })).status).toBe(200);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("requires a signed-in account", async () => {
+    const { deps, calls } = harness();
+    const response = await routeGatewayRequest(
+      new Request(`https://getbb.app${TRANSCRIBE_PATH}`, {
+        method: "POST",
+        body: JSON.stringify({ audio: AUDIO, format: "webm" }),
+      }),
+      deps,
+    );
+    expect(response.status).toBe(401);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("GET /api/ai/v1/usage", () => {
   it("reports today's spend for the account across its servers", async () => {
     const { deps } = harness();
@@ -631,6 +849,11 @@ describe("routing", () => {
       deps,
     );
     expect(wrongMethod.status).toBe(405);
+    const wrongTranscribeMethod = await routeGatewayRequest(
+      new Request(`https://getbb.app${TRANSCRIBE_PATH}`),
+      deps,
+    );
+    expect(wrongTranscribeMethod.status).toBe(405);
     const unknown = await routeGatewayRequest(
       new Request("https://getbb.app/api/ai/v1/other"),
       deps,

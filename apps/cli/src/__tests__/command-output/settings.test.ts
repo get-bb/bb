@@ -52,6 +52,49 @@ describe("bb settings commands", () => {
     expect(put).toHaveBeenLastCalledWith({ json: [other] });
   });
 
+  it("keeps command scopes separate when setting and resetting platform bindings", async () => {
+    const general = { command: "thread.new", shortcut: null };
+    const mac = { command: "thread.new", platform: "mac", shortcut: null };
+    const linux = { command: "thread.new", platform: "linux", shortcut: null };
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        keybindingOverrides: [general, mac, linux],
+      })),
+      "v1.settings.keyboard.$put": put,
+    });
+    await runCommand(
+      [
+        "settings",
+        "keyboard",
+        "set",
+        "thread.new",
+        "disabled",
+        "--platform",
+        "windows",
+      ],
+      register,
+    );
+    expect(put).toHaveBeenLastCalledWith({
+      json: [
+        general,
+        mac,
+        linux,
+        { command: "thread.new", platform: "windows", shortcut: null },
+      ],
+    });
+    await runCommand(
+      ["settings", "keyboard", "reset", "thread.new", "--platform", "mac"],
+      register,
+    );
+    expect(put).toHaveBeenLastCalledWith({ json: [general, linux] });
+    await runCommand(
+      ["settings", "keyboard", "reset", "--platform", "linux"],
+      register,
+    );
+    expect(put).toHaveBeenLastCalledWith({ json: [general, mac] });
+  });
+
   const completedTurnProviders = [
     {
       id: "claude-code",

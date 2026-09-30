@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import plugin from "./server.js";
+import plugin, { TRANSCRIBE_MAX_BYTES, audioFormat } from "./server.js";
 import { formatDollars, formatUsage } from "./format.js";
 
 function signedIn(userId: string, baseUrl = "https://getbb.app") {
@@ -111,7 +111,11 @@ async function setup(options: {
   }
   await plugin(host.bb);
   const [service] = host.harness.registrations.aiServiceRegistrations;
-  if (service?.complete === undefined || service.status === undefined) {
+  if (
+    service?.complete === undefined ||
+    service.transcribe === undefined ||
+    service.status === undefined
+  ) {
     throw new Error("bb-ai did not register its service");
   }
   return {
@@ -121,6 +125,7 @@ async function setup(options: {
     account,
     holdNextStatus,
     complete: service.complete,
+    transcribe: service.transcribe,
     status: service.status,
   };
 }
@@ -245,11 +250,10 @@ describe("bb cloud preference", () => {
 });
 
 describe("bb cloud AI service", () => {
-  it("registers the bb service with complete and status only", async () => {
+  it("registers the bb service", async () => {
     const { service } = await setup({});
     expect(service.id).toBe("bb");
     expect(service.displayName).toBe("bb cloud");
-    expect(service.transcribe).toBeUndefined();
   });
 
   it("sends nothing when bb cloud is turned off while the account check is pending", async () => {
@@ -387,6 +391,96 @@ describe("bb cloud AI service", () => {
     await expect(complete("Write a title", { signal })).rejects.toThrow(
       "bb cloud returned an invalid reply",
     );
+  });
+});
+
+describe("bb cloud voice input", () => {
+  const TRANSCRIBED = {
+    status: 200,
+    body: {
+      text: "rename the voice hook",
+      model: "microsoft/mai-transcribe-2",
+      usage: { costMicros: 20, spentTodayMicros: 160, limitMicros: 500_000 },
+    },
+  };
+
+  function recording(
+    bytes: number,
+    type = "audio/webm;codecs=opus",
+    name = "recording.webm",
+  ) {
+    return new File([new Uint8Array(bytes).fill(7)], name, { type });
+  }
+
+  it("sends the recording as base64 with its format and hint and a 10 second timeout", async () => {
+    const { transcribe, fetchCalls } = await setup({
+      fetch: () => TRANSCRIBED,
+    });
+    await expect(
+      transcribe(recording(4), { signal, hint: "useVoiceInput" }),
+    ).resolves.toBe("rename the voice hook");
+    expect(fetchCalls).toEqual([
+      {
+        target: "api",
+        method: "POST",
+        path: "/api/ai/v1/transcribe",
+        body: {
+          audio: Buffer.from([7, 7, 7, 7]).toString("base64"),
+          format: "webm",
+          hint: "useVoiceInput",
+        },
+        timeoutMs: 10_000,
+      },
+    ]);
+  });
+
+  it("refuses without sending while off, too large, or in an unknown format", async () => {
+    const off = await setup({ enabled: false, fetch: () => TRANSCRIBED });
+    await expect(
+      off.transcribe(recording(4), { signal, hint: null }),
+    ).rejects.toThrow(BB_CLOUD_OFF_MESSAGE);
+    expect(off.fetchCalls).toEqual([]);
+
+    const { transcribe, fetchCalls } = await setup({
+      fetch: () => TRANSCRIBED,
+    });
+    await expect(
+      transcribe(recording(TRANSCRIBE_MAX_BYTES + 1), { signal, hint: null }),
+    ).rejects.toThrow("Recordings over 10 MB are too large for bb cloud");
+    await expect(
+      transcribe(recording(4, "audio/x-matroska", "clip.mkv"), {
+        signal,
+        hint: null,
+      }),
+    ).rejects.toThrow("bb cloud can't transcribe audio/x-matroska audio");
+    expect(fetchCalls).toEqual([]);
+  });
+
+  it("marks the budget used up from a transcription answer too", async () => {
+    const { transcribe, status } = await setup({ fetch: () => EXHAUSTED });
+    await expect(
+      transcribe(recording(4), { signal, hint: null }),
+    ).rejects.toThrow("Today's bb cloud limit is used up");
+    await expect(status()).resolves.toEqual({
+      ready: false,
+      message: "Daily limit reached; resets 00:00 UTC",
+    });
+  });
+
+  it("maps recorder MIME types and file extensions to OpenRouter formats", () => {
+    const cases: [string, string, string | null][] = [
+      ["audio/webm;codecs=opus", "recording.webm", "webm"],
+      ["audio/mp4", "recording.mp4", "m4a"],
+      ["audio/ogg;codecs=opus", "recording.ogg", "ogg"],
+      ["audio/x-wav", "take.wav", "wav"],
+      ["", "memo.m4a", "m4a"],
+      ["application/octet-stream", "memo.flac", "flac"],
+      ["audio/webm", "memo.mp3", "webm"],
+      ["", "notes.txt", null],
+    ];
+    for (const [type, name, expected] of cases) {
+      expect(audioFormat(new File([], name, { type }))).toBe(expected);
+    }
   });
 });
 

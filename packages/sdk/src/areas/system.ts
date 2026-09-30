@@ -1,3 +1,4 @@
+import { mobileAppDownloads } from "@bb/domain";
 import type {
   MachineEnvironmentReplace,
   MachineEnvironmentSet,
@@ -22,9 +23,7 @@ import type {
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
-  SystemAndroidAppResponse,
-  AndroidAppPreparation,
-  AndroidAppPrepareRequest,
+  SystemMobileAppReleasesResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemCliSkillsStatusResponse,
@@ -175,11 +174,8 @@ export interface SystemArea {
     args: SystemVoiceTranscriptionArgs,
   ): Promise<SystemVoiceTranscriptionResult>;
   uiPreferences: SystemUiPreferencesArea;
-  androidAppPreparation(): Promise<AndroidAppPreparation>;
-  prepareAndroidApp(
-    input: AndroidAppPrepareRequest,
-  ): Promise<AndroidAppPreparation>;
-  androidApp(): Promise<SystemAndroidAppResponse>;
+  mobileAppDownloads(): typeof mobileAppDownloads;
+  mobileAppReleases(): Promise<SystemMobileAppReleasesResponse>;
   updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
     args: AppSettingsUpdate,
@@ -348,18 +344,13 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         await response.json(),
       );
     },
-    async androidAppPreparation() {
+    async mobileAppReleases() {
       return transport.readJson(
-        transport.api.v1.system["android-app"].preparation.$get(),
+        transport.api.v1.system["mobile-app-releases"].$get(),
       );
     },
-    async prepareAndroidApp(input) {
-      return transport.readJson(
-        transport.api.v1.system["android-app"].prepare.$post({ json: input }),
-      );
-    },
-    async androidApp() {
-      return transport.readJson(transport.api.v1.system["android-app"].$get());
+    mobileAppDownloads() {
+      return { ...mobileAppDownloads };
     },
     async updateExperiments(input) {
       return transport.readJson(

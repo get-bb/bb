@@ -306,7 +306,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
+import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
@@ -378,7 +378,6 @@ function getPullRequestMergeLoadingTitle(
 
 interface ThreadDetailViewPageProps {
   surface: "page";
-  onRequestClose?: (() => void) | null;
 }
 
 interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
@@ -489,11 +488,7 @@ function ThreadDetailNotFound() {
   );
 }
 
-function RoutedThreadDetailView({
-  onRequestClose,
-}: {
-  onRequestClose?: (() => void) | null;
-}) {
+function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
   if (!projectId || !threadId) {
@@ -501,13 +496,11 @@ function RoutedThreadDetailView({
   }
 
   return (
-    <DefaultPaneContextProvider onRequestClose={onRequestClose}>
-      <ThreadDetailViewInternal
-        projectId={projectId}
-        threadId={threadId}
-        timelineEnabled
-      />
-    </DefaultPaneContextProvider>
+    <ThreadDetailViewInternal
+      projectId={projectId}
+      threadId={threadId}
+      timelineEnabled
+    />
   );
 }
 
@@ -515,7 +508,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
   }
-  return <RoutedThreadDetailView onRequestClose={props.onRequestClose} />;
+  return <RoutedThreadDetailView />;
 }
 
 function ThreadDetailViewInternal(

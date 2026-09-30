@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Thread titles and commit messages from bb cloud, included with your bb account.",
+  "description": "Thread titles, commit messages, and voice input from bb cloud, included with your bb account.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.5.24"
   },
   "bb": {
     "name": "bb cloud AI",
-    "description": "Thread titles and commit messages from bb cloud, included with your bb account.",
+    "description": "Thread titles, commit messages, and voice input from bb cloud, included with your bb account.",
     "branding": {
       "icon": "AiBrain01"
     },

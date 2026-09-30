@@ -154,7 +154,7 @@ export const marketplaceV2ManifestSchema = z
     description: z.string().min(1).optional(),
     categories: z.array(marketplaceCategorySchema).default([]),
     collections: z.array(marketplaceCollectionSchema).default([]),
-    plugins: z.array(marketplaceV2EntrySchema).max(256),
+    plugins: z.array(marketplaceV2EntrySchema),
   })
   .superRefine((manifest, context) => {
     reportDuplicateIds(manifest.categories, context, "categories");

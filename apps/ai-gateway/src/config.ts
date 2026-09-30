@@ -3,6 +3,7 @@ export interface Env {
   AI_RATE_LIMITER: RateLimit;
   AI_DAILY_BUDGET_MICROS: string;
   AI_MODELS: string;
+  AI_TRANSCRIBE_MODELS: string;
   AI_UPSTREAM_BASE_URL: string;
   OPENROUTER_API_KEY?: string;
 }
@@ -10,6 +11,7 @@ export interface Env {
 export interface GatewayConfig {
   dailyBudgetMicros: number;
   models: string[];
+  transcribeModels: string[];
   upstreamBaseUrl: string;
   apiKey: string | null;
 }
@@ -22,12 +24,12 @@ function parseMicros(name: string, raw: string | undefined): number {
   return value;
 }
 
-function parseModels(raw: string | undefined): string[] {
+function parseModels(name: string, raw: string | undefined): string[] {
   const models = (raw ?? "")
     .split(",")
     .map((model) => model.trim())
     .filter((model) => model !== "");
-  if (models.length === 0) throw new Error("AI_MODELS must list a model");
+  if (models.length === 0) throw new Error(`${name} must list a model`);
   return models;
 }
 
@@ -48,7 +50,11 @@ export function parseGatewayConfig(
       "AI_DAILY_BUDGET_MICROS",
       env.AI_DAILY_BUDGET_MICROS,
     ),
-    models: parseModels(env.AI_MODELS),
+    models: parseModels("AI_MODELS", env.AI_MODELS),
+    transcribeModels: parseModels(
+      "AI_TRANSCRIBE_MODELS",
+      env.AI_TRANSCRIBE_MODELS,
+    ),
     upstreamBaseUrl: parseBaseUrl(env.AI_UPSTREAM_BASE_URL),
     apiKey: apiKey === "" ? null : apiKey,
   };

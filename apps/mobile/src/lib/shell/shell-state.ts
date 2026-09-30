@@ -21,6 +21,7 @@ interface ShellScreenInput {
   storeReady: boolean;
   hasAnyProfile: boolean;
   hasProfile: boolean;
+  requiresSession: boolean;
   session: SessionState;
   load: ShellLoadPhase;
 }
@@ -56,6 +57,10 @@ export function resolveShellScreenState(
     case "authenticating":
       return { kind: "loading", message: "Signing in" };
     case "idle":
+      if (input.requiresSession) {
+        return { kind: "loading", message: "Signing in" };
+      }
+      break;
     case "authenticated":
       break;
   }
@@ -90,7 +95,9 @@ export function shouldReloadForSession(
   previous: SessionState,
   next: SessionState,
 ): boolean {
-  if (next.status !== "authenticated") return false;
-  if (previous.status !== "authenticated") return true;
-  return previous.expiresAt !== next.expiresAt;
+  return (
+    previous.status === "authenticated" &&
+    next.status === "authenticated" &&
+    previous.expiresAt !== next.expiresAt
+  );
 }

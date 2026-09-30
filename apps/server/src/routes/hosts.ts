@@ -1,5 +1,10 @@
+import path from "node:path";
 import { serverAccess } from "../services/machines/server-access.js";
-import { getNonDestroyedHost, updateHost } from "@bb/db";
+import {
+  getLatestSessionForHost,
+  getNonDestroyedHost,
+  updateHost,
+} from "@bb/db";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -158,13 +163,17 @@ export function registerHostRoutes(
     ),
   );
 
-  get(routes.get, (context) =>
-    context.json({
-      ...requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
-      connectMachineId: requireMutableHost(deps, context.req.param("id"))
-        .connectMachineId,
-    }),
-  );
+  get(routes.get, (context) => {
+    const hostId = context.req.param("id");
+    const host = requireNonDestroyedHostWithStatus(deps, hostId);
+    const session = getLatestSessionForHost(deps.db, { hostId });
+    return context.json({
+      ...host,
+      connectMachineId: requireMutableHost(deps, hostId).connectMachineId,
+      threadStorageRootPath:
+        session === null ? null : path.join(session.dataDir, "thread-storage"),
+    });
+  });
 
   get(routes.enrollmentCommand, async (context) => {
     assertHostManagementAllowed(context);

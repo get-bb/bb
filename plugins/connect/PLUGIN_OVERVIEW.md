@@ -5,11 +5,11 @@ Open your bb from a phone or another computer. Once this bb is signed in to your
 - Remote access to the full bb app through a tunnel. Your bb makes an outbound connection, so you do not open ports or change your router.
 - Port shares. Publish a local HTTP server, such as a dev server, at a share URL. The link opens from any device with your session.
 - Pairing for the bb mobile app with a QR code or a one-time code.
-- A Remote access section in Settings, and a sidebar shortcut to it, with the connection state and the remote URL.
+- A bb connect section in Settings, with the connection state and the remote URL.
 
 ## How it works
 
-Remote access uses the bb account plugin. Sign in from Settings → Remote access, Settings → bb account, or `bb account login`. A pairing code from the getbb.app dashboard also works: paste it in Settings or run `bb connect --code <code>`. Remote access starts as soon as the account is signed in, and connects with the server credential bb account holds. The plugin reconnects after a drop, and signs out if getbb.app no longer accepts the credential.
+Remote access uses the bb account plugin. Sign in from Settings → bb connect, Settings → bb account, or `bb account login`. A pairing code from the getbb.app dashboard also works: paste it in Settings or run `bb connect --code <code>`. Remote access starts as soon as the account is signed in, and connects with the server credential bb account holds. The plugin reconnects after a drop, and signs out if getbb.app no longer accepts the credential.
 
 `bb connect off`, or the Remote access switch in the plugin settings, turns remote access off and keeps this bb signed in; `bb connect on` turns it back on. `bb account logout` forgets the pairing. Disable the plugin to cut all remote access at once.
 
@@ -19,4 +19,4 @@ When you view bb remotely, agents are told to share servers with `bb connect exp
 
 ## Requirements
 
-A getbb.app account and the bb account plugin. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing needs the "Mobile app" experiment.
+A getbb.app account and the bb account plugin. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing is available under Mobile → Add mobile device.

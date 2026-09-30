@@ -1,5 +1,4 @@
-import { createAndroidAppPreparationService } from "../services/install/android-app-preparation.js";
-import { readAndroidAppArtifact } from "../services/install/android-app-artifact.js";
+import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
   deleteMachineEnvironmentVariable,
@@ -154,34 +153,10 @@ export function registerSystemRoutes(
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
 
-  const androidAppPreparation = createAndroidAppPreparationService({
-    dataDir: deps.config.dataDir,
-  });
-  const requireAndroidApp = () => {
-    if (!getExperiments(deps.db).androidTesting)
-      throw new ApiError(
-        404,
-        "not_found",
-        "Enable Android App in Settings → Experiments first.",
-      );
-  };
-  get(routes.androidAppPreparation, async (context) => {
-    requireAndroidApp();
+  const mobileAppReleases = createMobileAppReleaseService();
+  get(routes.mobileAppReleases, async (context) => {
     context.header("cache-control", "no-store");
-    return context.json(await androidAppPreparation.status());
-  });
-  post(routes.prepareAndroidApp, (context, input) => {
-    requireAndroidApp();
-    context.header("cache-control", "no-store");
-    return context.json(androidAppPreparation.start(input.source));
-  });
-
-  get(routes.androidApp, async (context) => {
-    context.header("cache-control", "no-store");
-    const artifact = getExperiments(deps.db).androidTesting
-      ? await readAndroidAppArtifact(deps.config.dataDir)
-      : null;
-    return context.json(artifact?.manifest ?? null);
+    return context.json(await mobileAppReleases());
   });
 
   get(routes.attention, (context) =>

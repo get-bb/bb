@@ -66,7 +66,7 @@ jobs:
       # Measured pinned to 4 CPUs, two rounds each: 96 s / 110 s at the
       # default vs 90 s / 58 s at four.
       - name: Build, typecheck, and lint
-        run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only --summarize --concurrency=4
+        run: pnpm exec turbo run build typecheck lint --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       # Runs after build and typecheck, so the guard's own turbo build is a
       # cache hit and the package it packs is the one this commit really ships.
@@ -192,7 +192,7 @@ jobs:
           ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test
-        run: ${{ matrix.shard == 'packages' && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only --summarize --concurrency=4 ${{ matrix.args }}
+        run: ${{ matrix.shard == 'packages' && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 ${{ matrix.args }}
 
       - name: Upload test timings
         if: ${{ !cancelled() }}
@@ -338,7 +338,7 @@ jobs:
       - name: Probe Claude Code model listing
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: pnpm exec turbo run test:integration --filter=@bb/agent-runtime --cache-dir=.turbo/cache --output-logs=new-only --force -- -t "claude-code provider lists models"
+        run: pnpm exec turbo run test:integration --filter=@bb/agent-runtime --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --force -- -t "claude-code provider lists models"
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
@@ -393,7 +393,7 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
       - name: Install AppImage FUSE runtime
         if: ${{ runner.os == 'Linux' }}
@@ -404,11 +404,11 @@ jobs:
 
       - name: Package Linux AppImage
         if: ${{ runner.os == 'Linux' }}
-        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
       - name: Smoke Linux AppImage mount lifecycle
         if: ${{ runner.os == 'Linux' }}
-        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --cache-dir=.turbo/cache --output-logs=new-only
+        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
       - name: Bound saved Turbo cache
         if: matrix.turbo-cache == 'true'
@@ -463,7 +463,7 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
       - name: Bound saved Turbo cache
         if: matrix.turbo-cache == 'true'

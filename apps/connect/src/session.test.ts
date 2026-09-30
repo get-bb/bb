@@ -25,7 +25,6 @@ import {
   markMachineSeen,
   resolveLabel,
   verifyMachineCredentialDetails,
-  verifySessionCookie,
   verifySessionCookieDetails,
 } from "./session.js";
 import { refreshAccountSessionCookies } from "./account-session.js";
@@ -430,6 +429,7 @@ describe("account session refresh", () => {
         db,
       ),
     ).resolves.toEqual({
+      sessionId: `id-${freshToken}`,
       userId: `user-${freshToken}`,
       needsRefresh: false,
     });
@@ -440,6 +440,7 @@ describe("account session refresh", () => {
         db,
       ),
     ).resolves.toEqual({
+      sessionId: `id-${dueToken}`,
       userId: `user-${dueToken}`,
       needsRefresh: true,
     });
@@ -636,12 +637,12 @@ describe("single-flight gate caches", () => {
 
     const verified = await Promise.all(
       Array.from({ length: 6 }, () =>
-        verifySessionCookie(cookieValue, secret, counted.db),
+        verifySessionCookieDetails(cookieValue, secret, counted.db),
       ),
     );
 
     expect(counted.counts.select).toBe(1);
-    expect(verified).toEqual(
+    expect(verified.map((details) => details?.userId)).toEqual(
       Array.from({ length: 6 }, () => "acct-cookie-flight"),
     );
   });

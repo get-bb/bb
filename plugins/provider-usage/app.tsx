@@ -17,6 +17,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,7 +48,6 @@ import {
   emptyUsageMessage,
   hasReportedUsage,
   offlineUsageMessage,
-  UsageFeedback,
   usageFeedbackMessages,
 } from "./usage-feedback.js";
 
@@ -59,6 +59,7 @@ export interface UsageStoreSnapshot {
   isRefreshing: boolean;
 }
 
+const ALL_PROVIDERS_TAB_ID = "all";
 const CARD_MAX_AGE_MS = 2 * 60_000;
 const FOCUS_MAX_AGE_MS = 5 * 60_000;
 const SAFETY_REFRESH_INTERVAL_MS = 30 * 60_000;
@@ -180,6 +181,243 @@ function formatResetCountdown(resetsAt: string | null): string | null {
   const days = Math.floor(hours / 24);
   return hours % 24 === 0 ? `${days}d` : `${days}d ${hours % 24}h`;
 }
+function shortWindowLabel(label: string): string {
+  return label
+    .replace(/^Five-hour limit$|^5 hours$/u, "5h")
+    .replace(/^Weekly limit$|^Weekly/u, "7d")
+    .replace(/^Daily limit$/u, "1d");
+}
+
+function usageToneTextClass(usedPercent: number): string {
+  if (usedPercent >= 95) return "text-destructive";
+  if (usedPercent >= 80) return "text-warning";
+  return "text-sidebar-foreground";
+}
+
+function compactWindowLabel(label: string): string {
+  const [base, scope] = label.split(" · ");
+  const short = shortWindowLabel(base ?? label);
+  if (scope === undefined) return short;
+  return short === "7d" ? scope : `${scope} ${short}`;
+}
+
+function compactStatus(account: UsageProvider): {
+  label: string;
+  detail: string | undefined;
+} {
+  const usage = account.usage;
+  switch (usage?.status) {
+    case undefined:
+      return { label: "—", detail: "Usage not reported." };
+    case "ok":
+      return { label: "No limits", detail: undefined };
+    case "not_installed":
+      return { label: "Not installed", detail: undefined };
+    case "unauthenticated":
+      return { label: "Signed out", detail: account.signInHint };
+    case "expired":
+      return { label: "Expired", detail: account.expiredHint };
+    case "error":
+      return { label: "Error", detail: usage.message };
+  }
+}
+
+function CompactUsageCell({ window }: { window: UsageWindowValue }) {
+  const reset = formatUsageReset(window.resetsAt);
+  const used = Math.round(window.usedPercent);
+  const label = compactWindowLabel(window.label);
+  return (
+    <span
+      title={`${window.label} · ${used}% used · ${reset ?? "Reset time not reported"}`}
+      className="flex w-12 shrink-0 flex-col gap-0.5"
+    >
+      <span className="flex items-baseline justify-between gap-1 leading-none whitespace-nowrap">
+        <span className="min-w-0 truncate text-subtle-foreground">
+          <span className="sr-only">{window.label}: </span>
+          <span aria-hidden="true">{label}</span>
+        </span>
+        <span
+          className={cn("tabular-nums", usageToneTextClass(window.usedPercent))}
+        >
+          {used}%
+        </span>
+      </span>
+      <span className="h-0.5 overflow-hidden rounded-full bg-sidebar-border">
+        <span
+          className={
+            "block h-full rounded-full " +
+            usageBarColorClass(window.usedPercent)
+          }
+          style={{
+            width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
+          }}
+        />
+      </span>
+    </span>
+  );
+}
+
+const WINDOW_ORDER = ["7d", "5h", "1d"];
+
+function windowPriority(accounts: UsageProvider[]): (label: string) => number {
+  const counts = new Map<string, number>();
+  for (const account of accounts) {
+    if (account.usage?.status !== "ok") continue;
+    for (const window of account.usage.windows) {
+      const label = compactWindowLabel(window.label);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+  }
+  const labels = [...counts.keys()].sort((left, right) => {
+    const shared = (counts.get(right) ?? 0) - (counts.get(left) ?? 0);
+    if (shared !== 0) return shared;
+    const leftOrder = WINDOW_ORDER.indexOf(left);
+    const rightOrder = WINDOW_ORDER.indexOf(right);
+    return (
+      (leftOrder === -1 ? WINDOW_ORDER.length : leftOrder) -
+        (rightOrder === -1 ? WINDOW_ORDER.length : rightOrder) ||
+      left.localeCompare(right)
+    );
+  });
+  return (label) => labels.indexOf(label);
+}
+
+function CompactUsageTable({
+  accounts,
+  loading,
+}: {
+  accounts: UsageProvider[];
+  loading: boolean;
+}) {
+  const priority = windowPriority(accounts);
+  return (
+    <ul className="flex flex-col gap-0.5 text-2xs">
+      {accounts.map((account) => {
+        const name = account.accountLabel ?? account.displayName;
+        const usage = account.usage;
+        const plan =
+          usage?.status === "ok" && usage.planLabel !== null
+            ? ` · ${usage.planLabel}`
+            : "";
+        const windows =
+          usage?.status === "ok"
+            ? [...usage.windows].sort(
+                (left, right) =>
+                  priority(compactWindowLabel(left.label)) -
+                  priority(compactWindowLabel(right.label)),
+              )
+            : [];
+        const status = compactStatus(account);
+        return (
+          <li
+            key={account.id}
+            aria-label={`${account.displayName} ${name}`}
+            className="flex h-6 min-w-0 items-center gap-2"
+          >
+            <ProviderIcon
+              providerKind="agent"
+              provider={account}
+              fallback="Bot"
+              className="size-3.5 shrink-0"
+            />
+            <span
+              title={`${account.displayName} · ${name}${plan}`}
+              className="min-w-0 flex-1 truncate text-sidebar-foreground"
+            >
+              {name}
+            </span>
+            {usage === null && loading ? (
+              <Skeleton
+                aria-label={usageFeedbackMessages.loading}
+                className="h-2 w-16 shrink-0"
+              />
+            ) : windows.length === 0 ? (
+              <span
+                title={status.detail}
+                className="shrink-0 text-subtle-foreground"
+              >
+                {status.label}
+              </span>
+            ) : (
+              <span className="flex shrink-0 flex-row-reverse gap-1.5">
+                {windows.map((window) => (
+                  <CompactUsageCell key={window.label} window={window} />
+                ))}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+type MessageNotice = {
+  kind: "stale" | "empty";
+  icon: "CloudOff" | "AlertTriangle" | "AlertCircle" | "Info";
+  message: string;
+  retry: boolean;
+};
+
+type CardNotice = { kind: "loading" } | MessageNotice;
+
+function UsageSkeleton({ rows }: { rows: number }) {
+  return (
+    <div role="status" aria-label={usageFeedbackMessages.loading}>
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex h-6 items-center gap-2">
+          <Skeleton className="size-3.5 rounded-full" />
+          <Skeleton
+            className={cn("h-2", index % 2 === 0 ? "w-2/5" : "w-1/3")}
+          />
+          <span className="flex-1" />
+          <Skeleton className="h-2 w-9" />
+          <Skeleton className="h-2 w-9" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UsageNotice({
+  notice,
+  onRetry,
+  className,
+}: {
+  notice: MessageNotice;
+  onRetry: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex min-w-0 items-start gap-1.5 text-2xs text-subtle-foreground",
+        className,
+      )}
+    >
+      <Icon
+        name={notice.icon}
+        aria-hidden="true"
+        className={cn(
+          "mt-px size-3 shrink-0",
+          notice.icon === "AlertTriangle" && "text-warning",
+        )}
+      />
+      <span className="min-w-0 flex-1">{notice.message}</span>
+      {notice.retry ? (
+        <button
+          type="button"
+          className="shrink-0 rounded-sm text-sidebar-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function UsageWindow({ window }: { window: UsageWindowValue }) {
   const [showReset, setShowReset] = useState(false);
   const reset = formatUsageReset(window.resetsAt);
@@ -190,10 +428,7 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
       : formatUsdCents(window.cost.usedUsdCents, true) +
         " / " +
         formatUsdCents(window.cost.limitUsdCents, false);
-  const label = window.label
-    .replace(/^Five-hour limit$|^5 hours$/u, "5h")
-    .replace(/^Weekly limit$|^Weekly/u, "7d")
-    .replace(/^Daily limit$/u, "1d");
+  const label = shortWindowLabel(window.label);
   return (
     <button
       type="button"
@@ -301,7 +536,7 @@ function MachineSelector({
             OPTION_BASE_CLASS_NAME,
             OPTION_INTERACTIVE_CLASS_NAME,
             LIST_HOVER_TRANSITION,
-            "h-7 shrink overflow-hidden px-1 text-sidebar-foreground hover:bg-sidebar-accent",
+            "h-6 shrink overflow-hidden px-1.5 text-2xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
           )}
         >
           <span className="block min-w-0 flex-1 truncate">
@@ -402,43 +637,94 @@ export function ProviderUsageStatusContent({
     activeMachine === null
       ? null
       : (requestedProviderIds.get(activeMachine.id) ?? null);
-  const activeProvider =
-    providers.find((provider) => provider.id === requestedProviderId) ??
-    providers[0] ??
-    null;
-  const activeAccounts = activeProvider?.accounts ?? [];
+  const showAllTab = providers.length > 1;
+  const tabIds = useMemo(
+    () => [
+      ...(showAllTab ? [ALL_PROVIDERS_TAB_ID] : []),
+      ...providers.map((provider) => provider.id),
+    ],
+    [providers, showAllTab],
+  );
+  const activeTabId = tabIds.includes(requestedProviderId ?? "")
+    ? requestedProviderId
+    : (tabIds[0] ?? null);
+  const isAllTab = activeTabId === ALL_PROVIDERS_TAB_ID;
+  const activeProvider = isAllTab
+    ? null
+    : (providers.find((provider) => provider.id === activeTabId) ?? null);
+  const activeAccounts = isAllTab
+    ? providers.flatMap((provider) => provider.accounts)
+    : (activeProvider?.accounts ?? []);
   const hasActiveUsage = hasReportedUsage(activeAccounts);
-  const feedback =
+  const notice: CardNotice | null =
     activeMachine === null
       ? snapshot.error !== null
-        ? usageFeedbackMessages.loadFailed
+        ? {
+            kind: "empty",
+            icon: "AlertCircle",
+            message: usageFeedbackMessages.loadFailed,
+            retry: true,
+          }
         : snapshot.isRefreshing
-          ? usageFeedbackMessages.loading
-          : usageFeedbackMessages.noSources
+          ? { kind: "loading" }
+          : {
+              kind: "empty",
+              icon: "Info",
+              message: usageFeedbackMessages.noSources,
+              retry: false,
+            }
       : activeMachine.status === "disconnected"
-        ? offlineUsageMessage(activeMachine, hasActiveUsage)
+        ? {
+            kind: hasActiveUsage ? "stale" : "empty",
+            icon: "CloudOff",
+            message: offlineUsageMessage(activeMachine, hasActiveUsage),
+            retry: false,
+          }
         : snapshot.error !== null || activeMachine.error !== null
           ? hasActiveUsage
-            ? usageFeedbackMessages.refreshFailed
-            : usageFeedbackMessages.loadFailed
-          : activeProvider === null
-            ? emptyUsageMessage(activeMachine)
+            ? {
+                kind: "stale",
+                icon: "AlertTriangle",
+                message: usageFeedbackMessages.refreshFailed,
+                retry: true,
+              }
+            : {
+                kind: "empty",
+                icon: "AlertCircle",
+                message: usageFeedbackMessages.loadFailed,
+                retry: true,
+              }
+          : activeAccounts.length === 0
+            ? {
+                kind: "empty",
+                icon: "Info",
+                message: emptyUsageMessage(activeMachine),
+                retry: false,
+              }
             : null;
   const panelId = useId();
   const activeMachineId = activeMachine?.id ?? null;
   const activeProviderId = activeProvider?.id ?? null;
+  const refreshProviderIds = isAllTab
+    ? providers.map((provider) => provider.id)
+    : activeProviderId === null
+      ? []
+      : [activeProviderId];
+  const refreshProviderKey = refreshProviderIds.join("\n");
 
   useEffect(() => {
     if (!refreshEnabled) return;
-    if (activeMachineId === null || activeProviderId === null) return;
+    if (activeMachineId === null || refreshProviderKey === "") return;
     const refresh = () => {
       if (document.visibilityState === "hidden") return;
-      void refreshUsage({
-        force: false,
-        machineIds: [activeMachineId],
-        providerId: activeProviderId,
-        maxAgeMs: CARD_MAX_AGE_MS,
-      });
+      for (const providerId of refreshProviderKey.split("\n")) {
+        void refreshUsage({
+          force: false,
+          machineIds: [activeMachineId],
+          providerId,
+          maxAgeMs: CARD_MAX_AGE_MS,
+        });
+      }
     };
     refresh();
     const timer = window.setInterval(refresh, CARD_MAX_AGE_MS);
@@ -447,7 +733,7 @@ export function ProviderUsageStatusContent({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [activeMachineId, activeProviderId, refreshEnabled]);
+  }, [activeMachineId, refreshProviderKey, refreshEnabled]);
 
   const selectMachine = useCallback(
     (machineId: string) => {
@@ -475,26 +761,39 @@ export function ProviderUsageStatusContent({
     [activeMachine],
   );
 
+  const reload = () => {
+    for (const providerId of refreshProviderIds.length === 0
+      ? [null]
+      : refreshProviderIds) {
+      void refreshUsage({
+        force: true,
+        machineIds: activeMachineId === null ? null : [activeMachineId],
+        maxAgeMs: 0,
+        providerId,
+      });
+    }
+  };
+
   const handleTabKeyDown = (
     event: KeyboardEvent<HTMLButtonElement>,
     currentIndex: number,
   ) => {
     let nextIndex: number;
     if (event.key === "ArrowRight") {
-      nextIndex = (currentIndex + 1) % providers.length;
+      nextIndex = (currentIndex + 1) % tabIds.length;
     } else if (event.key === "ArrowLeft") {
-      nextIndex = (currentIndex - 1 + providers.length) % providers.length;
+      nextIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
     } else if (event.key === "Home") {
       nextIndex = 0;
     } else if (event.key === "End") {
-      nextIndex = providers.length - 1;
+      nextIndex = tabIds.length - 1;
     } else {
       return;
     }
-    const nextProvider = providers[nextIndex];
-    if (nextProvider === undefined) return;
+    const nextTabId = tabIds[nextIndex];
+    if (nextTabId === undefined) return;
     event.preventDefault();
-    selectProvider(nextProvider.id);
+    selectProvider(nextTabId);
     event.currentTarget.parentElement
       ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
       .item(nextIndex)
@@ -505,15 +804,43 @@ export function ProviderUsageStatusContent({
     <div className="flex max-h-80 flex-col">
       <div
         data-provider-usage-header=""
-        className="flex h-10 min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"
+        className="flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"
       >
-        {providers.length === 0 ? null : (
+        {providers.length < 2 ? (
+          <span className="px-1.5 text-2xs font-medium text-sidebar-foreground">
+            Usage
+          </span>
+        ) : (
           <div
             role="tablist"
             aria-label="Usage provider"
             className="flex min-w-0 shrink items-center gap-0.5 overflow-x-auto"
           >
-            {providers.map((provider, index) => {
+            {showAllTab ? (
+              <button
+                type="button"
+                role="tab"
+                title="All accounts"
+                aria-label="All accounts"
+                aria-selected={isAllTab}
+                aria-controls={panelId}
+                tabIndex={isAllTab ? 0 : -1}
+                className={cn(
+                  "relative flex h-6 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring px-2",
+                  isAllTab
+                    ? "bg-sidebar-accent text-sidebar-foreground"
+                    : "text-muted-foreground hover:text-sidebar-foreground",
+                )}
+                onClick={() => selectProvider(ALL_PROVIDERS_TAB_ID)}
+                onKeyDown={(event) => handleTabKeyDown(event, 0)}
+              >
+                <span aria-hidden="true" className="text-2xs font-medium">
+                  All
+                </span>
+              </button>
+            ) : null}
+            {providers.map((provider, providerIndex) => {
+              const index = providerIndex + (showAllTab ? 1 : 0);
               const isActive = provider.id === activeProvider?.id;
               const tones = provider.accounts.map(providerUsageTone);
               const tone = tones.includes("critical")
@@ -536,26 +863,33 @@ export function ProviderUsageStatusContent({
                   aria-controls={panelId}
                   tabIndex={isActive ? 0 : -1}
                   className={cn(
-                    "relative flex h-10 w-8 shrink-0 items-center justify-center border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sidebar-ring",
+                    "relative flex h-6 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring w-7",
                     isActive
-                      ? "border-sidebar-foreground text-sidebar-foreground"
-                      : "border-transparent text-muted-foreground hover:text-sidebar-foreground",
+                      ? "bg-sidebar-accent text-sidebar-foreground"
+                      : "group/tab text-muted-foreground hover:text-sidebar-foreground",
                   )}
                   onClick={() => selectProvider(provider.id)}
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >
                   <ProviderIcon
                     providerKind="agent"
-                    provider={provider}
+                    provider={
+                      isActive
+                        ? provider
+                        : { ...provider, strings: { iconTint: null } }
+                    }
                     fallback="Bot"
-                    className="size-4"
+                    className={cn(
+                      "size-3.5",
+                      !isActive && "opacity-60 group-hover/tab:opacity-100",
+                    )}
                   />
-                  {tone === null ? null : (
+                  {tone === null || isActive || isAllTab ? null : (
                     <span
                       aria-hidden="true"
                       data-provider-usage-tone={tone}
                       className={cn(
-                        "absolute right-1 top-1.5 size-1.5 rounded-full ring-2 ring-sidebar-accent",
+                        "absolute right-0.5 top-0.5 size-1.5 rounded-full ring-2 ring-sidebar",
                         tone === "critical" ? "bg-destructive" : "bg-warning",
                       )}
                     />
@@ -566,25 +900,20 @@ export function ProviderUsageStatusContent({
           </div>
         )}
         <div className="flex min-w-0 flex-1 justify-end">
-          <MachineSelector
-            machines={machines}
-            activeMachine={activeMachine}
-            onSelect={selectMachine}
-          />
+          {machines.length === 0 ? null : (
+            <MachineSelector
+              machines={machines}
+              activeMachine={activeMachine}
+              onSelect={selectMachine}
+            />
+          )}
         </div>
         <button
           type="button"
           aria-label="Reload provider usage"
           disabled={snapshot.isRefreshing}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:opacity-50"
-          onClick={() =>
-            void refreshUsage({
-              force: true,
-              machineIds: activeMachineId === null ? null : [activeMachineId],
-              maxAgeMs: 0,
-              providerId: activeProvider?.id ?? null,
-            })
-          }
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:opacity-50"
+          onClick={reload}
         >
           <Icon
             name="RotateCcw"
@@ -597,7 +926,7 @@ export function ProviderUsageStatusContent({
         <button
           type="button"
           aria-label="Collapse provider usage"
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           onClick={dismiss}
         >
           <Icon name="ChevronDown" aria-hidden="true" className="size-4" />
@@ -607,23 +936,34 @@ export function ProviderUsageStatusContent({
         id={panelId}
         role="tabpanel"
         aria-label={
-          activeMachine === null || activeProvider === null
+          activeMachine === null
             ? "Provider usage"
-            : activeMachine.displayName +
-              " " +
-              activeProvider.displayName +
-              " usage"
+            : isAllTab
+              ? activeMachine.displayName + " usage for all accounts"
+              : activeProvider === null
+                ? "Provider usage"
+                : activeMachine.displayName +
+                  " " +
+                  activeProvider.displayName +
+                  " usage"
         }
         className="min-h-0 overflow-y-auto p-2.5"
       >
-        {feedback === null ? null : (
-          <UsageFeedback
-            message={feedback}
-            loading={feedback === usageFeedbackMessages.loading}
-            className={activeProvider === null ? undefined : "mb-2"}
+        {notice !== null && notice.kind !== "loading" ? (
+          <UsageNotice
+            notice={notice}
+            onRetry={reload}
+            className={notice.kind === "stale" ? "mb-2" : undefined}
           />
-        )}
-        {activeProvider === null ? null : (
+        ) : null}
+        {notice?.kind === "empty" ? null : notice?.kind === "loading" ? (
+          <UsageSkeleton rows={3} />
+        ) : isAllTab ? (
+          <CompactUsageTable
+            accounts={activeAccounts}
+            loading={snapshot.isRefreshing}
+          />
+        ) : activeProvider === null ? null : (
           <>
             <div className="divide-y divide-sidebar-border">
               {activeProvider.accounts.map((account) => (

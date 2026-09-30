@@ -224,9 +224,8 @@ identified by its plugin and its id, so two plugins may register the same id;
 pass `--plugin <plugin-id>` to `set` when they do. Automatic tries
 the services bb ships in order: Codex (`codex`, using the Codex CLI login on the
 primary machine), then bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb
-account). bb cloud is off until you turn it on with `bb ai on` or in Settings →
-bb cloud AI; while off it sends nothing to getbb.app, and `bb ai off` turns it
-off again. Automatic never sends text to a third-party plugin. A service you pick
+account). bb cloud is on by default once you sign in; `bb ai off` turns it off
+(it then sends nothing to getbb.app) and `bb ai on` turns it back on. Automatic never sends text to a third-party plugin. A service you pick
 is used alone; if it fails, titles fall back to the start of the prompt and
 commits to `bb: automated commit`. Each plugin picks its own model.
 
@@ -241,7 +240,7 @@ happens often, run `codex login --with-api-key` on the primary machine, or pick
 another voice service.
 
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
-Codex transcribes recordings up to 20 MB.
+Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
@@ -447,7 +446,7 @@ move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
-`Command+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+`Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the
 layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
 commands still cycle in reading order. On Windows/Linux, these arrow navigation
@@ -455,6 +454,17 @@ commands start unassigned to preserve native Control-arrow editing shortcuts.
 Rebind any of these commands in Settings → Keyboard, via
 `bb settings keyboard set <command> <shortcut|disabled>`, or SDK
 `system.updateKeyboardSettings`; read bindings with `system.config`.
+Use `bb settings keyboard reset <command>` to adopt the current default.
+Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
+on all platforms. A platform-specific override takes precedence over a general one,
+including when disabled. UI edits and clears apply only to the current platform;
+UI resets remove overrides for the current platform so web and desktop each use
+their own defaults. Shared overrides become explicit bindings on the other platforms
+to preserve their behavior. Explicit overrides remain resettable even when they match
+a default shortcut.
+CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
+other platforms. Unscoped `set` updates the general override; unscoped `reset`
+clears all scopes for the selected command (or every command if omitted).
 
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
@@ -1200,7 +1210,7 @@ override. Their JSON rows include `hostId`, `hostName`, `port`, and `url`;
 Connect enrollment fails fast with instructions to remove and re-add it in
 Settings → Machines.
 
-The CLI commands are proxied to the plugins, and Settings → Remote access
+The CLI commands are proxied to the plugins, and Settings → bb connect
 drives connect's rpc (including shared ports).
 
 ### Pairing the bb mobile app
@@ -1215,13 +1225,9 @@ variable. Android build, signing, and Play submission instructions are in
 The bb mobile app reaches a paired bb through the same connect route. It
 enrolls as a connect **machine** — its own credential on the getbb.app account,
 separate from the server's pairing secret and individually revocable — so
-pairing starts from the bb, not from the phone. Both pairing surfaces sit
-behind the `mobileApp` experiment (Settings → Experiments → **Mobile app**, or
-`bb settings experiment mobileApp true`) until the app is generally available;
-the connect plugin reads the experiment from `/system/config` on every call,
-so a toggle applies without a plugin reload:
+pairing starts from the bb, not from the phone. No experiment is required.
 
-- Settings → Remote access → **Add mobile device** mints a one-time code and
+- Settings → Mobile → **Add mobile device** mints a one-time code and
   shows it as a QR code plus copyable text with a countdown.
 - `bb connect machine-code` prints the same code, server URL, connect apex,
   and expiry; `bb connect machine-code --json` returns
@@ -1256,10 +1262,6 @@ plugin server loader. Toggling it leaves running plugin instances unchanged;
 the selected loader applies on the next install, reload, enable, update, or
 server restart. Set it with `bb settings experiment legacyJitiPluginLoader
 <true|false>`.
-The `mobileApp` experiment turns on pairing for the bb mobile app: the
-**Add mobile device** card under Settings → Remote access and the
-`bb connect machine-code` command (see "Pairing the bb mobile app" above). It
-is off by default while the app is in early access.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
@@ -1847,57 +1849,22 @@ The desktop app's own profile is excluded. See `bb guide browser` for search
 bounds, encryption limitations, and the `import-sources` / `import-cookies`
 commands. No additional BB setting is required to enable discovery.
 
-### Android App experiment
+### Mobile app downloads
 
-Enable **Android App** in Settings → Experiments, or run
-`bb settings experiment androidTesting true`. The Android App section appears
-below the flags. **Download APK** fetches the build from the public
-`get-bb/bb` GitHub release tagged `android-testing`, verifies its SHA256 and size,
-and downloads it. Users and their servers need no Android tools for this path.
-The server caches completed APKs, checks the release manifest on each request,
-and reuses the cache when unchanged or GitHub is unavailable. Failed integrity
-checks never replace a cached APK. Concurrent requests share the in-flight work.
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
 
-If there is no release or usable cache, the page offers **Build on this server**.
-Local builds never start automatically. Configure `BB_ANDROID_SOURCE_DIR` with
-an absolute path to a dedicated bb source checkout on the server host. Install
-its dependencies with pnpm, install JDK 17 or newer, and set `ANDROID_HOME` or
-`ANDROID_SDK_ROOT` to an Android SDK with build-tools. These tools must be on the
-server process's PATH; restart the server after changing its environment.
-The fallback supports macOS/Linux and builds an arm64 APK using the checkout's
-local build script and debug signing key. Builds modify generated files in that
-checkout and can take several minutes. Local and release signing keys can differ;
-Android cannot update an installed app with an APK signed by a different key.
-Failures point to missing tools or `android-testing/build.log` in the server data
-directory. Local builds time out after 30 minutes. In-flight status is held in
-memory; completed APKs survive restarts.
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
-CLI equivalents (wait for completion, and exit nonzero on failure):
-
-```sh
-bb settings android-app-prepare github --json
-bb settings android-app-prepare local --json
-bb settings android-app --json
-```
-
-SDK: `system.prepareAndroidApp({ source: "github" | "local" })` starts work,
-`system.androidAppPreparation()` reads status, and `system.androidApp()` reads
-the cached build metadata. The HTTP routes are POST `/api/v1/system/android-app/prepare`,
-GET `/api/v1/system/android-app/preparation`, and GET `/api/v1/system/android-app`.
-The preparation routes and `/install/bb-android.apk` are disabled when the
-experiment is off. Through bb connect, they require the normal account session.
-
-To publish centrally, run the **Mobile Android (EAS)** workflow with profile
-`preview` and **publish** enabled. EAS builds the signed APK; the workflow verifies
-it and uploads its checksum-named APK before `latest.json` to the `android-testing`
-GitHub prerelease. It requires configured EAS credentials/`EXPO_TOKEN`; it does not
-submit to Play. Preview builds increment the remote Android version code.
-The first release must be published before release downloads are available.
-
-For manual publication, run
-`node apps/mobile/scripts/publish-android-apk.mjs APK OUTPUT_DIR` from a source
-checkout with Android SDK build-tools. Upload `OUTPUT_DIR/android-testing/*.apk`
-to the release, then upload `OUTPUT_DIR/android-testing/latest.json` last.
-Alternatively use a server data directory as OUTPUT_DIR to seed that server's cache.
-Keep signing keys consistent for updates. Old cached artifacts are retained so
-active downloads can finish.
+The publishing workflow verifies the signed APK and publishes both the checksum-named
+asset and the stable `bb-android.apk` alias, then `latest.json`.

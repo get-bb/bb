@@ -29,6 +29,7 @@ import CleanIcon from "@hugeicons/core-free-icons/CleanIcon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import ClockArrowDownIcon from "@hugeicons/core-free-icons/ClockArrowDownIcon";
 import ClockArrowUpIcon from "@hugeicons/core-free-icons/ClockArrowUpIcon";
+import ComputerCloudIcon from "@hugeicons/core-free-icons/ComputerCloudIcon";
 import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
 import CloudOffIcon from "@hugeicons/core-free-icons/CloudOffIcon";
 import Coffee02Icon from "@hugeicons/core-free-icons/Coffee02Icon";
@@ -245,6 +246,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Clock: Clock01Icon,
   ClockArrowUp: ClockArrowUpIcon,
   ClockArrowDown: ClockArrowDownIcon,
+  ComputerCloud: ComputerCloudIcon,
   Cloud: CloudIcon,
   CloudOff: CloudOffIcon,
   Coffee: Coffee02Icon,

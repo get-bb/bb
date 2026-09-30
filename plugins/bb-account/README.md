@@ -34,7 +34,8 @@ survives restarts.
 caller), and every other path is refused. A path may not contain `..`, `//`,
 a query, a fragment, or characters other than letters, digits, and `-._~/`;
 anything else throws. `timeoutMs` is an integer from 1000 to 15000 and
-defaults to 15000. Request and response bodies are capped at 1 MB, redirects
+defaults to 15000. Request bodies are capped at 16 MB (room for a base64
+voice recording) and response bodies at 1 MB, redirects
 are returned rather than followed, and a non-JSON body comes back as `null`.
 The credential goes in both `authorization: Bearer` and
 `x-bb-connect-machine`. Without a stored credential, `fetch` answers
@@ -54,12 +55,11 @@ the three `bb-account.v1.*` methods.
   `rejected` when `GET /api/account/me` refuses the credential, and
   `adopted` once it is stored. It never revokes anything.
 - `connectCredential` returns `{credential: {baseUrl, serverUrl, serverId,
-  credential} | null}`. Connect dials the tunnel with it and keeps its copy
+credential} | null}`. Connect dials the tunnel with it and keeps its copy
   for older builds current.
 - `confirmRefusedCredential` (`{credential}`) is how connect reports that the
   gate refused the credential. If it is still the current one, bb account
-  checks it with `GET /api/account/me` and signs out when getbb.app answers
-  401. It returns the account status.
+  checks it with `GET /api/account/me` and signs out when getbb.app answers 401. It returns the account status.
 
 `signOut` returns `{revocation, status}`, where
 `revocation` is `revoked`, `not-signed-in`, or `failed` with a `message` and

@@ -107,6 +107,45 @@ describe("ConversationMessageContent user images", () => {
   });
 });
 
+describe("ConversationMessageContent user HTML", () => {
+  it("shows typed HTML tags as literal text", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            initiator="user"
+            mentions={[]}
+            originKind={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={
+              "<details><summary>x</summary>hidden</details>\n\ninline <b>bold</b> here"
+            }
+            threadId="thr_html"
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
+            workspaceRootPath="/workspace"
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(container.querySelector("details, b")).toBeNull();
+    expect(
+      screen.getByText("<details><summary>x</summary>hidden</details>"),
+    ).toBeTruthy();
+    expect(screen.getByText("inline <b>bold</b> here")).toBeTruthy();
+  });
+});
+
 describe("ConversationMessageContent assistant thread mentions", () => {
   it("renders an agent-authored thread token with the referenced thread title", () => {
     const mentionedThread = threadListEntry({

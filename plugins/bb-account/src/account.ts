@@ -5,7 +5,7 @@ import type {
 import { serverUrlForHandle } from "@bb/connect-client";
 import { normalizeOrigin } from "./base-url.js";
 import {
-  FETCH_BODY_MAX_BYTES,
+  FETCH_REQUEST_BODY_MAX_BYTES,
   LONG_POLL_TIMEOUT_MS,
   type AccountFetchInput,
   type AccountFetchResult,
@@ -153,9 +153,9 @@ export class AccountService {
     const bodyText = input.body === null ? null : JSON.stringify(input.body);
     if (
       bodyText !== null &&
-      Buffer.byteLength(bodyText, "utf8") > FETCH_BODY_MAX_BYTES
+      Buffer.byteLength(bodyText, "utf8") > FETCH_REQUEST_BODY_MAX_BYTES
     ) {
-      throw new Error("bb-account.v1.fetch: the request body exceeds 1 MB");
+      throw new Error("bb-account.v1.fetch: the request body exceeds 16 MB");
     }
     const credential = this.credential;
     if (credential === null) return signedOutResponse();

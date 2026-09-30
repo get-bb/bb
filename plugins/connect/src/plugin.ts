@@ -13,7 +13,6 @@ import { resolveLocalCloudLoopbackUrl } from "./local-loopback.js";
 import {
   connectRpcContract,
   createRpcHandlers,
-  type MobilePairingGate,
   type RemoteAccessSwitch,
 } from "./rpc.js";
 import {
@@ -110,17 +109,12 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       status: () => tunnel.status(),
     });
 
-    const mobilePairing: MobilePairingGate = {
-      enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,
-    };
-
     bb.rpc.register(
       connectRpcContract,
       createRpcHandlers({
         tunnel,
         hosted,
         hostResolver,
-        mobilePairing,
         remoteAccess,
       }),
     );
@@ -130,7 +124,6 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       account,
       hosted,
       hostResolver,
-      mobilePairing,
       remoteAccess,
     });
 

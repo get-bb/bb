@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type PluginAiServiceStatus,
 } from "@get-bb/plugin-sdk";
+import { Buffer } from "node:buffer";
 import { z } from "zod";
 import {
   ACCOUNT_PLUGIN_ID,
@@ -22,8 +23,11 @@ import { formatResetTime, formatUsage } from "./format.js";
 
 export const BB_AI_SERVICE_ID = "bb";
 const COMPLETE_PATH = "/api/ai/v1/complete";
+const TRANSCRIBE_PATH = "/api/ai/v1/transcribe";
 const USAGE_PATH = "/api/ai/v1/usage";
 const COMPLETE_TIMEOUT_MS = 5_000;
+const TRANSCRIBE_TIMEOUT_MS = 10_000;
+export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 const ENABLED_KEY = "enabled";
 const BB_CLOUD_OFF_MESSAGE = "bb cloud is off. Turn it on with `bb ai on`.";
 const SIGN_IN_MESSAGE = "Sign in to your bb account";
@@ -33,6 +37,44 @@ const JSON_OPTION = {
   type: "boolean",
   description: "Emit machine-readable JSON",
 } as const;
+
+const AUDIO_FORMATS_BY_MIME: Record<string, string> = {
+  "audio/webm": "webm",
+  "video/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/m4a": "m4a",
+  "audio/aac": "aac",
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/flac": "flac",
+  "audio/x-flac": "flac",
+};
+
+const AUDIO_FORMATS_BY_EXTENSION: Record<string, string> = {
+  webm: "webm",
+  ogg: "ogg",
+  oga: "ogg",
+  opus: "ogg",
+  mp4: "m4a",
+  m4a: "m4a",
+  aac: "aac",
+  mp3: "mp3",
+  wav: "wav",
+  flac: "flac",
+};
+
+export function audioFormat(audio: File): string | null {
+  const mime = audio.type.split(";")[0]?.trim().toLowerCase() ?? "";
+  const byMime = AUDIO_FORMATS_BY_MIME[mime];
+  if (byMime !== undefined) return byMime;
+  const extension = audio.name.split(".").pop()?.toLowerCase() ?? "";
+  return AUDIO_FORMATS_BY_EXTENSION[extension] ?? null;
+}
 
 const completeResponseSchema = z.object({
   text: z.string(),
@@ -192,8 +234,10 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
     return statusFor(await accountStatus());
   }
 
-  async function complete(
-    prompt: string,
+  async function generate(
+    path: string,
+    body: () => Promise<AccountFetchInput["body"]>,
+    timeoutMs: number,
     signal: AbortSignal,
   ): Promise<string> {
     if (!enabled) throw new Error(BB_CLOUD_OFF_MESSAGE);
@@ -203,15 +247,10 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
     const key = accountKey(account.account);
     const until = exhaustedUntil(key);
     if (until !== null) throw new Error(limitReachedMessage(until));
+    const payload = await body();
     if (!enabled) throw new Error(BB_CLOUD_OFF_MESSAGE);
     const response = await accountFetch(
-      {
-        target: "api",
-        method: "POST",
-        path: COMPLETE_PATH,
-        body: { prompt },
-        timeoutMs: COMPLETE_TIMEOUT_MS,
-      },
+      { target: "api", method: "POST", path, body: payload, timeoutMs },
       signal,
     );
     if (response.status !== 200) {
@@ -226,6 +265,47 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
       throw new Error("bb cloud returned an invalid reply");
     }
     return parsed.data.text;
+  }
+
+  function complete(prompt: string, signal: AbortSignal): Promise<string> {
+    return generate(
+      COMPLETE_PATH,
+      async () => ({ prompt }),
+      COMPLETE_TIMEOUT_MS,
+      signal,
+    );
+  }
+
+  function transcribe(
+    audio: File,
+    hint: string | null,
+    signal: AbortSignal,
+  ): Promise<string> {
+    if (audio.size > TRANSCRIBE_MAX_BYTES) {
+      return Promise.reject(
+        new Error(
+          `Recordings over ${TRANSCRIBE_MAX_BYTES / (1024 * 1024)} MB are too large for bb cloud`,
+        ),
+      );
+    }
+    const format = audioFormat(audio);
+    if (format === null) {
+      return Promise.reject(
+        new Error(
+          `bb cloud can't transcribe ${audio.type || "this"} audio; use WebM, Ogg, MP4, MP3, WAV, FLAC, or AAC`,
+        ),
+      );
+    }
+    return generate(
+      TRANSCRIBE_PATH,
+      async () => ({
+        audio: Buffer.from(await audio.arrayBuffer()).toString("base64"),
+        format,
+        hint,
+      }),
+      TRANSCRIBE_TIMEOUT_MS,
+      signal,
+    );
   }
 
   async function usage(): Promise<BbAiUsage> {
@@ -284,6 +364,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
     id: BB_AI_SERVICE_ID,
     displayName: "bb cloud",
     complete: (prompt, { signal }) => complete(prompt, signal),
+    transcribe: (audio, { signal, hint }) => transcribe(audio, hint, signal),
     status,
   });
 
@@ -302,8 +383,9 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
   bb.cli.register(
     defineCli({
       name: "ai",
-      summary: "Manage bb cloud AI for titles and commit messages",
-      description: `bb cloud writes thread titles and commit messages for signed-in bb accounts. It is on by default; turn it off with \`bb ai off\`. Choose which tasks use it with \`bb settings ai-services set\`.`,
+      summary:
+        "Manage bb cloud AI for titles, commit messages, and voice input",
+      description: `bb cloud writes thread titles and commit messages and transcribes voice input for signed-in bb accounts. It is on by default; turn it off with \`bb ai off\`. Choose which tasks use it with \`bb settings ai-services set\`.`,
       commands: {
         status: cliCommand({
           summary: "Show whether bb cloud is on and ready, and today's usage",
@@ -337,7 +419,8 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
           },
         }),
         on: cliCommand({
-          summary: "Turn bb cloud on for thread titles and commit messages",
+          summary:
+            "Turn bb cloud on for thread titles, commit messages, and voice input",
           options: { json: JSON_OPTION },
           async run(input) {
             const view = await setEnabled(true);
@@ -347,7 +430,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
             return {
               exitCode: 0,
               stdout: view.status.ready
-                ? "bb cloud is on and ready for thread titles and commit messages."
+                ? "bb cloud is on and ready for thread titles, commit messages, and voice input."
                 : `bb cloud is on but not ready: ${view.status.message}`,
             };
           },

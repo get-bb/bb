@@ -85,7 +85,6 @@ async function loadBoth(
         config: async () =>
           ({
             primaryHostId: "host-server",
-            experiments: { mobileApp: true },
           }) as never,
       },
       hosts: {

@@ -2,6 +2,7 @@ import type { GatewayConfig } from "./config.js";
 
 export const MAX_OUTPUT_TOKENS = 128;
 export const UPSTREAM_TIMEOUT_MS = 4_000;
+export const TRANSCRIBE_TIMEOUT_MS = 8_000;
 const TEMPERATURE = 0.2;
 
 export type UpstreamFetch = (
@@ -67,6 +68,15 @@ export function creditsToMicros(value: unknown): number | null {
     : null;
 }
 
+function upstreamHeaders(apiKey: string): Record<string, string> {
+  return {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+    "HTTP-Referer": "https://getbb.app",
+    "X-Title": "bb",
+  };
+}
+
 function readUsage(body: unknown): UpstreamUsage {
   const usage = field(body, "usage");
   return {
@@ -115,12 +125,7 @@ export async function callUpstream(args: {
       {
         method: "POST",
         signal: controller.signal,
-        headers: {
-          authorization: `Bearer ${args.apiKey}`,
-          "content-type": "application/json",
-          "HTTP-Referer": "https://getbb.app",
-          "X-Title": "bb",
-        },
+        headers: upstreamHeaders(args.apiKey),
         body: JSON.stringify(
           buildUpstreamRequest(args.config, args.prompt, args.userHash),
         ),
@@ -157,4 +162,131 @@ export async function callUpstream(args: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export const transcribeFormats = [
+  "wav",
+  "mp3",
+  "flac",
+  "m4a",
+  "ogg",
+  "webm",
+  "aac",
+] as const;
+export type TranscribeFormat = (typeof transcribeFormats)[number];
+
+export interface TranscribeInput {
+  audio: string;
+  format: TranscribeFormat;
+  hint: string | null;
+}
+
+export function buildTranscribeRequest(
+  model: string,
+  input: TranscribeInput,
+): Record<string, unknown> {
+  const options =
+    input.hint === null ? {} : { options: { groq: { prompt: input.hint } } };
+  return {
+    model,
+    input_audio: { data: input.audio, format: input.format },
+    provider: { zdr: true, data_collection: "deny", ...options },
+  };
+}
+
+function readTranscribeUsage(body: unknown): UpstreamUsage {
+  const usage = field(body, "usage");
+  return {
+    costMicros: creditsToMicros(field(usage, "cost")),
+    promptTokens: nonNegativeInteger(field(usage, "input_tokens")),
+    completionTokens: nonNegativeInteger(field(usage, "output_tokens")),
+  };
+}
+
+async function transcribeOnce(args: {
+  fetch: UpstreamFetch;
+  config: GatewayConfig;
+  apiKey: string;
+  model: string;
+  input: TranscribeInput;
+  signal: AbortSignal;
+}): Promise<UpstreamResult> {
+  try {
+    const response = await args.fetch(
+      `${args.config.upstreamBaseUrl}/audio/transcriptions`,
+      {
+        method: "POST",
+        signal: args.signal,
+        headers: upstreamHeaders(args.apiKey),
+        body: JSON.stringify(buildTranscribeRequest(args.model, args.input)),
+      },
+    );
+    const body: unknown = await response.json().catch(() => null);
+    const usage = readTranscribeUsage(body);
+    if (args.signal.aborted) {
+      return {
+        kind: "error",
+        reason: "timeout",
+        model: args.model,
+        mayBill: true,
+        ...usage,
+      };
+    }
+    const text = field(body, "text");
+    if (!response.ok || typeof text !== "string") {
+      return {
+        kind: "error",
+        reason: "upstream_error",
+        model: args.model,
+        mayBill: response.ok,
+        ...usage,
+      };
+    }
+    return { kind: "ok", text, model: args.model, ...usage };
+  } catch {
+    return {
+      kind: "error",
+      reason: args.signal.aborted ? "timeout" : "upstream_error",
+      model: args.model,
+      mayBill: true,
+      ...NO_USAGE,
+    };
+  }
+}
+
+function billable(result: UpstreamResult): boolean {
+  return result.kind === "ok" || result.mayBill;
+}
+
+export async function callTranscribe(args: {
+  fetch: UpstreamFetch;
+  config: GatewayConfig;
+  apiKey: string;
+  input: TranscribeInput;
+  timeoutMs: number;
+}): Promise<UpstreamResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), args.timeoutMs);
+  let knownCost: number | null = null;
+  let last: UpstreamResult | null = null;
+  try {
+    for (const model of args.config.transcribeModels) {
+      last = await transcribeOnce({
+        ...args,
+        model,
+        signal: controller.signal,
+      });
+      if (last.costMicros !== null) {
+        knownCost = (knownCost ?? 0) + last.costMicros;
+      }
+      if (billable(last) || controller.signal.aborted) break;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  if (last === null) throw new Error("no transcription model is configured");
+  return {
+    ...last,
+    costMicros: last.costMicros === null && billable(last) ? null : knownCost,
+  };
 }

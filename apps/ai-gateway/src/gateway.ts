@@ -10,6 +10,7 @@ import type { GatewayConfig } from "./config.js";
 import {
   type BudgetKey,
   RESERVE_MICROS,
+  TRANSCRIBE_RESERVE_MICROS,
   nextUtcMidnight,
   reserveBudget,
   settleBudget,
@@ -17,15 +18,24 @@ import {
   utcDay,
 } from "./metering.js";
 import {
+  type TranscribeFormat,
+  type TranscribeInput,
   type UpstreamFetch,
   type UpstreamResult,
+  callTranscribe,
   callUpstream,
+  transcribeFormats,
 } from "./upstream.js";
 
 export const MAX_PROMPT_BYTES = 48 * 1024;
 const MAX_BODY_BYTES = 512 * 1024;
+export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+export const MAX_HINT_BYTES = 4 * 1024;
+const MAX_TRANSCRIBE_BODY_BYTES = 14 * 1024 * 1024;
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/u;
 
 export const COMPLETE_PATH = "/api/ai/v1/complete";
+export const TRANSCRIBE_PATH = "/api/ai/v1/transcribe";
 export const USAGE_PATH = "/api/ai/v1/usage";
 
 type ErrorCode =
@@ -54,6 +64,7 @@ export interface GatewayDeps {
   fetch: UpstreamFetch;
   now: () => number;
   upstreamTimeoutMs: number;
+  transcribeTimeoutMs: number;
   waitUntil: (promise: Promise<unknown>) => void;
 }
 
@@ -77,9 +88,10 @@ const BODY_TOO_LARGE = "request body is too large";
 
 async function readBody(
   request: Request,
+  maxBytes: number,
 ): Promise<{ text: string } | { error: string }> {
   const declared = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+  if (Number.isFinite(declared) && declared > maxBytes) {
     return { error: BODY_TOO_LARGE };
   }
   if (request.body === null) return { text: "" };
@@ -91,7 +103,7 @@ async function readBody(
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_BODY_BYTES) {
+      if (total > maxBytes) {
         await reader.cancel().catch(() => {});
         return { error: BODY_TOO_LARGE };
       }
@@ -109,29 +121,83 @@ async function readBody(
   return { text: new TextDecoder().decode(bytes) };
 }
 
-async function readPrompt(
+type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
+
+async function readJson(
   request: Request,
-): Promise<{ prompt: string } | { error: string }> {
-  const read = await readBody(request);
-  if ("error" in read) return read;
-  const raw = read.text;
-  let body: unknown;
+  maxBytes: number,
+): Promise<Parsed<unknown>> {
+  const read = await readBody(request, maxBytes);
+  if ("error" in read) return { ok: false, error: read.error };
   try {
-    body = JSON.parse(raw);
+    return { ok: true, value: JSON.parse(read.text) };
   } catch {
-    return { error: "request body must be JSON" };
+    return { ok: false, error: "request body must be JSON" };
   }
-  const prompt =
-    typeof body === "object" && body !== null
-      ? Reflect.get(body, "prompt")
-      : undefined;
+}
+
+function bodyField(body: unknown, key: string): unknown {
+  return typeof body === "object" && body !== null
+    ? Reflect.get(body, key)
+    : undefined;
+}
+
+function utf8Bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function parsePrompt(body: unknown): Parsed<string> {
+  const prompt = bodyField(body, "prompt");
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
-    return { error: "prompt must be a non-empty string" };
+    return { ok: false, error: "prompt must be a non-empty string" };
   }
-  if (new TextEncoder().encode(prompt).byteLength > MAX_PROMPT_BYTES) {
-    return { error: `prompt exceeds ${MAX_PROMPT_BYTES} bytes` };
+  if (utf8Bytes(prompt) > MAX_PROMPT_BYTES) {
+    return { ok: false, error: `prompt exceeds ${MAX_PROMPT_BYTES} bytes` };
   }
-  return { prompt };
+  return { ok: true, value: prompt };
+}
+
+function base64DecodedBytes(value: string): number {
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return (value.length / 4) * 3 - padding;
+}
+
+function isTranscribeFormat(value: unknown): value is TranscribeFormat {
+  return transcribeFormats.some((format) => format === value);
+}
+
+function parseTranscribe(body: unknown): Parsed<TranscribeInput> {
+  const audio = bodyField(body, "audio");
+  if (
+    typeof audio !== "string" ||
+    audio.length === 0 ||
+    audio.length % 4 !== 0 ||
+    !BASE64_PATTERN.test(audio)
+  ) {
+    return { ok: false, error: "audio must be non-empty base64" };
+  }
+  if (base64DecodedBytes(audio) > MAX_AUDIO_BYTES) {
+    return { ok: false, error: `audio exceeds ${MAX_AUDIO_BYTES} bytes` };
+  }
+  const format = bodyField(body, "format");
+  if (!isTranscribeFormat(format)) {
+    return {
+      ok: false,
+      error: `format must be one of ${transcribeFormats.join(", ")}`,
+    };
+  }
+  const rawHint = bodyField(body, "hint") ?? null;
+  if (rawHint !== null && typeof rawHint !== "string") {
+    return { ok: false, error: "hint must be a string or null" };
+  }
+  const hint = rawHint?.trim() ?? "";
+  if (utf8Bytes(hint) > MAX_HINT_BYTES) {
+    return { ok: false, error: `hint exceeds ${MAX_HINT_BYTES} bytes` };
+  }
+  return {
+    ok: true,
+    value: { audio, format, hint: hint.length > 0 ? hint : null },
+  };
 }
 
 async function logRequest(
@@ -169,9 +235,9 @@ async function logRequest(
   }
 }
 
-function chargedMicros(result: UpstreamResult): number {
+function chargedMicros(result: UpstreamResult, reserveMicros: number): number {
   if (result.costMicros !== null) return result.costMicros;
-  return result.kind === "ok" || result.mayBill ? RESERVE_MICROS : 0;
+  return result.kind === "ok" || result.mayBill ? reserveMicros : 0;
 }
 
 type LogBase = { userId: string; serverId: string; startedAt: number };
@@ -183,31 +249,74 @@ const NO_USAGE = {
   costMicros: 0,
 };
 
-async function completeReserved(
+interface MeteredTask<T> {
+  maxBodyBytes: number;
+  reserveMicros: number;
+  parse(body: unknown): Parsed<T>;
+  call(
+    deps: GatewayDeps,
+    apiKey: string,
+    input: T,
+    userId: string,
+  ): Promise<UpstreamResult>;
+}
+
+const completeTask: MeteredTask<string> = {
+  maxBodyBytes: MAX_BODY_BYTES,
+  reserveMicros: RESERVE_MICROS,
+  parse: parsePrompt,
+  call: async (deps, apiKey, prompt, userId) =>
+    callUpstream({
+      fetch: deps.fetch,
+      config: deps.config,
+      apiKey,
+      prompt,
+      userHash: await sha256Hex(userId),
+      timeoutMs: deps.upstreamTimeoutMs,
+    }),
+};
+
+const transcribeTask: MeteredTask<TranscribeInput> = {
+  maxBodyBytes: MAX_TRANSCRIBE_BODY_BYTES,
+  reserveMicros: TRANSCRIBE_RESERVE_MICROS,
+  parse: parseTranscribe,
+  call: (deps, apiKey, input) =>
+    callTranscribe({
+      fetch: deps.fetch,
+      config: deps.config,
+      apiKey,
+      input,
+      timeoutMs: deps.transcribeTimeoutMs,
+    }),
+};
+
+async function runReserved<T>(
   deps: GatewayDeps,
+  task: MeteredTask<T>,
   args: {
     base: LogBase;
     key: BudgetKey;
     apiKey: string;
-    prompt: string;
+    input: T;
   },
 ): Promise<Response> {
   let result: UpstreamResult | null = null;
   let spentTodayMicros = 0;
   try {
-    result = await callUpstream({
-      fetch: deps.fetch,
-      config: deps.config,
-      apiKey: args.apiKey,
-      prompt: args.prompt,
-      userHash: await sha256Hex(args.base.userId),
-      timeoutMs: deps.upstreamTimeoutMs,
-    });
+    result = await task.call(deps, args.apiKey, args.input, args.base.userId);
   } finally {
-    const costMicros = result === null ? RESERVE_MICROS : chargedMicros(result);
-    ({ spentTodayMicros } = await settleBudget(deps.db, args.key, costMicros));
+    const costMicros =
+      result === null
+        ? task.reserveMicros
+        : chargedMicros(result, task.reserveMicros);
+    ({ spentTodayMicros } = await settleBudget(
+      deps.db,
+      args.key,
+      costMicros,
+      task.reserveMicros,
+    ));
   }
-  const costMicros = chargedMicros(result);
+  const costMicros = chargedMicros(result, task.reserveMicros);
   await logRequest(deps, {
     ...args.base,
     model: result.model,
@@ -233,9 +342,10 @@ async function completeReserved(
   });
 }
 
-export async function handleComplete(
+async function handleMetered<T>(
   request: Request,
   deps: GatewayDeps,
+  task: MeteredTask<T>,
 ): Promise<Response> {
   const startedAt = deps.now();
   const account = await authenticate(request, deps.db);
@@ -253,8 +363,9 @@ export async function handleComplete(
     return errorResponse("rate_limited", "too many requests; slow down");
   }
 
-  const parsed = await readPrompt(request);
-  if ("error" in parsed) {
+  const body = await readJson(request, task.maxBodyBytes);
+  const parsed = body.ok ? task.parse(body.value) : body;
+  if (!parsed.ok) {
     await logRequest(deps, {
       ...base,
       ...NO_USAGE,
@@ -273,6 +384,7 @@ export async function handleComplete(
     deps.db,
     key,
     deps.config.dailyBudgetMicros,
+    task.reserveMicros,
   );
   if (!reserved) {
     await logRequest(deps, {
@@ -285,14 +397,28 @@ export async function handleComplete(
     });
   }
 
-  const completion = completeReserved(deps, {
+  const response = runReserved(deps, task, {
     base,
     key,
     apiKey,
-    prompt: parsed.prompt,
+    input: parsed.value,
   });
-  deps.waitUntil(completion.catch(() => {}));
-  return completion;
+  deps.waitUntil(response.catch(() => {}));
+  return response;
+}
+
+export function handleComplete(
+  request: Request,
+  deps: GatewayDeps,
+): Promise<Response> {
+  return handleMetered(request, deps, completeTask);
+}
+
+export function handleTranscribe(
+  request: Request,
+  deps: GatewayDeps,
+): Promise<Response> {
+  return handleMetered(request, deps, transcribeTask);
 }
 
 export async function handleUsage(
@@ -323,6 +449,12 @@ export async function routeGatewayRequest(
       return errorResponse("invalid_request", "use POST", {}, 405);
     }
     return handleComplete(request, deps);
+  }
+  if (pathname === TRANSCRIBE_PATH) {
+    if (request.method !== "POST") {
+      return errorResponse("invalid_request", "use POST", {}, 405);
+    }
+    return handleTranscribe(request, deps);
   }
   if (pathname === USAGE_PATH) {
     if (request.method !== "GET") {

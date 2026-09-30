@@ -13,6 +13,7 @@ import {
   PANE_DIRECTION_APP_COMMAND_IDS,
   defaultAppSettings,
   isAppKeybindingAvailableForClient,
+  keyboardPlatform,
   isMacKeyboardPlatform,
   matchesAppShortcut,
   type AppCommandContext,
@@ -85,6 +86,8 @@ const EMPTY_CONTEXT: AppCommandContext = {
   splitActive: false,
   webSurface: false,
   macPlatform: false,
+  windowsPlatform: false,
+  linuxPlatform: false,
 };
 
 const OPEN_MODAL_SELECTOR = [
@@ -246,7 +249,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         target instanceof HTMLElement &&
         target.closest("[data-app-browser]") !== null;
       next.webSurface = !isDesktop;
-      next.macPlatform = isMacKeyboardPlatform(browserPlatform());
+      next.macPlatform = keyboardPlatform(browserPlatform()) === "mac";
+      next.windowsPlatform = keyboardPlatform(browserPlatform()) === "windows";
+      next.linuxPlatform = keyboardPlatform(browserPlatform()) === "linux";
       for (const key of activeContextsRef.current.keys()) {
         next[key] = true;
       }
@@ -259,11 +264,13 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     (command: KeyboardCommandId, target: EventTarget | null): boolean => {
       const registrations = handlersRef.current.get(command);
       if (registrations === undefined || registrations.size === 0) return false;
-      const isMac = isMacKeyboardPlatform(browserPlatform());
       const applicable = defaultKeybindings.filter(
         (binding) =>
           binding.command === command &&
-          isAppKeybindingAvailableForClient(binding, { isDesktop, isMac }),
+          isAppKeybindingAvailableForClient(binding, {
+            isDesktop,
+            platform: browserPlatform(),
+          }),
       );
       if (applicable.length === 0) return false;
       const context = currentContext(target);
@@ -276,13 +283,15 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
 
   const getShortcut = useCallback(
     (command: KeyboardCommandId): AppShortcut | null => {
-      const isMac = isMacKeyboardPlatform(browserPlatform());
       let binding;
       for (let index = keybindings.length - 1; index >= 0; index -= 1) {
         const candidate = keybindings[index];
         if (
           candidate?.command === command &&
-          isAppKeybindingAvailableForClient(candidate, { isDesktop, isMac })
+          isAppKeybindingAvailableForClient(candidate, {
+            isDesktop,
+            platform: browserPlatform(),
+          })
         ) {
           binding = candidate;
           break;
@@ -307,7 +316,10 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         if (
           candidate &&
           commands.includes(candidate.command) &&
-          isAppKeybindingAvailableForClient(candidate, { isDesktop, isMac }) &&
+          isAppKeybindingAvailableForClient(candidate, {
+            isDesktop,
+            platform: browserPlatform(),
+          }) &&
           matchesAppShortcut(event, candidate.shortcut, isMac)
         ) {
           return candidate.command;
@@ -331,7 +343,12 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       for (let index = bindings.length - 1; index >= 0; index -= 1) {
         const binding = bindings[index];
         if (!binding) continue;
-        if (!isAppKeybindingAvailableForClient(binding, { isDesktop, isMac })) {
+        if (
+          !isAppKeybindingAvailableForClient(binding, {
+            isDesktop,
+            platform: browserPlatform(),
+          })
+        ) {
           continue;
         }
         if (!matchesAppShortcut(event, binding.shortcut, isMac)) continue;

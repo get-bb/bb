@@ -334,10 +334,7 @@ as the first argument drives a dev client through Metro instead.
 
 ## bb connect (Phase 5)
 
-- The pairing surfaces on the bb side (Settings → Remote access → Add mobile
-  device, `bb connect machine-code`) sit behind the `mobileApp` experiment
-  while the app is in early access: turn it on in Settings → Experiments or
-  with `bb settings experiment mobileApp true` before you mint a code.
+- Pair through Settings → Mobile → Add mobile device or `bb connect machine-code`. No experiment is required.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
   "Add server" offers "Connect with bb connect" above the Direct URL form.
   The screen scans the pairing QR (`expo-camera`; payload = the connect
@@ -363,8 +360,8 @@ as the first argument drives a dev client through Metro instead.
 - Account servers: the machine credential is account-scoped (the apex stores
   it against the user, `apps/web/src/server/api.ts` `redeemMachineCode`; the
   gate checks it against the label's owner), and the desktop-session cookie
-  is a `.getbb.app` cookie carrying only the user id, so one enrollment
-  covers every server the account owns — the same as the desktop app's
+  is a `.getbb.app` cookie carrying the user id and the minting credential, so
+  one enrollment covers every server the account owns — the same as the desktop app's
   Server menu. After pairing, "Servers on this account"
   (`GET <serverUrl>/api/connect/servers` with the credential,
   `listAccountServers`) adds any other server as a profile in one tap with
@@ -372,7 +369,9 @@ as the first argument drives a dev client through Metro instead.
 - Session: `src/lib/session` mints `POST <serverUrl>/api/connect/desktop-session`
   with the credential, installs the cookie in both native jars (`Secure`
   follows the server URL's scheme so a plain-http stub gate works), renews
-  five minutes before expiry and on AppState active. The connector
+  five minutes before expiry and on AppState active. The cookie lasts seven
+  days; the gate re-issues it once a day on ordinary responses and rejects it
+  within about 20 seconds of the machine being revoked. The connector
   (`src/lib/connection`) re-checks the session on any 401/403 (an API call
   or the `/ws` upgrade — React Native reports the refused upgrade as the
   close reason "Received bad response code from server: 401.") and on
@@ -663,20 +662,17 @@ palette, run `pnpm --filter @bb/mobile theme:generate` and commit the result;
   client's floating gear can sit over the header's right icons on larger
   simulators.
 
-The default-off `androidTesting` experiment adds **Android App** below the flags
-in Settings → Experiments. **Download APK** fetches and caches a checksum-verified
-APK from the public `get-bb/bb` release tagged `android-testing`. No Android tools
-are required. If no release/cache is available, **Build on this server** explicitly
-runs a local arm64 build; it requires `BB_ANDROID_SOURCE_DIR` pointing to a dedicated
-source checkout with dependencies, pnpm, Java 17+, and `ANDROID_HOME` or
-`ANDROID_SDK_ROOT`. Missing tools and build failures are reported in the page.
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
 
-Use `bb settings experiment androidTesting true`, then
-`bb settings android-app-prepare github --json` (or `local`) to wait for a download
-or build. `bb settings android-app --json` reads cached version/download metadata.
-SDK equivalents: `system.prepareAndroidApp({ source })`,
-`system.androidAppPreparation()`, and `system.androidApp()`.
-Downloads use `/install/bb-android.apk`; bb connect requires an account session.
-Publish the first release using **Mobile Android (EAS)** with profile `preview`
-and **publish** enabled. Local fallback APKs use the debug signing key, which may
-differ from the release key. See `docs/configuration.md` for setup and publishing.
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.

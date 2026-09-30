@@ -131,6 +131,10 @@ vi.mock("./servers.js", () => ({
   handleCreateDesktopSession: vi.fn(),
   handleDisconnectServer: vi.fn(),
   handleListAccountServers: vi.fn(),
+}));
+
+vi.mock("./desktop-session.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./desktop-session.js")>()),
   verifyDesktopSessionCookie: vi.fn(),
 }));
 
@@ -173,8 +177,8 @@ import {
   handleCreateDesktopSession,
   handleDisconnectServer,
   handleListAccountServers,
-  verifyDesktopSessionCookie,
 } from "./servers.js";
+import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
@@ -200,7 +204,7 @@ const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
 function sessionDetails(userId = OWNER, needsRefresh = false) {
-  return { userId, needsRefresh };
+  return { sessionId: `session-${userId}`, userId, needsRefresh };
 }
 
 function resolvedServer(
@@ -1338,11 +1342,14 @@ describe("gate worker share hosts", () => {
     expect(mockRefreshAccountSession).not.toHaveBeenCalled();
   });
 
-  it("accepts the short-lived desktop cookie for the owning account", async () => {
+  it("accepts the desktop cookie for the owning account", async () => {
     mockParseCookie.mockImplementation((_header, name) =>
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
     );
-    mockVerifyDesktopSession.mockResolvedValue(OWNER);
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: null,
+    });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/"),
@@ -1353,8 +1360,64 @@ describe("gate worker share hosts", () => {
     expect(mockVerifyDesktopSession).toHaveBeenCalledWith(
       "desktop-token",
       "test-secret",
+      expect.anything(),
     );
     expect(captured).toHaveLength(1);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("rolls a day-old desktop cookie forward seven days for the same grant", async () => {
+    mockParseCookie.mockImplementation((_header, name) =>
+      name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
+    );
+    const grant = { kind: "machine" as const, credentialHash: "hash-a" };
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: grant,
+    });
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const before = Date.now();
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      env as never,
+      ctx,
+    );
+
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    expect(setCookie).toMatch(
+      /^__Secure-bb-connect\.desktop_session=[^;]+; Domain=\.getbb\.app; Path=\/; Expires=[^;]+; HttpOnly; SameSite=Lax; Secure$/u,
+    );
+    const expires = Date.parse(/Expires=([^;]+)/u.exec(setCookie)![1]);
+    expect(expires).toBeGreaterThanOrEqual(
+      before + 7 * 24 * 60 * 60_000 - 1000,
+    );
+    const value = /=([^;]+)/u.exec(setCookie)![1];
+    const payload = JSON.parse(
+      Buffer.from(
+        value.slice(0, value.lastIndexOf(".")),
+        "base64url",
+      ).toString(),
+    );
+    expect(payload).toMatchObject({ userId: OWNER, grant });
+  });
+
+  it("does not roll a desktop cookie that belongs to another account", async () => {
+    mockParseCookie.mockImplementation((_header, name) =>
+      name === DESKTOP_SESSION_COOKIE ? "desktop-token" : "owner-session",
+    );
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER));
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OTHER,
+      refreshGrant: { kind: "machine", credentialHash: "hash-other" },
+    });
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 
   it("uses the desktop cookie when a stale GitHub session belongs to another account", async () => {
@@ -1362,7 +1425,10 @@ describe("gate worker share hosts", () => {
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : "github-token",
     );
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
-    mockVerifyDesktopSession.mockResolvedValue(OWNER);
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: null,
+    });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/"),

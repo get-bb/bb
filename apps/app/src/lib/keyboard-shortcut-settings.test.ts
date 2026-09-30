@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   APP_COMMAND_IDS,
   type AppDefaultKeybindings,
+  type AppKeybindingOverrides,
   type AppKeybindings,
 } from "@bb/domain";
 import { APP_COMMAND_GROUPS } from "./app-command-metadata";
@@ -122,30 +123,34 @@ describe("keyboard shortcut settings", () => {
     );
   });
 
-  it("stores disable overrides and removes redundant default overrides", () => {
+  it("stores edits and disabled bindings explicitly for the current platform", () => {
     const disabled = setCommandShortcutOverride(
-      defaults,
       [],
       "thread.new",
       null,
-      false,
       "Win32",
     );
-    expect(disabled).toEqual([{ command: "thread.new", shortcut: null }]);
+    expect(disabled).toEqual([
+      { command: "thread.new", shortcut: null, platform: "windows" },
+    ]);
     expect(
       getCommandShortcut(defaults, disabled, "thread.new", false, "Win32"),
     ).toBeNull();
 
     expect(
       setCommandShortcutOverride(
-        defaults,
         disabled,
         "thread.new",
         defaults[0]!.shortcut,
-        false,
         "Win32",
       ),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        command: "thread.new",
+        platform: "windows",
+        shortcut: defaults[0]!.shortcut,
+      },
+    ]);
   });
 
   it("assigns and resets a command without a default shortcut", () => {
@@ -159,15 +164,15 @@ describe("keyboard shortcut settings", () => {
     ];
     const shortcut = defaults[0]!.shortcut;
     const assigned = setCommandShortcutOverride(
-      unassignedDefaults,
       [],
       "thread.rename",
       shortcut,
-      false,
       "Win32",
     );
 
-    expect(assigned).toEqual([{ command: "thread.rename", shortcut }]);
+    expect(assigned).toEqual([
+      { command: "thread.rename", shortcut, platform: "windows" },
+    ]);
     expect(
       getCommandShortcut(
         unassignedDefaults,
@@ -177,7 +182,9 @@ describe("keyboard shortcut settings", () => {
         "Win32",
       ),
     ).toEqual(shortcut);
-    expect(resetCommandShortcutOverride(assigned, "thread.rename")).toEqual([]);
+    expect(
+      resetCommandShortcutOverride(assigned, "thread.rename", "Win32"),
+    ).toEqual([]);
   });
 
   it("selects the active default for the current app surface", () => {
@@ -229,4 +236,79 @@ describe("keyboard shortcut settings", () => {
       getCommandShortcut(platformDefaults, [], "thread.new", true, "MacIntel"),
     ).toEqual(platformDefaults[2]!.shortcut);
   });
+});
+
+it("shows compatibility bindings only on macOS and preserves their scope while editing another command", () => {
+  const overrides: AppKeybindingOverrides = [
+    {
+      command: "thread.new",
+      shortcut: { ...defaults[0]!.shortcut, key: "o" },
+      platform: "mac",
+    },
+  ];
+  expect(
+    getCommandShortcut(defaults, overrides, "thread.new", false, "MacIntel")
+      ?.key,
+  ).toBe("o");
+  expect(
+    getCommandShortcut(defaults, overrides, "thread.new", false, "Linux")?.key,
+  ).toBe("n");
+  const edited = setCommandShortcutOverride(
+    overrides,
+    "pane.focus.left",
+    null,
+    "MacIntel",
+  );
+  expect(edited.find((binding) => binding.command === "thread.new")).toEqual(
+    overrides[0],
+  );
+  expect(
+    getCommandShortcut(
+      defaults,
+      resetCommandShortcutOverride(edited, "thread.new", "MacIntel"),
+      "thread.new",
+      false,
+      "MacIntel",
+    )?.key,
+  ).toBe("n");
+});
+
+it("edits the effective platform override without losing other scopes and resets the command", () => {
+  const shortcut = defaults[0]!.shortcut;
+  const overrides: AppKeybindingOverrides = [
+    { command: "thread.new", shortcut: { ...shortcut, key: "g" } },
+    { command: "thread.new", platform: "mac", shortcut: null },
+    {
+      command: "thread.new",
+      platform: "windows",
+      shortcut: { ...shortcut, key: "w" },
+    },
+    {
+      command: "thread.new",
+      platform: "linux",
+      shortcut: { ...shortcut, key: "l" },
+    },
+  ];
+  expect(
+    getCommandShortcut(defaults, overrides, "thread.new", false, "MacIntel"),
+  ).toBeNull();
+  expect(
+    getCommandShortcut(defaults, overrides, "thread.new", false, "Win32")?.key,
+  ).toBe("w");
+  const edited = setCommandShortcutOverride(
+    overrides,
+    "thread.new",
+    shortcut,
+    "Win32",
+  );
+  expect(edited.filter((override) => override.platform !== "windows")).toEqual(
+    overrides.filter((override) => override.platform !== "windows"),
+  );
+  expect(
+    getCommandShortcut(defaults, edited, "thread.new", false, "Win32")?.key,
+  ).toBe("n");
+  expect(resetCommandShortcutOverride(edited, "thread.new", "Win32")).toEqual([
+    overrides[1],
+    overrides[3],
+  ]);
 });

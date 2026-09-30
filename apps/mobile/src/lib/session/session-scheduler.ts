@@ -77,7 +77,9 @@ export function createSessionScheduler(
     mode: "renew" | "verify",
   ): Promise<SessionState> {
     const isCurrent = (): boolean => generation === startedGeneration;
-    if (mode === "renew") setState({ status: "authenticating" });
+    if (mode === "renew" && state.status !== "authenticated") {
+      setState({ status: "authenticating" });
+    }
     try {
       const session = await fetchSession({
         serverUrl: target.serverUrl,

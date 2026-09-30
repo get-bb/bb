@@ -14,7 +14,7 @@ const AUTHENTICATED: SessionState = {
   expiresAt: 1_000,
 };
 
-const BASE = { storeReady: true, hasAnyProfile: true };
+const BASE = { storeReady: true, hasAnyProfile: true, requiresSession: false };
 
 describe("resolveShellScreenState", () => {
   it("sends a phone with no server to the add-server screen", () => {
@@ -23,6 +23,7 @@ describe("resolveShellScreenState", () => {
         storeReady: true,
         hasAnyProfile: false,
         hasProfile: false,
+        requiresSession: false,
         session: IDLE,
         load: { kind: "loading" },
       }),
@@ -35,11 +36,24 @@ describe("resolveShellScreenState", () => {
         storeReady: false,
         hasAnyProfile: false,
         hasProfile: false,
+        requiresSession: false,
         session: IDLE,
         load: { kind: "loading" },
       }).kind,
     ).toBe("loading");
   });
+  it("keeps a bb connect profile off the page until its session starts", () => {
+    expect(
+      resolveShellScreenState({
+        ...BASE,
+        hasProfile: true,
+        requiresSession: true,
+        session: IDLE,
+        load: { kind: "loading" },
+      }),
+    ).toEqual({ kind: "loading", message: "Signing in" });
+  });
+
   it("shows the page once a Direct profile is loaded", () => {
     expect(
       resolveShellScreenState({
@@ -175,10 +189,11 @@ describe("shouldReloadForSession", () => {
     ).toBe(true);
   });
 
-  it("reloads on the first successful mint", () => {
+  it("does not reload on the first mint, since the page only mounts after it", () => {
     expect(
       shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED),
-    ).toBe(true);
+    ).toBe(false);
+    expect(shouldReloadForSession(IDLE, AUTHENTICATED)).toBe(false);
   });
 
   it("does not reload on an unchanged session or a failure", () => {

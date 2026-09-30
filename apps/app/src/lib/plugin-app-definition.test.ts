@@ -476,6 +476,7 @@ describe("collectPluginAppRegistrations", () => {
       });
       app.slots.settingsSection({
         id: "custom-settings",
+        experimental_page: "mobile",
         title: "Custom settings",
         component: Component,
       });
@@ -545,6 +546,7 @@ describe("collectPluginAppRegistrations", () => {
     expect(registrations.settingsSections).toEqual([
       {
         id: "custom-settings",
+        experimental_page: "mobile",
         title: "Custom settings",
         component: Component,
       },

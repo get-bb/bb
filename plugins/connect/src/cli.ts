@@ -18,7 +18,7 @@ import {
 import type { HostedConnectApi } from "./hosted.js";
 import type { ShareHostResolver } from "./hosts.js";
 import { MachineCodeError } from "./machine-code.js";
-import type { MobilePairingGate, RemoteAccessSwitch } from "./rpc.js";
+import type { RemoteAccessSwitch } from "./rpc.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
@@ -140,7 +140,7 @@ function formatMachineCode(payload: MobilePairingPayload): string {
     `Expires:    ${new Date(payload.expiresAt).toISOString()} (in about ${minutes} min)`,
     "",
     "Enter the code in the bb mobile app when it asks to pair over bb connect (or",
-    "scan the QR code from Settings → Remote access → Add mobile device). The phone",
+    "scan the QR code from Settings → Mobile → Add mobile device). The phone",
     "enrolls as a connect machine on this account — it appears in the getbb.app",
     "dashboard's machine list, where you can revoke it. The code works once.",
   ].join("\n");
@@ -166,18 +166,9 @@ export function registerConnectCli(args: {
   account: AccountClient;
   hosted: HostedConnectApi;
   hostResolver: ShareHostResolver;
-  mobilePairing: MobilePairingGate;
   remoteAccess: RemoteAccessSwitch;
 }): void {
-  const {
-    bb,
-    tunnel,
-    account,
-    hosted,
-    hostResolver,
-    mobilePairing,
-    remoteAccess,
-  } = args;
+  const { bb, tunnel, account, hosted, hostResolver, remoteAccess } = args;
   bb.cli.register(
     defineCli({
       name: "connect",
@@ -445,16 +436,10 @@ export function registerConnectCli(args: {
         }),
         "machine-code": cliCommand({
           summary:
-            'Mint a one-time code that enrolls the bb mobile app as a connect machine (needs the "Mobile app" experiment)',
+            "Mint a one-time code that enrolls the bb mobile app as a connect machine",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              if (!(await mobilePairing.enabled())) {
-                throw new PluginCliError(
-                  'mobile pairing is off — turn on the "Mobile app" experiment in Settings → Experiments (or `bb settings experiment mobileApp true`), then run this again',
-                  { code: "mobile_pairing_disabled" },
-                );
-              }
               if (tunnel.getIdentity() === null) throw notPairedError();
               let payload: MobilePairingPayload;
               try {

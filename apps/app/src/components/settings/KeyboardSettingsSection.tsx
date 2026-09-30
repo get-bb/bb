@@ -9,6 +9,8 @@ import {
 } from "react";
 import {
   defaultAppSettings,
+  findAppKeybindingOverride,
+  keyboardPlatform,
   type KeyboardCommandId,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
@@ -231,7 +233,12 @@ function buildKeyboardCommandRowModel({
     isDesktop,
     platform,
   );
-  const customized = overrides.some((override) => override.command === command);
+  const customized =
+    findAppKeybindingOverride(
+      overrides,
+      command,
+      keyboardPlatform(platform),
+    ) !== undefined;
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
   );
@@ -633,11 +640,9 @@ export function KeyboardSettingsSection() {
     ) => {
       const current = latestSettingsRef.current;
       let next = setCommandShortcutOverride(
-        current.defaults,
         current.overrides,
         command,
         shortcut,
-        current.isDesktop,
         current.platform,
       );
       const conflicts = getShortcutConflicts(
@@ -654,11 +659,9 @@ export function KeyboardSettingsSection() {
       if (replace) {
         for (const conflict of conflicts) {
           next = setCommandShortcutOverride(
-            current.defaults,
             next,
             conflict,
             null,
-            current.isDesktop,
             current.platform,
           );
         }
@@ -682,7 +685,11 @@ export function KeyboardSettingsSection() {
   const resetCommand = useCallback(
     (command: KeyboardCommandId) => {
       const current = latestSettingsRef.current;
-      const next = resetCommandShortcutOverride(current.overrides, command);
+      const next = resetCommandShortcutOverride(
+        current.overrides,
+        command,
+        current.platform,
+      );
       applyOverrides(
         next,
         command,
@@ -697,7 +704,10 @@ export function KeyboardSettingsSection() {
     ? pendingCommandRef.current
     : null;
   const disabled = systemConfig.data === undefined || isKeyboardSettingsPending;
-  const hasOverrides = overrides.length > 0;
+  const customizedCommands = [...commandRowModels.values()].filter(
+    (row) => row.availableOnClient && row.customized,
+  );
+  const hasOverrides = customizedCommands.length > 0;
 
   return (
     <SettingsSection
@@ -705,7 +715,16 @@ export function KeyboardSettingsSection() {
         <Button
           disabled={disabled || !hasOverrides}
           onClick={() =>
-            applyOverrides([], null, overrides, serverOverridesKey)
+            applyOverrides(
+              customizedCommands.reduce(
+                (next, row) =>
+                  resetCommandShortcutOverride(next, row.command, platform),
+                overrides,
+              ),
+              null,
+              overrides,
+              serverOverridesKey,
+            )
           }
           size="sm"
           type="button"

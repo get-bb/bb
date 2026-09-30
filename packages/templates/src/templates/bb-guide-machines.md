@@ -489,3 +489,7 @@ Progress and failures appear in the thread's provisioning details. If cloning
 fails, the machine remains available for retry or explicit removal.
 `--new-machine <id>` requires an explicit `--environment-provider <id>`; machine
 providers do not implicitly choose an environment.
+
+`bb machine show` includes `threadStorageRootPath` from the latest daemon session
+without waking the machine. It works offline and with no live threads; the path
+is null before the first session. Reading details does not create directories.
