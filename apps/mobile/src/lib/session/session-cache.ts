@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const storedSessionSchema = z.object({
   serverUrl: z.string().min(1),
+  credential: z.string().min(1),
   session: z.object({
     cookie: z.object({
       domain: z.string().min(1),

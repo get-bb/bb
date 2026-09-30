@@ -184,12 +184,14 @@ export function ProfileWebViewScreen() {
 
   const previousSession = useRef(session);
   useEffect(() => {
-    if (shouldReloadForSession(previousSession.current, session, Date.now())) {
+    if (
+      shouldReloadForSession(previousSession.current, session, Date.now(), load)
+    ) {
       setReloadKey((value) => value + 1);
       setLoad({ kind: "loading" });
     }
     previousSession.current = session;
-  }, [session]);
+  }, [load, session]);
 
   const handshake = useMemo<NativeShellHandshake | null>(() => {
     if (profile === null || sourceUrl === null) return null;

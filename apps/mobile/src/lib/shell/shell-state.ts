@@ -95,11 +95,14 @@ export function shouldReloadForSession(
   previous: SessionState,
   next: SessionState,
   now: number,
+  load: ShellLoadPhase,
 ): boolean {
   return (
     previous.status === "authenticated" &&
     next.status === "authenticated" &&
-    previous.expiresAt !== next.expiresAt &&
-    previous.expiresAt <= now
+    previous !== next &&
+    ((load.kind === "http-error" &&
+      (load.status === 401 || load.status === 403)) ||
+      (previous.expiresAt !== next.expiresAt && previous.expiresAt <= now))
   );
 }

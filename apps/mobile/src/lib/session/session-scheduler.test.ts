@@ -217,9 +217,29 @@ describe("createSessionScheduler", () => {
     expect(relaunch.fetchSession).toHaveBeenCalledTimes(1);
   });
 
+  it("mints a new session after re-pairing the same profile", async () => {
+    const { cookies, fetchSession, scheduler } = setup();
+    fetchSession.mockResolvedValueOnce(session(Date.now() + DAY, "old"));
+    await scheduler.start(profile);
+    scheduler.stop();
+    cookies.length = 0;
+
+    fetchSession.mockResolvedValueOnce(session(Date.now() + DAY, "new"));
+    await scheduler.start({ ...profile, credential: "bbcm_repaired" });
+
+    expect(fetchSession).toHaveBeenCalledTimes(2);
+    expect(fetchSession).toHaveBeenLastCalledWith({
+      serverUrl: profile.serverUrl,
+      handle: profile.handle,
+      credential: "bbcm_repaired",
+    });
+    expect(cookies.map((c) => c.cookie.value)).toEqual(["new", "new"]);
+  });
+
   it("mints on launch when the stored session is due or belongs to a moved server", async () => {
     const stored = (overrides: Partial<StoredSession>): StoredSession => ({
       serverUrl: profile.serverUrl,
+      credential: profile.credential,
       session: session(Date.now() + DAY, "old"),
       ...overrides,
     });

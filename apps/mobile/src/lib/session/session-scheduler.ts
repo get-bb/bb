@@ -97,7 +97,11 @@ export function createSessionScheduler(
       if (!isCurrent()) return state;
       const expiresAt = session.cookie.expiresAt;
       void deps.sessionCache
-        .write(target.id, { serverUrl: target.serverUrl, session })
+        .write(target.id, {
+          serverUrl: target.serverUrl,
+          credential: target.credential,
+          session,
+        })
         .catch(() => undefined);
       authenticate(expiresAt, startedGeneration);
       return state;
@@ -138,6 +142,7 @@ export function createSessionScheduler(
     if (
       stored === null ||
       stored.serverUrl !== target.serverUrl ||
+      stored.credential !== target.credential ||
       stored.session.cookie.expiresAt - Date.now() <= SESSION_RENEWAL_LEAD_MS
     ) {
       return runRenewal(target, startedGeneration, "renew");

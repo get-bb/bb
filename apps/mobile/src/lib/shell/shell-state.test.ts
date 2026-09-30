@@ -183,32 +183,64 @@ describe("shouldReloadForSession", () => {
   const RENEWED: SessionState = { status: "authenticated", expiresAt: 2_000 };
 
   it("reloads when the cookie the page loaded with has expired", () => {
-    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_000)).toBe(true);
-    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_500)).toBe(true);
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_000, READY)).toBe(
+      true,
+    );
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_500, READY)).toBe(
+      true,
+    );
   });
 
   it("does not reload when a renewal replaces a cookie that is still valid", () => {
-    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 999)).toBe(false);
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 999, READY)).toBe(
+      false,
+    );
   });
+
+  it.each([401, 403])(
+    "reloads a rejected page after session repair (%s)",
+    (status) => {
+      for (const repaired of [RENEWED, { ...AUTHENTICATED }]) {
+        expect(
+          shouldReloadForSession(AUTHENTICATED, repaired, 999, {
+            kind: "http-error",
+            status,
+          }),
+        ).toBe(true);
+      }
+      expect(
+        shouldReloadForSession(AUTHENTICATED, AUTHENTICATED, 999, {
+          kind: "http-error",
+          status,
+        }),
+      ).toBe(false);
+    },
+  );
 
   it("does not reload on the first mint, since the page only mounts after it", () => {
     expect(
-      shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED, 0),
+      shouldReloadForSession(
+        { status: "authenticating" },
+        AUTHENTICATED,
+        0,
+        READY,
+      ),
     ).toBe(false);
-    expect(shouldReloadForSession(IDLE, AUTHENTICATED, 0)).toBe(false);
+    expect(shouldReloadForSession(IDLE, AUTHENTICATED, 0, READY)).toBe(false);
   });
 
   it("does not reload on an unchanged session or a failure", () => {
-    expect(shouldReloadForSession(AUTHENTICATED, AUTHENTICATED, 5_000)).toBe(
-      false,
-    );
+    expect(
+      shouldReloadForSession(AUTHENTICATED, AUTHENTICATED, 5_000, READY),
+    ).toBe(false);
     expect(
       shouldReloadForSession(
         AUTHENTICATED,
         { status: "error", detail: "offline", retryAt: 0 },
         5_000,
+        READY,
       ),
     ).toBe(false);
-    expect(shouldReloadForSession(IDLE, IDLE, 5_000)).toBe(false);
+    expect(shouldReloadForSession(IDLE, IDLE, 5_000, READY)).toBe(false);
   });
 });
