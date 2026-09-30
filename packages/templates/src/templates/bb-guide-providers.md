@@ -7,6 +7,24 @@ editingNotes: Keep flags accurate against the CLI implementation.
 ---
 Provider commands
 
+Manage agents in Settings → Providers. Enabled providers can be reordered, made
+default or disabled through the row menu; disabled providers stay listed at the
+bottom. Install provider plugins in Settings → Plugins.
+
+  bb provider disable <id>
+  bb provider enable <id>
+  bb provider list --all
+
+Disable hides one provider from pickers and the ordinary list and rejects new
+sessions and turns. It preserves its CLI, plugin, siblings and thread history;
+in-flight turns can finish. Enable also enables its supplying plugin if needed,
+while preserving other providers' individual opt-outs. list --all shows the global
+catalog including disabled plugins, without machine/environment selectors.
+SDK: providers.catalog() and providers.setEnabled({ providerId, enabled }).
+Explicit enables keep installed-only agents visible while setup is completed.
+Disabling the default clears its selection; new threads use the next enabled
+provider in saved order. Explicit or existing-thread choices never silently switch.
+
 Providers are agent backends (e.g., codex, claude-code). Each supports different models.
 
   bb provider list [--machine <id-or-name> | --environment <id>]

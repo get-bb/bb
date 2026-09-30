@@ -3588,3 +3588,13 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
+
+### Provider discovery metadata
+
+`package.json` → `bb.experimental_providers` declares `{ id, displayName }`
+identities for provider management before a plugin is enabled. It does not grant
+runtime capabilities or execute code. Core also retains the last declared
+identities when disabling a plugin, preserving custom providers across restart.
+Stabilize after validating first-install discovery, shared-plugin enablement,
+dynamic provider removal, plugin upgrades, and duplicate-ID ownership behavior
+with third-party providers.

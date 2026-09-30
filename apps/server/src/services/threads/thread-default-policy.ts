@@ -38,7 +38,10 @@ function listDefaultProviderIdCandidates(
 ): string[] {
   const available = registry
     .list()
-    .filter((registration) => registration.info.available)
+    .filter(
+      (registration) =>
+        registration.info.available && registry.isEnabled(registration.info.id),
+    )
     .map((registration) => registration.info.id);
   const preferred = registry.getUserDefaultProviderId();
   if (preferred !== null && available.includes(preferred)) {
@@ -53,7 +56,7 @@ function requireDefaultProviderId(registry: ProviderRegistryService): string {
     throw new ApiError(
       409,
       "no_provider_available",
-      "No agent provider is enabled. Enable an agent provider plugin in Settings → Plugins to start a thread.",
+      "No agent provider is enabled. Enable an agent provider in Settings → Providers to start a thread.",
     );
   }
   return providerId;
@@ -193,6 +196,13 @@ export function resolveCreateThreadExecutionDefaults(
     args.requestedProviderId ??
     args.storedDefaults?.providerId ??
     requireDefaultProviderId(registry);
+  if (!registry.isEnabled(providerId)) {
+    throw new ApiError(
+      409,
+      "provider_disabled",
+      `Provider "${providerId}" is disabled. Enable it in Settings → Providers.`,
+    );
+  }
   const registration = registry.get(providerId);
   if (registration !== null && !registration.info.available) {
     throw new ApiError(

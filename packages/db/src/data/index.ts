@@ -117,6 +117,8 @@ export {
   getAiServiceSelections,
   getAppKeybindingOverrides,
   getAppSettings,
+  getDisabledPluginProviderCatalog,
+  setDisabledPluginProviderCatalog,
   getPluginSafeMode,
   setAiServiceSelection,
   setAppKeybindingOverrides,

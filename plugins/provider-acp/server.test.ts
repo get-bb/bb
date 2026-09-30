@@ -73,6 +73,7 @@ async function loadPlugin(options: {
   host.harness.sdk.stub("hosts.list", () =>
     Promise.resolve(options.hosts ?? []),
   );
+  host.harness.sdk.stub("providers.catalog", () => Promise.resolve([]));
   await acpProvidersPlugin(host.bb);
   return host;
 }

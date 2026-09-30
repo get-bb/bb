@@ -40,6 +40,7 @@ import {
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
+  systemProviderCatalogQueryKey,
   systemProviderStatesQueryKey,
   systemThemeQueryKey,
   systemVersionQueryKey,
@@ -489,5 +490,13 @@ export function useSystemProviderStates(
     ...(options.poll === false
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
+  });
+}
+
+export function useSystemProviderCatalog() {
+  useSystemRealtimeSubscription({ enabled: true });
+  return useQuery({
+    queryKey: systemProviderCatalogQueryKey(),
+    queryFn: () => sdk.providers.catalog(),
   });
 }

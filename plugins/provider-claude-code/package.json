@@ -15,7 +15,13 @@
       "icon": "./icons/claude-code.svg"
     },
     "server": "./server.ts",
-    "host": "./src/host.ts"
+    "host": "./src/host.ts",
+    "experimental_providers": [
+      {
+        "id": "claude-code",
+        "displayName": "Claude Code"
+      }
+    ]
   },
   "keywords": [
     "bb-plugin"

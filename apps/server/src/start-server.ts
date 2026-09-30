@@ -162,6 +162,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       const settings = getAppSettings(db);
       return {
         providerOrder: settings.providerOrder,
+        providerEnabled: settings.providerEnabled,
         defaultProviderId: settings.defaultProviderId,
       };
     },

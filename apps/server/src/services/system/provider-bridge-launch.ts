@@ -8,7 +8,7 @@ export function resolveBridgeLaunchForProviderId(
   providerId: string,
 ): HostDaemonBridgeLaunch | null {
   const registration = deps.providerRegistry.get(providerId);
-  if (registration === null) {
+  if (registration === null || !deps.providerRegistry.isEnabled(providerId)) {
     return null;
   }
   const source = resolveBridgeSource(deps, registration);
@@ -43,6 +43,13 @@ export function requireBridgeLaunchForProviderId(
   deps: Pick<AppDeps, "providerRegistry" | "pluginHostArtifacts">,
   providerId: string,
 ): HostDaemonBridgeLaunch {
+  if (!deps.providerRegistry.isEnabled(providerId)) {
+    throw new ApiError(
+      409,
+      "provider_disabled",
+      `Provider "${providerId}" is disabled. Enable it in Settings → Providers to start a new turn.`,
+    );
+  }
   const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, providerId);
   if (bridgeLaunch === null) {
     throw new ApiError(

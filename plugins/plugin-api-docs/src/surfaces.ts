@@ -542,6 +542,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds an agent to bb's model picker and runs the threads started with it. With this, a plugin can:",
         bullets: [
           "Appear in the model picker beside bb's built-in providers",
+          "Declare bb.experimental_providers: [{ id, displayName }] in package.json to keep providers discoverable in Settings → Providers before the plugin runs. Runtime registration remains authoritative; metadata does not register an executable provider. Core enable/disable preferences preserve other providers from the same plugin",
           "Declare what the provider supports, then serve its model list at runtime",
           "Supply a small icon that appears next to its name; React icon overrides require providerKind and providerId",
           "Publish context snapshots through contextWindow deltas, with provider-defined category IDs and labels. Each category declares used, free, reserved, or deferred accounting; entries are included in its total and may be partial. Snapshots include capture time, session identity, model, totals, and an optional auto-compaction threshold",

@@ -123,7 +123,9 @@ function listConfiguredSystemProviderInfos(
     .list()
     .filter(
       (entry) =>
-        entry.visibility === "always" &&
+        deps.providerRegistry.isEnabled(entry.info.id) &&
+        (entry.visibility === "always" ||
+          deps.providerRegistry.isExplicitlyEnabled(entry.info.id)) &&
         providerMatchesFilter(entry.info, filter),
     )
     .map((entry) => entry.info);
@@ -141,7 +143,9 @@ function includeRequestedRegisteredProvider(
     return providers;
   }
   const registration = deps.providerRegistry.get(providerId);
-  return registration === null ? providers : [...providers, registration.info];
+  return registration === null || !deps.providerRegistry.isEnabled(providerId)
+    ? providers
+    : [...providers, registration.info];
 }
 
 function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
@@ -159,7 +163,9 @@ async function listInstalledPluginProviderInfos(
     .list()
     .filter(
       (registration) =>
+        deps.providerRegistry.isEnabled(registration.info.id) &&
         registration.visibility === "installed" &&
+        !deps.providerRegistry.isExplicitlyEnabled(registration.info.id) &&
         providerMatchesFilter(registration.info, filter),
     );
   const budget = createProviderListingBudget();

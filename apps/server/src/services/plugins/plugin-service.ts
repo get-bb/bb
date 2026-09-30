@@ -1,3 +1,7 @@
+import {
+  getDisabledPluginProviderCatalog,
+  setDisabledPluginProviderCatalog,
+} from "@bb/db";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -241,6 +245,11 @@ export interface PluginService {
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
+  providerCatalog(): Array<{
+    id: string;
+    displayName: string;
+    pluginId: string;
+  }>;
   listThemes(): PluginThemeMeta[];
   readThemeCss(themeId: string): Promise<string | null>;
   readThemeCodeTheme(themeId: string): DeclaredCodeTheme | null;
@@ -1506,6 +1515,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     handleUncaughtException,
 
     list,
+    providerCatalog() {
+      return listInstalledPlugins(deps.db).flatMap((row) => {
+        const manifest =
+          loaded.get(row.id)?.manifest ?? identities.get(row.id)?.manifest;
+        const catalog = new Map(
+          (manifest?.providerCatalog ?? []).map((provider) => [
+            provider.id,
+            provider,
+          ]),
+        );
+        if (!row.enabled) {
+          for (const provider of getDisabledPluginProviderCatalog(
+            deps.db,
+            row.id,
+          ))
+            catalog.set(provider.id, provider);
+        }
+        return [...catalog.values()].map((provider) => ({
+          ...provider,
+          pluginId: row.id,
+        }));
+      });
+    },
 
     async install(source, selection) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
@@ -1638,6 +1670,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async setEnabled(id, enabled) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const plugin = loaded.get(id);
+        if (!enabled && plugin !== undefined) {
+          setDisabledPluginProviderCatalog(
+            deps.db,
+            id,
+            plugin.handle
+              .listProviderDeclarations()
+              .map(({ id, displayName }) => ({ id, displayName })),
+          );
+        }
         if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
         if (enabled) {
           const row = getInstalledPlugin(deps.db, id);

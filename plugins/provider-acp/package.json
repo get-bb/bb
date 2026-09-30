@@ -22,7 +22,29 @@
       }
     },
     "server": "./server.ts",
-    "host": "./src/host.ts"
+    "host": "./src/host.ts",
+    "experimental_providers": [
+      {
+        "id": "acp-cursor",
+        "displayName": "Cursor"
+      },
+      {
+        "id": "acp-opencode",
+        "displayName": "OpenCode"
+      },
+      {
+        "id": "acp-omp",
+        "displayName": "oh-my-pi"
+      },
+      {
+        "id": "acp-grok",
+        "displayName": "Grok"
+      },
+      {
+        "id": "acp-hermes-agent",
+        "displayName": "Hermes"
+      }
+    ]
   },
   "keywords": [
     "bb-plugin"

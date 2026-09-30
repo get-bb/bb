@@ -81,6 +81,16 @@ const pluginBbManifestSchema = z
     name: requiredManifestString,
     description: requiredManifestString,
     branding: pluginBrandingSchema,
+    experimental_providers: z
+      .array(
+        z
+          .object({
+            id: requiredManifestString,
+            displayName: requiredManifestString,
+          })
+          .strict(),
+      )
+      .optional(),
     server: requiredManifestString,
     app: requiredManifestString.optional(),
     host: requiredManifestString.optional(),

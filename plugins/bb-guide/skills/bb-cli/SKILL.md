@@ -193,3 +193,10 @@ and no open terminals; empty machines can use an opted-in provider idle policy.
 suspended state through the provider and waits for completion. It leaves active
 machines and in-progress lifecycle operations alone. Use `machine suspend` to
 request a new pause. Core does not schedule reconciliation polling.
+
+Provider management lives in Settings → Providers. Use `bb provider list --all`
+for the global catalog, `bb provider disable ID` to hide one provider and prevent
+new turns, and `bb provider enable ID` to restore it (enabling its plugin if
+needed). These preserve the CLI and thread history. Individual opt-outs survive
+plugin off/on. Install provider plugins in Settings → Plugins; configure custom
+ACP agents in the ACP providers plugin settings.

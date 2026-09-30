@@ -1286,3 +1286,7 @@ export function pluginCatalogInstallPlanQueryKey(args: {
 export function pluginMarketplacesQueryKey() {
   return [PLUGIN_MARKETPLACES_QUERY_KEY] as const;
 }
+
+export function systemProviderCatalogQueryKey() {
+  return [SYSTEM_PROVIDERS_QUERY_KEY, "catalog"] as const;
+}

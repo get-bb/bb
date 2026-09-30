@@ -35,6 +35,7 @@ export interface PluginManifest {
   };
   bbEngineRange: string | undefined;
   bbPluginSdkRange: string | undefined;
+  providerCatalog?: Array<{ id: string; displayName: string }>;
   serverEntry: string;
   appEntry: string | undefined;
   hostEntry: string | undefined;
@@ -196,7 +197,11 @@ export async function readPluginManifest(
       id: theme.id,
       name: theme.name,
       description: theme.description ?? null,
-      cssPath: resolveManifestPath(rootDir, theme.css, `bb.themes.${theme.id}.css`),
+      cssPath: resolveManifestPath(
+        rootDir,
+        theme.css,
+        `bb.themes.${theme.id}.css`,
+      ),
       codeTheme,
       codeThemePaths,
     };
@@ -235,8 +240,11 @@ export async function readPluginManifest(
     },
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
+    providerCatalog: bb.experimental_providers ?? [],
     serverEntry,
-    appEntry: bb.app ? resolveManifestPath(rootDir, bb.app, "bb.app") : undefined,
+    appEntry: bb.app
+      ? resolveManifestPath(rootDir, bb.app, "bb.app")
+      : undefined,
     hostEntry,
     themes,
     skillsRootPaths,

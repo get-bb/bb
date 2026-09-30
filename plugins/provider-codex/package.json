@@ -15,7 +15,13 @@
       "icon": "./icons/codex.svg"
     },
     "server": "./server.ts",
-    "host": "./src/host.ts"
+    "host": "./src/host.ts",
+    "experimental_providers": [
+      {
+        "id": "codex",
+        "displayName": "Codex"
+      }
+    ]
   },
   "keywords": [
     "bb-plugin"

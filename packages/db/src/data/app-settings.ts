@@ -4,6 +4,7 @@ import {
   AI_TASKS,
   appKeybindingOverridesSchema,
   appSettingsSchema,
+  pluginPackageJsonSchema,
   defaultAiServiceSelections,
   defaultAppSettings,
   type AiServiceSelection,
@@ -155,4 +156,17 @@ export function getPluginSafeMode(db: DbConnection): boolean {
 
 export function setPluginSafeMode(db: DbConnection, enabled: boolean): void {
   writeValue(db, PLUGIN_SAFE_MODE_KEY, enabled, Date.now());
+}
+
+const pluginProviderCatalogSchema = pluginPackageJsonSchema.shape.bb.shape.experimental_providers.unwrap();
+
+export function getDisabledPluginProviderCatalog(db: DbConnection, pluginId: string): Array<{ id: string; displayName: string }> {
+  const row = db.select({ value: appSettingsValues.value }).from(appSettingsValues)
+    .where(eq(appSettingsValues.key, `pluginProviders:${pluginId}`)).get();
+  const parsed = pluginProviderCatalogSchema.safeParse(row === undefined ? [] : parseStoredValue(row.value));
+  return parsed.success ? parsed.data : [];
+}
+
+export function setDisabledPluginProviderCatalog(db: DbConnection, pluginId: string, providers: Array<{ id: string; displayName: string }>): void {
+  writeValue(db, `pluginProviders:${pluginId}`, providers, Date.now());
 }
