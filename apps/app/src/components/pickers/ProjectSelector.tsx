@@ -113,7 +113,10 @@ export function ProjectSelector({
     ? "Creating..."
     : "New project";
   const showActionSeparator =
-    projects.length > 0 && (Boolean(createProjectAction) || allowNoProject);
+    projects.length > 0 &&
+    (Boolean(createProjectAction) ||
+      allowNoProject ||
+      allProjectsValue !== undefined);
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     setHighlightedValue(NO_HIGHLIGHT_VALUE);
@@ -203,27 +206,6 @@ export function ProjectSelector({
             ref={listRef}
             className="min-h-0 flex-1 overscroll-contain"
           >
-            {allProjectsValue !== undefined &&
-            "all projects".includes(searchQuery.trim().toLocaleLowerCase()) ? (
-              <CommandGroup>
-                <CommandItem
-                  value={allProjectsValue}
-                  aria-current={allProjectsSelected ? "true" : undefined}
-                  onSelect={() => selectProject(allProjectsValue)}
-                  className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                >
-                  <Icon
-                    name="Folder"
-                    className="text-muted-foreground"
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1">All projects</span>
-                  {allProjectsSelected ? (
-                    <Icon name="Check" aria-hidden />
-                  ) : null}
-                </CommandItem>
-              </CommandGroup>
-            ) : null}
             {projects.length > 0 ? (
               <CommandGroup heading="Project">
                 {filteredProjects.map((project) => (
@@ -260,53 +242,75 @@ export function ProjectSelector({
                 ) : null}
               </CommandGroup>
             ) : null}
-            {showActionSeparator ? <CommandSeparator /> : null}
-            {createProjectAction || allowNoProject ? (
-              <CommandGroup
-                heading={projects.length === 0 ? "Project" : undefined}
-              >
-                {createProjectAction ? (
-                  <CommandItem
-                    disabled={createProjectAction.disabled}
-                    value="new-project"
-                    onSelect={() => {
-                      createProjectAction.onCreate();
-                      handleOpenChange(false);
-                    }}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                  >
-                    <Icon
-                      name="FolderPlus"
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    {createProjectLabel}
-                  </CommandItem>
-                ) : null}
-                {allowNoProject ? (
-                  <CommandItem
-                    value="no-project"
-                    aria-current={value === null ? "true" : undefined}
-                    onSelect={() => selectProject(null)}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                  >
-                    <Icon
-                      name="FolderMinus"
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    Don&apos;t work in a project
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto size-4",
-                        value === null ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden
-                    />
-                  </CommandItem>
-                ) : null}
-              </CommandGroup>
+            {createProjectAction ||
+            allowNoProject ||
+            allProjectsValue !== undefined ? (
+              <div className="sticky bottom-0 bg-popover">
+                {showActionSeparator ? <CommandSeparator /> : null}
+                <CommandGroup
+                  heading={projects.length === 0 ? "Project" : undefined}
+                >
+                  {allProjectsValue !== undefined ? (
+                    <CommandItem
+                      value={allProjectsValue}
+                      aria-current={allProjectsSelected ? "true" : undefined}
+                      onSelect={() => selectProject(allProjectsValue)}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="Folder"
+                        className="text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1">All projects</span>
+                      {allProjectsSelected ? (
+                        <Icon name="Check" aria-hidden />
+                      ) : null}
+                    </CommandItem>
+                  ) : null}
+                  {createProjectAction ? (
+                    <CommandItem
+                      disabled={createProjectAction.disabled}
+                      value="new-project"
+                      onSelect={() => {
+                        createProjectAction.onCreate();
+                        handleOpenChange(false);
+                      }}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="FolderPlus"
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      {createProjectLabel}
+                    </CommandItem>
+                  ) : null}
+                  {allowNoProject ? (
+                    <CommandItem
+                      value="no-project"
+                      aria-current={value === null ? "true" : undefined}
+                      onSelect={() => selectProject(null)}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="FolderMinus"
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      Don&apos;t work in a project
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "ml-auto size-4",
+                          value === null ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                    </CommandItem>
+                  ) : null}
+                </CommandGroup>
+              </div>
             ) : null}
           </CommandList>
         </Command>
