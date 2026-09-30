@@ -335,7 +335,7 @@ describe("ProjectSelector", () => {
 
     const list = screen
       .getByRole("group", { name: "Project" })
-      .closest<HTMLElement>(".overflow-y-auto");
+      .querySelector<HTMLElement>(".overflow-y-auto");
     expect(list).not.toBeNull();
     expect(list?.className).toContain("overflow-y-auto");
     expect(list?.className).toContain("overscroll-contain");

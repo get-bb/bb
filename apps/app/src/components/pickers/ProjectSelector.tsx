@@ -211,14 +211,14 @@ export function ProjectSelector({
             />
           ) : null}
           <CommandList className="flex min-h-0 flex-1 flex-col overflow-hidden [&>[cmdk-list-sizer]]:flex [&>[cmdk-list-sizer]]:min-h-0 [&>[cmdk-list-sizer]]:flex-col">
-            <div
-              ref={listRef}
-              className="min-h-0 scroll-pt-8 overflow-y-auto overscroll-contain"
-            >
-              {projects.length > 0 ? (
-                <CommandGroup
-                  heading="Project"
-                  className="overflow-visible pt-0 [&_[cmdk-group-heading]]:sticky [&_[cmdk-group-heading]]:top-0 [&_[cmdk-group-heading]]:z-10 [&_[cmdk-group-heading]]:bg-popover"
+            {projects.length > 0 ? (
+              <CommandGroup
+                heading="Project"
+                className="flex min-h-0 flex-col [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
+              >
+                <div
+                  ref={listRef}
+                  className="min-h-0 overflow-y-auto overscroll-contain"
                 >
                   {filteredProjects.map((project) => (
                     <CommandItem
@@ -252,9 +252,9 @@ export function ProjectSelector({
                       No projects found
                     </div>
                   ) : null}
-                </CommandGroup>
-              ) : null}
-            </div>
+                </div>
+              </CommandGroup>
+            ) : null}
             {createProjectAction ||
             allowNoProject ||
             allProjectsValue !== undefined ? (
