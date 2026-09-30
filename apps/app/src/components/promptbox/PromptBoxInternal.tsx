@@ -153,7 +153,7 @@ import { ComposerSendMenu } from "./ComposerSendMenu";
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
 const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
-  "size-8 p-0 transition-all [&_[data-icon-root]]:size-4";
+  "size-8 p-0 transition-all [&_[data-icon-root]]:size-4 max-md:pointer-coarse:size-10";
 const RICH_PASTE_BLOCK_TAGS = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -1364,7 +1364,11 @@ export function PromptBoxInternal({
     return transition;
   }, []);
   const showCompactLayout =
-    compact?.isCompact === true && !showVoiceActionGroup;
+    compact?.isCompact === true &&
+    (!showVoiceActionGroup ||
+      (value.trim().length === 0 &&
+        attachments.length === 0 &&
+        !pendingUploads?.length));
   const effectivePlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
@@ -3196,9 +3200,13 @@ export function PromptBoxInternal({
           ) : null}
           <div
             data-promptbox-input-region=""
+            aria-hidden={
+              showCompactLayout && showVoiceActionGroup ? true : undefined
+            }
             className={cn(
               "relative",
               showCompactLayout && "min-w-0 flex-1",
+              showCompactLayout && showVoiceActionGroup && "invisible",
               showCompactVoiceAction && "pr-9",
             )}
           >
@@ -3305,6 +3313,7 @@ export function PromptBoxInternal({
               className={cn(
                 "relative flex shrink-0 select-none flex-row items-center gap-3 pb-2 pl-3.5 pr-[13px] pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
+                showCompactLayout && showVoiceActionGroup && "inset-0",
               )}
             >
               {voice && isVoiceActionPresent ? (
@@ -3321,6 +3330,7 @@ export function PromptBoxInternal({
                   )}
                 >
                   <VoiceRecordingBar
+                    isCompact={showCompactLayout}
                     state={renderedVoiceActionState}
                     stream={voice.stream}
                     submitIcon={submitIcon ?? "CornerDownLeft"}

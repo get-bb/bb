@@ -19,6 +19,7 @@ describe("VoiceRecordingBar", () => {
     const onSend = vi.fn();
     render(
       <VoiceRecordingBar
+        isCompact={false}
         state="recording"
         stream={null}
         submitIcon="CornerDownLeft"
@@ -57,6 +58,7 @@ describe("VoiceRecordingBar", () => {
     const onCancel = vi.fn();
     render(
       <VoiceRecordingBar
+        isCompact={false}
         state="transcribing"
         stream={null}
         submitIcon="CornerDownLeft"
@@ -85,6 +87,7 @@ describe("VoiceRecordingBar", () => {
 
   it("shows transcription progress on the action that was pressed", () => {
     const props = {
+      isCompact: false,
       stream: null,
       submitIcon: "ArrowUp" as const,
       onConfirm: vi.fn(),

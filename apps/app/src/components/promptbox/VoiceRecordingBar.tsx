@@ -11,6 +11,7 @@ import {
 import { WaveformVisualizer } from "./WaveformVisualizer.js";
 
 interface VoiceRecordingBarProps {
+  isCompact: boolean;
   state: "recording" | "transcribing";
   stream: MediaStream | null;
   submitIcon: IconName;
@@ -25,6 +26,7 @@ const ACTION_BUTTON_CLASS =
   "size-8 rounded-md p-0 max-md:pointer-coarse:size-10";
 
 export function VoiceRecordingBar({
+  isCompact,
   state,
   stream,
   submitIcon,
@@ -40,7 +42,12 @@ export function VoiceRecordingBar({
   const isSending = isTranscribing && pressedAction === "send";
 
   return (
-    <div className="flex flex-row items-center gap-2 px-2 py-1.5">
+    <div
+      className={cn(
+        "flex flex-row items-center gap-2 px-2",
+        isCompact ? "h-full py-1" : "py-1.5",
+      )}
+    >
       <Button
         type="button"
         size="icon"

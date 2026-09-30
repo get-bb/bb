@@ -3541,6 +3541,53 @@ describe("PromptBoxInternal compact layout", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it.each(["recording", "transcribing"] as const)(
+    "keeps empty compact drafts compact while %s and reveals existing draft content",
+    (state) => {
+      const props = createPromptBoxProps({
+        compact: { isCompact: true, placeholder: "Ask a follow-up" },
+        voice: {
+          state,
+          isSupported: true,
+          stream: null,
+          start: vi.fn(),
+          stop: vi.fn(),
+          send: vi.fn(),
+          cancel: vi.fn(),
+        },
+      });
+      const view = render(<PromptBoxInternal {...props} />);
+      const form = document.querySelector("[data-promptbox]");
+      expect(form?.hasAttribute("data-promptbox-compact")).toBe(true);
+      expect(
+        screen.getByRole("button", { name: "Send voice input" }),
+      ).toBeTruthy();
+      expect(screen.queryByRole("textbox")).toBeNull();
+
+      view.rerender(<PromptBoxInternal {...props} value="Existing draft" />);
+      expect(form?.hasAttribute("data-promptbox-compact")).toBe(false);
+      expect(screen.getByRole("textbox").textContent).toBe("Existing draft");
+
+      view.rerender(
+        <PromptBoxInternal
+          {...props}
+          attachments={{
+            items: [
+              {
+                type: "localFile",
+                name: "notes.txt",
+                path: "notes.txt",
+                sizeBytes: 1,
+              },
+            ],
+          }}
+        />,
+      );
+      expect(form?.hasAttribute("data-promptbox-compact")).toBe(false);
+      expect(screen.getByText("notes.txt")).toBeTruthy();
+    },
+  );
+
   it("keeps the prompt editor visible while the waveform occupies the action row", () => {
     const stop = vi.fn();
     const send = vi.fn();
