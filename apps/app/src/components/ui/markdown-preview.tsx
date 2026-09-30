@@ -572,6 +572,58 @@ function resolveInlineCodeMarkdownFileHref({
     : null;
 }
 
+const markdownLinkGraphemes = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+
+function appendMarkdownLinkIcon(children: ReactNode): ReactNode {
+  const icon = (
+    <Icon
+      name="ExternalLink"
+      aria-hidden
+      className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
+    />
+  );
+  let appended = false;
+  const append = (node: ReactNode): ReactNode => {
+    if (typeof node === "string" || typeof node === "number") {
+      const text = String(node);
+      const last = markdownLinkGraphemes
+        .segment(text)
+        .containing(text.trimEnd().length - 1);
+      if (!last) return node;
+      appended = true;
+      return (
+        <>
+          {text.slice(0, last.index)}
+          <span className="whitespace-nowrap">
+            {text.slice(last.index)}
+            {icon}
+          </span>
+        </>
+      );
+    }
+    if (isValidElement<{ children?: ReactNode }>(node)) {
+      const content = append(node.props.children);
+      return appended ? cloneElement(node, undefined, content) : node;
+    }
+    const nodes: ReactNode[] = Children.toArray(node);
+    for (let index = nodes.length - 1; index >= 0 && !appended; index--) {
+      nodes[index] = append(nodes[index]);
+    }
+    return nodes;
+  };
+  const content = append(children);
+  return appended ? (
+    content
+  ) : (
+    <span className="whitespace-nowrap">
+      {children}
+      {icon}
+    </span>
+  );
+}
+
 function MarkdownAnchor({
   children,
   href,
@@ -634,14 +686,7 @@ function MarkdownAnchor({
       rel="noopener noreferrer"
       onClick={handleAnchorClick}
     >
-      {children}
-      {localFileLink ? (
-        <Icon
-          name="ExternalLink"
-          aria-hidden
-          className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
-        />
-      ) : null}
+      {localFileLink ? appendMarkdownLinkIcon(children) : children}
     </RouteAnchor>
   );
   if (contextMenuItems === null || contextMenuItems.length === 0) {
@@ -690,7 +735,8 @@ function MarkdownCode({
   rewriteLocalhostLinks,
   ...props
 }: MarkdownCodeRendererProps) {
-  const codeText = String(children ?? "").replace(/\n$/, "");
+  const codeText =
+    typeof children === "string" ? children.replace(/\n$/, "") : "";
   const language = getMarkdownCodeLanguage({ className: codeClassName });
   const isBlock = isMarkdownCodeBlock({ codeText, language });
   const [softWrap, setSoftWrap] = useState(false);
