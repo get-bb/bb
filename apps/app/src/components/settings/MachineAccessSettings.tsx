@@ -1,6 +1,6 @@
 import type { ServerAccessStatus } from "@bb/server-contract";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
@@ -11,10 +11,7 @@ import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import {
-  SettingsSection,
-  SettingsWithControl,
-} from "@/components/ui/settings-section";
+import { SettingsWithControl } from "@/components/ui/settings-section";
 import { machineServerAccessBlockedReason } from "@/components/machines/machine-server-access";
 
 function parseUrl(value: string): URL | null {
@@ -123,25 +120,53 @@ function useMachineAccess(): MachineAccessState {
   };
 }
 
-export function MachineAccessSettings() {
+export function MachineAccessSettings({
+  children,
+  title = "Machine access",
+}: {
+  children?: (pluginId: string | null) => ReactNode;
+  title?: string;
+}) {
   const machineAccess = useMachineAccess();
-  return <MachineAccessSettingsContent machineAccess={machineAccess} />;
+  return (
+    <MachineAccessSettingsContent machineAccess={machineAccess} title={title}>
+      {children?.(
+        machineAccess.selected === "direct"
+          ? null
+          : (machineAccess.effective?.pluginId ?? null),
+      )}
+    </MachineAccessSettingsContent>
+  );
 }
 
 export function MachineAccessSettingsContent({
   machineAccess,
+  children,
+  title = "Machine access",
 }: {
   machineAccess: MachineAccessState;
+  children?: ReactNode;
+  title?: string;
 }) {
   return (
-    <SettingsSection
-      title="Server access"
-      description="Choose how your devices connect to this bb server."
-      action={<MachineAccessMethodPicker machineAccess={machineAccess} />}
-      bodyClassName="space-y-3"
-    >
-      <MachineAccessDetails machineAccess={machineAccess} />
-    </SettingsSection>
+    <section aria-label={title} className="space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="mt-1 text-xs text-subtle-foreground">
+          Choose how your devices reach this bb server.
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="space-y-4 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium">Connection method</span>
+            <MachineAccessMethodPicker machineAccess={machineAccess} />
+          </div>
+          <MachineAccessDetails machineAccess={machineAccess} />
+          {children}
+        </div>
+      </div>
+    </section>
   );
 }
 

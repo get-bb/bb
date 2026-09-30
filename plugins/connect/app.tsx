@@ -664,9 +664,7 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
   return (
     <div className="space-y-2.5 border-t border-border-seam pt-4">
       <div className="flex items-center">
-        <h3 className="text-2xs font-semibold uppercase tracking-wide text-subtle-foreground">
-          Mobile app
-        </h3>
+        <h3 className="text-xs font-medium">Pair your phone</h3>
         <span className="flex-1" />
         {payload === null ? (
           <Button
@@ -710,8 +708,8 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
         />
       ) : (
         <p className="text-xs text-subtle-foreground/75">
-          Pair the bb mobile app with this bb. It gets a one-time code to scan
-          or type; the phone then reaches this bb through {dashboardHost}.
+          After installing the app, scan or enter a one-time code to connect
+          your phone.
         </p>
       )}
 

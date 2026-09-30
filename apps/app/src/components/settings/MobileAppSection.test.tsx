@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
+import {
+  PluginSettingsSections,
+  PluginMobileSettingsSections,
+} from "@/components/plugin/PluginSettingsSections";
 import {
   setPluginSlotRegistrations,
   resetPluginSlotStoreForTest,
@@ -96,6 +99,24 @@ it("places mobile plugin sections only on Mobile and removes them when unregiste
       ],
     }),
   );
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({
+      serverAccess: {
+        defaultProviderId: "relay",
+        effectiveUrl: null,
+        urlSource: null,
+        providers: [
+          {
+            id: "relay",
+            displayName: "Relay",
+            description: "Relay",
+            pluginId: "connection",
+            availability: { status: "available" },
+          },
+        ],
+      },
+    }),
+  );
   renderSection();
   const plugin = render(
     <MemoryRouter>
@@ -109,4 +130,32 @@ it("places mobile plugin sections only on Mobile and removes them when unregiste
     setPluginSlotRegistrations("connection", makePluginRegistrationSet()),
   );
   expect(screen.queryByText("Pair this phone")).toBeNull();
+});
+
+it("hides pairing slots when Direct or a different provider is selected", () => {
+  setPluginSlotRegistrations(
+    "connection",
+    makePluginRegistrationSet({
+      settingsSections: [
+        {
+          id: "pair",
+          experimental_page: "mobile",
+          component: () => <p>Pair this phone</p>,
+        },
+      ],
+    }),
+  );
+  const view = (pluginId: string | null) => (
+    <MemoryRouter>
+      <PluginMobileSettingsSections pluginId={pluginId} />
+    </MemoryRouter>
+  );
+  const rendered = render(view("connection"));
+  expect(screen.getByText("Pair this phone")).toBeTruthy();
+  rendered.rerender(view(null));
+  expect(screen.queryByText("Pair this phone")).toBeNull();
+  rendered.rerender(view("other-provider"));
+  expect(screen.queryByText("Pair this phone")).toBeNull();
+  rendered.rerender(view("connection"));
+  expect(screen.getByText("Pair this phone")).toBeTruthy();
 });

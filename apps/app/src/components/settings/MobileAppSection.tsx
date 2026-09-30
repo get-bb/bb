@@ -23,8 +23,9 @@ export function MobileAppSection() {
           Use bb from your phone
         </p>
       </div>
-      <MachineAccessSettings />
-      <PluginMobileSettingsSections />
+      <MachineAccessSettings title="Accessing bb from your phone">
+        {(pluginId) => <PluginMobileSettingsSections pluginId={pluginId} />}
+      </MachineAccessSettings>
       <div className="space-y-5">
         <SettingsSection
           title={
