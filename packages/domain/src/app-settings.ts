@@ -19,7 +19,6 @@ export const appSettingsSchema = z
     steerActiveThreadOnEnter: z.boolean(),
     showDiagnosticEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
-    disabledProviderIds: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     providerCompletedTurnDisplay: z.record(
       z.string().min(1),
@@ -52,7 +51,6 @@ export const defaultAppSettings: AppSettings = {
   steerActiveThreadOnEnter: true,
   showDiagnosticEvents: false,
   providerOrder: [],
-  disabledProviderIds: [],
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
   streamerMode: false,
@@ -64,15 +62,15 @@ export const defaultAppSettings: AppSettings = {
   machineGitCredentialsEnabled: true,
 };
 
+export const disabledProviderIdsSchema = z.array(z.string().min(1));
+
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
-    disabledProviderIds: z.array(z.string().min(1)).optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
-    disabledProviderIds: z.array(z.string().min(1)).optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),

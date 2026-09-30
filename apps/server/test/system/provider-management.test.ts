@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { getAppSettings } from "@bb/db";
+import { z } from "zod";
+import { appSettingsUpdateSchema } from "@bb/domain";
+import { getDisabledProviderIds } from "@bb/db";
 import { systemProviderCatalogEntrySchema } from "@bb/server-contract";
 import { requireBridgeLaunchForProviderId } from "../../src/services/system/provider-bridge-launch.js";
 import { listSystemProviderInfos } from "../../src/services/system/execution-options.js";
@@ -46,9 +48,7 @@ describe("provider management", () => {
         expect(
           disabled.find((provider) => provider.id === "acp-cursor")?.enabled,
         ).toBe(false);
-        expect(getAppSettings(harness.db).disabledProviderIds).toEqual([
-          "acp-cursor",
-        ]);
+        expect(getDisabledProviderIds(harness.db)).toEqual(["acp-cursor"]);
         expect(await visibleProviderIds(harness)).not.toContain("acp-cursor");
         expect(() =>
           requireBridgeLaunchForProviderId(harness.deps, "acp-cursor"),
@@ -97,7 +97,7 @@ describe("provider management", () => {
         await readCatalog(
           await setProviderEnabled(harness, "acp-opencode", true),
         );
-        expect(getAppSettings(harness.db).disabledProviderIds).toEqual([]);
+        expect(getDisabledProviderIds(harness.db)).toEqual([]);
         expect(await visibleProviderIds(harness)).not.toContain("acp-opencode");
       },
     );
@@ -144,18 +144,22 @@ describe("provider management", () => {
         );
         await harness.pluginService.setEnabled("provider-acp", false);
         expect(await harness.pluginService.remove("provider-acp")).toBe(true);
-        expect(getAppSettings(harness.db).disabledProviderIds).toEqual([]);
+        expect(getDisabledProviderIds(harness.db)).toEqual([]);
       },
     );
   });
 
-  it("discovers Claude while its plugin is off and keeps provider preferences through older settings writes", async () => {
+  it("discovers Claude while its plugin is off and keeps a disable through stale general settings writes", async () => {
     await withTestHarness(
       { seedFirstPartyProviders: false },
       async (harness) => {
         await harness.pluginService.install("builtin:provider-claude-code", {
           kind: "root",
         });
+        const config = await harness.app.request("/api/v1/system/config");
+        const staleSettings = z
+          .object({ generalSettings: appSettingsUpdateSchema })
+          .parse(await readJson(config)).generalSettings;
         await harness.pluginService.setEnabled("provider-claude-code", false);
         const catalog = await readCatalog(
           await harness.app.request("/api/v1/system/providers/catalog"),
@@ -166,18 +170,22 @@ describe("provider management", () => {
         await readCatalog(
           await setProviderEnabled(harness, "claude-code", false),
         );
-        const { disabledProviderIds, ...legacySettings } = getAppSettings(
-          harness.db,
-        );
-        const write = await harness.app.request("/api/v1/settings/general", {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(legacySettings),
-        });
-        expect(write.status).toBe(200);
-        expect(getAppSettings(harness.db).disabledProviderIds).toEqual(
-          disabledProviderIds,
-        );
+        const putGeneralSettings = (body: object) =>
+          harness.app.request("/api/v1/settings/general", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        expect((await putGeneralSettings(staleSettings)).status).toBe(200);
+        expect(
+          (
+            await putGeneralSettings({
+              ...staleSettings,
+              disabledProviderIds: [],
+            })
+          ).status,
+        ).toBe(400);
+        expect(getDisabledProviderIds(harness.db)).toEqual(["claude-code"]);
       },
     );
   });

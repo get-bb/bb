@@ -6,6 +6,7 @@ import {
   appSettingsSchema,
   defaultAiServiceSelections,
   defaultAppSettings,
+  disabledProviderIdsSchema,
   pluginPackageJsonSchema,
   type AiServiceSelection,
   type AiServiceSelections,
@@ -22,6 +23,7 @@ const appSettingsKeys = appSettingsKeySchema.options;
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
 const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
+const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 
 function parseStoredValue(text: string): unknown {
@@ -158,6 +160,25 @@ export function setPluginSafeMode(db: DbConnection, enabled: boolean): void {
   writeValue(db, PLUGIN_SAFE_MODE_KEY, enabled, Date.now());
 }
 
+export function getDisabledProviderIds(db: DbConnection): string[] {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, DISABLED_PROVIDER_IDS_KEY))
+    .get();
+  const parsed = disabledProviderIdsSchema.safeParse(
+    row === undefined ? [] : parseStoredValue(row.value),
+  );
+  return parsed.success ? parsed.data : [];
+}
+
+export function setDisabledProviderIds(
+  db: DbConnection,
+  providerIds: readonly string[],
+): void {
+  writeValue(db, DISABLED_PROVIDER_IDS_KEY, providerIds, Date.now());
+}
+
 const pluginProviderCatalogSchema =
   pluginPackageJsonSchema.shape.bb.shape.experimental_providers
     .unwrap()
@@ -196,12 +217,12 @@ export function forgetPluginProviders(
   pluginId: string,
   providerIds: ReadonlySet<string>,
 ): void {
-  const settings = getAppSettings(db);
+  const disabledProviderIds = getDisabledProviderIds(db);
   db.transaction((transaction) => {
     writeValue(
       transaction,
-      "disabledProviderIds",
-      settings.disabledProviderIds.filter((id) => !providerIds.has(id)),
+      DISABLED_PROVIDER_IDS_KEY,
+      disabledProviderIds.filter((id) => !providerIds.has(id)),
       Date.now(),
     );
     transaction

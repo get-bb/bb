@@ -311,8 +311,6 @@ export function registerSystemRoutes(
         : undefined;
     const updatedSettings = appSettingsSchema.parse({
       ...settings,
-      disabledProviderIds:
-        settings.disabledProviderIds ?? current.disabledProviderIds,
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,

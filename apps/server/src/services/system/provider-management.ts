@@ -1,4 +1,9 @@
-import { getAppSettings, setAppSettings } from "@bb/db";
+import {
+  getAppSettings,
+  getDisabledProviderIds,
+  setAppSettings,
+  setDisabledProviderIds,
+} from "@bb/db";
 import type { SystemProviderCatalogEntry } from "@bb/server-contract";
 import type { ServerAppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -63,20 +68,15 @@ export async function setProviderEnabled(
       );
     }
   }
-  const current = getAppSettings(deps.db);
-  const disabledProviderIds = current.disabledProviderIds.filter(
+  const disabledProviderIds = getDisabledProviderIds(deps.db).filter(
     (providerId) => providerId !== id,
   );
   if (!enabled) disabledProviderIds.push(id);
-  const defaultProviderId =
-    !enabled && current.defaultProviderId === id
-      ? null
-      : current.defaultProviderId;
-  setAppSettings(deps.db, {
-    ...current,
-    disabledProviderIds,
-    defaultProviderId,
-  });
+  setDisabledProviderIds(deps.db, disabledProviderIds);
+  const current = getAppSettings(deps.db);
+  if (!enabled && current.defaultProviderId === id) {
+    setAppSettings(deps.db, { ...current, defaultProviderId: null });
+  }
   deps.hub.notifySystem(["config-changed"]);
   return providerManagementCatalog(deps, plugins);
 }

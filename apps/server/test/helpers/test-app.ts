@@ -10,6 +10,7 @@ import type { AddressInfo } from "node:net";
 import {
   createConnection,
   getAppSettings,
+  getDisabledProviderIds,
   listRunningThreads,
   type DbConnection,
 } from "@bb/db";
@@ -174,7 +175,7 @@ export async function createTestAppHarness(
       const settings = getAppSettings(db);
       return {
         providerOrder: settings.providerOrder,
-        disabledProviderIds: settings.disabledProviderIds,
+        disabledProviderIds: getDisabledProviderIds(db),
         defaultProviderId: settings.defaultProviderId,
       };
     },

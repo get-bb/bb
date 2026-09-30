@@ -584,7 +584,9 @@ clears that choice, allowing the next enabled provider in saved order to be used
 A project whose last-used provider is disabled also falls back to that order;
 explicitly requesting a disabled provider is still rejected.
 
-The core `disabledProviderIds` setting lists disabled providers by ID. Enable
+The core `disabledProviderIds` value lists disabled providers by ID. It is stored
+apart from Settings → General, so only the provider enable/disable route, CLI and
+SDK change it; a general-settings save, even from a stale client, cannot. Enable
 removes the ID, so the provider returns to its automatic discovery behavior:
 agents such as `acp-opencode` again appear only where their CLI is installed.
 Uninstalling a plugin forgets the disabled state of its providers.

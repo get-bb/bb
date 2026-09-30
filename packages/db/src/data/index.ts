@@ -119,11 +119,13 @@ export {
   getAppKeybindingOverrides,
   getAppSettings,
   getDisabledPluginProviderCatalog,
+  getDisabledProviderIds,
   getPluginSafeMode,
   setAiServiceSelection,
   setAppKeybindingOverrides,
   setAppSettings,
   setDisabledPluginProviderCatalog,
+  setDisabledProviderIds,
   setPluginSafeMode,
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";

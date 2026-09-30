@@ -1988,7 +1988,6 @@ describe("migrate", () => {
         steerActiveThreadOnEnter: true,
         showDiagnosticEvents: true,
         providerOrder: [],
-        disabledProviderIds: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},
         machineServerUrl: null,
