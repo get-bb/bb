@@ -356,6 +356,8 @@ function shouldShowPullRequestAttentionLabel(
   pullRequest: ThreadPullRequest,
 ): boolean {
   return (
+    (pullRequest.state === "open" &&
+      (pullRequest.autoMerge || pullRequest.attention === "queued")) ||
     pullRequest.attention === "checks_failed" ||
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested" ||

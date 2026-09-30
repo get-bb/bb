@@ -70,28 +70,37 @@ describe("pull request signals", () => {
       },
     });
     expect(getPullRequestAttentionDisplay(pr)).toMatchObject({
-      label: "Auto-merge on · Approved · Checks pending",
+      label: "Auto-merge on",
       className: "text-attention",
     });
     expect(getPullRequestStateDisplay(pr)).toMatchObject({
-      icon: "GitMerge",
-      className: "text-attention",
+      icon: "GitPullRequestArrow",
+      className: "text-success",
     });
     const ready = { ...pr, attention: "ready_to_merge" as const };
-    expect(getPullRequestAttentionDisplay(ready).label).toBe(
-      "Auto-merge on · Approved · Waiting to merge",
-    );
+    expect(getPullRequestAttentionDisplay(ready).label).toBe("Auto-merge on");
     expect(getPullRequestGithubStatus(ready)).toBe("pending");
   });
 
-  it("keeps failures red with auto-merge enabled", () => {
-    const pr = pullRequest({ autoMerge: true, attention: "checks_failed" });
-    expect(getPullRequestAttentionDisplay(pr)).toMatchObject({
-      label: "Checks failing",
-      className: "text-destructive",
-    });
-    expect(getPullRequestGithubStatus(pr)).toBe("failure");
-  });
+  it.each(["checks_failed", "conflicts", "changes_requested"] as const)(
+    "keeps %s ahead of automation labels",
+    (attention) => {
+      const pr = pullRequest({
+        autoMerge: true,
+        inMergeQueue: true,
+        attention,
+      });
+      expect(getPullRequestAttentionDisplay(pr)).toMatchObject({
+        label: {
+          checks_failed: "Checks failing",
+          conflicts: "Conflicts",
+          changes_requested: "Changes requested",
+        }[attention],
+        className: "text-destructive",
+      });
+      expect(getPullRequestGithubStatus(pr)).toBe("failure");
+    },
+  );
 
   it.each(["merged", "closed", "draft"] as const)(
     "preserves %s lifecycle with stale auto-merge metadata",

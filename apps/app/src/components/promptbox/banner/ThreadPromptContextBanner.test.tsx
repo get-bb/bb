@@ -304,9 +304,14 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Squash merge");
   });
 
-  it.each(["checks_pending", "queued"] as const)(
-    "keeps %s auto-merge status in the tooltip only",
-    (attention) => {
+  it.each([
+    ["checks_pending", false, null],
+    ["checks_pending", true, "Auto-merge on"],
+    ["ready_to_merge", true, "Auto-merge on"],
+    ["queued", true, "Queued to merge"],
+  ] as const)(
+    "shows only automation labels for %s with auto-merge %s",
+    (attention, autoMerge, label) => {
       const markup = renderToStaticMarkup(
         <ThreadPromptContextBanner
           gitSection={null}
@@ -318,7 +323,7 @@ describe("ThreadPromptContextBanner", () => {
           pullRequestSection={{
             pullRequest: {
               ...pullRequestFixture,
-              autoMerge: true,
+              autoMerge,
               inMergeQueue: attention === "queued",
               review: { state: "approved", reviewRequestCount: 0 },
               checks: {
@@ -338,12 +343,14 @@ describe("ThreadPromptContextBanner", () => {
 
       expect(markup).toContain("PR #128");
       expect(markup).not.toContain("PR #128 · Open");
-      expect(markup).not.toContain('text-attention">·');
-      expect(markup).toContain(
-        attention === "queued"
-          ? 'title="Queued to merge"'
-          : 'title="Auto-merge on · Approved · Checks pending"',
-      );
+      if (label) {
+        expect(markup).toContain(`text-attention">· ${label}</span>`);
+      } else {
+        expect(markup).not.toContain('text-attention">·');
+      }
+      expect(markup).toContain('class="size-4 shrink-0 text-success"');
+      expect(markup).toContain('data-icon="GitPullRequestArrow"');
+      expect(markup).not.toContain('data-icon="GitMerge"');
       expect(markup).toContain('class="fill-attention"');
       expect(markup).not.toContain('alt="Checks pending"');
     },

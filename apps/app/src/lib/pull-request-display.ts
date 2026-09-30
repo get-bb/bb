@@ -223,35 +223,20 @@ export function getPullRequestAttentionDisplay(
     "blocked",
     "ready_to_merge",
   ].includes(pullRequest.attention);
-  if (!waitingOrReady) return display;
-  const labels: string[] = [];
-  if (pullRequest.autoMerge) labels.push("Auto-merge on");
-  if (pullRequest.review.state === "approved") labels.push("Approved");
-  labels.push(
-    pullRequest.autoMerge && pullRequest.attention === "ready_to_merge"
-      ? "Waiting to merge"
-      : display.label,
-  );
-  return {
-    ...display,
-    label: labels.join(" · "),
-    className: pullRequest.autoMerge ? "text-attention" : display.className,
-  };
+  if (
+    pullRequest.state === "open" &&
+    pullRequest.autoMerge &&
+    (waitingOrReady || pullRequest.attention === "none")
+  ) {
+    return { ...display, label: "Auto-merge on", className: "text-attention" };
+  }
+  if (!waitingOrReady || pullRequest.review.state !== "approved")
+    return display;
+  return { ...display, label: `Approved · ${display.label}` };
 }
 
 export function getPullRequestStateDisplay(
   pullRequest: ThreadPullRequest,
 ): PullRequestStateDisplay {
-  if (
-    pullRequest.state === "open" &&
-    (pullRequest.autoMerge || pullRequest.inMergeQueue)
-  ) {
-    return {
-      label: pullRequest.inMergeQueue ? "Queued to merge" : "Auto-merge on",
-      icon: "GitMerge",
-      className: "text-attention",
-      dotClass: "bg-attention",
-    };
-  }
   return PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
 }
