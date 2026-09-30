@@ -105,9 +105,11 @@ and can revoke.
 3. In the mobile app, add a server over bb connect and scan the QR code or type
    the code. Codes last 10 minutes and work once.
 
-The phone keeps its credential in the device keychain and mints short-lived
-sessions from it; it never holds the server's pairing secret. To cut a phone
-off, revoke it in the getbb.app dashboard machine list. Every phone takes one of
+The phone keeps its credential in the device keychain and mints sessions from
+it; it never holds the server's pairing secret. A session lasts seven days and
+renews while the phone is in use. To cut a phone off, revoke it in the
+getbb.app dashboard machine list; its session stops working within about 20
+seconds. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
 should be revoked first. On a trusted network the app can also use a direct
 server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same

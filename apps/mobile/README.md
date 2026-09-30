@@ -360,8 +360,8 @@ as the first argument drives a dev client through Metro instead.
 - Account servers: the machine credential is account-scoped (the apex stores
   it against the user, `apps/web/src/server/api.ts` `redeemMachineCode`; the
   gate checks it against the label's owner), and the desktop-session cookie
-  is a `.getbb.app` cookie carrying only the user id, so one enrollment
-  covers every server the account owns — the same as the desktop app's
+  is a `.getbb.app` cookie carrying the user id and the minting credential, so
+  one enrollment covers every server the account owns — the same as the desktop app's
   Server menu. After pairing, "Servers on this account"
   (`GET <serverUrl>/api/connect/servers` with the credential,
   `listAccountServers`) adds any other server as a profile in one tap with
@@ -369,7 +369,9 @@ as the first argument drives a dev client through Metro instead.
 - Session: `src/lib/session` mints `POST <serverUrl>/api/connect/desktop-session`
   with the credential, installs the cookie in both native jars (`Secure`
   follows the server URL's scheme so a plain-http stub gate works), renews
-  five minutes before expiry and on AppState active. The connector
+  five minutes before expiry and on AppState active. The cookie lasts seven
+  days; the gate re-issues it once a day on ordinary responses and rejects it
+  within about 20 seconds of the machine being revoked. The connector
   (`src/lib/connection`) re-checks the session on any 401/403 (an API call
   or the `/ws` upgrade — React Native reports the refused upgrade as the
   close reason "Received bad response code from server: 401.") and on

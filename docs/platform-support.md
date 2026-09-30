@@ -50,7 +50,8 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
   hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
   machine (QR / code from Settings → Mobile or
   `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
-  short-lived sessions; see [multiple-devices.md](multiple-devices.md).
+  seven-day rolling sessions that end when the device is revoked; see
+  [multiple-devices.md](multiple-devices.md).
 - Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
   runtime) today; TestFlight / Play builds go through EAS once the Expo
   account exists (see `apps/mobile/README.md`). No store release yet.
