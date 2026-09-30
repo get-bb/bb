@@ -408,18 +408,12 @@ trust, identical to every other plugin.
 
 ## 7. AI services
 
-bb's helper inference (thread titles, commit messages) and voice transcription
-are plugin-served too. A plugin registers
-`bb.experimental_aiServices.register({ id, displayName, kinds })` and
-implements `experimental_aiServicesHostContract`
-(`@get-bb/plugin-sdk/ai-services`: `ai.inference.complete`,
-`ai.voice.transcribe`, each carrying `serviceId`) in its `bb.host` entry. The
-user chooses with `BB_INFERENCE` / `BB_TRANSCRIPTION` = `<serviceId>/<model>`;
-core calls the registered plugin on the primary host and applies its own
-retry/fallback policy to the `{ ok: false, code }` results. The codex plugin
-serves `codex` from the codex CLI's own credentials; there is no daemon-bundled
-client. Ids the server serves itself (`openai` transcription, the builtin
-inference providers) are reserved: they route server-direct before the
-registry and `register` refuses them; a cross-plugin id collision fails the
-later plugin's load at the `register` call. See `docs/api_to_audit.md` for the
-audit items.
+bb's helper tasks (thread titles, commit messages, voice transcripts) are
+plugin-served too. A plugin registers
+`bb.experimental_aiServices.register({ id, displayName, complete, transcribe, status })`
+from its server entry: `complete(prompt) → Promise<string>` and
+`transcribe(audio) → Promise<string>`, each with an abort signal. The user picks
+a service per task in Settings → AI services; Automatic walks the services bb
+ships (Codex, then bb cloud) and never reaches a third-party plugin. The codex
+plugin serves `codex` by calling its own `bb.host` entry for the Codex CLI
+login on the primary machine. See `docs/api_to_audit.md` for the audit items.

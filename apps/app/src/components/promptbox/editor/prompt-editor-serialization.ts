@@ -6,7 +6,13 @@ import {
   type PromptTextMention,
 } from "@bb/domain";
 import type { JSONContent } from "@tiptap/react";
-import type { Node as ProseMirrorNode, Schema, Slice } from "@tiptap/pm/model";
+import {
+  Fragment,
+  Slice,
+  type Node as ProseMirrorNode,
+  type Schema,
+} from "@tiptap/pm/model";
+import type { Selection } from "@tiptap/pm/state";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -1117,6 +1123,45 @@ export function promptEditorValueFromSlice(
     text: slice.content.textBetween(0, slice.content.size, "\n"),
     mentions: [],
   };
+}
+
+function selectionCoversWholeLines({ $from, $to }: Selection): boolean {
+  const startsLine =
+    $from.parentOffset === 0 || $from.nodeBefore?.type.name === "hardBreak";
+  const endsLine =
+    $to.parentOffset === $to.parent.content.size ||
+    $to.nodeAfter?.type.name === "hardBreak";
+  return startsLine && endsLine;
+}
+
+export function promptEditorCopiedSlice(
+  slice: Slice,
+  selection: Selection,
+): Slice {
+  if (selectionCoversWholeLines(selection)) {
+    return slice;
+  }
+
+  const schema = selection.$from.doc.type.schema;
+  let { content, openStart, openEnd } = slice;
+  let result = slice;
+  while (openStart > 0 && openEnd > 0 && content.childCount === 1) {
+    const ancestor = content.firstChild!;
+    if (ancestor.isTextblock) {
+      return new Slice(
+        Fragment.from(schema.nodes.paragraph!.create(null, ancestor.content)),
+        1,
+        1,
+      );
+    }
+    content = ancestor.content;
+    openStart -= 1;
+    openEnd -= 1;
+    if (schema.topNodeType.validContent(content)) {
+      result = new Slice(content, openStart, openEnd);
+    }
+  }
+  return result;
 }
 
 export function promptEditorClipboardTextFromSlice(

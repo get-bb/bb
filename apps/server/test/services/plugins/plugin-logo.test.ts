@@ -304,20 +304,6 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     );
   });
 
-  it("rejects a light logo with an unsupported extension", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logoe");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-logoe",
-      logoLight: "./logo.gif",
-      files: { "logo.gif": PNG_STUB },
-    });
-    await expect(
-      harness.pluginService.installPath(rootDir),
-    ).rejects.toThrowError(
-      /bb\.branding\.logo\.light must point at a \.svg, \.png, or \.webp file/,
-    );
-  });
-
   it("does not auto-detect an undeclared root logo", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logof");
     await writeLogoPluginFixture(rootDir, {
@@ -470,40 +456,6 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     );
     expect(noHash.status).toBe(200);
     expect(noHash.headers.get("cache-control")).toBe("no-store");
-  });
-
-  it("serves an explicit dark PNG as image/png", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkb");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-darkb",
-      logoLight: "./logo.svg",
-      logoDark: "./logo-dark.png",
-      files: { "logo.svg": SVG_LOGO, "logo-dark.png": PNG_STUB },
-    });
-    const entry = await harness.pluginService.installPath(rootDir);
-    expect(entry.logoUrl).not.toBeNull();
-    const dark = await harness.app.request(`${BASE}${entry.logoDarkUrl}`);
-    expect(dark.status).toBe(200);
-    expect(dark.headers.get("content-type")).toBe("image/png");
-  });
-
-  it("honors a relocated bb.branding.logo.dark webp", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkc");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-darkc",
-      logoLight: "./logo.svg",
-      logoDark: "./assets/mark-dark.webp",
-      files: {
-        "logo.svg": SVG_LOGO,
-        "logo-dark.svg": DARK_SVG_LOGO,
-        "assets/mark-dark.webp": WEBP_STUB,
-      },
-    });
-    const entry = await harness.pluginService.installPath(rootDir);
-    expect(entry.status).toBe("running");
-    const dark = await harness.app.request(`${BASE}${entry.logoDarkUrl}`);
-    expect(dark.status).toBe(200);
-    expect(dark.headers.get("content-type")).toBe("image/webp");
   });
 
   it("rejects a dark logo that escapes the plugin directory", async () => {

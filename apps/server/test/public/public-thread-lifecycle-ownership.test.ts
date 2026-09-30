@@ -137,6 +137,7 @@ describe("lifecycle ownership deletion", () => {
         await reconcileDaemonReportedThreads(harness.deps, {
           hostId: other.id,
           activeThreadIds: [child.id],
+          undeliveredEventThreadIds: [],
           sameDaemonInstance: false,
         });
         const retry = await waitForQueuedCommand(
@@ -426,6 +427,7 @@ it("keeps an owning project pending while cross-project host cleanup fails and c
     await reconcileDaemonReportedThreads(harness.deps, {
       hostId: remote.id,
       activeThreadIds: [child.id],
+      undeliveredEventThreadIds: [],
       sameDaemonInstance: false,
     });
     const retry = await waitForQueuedCommand(

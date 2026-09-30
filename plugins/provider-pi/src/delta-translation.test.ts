@@ -2,17 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   getBuiltinModels,
   getBuiltinProviders,
 } from "@earendil-works/pi-ai/providers/all";
 import {
-  createDeltaAssembler,
+  experimental_createDeltaAssembler as createDeltaAssembler,
   type DeltaAssembler,
-} from "@bb/provider-bridge-protocol/assembler";
+  type ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   createPiDeltaTranslator,
   createPiModelContextWindowResolverFrom,
@@ -25,6 +24,14 @@ const builtinCatalogResolver = createPiModelContextWindowResolverFrom(
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "./__fixtures__/pi");
+
+function threadScope(): ThreadEvent["scope"] {
+  return { kind: "thread" };
+}
+
+function turnScope(turnId: string): ThreadEvent["scope"] {
+  return { kind: "turn", turnId };
+}
 
 const THREAD_ID = "bb-thread-1";
 const ENTROPY = "pi-test";
@@ -385,7 +392,7 @@ describe("pi delta translation equivalence", () => {
     ).toEqual([]);
   });
 
-  it("agent_end surfaces Pi assistant stop errors as failed turns", () => {
+  it("agent_end preserves the checkpoint when Pi assistant stop errors fail the turn", () => {
     const harness = createHarness();
     const quotaMessage =
       '400 {"type":"error","error":{"type":"invalid_request_error","message":"You\'re out of extra usage. Add more at claude.ai/settings/usage and keep going."},"request_id":"req_011CajgGfxCAhmznZJw7t6Br"}';
@@ -393,9 +400,10 @@ describe("pi delta translation equivalence", () => {
     harness.translate(loadFixture("agent-start.json"));
     const turnId = harness.openTurnId();
 
-    const events = harness.translate(
-      createPiAgentErrorEvent(quotaMessage, false),
-    );
+    const events = harness.translate({
+      ...createPiAgentErrorEvent(quotaMessage, false),
+      providerCheckpointId: "pi-failed-entry",
+    });
 
     expect(events).toEqual([
       {
@@ -412,6 +420,7 @@ describe("pi delta translation equivalence", () => {
         providerThreadId: "",
         scope: turnScope(turnId),
         status: "failed",
+        providerCheckpointId: "pi-failed-entry",
       },
     ]);
     expect(events.some((event) => event.type === "item/completed")).toBe(false);
@@ -1114,8 +1123,42 @@ describe("pi delta translation equivalence", () => {
       toolName: "edit",
       args: {
         path: "src/app.ts",
-        edits: [{ oldText: "before", newText: "after" }],
+        edits: [
+          { oldText: "before", newText: "after" },
+          { oldText: "second before", newText: "second after" },
+        ],
       },
+    } as AgentSessionEvent);
+
+    const started = events.find(
+      (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
+        event.type === "item/started",
+    );
+    expect(started?.item).toMatchObject({
+      type: "fileChange",
+      status: "pending",
+    });
+    if (!started || started.item.type !== "fileChange") return;
+    expect(started.item.changes[0]).toMatchObject({
+      path: "src/app.ts",
+      kind: "update",
+    });
+    expect(started.item.changes).toHaveLength(2);
+    expect(started.item.changes[0]?.diff).toContain("+after");
+    expect(started.item.changes[0]?.diff).toContain("-before");
+    expect(started.item.changes[1]?.diff).toContain("+second after");
+    expect(started.item.changes[1]?.diff).toContain("-second before");
+  });
+
+  it("falls back to an update without a diff for unrecognized edit batches", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-unknown-batch",
+      toolName: "edit",
+      args: { path: "src/app.ts", edits: [{ old: "before", replacement: "after" }] },
     } as AgentSessionEvent);
 
     const started = events.find(
@@ -1127,6 +1170,8 @@ describe("pi delta translation equivalence", () => {
       status: "pending",
       changes: [{ path: "src/app.ts", kind: "update" }],
     });
+    if (!started || started.item.type !== "fileChange") return;
+    expect(started.item.changes[0]?.diff).toBeUndefined();
   });
 
   it("tool_execution_start with content-only write args marks the change as an add", () => {

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "plugin-icon",
+  "type": "registry:ui",
+  "title": "plugin-icon",
+  "description": "BB ui \"plugin-icon\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/plugin-icon.tsx",
+      "content": "import { useState, type CSSProperties } from \"react\";\nimport { Icon } from \"./icon\";\nimport { cn } from \"../../lib/utils\";\n\nexport function PluginCompactIconMask({\n  url,\n  className,\n  style,\n}: {\n  url: string;\n  className?: string;\n  style?: CSSProperties;\n}) {\n  const maskImage = `url(${JSON.stringify(url)})`;\n  return (\n    <span\n      aria-hidden=\"true\"\n      data-plugin-icon-asset={url}\n      data-icon-root=\"\"\n      className={cn(\"inline-block size-4 shrink-0\", className)}\n      style={{\n        ...style,\n        backgroundColor: \"currentColor\",\n        maskImage,\n        maskPosition: \"center\",\n        maskRepeat: \"no-repeat\",\n        maskSize: \"contain\",\n        WebkitMaskImage: maskImage,\n        WebkitMaskPosition: \"center\",\n        WebkitMaskRepeat: \"no-repeat\",\n        WebkitMaskSize: \"contain\",\n      }}\n    />\n  );\n}\n\nexport function PluginBrandIcon({\n  icon,\n  iconUrl,\n  iconTinted,\n  className,\n}: {\n  icon: string | null;\n  iconUrl: string | null;\n  iconTinted: boolean;\n  className?: string;\n}) {\n  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);\n  if (iconUrl !== null && iconTinted) {\n    return <PluginCompactIconMask url={iconUrl} className={className} />;\n  }\n  if (iconUrl === null || iconUrl === failedIconUrl) {\n    return <Icon name={icon ?? \"Zap\"} className={className} aria-hidden />;\n  }\n  return (\n    <img\n      src={iconUrl}\n      alt=\"\"\n      className={cn(\"rounded-sm object-contain\", className)}\n      onError={() => setFailedIconUrl(iconUrl)}\n    />\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/plugin-icon.tsx"
+    }
+  ]
+}

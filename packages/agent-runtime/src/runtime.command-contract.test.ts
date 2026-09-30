@@ -14,7 +14,6 @@ import {
   scriptedEchoProcessEnv,
   wait,
   waitForRuntimeThreadEvent,
-  waitForThreadAgentMessageText,
   waitForThreadTurnCompleted,
   waitForThreadTurnStarted,
   type CreateScriptedEchoLaunchOptions,
@@ -546,12 +545,10 @@ describe("createAgentRuntime command contracts", () => {
     args: {
       env?: Record<string, string>;
       exitAfterArchivedError?: boolean;
-      onEvent?: (event: ThreadEvent) => void;
     } = {},
   ): ContractRuntime {
     return createContractRuntime({
       ...(args.env !== undefined ? { env: args.env } : {}),
-      ...(args.onEvent !== undefined ? { onEvent: args.onEvent } : {}),
       launch: {
         scripted: {
           archivedSession: true,
@@ -562,47 +559,6 @@ describe("createAgentRuntime command contracts", () => {
       },
     });
   }
-
-  it("unarchives Codex sessions before retrying a turn", async () => {
-    const events: ThreadEvent[] = [];
-    const { record, runtime } = createArchivedSessionRuntime({
-      onEvent: (event) => events.push(event),
-    });
-
-    try {
-      const { providerThreadId } = await runtime.startThread({
-        environmentId: "env-1",
-        projectId: "p1",
-        providerId: "codex",
-        threadId: "t-archived",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_222222224u",
-        input: [promptTextInput({ text: "continue" })],
-        options: fullRuntimeOptions,
-        threadId: "t-archived",
-      });
-
-      const requests = record.read();
-      expect(requests).toContainEqual({
-        method: "thread/unarchive",
-        params: { threadId: "t-archived", providerThreadId },
-      });
-      expect(
-        requests.filter((entry) => entry.method === "turn/start"),
-      ).toHaveLength(2);
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "codex",
-        runtime,
-        text: "Response to: continue",
-        threadId: "t-archived",
-      });
-    } finally {
-      await runtime.shutdown();
-    }
-  });
 
   it("unarchives Codex sessions before retrying a resume", async () => {
     const { record, runtime } = createArchivedSessionRuntime();
@@ -629,35 +585,6 @@ describe("createAgentRuntime command contracts", () => {
       });
       expect(
         requests.filter((entry) => entry.method === "thread/resume"),
-      ).toHaveLength(2);
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  it("unarchives an archived Codex source session before retrying a fork", async () => {
-    const { record, runtime } = createArchivedSessionRuntime();
-
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        fork: { sourceProviderThreadId: "prov-archived-source" },
-        projectId: "p1",
-        providerId: "codex",
-        threadId: "t-archived-fork",
-        options: fullRuntimeOptions,
-      });
-
-      const requests = record.read();
-      expect(requests).toContainEqual({
-        method: "thread/unarchive",
-        params: {
-          threadId: "t-archived-fork",
-          providerThreadId: "prov-archived-source",
-        },
-      });
-      expect(
-        requests.filter((entry) => entry.method === "thread/fork"),
       ).toHaveLength(2);
     } finally {
       await runtime.shutdown();

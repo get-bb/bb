@@ -7,12 +7,14 @@
     "dev": "expo start --dev-client",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "build:android:local": "bash scripts/build-android-local.sh",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint app src scripts metro.config.js",
+    "lint": "oxlint app src scripts plugins metro.config.js app.config.js",
     "test": "vitest run --config vitest.config.ts",
     "theme:generate": "node --conditions=source --import tsx scripts/generate-native-theme.ts",
-    "e2e:ios": "JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17} maestro test e2e/flows"
+    "e2e:ios": "JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17} maestro test e2e/flows",
+    "e2e:android": "maestro test e2e/android/smoke.yaml"
   },
   "dependencies": {
     "@bb/client-core": "workspace:*",
@@ -31,6 +33,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~57.0.14",
+    "expo-application": "~57.0.2",
     "expo-build-properties": "~57.0.12",
     "expo-camera": "~57.0.3",
     "expo-constants": "~57.0.12",

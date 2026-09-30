@@ -1,15 +1,15 @@
 ---
 name: thread-list
-description: "Inspect or change the sidebar thread list's layout preferences: organization mode, sort, section order, hidden groups, and collapsed groups."
+description: "Inspect or change the sidebar thread list's layout preferences: organization mode, sort, section order, hidden groups, collapsed groups, and thread row actions."
 ---
 
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `threadLifecycles`, `organizationMode`,
+`bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
-built-in `threads` group),
+built-in `threads` group), `rowActions`,
 `collapsedSections`, `collapsedProjects`, `collapsedThreads`,
 `collapsedEnvironments`, `collapsedThreadSections`, and `collapsedMachines`.
 
@@ -36,3 +36,23 @@ remain selected. `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both. The default
 is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
+
+`rowActions` picks up to three quick-action buttons a thread row shows on
+hover, left to right before its actions menu. Choose from `split`, `copyLink`, `read`,
+`pin`, `move` (opens a section menu), `rename`, and `archive`; the default is `'["archive"]'` and `'[]'`
+leaves only the menu. For example,
+`bb thread-list prefs set rowActions '["pin","archive"]'`. In the app, a thread
+row's actions menu has Customize row actions, which previews the row's three
+action slots; each slot picks an action or Hide, and filled slots drag to reorder.
+
+Organize → Rows → Provider icons toggles the icon before each thread title.
+`showProviderIcons` defaults to `false`; use
+`bb thread-list prefs set showProviderIcons true` to show them. Unknown
+provider ids have no icon.
+
+New threads inherit the sidebar group where creation was invoked. Pinned
+creates pinned threads; custom sections supply their section; project, machine,
+and general thread groups start unsectioned and unpinned. Environment rows
+reuse their environment and the containing group's placement. In Pinned,
+they retain the group's common underlying section for unpinning; mixed-section
+groups use no underlying section.

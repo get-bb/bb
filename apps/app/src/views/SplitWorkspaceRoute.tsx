@@ -1,3 +1,7 @@
+import { idleSplitDownload } from "@/lib/split-prefetch";
+import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
+import { useSplitPreload } from "@/lib/define-split";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { lazy, useMemo } from "react";
 import { disableGlobalCursorStyles } from "react-resizable-panels";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
@@ -24,7 +28,12 @@ const PluginsView = lazy(() =>
   import("./ToolsView").then((m) => ({ default: m.PluginsView })),
 );
 
+const markdownHtmlDownload = idleSplitDownload("markdown-html");
+
 export default function SplitWorkspaceRoute() {
+  useSplitPreload(LazyThreadSecondaryPanel);
+  useSplitPreload(ModelReasoningMenu);
+  useSplitPreload(markdownHtmlDownload);
   const location = useLocation();
   const { projectId, threadId, isThreadView } = useRouteState();
   const pluginMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);

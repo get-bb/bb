@@ -7,7 +7,7 @@ const IS_IOS = process.env.EXPO_OS === "ios";
 
 const SECTION_LABEL_CLASS = IS_IOS
   ? "text-xs text-muted-foreground"
-  : "text-xs font-medium uppercase tracking-wide text-subtle-foreground/75";
+  : "text-xs font-medium text-muted-foreground";
 
 const textVariants = cva("font-sans text-foreground", {
   variants: {

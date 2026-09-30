@@ -20,20 +20,21 @@ const RESERVED_ACP_PROVIDER_IDS: ReadonlySet<string> = new Set(
 const BB_APP_CONFIG_FILE_NAME = "config.json";
 const BB_APP_ENV_FILE_NAME = "env.json";
 
-export type BbAppManagedConfigKey =
-  | "BB_APP_URL"
-  | "BB_INFERENCE"
-  | "BB_INFERENCE_FALLBACK"
-  | "BB_LOG_LEVEL"
-  | "BB_TRANSCRIPTION";
+export type BbAppManagedConfigKey = "BB_APP_URL" | "BB_LOG_LEVEL";
 
 export const BB_APP_MANAGED_CONFIG_KEYS: BbAppManagedConfigKey[] = [
   "BB_APP_URL",
+  "BB_LOG_LEVEL",
+];
+
+export const REMOVED_AI_SERVICE_CONFIG_KEYS: readonly string[] = [
   "BB_INFERENCE",
   "BB_INFERENCE_FALLBACK",
-  "BB_LOG_LEVEL",
   "BB_TRANSCRIPTION",
 ];
+
+export const REMOVED_AI_SERVICE_CONFIG_MESSAGE =
+  "BB_INFERENCE, BB_INFERENCE_FALLBACK, and BB_TRANSCRIPTION were removed. Choose AI services in Settings → AI services or with `bb settings ai-services set <task> <automatic|off|service>`.";
 
 export const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const CUSTOM_ACP_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
@@ -50,10 +51,7 @@ interface ParseBbAppManagedConfigOptions {
 const bbAppManagedConfigValuesSchema = z
   .object({
     BB_APP_URL: z.string().optional(),
-    BB_INFERENCE: z.string().optional(),
-    BB_INFERENCE_FALLBACK: z.string().optional(),
     BB_LOG_LEVEL: z.string().optional(),
-    BB_TRANSCRIPTION: z.string().optional(),
   })
   .strict();
 
@@ -233,11 +231,33 @@ function parseCustomModels(
   return customModels;
 }
 
+function withoutRemovedAiServiceConfig(
+  rawConfig: unknown,
+  options: ParseBbAppManagedConfigOptions,
+): unknown {
+  if (typeof rawConfig !== "object" || rawConfig === null) return rawConfig;
+  const values: unknown = Reflect.get(rawConfig, "config");
+  if (typeof values !== "object" || values === null) return rawConfig;
+  const removed = REMOVED_AI_SERVICE_CONFIG_KEYS.filter((key) =>
+    Object.hasOwn(values, key),
+  );
+  if (removed.length === 0) return rawConfig;
+  options.logger?.warn({ keys: removed }, REMOVED_AI_SERVICE_CONFIG_MESSAGE);
+  return {
+    ...rawConfig,
+    config: Object.fromEntries(
+      Object.entries(values).filter(([key]) => !removed.includes(key)),
+    ),
+  };
+}
+
 export function parseBbAppManagedConfig(
   rawConfig: unknown,
   options: ParseBbAppManagedConfigOptions = {},
 ): BbAppManagedConfig {
-  const parsed = bbAppManagedConfigBoundarySchema.parse(rawConfig);
+  const parsed = bbAppManagedConfigBoundarySchema.parse(
+    withoutRemovedAiServiceConfig(rawConfig, options),
+  );
   const customAcpAgents = parseCustomAcpAgents(parsed.customAcpAgents, options);
   const customModels = parseCustomModels(parsed.customModels, options);
   const config: BbAppManagedConfig = {};

@@ -40,7 +40,11 @@ import {
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
+import {
+  usePinThread,
+  useUnpinThread,
+  useUpdateThread,
+} from "@/hooks/mutations/thread-state-mutations";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
@@ -156,6 +160,7 @@ export function useSidebarThreads(
         experimental_archived: archiveState,
         status: query.isError ? "error" : "loading",
         threads: EMPTY_THREADS,
+        experimental_hosts: hosts ?? [],
         projects: EMPTY_PROJECTS,
         sections: EMPTY_SECTIONS,
       };
@@ -180,6 +185,7 @@ export function useSidebarThreads(
       threads: [...selected.values()].map((thread) =>
         toPluginSidebarThreadCached(thread, hostNamesById, titleResources),
       ),
+      experimental_hosts: hosts ?? [],
       projects: allProjects.map((project) => ({
         id: project.id,
         name: project.name,
@@ -192,6 +198,7 @@ export function useSidebarThreads(
   }, [
     data,
     hostNamesById,
+    hosts,
     query.isError,
     titleResources,
     active,
@@ -265,6 +272,8 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
   const entriesById = useThreadEntryMap();
+  const { mutateAsync: pinThreadAsync } = usePinThread();
+  const { mutateAsync: unpinThreadAsync } = useUnpinThread();
   const { mutateAsync: updateThreadAsync } = useUpdateThread();
 
   const requireEntry = useCallback(
@@ -304,12 +313,20 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           setRootComposeProjectId(projectId);
         }
         const state = {
+          placement: options?.experimental_placement ?? {
+            sectionId: options?.sectionId ?? null,
+            pinned: false,
+          },
           ...(options?.focusPrompt ? { focusPrompt: true } : {}),
           ...(options?.sectionId !== undefined
             ? { sectionId: options.sectionId }
             : {}),
           ...(options?.environmentId !== undefined
             ? { reuseEnvironmentId: options.environmentId }
+            : {}),
+          ...(typeof options?.hostId === "string" &&
+          options.hostId.trim().length > 0
+            ? { newEnvironmentHostId: options.hostId.trim() }
             : {}),
         };
         navigate(
@@ -320,7 +337,11 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       async setPinned(threadId, pinned) {
         const entry = requireEntry(threadId);
         if ((entry.pinnedAt !== null) === pinned) return;
-        hostActions.togglePin(entry);
+        if (pinned) {
+          await pinThreadAsync({ id: threadId });
+        } else {
+          await unpinThreadAsync({ id: threadId });
+        }
       },
       async setRead(threadId, read) {
         const entry = requireEntry(threadId);
@@ -332,7 +353,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         await updateThreadAsync({ id: threadId, title });
       },
       archive(threadId) {
-        hostActions.archiveThreadAndChildren(requireEntry(threadId));
+        hostActions.requestArchive(requireEntry(threadId));
       },
       requestDelete(threadId) {
         hostActions.requestDelete(requireEntry(threadId));
@@ -343,9 +364,11 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       hostActions,
       isCompact,
       navigate,
+      pinThreadAsync,
       requireEntry,
       setRootComposeProjectId,
       store,
+      unpinThreadAsync,
       updateThreadAsync,
     ],
   );
@@ -417,6 +440,13 @@ export function useSidebarThreadPullRequest(
               url: pullRequest.url,
               state: pullRequest.state,
               attention: pullRequest.attention,
+              experimental_autoMerge: pullRequest.autoMerge,
+              experimental_inMergeQueue: pullRequest.inMergeQueue,
+              experimental_checks: { state: pullRequest.checks.state },
+              experimental_review: { state: pullRequest.review.state },
+              experimental_mergeability: {
+                state: pullRequest.mergeability.state,
+              },
             },
     }),
     [environmentId, pullRequest, query.isPending],

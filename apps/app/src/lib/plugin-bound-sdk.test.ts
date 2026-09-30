@@ -1,8 +1,15 @@
 import type { BbSdkAreas } from "@bb/sdk";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
-import { environmentQueryKey } from "@/hooks/queries/query-keys";
+import {
+  makeEnvironment,
+  makeThreadWithRuntime,
+} from "@bb/test-helpers/domain-fixtures";
+import {
+  environmentQueryKey,
+  threadQueryKey,
+} from "@/hooks/queries/query-keys";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { bindSdkToPlugin, getPluginBoundSdk } from "./plugin-bound-sdk";
 
 function deferred<T>() {
@@ -21,6 +28,9 @@ function makeSdk() {
     fork: vi.fn(async (args: unknown) => args),
     getPluginMetadata: vi.fn(async (args: unknown) => args),
     updatePluginMetadata: vi.fn(async (args: unknown) => args),
+    update: vi.fn(async ({ threadId }: { threadId: string }) =>
+      makeThreadResponse({ id: threadId }),
+    ),
     pin: vi.fn(async (args: unknown) => args),
   };
   const environments = {
@@ -115,6 +125,85 @@ describe("bindSdkToPlugin", () => {
     await bound.threadSections.create({ name: "Later" });
     expect(threads.pin).toHaveBeenCalledWith({ threadId: "thr_1" });
     expect(threadSections.create).toHaveBeenCalledWith({ name: "Later" });
+  });
+
+  it("batches synchronous plugin thread metadata updates into one optimistic transaction", async () => {
+    const { sdk, queryClient, threads } = makeSdk();
+    const pending = new Map<
+      string,
+      ReturnType<typeof deferred<ReturnType<typeof makeThreadResponse>>>
+    >();
+    threads.update.mockImplementation(({ threadId }: { threadId: string }) => {
+      const request = deferred<ReturnType<typeof makeThreadResponse>>();
+      pending.set(threadId, request);
+      return request.promise;
+    });
+    for (const id of ["thr_1", "thr_2"]) {
+      queryClient.setQueryData(
+        threadQueryKey(id),
+        makeThreadWithRuntime({ id, parentThreadId: null }),
+      );
+    }
+    const cancelQueries = vi.spyOn(queryClient, "cancelQueries");
+    const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
+
+    const updates = ["thr_1", "thr_2"].map((threadId) =>
+      bound.threads.update({ threadId, parentThreadId: "thr_parent" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        ["thr_1", "thr_2"].map(
+          (id) =>
+            queryClient.getQueryData<ReturnType<typeof makeThreadWithRuntime>>(
+              threadQueryKey(id),
+            )?.parentThreadId,
+        ),
+      ).toEqual(["thr_parent", "thr_parent"]);
+    });
+    expect(cancelQueries).toHaveBeenCalledTimes(4);
+
+    for (const id of ["thr_1", "thr_2"]) {
+      pending
+        .get(id)
+        ?.resolve(makeThreadResponse({ id, parentThreadId: "thr_parent" }));
+    }
+    await expect(Promise.all(updates)).resolves.toHaveLength(2);
+  });
+
+  it("rolls back a plugin thread metadata batch when one update fails", async () => {
+    const { sdk, queryClient, threads } = makeSdk();
+    threads.update.mockImplementation(({ threadId }: { threadId: string }) =>
+      threadId === "thr_1"
+        ? Promise.resolve(makeThreadResponse({ id: threadId }))
+        : Promise.reject(new Error("update failed")),
+    );
+    for (const id of ["thr_1", "thr_2"]) {
+      queryClient.setQueryData(
+        threadQueryKey(id),
+        makeThreadWithRuntime({ id, sectionId: "section-a" }),
+      );
+    }
+    const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
+
+    const results = await Promise.allSettled(
+      ["thr_1", "thr_2"].map((threadId) =>
+        bound.threads.update({ threadId, sectionId: "section-b" }),
+      ),
+    );
+
+    expect(results.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(
+      ["thr_1", "thr_2"].map(
+        (id) =>
+          queryClient.getQueryData<ReturnType<typeof makeThreadWithRuntime>>(
+            threadQueryKey(id),
+          )?.sectionId,
+      ),
+    ).toEqual(["section-a", "section-a"]);
   });
 
   it.each([

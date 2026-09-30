@@ -7,6 +7,7 @@ import {
   createWorkspaceOpenTargetRuntime,
   listWorkspaceOpenTargetsWithRuntime,
   openPathInTargetWithRuntime,
+  type OpenPathInTargetArgs,
   type WorkspaceOpenTargetRuntime,
 } from "../src/index.js";
 
@@ -52,6 +53,26 @@ interface CreateAvailableExecFileArgs {
   availableExecutables?: string[];
   calls?: ExecFileCall[];
   fileAssociatedMacApplications?: AvailableMacApplication[];
+}
+
+interface TerminalOpenPaths {
+  filePath: string;
+  workspacePath: string;
+}
+
+type TerminalOpenExpectation =
+  | { file: "open"; args: string[] }
+  | { file: "osascript"; fragments: string[] };
+
+interface TerminalOpenCase {
+  name: string;
+  targetId: OpenPathInTargetArgs["targetId"];
+  file: string | null;
+  location: { lineNumber: number; columnNumber: number } | null;
+  bundleIds: string[];
+  executables: string[];
+  warpInstalled: boolean;
+  expected(paths: TerminalOpenPaths): TerminalOpenExpectation;
 }
 
 interface CreateRuntimeArgs {
@@ -1988,140 +2009,194 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("opens local directories in Terminal with a short cd command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({ calls });
-
-    try {
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: workspacePath,
-          targetId: "terminal",
-        },
-        createRuntime({ execFile }),
-      );
-
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain('tell application "Terminal" to do script');
-      expect(script).toContain(`cd '${workspacePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local directories in iTerm2 with a short cd command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+  it.each([
+    {
+      name: "a directory in Terminal with a short cd command",
+      targetId: "terminal",
+      file: null,
+      location: null,
+      bundleIds: [],
+      executables: [],
+      warpInstalled: false,
+      expected: ({ workspacePath }) => ({
+        file: "osascript",
+        fragments: [
+          'tell application "Terminal" to do script',
+          `cd '${workspacePath}'`,
+        ],
+      }),
+    },
+    {
+      name: "a directory in iTerm2 with a short cd command",
+      targetId: "iterm2",
+      file: null,
+      location: null,
+      bundleIds: ["com.googlecode.iterm2"],
+      executables: [],
+      warpInstalled: false,
+      expected: ({ workspacePath }) => ({
+        file: "osascript",
+        fragments: [
+          'tell application "iTerm" to create window with default profile',
+          'tell application "iTerm" to tell current session of current window to write text',
+          `cd '${workspacePath}'`,
+        ],
+      }),
+    },
+    {
+      name: "a file in Terminal with a resolved terminal editor command",
+      targetId: "terminal",
+      file: "src/file.ts",
+      location: { lineNumber: 22, columnNumber: 4 },
+      bundleIds: [],
+      executables: ["vim"],
+      warpInstalled: false,
+      expected: ({ filePath }) => ({
+        file: "osascript",
+        fragments: [
+          'tell application "Terminal" to do script',
+          `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
+        ],
+      }),
+    },
+    {
+      name: "a file in iTerm2 with a resolved terminal editor command",
+      targetId: "iterm2",
+      file: "README.md",
+      location: null,
+      bundleIds: ["com.googlecode.iterm2"],
+      executables: ["vim"],
+      warpInstalled: false,
+      expected: ({ workspacePath, filePath }) => ({
+        file: "osascript",
+        fragments: [
+          'tell application "iTerm" to create window with default profile',
+          'tell application "iTerm" to tell current session of current window to write text',
+          `cd '${workspacePath}' && 'vim' '${filePath}'`,
+        ],
+      }),
+    },
+    {
+      name: "a file in Terminal at the containing directory when no terminal editor is available",
+      targetId: "terminal",
+      file: "README.md",
+      location: { lineNumber: 22, columnNumber: 4 },
+      bundleIds: [],
+      executables: [],
+      warpInstalled: false,
+      expected: ({ workspacePath }) => ({
+        file: "osascript",
+        fragments: [
+          'tell application "Terminal" to do script',
+          `cd '${workspacePath}'`,
+        ],
+      }),
+    },
+    {
+      name: "a file in Warp at the containing directory",
+      targetId: "warp",
+      file: "README.md",
+      location: { lineNumber: 22, columnNumber: 4 },
+      bundleIds: [],
+      executables: [],
+      warpInstalled: true,
+      expected: ({ workspacePath }) => ({
+        file: "open",
+        args: ["-a", "Warp", workspacePath],
+      }),
+    },
+    {
+      name: "a file in Ghostty with a resolved terminal editor command",
+      targetId: "ghostty",
+      file: "src/file.ts",
+      location: { lineNumber: 22, columnNumber: 4 },
+      bundleIds: ["com.mitchellh.ghostty"],
+      executables: ["vim"],
+      warpInstalled: false,
+      expected: ({ filePath }) => ({
+        file: "open",
+        args: [
+          "-na",
+          "Ghostty.app",
+          "--args",
+          "-e",
+          "/bin/zsh",
+          "-lc",
+          `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
+        ],
+      }),
+    },
+    {
+      name: "a file in Ghostty at the containing directory when no terminal editor is available",
+      targetId: "ghostty",
+      file: "README.md",
+      location: { lineNumber: 22, columnNumber: 4 },
+      bundleIds: ["com.mitchellh.ghostty"],
+      executables: [],
+      warpInstalled: false,
+      expected: ({ workspacePath }) => ({
+        file: "open",
+        args: ["-a", "Ghostty", workspacePath],
+      }),
+    },
+  ] satisfies TerminalOpenCase[])("opens $name", async (testCase) => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "bb-workspace-open-targets-"),
+    );
+    const applicationsDirectory = path.join(root, "Applications");
+    const workspacePath = path.join(root, "workspace");
+    const filePath =
+      testCase.file === null
+        ? workspacePath
+        : path.join(workspacePath, testCase.file);
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({
-      availableBundleIdSubstrings: ["com.googlecode.iterm2"],
+      availableBundleIdSubstrings: testCase.bundleIds,
+      availableExecutables: testCase.executables,
       calls,
     });
 
     try {
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: workspacePath,
-          targetId: "iterm2",
-        },
-        createRuntime({ execFile }),
-      );
-
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain(
-        'tell application "iTerm" to create window with default profile',
-      );
-      expect(script).toContain(
-        'tell application "iTerm" to tell current session of current window to write text',
-      );
-      expect(script).toContain(`cd '${workspacePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local files in Terminal with a resolved terminal editor command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "src", "file.ts");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableExecutables: ["vim"],
-      calls,
-    });
-
-    try {
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, "export const value = 1;\n");
+      await mkdir(workspacePath, { recursive: true });
+      if (testCase.file !== null) {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, "export const value = 1;\n");
+      }
+      if (testCase.warpInstalled) {
+        await mkdir(path.join(applicationsDirectory, "Warp.app"), {
+          recursive: true,
+        });
+      }
 
       await openPathInTargetWithRuntime(
         {
           context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
+          columnNumber: testCase.location?.columnNumber ?? null,
+          lineNumber: testCase.location?.lineNumber ?? null,
           path: filePath,
-          targetId: "terminal",
+          targetId: testCase.targetId,
         },
-        createRuntime({ execFile }),
+        createRuntime({
+          applicationDirectories: testCase.warpInstalled
+            ? [applicationsDirectory]
+            : [],
+          execFile,
+        }),
       );
 
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain('tell application "Terminal" to do script');
-      expect(script).toContain(
-        `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
-      );
+      const expected = testCase.expected({ workspacePath, filePath });
+      const call = calls.find((entry) => entry.file === expected.file);
+      if (expected.file === "open") {
+        expect(call).toEqual({ file: "open", args: expected.args });
+        return;
+      }
+      expect(call).toBeDefined();
+      const script = call?.args.join("\n") ?? "";
+      for (const fragment of expected.fragments) {
+        expect(script).toContain(fragment);
+      }
     } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local files in iTerm2 with a resolved terminal editor command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "README.md");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableBundleIdSubstrings: ["com.googlecode.iterm2"],
-      availableExecutables: ["vim"],
-      calls,
-    });
-
-    try {
-      await writeFile(filePath, "# Test\n");
-
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: filePath,
-          targetId: "iterm2",
-        },
-        createRuntime({ execFile }),
-      );
-
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain(
-        'tell application "iTerm" to create window with default profile',
-      );
-      expect(script).toContain(
-        'tell application "iTerm" to tell current session of current window to write text',
-      );
-      expect(script).toContain(`cd '${workspacePath}' && 'vim' '${filePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
+      await rm(root, { force: true, recursive: true });
     }
   });
 
@@ -2157,150 +2232,6 @@ describe("workspace open targets", () => {
       expect(script).toContain(
         `cd '${path.dirname(filePath)}' && 'vim' '--clean' '+call cursor(22,4)' '--' '${filePath}'`,
       );
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local files in Terminal at the containing directory when no terminal editor is available", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "README.md");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({ calls });
-
-    try {
-      await writeFile(filePath, "# Test\n");
-
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "terminal",
-        },
-        createRuntime({ execFile }),
-      );
-
-      const osascriptCall = calls.find((call) => call.file === "osascript");
-      expect(osascriptCall).toBeDefined();
-      const script = osascriptCall?.args.join("\n") ?? "";
-      expect(script).toContain('tell application "Terminal" to do script');
-      expect(script).toContain(`cd '${workspacePath}'`);
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local files in Warp at the containing directory", async () => {
-    const root = await mkdtemp(
-      path.join(tmpdir(), "bb-workspace-open-targets-"),
-    );
-    const applicationsDirectory = path.join(root, "Applications");
-    await mkdir(path.join(applicationsDirectory, "Warp.app"), {
-      recursive: true,
-    });
-    const workspacePath = path.join(root, "workspace");
-    const filePath = path.join(workspacePath, "README.md");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({ calls });
-
-    try {
-      await mkdir(workspacePath, { recursive: true });
-      await writeFile(filePath, "# Test\n");
-
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "warp",
-        },
-        createRuntime({
-          applicationDirectories: [applicationsDirectory],
-          execFile,
-        }),
-      );
-
-      expect(calls.find((call) => call.file === "open")).toEqual({
-        file: "open",
-        args: ["-a", "Warp", workspacePath],
-      });
-    } finally {
-      await rm(root, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local files in Ghostty with a resolved terminal editor command", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "src", "file.ts");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableBundleIdSubstrings: ["com.mitchellh.ghostty"],
-      availableExecutables: ["vim"],
-      calls,
-    });
-
-    try {
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, "export const value = 1;\n");
-
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "ghostty",
-        },
-        createRuntime({ execFile }),
-      );
-
-      expect(calls.find((call) => call.file === "open")).toEqual({
-        file: "open",
-        args: [
-          "-na",
-          "Ghostty.app",
-          "--args",
-          "-e",
-          "/bin/zsh",
-          "-lc",
-          `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
-        ],
-      });
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
-
-  it("opens local files in Ghostty at the containing directory when no terminal editor is available", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "README.md");
-    const calls: ExecFileCall[] = [];
-    const execFile = createAvailableExecFile({
-      availableBundleIdSubstrings: ["com.mitchellh.ghostty"],
-      calls,
-    });
-
-    try {
-      await writeFile(filePath, "# Test\n");
-
-      await openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: 4,
-          lineNumber: 22,
-          path: filePath,
-          targetId: "ghostty",
-        },
-        createRuntime({ execFile }),
-      );
-
-      expect(calls.find((call) => call.file === "open")).toEqual({
-        file: "open",
-        args: ["-a", "Ghostty", workspacePath],
-      });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }

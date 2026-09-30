@@ -12,7 +12,7 @@ import type { AvailableModel, ProviderInfo, ReasoningLevel } from "@bb/domain";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import type { ExperimentalProviderModelPickerValue } from "@get-bb/plugin-sdk";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import {
   modelCatalogCacheKey,
@@ -25,6 +25,7 @@ import {
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginProviderModelPicker } from "./PluginProviderModelPicker";
+import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -123,6 +124,8 @@ function cacheCatalog(
     response,
   );
 }
+
+beforeAll(() => ModelReasoningMenu.preload());
 
 afterEach(() => {
   cleanup();
@@ -403,6 +406,7 @@ describe("PluginProviderModelPicker", () => {
         modelLoadError: {
           providerId: "claude-code",
           code: "failed",
+          detail: null,
         },
       }),
     );

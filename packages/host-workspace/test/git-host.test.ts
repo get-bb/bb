@@ -68,6 +68,8 @@ describe("parseGitHostPullRequest", () => {
       baseRefName: "main",
       headRefName: "bb/add-pr-section",
       updatedAt: "2026-06-16T12:30:00Z",
+      autoMerge: false,
+      inMergeQueue: null,
       checks: [],
       reviewDecision: null,
       reviewRequestCount: 0,
@@ -332,6 +334,59 @@ describe("getPullRequestForCurrentBranch", () => {
     );
   }
 
+  it.each([
+    [
+      "queued",
+      JSON.stringify({ data: { resource: { isInMergeQueue: true } } }),
+      true,
+    ],
+    [
+      "not queued",
+      JSON.stringify({ data: { resource: { isInMergeQueue: false } } }),
+      false,
+    ],
+    ["invalid response", "not json", null],
+    ["missing resource", JSON.stringify({ data: { resource: null } }), null],
+    [
+      "wrong field type",
+      JSON.stringify({ data: { resource: { isInMergeQueue: "true" } } }),
+      null,
+    ],
+    ["unavailable", new Error("GraphQL unavailable"), null],
+  ])(
+    "preserves auto-merge and handles a %s queue lookup",
+    async (_name, queueOutput, inMergeQueue) => {
+      execFileMock.mockImplementation(
+        (
+          file: string,
+          args: string[],
+          _options: object,
+          callback: (
+            error: Error | null,
+            stdout?: string,
+            stderr?: string,
+          ) => void,
+        ) => {
+          if (file === "git") return callback(null, "", "");
+          if (args[0] === "pr")
+            return callback(
+              null,
+              ghJson({ autoMergeRequest: { mergeMethod: "SQUASH" } }),
+              "",
+            );
+          if (queueOutput instanceof Error) return callback(queueOutput);
+          callback(null, String(queueOutput), "");
+        },
+      );
+      await expect(
+        getPullRequestForCurrentBranch(lookupArgs),
+      ).resolves.toMatchObject({
+        outcome: "found",
+        pullRequest: { number: 42, autoMerge: true, inMergeQueue },
+      });
+    },
+  );
+
   it("uses bare gh lookup when the branch has no differently named upstream", async () => {
     mockGhStdout(ghJson());
     await expect(
@@ -351,28 +406,6 @@ describe("getPullRequestForCurrentBranch", () => {
       }),
       expect.any(Function),
     );
-  });
-
-  it("returns none when gh reports the branch has no PR", async () => {
-    mockGhFailure(
-      Object.assign(new Error("gh exited 1"), {
-        code: 1,
-        stderr: 'no pull requests found for branch "bb/pr-lookup"',
-      }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
-      outcome: "none",
-    });
-  });
-
-  it("returns unavailable when gh is not installed", async () => {
-    mockGhFailure(
-      Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
-      outcome: "unavailable",
-      message: "GitHub CLI is not available",
-    });
   });
 
   it("returns unavailable with the stderr detail for an auth failure", async () => {

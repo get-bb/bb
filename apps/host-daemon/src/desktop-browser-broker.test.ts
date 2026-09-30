@@ -23,7 +23,6 @@ const tab = {
   threadId: scope.threadId,
   url: "about:blank",
   title: "",
-  profile: { kind: "personal" },
   presentation: "hidden",
   control: null,
 };

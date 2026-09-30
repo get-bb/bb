@@ -74,37 +74,70 @@ describe("filterReuseThreadOptions", () => {
     matched.map((entry) => entry.environmentId);
 
   it("returns every option for a blank query", () => {
-    expect(ids(filterReuseThreadOptions(options, "   ", [provider]))).toEqual([
-      "env_branch",
-      "env_thread",
-      "env_machine",
-    ]);
+    expect(
+      ids(
+        filterReuseThreadOptions(options, "   ", [provider], (title) => title),
+      ),
+    ).toEqual(["env_branch", "env_thread", "env_machine"]);
   });
 
   it("matches the branch, a thread title, or the machine name", () => {
-    expect(ids(filterReuseThreadOptions(options, "payment", [provider]))).toEqual(
-      ["env_branch", "env_thread"],
-    );
     expect(
-      ids(filterReuseThreadOptions(options, "build-box", [provider])),
+      ids(
+        filterReuseThreadOptions(
+          options,
+          "payment",
+          [provider],
+          (title) => title,
+        ),
+      ),
+    ).toEqual(["env_branch", "env_thread"]);
+    expect(
+      ids(
+        filterReuseThreadOptions(
+          options,
+          "build-box",
+          [provider],
+          (title) => title,
+        ),
+      ),
     ).toEqual(["env_machine"]);
   });
 
   it("ignores case", () => {
-    expect(ids(filterReuseThreadOptions(options, "PAYMENT", [provider]))).toEqual(
-      ["env_branch", "env_thread"],
-    );
+    expect(
+      ids(
+        filterReuseThreadOptions(
+          options,
+          "PAYMENT",
+          [provider],
+          (title) => title,
+        ),
+      ),
+    ).toEqual(["env_branch", "env_thread"]);
   });
 
   it("requires every whitespace-separated term to match", () => {
     expect(
-      ids(filterReuseThreadOptions(options, "payment unrelated", [provider])),
+      ids(
+        filterReuseThreadOptions(
+          options,
+          "payment unrelated",
+          [provider],
+          (title) => title,
+        ),
+      ),
     ).toEqual(["env_thread"]);
   });
 
   it("returns nothing when no option matches", () => {
-    expect(filterReuseThreadOptions(options, "nonexistent", [provider])).toEqual(
-      [],
-    );
+    expect(
+      filterReuseThreadOptions(
+        options,
+        "nonexistent",
+        [provider],
+        (title) => title,
+      ),
+    ).toEqual([]);
   });
 });

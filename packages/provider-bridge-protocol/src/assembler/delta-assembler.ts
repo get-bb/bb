@@ -48,7 +48,7 @@ export interface DiffCumulativeTextResult {
   reset: boolean;
 }
 
-export function diffCumulativeText(
+function diffCumulativeText(
   args: DiffCumulativeTextArgs,
 ): DiffCumulativeTextResult | null {
   const previousText = args.previousText ?? "";

@@ -51,6 +51,69 @@ function mockWindowSelection(args: Parameters<typeof makeWindowSelection>[0]) {
   vi.spyOn(window, "getSelection").mockReturnValue(makeWindowSelection(args));
 }
 
+const SHARED_SELECTION_TEXT = "shared selection phrase";
+
+function renderSharedSelectionReport(count: number) {
+  const onSelect = vi.fn();
+  const { getAllByText } = render(
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <SelectableMessageProse key={index} onSelect={onSelect}>
+          <p>{SHARED_SELECTION_TEXT}</p>
+        </SelectableMessageProse>
+      ))}
+    </>,
+  );
+  const proseNodes = getAllByText(SHARED_SELECTION_TEXT);
+  const firstProse = proseNodes[0];
+  if (firstProse === undefined) {
+    throw new Error("expected at least one mounted message");
+  }
+  const firstTextNode = firstProse.firstChild;
+  if (firstTextNode === null) {
+    throw new Error("expected a text node in the first message");
+  }
+
+  const selection = makeWindowSelection({
+    node: firstTextNode,
+    text: SHARED_SELECTION_TEXT,
+  });
+  const range = selection.getRangeAt(0);
+  const toStringSpy = vi.spyOn(selection, "toString");
+  const clientRectsSpy = vi.spyOn(range, "getClientRects");
+  vi.spyOn(window, "getSelection").mockReturnValue(selection);
+  return { onSelect, proseNodes, toStringSpy, clientRectsSpy };
+}
+
+function makeSelectionWithoutRange() {
+  const rect = new DOMRect(10, 20, 30, 8);
+  const range = {
+    getBoundingClientRect: () => rect,
+    getClientRects: () => ({ length: 1, item: () => rect }),
+    intersectsNode: () => true,
+  } as unknown as Range;
+  const toStringSpy = vi.fn(() => "text");
+  const clientRectsSpy = vi.spyOn(range, "getClientRects");
+  const selection = {
+    anchorNode: null,
+    focusNode: null,
+    getRangeAt: () => range,
+    isCollapsed: false,
+    rangeCount: 0,
+    toString: toStringSpy,
+  } as unknown as Selection;
+  return { clientRectsSpy, selection, toStringSpy };
+}
+
+function makeCollapsedSelection(textNode: Node) {
+  const selection = makeWindowSelection({ node: textNode, text: "Collapsed" });
+  Object.defineProperty(selection, "isCollapsed", { value: true });
+  const range = selection.getRangeAt(0);
+  const toStringSpy = vi.spyOn(selection, "toString");
+  const clientRectsSpy = vi.spyOn(range, "getClientRects");
+  return { clientRectsSpy, selection, toStringSpy };
+}
+
 function waitForAnimationFrame(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => resolve());
@@ -608,5 +671,76 @@ describe("SelectableMessageProse", () => {
     }
 
     view.unmount();
+  });
+
+  it("reads the shared selection and its rect once for a report spanning 50 messages", async () => {
+    const { onSelect, proseNodes, toStringSpy, clientRectsSpy } =
+      renderSharedSelectionReport(50);
+    expect(proseNodes).toHaveLength(50);
+
+    fireEvent(document, new Event("selectionchange"));
+    await waitForAnimationFrame();
+
+    expect(onSelect).toHaveBeenCalledTimes(50);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ text: SHARED_SELECTION_TEXT }),
+    );
+    expect(toStringSpy).toHaveBeenCalledTimes(1);
+    expect(clientRectsSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not read the selection or its rect when there is no range", async () => {
+    render(
+      <SelectableMessageProse onSelect={vi.fn()}>
+        No range message
+      </SelectableMessageProse>,
+    );
+    const { clientRectsSpy, selection, toStringSpy } =
+      makeSelectionWithoutRange();
+    vi.spyOn(window, "getSelection").mockReturnValue(selection);
+
+    fireEvent(document, new Event("selectionchange"));
+    await waitForAnimationFrame();
+
+    expect(toStringSpy).not.toHaveBeenCalled();
+    expect(clientRectsSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not read the selection or its rect for a collapsed caret", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Collapsed caret message
+      </SelectableMessageProse>,
+    );
+    const textNode = getByText("Collapsed caret message").firstChild;
+    if (textNode === null) {
+      throw new Error("expected a text node in the message");
+    }
+    const { clientRectsSpy, selection, toStringSpy } =
+      makeCollapsedSelection(textNode);
+    vi.spyOn(window, "getSelection").mockReturnValue(selection);
+
+    fireEvent(document, new Event("selectionchange"));
+    await waitForAnimationFrame();
+
+    expect(toStringSpy).not.toHaveBeenCalled();
+    expect(clientRectsSpy).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("reads the shared selection and its rect once for a report on one message", async () => {
+    const { onSelect, proseNodes, toStringSpy, clientRectsSpy } =
+      renderSharedSelectionReport(1);
+    expect(proseNodes).toHaveLength(1);
+
+    fireEvent(document, new Event("selectionchange"));
+    await waitForAnimationFrame();
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ text: SHARED_SELECTION_TEXT }),
+    );
+    expect(toStringSpy).toHaveBeenCalledTimes(1);
+    expect(clientRectsSpy).toHaveBeenCalledTimes(1);
   });
 });

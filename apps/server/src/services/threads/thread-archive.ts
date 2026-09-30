@@ -169,44 +169,7 @@ function archiveThreadTrees(
     thread: ArchiveThreadWithLifecycleEffectsArgs["thread"],
   ) => ArchiveThreadEnvironment | null,
 ): string[] {
-  type ArchiveCandidate = Pick<
-    Thread,
-    "id" | "environmentId" | "status" | "archivedAt" | "deletedAt"
-  >;
-  const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
-    .reverse()
-    .map((thread) => ({ thread, expanded: false }));
-  const visited = new Set<string>();
-  const threads: ArchiveCandidate[] = [];
-
-  while (pending.length > 0) {
-    const entry = pending.pop();
-    if (!entry) {
-      break;
-    }
-    const { thread, expanded } = entry;
-    if (expanded) {
-      threads.push(thread);
-      continue;
-    }
-    if (visited.has(thread.id)) {
-      continue;
-    }
-    visited.add(thread.id);
-    pending.push({ thread, expanded: true });
-    const descendants = [
-      ...listLifecycleThreadDependents(deps.db, thread.id),
-      ...listNonDeletedChildThreads(deps.db, {
-        parentThreadId: thread.id,
-      }),
-      ...listNonDeletedHiddenSourceThreads(deps.db, {
-        sourceThreadId: thread.id,
-      }),
-    ];
-    for (const descendant of descendants.reverse()) {
-      pending.push({ thread: descendant, expanded: false });
-    }
-  }
+  const threads = listArchiveCandidates(deps.db, roots);
   for (const root of roots) archiveThread(deps.db, deps.hub, root.id);
   const archivedThreadIds: string[] = [];
 
@@ -233,4 +196,58 @@ function archiveThreadTrees(
   }
 
   return archivedThreadIds;
+}
+
+export function countUnarchivedThreadDescendants(
+  db: AppDeps["db"],
+  thread: Thread,
+): number {
+  return listArchiveCandidates(db, [thread]).filter(
+    (candidate) =>
+      candidate.id !== thread.id &&
+      candidate.deletedAt === null &&
+      candidate.archivedAt === null,
+  ).length;
+}
+
+function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {
+  type ArchiveCandidate = Pick<
+    Thread,
+    "id" | "environmentId" | "status" | "archivedAt" | "deletedAt"
+  >;
+  const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
+    .reverse()
+    .map((thread) => ({ thread, expanded: false }));
+  const visited = new Set<string>();
+  const threads: ArchiveCandidate[] = [];
+
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (!entry) {
+      break;
+    }
+    const { thread, expanded } = entry;
+    if (expanded) {
+      threads.push(thread);
+      continue;
+    }
+    if (visited.has(thread.id)) {
+      continue;
+    }
+    visited.add(thread.id);
+    pending.push({ thread, expanded: true });
+    const descendants = [
+      ...listLifecycleThreadDependents(db, thread.id),
+      ...listNonDeletedChildThreads(db, {
+        parentThreadId: thread.id,
+      }),
+      ...listNonDeletedHiddenSourceThreads(db, {
+        sourceThreadId: thread.id,
+      }),
+    ];
+    for (const descendant of descendants.reverse()) {
+      pending.push({ thread: descendant, expanded: false });
+    }
+  }
+  return threads;
 }

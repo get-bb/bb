@@ -539,6 +539,32 @@ describe("machine retirement", () => {
       expect(getStoredProviderModelCatalog(harness.db, key)).toBeNull();
     }));
 
+  it("announces the removed machine to plugins once", async () =>
+    withTestHarness(async (harness) => {
+      installMachineProvider();
+      const { host } = seedHostSession(harness.deps);
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { allocation: "cancelled" },
+        phase: "active",
+      });
+      const announced = vi.spyOn(
+        harness.pluginService.events,
+        "emitHostDeleted",
+      );
+
+      expect(requestMachineRemoval(harness.deps, host.id)).toBe(true);
+      await sweepProviderMachine(harness.deps, host.id);
+      await sweepProviderMachine(harness.deps, host.id);
+
+      expect(announced).toHaveBeenCalledOnce();
+      expect(announced.mock.calls[0]?.[0]).toMatchObject({
+        id: host.id,
+        phase: "destroyed",
+        destroyedAt: expect.any(Number),
+      });
+    }));
+
   it("retries failed teardown at removeRetryAt", async () =>
     withTestHarness(async (harness) => {
       vi.useFakeTimers({ toFake: ["Date"] });

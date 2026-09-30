@@ -51,6 +51,33 @@ export function shouldReserveMacosTrafficLights({
   return shouldUseMacosDesktopChrome(desktopInfo) && !windowState.isFullScreen;
 }
 
+export const DEFAULT_WINDOW_FIND_TOP_OFFSET = 48;
+
+export function readWindowFindTopOffset(): number {
+  if (typeof window === "undefined") {
+    return DEFAULT_WINDOW_FIND_TOP_OFFSET;
+  }
+  const root = document.documentElement;
+  const rootStyle = window.getComputedStyle(root);
+  const declared = rootStyle
+    .getPropertyValue("--bb-app-chrome-row-height")
+    .trim();
+  const value = Number.parseFloat(declared);
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_WINDOW_FIND_TOP_OFFSET;
+  }
+  if (declared.endsWith("rem")) {
+    const rootFontSize = Number.parseFloat(rootStyle.fontSize);
+    return Math.round(
+      value * (Number.isFinite(rootFontSize) ? rootFontSize : 16),
+    );
+  }
+  if (declared.endsWith("px")) {
+    return Math.round(value);
+  }
+  return DEFAULT_WINDOW_FIND_TOP_OFFSET;
+}
+
 export function getDesktopBrowserApi(): BbDesktopBrowserApi | null {
   return getBbDesktopInfo()?.browser ?? null;
 }

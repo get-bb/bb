@@ -219,6 +219,13 @@ export async function enablePushForProfile(
   return permission;
 }
 
+export function shouldOfferPushPrompt(input: {
+  permission: PushPermissionState;
+  enabled: boolean;
+}): boolean {
+  return input.permission !== "denied" && !input.enabled;
+}
+
 export function describePushStatus(input: {
   profile: PushSyncProfile;
   projectId: string | null;

@@ -9,12 +9,15 @@ export const DESKTOP_BROWSER_IMPORT_SOURCE_IDS = [
   "vivaldi",
   "opera",
   "arc",
+  "dia",
   "firefox",
+  "zen",
   "safari",
 ] as const;
-export const desktopBrowserImportSourceIdSchema = z.enum(
-  DESKTOP_BROWSER_IMPORT_SOURCE_IDS,
-);
+export const desktopBrowserImportSourceIdSchema = z.union([
+  z.enum(DESKTOP_BROWSER_IMPORT_SOURCE_IDS),
+  z.string().regex(/^storage-[a-f0-9]{64}$/),
+]);
 export type DesktopBrowserImportSourceId = z.infer<
   typeof desktopBrowserImportSourceIdSchema
 >;
@@ -108,7 +111,7 @@ const UNAVAILABLE_COPY: Readonly<
   needsKeychainApproval:
     "Needs Keychain access to read its cookie encryption key. Approve the prompt and try again.",
   keychainItemMissing:
-    "No encryption key found in your Keychain. Sign in to that browser once, then try again.",
+    "No matching encryption key was found in your Keychain. Open and sign in to the source browser, then try again. Browsers with custom key names may need additional support.",
   needsFullDiskAccess:
     "Give BB Full Disk Access in System Settings → Privacy & Security, then try again.",
   browserRunning: "Quit the browser first so its cookie database can be read.",

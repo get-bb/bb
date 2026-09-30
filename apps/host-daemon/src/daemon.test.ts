@@ -1,3 +1,4 @@
+import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -269,7 +270,7 @@ describe("daemon lifecycle", () => {
     });
 
     await daemon.start();
-    await daemon.shutdown("self-update", 0);
+    await daemon.shutdown("self-update", HOST_DAEMON_RESTART_EXIT_CODE);
 
     expect(lifecycle).toEqual([
       "flushEvents",
@@ -277,7 +278,7 @@ describe("daemon lifecycle", () => {
       "releaseLock",
       "exitProcess",
     ]);
-    expect(exitProcess).toHaveBeenCalledWith(0);
+    expect(exitProcess).toHaveBeenCalledWith(HOST_DAEMON_RESTART_EXIT_CODE);
   });
 
   it("escalates an active clean shutdown after daemon lock loss", async () => {

@@ -516,7 +516,7 @@ describe("bb thread spawn command output", () => {
     );
   });
 
-  it("bb thread spawn allows sections for hidden workers", async () => {
+  it("bb thread spawn combines sections and pinning for hidden workers", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       sectionId: "sec_work",
       id: "thread-hidden-section",
@@ -537,6 +537,7 @@ describe("bb thread spawn command output", () => {
         "background work",
         "--visibility",
         "hidden",
+        "--pinned",
         "--section",
         "sec_work",
       ],
@@ -546,6 +547,7 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: expect.objectContaining({
         sectionId: "sec_work",
+        pinned: true,
         visibility: "hidden",
       }),
     });

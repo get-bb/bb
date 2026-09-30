@@ -85,7 +85,6 @@ export interface EnvironmentPickerUIProps {
   >;
   selectedProviderHostId?: string | null;
   inputsControlProviderIds?: ReadonlySet<string>;
-  multiMachinePickerEnabled?: boolean;
   onSelectProvider?: (
     provider: SystemEnvironmentProvider,
     hostId: string | null,
@@ -211,7 +210,6 @@ export function EnvironmentPickerUI({
   providersByHostId,
   selectedProviderHostId = null,
   inputsControlProviderIds = NO_INPUTS_CONTROL_PROVIDER_IDS,
-  multiMachinePickerEnabled = false,
   onSelectProvider,
   onSelectHost,
   onSelectReuse,
@@ -241,7 +239,6 @@ export function EnvironmentPickerUI({
   const hostId = availableHost?.id ?? null;
   const hasMultipleMachines = (availableMachines?.hosts.length ?? 0) > 1;
   const showSearch =
-    multiMachinePickerEnabled &&
     hasMultipleMachines &&
     (availableMachines?.hosts.length ?? 0) >=
       MACHINE_CONTEXTUAL_MENU_MIN_OPTIONS;

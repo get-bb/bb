@@ -10,8 +10,8 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "../rows/sidebarRowClasses.js";
 import {
@@ -20,6 +20,7 @@ import {
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
+  sidebarShowProviderIconsAtom,
 } from "../preferences/atoms.js";
 import type { OrganizationMode } from "../../shared/preferences.js";
 
@@ -46,6 +47,7 @@ function setup(
   store.set(sidebarChronologicalSortAtom, "updated");
   store.set(sidebarSortDirectionAtom, "default");
   store.set(sidebarEnvironmentGroupingAtom, "auto");
+  store.set(sidebarShowProviderIconsAtom, false);
   const newThread = vi.fn();
   const newSection = vi.fn();
   render(
@@ -254,6 +256,20 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe(false);
     expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
+  });
+
+  it("toggles provider icons in the Organize Rows group", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "Provider icons",
+    });
+    expect(screen.getByRole("group", { name: "Rows" })).toBeTruthy();
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(store.get(sidebarShowProviderIconsAtom)).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
   });
 
   it("resolves legacy sort, toggles direction, and resets it for another field", async () => {

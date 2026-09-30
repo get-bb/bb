@@ -1,22 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
-import type { Logger } from "@bb/logger";
-import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
-import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
-import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
-import {
-  createPluginService,
-  type PluginService,
-  type PluginServiceDeps,
-} from "../../../src/services/plugins/plugin-service.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
-import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
-import { testLogger, withTestHarness } from "../../helpers/test-app.js";
-
-const logger = testLogger as unknown as Logger;
+import { withTestHarness } from "../../helpers/test-app.js";
 
 const HOST_SOURCE = `
   export default {
@@ -31,7 +18,9 @@ const REGISTER_AI_SERVICE_SOURCE = (id: string): string => `
     bb.experimental_aiServices.register({
       id: ${JSON.stringify(id)},
       displayName: "Acme AI",
-      kinds: ["inference", "voice"],
+      complete: async (prompt) => prompt.toUpperCase(),
+      transcribe: async (audio) => "heard " + audio.name,
+      status: async () => ({ ready: false, message: "Add an API key" }),
     });
   }
 `;
@@ -44,7 +33,7 @@ const REGISTER_AI_SERVICE_AND_PROVIDER_SOURCE = (
     bb.experimental_aiServices.register({
       id: ${JSON.stringify(id)},
       displayName: "Acme AI",
-      kinds: ["inference", "voice"],
+      complete: async () => "reply",
     });`;
   const provider = `
     bb.providers.register({
@@ -99,6 +88,8 @@ async function writePlugin(
   return rootDir;
 }
 
+const ACME_AI = { pluginId: "acme-ai", serviceId: "acme-ai" };
+
 describe("bb.experimental_aiServices.register (server)", () => {
   let workDir: string;
 
@@ -115,35 +106,56 @@ describe("bb.experimental_aiServices.register (server)", () => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-acme-ai",
         serverSource: REGISTER_AI_SERVICE_SOURCE("acme-ai"),
+        withHost: false,
       });
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
-      expect(harness.deps.aiServices.list()).toEqual([
-        {
-          id: "acme-ai",
-          displayName: "Acme AI",
-          kinds: ["inference", "voice"],
-          pluginId: "acme-ai",
-        },
-      ]);
+      const service = harness.deps.aiServices.get(ACME_AI);
+      expect(service).toMatchObject({
+        id: "acme-ai",
+        displayName: "Acme AI",
+        pluginId: "acme-ai",
+        builtin: false,
+      });
+      const signal = new AbortController().signal;
+      await expect(service?.complete?.("hi", { signal })).resolves.toBe("HI");
+      await expect(
+        service?.transcribe?.(new File(["a"], "clip.webm"), {
+          signal,
+          hint: null,
+        }),
+      ).resolves.toBe("heard clip.webm");
+      await expect(harness.deps.aiServices.status(ACME_AI)).resolves.toEqual({
+        ready: false,
+        message: "Add an API key",
+      });
       await harness.pluginService.setEnabled("acme-ai", false);
-      expect(harness.deps.aiServices.get("acme-ai")).toBeNull();
+      expect(harness.deps.aiServices.get(ACME_AI)).toBeNull();
     });
   });
 
-  it("fails the load of a plugin that registers a service without a bb.host entry", async () => {
+  it("fails the load of a plugin whose service answers nothing", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {
-        name: "bb-plugin-hostless-ai",
-        serverSource: REGISTER_AI_SERVICE_SOURCE("hostless-ai"),
+        name: "bb-plugin-empty-ai",
+        serverSource: `
+          export default function plugin(bb: any) {
+            bb.experimental_aiServices.register({ id: "empty-ai", displayName: "Empty" });
+          }
+        `,
         withHost: false,
       });
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("error");
       expect(entry.statusDetail).toContain(
-        'AI service "hostless-ai" needs a bb.host entry to run on: this plugin declares none',
+        'AI service "empty-ai" must declare complete, transcribe, or both',
       );
-      expect(harness.deps.aiServices.get("hostless-ai")).toBeNull();
+      expect(
+        harness.deps.aiServices.get({
+          pluginId: "empty-ai",
+          serviceId: "empty-ai",
+        }),
+      ).toBeNull();
     });
   });
 
@@ -161,7 +173,12 @@ describe("bb.experimental_aiServices.register (server)", () => {
       expect(entry.status).toBe("error");
       expect(entry.statusDetail).toContain("Could not resolve");
       expect(entry.statusDetail).not.toContain("needs a bb.host entry");
-      expect(harness.deps.aiServices.get("broken-host-ai")).toBeNull();
+      expect(
+        harness.deps.aiServices.get({
+          pluginId: "broken-host-ai",
+          serviceId: "broken-host-ai",
+        }),
+      ).toBeNull();
       expect(harness.deps.aiServices.list()).toEqual([]);
     });
   });
@@ -194,7 +211,9 @@ describe("bb.experimental_aiServices.register (server)", () => {
             (provider) => provider.id === id,
           ),
         ).toEqual(expect.objectContaining({ available: false }));
-        expect(harness.deps.aiServices.get(id)).toBeNull();
+        expect(
+          harness.deps.aiServices.get({ pluginId: entry.id, serviceId: id }),
+        ).toBeNull();
         expect(harness.deps.aiServices.list()).toEqual([]);
 
         await writeFile(join(rootDir, "host.ts"), HOST_SOURCE);
@@ -211,181 +230,91 @@ describe("bb.experimental_aiServices.register (server)", () => {
             .list()
             .filter((provider) => provider.info.id === id),
         ).toHaveLength(1);
-        expect(harness.deps.aiServices.get(id)?.pluginId).toBe(entry.id);
+        expect(
+          harness.deps.aiServices.get({ pluginId: entry.id, serviceId: id })
+            ?.displayName,
+        ).toBe("Acme AI");
 
         await harness.pluginService.setEnabled(entry.id, false);
         expect(harness.deps.providerRegistry.get(id)).toBeNull();
-        expect(harness.deps.aiServices.get(id)).toBeNull();
+        expect(
+          harness.deps.aiServices.get({ pluginId: entry.id, serviceId: id }),
+        ).toBeNull();
       });
     },
   );
 
-  it.each(["openai", "anthropic"])(
-    "refuses the reserved server-direct id %j at the register call",
-    async (id) => {
-      await withTestHarness(async (harness) => {
-        const rootDir = await writePlugin(workDir, {
-          name: `bb-plugin-shadow-${id}`,
-          serverSource: REGISTER_AI_SERVICE_SOURCE(id),
-        });
-        const entry = await harness.pluginService.installPath(rootDir);
-        expect(entry.status).toBe("error");
-        expect(entry.statusDetail).toContain(
-          `AI service id "${id}" is reserved: the server serves it directly`,
-        );
-        expect(harness.deps.aiServices.get(id)).toBeNull();
-      });
-    },
-  );
-
-  it("fails a later plugin's load at the register call when another plugin holds the id", async () => {
+  it("lets two plugins register the same service id without shadowing each other", async () => {
     await withTestHarness(async (harness) => {
       const first = await harness.pluginService.installPath(
         await writePlugin(workDir, {
           name: "bb-plugin-first-ai",
-          serverSource: REGISTER_AI_SERVICE_SOURCE("shared-ai"),
+          serverSource: REGISTER_AI_SERVICE_SOURCE("codex"),
         }),
       );
-      expect(first.status).toBe("running");
       const second = await harness.pluginService.installPath(
         await writePlugin(workDir, {
           name: "bb-plugin-second-ai",
-          serverSource: REGISTER_AI_SERVICE_SOURCE("shared-ai"),
+          serverSource: REGISTER_AI_SERVICE_SOURCE("codex"),
         }),
       );
-      expect(second.status).toBe("error");
-      expect(second.statusDetail).toContain(
-        'AI service "shared-ai" is already registered; a plugin cannot shadow an existing service.',
-      );
-      expect(harness.deps.aiServices.get("shared-ai")?.pluginId).toBe(
-        "first-ai",
-      );
-    });
-  });
-});
+      expect(first.status).toBe("running");
+      expect(second.status).toBe("running");
+      expect(
+        harness.deps.aiServices
+          .list()
+          .map((service) => [service.pluginId, service.id]),
+      ).toEqual([
+        ["first-ai", "codex"],
+        ["second-ai", "codex"],
+      ]);
 
-describe("the AI service host binding", () => {
-  let db: DbConnection;
-  let workDir: string;
-  let service: PluginService;
-  let aiServices: ReturnType<typeof createAiServiceRegistry>;
-  const callPluginHost = vi.fn(
-    async (
-      _args: Parameters<NonNullable<PluginServiceDeps["callPluginHost"]>>[0],
-    ): Promise<unknown> => ({
-      ok: true,
-      model: "acme-1",
-      value: { title: "Hello" },
-    }),
-  );
-
-  beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
-    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-ai-binding-test-"));
-    callPluginHost.mockClear();
-    aiServices = createAiServiceRegistry();
-    service = createPluginService({
-      aiServices,
-      telemetry: createNoopTelemetryService(),
-      db,
-      pluginHostArtifacts: new PluginHostArtifactRegistry(),
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      loadTimeoutMs: 2000,
-      callPluginHost,
-      disposePluginHost: async () => undefined,
+      await harness.pluginService.setEnabled("first-ai", false);
+      expect(
+        harness.deps.aiServices.get({
+          pluginId: "second-ai",
+          serviceId: "codex",
+        })?.pluginId,
+      ).toBe("second-ai");
     });
   });
 
-  afterEach(async () => {
-    await service.stop();
-    await rm(workDir, { recursive: true, force: true });
-  });
-
-  it("calls the plugin's host entry with the AI services contract, the caller's budget, and parses the answer", async () => {
-    await service.installPath(
-      await writePlugin(workDir, {
-        name: "bb-plugin-acme-ai",
-        serverSource: REGISTER_AI_SERVICE_SOURCE("acme-ai"),
-      }),
-    );
-    const registration = aiServices.get("acme-ai");
-    if (registration === null) throw new Error("acme-ai did not register");
-    const input = {
-      serviceId: "acme-ai",
-      model: "acme-1",
-      reasoningEffort: "none" as const,
-      prompt: "Generate a title",
-      outputSchema: { type: "object" },
-      timeoutMs: 5_000,
-    };
-    await expect(
-      registration.completeInference(input, {
-        hostId: "host-1",
-        timeoutMs: 6_000,
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      model: "acme-1",
-      value: { title: "Hello" },
-    });
-    expect(callPluginHost).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pluginId: "acme-ai",
-        contract: experimental_aiServicesHostContract,
-        method: "ai.inference.complete",
-        input,
-        hostId: "host-1",
-        timeoutMs: 6_000,
-        artifact: expect.objectContaining({
-          digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+  it("fails the load of a plugin that registers one id twice", async () => {
+    await withTestHarness(async (harness) => {
+      const entry = await harness.pluginService.installPath(
+        await writePlugin(workDir, {
+          name: "bb-plugin-twice-ai",
+          serverSource: `
+            export default function plugin(bb: any) {
+              const complete = async () => "reply";
+              bb.experimental_aiServices.register({ id: "twice", displayName: "Twice", complete });
+              bb.experimental_aiServices.register({ id: "twice", displayName: "Twice again", complete });
+            }
+          `,
+          withHost: false,
         }),
-      }),
-    );
-
-    callPluginHost.mockResolvedValueOnce({ ok: true, text: "no model field" });
-    await expect(
-      registration.transcribeVoice(
-        {
-          serviceId: "acme-ai",
-          model: "acme-ears",
-          audioBase64: "AAAA",
-          mimeType: "audio/webm",
-          filename: "prompt.webm",
-          prompt: null,
-          timeoutMs: 10_000,
-        },
-        { hostId: "host-1", timeoutMs: 11_000 },
-      ),
-    ).rejects.toThrow();
-    expect(callPluginHost).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        method: "ai.voice.transcribe",
-        timeoutMs: 11_000,
-      }),
-    );
+      );
+      expect(entry.status).toBe("error");
+      expect(entry.statusDetail).toContain(
+        'AI service "twice" is already registered by this plugin.',
+      );
+      expect(harness.deps.aiServices.list()).toEqual([]);
+    });
   });
-});
 
-describe("server-direct AI service ids", () => {
-  it("the SDK's static list matches pi-ai's builtin inference providers plus openai transcription", async () => {
-    const { SERVER_DIRECT_AI_SERVICE_IDS } =
-      await import("@get-bb/plugin-sdk/internal/host-policy");
-    const { builtinModels } =
-      await import("@earendil-works/pi-ai/providers/all");
-    const live = new Set<string>([
-      "openai",
-      ...builtinModels()
-        .getProviders()
-        .map((provider) => provider.id),
-    ]);
-    expect([...SERVER_DIRECT_AI_SERVICE_IDS].sort()).toEqual([...live].sort());
+  it("fails the load of a plugin whose service id is a selection mode", async () => {
+    await withTestHarness(async (harness) => {
+      const entry = await harness.pluginService.installPath(
+        await writePlugin(workDir, {
+          name: "bb-plugin-reserved-ai",
+          serverSource: REGISTER_AI_SERVICE_SOURCE("automatic"),
+          withHost: false,
+        }),
+      );
+      expect(entry.status).toBe("error");
+      expect(entry.statusDetail).toContain(
+        'AI service id "automatic" is reserved',
+      );
+    });
   });
 });

@@ -80,6 +80,7 @@ describe("bb provider command output", () => {
         providers: [],
         models: await get(),
         selectedOnlyModels: [],
+        modelLoadError: null,
       })),
     });
 
@@ -110,6 +111,7 @@ describe("bb provider command output", () => {
           isDefault: false,
         },
       ],
+      modelLoadError: null,
     }));
     stubServerApi({ "v1.system.execution-options.$get": get });
 
@@ -155,6 +157,30 @@ describe("bb provider command output", () => {
       query: { environmentId: "env-remote", providerId: "codex" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["[]"]);
+  });
+
+  it("bb provider models reports a model-load failure and its detail on stderr", async () => {
+    const get = vi.fn(async () => ({
+      providers: [],
+      models: [],
+      selectedOnlyModels: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "failed",
+        detail: "bb could not find the Codex CLI on this machine.",
+      },
+    }));
+    stubServerApi({ "v1.system.execution-options.$get": get });
+
+    await runCommand(["provider", "models", "codex"], register);
+
+    expect(vi.mocked(console.error).mock.calls).toEqual([
+      ["Could not load models for codex (failed)"],
+      ["  bb could not find the Codex CLI on this machine."],
+    ]);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "No models available",
+    ]);
   });
 
   it("rejects simultaneous machine and environment selectors", async () => {

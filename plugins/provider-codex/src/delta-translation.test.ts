@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import {
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
   experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  DeltaAssembler,
+  ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { RateLimitSnapshot } from "./generated/codex-app-server/schema/v2/RateLimitSnapshot.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
@@ -22,6 +24,7 @@ import {
   type CodexEventTranslator,
 } from "./translator.js";
 import { codexRateLimitReadResponseSchema } from "./schemas.js";
+import { threadScope, turnScope } from "./event-scope.test-support.js";
 
 const THREAD_ID = "t-codex-translation";
 const ENTROPY = "cx-test";
@@ -220,7 +223,7 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
-  it("translates a failed turn/completed without claiming a fork checkpoint", () => {
+  it("preserves the checkpoint after a failed turn so the next message can be edited", () => {
     const harness = createHarness();
     const events = harness.translate(
       codexEvent("turn/completed", {
@@ -242,9 +245,9 @@ describe("codex turn lifecycle translation", () => {
         scope: turnScope(harness.turnId("turn-1")),
         status: "failed",
         error: { message: "rate limited" },
+        providerCheckpointId: "turn-1",
       }),
     );
-    expect(events[0]).not.toHaveProperty("providerCheckpointId");
   });
 
   it("stamps the codex turn id as providerCheckpointId on completed turns", () => {
@@ -2448,13 +2451,9 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
-  it("hydrates and preserves rate-limit buckets by limit id", () => {
+  it("recovers and preserves rate-limit buckets by limit id", () => {
     const harness = createHarness();
-    const [rateLimitRead] = harness.translator.buildPostInitializeRequests();
-    if (rateLimitRead === undefined) {
-      throw new Error("Expected a Codex rate-limit hydration request");
-    }
-    rateLimitRead.onResult({
+    harness.translator.recoverRateLimits({
       rateLimits: {
         limitId: "codex",
         primary: {
@@ -2598,24 +2597,16 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
-  it("hydrates Codex rate limits before merging truly sparse rolling updates", () => {
+  it("recovers Codex rate limits before merging truly sparse rolling updates", () => {
     const harness = createHarness();
-    const requests = harness.translator.buildPostInitializeRequests();
-    expect(requests).toHaveLength(1);
-    const [rateLimitRead] = requests;
-    if (rateLimitRead === undefined) {
-      throw new Error("Expected a Codex rate-limit hydration request");
-    }
-    expect(rateLimitRead).toMatchObject({
-      plan: { kind: "request", method: "account/rateLimits/read" },
-      required: false,
-    });
-    rateLimitRead.onResult({
+    harness.translator.recoverRateLimits({
+      rateLimitsByLimitId: null,
       rateLimits: {
         limitId: "codex",
         limitName: "Codex",
         primary: {
           usedPercent: 20,
+          windowDurationMins: null,
           resetsAt: 1_781_120_400,
         },
         secondary: {

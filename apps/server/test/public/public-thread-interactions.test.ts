@@ -9,7 +9,7 @@ import type {
   PendingInteractionResolution,
   UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppDeps } from "../../src/types.js";
 import type { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { readJson } from "../helpers/json.js";
@@ -32,11 +32,13 @@ import {
   seedHostSession,
   seedThreadFixture,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import { appendThreadEvent } from "../../src/services/threads/thread-events.js";
 
 function registerPendingInteraction(
@@ -247,6 +249,10 @@ const invalidUserQuestionResolutionCases: InvalidUserQuestionResolutionCase[] =
   ];
 
 describe("public thread interaction routes", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("lists, gets, and resolves thread-owned interactions", async () => {
     await withTestHarness(async (harness) => {
       const { session, project, environment, thread } = seedThreadFixture(
@@ -1216,6 +1222,62 @@ describe("public thread interaction routes", () => {
         id: fileChange.interaction.id,
         status: "resolving",
         resolution: createAllowOnceResolution(),
+      });
+    });
+  });
+
+  it("keeps a pending interaction answerable across a host disconnect", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedThreadFixture(harness, {
+        session: { id: "host-public-thread-interaction-disconnect" },
+        thread: { status: "active" },
+      });
+      const registered = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-disconnect",
+          providerId: "codex",
+          providerThreadId: "provider-thread-disconnect",
+          providerRequestId: "request-disconnect",
+          payload: createFileChangeApprovalPayload({
+            itemId: "item-disconnect",
+            reason: "Approve file changes",
+          }),
+        },
+      );
+      if (registered.outcome === "rejected") {
+        throw new Error(registered.reason);
+      }
+      const interactionUrl = `/api/v1/threads/${thread.id}/interactions/${registered.interaction.id}`;
+      const resolve = () =>
+        harness.app.request(`${interactionUrl}/resolve`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(createAllowOnceResolution()),
+        });
+
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      vi.advanceTimersByTime(10 * 60_000);
+      vi.useRealTimers();
+
+      const offline = await resolve();
+      expect(offline.status).toBe(502);
+      await expect(readJson(offline)).resolves.toMatchObject({
+        code: "host_unavailable",
+      });
+      const stillPending = await harness.app.request(interactionUrl);
+      await expect(readJson(stillPending)).resolves.toMatchObject({
+        status: "pending",
+      });
+
+      seedSession(harness.deps, host.id);
+      const reconnected = await resolve();
+      expect(reconnected.status).toBe(200);
+      await expect(readJson(reconnected)).resolves.toMatchObject({
+        status: "resolving",
       });
     });
   });

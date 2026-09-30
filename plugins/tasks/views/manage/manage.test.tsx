@@ -3,7 +3,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -122,7 +122,8 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (raw: unknown) => {
+            const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -156,7 +157,8 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (raw: unknown) => {
+            const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -200,7 +202,8 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (raw: unknown) => {
+            const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -272,7 +275,8 @@ describe("NewTaskDialog", () => {
               },
             ],
           }),
-          createLabel: (input: Record<string, unknown>) => {
+          createLabel: (raw: unknown) => {
+            const input = rpcInput(raw);
             createLabelCalls.push(input);
             return {
               label: {
@@ -315,7 +319,8 @@ describe("NewTaskDialog drafts", () => {
       sidebarSummary: () => ({ projects: [] }),
       listTasks: () => ({ tasks: [] }),
       listLabels: () => ({ labels: [] }),
-      createTask: (input: Record<string, unknown>) => {
+      createTask: (raw: unknown) => {
+        const input = rpcInput(raw);
         createCalls.push(input);
         return { ok: true, task: createdTask(input) };
       },
@@ -369,8 +374,8 @@ describe("NewTaskDialog drafts", () => {
     const rpc = {
       ...draftRpc(createCalls),
       listProjects: () => ({ projects: [project, otherProject] }),
-      listLabels: ({ projectId }: { projectId: string }) => ({
-        labels: projectId === PROJECT_ID ? [label] : [],
+      listLabels: (raw: unknown) => ({
+        labels: rpcInput(raw).projectId === PROJECT_ID ? [label] : [],
       }),
     };
     const initial = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
@@ -569,9 +574,9 @@ describe("NewTaskDialog attachments", () => {
     sidebarSummary: () => ({ projects: [] }),
     listTasks: () => ({ tasks: [] }),
     listLabels: () => ({ labels: [] }),
-    createTask: (input: Record<string, unknown>) => ({
+    createTask: (input: unknown) => ({
       ok: true,
-      task: createdTask(input),
+      task: createdTask(rpcInput(input)),
     }),
   });
 
@@ -997,7 +1002,8 @@ describe("PresetDialog environment section", () => {
   it("saves the host picker's provider, model, reasoning, and tier together", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const slot = renderManagePresets([presetRow()], {
-      updatePreset: (input: Record<string, unknown>) => {
+      updatePreset: (raw: unknown) => {
+        const input = rpcInput(raw);
         updates.push(input);
         return { preset: { ...presetRow(), ...input } };
       },
@@ -1122,10 +1128,8 @@ describe("Manage folders", () => {
 
     await slot.findByText("Checking what the folder contains…");
     expect(slot.queryByText(/The folder is empty/)).toBeNull();
-    const confirm = slot.getByRole<HTMLButtonElement>("button", {
-      name: "Delete folder",
-    });
-    expect(confirm.disabled).toBe(true);
+    const confirm = slot.getByRole("button", { name: "Delete folder" });
+    expect(confirm).toHaveProperty("disabled", true);
     fireEvent.click(confirm);
     expect(deleteCalls).toHaveLength(0);
 
@@ -1135,9 +1139,8 @@ describe("Manage folders", () => {
     );
     await waitFor(() =>
       expect(
-        slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
-          .disabled,
-      ).toBe(false),
+        slot.getByRole("button", { name: "Delete folder" }),
+      ).toHaveProperty("disabled", false),
     );
     fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
     await waitFor(() => expect(deleteCalls).toHaveLength(1));
@@ -1156,10 +1159,10 @@ describe("Manage folders", () => {
     await slot.findByText(
       "Could not load the folder's contents: projects unavailable",
     );
-    expect(
-      slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
-        .disabled,
-    ).toBe(true);
+    expect(slot.getByRole("button", { name: "Delete folder" })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 
   it("blocks deleting on stale rows after a refresh fails", async () => {
@@ -1195,10 +1198,8 @@ describe("Manage folders", () => {
       "Could not load the folder's contents: projects unavailable",
     );
     expect(slot.queryByText(/move to the top level/)).toBeNull();
-    const confirm = slot.getByRole<HTMLButtonElement>("button", {
-      name: "Delete folder",
-    });
-    expect(confirm.disabled).toBe(true);
+    const confirm = slot.getByRole("button", { name: "Delete folder" });
+    expect(confirm).toHaveProperty("disabled", true);
     fireEvent.click(confirm);
     expect(deleteCalls).toHaveLength(0);
   });

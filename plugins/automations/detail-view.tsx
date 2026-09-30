@@ -16,11 +16,10 @@ import {
   type ExperimentalProviderModelPickerRouting,
   type ExperimentalProviderModelPickerValue,
 } from "@get-bb/plugin-sdk/app";
-import { RUN_STATE_PRESENTATION } from "@bb/domain/update-state";
-import { Button } from "@bb/shared-ui/button";
-import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "@bb/shared-ui/coarse-pointer-visibility";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Button } from "@/components/ui/button";
+import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "@/components/ui/coarse-pointer-visibility";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
+import { Icon, type IconName } from "@/components/ui/icon";
 import {
   ResourceActionButton,
   ResourceActivitySection,
@@ -32,18 +31,18 @@ import {
   ResourceDetailStack,
   ResourceMeta,
   useResourceRouteLabel,
-} from "@bb/shared-ui/resource-list";
-import { Switch } from "@bb/shared-ui/switch";
-import { Textarea } from "@bb/shared-ui/textarea";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { OptionDisplay } from "@bb/shared-ui/option-display";
+} from "@/components/ui/resource-list";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { OptionDisplay } from "@/components/ui/option-display";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { cn, formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/tooltip";
+import { cn, formatHomePathForDisplay } from "@/lib/utils";
 import {
   formatAutomationTrigger,
   formatDetailScheduleStatusLabel,
@@ -369,22 +368,22 @@ const AUTOMATION_RUN_STATUS_VISUALS: Record<
 > = {
   running: {
     label: "Running",
-    icon: RUN_STATE_PRESENTATION["in-progress"].icon as IconName,
+    icon: "Loading",
     className: "animate-spin text-muted-foreground",
   },
   failed: {
-    label: RUN_STATE_PRESENTATION.failed.label,
-    icon: RUN_STATE_PRESENTATION.failed.icon as IconName,
+    label: "Failed",
+    icon: "CircleX",
     className: "text-destructive",
   },
   skipped: {
-    label: RUN_STATE_PRESENTATION.skipped.label,
-    icon: RUN_STATE_PRESENTATION.skipped.icon as IconName,
+    label: "Skipped",
+    icon: "ArrowTurnForward",
     className: "text-subtle-foreground",
   },
   succeeded: {
-    label: RUN_STATE_PRESENTATION.succeeded.label,
-    icon: RUN_STATE_PRESENTATION.succeeded.icon as IconName,
+    label: "Succeeded",
+    icon: "CircleCheck",
     className: "text-success",
   },
 };
@@ -515,6 +514,7 @@ export function AgentAutomationDefinition({
     setPrompt(execution.prompt);
     setProviderModel(providerModelValue(execution));
     setPermissionMode(execution.permissionMode);
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [
     execution.model,
     execution.permissionMode,

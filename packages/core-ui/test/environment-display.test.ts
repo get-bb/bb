@@ -56,6 +56,7 @@ function makeEnvironment(overrides?: Partial<Environment>): Environment {
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: false,
     workspaceProvisionType: null,
     createdAt: 0,
@@ -179,7 +180,7 @@ describe("formatEnvironmentDisplay", () => {
       expect(result.lifecycle).toBe("provisioning");
     });
 
-    it("reports 'Destroyed' for a gone worktree instead of 'Provisioning' (#1789)", () => {
+    it("reports an unavailable environment for a gone worktree instead of 'Provisioning' (#1789)", () => {
       const result = formatEnvironmentDisplay({
         environment: makeEnvironment({
           path: null,
@@ -189,10 +190,31 @@ describe("formatEnvironmentDisplay", () => {
         host: localHostContext,
         providerLookup: worktreeProviderLookup,
       });
-      expect(result.modeLabel).toBe("Destroyed");
-      expect(result.compactModeLabel).toBe("Destroyed");
+      expect(result.modeLabel).toBe("Environment unavailable");
+      expect(result.compactModeLabel).toBe("Environment unavailable");
       expect(result.lifecycle).toBe("destroyed");
     });
+
+    it.each([
+      ["removed", "Unavailable — machine removed"],
+      ["removing", "Machine removal in progress"],
+      ["cleanup-failed", "Machine cleanup failed"],
+    ] as const)(
+      "prioritizes a %s machine over a retained workspace name",
+      (hostLifecycle, label) => {
+        const result = formatEnvironmentDisplay({
+          environment: makeEnvironment({
+            name: "Review workspace",
+            status: "ready",
+            hostLifecycle,
+          }),
+          host: remoteHostContext,
+          providerLookup: noProviderLookup,
+        });
+        expect(result.modeLabel).toBe(label);
+        expect(result.lifecycle).toBe(hostLifecycle);
+      },
+    );
 
     it("keeps a custom name ahead of the lifecycle label", () => {
       const result = formatEnvironmentDisplay({

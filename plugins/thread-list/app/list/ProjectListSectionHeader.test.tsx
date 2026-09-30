@@ -2,9 +2,9 @@
 
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import type {
   PluginSidebarSplitLayout,
   PluginSidebarThreadRowStatus,
@@ -13,8 +13,8 @@ import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import type { SectionThreadDndState } from "../dnd/useSectionThreadDnd.js";
+import { makeSidebarThread } from "../model/fixtures.js";
 
 installTestPluginRuntime();
 const { TopLevelSidebarSection } = await import("./TopLevelSidebarSection.js");
@@ -127,6 +127,45 @@ describe("SidebarControlButton", () => {
 });
 
 describe("TopLevelSidebarSection", () => {
+  it("lets shortcuts escape a focused disclosure while keeping activation local", () => {
+    const onShortcut = vi.fn();
+    const onToggleCollapsed = vi.fn();
+    renderTree(
+      <div onKeyDown={onShortcut}>
+        <TopLevelSidebarSection
+          label="Pinned"
+          collapseControl={{ isCollapsed: false, onToggleCollapsed }}
+        >
+          <div>Pinned thread</div>
+        </TopLevelSidebarSection>
+      </div>,
+    );
+    const disclosure = screen.getByRole("button", {
+      name: "Collapse Pinned section",
+    });
+    disclosure.focus();
+    fireEvent.click(disclosure);
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(disclosure);
+
+    for (const shortcut of [
+      { key: "2", ctrlKey: true },
+      { key: "2", metaKey: true },
+      { key: "[", ctrlKey: true, shiftKey: true },
+      { key: "]", ctrlKey: true, shiftKey: true },
+    ]) {
+      onShortcut.mockClear();
+      fireEvent.keyDown(disclosure, shortcut);
+      expect(onShortcut).toHaveBeenCalledOnce();
+    }
+
+    onShortcut.mockClear();
+    expect(fireEvent.keyDown(disclosure, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(disclosure, { key: " " })).toBe(true);
+    expect(onShortcut).not.toHaveBeenCalled();
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+  });
+
   it("exposes stable identity only for persisted sections", () => {
     const result = renderTree(
       <>
@@ -174,7 +213,13 @@ describe("TopLevelSidebarSection", () => {
   });
 
   it("highlights the whole section only while it is the resolved drop parent", () => {
-    const dragged = makeThreadListEntry({ id: "dragged" });
+    const dragged = makeSidebarThread({
+      id: "dragged",
+      lastReadAt: 100,
+      latestAttentionAt: 100,
+      createdAt: 0,
+      updatedAt: 100,
+    });
 
     expect(renderSectionWithDrag(dndState(null, dragged))).toBeNull();
     expect(
@@ -187,7 +232,13 @@ describe("TopLevelSidebarSection", () => {
   });
 
   it("marks the section a dragged thread already sits in as unchanged", () => {
-    const dragged = makeThreadListEntry({ id: "dragged" });
+    const dragged = makeSidebarThread({
+      id: "dragged",
+      lastReadAt: 100,
+      latestAttentionAt: 100,
+      createdAt: 0,
+      updatedAt: 100,
+    });
 
     expect(
       renderSectionWithDrag(dndState(null, dragged, "section:design")),

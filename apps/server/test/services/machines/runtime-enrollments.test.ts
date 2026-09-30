@@ -205,7 +205,10 @@ describe("production machine enrollment wiring", () => {
           timeoutMs: 100,
           signal: new AbortController().signal,
         }),
-      ).resolves.toEqual({ hostId: enrollment.hostId });
+      ).resolves.toEqual({
+        hostId: enrollment.hostId,
+        hostName: "Runtime machine",
+      });
       await h.pluginService.setEnabled("enrollment-runtime", false);
       expect(() =>
         api.experimental_machines.bootstrap({

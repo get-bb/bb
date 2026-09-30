@@ -225,6 +225,38 @@ describe("imported server boot", () => {
     }
   });
 
+  it("leaves machineServerUrl alone for bb connect moves when bb account holds the pairing", async () => {
+    const { dataDir, db } = await openImportedDataDir();
+    try {
+      setPluginKvValue(
+        db,
+        "bb-account",
+        "credential",
+        JSON.stringify({
+          baseUrl: "https://getbb.test",
+          serverUrl: "https://laptop.getbb.test",
+          serverId: "srv_1",
+          credential: "bbcred_secret",
+        }),
+      );
+      await writeServerImportFile(
+        dataDir,
+        moveMarker({ serverUrl: "https://laptop.getbb.test/" }),
+      );
+
+      await applyServerImportAtBoot({
+        dataDir,
+        db,
+        logger: testLogger,
+        now: 1,
+      });
+
+      expect(getAppSettings(db).machineServerUrl).toBeNull();
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("leaves machineServerUrl alone for bb connect moves", async () => {
     const { dataDir, db } = await openImportedDataDir();
     try {
@@ -646,6 +678,7 @@ describe("manual import completion", () => {
       });
       const app = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: true,
           pending: null,
@@ -684,6 +717,7 @@ describe("pending server mode", () => {
       upsertHost(harness.db, harness.hub, { id: "host-new", name: "Desktop" });
       const pendingApp = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: false,
           pending: {
@@ -793,6 +827,7 @@ describe("pending server mode", () => {
     withTestHarness(async (harness) => {
       const pendingApp = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: false,
           pending: {

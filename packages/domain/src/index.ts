@@ -2,6 +2,7 @@ export * from "./context-snapshot.js";
 export * from "./active-thinking.js";
 export * from "./acp-cli.js";
 export * from "./native-roots.js";
+export * from "./ai-services.js";
 export * from "./app-settings.js";
 export * from "./ui-preferences.js";
 export * from "./app-keybindings.js";
@@ -70,3 +71,5 @@ export * from "./thread-visibility.js";
 export * from "./thread.js";
 
 export * from "./project-attachment.js";
+
+export * from "./mobile-app.js";

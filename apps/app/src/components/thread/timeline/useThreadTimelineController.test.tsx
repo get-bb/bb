@@ -32,7 +32,10 @@ import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { systemRow } from "@/test/fixtures/thread-timeline-rows";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows";
-import { useScrollToSearchedMessage } from "./useScrollToSearchedMessage";
+import {
+  SearchMessageLocationProvider,
+  useScrollToSearchedMessage,
+} from "./useScrollToSearchedMessage";
 import {
   TIMELINE_CONTROLLER_PROPS_WITHOUT_ROWS,
   useThreadTimelineController,
@@ -888,7 +891,9 @@ describe("useThreadTimelineController", () => {
               },
             ]}
           >
-            {children}
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
           </MemoryRouter>
         ),
       });

@@ -147,14 +147,20 @@ function AnimatedExpandablePanelContent({
   const regionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const toggleAnimationDeadlineRef = useRef(0);
-  const isFirstToggleEffectRef = useRef(true);
+  const previousBodyExpandedRef = useRef(isBodyExpanded);
   useBrowserLayoutEffect(() => {
-    if (isFirstToggleEffectRef.current) {
-      isFirstToggleEffectRef.current = false;
-      return;
-    }
+    if (previousBodyExpandedRef.current === isBodyExpanded) return;
+    previousBodyExpandedRef.current = isBodyExpanded;
+    if (typeof ResizeObserver === "undefined") return;
     toggleAnimationDeadlineRef.current =
       performance.now() + EXPANDABLE_PANEL_TRANSITION_MS;
+    const region = regionRef.current;
+    const target = contentRef.current;
+    if (region && target) {
+      const height = target.offsetHeight;
+      region.style.transitionDuration = "";
+      region.style.height = `${height}px`;
+    }
   }, [isBodyExpanded]);
 
   useBrowserLayoutEffect(() => {
@@ -183,8 +189,7 @@ function AnimatedExpandablePanelContent({
       region.style.height = `${heightPx}px`;
     };
 
-    writeHeightSync(readHeightSync(undefined));
-
+    region.style.transitionDuration = "0s";
     if (typeof ResizeObserver === "undefined") {
       return;
     }
@@ -193,7 +198,7 @@ function AnimatedExpandablePanelContent({
       read: readHeightSync,
       write: writeHeightSync,
     });
-  }, [collapsedContent, isBodyExpanded, renderedBody]);
+  }, []);
 
   return (
     <div

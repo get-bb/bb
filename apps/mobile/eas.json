@@ -18,7 +18,8 @@
       }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": { "buildType": "apk", "autoIncrement": true }
     },
     "production": {
       "autoIncrement": true
@@ -26,6 +27,11 @@
   },
   "submit": {
     "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft"
+      },
       "ios": {
         "appleTeamId": "9QCU24SXK5",
         "ascAppId": "6803559210",

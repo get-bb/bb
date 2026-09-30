@@ -4,10 +4,11 @@ import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyRemotePreferenceSignal,
+  attachPreferencesStore,
   flushPreferenceWritesForTest,
   hydratePreferences,
   hydratePreferencesFromMirror,
-  PREFERENCES_MIRROR_STORAGE_KEY,
+  preferencesMirrorStorageKey,
   preferencesReadyAtom,
   resetPreferencesSyncForTest,
   setPreferencesMirrorStorageForTest,
@@ -50,12 +51,15 @@ function memoryStorage(): Storage {
   };
 }
 
+const MIRROR_KEY = preferencesMirrorStorageKey("thread-list");
+
 let mirror: Storage;
 
 beforeEach(() => {
   vi.useFakeTimers();
   mirror = memoryStorage();
   setPreferencesMirrorStorageForTest(mirror);
+  attachPreferencesStore(getDefaultStore(), "thread-list");
 });
 
 afterEach(() => {
@@ -73,22 +77,39 @@ describe("preferences sync", () => {
     expect(store.get(preferencesReadyAtom())).toBe(true);
     expect(store.get(modeAtom)).toBe("machine");
     expect(
-      JSON.parse(mirror.getItem(PREFERENCES_MIRROR_STORAGE_KEY) ?? "{}")
+      JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}")
         .organizationMode,
     ).toBe("machine");
   });
 
   it("paints from the mirror before the server answers and ignores junk in it", () => {
     mirror.setItem(
-      PREFERENCES_MIRROR_STORAGE_KEY,
+      MIRROR_KEY,
       JSON.stringify({ organizationMode: "project", chronologicalSort: "nonsense" }),
     );
     const store = getDefaultStore();
     expect(hydratePreferencesFromMirror()).toBe(true);
     expect(store.get(createSyncedPreferenceAtom("organizationMode"))).toBe("project");
     expect(store.get(createSyncedPreferenceAtom("chronologicalSort"))).toBe("updated");
-    mirror.setItem(PREFERENCES_MIRROR_STORAGE_KEY, "{not json");
+    mirror.setItem(MIRROR_KEY, "{not json");
     expect(hydratePreferencesFromMirror()).toBe(false);
+  });
+
+  it("keys the mirror by plugin id, so a renamed copy keeps its own layout", async () => {
+    expect(MIRROR_KEY).toBe("bb.thread-list.preferences.v1");
+    mirror.setItem(MIRROR_KEY, JSON.stringify({ organizationMode: "project" }));
+    attachPreferencesStore(getDefaultStore(), "my-sidebar");
+
+    expect(hydratePreferencesFromMirror()).toBe(false);
+    await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
+
+    expect(
+      JSON.parse(mirror.getItem("bb.my-sidebar.preferences.v1") ?? "{}")
+        .organizationMode,
+    ).toBe("machine");
+    expect(JSON.parse(mirror.getItem(MIRROR_KEY) ?? "{}").organizationMode).toBe(
+      "project",
+    );
   });
 
   it("applies a local write immediately and coalesces the server write", async () => {
@@ -144,9 +165,8 @@ describe("preferences sync", () => {
 describe("preferences sync with a provided store", () => {
   it("reads and writes the attached store instead of the default one", async () => {
     const { createStore } = await import("jotai");
-    const { attachPreferencesStore } = await import("./preferences-sync.js");
     const custom = createStore();
-    attachPreferencesStore(custom);
+    attachPreferencesStore(custom, "thread-list");
     const modeAtom = createSyncedPreferenceAtom("organizationMode");
     await hydratePreferences(fakeRpc({ organizationMode: "machine" }));
     expect(custom.get(preferencesReadyAtom())).toBe(true);

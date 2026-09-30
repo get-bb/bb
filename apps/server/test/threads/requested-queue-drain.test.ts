@@ -5,6 +5,7 @@ import {
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
+import { turnRequestEventDataSchema } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -124,6 +125,72 @@ async function stopThread(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the requested queue drain", () => {
+  it("keeps child interruption details when an offline parent notice dispatches", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread, environment } = seedRunnableThread(harness, {
+        hostId: "host-child-outcome-notice",
+        status: "idle",
+      });
+      createQueuedThreadMessage(harness.db, harness.deps.hub, {
+        threadId: thread.id,
+        content: textInput(
+          "Child was interrupted because its host connection was lost.",
+        ),
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+        senderThreadId: null,
+        waitingOn: { kind: "host-offline", hostName: "Test Host" },
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: {
+          kind: "child-interrupted",
+          subject: {
+            kind: "thread",
+            threadId: "thr_child",
+            threadName: "Worker child",
+            outcomes: [
+              {
+                threadId: "thr_child",
+                status: "interrupted",
+                interruption: {
+                  reason: "host-daemon-restarted",
+                  cause: "host-connection-lost",
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "host-connected",
+        hostId: environment.hostId,
+      });
+
+      const requests = turnRequests(harness, thread.id)
+        .map((event) =>
+          turnRequestEventDataSchema.parse(JSON.parse(event.data)),
+        )
+        .filter((event) => event.initiator === "system");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.systemMessageSubject).toMatchObject({
+        outcomes: [
+          {
+            threadId: "thr_child",
+            status: "interrupted",
+            interruption: {
+              reason: "host-daemon-restarted",
+              cause: "host-connection-lost",
+            },
+          },
+        ],
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
   it("preserves user, agent, and system senders in queue API responses", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedRunnableThread(harness, {

@@ -40,6 +40,23 @@ describe("bb thread list command output", () => {
     });
   });
 
+  it("bb thread list accepts a removed machine ID without looking it up among active machines", async () => {
+    const list = vi.fn(async () => []);
+    const hosts = vi.fn(async () => []);
+    stubServerApi({
+      "v1.threads.$get": list,
+      "v1.hosts.$get": hosts,
+    });
+
+    await runCommand(
+      ["thread", "list", "--machine", "host_removed123", "--json"],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({ query: { hostId: "host_removed123" } });
+    expect(hosts).not.toHaveBeenCalled();
+  });
+
   it("bb thread list opts into hidden threads explicitly", async () => {
     const list = vi.fn(async () => []);
     stubServerApi({ "v1.threads.$get": list });

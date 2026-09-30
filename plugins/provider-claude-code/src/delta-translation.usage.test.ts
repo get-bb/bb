@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { turnScope } from "@bb/domain";
 import {
   TURN_1,
   createClaudeDeltaHarness,
   loadFixture,
+  turnScope,
 } from "./delta-test-harness.js";
 
 describe("claude usage and fixture translation (delta path)", () => {

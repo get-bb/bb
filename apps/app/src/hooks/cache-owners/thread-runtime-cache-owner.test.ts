@@ -57,7 +57,6 @@ function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
     updatedAt: 1,
     runtime: {
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     },
     activity: {
       activeWorkflowCount: 0,
@@ -837,7 +836,6 @@ describe("thread runtime cache owner", () => {
       updatedAt: 1,
       runtime: {
         displayStatus: "provisioning",
-        hostReconnectGraceExpiresAt: null,
       },
     };
     queryClient.setQueryData(
@@ -907,7 +905,6 @@ describe("thread runtime cache owner", () => {
       updatedAt: 1,
       runtime: {
         displayStatus: "provisioning",
-        hostReconnectGraceExpiresAt: null,
       },
     };
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
@@ -1089,7 +1086,7 @@ describe("thread runtime cache owner", () => {
       id: "thread-1",
       status: "idle",
       updatedAt: 1,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
     });
     queryClient.setQueryData(
       threadTimelineQueryKey("thread-1"),
@@ -1160,7 +1157,7 @@ describe("thread runtime cache owner", () => {
       id: "thread-1",
       status: "idle",
       updatedAt: 1,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
     };
     queryClient.setQueryData(threadQueryKey("thread-1"), previousThread);
     queryClient.setQueryData(
@@ -1189,7 +1186,6 @@ describe("thread runtime cache owner", () => {
       updatedAt: 5,
       runtime: {
         displayStatus: "provisioning",
-        hostReconnectGraceExpiresAt: null,
       },
     };
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
@@ -1234,7 +1230,7 @@ describe("thread runtime cache owner", () => {
     queryClient.setQueryData(threadQueryKey("thread-1"), {
       id: "thread-1",
       status: "idle",
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
     });
     const promptHistoryQueryFn = vi.fn(async () => []);
     const defaultExecutionOptionsQueryFn = vi.fn(async () => null);
@@ -1306,7 +1302,6 @@ describe("thread runtime cache owner", () => {
       updatedAt: 1,
       runtime: {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
     };
     queryClient.setQueryData(threadQueryKey("thread-1"), activeThread);

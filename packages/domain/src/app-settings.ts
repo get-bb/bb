@@ -25,6 +25,7 @@ export const appSettingsSchema = z
       completedTurnDisplaySchema,
     ),
     streamerMode: z.boolean(),
+    allowFastServiceTier: z.boolean(),
     telemetryEnabled: z.boolean(),
     managedBranchPrefix: managedBranchPrefixSchema,
     machineServerUrl: z
@@ -53,6 +54,7 @@ export const defaultAppSettings: AppSettings = {
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
   streamerMode: false,
+  allowFastServiceTier: true,
   telemetryEnabled: true,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
   machineServerUrl: null,
@@ -60,12 +62,16 @@ export const defaultAppSettings: AppSettings = {
   machineGitCredentialsEnabled: true,
 };
 
+export const disabledProviderIdsSchema = z.array(z.string().min(1));
+
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
+    allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
   }),

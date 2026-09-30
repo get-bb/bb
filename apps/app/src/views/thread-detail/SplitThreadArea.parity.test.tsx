@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { LazyThreadDetailView } from "./LazyThreadDetailView";
+
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { SplitThreadArea } from "./SplitThreadArea";
+
+beforeAll(() => LazyThreadDetailView.preload());
 
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: (props: { threadId?: string }) => (
@@ -59,7 +64,9 @@ function renderArea(layout: SplitLayout) {
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects/p1/threads/t1"]}>
-          <SplitThreadArea />
+          <RouteNavigationProvider>
+            <SplitThreadArea />
+          </RouteNavigationProvider>
         </MemoryRouter>
       </QueryClientProvider>
     </Provider>,

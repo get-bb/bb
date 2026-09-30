@@ -255,7 +255,6 @@ export function OfflineMachine() {
           providers={STORY_ENVIRONMENT_PROVIDERS}
           selectedProviderHostId={offlineBuildHost.id}
           onSelectProvider={noop}
-          multiMachinePickerEnabled
           machines={{
             hosts: contextualMachineHosts,
             localDaemonHostId: HOST_IDS.local,
@@ -287,7 +286,6 @@ export function MachineNeedsSetup() {
             primaryHostId: HOST_IDS.local,
           }}
           onRequestMachineSetup={noop}
-          multiMachinePickerEnabled
           defaultOpen
           modal={false}
         />
@@ -310,7 +308,6 @@ export function ManyMachines() {
       isLocal={false}
       providers={STORY_ENVIRONMENT_PROVIDERS}
       onSelectProvider={noop}
-      multiMachinePickerEnabled
       machines={{
         hosts,
         localDaemonHostId: null,
@@ -435,7 +432,6 @@ export function MachineSearchReuse() {
           onSelectProvider={noop}
           onSelectHost={noop}
           onSelectReuse={noop}
-          multiMachinePickerEnabled
           machines={{
             hosts,
             localDaemonHostId: null,

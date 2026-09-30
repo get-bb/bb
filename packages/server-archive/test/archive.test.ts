@@ -75,6 +75,11 @@ async function createSourceTree(): Promise<SourceTree> {
       mode: 0o755,
     },
     {
+      archivePath: `attachments/proj_test/${"long-attachment-name-".repeat(6)}.svg`,
+      body: Buffer.from("<svg/>"),
+      mode: 0o644,
+    },
+    {
       archivePath: "attachments/café/übersicht.txt",
       body: Buffer.from("unicode"),
       mode: 0o644,

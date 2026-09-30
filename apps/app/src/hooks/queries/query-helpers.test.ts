@@ -164,7 +164,6 @@ function makeThreadResponse(
     environmentId: "env-1",
     runtime: {
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     },
     canSpawnChild: false,
     ...thread,
@@ -536,8 +535,27 @@ describe("optimisticallyInsertThread", () => {
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey) ?? [];
     expect(thread?.runtime).toEqual({
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     });
+  });
+
+  it("places a new thread on its selected machine in the first cached sidebar row", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(),
+    );
+
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse(),
+      "host-selected",
+    );
+
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.environmentHostId,
+    ).toBe("host-selected");
   });
 
   it("projects queued work into the thread list and sidebar immediately", () => {
@@ -584,7 +602,6 @@ describe("optimisticallyInsertThread", () => {
       makeThreadResponse({
         runtime: {
           displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
         },
       }),
     );

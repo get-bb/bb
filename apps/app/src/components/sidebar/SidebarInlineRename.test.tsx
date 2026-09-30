@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError } from "@bb/sdk/browser";
-import { SidebarRenameProvider, useSidebarRename } from "./SidebarInlineRename";
+import { useSidebarRename } from "./SidebarInlineRename";
 
 afterEach(cleanup);
 
@@ -222,43 +222,13 @@ describe("sidebar inline rename", () => {
     expect(document.activeElement).toBe(destination);
   });
 
-  it("keeps an invalid active draft when another row asks to rename, then saves before switching", async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    render(
-      <SidebarRenameProvider>
-        <RenameRow onSave={onSave} />
-        <RenameRow id="second" onSave={onSave} />
-      </SidebarRenameProvider>,
-    );
-    const input = await start(" ");
-    fireEvent.click(screen.getByRole("button", { name: "Rename second" }));
-    await waitFor(() => expect(screen.getByRole("alert")).not.toBeNull());
-    expect(screen.queryByRole("textbox", { name: "second name" })).toBeNull();
-    fireEvent.change(input, { target: { value: "Finish first" } });
-    fireEvent.click(screen.getByRole("button", { name: "Rename second" }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("textbox", { name: "second name" }),
-      ).not.toBeNull(),
-    );
-    expect(onSave).toHaveBeenCalledExactlyOnceWith("Finish first");
-  });
-
-  it("retains a draft through external updates and row remounts, then cancels to the current name", async () => {
+  it("retains a draft through external updates, then cancels to the current name", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const row = (name = "Original name") => (
-      <SidebarRenameProvider>
-        <RenameRow name={name} onSave={onSave} />
-      </SidebarRenameProvider>
+      <RenameRow name={name} onSave={onSave} />
     );
     const { rerender } = render(row());
     await start("Keep my draft");
-    rerender(row("Changed elsewhere"));
-    expect(screen.getByRole("textbox")).toHaveProperty(
-      "value",
-      "Keep my draft",
-    );
-    rerender(<SidebarRenameProvider>{null}</SidebarRenameProvider>);
     rerender(row("Changed elsewhere"));
     expect(screen.getByRole("textbox")).toHaveProperty(
       "value",

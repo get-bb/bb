@@ -2,24 +2,36 @@
   "extends": ["//"],
   "tasks": {
     "typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
     },
     "build": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "@bb/cli#build"],
       "cache": false
     },
     "test": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ],
       "cache": false
     },
     "smoke": {
       "cache": false,
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
+      "dependsOn": ["@get-bb/plugin-sdk#build"],
       "passThroughEnv": ["DEV_BROWSER_SMOKE_BINARY", "DEV_BROWSER_SMOKE_CHROME"]
     },
     "smoke:install": {
       "cache": false,
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
+      "dependsOn": ["@get-bb/plugin-sdk#build"],
       "passThroughEnv": ["DEV_BROWSER_SMOKE_CHROME"]
     }
   }

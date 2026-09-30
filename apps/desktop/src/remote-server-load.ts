@@ -1,11 +1,11 @@
-import { BUILTIN_SERVER_NAME } from "./server-target.js";
+import type { StartupAction } from "./local-view.js";
 
 const ELECTRON_LOAD_ERROR_CODE = /\bERR_[A-Z_]+ \(-?\d+\)/u;
 
 interface RemoteServerStartupError {
+  actions: StartupAction[];
   details: string;
   logs: string;
-  retryable: boolean;
   title: string;
 }
 
@@ -47,13 +47,14 @@ export async function loadRemoteServerPage(
       `[desktop] could not load ${label}: ${formatLoadFailure(error)}`,
     );
     await args.loadStartupError({
+      actions: [
+        { id: "retry", label: "Try again" },
+        { id: "choose-server", label: "Choose server…" },
+      ],
       details:
         `${label.charAt(0).toUpperCase()}${label.slice(1)} did not answer. ` +
-        "Check that the machine is awake and reachable, then choose " +
-        "Window ▸ Server to retry this server or switch to " +
-        `${BUILTIN_SERVER_NAME}.`,
+        "Check that the machine is awake and reachable.",
       logs: "",
-      retryable: true,
       title: "Could not reach this bb server",
     });
     return false;

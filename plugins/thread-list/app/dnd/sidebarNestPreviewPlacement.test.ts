@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
-import { buildPinnedSidebarState } from "@bb/client-core";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
+import {
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
 import { resolveSidebarNestPreviewBeforeKey } from "./sidebarNestPreviewPlacement.js";
 
-function makeThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
-  return makeThreadListEntry({ status: "idle", ...overrides });
+function makeThread(overrides: SidebarThreadOverrides): SidebarThread {
+  return makeSidebarThread({
+    status: "idle",
+    lastReadAt: 100,
+    latestAttentionAt: 100,
+    createdAt: 0,
+    updatedAt: 100,
+    ...overrides,
+  });
 }
 
 const parent = makeThread({ id: "thr_parent", latestAttentionAt: 500 });
@@ -20,7 +30,7 @@ const olderChild = makeThread({
   latestAttentionAt: 100,
 });
 
-function resolve(dragged: ThreadListEntry, threads: ThreadListEntry[]) {
+function resolve(dragged: SidebarThread, threads: SidebarThread[]) {
   return resolveSidebarNestPreviewBeforeKey({
     activeThread: dragged,
     compareThreads: undefined,

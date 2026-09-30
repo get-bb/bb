@@ -108,7 +108,7 @@ def collect(repo):
     add('app-and-shared-ui', under('apps/app/src/', 'packages/client-core/src/', 'packages/shared-ui/src/'), CORE_PAGES)
     add('domain-contracts', under('packages/domain/src/'), CORE_PAGES)
     add('public-api-and-sdk', under('packages/server-contract/src/', 'packages/sdk/src/'), CORE_PAGES, True)
-    add('plugin-sdk-and-guide', under('packages/plugin-sdk/src/', 'packages/plugin-api-map/src/'), ['extensions', 'plugin-plugin-api-docs', 'developer-fixtures'])
+    add('plugin-sdk-and-guide', under('packages/plugin-sdk/src/', 'plugins/plugin-api-docs/src/'), ['extensions', 'plugin-plugin-api-docs', 'developer-fixtures'])
     for manifest in sorted((repo / 'plugins').glob('*/package.json')):
         data = json.loads(manifest.read_text())
         if 'bb' not in data:

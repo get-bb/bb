@@ -10,7 +10,11 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type { ProviderModelCatalogScope } from "@bb/domain";
 import type { QueryClient } from "@tanstack/react-query";
-import { hostsQueryKey, systemProvidersQueryKey } from "./queries/query-keys";
+import {
+  hostsQueryKey,
+  systemConfigQueryKey,
+  systemProvidersQueryKey,
+} from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { useThreadCreationOptions } from "./useThreadCreationOptions";
 import {
@@ -363,6 +367,7 @@ describe("useThreadCreationOptions", () => {
         modelLoadError: {
           providerId: "codex",
           code: "provider_unavailable",
+          detail: null,
         },
       });
     });
@@ -372,6 +377,7 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.modelLoadError).toEqual({
         providerId: "codex",
         code: "provider_unavailable",
+        detail: null,
       });
       expect(
         result.current.providerOptions.map((option) => option.value),
@@ -649,6 +655,31 @@ describe("useThreadCreationOptions", () => {
     expect(result.current.serviceTier).toBe("fast");
     rerender({ tier: "default", threadId: "thr_two" });
     expect(result.current.serviceTier).toBe("default");
+  });
+
+  it("hides fast mode and resolves a saved fast choice to default while disallowed", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(systemConfigQueryKey(), {
+      generalSettings: { allowFastServiceTier: false },
+    });
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialServiceTier: "fast",
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID),
+    );
+    expect(result.current.supportsServiceTier).toBe(false);
+    expect(result.current.serviceTier).toBe("default");
+    expect(
+      result.current.serviceTierSupportByProvider[GLOBAL_PROVIDER_ID],
+    ).toBe(false);
   });
 
   it("keeps provider selections local in component-local composers", async () => {
@@ -1124,7 +1155,11 @@ describe("useThreadCreationOptions", () => {
   it("keeps an existing model when provider discovery fails temporarily", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValueOnce({
       ...executionOptionsResponse(),
-      modelLoadError: { providerId: GLOBAL_PROVIDER_ID, code: "failed" },
+      modelLoadError: {
+        providerId: GLOBAL_PROVIDER_ID,
+        code: "failed",
+        detail: null,
+      },
     });
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(

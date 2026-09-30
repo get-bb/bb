@@ -9,7 +9,7 @@ export function manualEnrollmentCommand(
 ): string {
   const header = `X-BB-Enrollment: ${bootstrap.credential}`;
   const installerUrl = new URL("/install.sh", bootstrap.serverUrl).href;
-  return `curl -fsSL -H ${quote(header)} ${quote(installerUrl)} | sh`;
+  return `curl -sSL --fail-with-body -H ${quote(header)} ${quote(installerUrl)} | sh`;
 }
 
 export function enrolledInstallerScript(

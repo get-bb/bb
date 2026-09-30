@@ -205,4 +205,65 @@ describe("workspace path discovery", () => {
     expect(alpha.paths.map((entry) => entry.path)).toEqual(["alpha.md"]);
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);
   });
+
+  it("skips excluded names at any depth and never lists .git", async () => {
+    const root = await createRoot();
+    await write(root, ".git/HEAD");
+    await write(root, "node_modules/pkg/index.js");
+    await write(root, "apps/web/.turbo/log");
+    await write(root, "apps/web/.DS_Store");
+    await write(root, "apps/web/index.ts");
+    const listPaths = async (excludeNames: string[]) =>
+      (
+        await listWorkspacePaths({
+          ...listingArgs(root),
+          respectGitIgnore: false,
+          excludeNames,
+        })
+      )
+        .map((entry) => entry.path)
+        .sort();
+
+    expect(await listPaths(["node_modules", ".turbo", ".DS_Store"])).toEqual([
+      "apps",
+      "apps/web",
+      "apps/web/index.ts",
+    ]);
+    expect(await listPaths([])).toEqual([
+      "apps",
+      "apps/web",
+      "apps/web/.DS_Store",
+      "apps/web/.turbo",
+      "apps/web/.turbo/log",
+      "apps/web/index.ts",
+      "node_modules",
+      "node_modules/pkg",
+      "node_modules/pkg/index.js",
+    ]);
+  });
+
+  it("does not overflow the call stack merging a large subdirectory", async () => {
+    const root = await createRoot();
+    const nested = path.join(root, "many");
+    await fs.mkdir(nested, { recursive: true });
+    const fileCount = 150_000;
+    const batchSize = 500;
+    for (let start = 0; start < fileCount; start += batchSize) {
+      const end = Math.min(start + batchSize, fileCount);
+      await Promise.all(
+        Array.from({ length: end - start }, (_, offset) =>
+          fs.writeFile(path.join(nested, `f${start + offset}.txt`), ""),
+        ),
+      );
+    }
+
+    const result = await listWorkspacePaths({
+      ...listingArgs(root),
+      includeDirectories: false,
+      includeHidden: false,
+      respectGitIgnore: false,
+    });
+
+    expect(result).toHaveLength(fileCount);
+  }, 60_000);
 });

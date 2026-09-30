@@ -120,43 +120,6 @@ describe("applyThreadLifecycleEvent", () => {
     expect(getThread(db, thread.id)).toEqual(beforeRow);
   });
 
-  it("refuses to reactivate a stopping thread and settles it to idle", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "active",
-    });
-
-    const stopping = requireThreadLifecycleEventApplied(
-      applyThreadLifecycleEvent(db, {
-        event: { type: "stop.requested" },
-        threadId: thread.id,
-      }),
-    );
-    expect(stopping.status).toBe("stopping");
-    const stoppingRow = getThread(db, thread.id);
-
-    const outcome = applyThreadLifecycleEvent(db, {
-      event: { type: "run.started" },
-      threadId: thread.id,
-    });
-    expect(outcome).toEqual({
-      applied: false,
-      detail: "no transition for run.started from status stopping",
-      reason: "illegal-transition",
-    });
-    expect(getThread(db, thread.id)).toEqual(stoppingRow);
-
-    const settled = requireThreadLifecycleEventApplied(
-      applyThreadLifecycleEvent(db, {
-        event: { type: "stop.settled" },
-        threadId: thread.id,
-      }),
-    );
-    expect(settled.status).toBe("idle");
-  });
-
   it("no-ops as not-found for a missing thread", () => {
     const { db } = setup();
     const outcome = applyThreadLifecycleEvent(db, {

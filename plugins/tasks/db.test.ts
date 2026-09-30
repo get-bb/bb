@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import { createTasksStore, TasksPageCursorError } from "./db";
+import {
+  createTasksStore,
+  type CreatePresetInput,
+  TasksPageCursorError,
+} from "./db";
 
 function setup() {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks-db-test" });
@@ -804,14 +808,14 @@ describe("tasks storage", () => {
   it("rejects duplicate preset names", async () => {
     const { harness, store } = setup();
     try {
-      const preset = {
+      const preset: CreatePresetInput = {
         name: "Default",
         providerId: "openai",
         modelId: "gpt-5",
         reasoningLevel: "high",
         serviceTier: null,
         permissionMode: "accept-edits",
-        environmentKind: "project-default" as const,
+        environmentKind: "project-default",
         baseBranch: null,
         machineId: null,
         instructions: "Work the task.",

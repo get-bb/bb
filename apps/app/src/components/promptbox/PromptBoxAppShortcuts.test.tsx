@@ -236,7 +236,7 @@ describe("prompt editor app shortcuts", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it("clears the keyboard hint when the composer runs a shortcut", () => {
+  it("keeps the keyboard hint until modifier release when the composer runs a shortcut", () => {
     vi.useFakeTimers();
     try {
       const editor = renderComposer(<ShortcutHintState />);
@@ -251,6 +251,10 @@ describe("prompt editor app shortcuts", () => {
       });
 
       expect(testState.calls).toEqual(["sidebar.toggle"]);
+      expect(screen.getByText("hint-held")).toBeDefined();
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
+      });
       expect(screen.getByText("hint-released")).toBeDefined();
     } finally {
       vi.useRealTimers();

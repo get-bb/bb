@@ -10,7 +10,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -18,12 +18,12 @@ import {
   useAtomValue,
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
-import {
-  buildMachineThreadGroups,
-  type CollapsibleSidebarSectionId,
-  type SidebarSectionId,
-} from "@bb/client-core";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { buildMachineThreadGroups } from "../model/machine-thread-groups.js";
+import type {
+  CollapsibleSidebarSectionId,
+  SidebarSectionId,
+} from "../model/sidebar-section-id.js";
 import {
   installTestPluginRuntime,
   renderSlot,
@@ -39,11 +39,15 @@ import {
   sidebarSectionOrderAtom,
 } from "../preferences/atoms.js";
 import type { OrganizationMode as SidebarOrganizationMode } from "../../shared/preferences.js";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
-import { sdkResult, toPluginSidebarThread } from "../model/fixtures.js";
+import {
+  makeSidebarThread,
+  sdkResult,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
 
-vi.mock("@bb/client-core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@bb/client-core")>();
+vi.mock("../model/machine-thread-groups.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../model/machine-thread-groups.js")>();
   return {
     ...actual,
     buildMachineThreadGroups: vi.fn(actual.buildMachineThreadGroups),
@@ -116,8 +120,8 @@ function StoredActiveModeOrderProbe() {
   return <ActiveModeOrderProbe mode={mode} />;
 }
 
-function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
-  return makeThreadListEntry({
+function makeThread(overrides: SidebarThreadOverrides = {}): SidebarThread {
+  return makeSidebarThread({
     id: "thr_machine",
     projectId: "proj_machine",
     title: "Machine activity",
@@ -128,21 +132,24 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     createdAt: 1,
     updatedAt: 2,
     activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 1,
-      activeGoalCount: 0,
+      workflows: 0,
+      backgroundAgents: 0,
+      backgroundCommands: 0,
+      planMode: 1,
+      goals: 0,
     },
-    runtime: {
-      displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
-    },
+    runtimeStatus: "active",
     ...overrides,
   });
 }
 
-function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
+function MachineModeProbe({
+  threads = [],
+  selectedThreadId,
+}: {
+  threads?: SidebarThread[];
+  selectedThreadId?: string;
+}) {
   const [collapsedSectionIds, setCollapsedSectionIds] = useAtom(
     collapsedSidebarSectionIdsAtom,
   );
@@ -168,6 +175,7 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
         showPinnedSection={false}
         pinnedSection={{ label: "Pinned", content: null }}
         pinnedReorderPending={false}
+        pinnedRootItems={[]}
         pinnedRootNodes={[]}
         pinnedThreads={[]}
         onReorderPinnedThread={vi.fn()}
@@ -181,6 +189,7 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
         onToggleCollapsed={handleToggleCollapsed}
         onToggleThreadCollapsed={vi.fn()}
         onToggleEnvironmentCollapsed={vi.fn()}
+        selectedThreadId={selectedThreadId}
       />
     </TooltipProvider>
   );
@@ -197,32 +206,37 @@ function Harness({ store, children }: HarnessProps) {
 
 function renderMachineMode(
   store: ReturnType<typeof createStore>,
-  threads: ThreadListEntry[] = [],
+  threads: SidebarThread[] = [],
   {
     hosts = {},
     sdk,
+    selectedThreadId,
   }: {
     hosts?: Record<string, string>;
     sdk?: PluginSdkTestFakes;
+    selectedThreadId?: string;
   } = {},
 ) {
   return renderSlot(
     { component: Harness },
-    { store, children: <MachineModeProbe threads={threads} /> },
+    {
+      store,
+      children: (
+        <MachineModeProbe
+          threads={threads}
+          selectedThreadId={selectedThreadId}
+        />
+      ),
+    },
     {
       sidebarThreads: {
-        threads: threads.map((thread) =>
-          toPluginSidebarThread(
-            thread,
-            thread.environmentHostId !== null &&
-              thread.environmentHostId in hosts
-              ? {
-                  id: thread.environmentHostId,
-                  name: hosts[thread.environmentHostId] ?? "",
-                }
+        threads: threads.map((thread) => ({
+          ...thread,
+          host:
+            thread.host !== null && thread.host.id in hosts
+              ? { id: thread.host.id, name: hosts[thread.host.id] ?? "" }
               : null,
-          ),
-        ),
+        })),
       },
       sdk,
     },
@@ -325,7 +339,7 @@ describe("sidebar organization mode sections", () => {
     store.set(sidebarCollapsedMachinesAtom, ["host_rename"]);
     const { sdkCalls } = renderMachineMode(
       store,
-      [makeThread({ environmentHostId: "host_rename" })],
+      [makeThread({ host: { id: "host_rename", name: "host_rename" } })],
       {
         hosts: { host_rename: "Work laptop" },
         sdk: { hosts: { update: hostUpdate } },
@@ -366,6 +380,38 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("marks More and the hidden section as the breadcrumb to the selected thread", async () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine", "pinned"]);
+    store.set(sidebarHiddenGroupsAtom, ["machine:no-machine"]);
+
+    renderMachineMode(store, [makeThread()], {
+      selectedThreadId: "thr_machine",
+    });
+
+    const more = screen.getByRole("button", { name: "More machines" });
+    expect(more.getAttribute("data-selected")).toBe("true");
+    fireEvent.keyDown(more, { key: "Enter" });
+    const section = await screen.findByRole("menuitem", { name: /No machine/ });
+    expect(section.getAttribute("data-selected")).toBe("true");
+  });
+
+  it("leaves More unselected when the selected thread is visible elsewhere", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine", "pinned"]);
+    store.set(sidebarHiddenGroupsAtom, ["machine:no-machine"]);
+
+    renderMachineMode(store, [makeThread()], {
+      selectedThreadId: "thr_elsewhere",
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "More machines" })
+        .getAttribute("data-selected"),
+    ).toBeNull();
   });
 
   it("keeps hidden machine activity in More and restores the saved collapse state", async () => {

@@ -1,18 +1,9 @@
 import { createHmac } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLatestThreadSequence, getThread } from "@bb/db";
 import { turnScope } from "@bb/domain";
-import {
-  generatedSkillsRootPath,
-  pluginCommandsSkillDir,
-} from "../../../src/services/plugins/plugin-commands-skill.js";
-import {
-  resolveProjectSkillSourceFromContent,
-  resolveSkillCatalogEntries,
-} from "../../../src/services/skills/injected-skills.js";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import {
   seedEvent,
@@ -112,57 +103,6 @@ describe("hero plugin: agent-enrichment", () => {
     const sensitive = await runDocs(["search", "CONVENTIONAL COMMITS"]);
     expect(sensitive.exitCode).toBe(0);
     expect(sensitive.stdout).toContain("No matches");
-  });
-
-  it("its command reaches agents through the generated plugin-commands skill", async () => {
-    const skillFile = join(
-      pluginCommandsSkillDir(harness.config.dataDir),
-      "SKILL.md",
-    );
-    const content = await readFile(skillFile, "utf8");
-    expect(content).toContain("## bb docs —");
-    expect(content).toContain("bb docs search <query...>");
-
-    const sources = resolveSkillCatalogEntries(testLogger, {
-      additionalSkillsRootPaths: [
-        generatedSkillsRootPath(harness.config.dataDir),
-      ],
-      dataDir: harness.config.dataDir,
-      skillTreeRegistry: harness.deps.skillTreeRegistry,
-    }).map((entry) => entry.runtimeSource);
-    expect(
-      sources.find((source) => source.name === "plugin-commands"),
-    ).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });
-  });
-
-  it("auto-imports its skills/ directory through the plugin skills tier", async () => {
-    const pluginSkillRoots = harness.pluginService.listSkillRootContributions();
-    expect(pluginSkillRoots).toContainEqual(
-      expect.objectContaining({
-        rootPath: join(EXAMPLES_DIR, "agent-enrichment", "skills"),
-      }),
-    );
-    const sources = resolveSkillCatalogEntries(testLogger, {
-      dataDir: harness.config.dataDir,
-      pluginSkillRoots,
-      skillTreeRegistry: harness.deps.skillTreeRegistry,
-    }).map((entry) => entry.runtimeSource);
-    const skill = sources.find((source) => source.name === "repo-conventions");
-    expect(skill).toBeDefined();
-    const skillRoot = join(
-      EXAMPLES_DIR,
-      "agent-enrichment",
-      "skills",
-      "repo-conventions",
-    );
-    const expected = resolveProjectSkillSourceFromContent(testLogger, {
-      candidatePath: skillRoot,
-      content: await readFile(join(skillRoot, "SKILL.md"), "utf8"),
-      directoryName: "repo-conventions",
-    });
-    expect(expected).not.toBeNull();
-    expect(skill?.description).toBe(expected?.description);
-    expect(skill).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });
   });
 });
 

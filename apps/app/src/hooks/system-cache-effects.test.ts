@@ -147,7 +147,7 @@ describe("system cache effects", () => {
     queryClient.setQueryData(threadHostFilePreviewKey, {
       kind: "text",
       path: "/tmp/log.txt",
-      url: "/api/v1/threads/thread-1/host-files/content?path=%2Ftmp%2Flog.txt",
+      url: "/api/v1/threads/thread-1/host-files/tmp/log.txt",
       mimeType: "text/plain",
       content: "old",
     });

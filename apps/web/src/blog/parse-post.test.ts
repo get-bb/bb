@@ -16,6 +16,8 @@ tweet:https://x.com/brian_lovin/status/2084345751266857079
 
 ## No Two Installs Look Alike
 
+### The First Open
+
 Here is **bb** the first time you open it:
 
 ![bb the first time you open it](/blog/first-open.jpg)
@@ -26,6 +28,8 @@ Here is **bb** the first time you open it:
   with Strudel.
 
 [![A DAW](/blog/daw.jpg)](https://x.com/sawyerhood/status/2085039905529597982)
+
+video:/blog/drag.mp4|/blog/drag.jpg|Just drag it!
 `;
 
 describe("parsePost", () => {
@@ -49,6 +53,7 @@ describe("parsePost", () => {
         id: "2084345751266857079",
       },
       { kind: "heading", text: "No Two Installs Look Alike" },
+      { kind: "subheading", text: "The First Open" },
       {
         kind: "paragraph",
         text: "Here is **bb** the first time you open it:",
@@ -71,6 +76,12 @@ describe("parsePost", () => {
         src: "/blog/daw.jpg",
         alt: "A DAW",
         href: "https://x.com/sawyerhood/status/2085039905529597982",
+      },
+      {
+        kind: "video",
+        src: "/blog/drag.mp4",
+        poster: "/blog/drag.jpg",
+        caption: "Just drag it!",
       },
     ]);
   });

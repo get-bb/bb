@@ -20,6 +20,8 @@ import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+import Notification01Icon from "@hugeicons/core-free-icons/Notification01Icon";
+import Camera01Icon from "@hugeicons/core-free-icons/Camera01Icon";
 
 const PaletteStrokeRoundedIcon: IconSvgElement = [
   [
@@ -107,9 +109,36 @@ const ICON_MAP = {
   AlertTriangle: Alert02Icon,
   ArrowRight: ArrowRight02Icon,
   ArrowReloadHorizontal: ArrowReloadHorizontalIcon,
+  Bell: Notification01Icon,
+  Camera: Camera01Icon,
   Check: Tick02Icon,
   ChevronRight: ArrowRight01Icon,
   CircleCheck: CheckmarkCircle02Icon,
+  CircleCheckFilled: [
+    [
+      "circle",
+      {
+        cx: "12",
+        cy: "12",
+        r: "10",
+        fill: "currentColor",
+        stroke: "none",
+        key: "circle",
+      },
+    ],
+    [
+      "path",
+      {
+        d: "m7.5 12 3 3 6-6",
+        fill: "none",
+        stroke: "#ffffff",
+        strokeWidth: "2",
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        key: "check",
+      },
+    ],
+  ],
   CircleX: CancelCircleIcon,
   Cloud: CloudIcon,
   Eye: ViewIcon,

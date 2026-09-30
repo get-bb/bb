@@ -3,6 +3,7 @@ import { env as workerEnv } from "cloudflare:workers";
 export interface Env {
   DB: D1Database;
   TUNNEL_DO: DurableObjectNamespace;
+  LINK_START_RATE_LIMITER: RateLimit;
   BASE_DOMAIN: string;
   APP_URL: string;
   CONNECT_SERVER_URL_TEMPLATE?: string;

@@ -1,3 +1,4 @@
+import { machineRemovalLabels } from "./machine-removal-display";
 import type { Host } from "@bb/domain";
 import type {
   EnvironmentDisplayInfo,
@@ -34,7 +35,6 @@ export function isHostAmbiguous(
 interface EnvironmentWorkspaceLabelArgs {
   display: EnvironmentDisplayInfo;
   providerLookup: EnvironmentWorkspaceDisplayProviderLookup;
-  environmentName: string | null;
 }
 
 interface EnvironmentWorkspaceSummaryDisplayArgs extends EnvironmentWorkspaceLabelArgs {
@@ -50,7 +50,11 @@ interface EnvironmentWorkspaceSummaryDisplay {
   providerName: string | null;
 }
 
-interface EnvironmentWorkspaceInfoDisplayArgs extends EnvironmentWorkspaceLabelArgs {
+interface EnvironmentWorkspaceLabelWithLocalityArgs extends EnvironmentWorkspaceLabelArgs {
+  locality: "local" | "remote";
+}
+
+interface EnvironmentWorkspaceInfoDisplayArgs extends EnvironmentWorkspaceLabelWithLocalityArgs {
   hostName: string | null;
 }
 
@@ -94,21 +98,25 @@ export function getEnvironmentProviderDisplayName(
 function getEnvironmentWorkspaceLabel({
   display,
   providerLookup,
-  environmentName,
-}: EnvironmentWorkspaceLabelArgs): string {
+  locality,
+}: EnvironmentWorkspaceLabelWithLocalityArgs): string {
   if (display.lifecycle === "provisioning") return "Provisioning";
-  if (display.lifecycle === "destroyed") return "Destroyed";
-  if (environmentName !== null) return environmentName;
+  if (display.lifecycle === "removed") return "Unavailable — machine removed";
+  if (
+    display.lifecycle === "removing" ||
+    display.lifecycle === "cleanup-failed"
+  )
+    return machineRemovalLabels[display.lifecycle];
+  if (display.lifecycle === "destroyed") return "Environment unavailable";
   return (
     getEnvironmentProviderDisplayName(providerLookup) ??
-    display.compactModeLabel
+    (locality === "remote" ? "Remote" : "Local")
   );
 }
 
 export function getEnvironmentWorkspaceSummaryDisplay({
   display,
   providerLookup,
-  environmentName,
   hasMultipleMachines,
   hostType,
   hostName,
@@ -121,18 +129,20 @@ export function getEnvironmentWorkspaceSummaryDisplay({
       providerName: null,
     };
   }
-  if (display.lifecycle === "destroyed") {
+  if (
+    display.lifecycle === "destroyed" ||
+    display.lifecycle === "removed" ||
+    display.lifecycle === "removing" ||
+    display.lifecycle === "cleanup-failed"
+  ) {
+    const label = getEnvironmentWorkspaceLabel({
+      display,
+      providerLookup,
+      locality: "remote",
+    });
     return {
-      label: "Destroyed",
-      compactLabel: "Destroyed",
-      icon: getEnvironmentLabelIconName(providerLookup),
-      providerName: getEnvironmentProviderDisplayName(providerLookup),
-    };
-  }
-  if (environmentName !== null) {
-    return {
-      label: environmentName,
-      compactLabel: environmentName,
+      label,
+      compactLabel: label,
       icon: getEnvironmentLabelIconName(providerLookup),
       providerName: getEnvironmentProviderDisplayName(providerLookup),
     };
@@ -162,14 +172,14 @@ export function getEnvironmentWorkspaceSummaryDisplay({
 export function getEnvironmentWorkspaceInfoDisplay({
   display,
   providerLookup,
-  environmentName,
   hostName,
+  locality,
 }: EnvironmentWorkspaceInfoDisplayArgs): EnvironmentWorkspaceInfoDisplay {
   return {
     label: getEnvironmentWorkspaceLabel({
       display,
       providerLookup,
-      environmentName,
+      locality,
     }),
     icon: getEnvironmentLabelIconName(providerLookup),
     machineName: hostName,
@@ -209,7 +219,6 @@ interface EnvironmentSummaryChrome {
 export function getEnvironmentSummaryChrome({
   display,
   providerLookup,
-  environmentName,
   hasMultipleMachines,
   host,
   machineProviders,
@@ -217,13 +226,12 @@ export function getEnvironmentSummaryChrome({
   const summary = getEnvironmentWorkspaceSummaryDisplay({
     display,
     providerLookup,
-    environmentName,
     hasMultipleMachines,
     hostName: host?.name ?? null,
     hostType: host?.type ?? null,
   });
   const summaryHost =
-    host !== null && environmentName === null && summary?.label === host.name
+    host !== null && summary?.label === host.name
       ? host
       : undefined;
   return {

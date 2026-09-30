@@ -359,15 +359,13 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "interrupted",
-    hint: "single child thread interruption carries the manual-stop guidance",
+    hint: "single child thread interruption explains its recorded cause",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
-          "@thread:thr_docs was interrupted.",
+          "@thread:thr_docs was interrupted because its host connection was lost.",
           "",
           "Review the thread before deciding next steps.",
-          "",
-          "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
         ].join("\n"),
       }),
       [
@@ -391,9 +389,7 @@ const parentChildSystemMessageFixtures = [
           "",
           "- @thread:thr_schema completed.",
           "- @thread:thr_rebase failed.",
-          "- @thread:thr_docs was interrupted.",
-          "",
-          "If the user stopped any interrupted thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+          "- @thread:thr_docs was interrupted because its host daemon restarted.",
         ].join("\n"),
       }),
       [

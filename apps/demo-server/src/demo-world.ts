@@ -51,7 +51,7 @@ import {
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
   generalSettings: defaultAppSettings,
-  experiments: { ...defaultExperiments, mobileApp: true },
+  experiments: { ...defaultExperiments },
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",
@@ -68,12 +68,6 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
         availability: null,
       },
     ],
-  },
-  aiServices: {
-    inference: "codex/gpt-5.5",
-    inferenceFallback: "codex/gpt-5.5",
-    transcription: "openai/gpt-4o-transcribe",
-    services: [],
   },
 });
 
@@ -264,6 +258,7 @@ export class DemoWorld {
       case "child-summary":
         return json({
           nonDeletedChildCount: 0,
+          unarchivedDescendantCount: 0,
         } satisfies ThreadChildSummaryResponse);
       default:
         return null;

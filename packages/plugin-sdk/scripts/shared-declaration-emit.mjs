@@ -24,6 +24,7 @@ export function sharedDeclarationEmit(entries, workspaceDir, resolveSource) {
         noEmitOnError: true,
         checkJs: false,
         declarationMap: false,
+        stripInternal: true,
         skipLibCheck: true,
         preserveSymlinks: false,
         target: ts.ScriptTarget.ESNext,

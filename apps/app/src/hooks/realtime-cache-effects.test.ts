@@ -27,6 +27,7 @@ import {
   projectSourceBranchesQueryKey,
   projectsQueryKey,
   serverMoveStatusQueryKey,
+  systemAppUpdateQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -281,6 +282,24 @@ describe("createRealtimeCacheEffects", () => {
       type: "changed",
       entity: "system",
       changes: ["server-move-changed"],
+    });
+
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+    effects.dispose();
+  });
+
+  it("refreshes only the app update status when the launcher reports progress", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const statusKey = systemAppUpdateQueryKey();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(statusKey, {});
+    queryClient.setQueryData(configKey, {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["app-update-changed"],
     });
 
     expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
@@ -858,7 +877,6 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           status: "active",
           updatedAt: 200,
@@ -2309,7 +2327,7 @@ describe("createRealtimeCacheEffects", () => {
       archivedAt: null,
       id: "thr_1",
       latestAttentionAt: 100,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
@@ -2317,7 +2335,7 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_2",
       latestAttentionAt: 50,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 50,
     };
@@ -2350,7 +2368,6 @@ describe("createRealtimeCacheEffects", () => {
       latestAttentionAt: 100,
       runtime: {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
       status: "active",
       updatedAt: 200,
@@ -2525,7 +2542,7 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
@@ -2555,7 +2572,6 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           status: "active",
           updatedAt: 200,
@@ -2599,13 +2615,13 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
-      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
     const activeRow = {
       ...idleRow,
-      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "active" },
       status: "active",
       updatedAt: 200,
     };
@@ -2661,7 +2677,6 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           status: "active",
           updatedAt: 200,
@@ -2963,7 +2978,7 @@ describe("createRealtimeCacheEffects", () => {
         activity: NO_THREAD_ACTIVITY,
         id: "thr_1",
         latestAttentionAt: 100,
-        runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "idle" },
         status: "idle",
         updatedAt: 100,
       };
@@ -2984,7 +2999,6 @@ describe("createRealtimeCacheEffects", () => {
             latestAttentionAt: 100,
             runtime: {
               displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
             },
             status: "active",
             updatedAt: 200,
@@ -3027,7 +3041,6 @@ describe("createRealtimeCacheEffects", () => {
                 latestAttentionAt: 100,
                 runtime: {
                   displayStatus: "idle",
-                  hostReconnectGraceExpiresAt: null,
                 },
                 status: "idle",
                 updatedAt: 100,
@@ -3053,7 +3066,6 @@ describe("createRealtimeCacheEffects", () => {
             latestAttentionAt: 200,
             runtime: {
               displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
             },
             status: "active",
             updatedAt: 200,

@@ -8,6 +8,7 @@ import type { WSContext, WSMessageReceive, WSEvents } from "hono/ws";
 import type {
   ExperimentalPluginWebSocket,
   ExperimentalPluginWebSocketHandlers,
+  PluginCliExecutionResult,
 } from "@get-bb/plugin-sdk";
 import type { ServerRuntimeConfig } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -24,6 +25,7 @@ import type {
   PluginWebSocketRouteRecord,
 } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import { PLUGIN_RPC_CALLER_HEADER } from "../services/plugins/plugin-rpc-caller.js";
 import {
   createAppAssetCompressionCache,
   type AppAssetCompressionCache,
@@ -37,6 +39,7 @@ import {
   pluginApplyUpdateRequestSchema,
   pluginRpcDiscoveryQuerySchema,
   pluginInstallRequestSchema,
+  pluginSafeModeRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
   pluginUpdateCheckRequestSchema,
@@ -51,6 +54,63 @@ type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
 type UpgradeWebSocket = ReturnType<
   typeof createNodeWebSocket
 >["upgradeWebSocket"];
+
+const PLUGIN_CLI_KEEPALIVE_MS = 10_000;
+const PLUGIN_CLI_KEEPALIVE_BYTES = new TextEncoder().encode("\n");
+
+export async function pluginCliResponse(
+  result: Promise<PluginCliExecutionResult>,
+  keepaliveMs: number,
+): Promise<Response> {
+  const settled = result.then(
+    (value) => value,
+    (error: unknown): PluginCliExecutionResult => ({
+      exitCode: 1,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const early = await Promise.race([
+    settled,
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), keepaliveMs);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (early !== null) {
+    return Response.json(early);
+  }
+  let interval: ReturnType<typeof setInterval> | undefined;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(PLUGIN_CLI_KEEPALIVE_BYTES);
+      interval = setInterval(() => {
+        controller.enqueue(PLUGIN_CLI_KEEPALIVE_BYTES);
+      }, keepaliveMs);
+      void settled.then((value) => {
+        clearInterval(interval);
+        if (cancelled) return;
+        controller.enqueue(
+          new TextEncoder().encode(`${JSON.stringify(value)}\n`),
+        );
+        controller.close();
+      });
+    },
+    cancel() {
+      cancelled = true;
+      clearInterval(interval);
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
+}
 
 const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
@@ -458,12 +518,10 @@ export function registerPluginRoutes(
     if (typeof body?.threadId === "string") ctx.threadId = body.threadId;
     if (typeof body?.projectId === "string") ctx.projectId = body.projectId;
     ctx.signal = context.req.raw.signal;
-    const result = await plugins.runCliCommand(
-      context.req.param("id"),
-      argv,
-      ctx,
+    return pluginCliResponse(
+      plugins.runCliCommand(context.req.param("id"), argv, ctx),
+      PLUGIN_CLI_KEEPALIVE_MS,
     );
-    return context.json(result);
   });
 
   const APP_ASSET_CONTENT_TYPES = {
@@ -679,6 +737,22 @@ export function registerPluginRoutes(
     return context.json(outcome);
   });
 
+  app.get("/plugins/safe-mode", (context) =>
+    context.json({ enabled: plugins.getSafeMode() }),
+  );
+
+  app.put("/plugins/safe-mode", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginSafeModeRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { ok: false, error: "expected { enabled: boolean }" },
+        400,
+      );
+    }
+    return context.json(await plugins.setSafeMode(body.data.enabled));
+  });
+
   app.post("/plugins/:id/enable", async (context) => {
     const plugin = await plugins.setEnabled(context.req.param("id"), true);
     if (!plugin)
@@ -833,6 +907,18 @@ export function registerPluginRoutes(
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
     }
+    const callerResolution = plugins.resolveRpcCaller(
+      context.req.header(PLUGIN_RPC_CALLER_HEADER),
+    );
+    if (!callerResolution.ok) {
+      return context.json(
+        {
+          ok: false,
+          error: `the ${PLUGIN_RPC_CALLER_HEADER} token isn't a running plugin's caller token`,
+        },
+        403,
+      );
+    }
     const rawBody = await context.req.text();
     let input: unknown;
     if (rawBody.length > 0) {
@@ -878,6 +964,7 @@ export function registerPluginRoutes(
       method,
       lookup.value,
       input,
+      callerResolution.caller,
     );
     if (!outcome.ok) {
       return context.json(

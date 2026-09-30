@@ -19,7 +19,7 @@ describe("sessionCookieSpec", () => {
       path: "/",
       secure: true,
       httpOnly: true,
-      expires: "2026-08-18T11:00:00.000Z",
+      expires: "2026-08-18T11:00:00.000+00:00",
     });
     expect(
       sessionCookieSpec(

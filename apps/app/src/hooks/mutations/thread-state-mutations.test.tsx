@@ -47,7 +47,6 @@ function makeThreadWithRuntime(
     updatedAt: 1,
     runtime: {
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     },
     ...thread,
   });

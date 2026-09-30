@@ -1297,11 +1297,13 @@ describe("Tasks RPC domain API", () => {
       modelId: "claude-sonnet-6",
       permissionMode: "accept-edits",
     });
-    expect(updated.preset).toMatchObject({
-      name: "Renamed",
-      modelId: "claude-sonnet-6",
-      permissionMode: "accept-edits",
-      builtin: true,
+    expect(updated).toMatchObject({
+      preset: {
+        name: "Renamed",
+        modelId: "claude-sonnet-6",
+        permissionMode: "accept-edits",
+        builtin: true,
+      },
     });
     await expect(
       harness.callRpc("deletePreset", { presetId: preset.id }),
@@ -1678,6 +1680,8 @@ function makePullRequest(
     baseRefName: "main",
     headRefName: "bb/fix-the-pill",
     updatedAt: "2026-07-15T10:00:00.000Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "passing" as const,
       totalCount: 1,

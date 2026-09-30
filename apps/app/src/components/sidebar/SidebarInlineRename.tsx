@@ -1,14 +1,11 @@
 import {
-  createContext,
   lazy,
   Suspense,
   useCallback,
-  useContext,
   useEffect,
   useId,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 const loadRenameEditor = () => import("./SidebarRenameEditor");
@@ -137,27 +134,11 @@ function useRenameController() {
 }
 
 export type RenameController = ReturnType<typeof useRenameController>;
-const SidebarRenameContext = createContext<RenameController | null>(null);
-
-export function SidebarRenameProvider({ children }: { children: ReactNode }) {
-  const controller = useRenameController();
-  return (
-    <SidebarRenameContext.Provider value={controller}>
-      {children}
-    </SidebarRenameContext.Provider>
-  );
-}
-
-export function useSidebarRenameState() {
-  return useContext(SidebarRenameContext)?.session ?? null;
-}
 
 export function useSidebarRename(args: SidebarRenameArgs) {
   const compact = useIsCompactViewport();
   const pendingMenuRename = useRef<(() => void) | null>(null);
-  const shared = useContext(SidebarRenameContext);
-  const local = useRenameController();
-  const controller = shared ?? local;
+  const controller = useRenameController();
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
   const { session, start, cancel } = controller;
@@ -170,14 +151,10 @@ export function useSidebarRename(args: SidebarRenameArgs) {
   }, [args, start, ownerKey]);
 
   useEffect(() => {
-    if (
-      !shared &&
-      session &&
-      (session.kind !== args.kind || session.id !== args.id)
-    ) {
+    if (session && (session.kind !== args.kind || session.id !== args.id)) {
       cancel();
     }
-  }, [args.id, args.kind, cancel, session, shared]);
+  }, [args.id, args.kind, cancel, session]);
 
   return {
     editor: isEditing ? (

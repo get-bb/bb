@@ -5,6 +5,7 @@ import {
   type InstructionMode,
   type PromptInput,
   type ReasoningLevel,
+  type ServiceTier,
   type RuntimePermissionPolicy,
   buildShellEnvOverrides,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -48,12 +49,10 @@ function buildClaudeSkillConfigParams(
   }
 
   return {
-    plugins: skillRoots.map(
-      (skillRoot): ClaudeLocalPluginConfig => ({
-        type: "local",
-        path: skillRoot.localPluginPath,
-      }),
-    ),
+    plugins: skillRoots.map((skillRoot): ClaudeLocalPluginConfig => ({
+      type: "local",
+      path: skillRoot.localPluginPath,
+    })),
   };
 }
 
@@ -70,11 +69,13 @@ function buildClaudeCodeConfig(
 export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
+  serviceTier?: ServiceTier | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   claudeCodePermissionMode?: "plan" | undefined;
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
+  disable1MContext: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
@@ -132,8 +133,10 @@ function buildInternalSessionParams(
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
+    serviceTier: args.options.serviceTier ?? "default",
     workflowsEnabled: args.options.workflowsEnabled,
     chromeEnabled: args.options.chromeEnabled,
+    disable1MContext: args.options.disable1MContext,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
@@ -148,6 +151,7 @@ const claudeProviderOptionsSchema = z
     claudeCodePermissionMode: z.literal("plan").optional(),
     workflowsEnabled: z.boolean().optional(),
     chromeEnabled: z.boolean().optional(),
+    disable1MContext: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
@@ -157,6 +161,7 @@ const claudeProviderOptionsSchema = z
 type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
+  serviceTier?: ServiceTier | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   providerOptions?: Record<string, unknown> | undefined;
@@ -193,6 +198,7 @@ export function buildClaudeSessionParams(
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
       chromeEnabled: providerOptions.chromeEnabled ?? false,
+      disable1MContext: providerOptions.disable1MContext ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     },
@@ -241,8 +247,12 @@ export function buildClaudeTurnParams(
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
+    ...(args.options.serviceTier !== undefined
+      ? { serviceTier: args.options.serviceTier }
+      : {}),
     workflowsEnabled: providerOptions.workflowsEnabled,
     chromeEnabled: providerOptions.chromeEnabled,
+    disable1MContext: providerOptions.disable1MContext,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),

@@ -1,6 +1,9 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { Environment, Host } from "@bb/domain";
-import type { SystemConfigResponse } from "@bb/server-contract";
+import type {
+  SystemConfigResponse,
+  SystemProviderCatalogEntry,
+} from "@bb/server-contract";
 import {
   allEnvironmentDiffFilesQueryKeyPrefix,
   allEnvironmentDiffPatchQueryKeyPrefix,
@@ -35,6 +38,7 @@ import {
   serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  systemProviderCatalogQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
@@ -43,6 +47,8 @@ import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/threa
 import type { QueryClientArg } from "../cache-effect-types";
 import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
+import { invalidateAppUpdateStatus } from "./app-update-cache-owner";
+import { invalidatePluginList } from "./plugin-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
 import {
   invalidateQueryKeys,
@@ -71,6 +77,7 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
     );
   }
   invalidateSystemVersion({ queryClient });
+  invalidateAppUpdateStatus({ queryClient });
   bumpAllDiffPatchEvictionGenerations();
   queryClient.removeQueries({
     queryKey: allEnvironmentDiffPatchQueryKeyPrefix(),
@@ -118,6 +125,21 @@ export function invalidateMachineEnvironment({
     queryClient,
     queryKeys: [allMachineEnvironmentQueryKeyPrefix()],
   });
+}
+
+export async function applyProviderAvailabilityChange({
+  queryClient,
+  catalog,
+}: QueryClientArg & { catalog: SystemProviderCatalogEntry[] }): Promise<void> {
+  queryClient.setQueryData(systemProviderCatalogQueryKey(), catalog);
+  await Promise.all([
+    invalidateSystemProviders({ queryClient }),
+    queryClient.invalidateQueries({
+      queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+    }),
+    queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() }),
+    invalidatePluginList({ queryClient }),
+  ]);
 }
 
 export function invalidateSystemProviders({

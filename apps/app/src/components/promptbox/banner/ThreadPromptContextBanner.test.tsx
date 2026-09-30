@@ -28,6 +28,8 @@ const pullRequestFixture: ThreadPullRequest = {
   baseRefName: "main",
   headRefName: "bb/pr-context-banner",
   updatedAt: "2026-06-16T12:30:00Z",
+  autoMerge: false,
+  inMergeQueue: false,
   checks: {
     state: "passing",
     totalCount: 1,
@@ -92,27 +94,61 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("<button");
   });
 
-  it("renders the environment-gone read-only status without a provision action", () => {
-    const markup = renderToStaticMarkup(
+  it.each([
+    ["removed", "Machine removed"],
+    ["removing", "Machine removal in progress"],
+    ["cleanup-failed", "Machine cleanup failed"],
+    ["destroyed", "Environment unavailable"],
+  ] as const)(
+    "collapses the %s explanation behind its status toggle by default",
+    (status, label) => {
+      const toggled: string[] = [];
+      render(
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={{ status }}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={(section) => toggled.push(section)}
+        />,
+      );
+      const toggle = screen.getByRole("button", { name: label });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.queryByText(/history|machine settings/)).toBeNull();
+      expect(screen.queryByText("Provision")).toBeNull();
+      toggle.click();
+      expect(toggled).toEqual(["status"]);
+    },
+  );
+
+  it("shows the machine removal explanation once the status is expanded", () => {
+    render(
       <ThreadPromptContextBanner
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
-        environmentGoneSection={{ status: "destroyed" }}
+        environmentGoneSection={{ status: "cleanup-failed" }}
         parentThreadSection={null}
         childThreadsSection={null}
         pullRequestSection={null}
-        expandedSection={null}
+        expandedSection="status"
         onToggleSection={noop}
       />,
     );
-
-    expect(markup).toContain("Environment archived");
-    expect(markup).toContain("This environment has been archived.");
-    expect(markup).not.toContain("to keep working");
-    expect(markup).toContain('role="status"');
-    expect(markup).not.toContain("<button");
-    expect(markup).not.toContain("Provision");
+    expect(
+      screen
+        .getByRole("button", { name: "Machine cleanup failed" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(
+      screen.getByText(
+        "This thread is unavailable while machine cleanup is pending. Retry cleanup in machine settings.",
+      ),
+    ).toBeDefined();
   });
 
   it.each([
@@ -126,7 +162,7 @@ describe("ThreadPromptContextBanner", () => {
       label: "environment archived",
       archivedSection: null,
       environmentGoneSection: { status: "destroyed" as const },
-      expectedLabel: "Environment archived",
+      expectedLabel: "Environment unavailable",
     },
   ])(
     "keeps the $label read-only status visible in compact mode",
@@ -158,36 +194,72 @@ describe("ThreadPromptContextBanner", () => {
     },
   );
 
-  it("prioritizes the archived-environment status over unarchiving", () => {
+  it("offers unarchiving first when an archived thread also lost its environment", () => {
     const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <ThreadPromptContextBanner
-          gitSection={null}
-          gitSectionPending={false}
-          archivedSection={{
-            archivedAt: 1_731_456_000_000,
-            onUnarchive: noop,
-          }}
-          environmentGoneSection={{ status: "destroyed" }}
-          parentThreadSection={{
-            parentThreadTitle: "Parent thread",
-            href: "/threads/thr_parent",
-            relationship: "parent",
-          }}
-          childThreadsSection={null}
-          pullRequestSection={null}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={{
+          archivedAt: 1_731_456_000_000,
+          onUnarchive: noop,
+        }}
+        environmentGoneSection={{ status: "destroyed" }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
     );
 
-    expect(markup).toContain("Environment archived");
+    expect(markup).toContain("Environment unavailable");
     expect(markup).not.toContain("Thread is archived");
-    expect(markup).not.toContain(">Unarchive<");
+    expect(markup).toContain(">Unarchive<");
   });
 
-  it("labels a standalone pull request without non-actionable attention text", () => {
+  it("offers restoring the workspace once the thread is live again", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={{ status: "destroyed", onRestore: noop }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("Environment unavailable");
+    expect(markup).toContain(">Restore workspace<");
+  });
+
+  it("shows the restore action as pending while it runs", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={{
+          status: "destroyed",
+          onRestore: noop,
+          restorePending: true,
+        }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain(">Restoring...<");
+    expect(markup).toContain("disabled");
+  });
+
+  it("keeps ready-to-merge status out of standalone visible labels", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -232,38 +304,64 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Squash merge");
   });
 
-  it("does not label standalone pending checks", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={null}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={{
-          pullRequest: {
-            ...pullRequestFixture,
-            checks: {
-              state: "pending",
-              totalCount: 1,
-              passedCount: 0,
-              failedCount: 0,
-              pendingCount: 1,
+  it.each([
+    ["checks_pending", false, null],
+    ["checks_failed", false, null],
+    ["checks_failed", true, null],
+    ["checks_pending", true, "Auto-merge on"],
+    ["ready_to_merge", true, "Auto-merge on"],
+    ["queued", true, "Queued to merge"],
+  ] as const)(
+    "shows only automation labels for %s with auto-merge %s",
+    (attention, autoMerge, label) => {
+      const markup = renderToStaticMarkup(
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={{
+            pullRequest: {
+              ...pullRequestFixture,
+              autoMerge,
+              inMergeQueue: attention === "queued",
+              review: { state: "approved", reviewRequestCount: 0 },
+              checks: {
+                state: attention === "checks_failed" ? "failing" : "pending",
+                totalCount: 1,
+                passedCount: 0,
+                failedCount: 0,
+                pendingCount: 1,
+              },
+              attention,
             },
-            attention: "checks_pending",
-          },
-        }}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
+          }}
+          expandedSection={null}
+          onToggleSection={noop}
+        />,
+      );
 
-    expect(markup).toContain("PR #128");
-    expect(markup).not.toContain("PR #128 · Open");
-    expect(markup).not.toContain("· Checks pending");
-    expect(markup).not.toContain('alt="Checks pending"');
-  });
+      expect(markup).toContain("PR #128");
+      expect(markup).not.toContain("PR #128 · Open");
+      if (label) {
+        expect(markup).toContain(`text-attention">· ${label}</span>`);
+      } else {
+        expect(markup).not.toContain('text-attention">·');
+        expect(markup).not.toContain("· Checks failing</span>");
+      }
+      expect(markup).toContain('class="size-4 shrink-0 text-success"');
+      expect(markup).toContain('data-icon="GitPullRequestArrow"');
+      expect(markup).not.toContain('data-icon="GitMerge"');
+      expect(markup).toContain(
+        attention === "checks_failed"
+          ? 'class="fill-destructive"'
+          : 'class="fill-attention"',
+      );
+      expect(markup).not.toContain('alt="Checks pending"');
+    },
+  );
 
   it("keeps useful standalone terminal pull request state labels", () => {
     const markup = renderToStaticMarkup(
@@ -468,7 +566,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("animate-shine-icon");
   });
 
-  it("labels standalone actionable pull request attention", () => {
+  it("keeps failed-check detail accessible without a redundant label", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -496,7 +594,8 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain("PR #128");
-    expect(markup).toContain("· Checks failing");
+    expect(markup).not.toContain("· Checks failing");
+    expect(markup).toContain('title="Checks failing"');
     expect(markup).not.toContain("Checks failure");
   });
 

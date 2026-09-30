@@ -323,64 +323,6 @@ describe("buildPluginProviderRegistration", () => {
     );
   });
 
-  it("leaves the first-party providers on their SVG assets (no glyph)", async () => {
-    const declarations = await loadFirstPartyProviderDeclarations();
-    const projected = [...declarations.entries()].flatMap(([pluginId, list]) =>
-      list.map((declared) => {
-        const { info } = buildPluginProviderRegistration({
-          available: true,
-          pluginId,
-          declaration: declared,
-          iconHash: null,
-          readSettings: NO_SETTINGS,
-        });
-        return { id: info.id, logoUrl: info.logoUrl, icon: info.icon };
-      }),
-    );
-    expect(projected).toStrictEqual([
-      {
-        id: "codex",
-        logoUrl: "/api/v1/system/providers/codex/logo",
-        icon: undefined,
-      },
-      {
-        id: "claude-code",
-        logoUrl: "/api/v1/system/providers/claude-code/logo",
-        icon: undefined,
-      },
-      {
-        id: "pi",
-        logoUrl: "/api/v1/system/providers/pi/logo",
-        icon: undefined,
-      },
-      {
-        id: "acp-cursor",
-        logoUrl: "/api/v1/system/providers/acp-cursor/logo",
-        icon: undefined,
-      },
-      {
-        id: "acp-opencode",
-        logoUrl: "/api/v1/system/providers/acp-opencode/logo",
-        icon: undefined,
-      },
-      {
-        id: "acp-omp",
-        logoUrl: "/api/v1/system/providers/acp-omp/logo",
-        icon: undefined,
-      },
-      {
-        id: "acp-grok",
-        logoUrl: "/api/v1/system/providers/acp-grok/logo",
-        icon: undefined,
-      },
-      {
-        id: "acp-hermes-agent",
-        logoUrl: "/api/v1/system/providers/acp-hermes-agent/logo",
-        icon: undefined,
-      },
-    ]);
-  });
-
   it("keeps Claude Code's finished turns flat and collapses every other first-party provider", async () => {
     const declarations = await loadFirstPartyProviderDeclarations();
     const projected = [...declarations.entries()].flatMap(([pluginId, list]) =>

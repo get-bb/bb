@@ -160,6 +160,7 @@ export interface ServerMoveServiceOptions {
   serverHeaders: Record<string, string>;
   hostDaemonPort: number | null;
   autoUpdate: boolean;
+  supervised: boolean;
   env: NodeJS.ProcessEnv;
   platform: HostPlatform;
   uid: number;
@@ -1623,6 +1624,7 @@ export class ServerMoveService {
       launcherEntry,
       "host-daemon",
       ...(this.options.autoUpdate ? ["--auto-update"] : []),
+      ...(this.options.supervised ? ["--supervise"] : []),
       ...(this.options.hostDaemonPort === null
         ? []
         : ["--host-daemon-port", String(this.options.hostDaemonPort)]),

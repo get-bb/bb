@@ -247,6 +247,21 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain("Modal machine");
   });
 
+  it("marks a removed machine and hides execution on a retained environment", () => {
+    const markup = renderEnvironmentRow(
+      makeEnvironment({ status: "ready", hostLifecycle: "removed" }),
+      [],
+      {
+        locality: "remote",
+        identity: { name: "Old laptop", connected: false },
+      },
+    );
+    expect(markup).toContain("Unavailable — machine removed");
+    expect(markup).toContain("Old laptop");
+    expect(markup).not.toContain("(offline)");
+    expect(markup).not.toContain('aria-label="New thread in this environment"');
+  });
+
   it("shows the create-thread action for a ready environment", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="New thread in this environment"',
@@ -333,16 +348,16 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain('data-icon="Folder"');
   });
 
-  it("shows an explicit environment name before its machine", () => {
+  it("shows the provider and machine without the custom environment name", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({ name: "Design system polish" }),
       [worktreeProvider],
       connectedLocalHost,
     );
 
-    expect(markup).toContain("Design system polish");
+    expect(markup).not.toContain("Design system polish");
     expect(markup).toContain("Michael-M4");
-    expect(markup).not.toContain("· Worktree");
+    expect(markup).toContain("Worktree");
   });
 
   it("shows no provider id while the registered provider list is still loading", () => {

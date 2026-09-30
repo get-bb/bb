@@ -14,11 +14,9 @@ function renderSection(
       disabled={false}
       experiments={{
         changelogPreview: false,
-        mobileApp: false,
-        multiMachinePicker: false,
+        legacyJitiPluginLoader: false,
         serverMove: false,
         sidebarProgressiveDisclosure: false,
-        timelineWindowing: false,
       }}
       onExperimentChange={onExperimentChange}
     />,
@@ -33,18 +31,11 @@ describe("ExperimentsSettingsSection", () => {
     expect(onChange).toHaveBeenCalledWith("changelogPreview", true);
   });
 
-  it("reports mobile app changes", () => {
+  it("reports legacy plugin loader changes", () => {
     const onChange = vi.fn();
     renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Mobile app"));
-    expect(onChange).toHaveBeenCalledWith("mobileApp", true);
-  });
-
-  it("reports multi-machine picker changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Multi-machine picker"));
-    expect(onChange).toHaveBeenCalledWith("multiMachinePicker", true);
+    fireEvent.click(screen.getByLabelText("Legacy plugin loader (JITI)"));
+    expect(onChange).toHaveBeenCalledWith("legacyJitiPluginLoader", true);
   });
 
   it("reports sidebar progressive disclosure changes", () => {
@@ -52,12 +43,5 @@ describe("ExperimentsSettingsSection", () => {
     renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Sidebar progressive disclosure"));
     expect(onChange).toHaveBeenCalledWith("sidebarProgressiveDisclosure", true);
-  });
-
-  it("reports timeline windowing changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Timeline windowing"));
-    expect(onChange).toHaveBeenCalledWith("timelineWindowing", true);
   });
 });

@@ -1,19 +1,29 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 const PLUGIN_ROOT = realpathSync(resolve(import.meta.dirname, ".."));
 const FRONTEND_ENTRY = join(PLUGIN_ROOT, "app.tsx");
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
 
-const BUNDLED_WORKSPACE_SPECIFIER =
-  /^(@bb\/(?!plugin-sdk(?:\/|$))[^/]+)((?:\/.*)?)$/;
-
-const HOST_PROVIDED_ICON_MODULE =
-  /\/shared-ui\/src\/components\/ui\/icon\.tsx$/;
-
 const IMPORT_STATEMENT =
   /^[ \t]*(import|export)\s+([^;'"]*?)\s*from\s*["']([^"']+)["']|^[ \t]*import\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/gm;
+
+const tsconfigSchema = z.object({
+  compilerOptions: z.object({
+    paths: z.record(z.string(), z.array(z.string()).min(1)),
+  }),
+});
+
+const PATH_ALIASES = Object.entries(
+  tsconfigSchema.parse(
+    JSON.parse(readFileSync(join(PLUGIN_ROOT, "tsconfig.json"), "utf8")),
+  ).compilerOptions.paths,
+).map(([pattern, [target]]): [string, string] => [
+  pattern,
+  resolve(PLUGIN_ROOT, target),
+]);
 
 interface ImportEdge {
   specifier: string;
@@ -53,46 +63,25 @@ function importEdges(source: string): ImportEdge[] {
   return edges;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function workspaceSourceFile(packageName: string, subpath: string): string {
-  const link = join(PLUGIN_ROOT, "node_modules", packageName);
-  if (!existsSync(link)) {
-    throw new Error(
-      `${packageName} is not a dependency of this plugin (no node_modules link)`,
-    );
-  }
-  const packageDir = realpathSync(link);
-  const manifest: unknown = JSON.parse(
-    readFileSync(join(packageDir, "package.json"), "utf8"),
-  );
-  const entry =
-    isRecord(manifest) && isRecord(manifest.exports)
-      ? manifest.exports[`.${subpath}`]
-      : undefined;
-  const source = isRecord(entry) ? entry.source : undefined;
-  if (typeof source !== "string") {
-    throw new Error(
-      `${packageName}${subpath} has no "source" export in its package.json`,
-    );
-  }
-  return resolve(packageDir, source);
+function aliasedPath(specifier: string): string | null {
+  const exact = PATH_ALIASES.find(([pattern]) => pattern === specifier);
+  if (exact !== undefined) return exact[1];
+  const [wildcard] = PATH_ALIASES.filter(
+    ([pattern]) =>
+      pattern.endsWith("*") && specifier.startsWith(pattern.slice(0, -1)),
+  ).sort(([left], [right]) => right.length - left.length);
+  return wildcard === undefined
+    ? null
+    : wildcard[1].replace("*", specifier.slice(wildcard[0].length - 1));
 }
 
 function resolveLocalModule(
   fromFile: string,
   specifier: string,
 ): string | null {
-  const workspace = BUNDLED_WORKSPACE_SPECIFIER.exec(specifier);
-  const base = specifier.startsWith("@/")
-    ? join(PLUGIN_ROOT, specifier.slice(2))
-    : specifier.startsWith(".")
-      ? resolve(dirname(fromFile), specifier)
-      : workspace !== null
-        ? workspaceSourceFile(workspace[1], workspace[2])
-        : null;
+  const base = specifier.startsWith(".")
+    ? resolve(dirname(fromFile), specifier)
+    : aliasedPath(specifier);
   if (base === null) return null;
   const stem = base.replace(/\.js$/, "");
   const candidates = [
@@ -110,7 +99,6 @@ function resolveLocalModule(
       `cannot resolve ${specifier} from ${relative(PLUGIN_ROOT, fromFile)}`,
     );
   }
-  if (HOST_PROVIDED_ICON_MODULE.test(resolved)) return null;
   return SOURCE_EXTENSIONS.has(extname(resolved)) ? resolved : null;
 }
 
@@ -144,16 +132,16 @@ describe("automations frontend bundle", () => {
         "detail-view.tsx",
         "overview-view.tsx",
         "lib/format-schedule.ts",
-        "../../packages/domain/src/update-state.ts",
-        "../../packages/shared-ui/src/components/ui/button.tsx",
+        "lib/edit-prompt.ts",
       ]),
     );
   });
 
-  it("never treats an unfollowed @bb package as a third-party specifier", () => {
-    expect(() =>
-      resolveLocalModule(FRONTEND_ENTRY, "@bb/plugin-interaction-contracts"),
-    ).toThrow(/plugin-interaction-contracts/);
+  it("follows every registry component import", () => {
+    const unfollowed = [...reached.values()]
+      .flat()
+      .filter((specifier) => specifier.startsWith("@/"));
+    expect(unfollowed).toEqual([]);
   });
 
   it("never reaches the zod schema module through a value import", () => {

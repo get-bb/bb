@@ -636,6 +636,36 @@ describe("ServerConnection", () => {
     }
   });
 
+  it("delivers a terminal exit that happened while disconnected once the socket reopens", async () => {
+    const { connection, webSocket } = createConnectionFixture({
+      sessionIds: ["first", "second"],
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      };
+
+      socket.reconnect();
+      expect(connection.sendMessage(exited)).toBe(false);
+      expect(socket.send).not.toHaveBeenCalled();
+
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      await vi.waitFor(() =>
+        expect(socket.send).toHaveBeenCalledWith(JSON.stringify(exited)),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("closes the connection when a terminal websocket send throws", async () => {
     const { connection, webSocket } = createConnectionFixture();
     try {

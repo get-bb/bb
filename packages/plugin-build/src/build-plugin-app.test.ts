@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
 import {
   buildPluginApp,
-  isSharedUiIconRelativeImport,
+  sharedUiRuntimeModuleFor,
   runtimeShimPlugin,
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
@@ -182,30 +182,78 @@ describe("plugin app runtime shim", () => {
     expect(js).toContain("plugin-owned-icon-map");
   });
 
-  it("recognizes only shared-ui's own icon module as a relative import", () => {
+  it("shims shared-ui's relative ./question-form-host import to the host's context", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-question-host-rel-"));
+    tempDirs.push(dir);
+    const sharedUiDir = join(dir, "node_modules", "@bb", "shared-ui");
+    const files: Record<string, string> = {
+      [join(sharedUiDir, "package.json")]: JSON.stringify({
+        name: "@bb/shared-ui",
+        type: "module",
+        exports: {
+          "./question-form": "./src/components/ui/question-form.tsx",
+        },
+      }),
+      [join(sharedUiDir, "src", "components", "ui", "question-form-host.tsx")]:
+        `export function useQuestionFormHost() { return "bundled-default-context"; }\n`,
+      [join(sharedUiDir, "src", "components", "ui", "question-form.tsx")]:
+        `import { useQuestionFormHost } from "./question-form-host";\nexport function QuestionForm() { return useQuestionFormHost(); }\n`,
+      [join(dir, "app.tsx")]:
+        `import { QuestionForm } from "@bb/shared-ui/question-form";\nexport { QuestionForm };\n`,
+    };
+    for (const [filePath, contents] of Object.entries(files)) {
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, contents);
+    }
+    const result = await build({
+      entryPoints: [join(dir, "app.tsx")],
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      jsx: "automatic",
+      write: false,
+      logLevel: "silent",
+      plugins: [runtimeShimPlugin()],
+    });
+    const js = result.outputFiles[0]?.text ?? "";
+    expect(js).not.toContain("bundled-default-context");
+    expect(js).toMatch(/runtime\d*\.questionFormHost\b/);
+  });
+
+  it("recognizes only shared-ui's own host-backed modules as relative imports", () => {
     const sharedUiComponent =
       "/repo/packages/shared-ui/src/components/ui/empty-state.tsx";
-    expect(isSharedUiIconRelativeImport("./icon", sharedUiComponent)).toBe(
-      true,
+    expect(sharedUiRuntimeModuleFor("./icon", sharedUiComponent)).toBe(
+      "@bb/shared-ui/icon",
     );
-    expect(isSharedUiIconRelativeImport("./icon.js", sharedUiComponent)).toBe(
-      true,
+    expect(sharedUiRuntimeModuleFor("./icon.js", sharedUiComponent)).toBe(
+      "@bb/shared-ui/icon",
     );
     expect(
-      isSharedUiIconRelativeImport(
+      sharedUiRuntimeModuleFor(
         "../components/ui/icon",
         "/repo/packages/shared-ui/src/hooks/use-thing.ts",
       ),
-    ).toBe(true);
-    expect(isSharedUiIconRelativeImport("./button", sharedUiComponent)).toBe(
-      false,
-    );
+    ).toBe("@bb/shared-ui/icon");
     expect(
-      isSharedUiIconRelativeImport(
+      sharedUiRuntimeModuleFor(
+        "./question-form-host",
+        "/repo/packages/shared-ui/src/components/ui/question-form.tsx",
+      ),
+    ).toBe("@bb/shared-ui/question-form-host");
+    expect(sharedUiRuntimeModuleFor("./button", sharedUiComponent)).toBe(null);
+    expect(
+      sharedUiRuntimeModuleFor(
         "./icon",
         "/plugins/acme/components/ui/button.tsx",
       ),
-    ).toBe(false);
+    ).toBe(null);
+    expect(
+      sharedUiRuntimeModuleFor(
+        "./question-form-host",
+        "/plugins/acme/components/ui/question-form.tsx",
+      ),
+    ).toBe(null);
   });
 
   it("scopes Tailwind utilities while preserving imported CSS unscoped", async () => {

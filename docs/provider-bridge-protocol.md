@@ -358,6 +358,14 @@ both for one event. `data` is optional and additive; a response without it,
 or with a malformed one, is a plain failure, and a request that times out or
 whose bridge exits has no response and therefore no hint.
 
+A launch that fails because the provider's own CLI is not installed is a
+classification, not a recovery hint: the bridge rejects the request by passing
+`MISSING_EXECUTABLE` (-32004) to `sendError` instead of the generic
+`BRIDGE_ERROR`. The host daemon reports that rejection as `missing_executable`
+without reading the message, so the picker can say the CLI is missing whatever
+prose the bridge chose. A bridge that keeps using `BRIDGE_ERROR` is classified
+generically, as before.
+
 A bridge that can heal itself does not ask the runtime to: the codex bridge
 rebuilds a thread's `codex app-server` child before the next turn after a
 terminal account error, and the claude bridge replaces its CLI child the same
@@ -425,7 +433,13 @@ it:
    so correlation is explicit and the runtime never guesses which user
    message opened a turn; the assembler queues it until a turn opens (or
    emits into the already-open turn for steers) and constructs
-   `turn/input/accepted` itself. Settlement rides `turn.boundary
+   `turn/input/accepted` itself. Claude emits `turn.open` together with
+   acceptance once the SDK consumes the prompt, before waiting for model
+   output. Follow-up input can then steer into that turn during provider
+   preparation. SDK consumption failure must not open a turn; stopping after
+   consumption must settle it even if no output arrived. A recovered task
+   notification cannot settle this accepted user turn before its response
+   begins. Settlement rides `turn.boundary
 { status }`; a boundary with `claimIfIdle: true` owns a turn only when
    accepted input is pending, so a provider-terminal fallback signal on an
    idle thread settles nothing. A prompt the provider handles without doing
@@ -640,7 +654,10 @@ carries one, and they assemble to the same pinned counts as the recordings.
 The conformance kit runs the same recordings as its recorded-traffic
 scenario set: `checkRecordedCellReplay` replays a bridge's cells and
 `checkRecordedCellReplay` reports `recorded/<cell>/{replays,
-events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
-first-party bridge has a `bridge.recorded-conformance.test.ts` beside its
-scripted suite, so conformance reflects the real dialect as well as the
-protocol.
+events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. The ACP
+bridge's `bridge.recorded-conformance.test.ts` sits beside its scripted suite.
+The pi, Claude Code, and Codex plugins' tests use only public dependencies,
+so they cannot read the committed recordings; `packages/provider-parity`
+replays their cells instead (`pi-recorded-conformance.test.ts` and
+`recorded-conformance.test.ts`). Conformance reflects the real dialect as
+well as the protocol.

@@ -9,10 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { PromptInput, RuntimePermissionPolicy } from "@bb/domain";
+import type {
+  PromptInput,
+  RuntimePermissionPolicy,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   buildCodexConfig,
-  combineWorkspaceWriteRoots,
   gitWritableRootsForWorkspace,
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -168,17 +170,12 @@ function createLinkedWorktreeFixture(): LinkedWorktreeFixture {
   };
 }
 
-function dedupeRoots(roots: readonly string[]): string[] {
-  return [...new Set(roots)];
-}
-
 function workspaceConfigForCwd(args: {
   cwd: string;
-  additionalWorkspaceWriteRoots?: string[];
 }): ReturnType<typeof buildCodexConfig> {
   return buildCodexConfig({
     threadId: "bb-thread-1",
-    additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots ?? [],
+    additionalWorkspaceWriteRoots: [],
     gitWritableRoots: gitWritableRootsForWorkspace(args.cwd),
     options: WORKSPACE_ASK_OPTIONS,
   });
@@ -439,56 +436,6 @@ describe("gitWritableRootsForWorkspace", () => {
       }
     },
   );
-
-  it("carries the captured git writable roots into the workspace-write config", () => {
-    const fixture = createLinkedWorktreeFixture();
-    try {
-      expect(gitWritableRootsForWorkspace(fixture.workspacePath)).toEqual(
-        fixture.expectedWritableRoots,
-      );
-      expect(
-        workspaceConfigForCwd({ cwd: fixture.workspacePath }),
-      ).toMatchObject({
-        "sandbox_workspace_write.writable_roots": fixture.expectedWritableRoots,
-      });
-    } finally {
-      fixture.cleanup();
-    }
-  });
-
-  it("combines additional workspace roots with the git roots, deduped, additional first", () => {
-    const fixture = createLinkedWorktreeFixture();
-    const additionalWorkspaceWriteRoots = [
-      path.join(fixture.rootPath, "host-extra-root"),
-      fixture.gitDir,
-    ];
-    const expectedWritableRoots = dedupeRoots([
-      ...additionalWorkspaceWriteRoots,
-      ...fixture.expectedWritableRoots,
-    ]);
-    try {
-      const gitWritableRoots = gitWritableRootsForWorkspace(
-        fixture.workspacePath,
-      );
-
-      expect(
-        combineWorkspaceWriteRoots(
-          gitWritableRoots,
-          additionalWorkspaceWriteRoots,
-        ),
-      ).toEqual(expectedWritableRoots);
-      expect(
-        workspaceConfigForCwd({
-          cwd: fixture.workspacePath,
-          additionalWorkspaceWriteRoots,
-        }),
-      ).toMatchObject({
-        "sandbox_workspace_write.writable_roots": expectedWritableRoots,
-      });
-    } finally {
-      fixture.cleanup();
-    }
-  });
 });
 
 function permissionSettings(

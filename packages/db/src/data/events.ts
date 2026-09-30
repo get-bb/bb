@@ -388,6 +388,10 @@ export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
   threadIds: readonly string[];
 }
 
+export interface ListThreadIdsStoppedSinceLastTurnStartArgs {
+  threadIds: readonly string[];
+}
+
 export interface ListThreadTurnInterruptionEventStatesArgs {
   threadIds: readonly string[];
 }
@@ -1394,12 +1398,6 @@ function resolvedItemPruningCandidates(
     FROM events WHERE id IN (${pruningCandidates(args, types)}) ORDER BY sequence`);
 }
 
-export interface PruneThreadEventsBeforeSequenceArgs extends PruningWindow {
-  sequenceCutoff: number;
-  threadId: string;
-  types: readonly ThreadEventType[];
-}
-
 export interface PruneContextWindowUsageEventsArgs extends PruningWindow {
   threadId: string;
 }
@@ -1550,7 +1548,8 @@ export function listLatestThreadStateEventRowsByThreadIds(
       return db
         .select(storedEventRowFields)
         .from(events)
-        .where(sql`${events}.rowid IN (
+        .where(
+          sql`${events}.rowid IN (
         SELECT latest_state.rowid
         FROM ${events} AS latest_state INDEXED BY events_thread_state_thread_sequence_idx
         WHERE latest_state.thread_id IN (${threadIdList})
@@ -1562,7 +1561,8 @@ export function listLatestThreadStateEventRowsByThreadIds(
               AND candidate.type ${stateTypesPredicate}
               AND ${kindPredicate}
           )
-      )`)
+      )`,
+        )
         .all();
     },
 
@@ -3883,6 +3883,34 @@ export function listThreadTurnInterruptionEventStates(
   });
 }
 
+export function listThreadIdsStoppedSinceLastTurnStart(
+  db: DbConnection,
+  args: ListThreadIdsStoppedSinceLastTurnStartArgs,
+): string[] {
+  if (args.threadIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select({ threadId: events.threadId })
+    .from(events)
+    .where(
+      and(
+        inArray(events.threadId, [...args.threadIds]),
+        eq(events.type, "system/thread/interrupted"),
+        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events AS latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.type IN ('turn/started', 'system/thread/interrupted')
+        )`,
+      ),
+    )
+    .all()
+    .map((row) => row.threadId);
+}
+
 export function listThreadIdsWithLatestHostDaemonRestartInterruption(
   db: DbConnection,
   args: ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs,
@@ -3937,30 +3965,6 @@ export function getLastStoredTurnRequestEvent(
       .limit(1)
       .get() ?? null
   );
-}
-
-export function pruneThreadEventsBeforeSequenceInTransaction(
-  db: DbQueryConnection,
-  args: PruneThreadEventsBeforeSequenceArgs,
-): number {
-  if (args.sequenceCutoff <= 0 || args.types.length === 0) {
-    return 0;
-  }
-
-  const result = db
-    .delete(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        sql`${events.id} IN (${pruningCandidates(args, args.types)})`,
-        lte(events.sequence, args.sequenceCutoff),
-        isBeforeLatestThreadEvent(args.threadId),
-        inArray(events.type, [...args.types]),
-      ),
-    )
-    .run();
-
-  return result.changes;
 }
 
 function pruneUsageSnapshots(
@@ -4216,15 +4220,6 @@ function runPruningBatch(
   const removed = db.transaction(work, { behavior: "immediate" });
   if (removed > 0) bumpThreadEventRewriteGeneration(args.threadId);
   return removed;
-}
-
-export function pruneThreadEventsBeforeSequence(
-  db: DbConnection,
-  args: PruneThreadEventsBeforeSequenceArgs,
-): number {
-  return runPruningBatch(db, args, (tx) =>
-    pruneThreadEventsBeforeSequenceInTransaction(tx, args),
-  );
 }
 
 export function pruneContextWindowUsageEvents(

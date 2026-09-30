@@ -149,9 +149,3 @@ describe.runIf(PERF_ENABLED)("composer large minified-JS paste", () => {
     });
   }
 });
-
-describe.runIf(!PERF_ENABLED)("composer paste perf harness (gated)", () => {
-  it("is skipped unless PROMPTBOX_PERF=1", () => {
-    expect(PERF_ENABLED).toBe(false);
-  });
-});

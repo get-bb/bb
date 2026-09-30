@@ -1,3 +1,4 @@
+import { ThreadCreationPlacementScope } from "./ThreadCreationPlacement.js";
 import {
   createContext,
   useContext,
@@ -8,17 +9,18 @@ import {
   type ReactNode,
 } from "react";
 import { useAtom } from "jotai";
-import type { ThreadListEntry } from "@bb/domain";
-import {
-  getCollapsedChildActivity,
-  type SidebarSectionId,
-} from "@bb/client-core";
-import { DropdownMenuItem } from "@bb/shared-ui/dropdown-menu";
-import { ContextMenuItem } from "@bb/shared-ui/context-menu";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
+import { getCollapsedChildActivity } from "../model/thread-activity.js";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { ContextMenuItem } from "@/components/ui/context-menu";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { useSidebarThreadDraftIds } from "@get-bb/plugin-sdk/app";
 import { ActionMenuSeparator } from "../ui/action-menu-items.js";
-import { SidebarContentElementContext } from "../ui/sidebar.js";
+import {
+  SIDEBAR_CONTENT_SELECTOR,
+  SidebarContentElementContext,
+} from "../ui/sidebar.js";
 import { reorderStoredOrder } from "../model/stored-order.js";
 import { sidebarHiddenGroupsAtom } from "../preferences/atoms.js";
 import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
@@ -31,11 +33,14 @@ import {
   SidebarCustomizeActionContent,
   type SidebarVisibilityItem,
 } from "./SidebarVisibilityControls.js";
+import { ThreadRowActionsCustomize } from "./ThreadRowActionsCustomize.js";
+import { CustomizeRowActionsContext } from "./customizeRowActionsContext.js";
 
 export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
   id: SidebarSectionId;
-  threads: readonly ThreadListEntry[];
+  threads: readonly SidebarThread[];
   renderContent: (close: () => void) => ReactNode;
+  onNewThread?: () => void;
 }
 
 interface ThreadListVisibilityState {
@@ -44,6 +49,7 @@ interface ThreadListVisibilityState {
   restore: (id: string) => void;
   customize: () => void;
   label: string;
+  selectedThreadId?: string;
 }
 
 const VisibilityContext = createContext<ThreadListVisibilityState | null>(null);
@@ -54,19 +60,27 @@ export function ThreadListVisibility({
   order,
   onOrderChange,
   label,
+  selectedThreadId,
   children,
 }: {
   groups: readonly ThreadListVisibilityGroup[];
   order: readonly SidebarSectionId[];
   onOrderChange: (order: SidebarSectionId[]) => void;
   label: string;
+  selectedThreadId?: string;
   children: ReactNode;
 }) {
   const [hidden, setHidden] = useAtom(sidebarHiddenGroupsAtom);
-  const [customizing, setCustomizing] = useState(false);
+  const [customizing, setCustomizing] = useState<"list" | "rowActions" | null>(
+    null,
+  );
   const compact = useIsCompactViewport();
   const container = useRef<HTMLDivElement>(null);
   const focusTarget = useRef<string | null>(null);
+  const rowActionsOrigin = useRef<{
+    threadId: string;
+    scrollTop: number;
+  } | null>(null);
   const hiddenIds = useMemo(() => new Set(hidden), [hidden]);
   const groupsById = new Map(groups.map((group) => [group.id, group]));
   const orderedGroups = order.flatMap((id) => {
@@ -106,10 +120,48 @@ export function ThreadListVisibility({
     });
     return () => cancelAnimationFrame(frame);
   }, [hidden, customizing]);
+  useEffect(() => {
+    const origin = rowActionsOrigin.current;
+    if (origin === null || customizing) return;
+    rowActionsOrigin.current = null;
+    const scroller = container.current?.closest<HTMLElement>(
+      SIDEBAR_CONTENT_SELECTOR,
+    );
+    if (scroller) scroller.scrollTop = origin.scrollTop;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const link = Array.from(
+          container.current?.querySelectorAll<HTMLElement>(
+            "[data-sidebar-thread-id]",
+          ) ?? [],
+        ).find(
+          (element) => element.dataset.sidebarThreadId === origin.threadId,
+        );
+        const target =
+          link
+            ?.closest("[data-sidebar-rename-row]")
+            ?.querySelector<HTMLElement>("[data-thread-actions-trigger]") ??
+          link ??
+          container.current;
+        target?.focus({ preventScroll: true });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [customizing]);
+  const customizeRowActions = (threadId: string) => {
+    rowActionsOrigin.current = {
+      threadId,
+      scrollTop:
+        container.current?.closest<HTMLElement>(SIDEBAR_CONTENT_SELECTOR)
+          ?.scrollTop ?? 0,
+    };
+    setCustomizing("rowActions");
+  };
   const value: ThreadListVisibilityState = {
     hiddenGroups: orderedGroups.filter((group) => hiddenIds.has(group.id)),
     label,
-    customize: () => setCustomizing(true),
+    selectedThreadId,
+    customize: () => setCustomizing("list"),
     hide: (id) => {
       focusTarget.current = "more";
       setVisible(id, false);
@@ -121,37 +173,44 @@ export function ThreadListVisibility({
   };
   return (
     <VisibilityContext.Provider value={value}>
-      <div ref={container} tabIndex={-1} className="min-w-0 outline-none">
-        {customizing ? (
-          <SidebarVisibilityCustomize
-            items={orderedGroups}
-            visibleIds={orderedGroups
-              .filter((group) => !hiddenIds.has(group.id))
-              .map((group) => group.id)}
-            onVisibleChange={setVisible}
-            onReorder={(activeId, overId) => {
-              const groupIds = orderedGroups.map((group) => group.id);
-              const next = reorderStoredOrder({
-                activeId,
-                overId,
-                order: groupIds,
-                visibleIds: groupIds,
-              });
-              if (next) onOrderChange(next);
-            }}
-            onDone={() => {
-              focusTarget.current = "more";
-              setCustomizing(false);
-            }}
-            title="Customize list"
-            listLabel={label}
-            variant={compact ? "compact" : "card"}
-            testIdPrefix="sidebar-thread-list"
-          />
-        ) : (
-          children
-        )}
-      </div>
+      <CustomizeRowActionsContext.Provider value={customizeRowActions}>
+        <div ref={container} tabIndex={-1} className="min-w-0 outline-none">
+          {customizing === "rowActions" ? (
+            <ThreadRowActionsCustomize
+              onDone={() => setCustomizing(null)}
+              variant={compact ? "compact" : "card"}
+            />
+          ) : customizing === "list" ? (
+            <SidebarVisibilityCustomize
+              items={orderedGroups}
+              visibleIds={orderedGroups
+                .filter((group) => !hiddenIds.has(group.id))
+                .map((group) => group.id)}
+              onVisibleChange={setVisible}
+              onReorder={(activeId, overId) => {
+                const groupIds = orderedGroups.map((group) => group.id);
+                const next = reorderStoredOrder({
+                  activeId,
+                  overId,
+                  order: groupIds,
+                  visibleIds: groupIds,
+                });
+                if (next) onOrderChange(next);
+              }}
+              onDone={() => {
+                focusTarget.current = "more";
+                setCustomizing(null);
+              }}
+              title="Customize list"
+              listLabel={label}
+              variant={compact ? "compact" : "card"}
+              testIdPrefix="sidebar-thread-list"
+            />
+          ) : (
+            children
+          )}
+        </div>
+      </CustomizeRowActionsContext.Provider>
     </VisibilityContext.Provider>
   );
 }
@@ -165,15 +224,19 @@ export function ThreadListVisibilityGroupScope({
 }) {
   return (
     <GroupContext.Provider value={id}>
-      <div data-sidebar-visibility-group={id}>{children}</div>
+      <ThreadCreationPlacementScope group={id}>
+        <div data-sidebar-visibility-group={id}>{children}</div>
+      </ThreadCreationPlacementScope>
     </GroupContext.Provider>
   );
 }
 
 export function ThreadListVisibilityMenuItems({
   surface = "dropdown",
+  leadingSeparator = true,
 }: {
   surface?: "dropdown" | "context";
+  leadingSeparator?: boolean;
 }) {
   const state = useContext(VisibilityContext);
   const id = useContext(GroupContext);
@@ -181,7 +244,7 @@ export function ThreadListVisibilityMenuItems({
   const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
   return (
     <>
-      <ActionMenuSeparator surface={surface} />
+      {leadingSeparator && <ActionMenuSeparator surface={surface} />}
       {id !== null && (
         <Item onSelect={() => state.hide(id)}>
           <SidebarVisibilityActionContent visible label="Hide from list" />
@@ -194,7 +257,7 @@ export function ThreadListVisibilityMenuItems({
   );
 }
 
-function GroupActivity({ threads }: { threads: readonly ThreadListEntry[] }) {
+function GroupActivity({ threads }: { threads: readonly SidebarThread[] }) {
   const drafts = useSidebarThreadDraftIds();
   const pluginStatus = usePluginThreadRowStatusForThreads(threads);
   return (
@@ -207,18 +270,23 @@ function GroupActivity({ threads }: { threads: readonly ThreadListEntry[] }) {
 
 function HiddenGroup({
   group,
+  selected,
   close,
   restore,
 }: {
   group: ThreadListVisibilityGroup;
+  selected: boolean;
   close: () => void;
   restore: (id: string) => void;
 }) {
   return (
     <SidebarOverflowItem
       item={group}
+      selected={selected}
+      empty={group.threads.length === 0}
       onClose={close}
       onAddToSidebar={restore}
+      onNewThread={group.onNewThread}
       activity={<GroupActivity threads={group.threads} />}
     >
       {(closeSection) => group.renderContent(closeSection)}
@@ -230,6 +298,9 @@ export function ThreadListMore() {
   const state = useContext(VisibilityContext);
   if (!state || state.hiddenGroups.length === 0) return null;
   const groups = state.hiddenGroups;
+  const selectedGroupId = groups.find((group) =>
+    group.threads.some((thread) => thread.id === state.selectedThreadId),
+  )?.id;
   const threads = [
     ...new Map(
       groups
@@ -244,16 +315,21 @@ export function ThreadListMore() {
         listLabel={`Hidden ${state.label.toLowerCase()}`}
         customizeLabel="Customize list"
         onCustomize={state.customize}
+        selected={selectedGroupId !== undefined}
         activity={<GroupActivity threads={threads} />}
         testIdPrefix="sidebar-thread-list"
       >
         {(close) => (
           <SidebarContentElementContext.Provider value={null}>
-            <div data-sidebar-overflow="true">
+            <div
+              data-sidebar-overflow="true"
+              className="flex min-h-0 flex-1 flex-col"
+            >
               {groups.map((group) => (
                 <HiddenGroup
                   key={group.id}
                   group={group}
+                  selected={group.id === selectedGroupId}
                   close={close}
                   restore={state.restore}
                 />

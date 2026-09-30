@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS `environments_owner_thread_idx`;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `environments_provider_lifecycle_idx` ON `environments` (`environment_provider_id`) WHERE "environments"."status" <> 'destroyed' OR "environments"."teardown_status" IS NOT 'removed';--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS `environments_owner_thread_idx` ON `environments` (`owner_thread_id`) WHERE "environments"."owner_thread_id" IS NOT NULL;

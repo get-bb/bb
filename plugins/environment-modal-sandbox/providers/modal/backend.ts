@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  DEFAULT_SANDBOX_SIZE,
   SANDBOX_LIFETIME_MS,
   type ResolvedSettings,
   type SettingsResolution,
@@ -270,8 +271,9 @@ export function createModalSandboxBackend(
             name: context.key,
             image: { type: "image", imageId },
             timeoutMs: SANDBOX_LIFETIME_MS,
-            cpu: selection.preset?.cpu ?? null,
-            memoryMiB: selection.preset?.memoryMiB ?? null,
+            cpu: selection.preset?.cpu ?? DEFAULT_SANDBOX_SIZE.cpu,
+            memoryMiB:
+              selection.preset?.memoryMiB ?? DEFAULT_SANDBOX_SIZE.memoryMiB,
             tags: { bbMachineKey: context.key },
           })
         );
@@ -283,8 +285,8 @@ export function createModalSandboxBackend(
         imageId,
         accountIdentity,
         appName: resolved.appName,
-        cpu: selection.preset?.cpu ?? 0.125,
-        memoryMiB: selection.preset?.memoryMiB ?? 128,
+        cpu: selection.preset?.cpu ?? DEFAULT_SANDBOX_SIZE.cpu,
+        memoryMiB: selection.preset?.memoryMiB ?? DEFAULT_SANDBOX_SIZE.memoryMiB,
         key: context.key,
         sandboxId: sandbox.sandboxId,
         snapshotImageId: null,

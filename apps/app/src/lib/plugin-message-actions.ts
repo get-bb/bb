@@ -1,7 +1,11 @@
 import type {
+  PluginComposerApi,
   PluginMessageActionContext,
   ThreadChatMessageReference,
 } from "@get-bb/plugin-sdk";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
+import { detachedComposerController } from "./plugin-composer-handle";
 import type { MarkdownMessageDirectiveOpenThreadPanel } from "@/components/ui/markdown-message-directives";
 import type { PluginMessageActionSlot } from "./plugin-slots";
 
@@ -11,6 +15,22 @@ interface RunPluginMessageActionArgs {
   message: ThreadChatMessageReference;
   selectedText?: string;
   openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | undefined;
+  composerHost: PluginComposerHost | null;
+}
+
+function messageActionComposer(
+  pluginId: string,
+  threadId: string,
+  host: PluginComposerHost | null,
+): PluginComposerApi | null {
+  if (host === null) return null;
+  if (host.scope.kind !== "thread" || host.scope.threadId !== threadId) {
+    return null;
+  }
+  return createComposerHandleBinding(
+    host.textEffectKey,
+    detachedComposerController(pluginId, host, "a message action's"),
+  ).handle;
 }
 
 export function runPluginMessageAction({
@@ -19,6 +39,7 @@ export function runPluginMessageAction({
   message,
   selectedText,
   openThreadPanel,
+  composerHost,
 }: RunPluginMessageActionArgs): void {
   const context: PluginMessageActionContext = {
     threadId,
@@ -33,6 +54,7 @@ export function runPluginMessageAction({
       }
       return openThreadPanel({ ...options, pluginId: slot.pluginId });
     },
+    composer: messageActionComposer(slot.pluginId, threadId, composerHost),
   };
   const warn = (error: unknown) => {
     console.warn(

@@ -9,9 +9,10 @@ does not cover:
    syncs that plugin's SDK surface to the running bb — no server needed. For a
    plugin that depends on the npm package it repins the exact
    `@get-bb/plugin-sdk` devDependency to this bb's SDK version and brings the
-   runtime-shimmed packages' type-only devDependencies (sonner, vaul, the
-   portal radix families, ...) to the versions this bb ships — adding any an
-   app plugin is missing and moving one out of `dependencies` (run
+   declared runtime-shimmed packages' type-only devDependencies (sonner, vaul, the
+   portal radix families, ...) to the versions this bb ships, moving them out
+   of `dependencies` when needed. Unused packages may be removed; neither
+   updates nor `--check` require undeclared shim packages (run
    `npm install` after); for an older plugin that still vendors `types/*.d.ts`
    it rewrites those declarations. Either way a cloned or older plugin can be
    thousands of lines behind. `--check` compares declared files and package

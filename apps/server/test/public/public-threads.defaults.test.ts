@@ -524,7 +524,11 @@ describe("public thread default routes", () => {
       await expect(readJson(response)).resolves.toEqual({
         code: "model_catalog_unavailable",
         message: expect.stringContaining("Unable to load codex models"),
-        details: { providerId: "codex", code: "failed" },
+        details: {
+          providerId: "codex",
+          code: "failed",
+          detail: "Codex model discovery failed",
+        },
         retryable: true,
       });
       expect(

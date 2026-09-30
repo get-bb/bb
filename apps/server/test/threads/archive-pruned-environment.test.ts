@@ -1,11 +1,4 @@
-import {
-  DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
-  DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
-  DESTROYED_ENVIRONMENT_TTL_MS,
-  environments,
-  getThread,
-  pruneDestroyedEnvironments,
-} from "@bb/db";
+import { environments, getThread } from "@bb/db";
 import type { ThreadStatus } from "@bb/domain";
 import { apiErrorSchema } from "@bb/server-contract";
 import { eq } from "drizzle-orm";
@@ -18,8 +11,6 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
-
-const EIGHT_DAYS_MS = 8 * 24 * 60 * 60_000;
 
 function seedThreadWithPrunedEnvironment(
   deps: Parameters<typeof seedThread>[0],
@@ -38,21 +29,9 @@ function seedThreadWithPrunedEnvironment(
     status: "idle",
   });
   deps.db
-    .update(environments)
-    .set({
-      status: "destroyed",
-      teardownStatus: "removed",
-      updatedAt: Date.now() - EIGHT_DAYS_MS,
-    })
+    .delete(environments)
     .where(eq(environments.id, environment.id))
     .run();
-  expect(
-    pruneDestroyedEnvironments(deps.db, deps.hub, {
-      updatedBefore: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS,
-      eventBatchSize: DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
-      limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
-    }).deleted,
-  ).toBe(1);
 
   const threadAfterPrune = getThread(deps.db, thread.id);
   expect(threadAfterPrune?.environmentId).toBeNull();

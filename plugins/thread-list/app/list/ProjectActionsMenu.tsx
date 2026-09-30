@@ -3,8 +3,8 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuTrigger,
-} from "@bb/shared-ui/context-menu";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+} from "@/components/ui/context-menu";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { ActionMenuItem, ActionMenuSeparator } from "../ui/action-menu-items.js";
 import { CompactLongPressMenu } from "../ui/compact-long-press-menu.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";

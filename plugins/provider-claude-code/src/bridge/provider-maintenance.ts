@@ -63,11 +63,15 @@ function claudeDistTags(value: string | null): {
 } | null {
   if (value === null) return null;
   try {
+    const distTagsSchema = z.object({
+      latest: z.string().min(1),
+      stable: z.string().min(1).optional(),
+    });
     const parsed = z
-      .object({
-        latest: z.string().min(1),
-        stable: z.string().min(1).optional(),
-      })
+      .union([
+        distTagsSchema,
+        z.tuple([distTagsSchema]).transform(([tags]) => tags),
+      ])
       .safeParse(JSON.parse(value));
     if (!parsed.success) return null;
     const latest = versionFrom(parsed.data.latest);

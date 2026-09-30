@@ -31,12 +31,12 @@ async function resetPreference(
 
 describe("public ui preferences", () => {
   it.each(["__automatic__", "__builtin__", "inbox/inbox"])(
-    "normalizes legacy thread list selection %s while preserving explicit plugins",
+    "keeps thread list selection %s, reading legacy built-in as the bundled plugin",
     async (previous) => {
       await withTestHarness(async (harness) => {
         const key = "sidebar.threadListProvider";
         const expected =
-          previous === "inbox/inbox" ? previous : "thread-list/thread-list";
+          previous === "__builtin__" ? "thread-list/thread-list" : previous;
         overwriteStoredUiPreference(harness.deps.db, {
           key,
           valueJson: JSON.stringify(previous),
@@ -52,9 +52,57 @@ describe("public ui preferences", () => {
             }),
           ),
         ).toMatchObject({ revision: 2, value: expected });
-        expect(await readJson(await resetPreference(harness, key))).toMatchObject({
+        expect(
+          await readJson(await resetPreference(harness, key)),
+        ).toMatchObject({
           revision: 3,
-          value: "thread-list/thread-list",
+          value: "__automatic__",
+        });
+      });
+    },
+  );
+
+  it.each(["__automatic__", "__builtin__", "garden/icons"])(
+    "keeps navigation selection %s, reading legacy built-in as the bundled plugin",
+    async (previous) => {
+      await withTestHarness(async (harness) => {
+        const key = "sidebar.navigationProvider";
+        const expected =
+          previous === "__builtin__" ? "navigation/navigation" : previous;
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: {
+            [key]: { revision: 0, value: "__automatic__" },
+          },
+        });
+        overwriteStoredUiPreference(harness.deps.db, {
+          key,
+          valueJson: JSON.stringify(previous),
+        });
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 1, value: expected } },
+        });
+      });
+    },
+  );
+
+  it.each([
+    ["__automatic__", "__builtin__"],
+    ["__builtin__", "__builtin__"],
+    ["garden/icons", "garden/icons"],
+  ])(
+    "keeps the sidebar header opt-in: %s resolves to %s",
+    async (previous, expected) => {
+      await withTestHarness(async (harness) => {
+        const key = "sidebar.headerProvider";
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 0, value: "__builtin__" } },
+        });
+        overwriteStoredUiPreference(harness.deps.db, {
+          key,
+          valueJson: JSON.stringify(previous),
+        });
+        expect(await readJson(await listPreferences(harness))).toMatchObject({
+          preferences: { [key]: { revision: 1, value: expected } },
         });
       });
     },
@@ -102,10 +150,12 @@ describe("public ui preferences", () => {
         revision: 2,
         value: ["section:section_review"],
       });
-      expect(await readJson(await resetPreference(harness, key))).toMatchObject({
-        revision: 3,
-        value: [],
-      });
+      expect(await readJson(await resetPreference(harness, key))).toMatchObject(
+        {
+          revision: 3,
+          value: [],
+        },
+      );
       expect(await readJson(await listPreferences(harness))).toMatchObject({
         preferences: {
           [key]: { revision: 3, value: [] },

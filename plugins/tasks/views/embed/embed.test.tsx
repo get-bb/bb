@@ -185,7 +185,12 @@ describe("Task directive card", () => {
   });
 
   it("rejects malformed keys without calling the backend", () => {
-    for (const attributes of [{}, { key: "  " }, { key: "not a key" }]) {
+    const malformed: Record<string, string>[] = [
+      {},
+      { key: "  " },
+      { key: "not a key" },
+    ];
+    for (const attributes of malformed) {
       const slot = renderSlot(
         app.messageDirectives[0]!,
         directiveProps(attributes),

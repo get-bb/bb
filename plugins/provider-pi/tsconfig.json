@@ -10,14 +10,22 @@
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
-      "@get-bb/plugin-sdk": [
-        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts"
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
       ],
-      "@get-bb/plugin-sdk/app": [
-        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
-      ]
+      "@/components/ui/question-form-host": [
+        "../../packages/plugin-registry/flavors/components/ui/question-form-host.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
     },
     "types": ["node"]
   },
-  "include": ["server.ts", "src", "app.tsx", "app.test.tsx", "vitest.config.ts"]
+  "include": [
+    "server.ts",
+    "server.test.ts",
+    "src",
+    "app.tsx",
+    "app.test.tsx",
+    "vitest.config.ts"
+  ]
 }

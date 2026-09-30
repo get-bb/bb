@@ -10,7 +10,11 @@ This index lists every command path that the core CLI registers, including alias
 
 - `bb settings`
 - `bb settings show`
+- `bb settings mobile-app`
 - `bb settings ai-services`
+- `bb settings ai-services show`
+- `bb settings ai-services set`
+- `bb settings ai-services test`
 - `bb settings general`
 - `bb settings completed-turns`
 - `bb settings experiment`
@@ -57,6 +61,8 @@ This index lists every command path that the core CLI registers, including alias
 
 - `bb provider`
 - `bb provider list`
+- `bb provider enable`
+- `bb provider disable`
 - `bb provider models`
 
 ## manager
@@ -79,6 +85,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb machine create`
 - `bb machine list`
 - `bb machine show`
+- `bb machine reconnect`
 - `bb machine rename`
 - `bb machine remove`
 - `bb machine suspend`
@@ -107,17 +114,25 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb server unlock`
 - `bb server allow-connect`
 - `bb server delete-old-copy`
+- `bb server install-machine-service`
 
 `move`, `move status`, `move cancel`, and `export` call the running server.
+Server moves are experimental; agents run `move` (without `--check`),
+`move cancel`, and `unlock` only after the user explicitly confirms.
 `import`, `unlock`, `allow-connect`, and `delete-old-copy` act on a local data
 directory (`--data-dir`, else `BB_DATA_DIR`, else `~/.bb`) and never call a
-server.
+server. `install-machine-service` acts on the same local data directory after a
+move and downloads the new server's bb-app package for its service.
 
 ## updates
 
 - `bb updates`
 - `bb updates status`
 - `bb updates apply`
+- `bb updates app`
+- `bb updates app status`
+- `bb updates app apply`
+- `bb updates app dismiss`
 
 ## terminal
 
@@ -181,6 +196,7 @@ server.
 - `bb thread update`
 - `bb thread archive`
 - `bb thread unarchive`
+- `bb thread restore-environment`
 - `bb thread pin`
 - `bb thread unpin`
 - `bb thread delete`
@@ -210,6 +226,7 @@ server.
 - `bb environment providers`
 - `bb environment list`
 - `bb environment delete`
+- `bb environment cleanup`
 - `bb environment show`
 - `bb environment get`
 - `bb environment status`
@@ -272,6 +289,7 @@ server.
 - `bb plugin rpc call`
 - `bb plugin enable`
 - `bb plugin disable`
+- `bb plugin safe-mode`
 - `bb plugin config`
 - `bb plugin token`
 - `bb plugin run`

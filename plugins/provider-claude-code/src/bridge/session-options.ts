@@ -1,6 +1,7 @@
 import {
   type InstructionMode,
   type ReasoningLevel,
+  type ServiceTier,
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { accessSync, constants, statSync } from "node:fs";
@@ -24,8 +25,10 @@ export interface BuildSessionOptionsArgs {
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
+  serviceTier: ServiceTier;
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
+  disable1MContext: boolean;
   memoryEnabled?: boolean;
 }
 
@@ -64,6 +67,7 @@ function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
     autoMemoryEnabled: params.memoryEnabled ?? true,
     enableWorkflows: params.workflowsEnabled,
     ultracode: params.reasoningLevel === "ultracode",
+    fastMode: params.serviceTier === "fast",
   };
 }
 
@@ -77,6 +81,7 @@ export function buildMutableFlagSettings(args: {
   memoryEnabled: boolean;
   reasoningLevel: ReasoningLevel | undefined;
   workflowsEnabled: boolean;
+  serviceTier: ServiceTier;
 }): ClaudeMutableFlagSettings {
   return {
     autoMemoryEnabled: args.memoryEnabled,
@@ -85,6 +90,7 @@ export function buildMutableFlagSettings(args: {
       ? { effortLevel: toSdkEffort(args.reasoningLevel) }
       : {}),
     ultracode: args.reasoningLevel === "ultracode",
+    fastMode: args.serviceTier === "fast",
   };
 }
 
@@ -229,7 +235,10 @@ export function buildSessionOptions(
     cwd: params.cwd,
     systemPrompt,
     model,
-    env,
+    env: {
+      ...env,
+      CLAUDE_CODE_DISABLE_1M_CONTEXT: params.disable1MContext ? "1" : "0",
+    },
     permissionMode: params.permissionMode,
     ...(params.reasoningLevel
       ? { effort: toSdkEffort(params.reasoningLevel) }

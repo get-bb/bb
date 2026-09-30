@@ -8,6 +8,7 @@ export const BRIDGE_JSON_RPC_ERRORS = {
   NO_ACTIVE_TURN: -32001,
   SESSION_NOT_RESTORABLE: -32002,
   FORK_CHECKPOINT_UNSUPPORTED: -32003,
+  MISSING_EXECUTABLE: -32004,
 } as const;
 
 export const providerRecoveryHintSchema = z.object({

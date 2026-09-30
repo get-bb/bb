@@ -31,6 +31,7 @@ describe("thread-list preferences rpc", () => {
     await expect(harness.behavior.callRpc("listPreferences", null)).resolves.toEqual({
       preferences: defaultPreferences(),
     });
+    expect(defaultPreferences().showProviderIcons).toBe(false);
 
     await expect(
       harness.behavior.callRpc("setPreference", {
@@ -66,6 +67,12 @@ describe("thread-list preferences rpc", () => {
         value: ["project:a", "bogus"],
       }),
     ).rejects.toThrow(/Invalid value for hiddenGroups/);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "showProviderIcons",
+        value: "false",
+      }),
+    ).rejects.toThrow(/Invalid value for showProviderIcons/);
   });
 
   it("dedupes hidden groups and resets to the default", async () => {
@@ -84,6 +91,49 @@ describe("thread-list preferences rpc", () => {
       harness.behavior.callRpc("resetPreference", { key: "hiddenGroups" }),
     ).resolves.toEqual({ key: "hiddenGroups", value: [] });
     await expect(bb.storage.kv.get("preference:hiddenGroups")).resolves.toBeUndefined();
+  });
+
+  it("defaults row actions to archive, dedupes them, and rejects unknown or too many actions", async () => {
+    const { bb, harness } = setup();
+    await plugin(bb);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { rowActions: string[] };
+    };
+    expect(listed.preferences.rowActions).toEqual(["archive"]);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["pin", "archive", "pin"],
+      }),
+    ).resolves.toEqual({ key: "rowActions", value: ["pin", "archive"] });
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["archive", "delete"],
+      }),
+    ).rejects.toThrow(/Invalid value for rowActions/);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["archive", "pin", "read", "rename"],
+      }),
+    ).rejects.toThrow(/at most 3 row actions/);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["archive", "pin", "read", "pin"],
+      }),
+    ).resolves.toEqual({ key: "rowActions", value: ["archive", "pin", "read"] });
+  });
+
+  it("drops unknown stored row actions instead of resetting the rest", async () => {
+    const { bb, harness } = setup();
+    await bb.storage.kv.set("preference:rowActions", ["pin", "futureAction", "archive"]);
+    await plugin(bb);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { rowActions: string[] };
+    };
+    expect(listed.preferences.rowActions).toEqual(["pin", "archive"]);
   });
 
   it("falls back to the default when a stored value no longer parses", async () => {
@@ -133,6 +183,18 @@ describe("migration from bb's sidebar preferences", () => {
 });
 
 describe("bb thread-list prefs", () => {
+  it("names the CLI after the plugin id", async () => {
+    const builtIn = setup();
+    await plugin(builtIn.bb);
+    expect(builtIn.harness.inspection.registrations.cli?.name).toBe(
+      "thread-list",
+    );
+
+    const copy = createFakePluginHost({ pluginId: "my-sidebar" });
+    await plugin(copy.bb);
+    expect(copy.harness.inspection.registrations.cli?.name).toBe("my-sidebar");
+  });
+
   it("lists, gets, sets, and resets through the CLI", async () => {
     const { bb, harness } = setup();
     await plugin(bb);
@@ -155,6 +217,20 @@ describe("bb thread-list prefs", () => {
 
     const got = await harness.behavior.runCli(["prefs", "get", "organizationMode"]);
     expect(got.stdout).toBe('"project"');
+
+    const iconsOn = await harness.behavior.runCli([
+      "prefs", "set", "showProviderIcons", "true",
+    ]);
+    expect(iconsOn.exitCode).toBe(0);
+    expect(iconsOn.stdout).toBe("showProviderIcons = true");
+    await expect(bb.storage.kv.get("preference:showProviderIcons")).resolves.toBe(true);
+    const resetIcons = await harness.behavior.runCli([
+      "prefs", "reset", "showProviderIcons", "--json",
+    ]);
+    expect(JSON.parse(resetIcons.stdout)).toEqual({
+      key: "showProviderIcons",
+      value: false,
+    });
 
     const bad = await harness.behavior.runCli(["prefs", "set", "organizationMode", "nope"]);
     expect(bad.exitCode).not.toBe(0);

@@ -3,13 +3,14 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   readdir,
   rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
 import { zodResolutionPlugin } from "./zod-resolution.js";
@@ -340,6 +341,7 @@ export async function buildPluginHost(
 ): Promise<PluginHostBuildResult> {
   const { hostEntry, packageName, pluginVersion } =
     await readPluginHostConfig(rootDir);
+  const workingDir = await realpath(rootDir);
   const distDir = join(rootDir, "dist");
   await mkdir(distDir, { recursive: true });
   const jsPath = join(distDir, "host.js");
@@ -354,7 +356,10 @@ export async function buildPluginHost(
       toolchain.esbuild
     )) as typeof import("esbuild");
     const packageNameByDirectory = new Map<string, string | null>();
-    await esbuild.build({
+    const sourceImports = new Map<string, string[]>();
+    const bundle = await esbuild.build({
+      absWorkingDir: workingDir,
+      metafile: true,
       entryPoints: [hostEntry],
       outfile: stagedJsPath,
       bundle: true,
@@ -449,36 +454,15 @@ export async function buildPluginHost(
                 };
               }
               const source = await readFile(args.path, "utf8");
-              for (const specifier of sourceImportSpecifiers(source)) {
+              const specifiers = sourceImportSpecifiers(source);
+              for (const specifier of specifiers) {
                 if (specifier === "@bb" || specifier.startsWith("@bb/")) {
                   return {
                     errors: [{ text: privateBbImportError(specifier) }],
                   };
                 }
-                if (!specifier.startsWith(".") && !isAbsolute(specifier)) {
-                  continue;
-                }
-                const resolvedImport = await build.resolve(specifier, {
-                  importer: args.path,
-                  kind: "import-statement",
-                  resolveDir: dirname(args.path),
-                });
-                if (resolvedImport.errors.length > 0 || !resolvedImport.path) {
-                  continue;
-                }
-                const importedOwner = await owningPackageName(
-                  resolvedImport.path,
-                  packageNameByDirectory,
-                );
-                if (
-                  importedOwner === "@bb" ||
-                  importedOwner?.startsWith("@bb/")
-                ) {
-                  return {
-                    errors: [{ text: privateBbImportError(importedOwner) }],
-                  };
-                }
               }
+              sourceImports.set(args.path, specifiers);
               return undefined;
             });
           },
@@ -490,6 +474,99 @@ export async function buildPluginHost(
       banner: { js: NODE_ESM_REQUIRE_BANNER },
       logLevel: "error",
     });
+    const skippedImports = new Map<
+      string,
+      { importer: string; specifiers: string[] }
+    >();
+    if (bundle.metafile === undefined)
+      throw new Error("Missing host build import graph");
+    for (const [input, metadata] of Object.entries(bundle.metafile.inputs)) {
+      const importer = resolve(workingDir, input);
+      const owner = await owningPackageName(importer, packageNameByDirectory);
+      if (owner === "@bb" || owner?.startsWith("@bb/"))
+        throw new Error(privateBbImportError(owner));
+      const bundledImports = new Set(
+        metadata.imports
+          .filter((entry) => !entry.external)
+          .map((entry) => entry.original ?? entry.path),
+      );
+      const specifiers = [...new Set(sourceImports.get(importer) ?? [])].filter(
+        (specifier) =>
+          !bundledImports.has(specifier) &&
+          (specifier.startsWith(".") || isAbsolute(specifier)),
+      );
+      if (specifiers.length > 0)
+        skippedImports.set(`bb-host-imports:${skippedImports.size}`, {
+          importer,
+          specifiers,
+        });
+    }
+    if (skippedImports.size > 0) {
+      await esbuild.build({
+        absWorkingDir: workingDir,
+        entryPoints: [...skippedImports.keys()],
+        outdir: stageDir,
+        bundle: true,
+        write: false,
+        platform: "node",
+        logLevel: "error",
+        plugins: [
+          {
+            name: "validate-erased-host-imports",
+            setup(build) {
+              build.onResolve(
+                { filter: /.*/, namespace: "bb-host-imports" },
+                async (args) => {
+                  const resolved = await build.resolve(args.path, {
+                    resolveDir: args.resolveDir,
+                    importer: skippedImports.get(args.importer)?.importer,
+                    kind: "import-statement",
+                  });
+                  return resolved.errors.length > 0 || !resolved.path
+                    ? { path: args.path, external: true }
+                    : resolved;
+                },
+              );
+              build.onResolve({ filter: /^bb-host-imports:/ }, (args) => ({
+                path: args.path,
+                namespace: "bb-host-imports",
+              }));
+              build.onLoad(
+                { filter: /.*/, namespace: "bb-host-imports" },
+                (args) => {
+                  const entry = skippedImports.get(args.path);
+                  if (entry === undefined)
+                    throw new Error(
+                      `Unknown host import validation entry: ${args.path}`,
+                    );
+                  return {
+                    contents: entry.specifiers
+                      .map(
+                        (specifier) => `import ${JSON.stringify(specifier)};`,
+                      )
+                      .join("\n"),
+                    resolveDir: dirname(entry.importer),
+                    loader: "js",
+                  };
+                },
+              );
+              build.onLoad(
+                { filter: /.*/, namespace: "file" },
+                async (args) => {
+                  const owner = await owningPackageName(
+                    args.path,
+                    packageNameByDirectory,
+                  );
+                  if (owner === "@bb" || owner?.startsWith("@bb/"))
+                    return { errors: [{ text: privateBbImportError(owner) }] };
+                  return { contents: "", loader: "js" };
+                },
+              );
+            },
+          },
+        ],
+      });
+    }
     const artifactDigest = createHash("sha256")
       .update(await readFile(stagedJsPath))
       .digest("hex");

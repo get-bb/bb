@@ -186,17 +186,6 @@ export const projectPathsQuerySchema = z
   .superRefine(rejectMultipleWorkspaceSelectors);
 export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;
 
-export const projectFileContentQuerySchema = z
-  .object({
-    ...projectWorkspaceRoutingFields,
-    path: z.string().min(1),
-  })
-  .partial({ hostId: true, environmentId: true })
-  .superRefine(rejectMultipleWorkspaceSelectors);
-export type ProjectFileContentQuery = z.infer<
-  typeof projectFileContentQuerySchema
->;
-
 export const projectBranchesQuerySchema = branchListQuerySchema
   .extend({
     hostId: z.string().min(1),

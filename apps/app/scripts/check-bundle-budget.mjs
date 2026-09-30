@@ -145,6 +145,41 @@ for (const [pkg, gateModule] of Object.entries(budget.onDemandPackages ?? {})) {
   }
 }
 
+if (
+  budget.splitBoundaries &&
+  stats.chunks.some((chunk) => !Array.isArray(chunk.appModules))
+) {
+  die(
+    "bundle-stats.json is missing appModules; rebuild the app before checking split boundaries.",
+  );
+}
+
+for (const [module, protectedClosures] of Object.entries(
+  budget.splitBoundaries ?? {},
+)) {
+  const gates = stats.chunks.filter((chunk) =>
+    chunk.appModules.includes(module),
+  );
+  if (gates.length === 0) {
+    failures.push(
+      `${module} is absent from bundle module metadata. It may have been removed or renamed.`,
+    );
+    continue;
+  }
+  for (const name of protectedClosures) {
+    const chunks =
+      name === "boot" ? stats.bootChunks : stats.routeClosures?.[name]?.chunks;
+    if (chunks === undefined) {
+      failures.push(`Unknown protected closure ${name} for ${module}.`);
+      continue;
+    }
+    const files = new Set(chunks.map((chunk) => chunk.fileName));
+    if (gates.some((gate) => files.has(gate.fileName))) {
+      failures.push(`${module} is eager in ${name}; use its split wrapper.`);
+    }
+  }
+}
+
 console.log(
   `boot payload: ${kb(boot.bytes)} raw / ${kb(boot.brotliBytes)} brotli`,
 );

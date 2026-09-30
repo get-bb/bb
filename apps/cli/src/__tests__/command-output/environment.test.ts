@@ -64,6 +64,8 @@ describe("bb environment command output", () => {
     baseRefName: "main",
     headRefName: "bb/environment-cli",
     updatedAt: "2026-07-14T12:00:00.000Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "passing",
       totalCount: 2,
@@ -466,6 +468,8 @@ describe("bb environment command output", () => {
         "Pull request: #701 open - Environment inspection parity",
         "Branch: bb/environment-cli -> main",
         "Checks: passing (2 passed, 0 failed, 0 pending, 2 total)",
+        "Auto-merge: off",
+        "Merge queue: not queued",
       ]),
     );
   });

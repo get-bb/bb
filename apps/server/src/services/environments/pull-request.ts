@@ -119,13 +119,10 @@ function assembleThreadPullRequestMergeability(
   raw: GitHostPullRequest,
 ): ThreadPullRequestMergeability {
   let state: ThreadPullRequestMergeabilityState;
-  if (raw.state === "OPEN" && raw.isDraft) {
-    state = "draft";
-  } else if (
-    raw.mergeable === "CONFLICTING" ||
-    raw.mergeStateStatus === "DIRTY"
-  ) {
+  if (raw.mergeable === "CONFLICTING" || raw.mergeStateStatus === "DIRTY") {
     state = "conflicts";
+  } else if (raw.state === "OPEN" && raw.isDraft) {
+    state = "draft";
   } else if (
     raw.mergeStateStatus === "BLOCKED" ||
     raw.mergeStateStatus === "BEHIND" ||
@@ -153,14 +150,15 @@ function assemblePullRequestAttention(
   checks: ThreadPullRequestChecks,
   review: ThreadPullRequestReview,
   mergeability: ThreadPullRequestMergeability,
+  inMergeQueue: boolean | null,
 ): ThreadPullRequestAttentionState {
   if (state === "merged") return "merged";
   if (state === "closed") return "closed";
   if (mergeability.state === "conflicts") return "conflicts";
   if (checks.state === "failing") return "checks_failed";
   if (review.state === "changes_requested") return "changes_requested";
-  if (mergeability.state === "blocked") return "blocked";
   if (state === "draft") return "draft";
+  if (inMergeQueue) return "queued";
   if (
     review.state === "review_requested" ||
     review.state === "review_required"
@@ -168,6 +166,7 @@ function assemblePullRequestAttention(
     return "review_requested";
   }
   if (checks.state === "pending") return "checks_pending";
+  if (mergeability.state === "blocked") return "blocked";
   if (mergeability.state === "mergeable" && checks.state === "passing") {
     return "ready_to_merge";
   }
@@ -196,6 +195,8 @@ export function assembleThreadPullRequest(
     baseRefName: raw.baseRefName,
     headRefName: raw.headRefName,
     updatedAt: raw.updatedAt,
+    autoMerge: raw.autoMerge,
+    inMergeQueue: raw.inMergeQueue,
     checks,
     review,
     mergeability,
@@ -204,6 +205,7 @@ export function assembleThreadPullRequest(
       checks,
       review,
       mergeability,
+      raw.inMergeQueue,
     ),
   };
 }

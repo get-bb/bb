@@ -1,7 +1,5 @@
-import type { EnvironmentDisplayProviderLookup } from "@bb/core-ui";
-import { resolveEnvironmentDisplayProvider } from "@bb/core-ui";
 import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
-import type { IconName } from "@bb/shared-ui/icon";
+import type { IconName } from "@/components/ui/icon";
 
 export type EnvironmentWorkspaceDisplayProviderLookup =
   | { status: "loading" }
@@ -34,10 +32,47 @@ export function findEnvironmentDisplayProvider(
   };
 }
 
+interface EnvironmentDisplayNameSource {
+  name: string | null;
+  branchName: string | null;
+  path: string | null;
+  environmentProviderId: string | null;
+}
+
+function workspaceFolderName(workspacePath: string | null): string | null {
+  if (workspacePath === null) return null;
+  const segments = workspacePath.split(/[\\/]+/u).filter(Boolean);
+  return segments[segments.length - 1] ?? null;
+}
+
+function environmentProviderLabel(
+  environmentProviderId: string,
+  lookup: EnvironmentWorkspaceDisplayProviderLookup,
+): string | null {
+  if (lookup.status === "loading") return null;
+  return lookup.provider === null
+    ? environmentProviderId
+    : lookup.provider.displayName;
+}
+
+export function resolveEnvironmentDisplayName(
+  source: EnvironmentDisplayNameSource,
+  lookup: EnvironmentWorkspaceDisplayProviderLookup,
+): string | null {
+  return (
+    source.name ??
+    source.branchName ??
+    (source.environmentProviderId === null
+      ? workspaceFolderName(source.path)
+      : environmentProviderLabel(source.environmentProviderId, lookup))
+  );
+}
+
 export function getEnvironmentLabelIconName(
-  providerLookup: EnvironmentDisplayProviderLookup,
+  providerLookup: EnvironmentWorkspaceDisplayProviderLookup,
 ): IconName {
-  const provider = resolveEnvironmentDisplayProvider(providerLookup);
+  const provider =
+    providerLookup.status === "loaded" ? providerLookup.provider : null;
   return provider === null
     ? PERSISTENT_HOST_ICON_NAME
     : (provider.icon ?? "Zap");

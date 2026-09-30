@@ -20,6 +20,8 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
+export const BUILTIN_PLUGIN_ID_PREFIX = "bb--";
+
 const ACCOUNT_POOL_PARENT_URL_ENV = "BB_ACCOUNT_POOL_PARENT_URL";
 
 export function accountPoolDefaultEnabled(
@@ -50,6 +52,16 @@ export const BUILTIN_PLUGINS = [
   {
     name: "automations",
     pluginId: "automations",
+    defaultEnabled: true,
+  },
+  {
+    name: "bb-account",
+    pluginId: "bb-account",
+    defaultEnabled: true,
+  },
+  {
+    name: "bb-ai",
+    pluginId: "bb-ai",
     defaultEnabled: true,
   },
   {
@@ -114,7 +126,7 @@ export const BUILTIN_PLUGINS = [
   },
   {
     name: "provider-usage",
-    pluginId: "provider-usage",
+    pluginId: "bb--provider-usage",
     defaultEnabled: true,
   },
   {
@@ -155,6 +167,11 @@ export const BUILTIN_PLUGINS = [
   {
     name: "thread-list",
     pluginId: "thread-list",
+    defaultEnabled: true,
+  },
+  {
+    name: "navigation",
+    pluginId: "navigation",
     defaultEnabled: true,
   },
   {
@@ -227,6 +244,11 @@ export const OFFICIAL_PLUGINS = [
   ...plugin,
   autoInstall: false,
 }));
+
+export const AUTOMATIC_AI_SERVICE_PLUGIN_IDS: readonly string[] = [
+  "provider-codex",
+  "bb-ai",
+];
 
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,

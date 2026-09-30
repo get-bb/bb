@@ -1,14 +1,9 @@
-import {
-  createContext,
-  lazy,
-  Suspense,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { createContext, type CSSProperties, type ReactNode } from "react";
+
+import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 
 export const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
 const MAX_MEASUREMENTS = 2_000;
-export const NOOP_ITEM_REF = () => {};
 
 export function recordTimelineMeasurement(
   measurements: Map<string, number>,
@@ -45,7 +40,6 @@ export interface TimelineWindowedItemRenderState {
 }
 
 export interface TimelineWindowedItemsProps {
-  enabled: boolean;
   alwaysMountedKeys?: ReadonlySet<string>;
   estimateItemHeight: (index: number) => number;
   gap: number;
@@ -59,47 +53,6 @@ export interface TimelineWindowedItemsProps {
   ) => ReactNode;
 }
 
-const LazyTimelineWindowedItems = lazy(async () => {
-  const module = await import("./TimelineWindowedItems.js");
-  return { default: module.TimelineWindowedItems };
-});
-
-function TimelineWindowedItemsControl({
-  itemKeys,
-  measurements,
-  renderItem,
-  captureMeasurements = false,
-}: TimelineWindowedItemsProps & { captureMeasurements?: boolean }) {
-  return itemKeys.map((key, index) =>
-    renderItem(index, {
-      isRealized: true,
-      itemIndex: captureMeasurements ? index : undefined,
-      itemRef: captureMeasurements
-        ? (element) => {
-            if (element === null) return;
-            const height = element.getBoundingClientRect().height;
-            if (height <= 0) return;
-            recordTimelineMeasurement(measurements, key, height);
-          }
-        : NOOP_ITEM_REF,
-      itemStyle: undefined,
-      windowingEnabled: false,
-    }),
-  );
-}
-
 export function TimelineWindowedItemsLoader(props: TimelineWindowedItemsProps) {
-  const configured =
-    props.enabled &&
-    props.getScrollElement !== null &&
-    props.itemKeys.length >=
-      (props.minItemCount ?? DEFAULT_WINDOWING_MIN_ITEM_COUNT);
-  if (!configured) return <TimelineWindowedItemsControl {...props} />;
-  return (
-    <Suspense
-      fallback={<TimelineWindowedItemsControl {...props} captureMeasurements />}
-    >
-      <LazyTimelineWindowedItems {...props} />
-    </Suspense>
-  );
+  return <TimelineWindowedItems {...props} />;
 }

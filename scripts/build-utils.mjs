@@ -17,17 +17,13 @@ const NATIVE_EXTERNAL_PACKAGES = [
   "better-sqlite3",
   "bufferutil",
   "fsevents",
+  "jiti",
   "node-pty",
   "pino",
   "pino-pretty",
   "pino-roll",
   "thread-stream",
   "utf-8-validate",
-  // jiti loads plugin server entries as TypeScript at runtime and lazily
-  // require()s its own transform files (babel.cjs); bundling it breaks that
-  // lazy resolution, so it must stay external + a shipped dependency unless a
-  // bundle target explicitly uses the bundle-safe `jiti/static` entry point.
-  "jiti",
 ];
 
 export function externalPackagePatterns(packageNames) {

@@ -60,7 +60,6 @@ describe("ProjectlessMachineSlot", () => {
       primaryHostId: string | null;
     } | null;
     machineProviders?: readonly SystemMachineProvider[];
-    multiMachinePickerEnabled?: boolean;
   }) {
     return {
       value: "provider:personal-workspace",
@@ -77,7 +76,6 @@ describe("ProjectlessMachineSlot", () => {
             },
       providers: [personalWorkspaceProvider],
       machineProviders: overrides?.machineProviders,
-      multiMachinePickerEnabled: overrides?.multiMachinePickerEnabled,
       selectedProviderHostId: overrides?.selectedProviderHostId ?? host.id,
       onSelectProvider: overrides?.onSelectProvider ?? vi.fn(),
     };
@@ -184,29 +182,6 @@ describe("ProjectlessMachineSlot", () => {
       host.id,
     );
   });
-
-  it("passes the experiment through to machine search", () => {
-    const manyHosts = Array.from({ length: 6 }, (_, index) =>
-      makeHost({ id: `host_${index}`, name: `Machine ${index}` }),
-    );
-    render(
-      <ProjectlessMachineSlot
-        environment={makeEnvironment({
-          machines: {
-            hosts: manyHosts,
-            localDaemonHostId: manyHosts[0]!.id,
-            primaryHostId: manyHosts[0]!.id,
-          },
-          multiMachinePickerEnabled: true,
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Machine" }));
-    expect(
-      screen.getByRole("combobox", { name: "Search machines" }),
-    ).toBeTruthy();
-  });
 });
 
 describe("EnvironmentSlot", () => {
@@ -273,7 +248,6 @@ describe("EnvironmentSlot", () => {
     value?: string;
     providers?: readonly SystemEnvironmentProvider[];
     machineProviders?: readonly SystemMachineProvider[];
-    multiMachinePickerEnabled?: boolean;
     onSelectProvider?: (
       provider: SystemEnvironmentProvider,
       hostId: string | null,
@@ -294,7 +268,6 @@ describe("EnvironmentSlot", () => {
       selectedProviderHostId: host.id,
       onSelectProvider: overrides.onSelectProvider ?? vi.fn(),
       machineProviders: overrides.machineProviders,
-      multiMachinePickerEnabled: overrides.multiMachinePickerEnabled,
     };
   }
 

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SidebarSectionId } from "@bb/client-core";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import {
   sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,

@@ -1,5 +1,3 @@
-// Time choices are local wall-clock values, so expected timestamps use Date
-// arithmetic rather than literals and mean the same thing in every timezone.
 import { describe, expect, it } from "vitest";
 import {
   defaultCustomSchedule,
@@ -12,7 +10,6 @@ import {
   parseCustomScheduleTime,
 } from "./schedule-time";
 
-/** Local wall-clock helper mirroring what a user means by tomorrow at 9am. */
 function localTime(
   from: number,
   dayOffset: number,

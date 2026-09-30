@@ -54,6 +54,30 @@ export function buildAudioInputConstraints(
   };
 }
 
+export async function requestAudioInputStream(
+  mediaDevices: Pick<MediaDevices, "getUserMedia">,
+  preferredDeviceId: PreferredAudioInputDeviceId,
+): Promise<MediaStream> {
+  try {
+    return await mediaDevices.getUserMedia(
+      buildAudioInputConstraints(preferredDeviceId),
+    );
+  } catch (error) {
+    if (
+      preferredDeviceId === null ||
+      !(error instanceof DOMException) ||
+      ![
+        "OverconstrainedError",
+        "NotFoundError",
+        "DevicesNotFoundError",
+      ].includes(error.name)
+    ) {
+      throw error;
+    }
+    return mediaDevices.getUserMedia({ audio: true });
+  }
+}
+
 export function useAudioInputDevicePreference() {
   return useAtom(audioInputDevicePreferenceAtom);
 }

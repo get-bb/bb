@@ -14,17 +14,27 @@ import {
 
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
+const MACHINE_CREDENTIAL_TTL_MS = 20_000;
+const STALE_MAX_AGE_MS = 5 * 60_000;
+const STALE_RETRY_MS = 2_000;
 const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
 
-interface CacheEntry<T> {
+export interface CacheEntry<T> {
   value: Promise<T>;
   expires: number;
+  lastGood?: { value: T; at: number };
+}
+
+export interface StaleFallback<T> {
+  maxAgeMs: number;
+  usable?: (value: T, now: number) => boolean;
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
 
 interface CachedSession {
+  sessionId: string;
   userId: string;
   expiresAt: number;
 }
@@ -35,36 +45,52 @@ export function invalidateSessionCookie(cookieValue: string): void {
   sessionCache.delete(safeDecode(cookieValue));
 }
 
-function cacheGet<T>(
+export function cacheGet<T>(
   map: Map<string, CacheEntry<T>>,
   key: string,
   now: number,
 ): Promise<T> | undefined {
   const hit = map.get(key);
   if (hit && hit.expires > now) return hit.value;
-  if (hit) map.delete(key);
   return undefined;
 }
 
-function cacheStore<T>(
+export function cacheStore<T>(
   map: Map<string, CacheEntry<T>>,
   key: string,
-  value: Promise<T>,
+  lookup: Promise<T>,
   expires: number,
   settledExpires?: (value: T) => number,
+  stale?: StaleFallback<T>,
 ): Promise<T> {
-  const entry: CacheEntry<T> = { value, expires };
+  const previous = map.get(key)?.lastGood;
+  const entry: CacheEntry<T> = { value: lookup, expires, lastGood: previous };
+  if (stale !== undefined && previous !== undefined) {
+    entry.value = lookup.catch((error: unknown) => {
+      const at = Date.now();
+      const usable =
+        at - previous.at <= stale.maxAgeMs &&
+        (stale.usable?.(previous.value, at) ?? true);
+      if (!usable) throw error;
+      if (map.get(key) === entry) entry.expires = at + STALE_RETRY_MS;
+      return previous.value;
+    });
+  }
   map.set(key, entry);
-  value.then(
+  lookup.then(
     (settled) => {
+      entry.lastGood = { value: settled, at: Date.now() };
       if (settledExpires === undefined || map.get(key) !== entry) return;
       entry.expires = settledExpires(settled);
     },
-    () => {
-      if (map.get(key) === entry) map.delete(key);
-    },
+    () => {},
   );
-  return value;
+  entry.value.then(undefined, () => {
+    if (map.get(key) !== entry) return;
+    if (entry.lastGood === undefined) map.delete(key);
+    else entry.expires = 0;
+  });
+  return entry.value;
 }
 
 interface ResolvedServer {
@@ -108,6 +134,8 @@ export async function resolveLabel(
     label,
     lookupLabel(label, db),
     now + LABEL_TTL_MS,
+    undefined,
+    options?.fresh ? undefined : { maxAgeMs: STALE_MAX_AGE_MS },
   );
 }
 
@@ -177,6 +205,7 @@ async function lookupLabel(
 }
 
 export interface VerifiedSessionCookie {
+  sessionId: string;
   userId: string;
   needsRefresh: boolean;
 }
@@ -186,6 +215,7 @@ function verifiedSession(
   now: number,
 ): VerifiedSessionCookie {
   return {
+    sessionId: session.sessionId,
     userId: session.userId,
     needsRefresh: session.expiresAt <= now + SESSION_REFRESH_BEFORE_EXPIRY_MS,
   };
@@ -220,6 +250,10 @@ export async function verifySessionCookieDetails(
             looked === null
               ? now + SESSION_TTL_MS
               : Math.min(now + SESSION_TTL_MS, looked.expiresAt),
+          {
+            maxAgeMs: STALE_MAX_AGE_MS,
+            usable: (looked, at) => looked === null || looked.expiresAt > at,
+          },
         );
   return cachedSession === null ? null : verifiedSession(cachedSession, now);
 }
@@ -247,23 +281,21 @@ async function lookupCachedSession(
   if (!constantTimeEqual(providedSig, expectedSig)) return null;
 
   const row = await db
-    .select({ expiresAt: session.expiresAt, userId: session.userId })
+    .select({
+      expiresAt: session.expiresAt,
+      sessionId: session.id,
+      userId: session.userId,
+    })
     .from(session)
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date(now))))
     .get();
   return row
-    ? { userId: row.userId, expiresAt: row.expiresAt.getTime() }
+    ? {
+        sessionId: row.sessionId,
+        userId: row.userId,
+        expiresAt: row.expiresAt.getTime(),
+      }
     : null;
-}
-
-export async function verifySessionCookie(
-  cookieValue: string,
-  secret: string,
-  db: ConnectDb,
-): Promise<string | null> {
-  return (
-    (await verifySessionCookieDetails(cookieValue, secret, db))?.userId ?? null
-  );
 }
 
 const machineLastSeenWrites = new Map<string, number>();
@@ -276,12 +308,39 @@ export async function verifyMachineCredential(
   return (await verifyMachineCredentialDetails(credential, db))?.userId ?? null;
 }
 
+interface VerifiedMachine {
+  machineId: string;
+  userId: string;
+}
+
+const machineCredentialCache = new Map<
+  string,
+  CacheEntry<VerifiedMachine | null>
+>();
+
 export async function verifyMachineCredentialDetails(
   credential: string,
   db: ConnectDb,
-): Promise<{ machineId: string; userId: string } | null> {
+): Promise<VerifiedMachine | null> {
   if (!credential) return null;
   const hash = await sha256Hex(credential);
+  const now = Date.now();
+  const cached = cacheGet(machineCredentialCache, hash, now);
+  if (cached !== undefined) return cached;
+  return cacheStore(
+    machineCredentialCache,
+    hash,
+    lookupMachineCredential(hash, db),
+    now + MACHINE_CREDENTIAL_TTL_MS,
+    undefined,
+    { maxAgeMs: STALE_MAX_AGE_MS },
+  );
+}
+
+async function lookupMachineCredential(
+  hash: string,
+  db: ConnectDb,
+): Promise<VerifiedMachine | null> {
   const row = await db
     .select({ machineId: machine.id, userId: machine.userId })
     .from(machine)

@@ -3,7 +3,6 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -52,6 +51,7 @@ import {
   buildPiTurnOptions,
   type PiSessionParams,
 } from "../session-params.js";
+import { piSessionNeedsRelocation } from "./session-cwd.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import {
   createExtensionUiCoordinator,
@@ -559,21 +559,6 @@ async function handleRequest(
       );
       break;
     case "thread/resume": {
-      const missingCwd = resumedSessionMissingCwd(
-        request.params.providerThreadId,
-      );
-      const requestedCwd = request.params.cwd;
-      // The persisted cwd is stale when bb already moved the thread to a
-      // new environment directory and the old one was removed; resume at
-      // the requested, existing cwd instead of failing the whole turn.
-      if (missingCwd !== null && !existsSync(requestedCwd ?? "")) {
-        sendError(
-          request.id,
-          -32000,
-          `Cannot resume: the pi session's working directory "${missingCwd}" no longer exists.`,
-        );
-        break;
-      }
       await handleThreadConstruction(
         request.id,
         request.params.threadId,
@@ -631,7 +616,9 @@ async function handleModelList(
   if (!gate.ok) {
     sendError(
       id,
-      -32000,
+      gate.status === "not_installed"
+        ? BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE
+        : -32000,
       gate.status === "not_installed"
         ? "Could not find the pi CLI on this host. Install @earendil-works/pi-coding-agent and retry."
         : (gate.statusMessage ?? "Pi is not supported on this host."),
@@ -790,7 +777,7 @@ async function constructPiThreadSession(
     sessionSerial,
     closing: false,
     providerThreadId,
-    cwd: usablePersistedSessionCwd(providerThreadId) ?? params.cwd,
+    cwd: params.cwd,
     construction: params,
     constructionModel: sessionOptions.model,
   };
@@ -883,39 +870,34 @@ async function handleThreadConstruction(
       threadId,
     });
   }
-  await constructPiThreadSession(threadId, providerThreadId, params);
-  sendThreadSessionResult(id, threadId, providerThreadId);
-}
-
-function resumedSessionMissingCwd(providerThreadId: string): string | null {
-  const cwd = persistedSessionCwd(providerThreadId);
-  return cwd !== null && !existsSync(cwd) ? cwd : null;
-}
-
-function usablePersistedSessionCwd(providerThreadId: string): string | null {
-  const cwd = persistedSessionCwd(providerThreadId);
-  return cwd !== null && existsSync(cwd) ? cwd : null;
-}
-
-function persistedSessionCwd(providerThreadId: string): string | null {
-  const sessionFile = resolvePiSessionFilePath({
+  const sourceFile = resolvePiSessionFilePath({
     env: process.env,
     threadId: providerThreadId,
   });
-  let firstLine: string;
+  const relocate = piSessionNeedsRelocation(sourceFile, params.cwd);
+  const nextProviderThreadId = relocate ? `pi_${randomUUID()}` : providerThreadId;
+  const targetFile = resolvePiSessionFilePath({
+    env: process.env,
+    threadId: nextProviderThreadId,
+  });
   try {
-    firstLine = readFileSync(sessionFile, "utf8").split("\n", 1)[0] ?? "";
-  } catch {
-    return null;
+    if (relocate) {
+      await PiRpcSession.forkSessionFile({
+        sourceFile,
+        targetFile,
+        cwd: params.cwd,
+        sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
+        extensionPath: requireExtensionPath(),
+        scratchDir: requireScratchDir(),
+        recordThreadId: threadId,
+      });
+    }
+    await constructPiThreadSession(threadId, nextProviderThreadId, params);
+  } catch (error) {
+    if (relocate) rmSync(targetFile, { force: true });
+    throw error;
   }
-  try {
-    const header = JSON.parse(firstLine) as { type?: unknown; cwd?: unknown };
-    return header.type === "session" && typeof header.cwd === "string"
-      ? header.cwd
-      : null;
-  } catch {
-    return null;
-  }
+  sendThreadSessionResult(id, threadId, nextProviderThreadId);
 }
 
 async function handleThreadFork(

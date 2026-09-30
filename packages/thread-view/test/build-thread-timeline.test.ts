@@ -2406,6 +2406,109 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectSystemRows(rows)).toEqual([]);
   });
 
+  it("places a plugin request made during a running turn at its point in that turn", () => {
+    const pluginRequest = (
+      seq: number,
+      status: "pending" | "resolved",
+    ): ThreadEventWithMeta => ({
+      event: {
+        type: "system/interaction/lifecycle",
+        threadId: "thread-1",
+        scope: threadScope(),
+        interaction: {
+          id: "pint-plugin",
+          status,
+          statusReason: null,
+          origin: {
+            kind: "plugin",
+            pluginId: "secrets",
+            rendererId: "secret-request",
+          },
+          payload: { kind: "plugin", title: "Add secrets" },
+          resolution:
+            status === "resolved" ? { kind: "plugin_submitted" } : null,
+        },
+      },
+      meta: { id: `event-${seq}`, seq, createdAt: seq },
+    });
+    const rows = buildTimelineRows(
+      [
+        turnStartedEvent({ seq: 1 }),
+        toolCallItemEvent({
+          itemId: "before",
+          seq: 2,
+          tool: "before_request",
+          type: "item/completed",
+        }),
+        pluginRequest(3, "pending"),
+        toolCallItemEvent({
+          itemId: "after",
+          seq: 4,
+          tool: "after_request",
+          type: "item/completed",
+        }),
+        pluginRequest(5, "resolved"),
+        toolCallItemEvent({
+          itemId: "latest",
+          seq: 6,
+          tool: "latest",
+          type: "item/started",
+        }),
+      ],
+      "active",
+    );
+
+    const flattened = rows.flatMap((row) =>
+      row.kind === "turn" ? (row.children ?? []) : [row],
+    );
+    expect(
+      flattened.flatMap((row) => {
+        if (row.kind !== "work") return [];
+        if (row.workKind === "form") return [row.interactionId];
+        if (row.workKind === "tool") return [row.toolName];
+        return [];
+      }),
+    ).toEqual(["before_request", "pint-plugin", "after_request", "latest"]);
+    expect(flattened.at(-1)).toEqual(
+      expect.objectContaining({ workKind: "tool", toolName: "latest" }),
+    );
+  });
+
+  it("keeps a plugin request made between turns as its own entry", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      turnCompletedEvent({ seq: 2 }),
+      {
+        event: {
+          type: "system/interaction/lifecycle",
+          threadId: "thread-1",
+          scope: threadScope(),
+          interaction: {
+            id: "pint-plugin",
+            status: "pending",
+            statusReason: null,
+            origin: {
+              kind: "plugin",
+              pluginId: "secrets",
+              rendererId: "secret-request",
+            },
+            payload: { kind: "plugin", title: "Add secrets" },
+            resolution: null,
+          },
+        },
+        meta: { id: "event-3", seq: 3, createdAt: 3 },
+      },
+    ]);
+
+    expect(rows.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "work",
+        workKind: "form",
+        interactionId: "pint-plugin",
+      }),
+    );
+  });
+
   it("suppresses the legacy plugin interaction lifecycle operations", () => {
     const rows = buildTimelineRows([
       systemOperationEvent({

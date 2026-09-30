@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "resource-detail-controls",
+  "type": "registry:ui",
+  "title": "resource-detail-controls",
+  "description": "BB ui \"resource-detail-controls\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/icon",
+    "@bb/tooltip",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/resource/detail-controls.tsx",
+      "content": "import { useId, type ReactNode } from \"react\";\nimport { Button } from \"../button\";\nimport { Icon, type IconName } from \"../icon\";\nimport {\n  Tooltip,\n  TooltipContent,\n  TooltipProvider,\n  TooltipTrigger,\n} from \"../tooltip\";\nimport { cn } from \"../../../lib/utils\";\n\nfunction withTooltip(control: ReactNode, tooltip: ReactNode | undefined) {\n  if (tooltip === undefined) return control;\n  return (\n    <TooltipProvider delayDuration={250}>\n      <Tooltip>\n        <TooltipTrigger asChild>{control}</TooltipTrigger>\n        <TooltipContent>{tooltip}</TooltipContent>\n      </Tooltip>\n    </TooltipProvider>\n  );\n}\n\nexport function ResourceInstallControl({\n  accessibleLabel,\n  label = \"Install\",\n  icon = \"Download\",\n  pendingLabel = \"Installing\",\n  pending = false,\n  disabled = false,\n  presentation = \"label\",\n  tooltip,\n  count,\n  className,\n  onAction,\n}: {\n  accessibleLabel: string;\n  label?: string;\n  icon?: IconName;\n  pendingLabel?: string;\n  pending?: boolean;\n  disabled?: boolean;\n  presentation?: \"label\" | \"icon\" | \"compact\";\n  tooltip?: ReactNode;\n  count?: { display: string; accessibleLabel: string };\n  className?: string;\n  onAction: () => void;\n}) {\n  const countId = useId();\n  const control = (\n    <Button\n      type=\"button\"\n      variant=\"outline\"\n      size=\"sm\"\n      className={cn(\n        \"h-7 shrink-0 justify-center text-xs\",\n        presentation === \"label\"\n          ? \"min-w-20 px-2.5\"\n          : presentation === \"icon\"\n            ? \"w-7 px-0\"\n            : \"min-w-7 gap-1.5 px-2\",\n        className,\n      )}\n      disabled={disabled || pending}\n      aria-busy={pending}\n      aria-label={accessibleLabel}\n      aria-describedby={count === undefined ? undefined : countId}\n      onClick={onAction}\n    >\n      {pending ? (\n        <span className=\"inline-flex items-center justify-center gap-1.5\">\n          <Icon name=\"Loading\" className=\"size-3.5 animate-spin\" aria-hidden />\n          {presentation === \"label\" ? pendingLabel : null}\n        </span>\n      ) : (\n        <span className=\"inline-flex items-center justify-center gap-1.5\">\n          <Icon name={icon} className=\"size-3.5\" aria-hidden />\n          {presentation === \"label\" ? label : null}\n        </span>\n      )}\n      {count === undefined ? null : (\n        <span\n          id={countId}\n          aria-label={count.accessibleLabel}\n          className=\"shrink-0 whitespace-nowrap text-2xs text-subtle-foreground\"\n        >\n          {count.display}\n        </span>\n      )}\n    </Button>\n  );\n  return withTooltip(control, presentation === \"label\" ? undefined : tooltip);\n}\n\nexport function ResourceInstalledControl({\n  accessibleLabel,\n  count,\n}: {\n  accessibleLabel: string;\n  count?: { display: string; accessibleLabel: string };\n}) {\n  return (\n    <span\n      aria-label={accessibleLabel}\n      className=\"inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md border border-success/30 bg-success/10 px-2 text-xs font-medium text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]\"\n    >\n      <span className=\"inline-flex items-center gap-1\">\n        <Icon name=\"Check\" className=\"size-3.5\" aria-hidden />\n        Installed\n        {count === undefined ? null : (\n          <span\n            aria-label={count.accessibleLabel}\n            className=\"shrink-0 whitespace-nowrap text-2xs text-subtle-foreground\"\n          >\n            {count.display}\n          </span>\n        )}\n      </span>\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/resource/detail-controls.tsx"
+    }
+  ]
+}

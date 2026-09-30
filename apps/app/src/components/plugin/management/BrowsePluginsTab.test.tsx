@@ -138,7 +138,14 @@ function cardOrder(): string[] {
     ...document.querySelectorAll<HTMLButtonElement>(
       'button[aria-label^="Open "][aria-label$=" details"]',
     ),
-  ].map((button) => button.getAttribute("aria-label") ?? "");
+  ]
+    .filter((button) => button.closest("[hidden]") === null)
+    .map((button) => button.getAttribute("aria-label") ?? "");
+}
+
+function visibleShelves(): HTMLElement | null {
+  const shelves = screen.queryByTestId("plugin-browse-shelves");
+  return shelves?.hidden === false ? shelves : null;
 }
 
 afterEach(() => {
@@ -228,17 +235,73 @@ describe("BrowsePluginsTab", () => {
       name: "Search plugins",
     });
     expect((search as HTMLInputElement).value).toBe("Mem");
-    expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
+    expect(visibleShelves()).toBeNull();
     fireEvent.change(search, { target: { value: "Memory" } });
+    expect((search as HTMLInputElement).value).toBe("Memory");
 
-    const params = new URLSearchParams(
-      screen.getByTestId("location-search").textContent ?? "",
-    );
-    expect(params.get("query")).toBe("Memory");
-    fireEvent.change(search, { target: { value: "" } });
     await waitFor(() =>
-      expect(screen.getByTestId("plugin-browse-shelves")).toBeTruthy(),
+      expect(
+        new URLSearchParams(
+          screen.getByTestId("location-search").textContent ?? "",
+        ).get("query"),
+      ).toBe("Memory"),
     );
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(visibleShelves()).not.toBeNull());
+  });
+
+  it("keeps the shelves mounted while a search is active", async () => {
+    renderBrowse({ entries: [MEMORY_ENTRY], collections: [] });
+    const shelves = await screen.findByTestId("plugin-browse-shelves");
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
+
+    fireEvent.change(search, { target: { value: "Memory" } });
+    await waitFor(() => expect(visibleShelves()).toBeNull());
+    await waitFor(() => expect(cardOrder()).toEqual(["Open Memory details"]));
+
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(visibleShelves()).toBe(shelves));
+  });
+
+  it("keeps every keystroke while the URL query catches up", async () => {
+    renderBrowse({ entries: [MEMORY_ENTRY], collections: [] });
+    const search = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "Search plugins",
+    });
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (setNativeValue === undefined) throw new Error("No value setter");
+
+    for (const value of ["M", "Me", "Mem", "Memo"]) {
+      setNativeValue.call(search, value);
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(search.value).toBe(value);
+    }
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(
+          screen.getByTestId("location-search").textContent ?? "",
+        ).get("query"),
+      ).toBe("Memo"),
+    );
+    expect(search.value).toBe("Memo");
+  });
+
+  it("renders search results a page at a time", async () => {
+    const entries = Array.from({ length: 30 }, (_, index) => ({
+      ...MEMORY_ENTRY,
+      entryId: `memory-${index}`,
+      pluginId: `memory-${index}`,
+      displayName: `Memory ${index}`,
+    }));
+    renderBrowse({ entries, collections: [] }, "/plugins?query=Memory");
+
+    await waitFor(() => expect(cardOrder()).toHaveLength(12));
+    expect(
+      document.querySelector("[data-resource-infinite-sentinel]"),
+    ).not.toBeNull();
   });
 
   it("routes the card author name and preserves the Browse filters", async () => {

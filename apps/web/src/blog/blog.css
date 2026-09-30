@@ -131,6 +131,13 @@
   color: var(--heading-sub);
 }
 
+.article .post-body h3 {
+  margin-top: 30px;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--heading-sub);
+}
+
 .post-body p,
 .post-body li {
   color: var(--dim);
@@ -239,6 +246,15 @@
 
 .post-figure-link {
   display: block;
+}
+
+.post-figure video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
 }
 
 .lightbox-trigger img,

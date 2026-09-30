@@ -1,7 +1,7 @@
 import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { ResponsiveStage } from "./banner-story-stages";
-import { ProviderCliVersionBanner } from "./ProviderCliVersionBanner";
+import { ProviderCliBanner } from "./ProviderCliBanner";
 import { ProviderRequirementBanner } from "./ProviderRequirementBanner";
 import {
   MACHINE_SERVER_ACCESS_TITLE,
@@ -65,17 +65,50 @@ export function Requirements() {
         </ResponsiveStage>
       </StoryRow>
       <StoryRow
+        label="provider CLI not installed"
+        hint="the selected provider has no CLI on this machine, and bb can install it"
+      >
+        <ResponsiveStage>
+          <ProviderCliBanner
+            displayName="Claude Code"
+            installed={false}
+            currentVersion={null}
+            minimumSupportedVersion={null}
+            canRunAction
+            actionRunning={false}
+            onAction={noop}
+          />
+        </ResponsiveStage>
+      </StoryRow>
+      <StoryRow
+        label="install running"
+        hint="the install action reports its own progress"
+      >
+        <ResponsiveStage>
+          <ProviderCliBanner
+            displayName="Claude Code"
+            installed={false}
+            currentVersion={null}
+            minimumSupportedVersion={null}
+            canRunAction
+            actionRunning
+            onAction={noop}
+          />
+        </ResponsiveStage>
+      </StoryRow>
+      <StoryRow
         label="provider CLI too old"
         hint="both versions are known, and bb can run the update itself"
       >
         <ResponsiveStage>
-          <ProviderCliVersionBanner
+          <ProviderCliBanner
+            installed
             displayName="Codex"
             currentVersion="0.135.0"
             minimumSupportedVersion="0.136.0"
-            canUpdate
-            updating={false}
-            onUpdate={noop}
+            canRunAction
+            actionRunning={false}
+            onAction={noop}
           />
         </ResponsiveStage>
       </StoryRow>
@@ -84,13 +117,14 @@ export function Requirements() {
         hint="the action reports its own progress and refuses a second click"
       >
         <ResponsiveStage>
-          <ProviderCliVersionBanner
+          <ProviderCliBanner
+            installed
             displayName="Codex"
             currentVersion="0.135.0"
             minimumSupportedVersion="0.136.0"
-            canUpdate
-            updating
-            onUpdate={noop}
+            canRunAction
+            actionRunning
+            onAction={noop}
           />
         </ResponsiveStage>
       </StoryRow>
@@ -99,13 +133,14 @@ export function Requirements() {
         hint="the machine installs this CLI itself, so the banner explains without offering an action"
       >
         <ResponsiveStage>
-          <ProviderCliVersionBanner
+          <ProviderCliBanner
+            installed
             displayName="Claude Code"
             currentVersion="2.0.9"
             minimumSupportedVersion="2.1.0"
-            canUpdate={false}
-            updating={false}
-            onUpdate={noop}
+            canRunAction={false}
+            actionRunning={false}
+            onAction={noop}
           />
         </ResponsiveStage>
       </StoryRow>
@@ -114,13 +149,14 @@ export function Requirements() {
         hint="the machine did not report a version, so only the requirement is stated"
       >
         <ResponsiveStage>
-          <ProviderCliVersionBanner
+          <ProviderCliBanner
+            installed
             displayName="Cursor"
             currentVersion={null}
             minimumSupportedVersion="0.49.0"
-            canUpdate
-            updating={false}
-            onUpdate={noop}
+            canRunAction
+            actionRunning={false}
+            onAction={noop}
           />
         </ResponsiveStage>
       </StoryRow>
@@ -129,13 +165,14 @@ export function Requirements() {
         hint="bb knows the installed version is too old but not what it needs"
       >
         <ResponsiveStage>
-          <ProviderCliVersionBanner
+          <ProviderCliBanner
+            installed
             displayName="Cursor"
             currentVersion="0.48.2"
             minimumSupportedVersion={null}
-            canUpdate
-            updating={false}
-            onUpdate={noop}
+            canRunAction
+            actionRunning={false}
+            onAction={noop}
           />
         </ResponsiveStage>
       </StoryRow>
@@ -144,13 +181,14 @@ export function Requirements() {
         hint="the last-resort copy, with nothing concrete to name"
       >
         <ResponsiveStage>
-          <ProviderCliVersionBanner
+          <ProviderCliBanner
+            installed
             displayName="Cursor"
             currentVersion={null}
             minimumSupportedVersion={null}
-            canUpdate
-            updating={false}
-            onUpdate={noop}
+            canRunAction
+            actionRunning={false}
+            onAction={noop}
           />
         </ResponsiveStage>
       </StoryRow>

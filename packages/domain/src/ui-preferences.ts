@@ -59,6 +59,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
+  "sidebar.headerProvider",
   "sidebar.threadListProvider",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
@@ -176,18 +177,25 @@ export const uiPreferenceDefinitions = {
     "Navigation entries shown in the sidebar navigation strip; null shows every entry.",
   ),
   "sidebar.navigationProvider": defineUiPreference(
-    uiPreferenceStringSchema,
+    uiPreferenceStringSchema.transform((value) =>
+      value === "__builtin__" ? "navigation/navigation" : value,
+    ),
     "__automatic__",
-    "Plugin that renders the sidebar navigation, or __automatic__ / __builtin__.",
+    "Plugin that renders the sidebar navigation, or __automatic__ for the first installed navigation plugin other than the bundled navigation/navigation, falling back to it. Legacy __builtin__ resolves to navigation/navigation.",
+  ),
+  "sidebar.headerProvider": defineUiPreference(
+    uiPreferenceStringSchema.transform((value) =>
+      value === "__automatic__" ? "__builtin__" : value,
+    ),
+    "__builtin__",
+    "Plugin that renders controls beside the sidebar toggle, or __builtin__ for bb's own header only.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>
-      value === "__automatic__" || value === "__builtin__"
-        ? "thread-list/thread-list"
-        : value,
+      value === "__builtin__" ? "thread-list/thread-list" : value,
     ),
-    "thread-list/thread-list",
-    "Plugin that renders the sidebar thread list. Defaults to thread-list/thread-list; legacy __automatic__ and __builtin__ values resolve to that plugin.",
+    "__automatic__",
+    "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

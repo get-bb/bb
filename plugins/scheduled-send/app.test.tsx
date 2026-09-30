@@ -1,46 +1,28 @@
 // @vitest-environment jsdom
-// Frontend tests: the registration shape the host reads, and the plus-menu →
-// dialog → composer-submit → clear flow that is the whole interaction.
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk/app";
+import type {
+  PluginComposerApi,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk/app";
 
-// jsdom omits this browser method; Radix uses it when opening the time picker.
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
-// Load through the thunk so the test runtime is installed before app.tsx binds
-// `definePluginApp`; pull the pure helpers from the same evaluation.
 const app = await loadPluginApp(() => import("./app"));
-const { composerScopeKey, openSendLater, resetSendLaterState } =
-  await import("./app");
+const { openSendLater, resetSendLaterState } = await import("./app");
 
 const customization = app.composerCustomizations[0]!;
-const plusMenuItem = customization.plusMenu![0]!;
+const sendMenuItem = customization.sendMenu![0]!;
 const picker = customization.banners![0]!;
 
 const HOUR_MS = 60 * 60 * 1000;
 
-function composerView(overrides: {
-  scope?: PluginComposerScope;
-  text?: string;
-  isEmpty?: boolean;
-  attachmentCount?: number;
-  isSubmitting?: boolean;
-}): ComposerView {
-  const text = overrides.text ?? "ship the release notes";
-  return {
-    scope: overrides.scope ?? { kind: "thread", threadId: "thr_scope" },
-    layout: "expanded",
-    draft: {
-      text,
-      isEmpty: overrides.isEmpty ?? text.trim() === "",
-      attachmentCount: overrides.attachmentCount ?? 0,
-    },
-    run: { isRunning: false, isSubmitting: overrides.isSubmitting ?? false },
-  };
+function fakeComposer(fields: Partial<PluginComposerApi>): PluginComposerApi {
+  return fields as PluginComposerApi;
 }
 
 function openPicker(
@@ -51,8 +33,11 @@ function openPicker(
     threadId: "thr_scope",
   };
   const text = options.text ?? "ship the release notes";
-  openSendLater(composerView({ scope, text }));
-  return renderSlot(picker, {}, { composer: { scope, text } });
+  const slot = renderSlot(picker, {}, { composer: { scope, text } });
+  act(() => {
+    openSendLater(fakeComposer({ isEmpty: false, key: slot.composer.key }));
+  });
+  return slot;
 }
 
 async function chooseScheduleOption(
@@ -87,24 +72,28 @@ describe("registration", () => {
     expect(app.composerCustomizations).toMatchObject([
       {
         id: "send-later",
-        // Queued-message editors and side chats are deliberately excluded:
-        // neither owns a dispatchable submission of its own.
         scopes: ["thread", "new-thread"],
-        plusMenu: [
+        sendMenu: [
           { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
-        // The picker is a portalled dialog, so the mount point wears no card
-        // chrome.
         banners: [{ id: "send-later", chrome: "bare" }],
       },
     ]);
+    expect(customization.plusMenu).toBeUndefined();
   });
 
-  it("disables the row when there is no draft to schedule", () => {
-    const disabled = plusMenuItem.disabled as (view: ComposerView) => boolean;
-    expect(disabled(composerView({ text: "" }))).toBe(true);
-    expect(disabled(composerView({ isSubmitting: true }))).toBe(true);
-    expect(disabled(composerView({}))).toBe(false);
+  it("disables the row while the composer would not submit", () => {
+    const disabled = sendMenuItem.disabled as (
+      composer: PluginComposerApi,
+    ) => boolean;
+    expect(disabled(fakeComposer({ isSubmittingBlocked: true }))).toBe(true);
+    expect(disabled(fakeComposer({ isSubmittingBlocked: false }))).toBe(false);
+  });
+
+  it("refuses to open for an empty draft", () => {
+    expect(openSendLater(fakeComposer({ isEmpty: true, key: "k" }))).toBe(
+      false,
+    );
   });
 });
 
@@ -119,11 +108,14 @@ describe("picker visibility", () => {
   });
 
   it("stays closed in a composer other than the one it was opened from", () => {
-    // The store is module-level and every composer mounts this slot, so scope
-    // identity is what keeps the picker in one place.
-    openSendLater(
-      composerView({ scope: { kind: "thread", threadId: "thr_a" } }),
+    const opener = renderSlot(
+      picker,
+      {},
+      { composer: { scope: { kind: "thread", threadId: "thr_a" } } },
     );
+    const openerKey = opener.composer.key;
+    opener.unmount();
+    openSendLater(fakeComposer({ isEmpty: false, key: openerKey }));
     const slot = renderSlot(
       picker,
       {},
@@ -136,7 +128,6 @@ describe("picker visibility", () => {
     const slot = openPicker();
     expect(slot.getByRole("dialog")).toBeTruthy();
 
-    // The user sent the message the ordinary way while the picker was open.
     await slot.behavior.setComposerText("");
 
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
@@ -164,16 +155,11 @@ describe("scheduling", () => {
     expect(sendAt).toBeGreaterThanOrEqual(before + HOUR_MS);
     expect(sendAt).toBeLessThanOrEqual(Date.now() + HOUR_MS);
 
-    // The host's own submit pipeline consumed the draft, so nothing is left to
-    // schedule and the picker closes.
     await waitFor(() => expect(slot.inspection.composer.text).toBe(""));
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
   });
 
   it("schedules a new-thread draft through the same composer pipeline", async () => {
-    // The whole point of routing through the composer: a new-thread draft is
-    // scheduled with the execution selections the host resolves, not with
-    // anything this plugin could assemble.
     const before = Date.now();
     const slot = openPicker({
       scope: { kind: "new-thread", projectId: "prj_1" },
@@ -187,9 +173,9 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    expect(
-      slot.inspection.composer.submits[0]!.sendAt,
-    ).toBeGreaterThanOrEqual(before + HOUR_MS);
+    expect(slot.inspection.composer.submits[0]!.sendAt).toBeGreaterThanOrEqual(
+      before + HOUR_MS,
+    );
   });
 
   it("reveals structured custom fields and schedules their local time", async () => {
@@ -210,9 +196,7 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    expect(slot.inspection.composer.submits[0]!.sendAt).toBe(
-      target.getTime(),
-    );
+    expect(slot.inspection.composer.submits[0]!.sendAt).toBe(target.getTime());
   });
 
   it("blocks a custom time that has already passed", async () => {
@@ -261,27 +245,5 @@ describe("scheduling", () => {
     expect(slot.queryByRole("dialog")).toBeNull();
     expect(slot.inspection.composer.submits).toHaveLength(0);
     expect(slot.inspection.composer.text).toBe("ship the release notes");
-  });
-});
-
-describe("composerScopeKey", () => {
-  it("distinguishes every composer kind", () => {
-    const keys = [
-      composerScopeKey({ kind: "thread", threadId: "t1" }),
-      composerScopeKey({
-        kind: "queued-message",
-        threadId: "t1",
-        queuedMessageId: "q1",
-      }),
-      composerScopeKey({
-        kind: "side-chat",
-        projectId: "p1",
-        parentThreadId: "t1",
-        tabId: "tab1",
-        childThreadId: null,
-      }),
-      composerScopeKey({ kind: "new-thread", projectId: null }),
-    ];
-    expect(new Set(keys).size).toBe(keys.length);
   });
 });

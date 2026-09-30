@@ -137,7 +137,7 @@ export default function SidebarRenameEditor({
         autoCapitalize="sentences"
         autoCorrect="off"
         className={cn(
-          "min-w-0 flex-1 appearance-none border-0 bg-transparent px-0 py-0 [font:inherit] outline-none",
+          "min-w-0 flex-1 appearance-none border-0 bg-transparent px-0 py-0 [font:inherit] outline-none field-sizing-content",
           isPending && "animate-shine motion-reduce:opacity-60",
         )}
         spellCheck={false}

@@ -2,11 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   deleteThreadEventSuffixInTransaction,
+  deleteQueuedRetriesForThreadEventSuffixInTransaction,
   events,
   getActivePendingInteractionForThread,
   getHighWaterMarks,
   getThread,
-  hasQueuedThreadMessages,
+  hasClaimedQueuedThreadMessages,
   hasRootStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
@@ -445,11 +446,15 @@ export async function editThreadMessage(
       requestSequence: committed.requestSequence,
     };
   }
-  if (deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(args.thread.id)) {
+  if (
+    deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(
+      args.thread.id,
+    )
+  ) {
     conflict("Resolve the pending interaction before editing the message");
   }
-  if (hasQueuedThreadMessages(deps.db, args.thread.id)) {
-    conflict("Send or remove queued messages before editing a message");
+  if (hasClaimedQueuedThreadMessages(deps.db, args.thread.id)) {
+    conflict("Wait for queued messages being sent before editing a message");
   }
   const initialThread = getThread(deps.db, args.thread.id);
   if (!initialThread) conflict("Thread not found");
@@ -547,6 +552,7 @@ export async function editThreadMessage(
     expectedRequestSequence: _expectedRequestSequence,
     ...sendPayload
   } = args.payload;
+  let cancelledRetryCount = 0;
   try {
     await sendThreadMessage(deps, {
       beforeAppendInTransaction: ({ tx }) => {
@@ -555,8 +561,10 @@ export async function editThreadMessage(
             "Resolve the pending interaction before editing the message",
           );
         }
-        if (hasQueuedThreadMessages(tx, editableThread.id)) {
-          conflict("Send or remove queued messages before editing a message");
+        if (hasClaimedQueuedThreadMessages(tx, editableThread.id)) {
+          conflict(
+            "Wait for queued messages being sent before editing a message",
+          );
         }
         const currentThread = getThread(tx, editableThread.id);
         if (!currentThread) conflict("Thread not found");
@@ -594,6 +602,12 @@ export async function editThreadMessage(
             },
           },
         });
+        cancelledRetryCount =
+          deleteQueuedRetriesForThreadEventSuffixInTransaction(tx, {
+            cutoffSequence: target.requestSequence,
+            oldMaxSequence: target.oldMaxSequence,
+            threadId: editableThread.id,
+          });
         deleteThreadEventSuffixInTransaction(tx, {
           cutoffSequence: target.requestSequence,
           oldMaxSequence: target.oldMaxSequence,
@@ -615,9 +629,16 @@ export async function editThreadMessage(
       thread: editableThread,
       trigger: "user",
     });
-    deps.hub.notifyThread(editableThread.id, ["history-rewritten"], {
-      projectId: editableThread.projectId,
-    });
+    deps.hub.notifyThread(
+      editableThread.id,
+      [
+        "history-rewritten",
+        ...(cancelledRetryCount > 0 ? ["queue-changed" as const] : []),
+      ],
+      {
+        projectId: editableThread.projectId,
+      },
+    );
   } catch (error) {
     await discardStagedRewind?.();
     const concurrentCommit = findCommittedOperation(deps.db, {

@@ -1,3 +1,5 @@
+import { LazyThreadDetailView } from "./views/thread-detail/LazyThreadDetailView";
+import { useRouteState } from "./hooks/useRouteState";
 import { lazy, Suspense, useEffect } from "react";
 import {
   matchPath,
@@ -65,8 +67,11 @@ import {
   getSettingsProjectRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
+import { WindowFindHost } from "./components/layout/WindowFindHost";
+import { DesktopZoomIndicator } from "./components/layout/DesktopZoomIndicator";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
+import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
 const SettingsView = lazy(() =>
@@ -262,6 +267,10 @@ export function HashNavigationScroll() {
 }
 
 export function AppRoutes() {
+  const { isThreadView } = useRouteState();
+  useEffect(() => {
+    if (isThreadView) void LazyThreadDetailView.preload();
+  }, [isThreadView]);
   return (
     <AppLayout>
       <Suspense fallback={null}>
@@ -271,7 +280,7 @@ export function AppRoutes() {
             element={
               <Navigate
                 to={getPluginConfigurationRoutePath({
-                  pluginId: "provider-usage",
+                  pluginId: "bb--provider-usage",
                 })}
                 replace
               />
@@ -440,8 +449,11 @@ export function App() {
                 />
                 <Route path="*" element={<AppRoutes />} />
               </Routes>
+              <WindowFindHost />
+              <DesktopZoomIndicator />
               <ProviderCliInstallLogDialogHost />
               <ServerMoveOverlay />
+              <AppUpdateHost />
             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>

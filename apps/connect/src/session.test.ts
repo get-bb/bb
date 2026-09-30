@@ -6,7 +6,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth/minimal";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
   CONNECT_SESSION_UPDATE_AGE_SECONDS,
@@ -25,7 +25,6 @@ import {
   markMachineSeen,
   resolveLabel,
   verifyMachineCredentialDetails,
-  verifySessionCookie,
   verifySessionCookieDetails,
 } from "./session.js";
 import { refreshAccountSessionCookies } from "./account-session.js";
@@ -430,6 +429,7 @@ describe("account session refresh", () => {
         db,
       ),
     ).resolves.toEqual({
+      sessionId: `id-${freshToken}`,
       userId: `user-${freshToken}`,
       needsRefresh: false,
     });
@@ -440,6 +440,7 @@ describe("account session refresh", () => {
         db,
       ),
     ).resolves.toEqual({
+      sessionId: `id-${dueToken}`,
       userId: `user-${dueToken}`,
       needsRefresh: true,
     });
@@ -636,12 +637,12 @@ describe("single-flight gate caches", () => {
 
     const verified = await Promise.all(
       Array.from({ length: 6 }, () =>
-        verifySessionCookie(cookieValue, secret, counted.db),
+        verifySessionCookieDetails(cookieValue, secret, counted.db),
       ),
     );
 
     expect(counted.counts.select).toBe(1);
-    expect(verified).toEqual(
+    expect(verified.map((details) => details?.userId)).toEqual(
       Array.from({ length: 6 }, () => "acct-cookie-flight"),
     );
   });
@@ -700,5 +701,231 @@ describe("machine credential presence", () => {
         10_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
       ),
     ).toBe(true);
+  });
+});
+
+describe("machine credential cache", () => {
+  async function seedMachine(id: string): Promise<string> {
+    seedUser(`acct-${id}`);
+    const credential = `bbcm_${crypto.randomUUID()}`;
+    db.insert(machine)
+      .values({
+        id,
+        userId: `acct-${id}`,
+        credentialHash: await sha256Hex(credential),
+        createdAt: new Date(0),
+      })
+      .run();
+    return credential;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("answers a burst of daemon requests with one D1 lookup", async () => {
+    const credential = await seedMachine("machine-burst");
+    const counted = countingDb(db);
+
+    const verified = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        verifyMachineCredentialDetails(credential, counted.db),
+      ),
+    );
+    await verifyMachineCredentialDetails(credential, counted.db);
+
+    expect(counted.counts.select).toBe(1);
+    expect(verified).toEqual(
+      Array.from({ length: 6 }, () => ({
+        machineId: "machine-burst",
+        userId: "acct-machine-burst",
+      })),
+    );
+  });
+
+  it("caches an unknown credential so retries do not reach D1", async () => {
+    const counted = countingDb(db);
+    const unknown = `bbcm_${crypto.randomUUID()}`;
+
+    expect(await verifyMachineCredentialDetails(unknown, counted.db)).toBe(
+      null,
+    );
+    expect(await verifyMachineCredentialDetails(unknown, counted.db)).toBe(
+      null,
+    );
+    expect(counted.counts.select).toBe(1);
+  });
+
+  it("stops honoring a revoked credential once its entry expires", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const credential = await seedMachine("machine-revoked");
+    expect(await verifyMachineCredentialDetails(credential, db)).toEqual({
+      machineId: "machine-revoked",
+      userId: "acct-machine-revoked",
+    });
+
+    db.update(machine)
+      .set({ revokedAt: new Date() })
+      .where(eq(machine.id, "machine-revoked"))
+      .run();
+    vi.setSystemTime(1_000_000 + 19_999);
+    expect(await verifyMachineCredentialDetails(credential, db)).not.toBe(null);
+
+    vi.setSystemTime(1_000_000 + 20_000);
+    expect(await verifyMachineCredentialDetails(credential, db)).toBe(null);
+  });
+
+  it("does not cache a failed D1 lookup", async () => {
+    const credential = await seedMachine("machine-flaky");
+    let failNext = true;
+    const flaky = new Proxy(db, {
+      get(target, prop) {
+        if (prop === "select" && failNext) {
+          failNext = false;
+          throw new Error("D1_ERROR: D1 DB is overloaded.");
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    await expect(
+      verifyMachineCredentialDetails(credential, flaky),
+    ).rejects.toThrow("overloaded");
+    expect(await verifyMachineCredentialDetails(credential, flaky)).toEqual({
+      machineId: "machine-flaky",
+      userId: "acct-machine-flaky",
+    });
+  });
+});
+
+describe("gate caches ride out a D1 blip", () => {
+  const T0 = 5_000_000;
+
+  function switchableDb(target: typeof db): {
+    db: typeof db;
+    state: { failing: boolean; selects: number };
+  } {
+    const state = { failing: false, selects: 0 };
+    const proxied = new Proxy(target, {
+      get(t, prop) {
+        if (prop === "select") {
+          state.selects += 1;
+          if (state.failing) {
+            throw new Error("D1_ERROR: D1 DB is overloaded.");
+          }
+        }
+        const value = Reflect.get(t, prop);
+        return typeof value === "function" ? value.bind(t) : value;
+      },
+    });
+    return { db: proxied, state };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps a known machine connected, retries D1 every few seconds, and gives up after five minutes", async () => {
+    seedUser("acct-blip-machine");
+    const credential = `bbcm_${crypto.randomUUID()}`;
+    db.insert(machine)
+      .values({
+        id: "machine-blip",
+        userId: "acct-blip-machine",
+        credentialHash: await sha256Hex(credential),
+        createdAt: new Date(0),
+      })
+      .run();
+    const flaky = switchableDb(db);
+    const known = { machineId: "machine-blip", userId: "acct-blip-machine" };
+    expect(await verifyMachineCredentialDetails(credential, flaky.db)).toEqual(
+      known,
+    );
+
+    flaky.state.failing = true;
+    vi.setSystemTime(T0 + 25_000);
+    expect(await verifyMachineCredentialDetails(credential, flaky.db)).toEqual(
+      known,
+    );
+    vi.setSystemTime(T0 + 26_000);
+    expect(await verifyMachineCredentialDetails(credential, flaky.db)).toEqual(
+      known,
+    );
+    expect(flaky.state.selects).toBe(2);
+    vi.setSystemTime(T0 + 27_500);
+    expect(await verifyMachineCredentialDetails(credential, flaky.db)).toEqual(
+      known,
+    );
+    expect(flaky.state.selects).toBe(3);
+
+    vi.setSystemTime(T0 + 5 * 60_000 + 1);
+    await expect(
+      verifyMachineCredentialDetails(credential, flaky.db),
+    ).rejects.toThrow("overloaded");
+  });
+
+  it("never extends a browser session past its own expiry", async () => {
+    seedUser("acct-blip-session");
+    const token = `sess_blip_${crypto.randomUUID()}`;
+    const secret = "blip-secret";
+    const cookieValue = await signedSessionCookie(token, secret);
+    db.insert(session)
+      .values({
+        id: `sess-${token}`,
+        token,
+        expiresAt: new Date(T0 + 30_000),
+        userId: "acct-blip-session",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    const flaky = switchableDb(db);
+    expect(
+      (await verifySessionCookieDetails(cookieValue, secret, flaky.db))?.userId,
+    ).toBe("acct-blip-session");
+
+    flaky.state.failing = true;
+    vi.setSystemTime(T0 + 25_000);
+    expect(
+      (await verifySessionCookieDetails(cookieValue, secret, flaky.db))?.userId,
+    ).toBe("acct-blip-session");
+
+    vi.setSystemTime(T0 + 31_000);
+    await expect(
+      verifySessionCookieDetails(cookieValue, secret, flaky.db),
+    ).rejects.toThrow("overloaded");
+  });
+
+  it("routes a known label from cache but never serves a tunnel dial stale", async () => {
+    seedUser("acct-blip-label");
+    seedServer({
+      id: "srv-blip",
+      userId: "acct-blip-label",
+      name: "default",
+      subdomain: "blip-label",
+    });
+    const flaky = switchableDb(db);
+    await resolveLabel("blip-label", flaky.db);
+
+    flaky.state.failing = true;
+    vi.setSystemTime(T0 + 20_000);
+    await expect(resolveLabel("blip-label", flaky.db)).resolves.toMatchObject({
+      kind: "server",
+      userId: "acct-blip-label",
+    });
+    await expect(
+      resolveLabel("blip-label", flaky.db, { fresh: true }),
+    ).rejects.toThrow("overloaded");
+    vi.setSystemTime(T0 + 23_000);
+    await expect(resolveLabel("blip-label", flaky.db)).resolves.toMatchObject({
+      kind: "server",
+    });
   });
 });

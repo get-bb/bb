@@ -56,7 +56,8 @@ export type TerminalSessionSingleScope = TerminalStatusScope &
   );
 
 export type TerminalSessionMutation =
-  | { kind: "disconnect" }
+  | { kind: "disconnect"; retainDaemonSession: boolean }
+  | { daemonSessionId: string; kind: "reconnect" }
   | {
       closeReason: TerminalSessionCloseReason;
       exitCode?: number | null;
@@ -155,7 +156,17 @@ function mutationValues(
 ): Partial<typeof terminalSessions.$inferInsert> {
   switch (update.kind) {
     case "disconnect":
-      return { daemonSessionId: null, status: "disconnected", updatedAt: now };
+      return {
+        ...(update.retainDaemonSession ? {} : { daemonSessionId: null }),
+        status: "disconnected",
+        updatedAt: now,
+      };
+    case "reconnect":
+      return {
+        daemonSessionId: update.daemonSessionId,
+        status: "running",
+        updatedAt: now,
+      };
     case "exit":
       return {
         closeReason: update.closeReason,
@@ -242,7 +253,9 @@ export function getTerminalSession(
   db: TerminalSessionConnection,
   scope: TerminalSessionSingleScope,
 ): TerminalSessionRow | null {
-  return db.select().from(terminalSessions).where(terminalScope(scope)).get() ?? null;
+  return (
+    db.select().from(terminalSessions).where(terminalScope(scope)).get() ?? null
+  );
 }
 
 export function updateTerminalSession(

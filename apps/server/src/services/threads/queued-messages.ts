@@ -96,6 +96,7 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
   ThreadContextClearInProgressError,
   withThreadSendGuard,
@@ -203,6 +204,7 @@ function admitQueuedMessage(
     return { hasProviderSession };
   }
   const environment = getEnvironment(db, thread.environmentId);
+  assertThreadHostAcceptsWork(db, thread);
   const goneDetails = environment
     ? goneThreadEnvironmentDetails(environment)
     : null;

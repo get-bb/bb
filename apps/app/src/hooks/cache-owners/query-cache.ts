@@ -576,6 +576,7 @@ function threadMatchesListFilters(
 export function optimisticallyInsertThread(
   queryClient: QueryClient,
   thread: ThreadResponse,
+  environmentHostId: string | null = null,
 ): void {
   const queuedWork = thread.queuedMessageCount > 0 ? "waiting" : "none";
   const insertedThread: ThreadListEntry = {
@@ -588,7 +589,7 @@ export function optimisticallyInsertThread(
       activeGoalCount: 0,
     },
     environmentBranchName: null,
-    environmentHostId: null,
+    environmentHostId,
     environmentName: null,
     environmentPath: null,
     environmentProviderId: null,

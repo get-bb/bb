@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.43.3",
+  "version": "0.44.0",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -79,7 +79,7 @@
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "pino-roll": "^4.0.0",
-    "zod": "4.3.6"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@bb/config": "workspace:*",
@@ -88,9 +88,11 @@
     "@bb/server-archive": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
     "rimraf": "^6.1.0",
     "rollup": "^4.62.2",
     "rollup-plugin-dts": "^6.4.1",
+    "semver": "^7.7.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

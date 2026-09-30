@@ -36,7 +36,7 @@ equivalent. For a read-only thread-storage artifact, write the document to
   fonts, media, fetches, and WebSockets are also allowed subject to normal
   browser CORS, mixed-content, and remote-server policies. Scripts execute in an
   opaque-origin iframe and cannot access the bb page, cookies, or storage.
-  Markdown uses BB's renderer with raw HTML disabled.
+  Markdown uses BB's renderer with sanitized HTML support.
 - Keep files small (under the sidebar preview's 5 MiB document limit).
 - Emit the directive only after the file exists on disk in the selected source.
 - Prefer `thread-storage` for read-only generated reports and other artifacts

@@ -640,7 +640,20 @@ export function ThreadTableOfContents({
       if (jumpInProgressRef.current) return;
       jumpInProgressRef.current = true;
       setPendingJumpId(id);
+      const waitForRenderedRow = async () => {
+        for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES; frame++) {
+          await waitForAnimationFrame();
+          if (!mountedRef.current) return null;
+          const renderedRow = findTimelineRowElement(getScrollElement(), id);
+          if (renderedRow) return renderedRow;
+        }
+        return null;
+      };
       try {
+        if (timelineRows.some((timelineRow) => timelineRow.id === id)) {
+          row = await waitForRenderedRow();
+          if (!mountedRef.current) return;
+        }
         let loads = 0;
         while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
           loads += 1;
@@ -650,11 +663,8 @@ export function ThreadTableOfContents({
             break;
           }
           if (!mountedRef.current) return;
-          for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES && !row; frame++) {
-            await waitForAnimationFrame();
-            if (!mountedRef.current) return;
-            row = findTimelineRowElement(getScrollElement(), id);
-          }
+          row = await waitForRenderedRow();
+          if (!mountedRef.current) return;
         }
         if (!row) row = findTimelineRowElement(getScrollElement(), id);
         if (row) scrollToRow(row);
@@ -663,7 +673,7 @@ export function ThreadTableOfContents({
         setPendingJumpId(null);
       }
     },
-    [bottomAnchor, onNavigateToRow],
+    [bottomAnchor, onNavigateToRow, timelineRows],
   );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {

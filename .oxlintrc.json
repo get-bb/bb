@@ -167,6 +167,12 @@
         "bb/no-native-title-with-aria-label": "off",
         "bb/no-native-title-on-button": "off"
       }
+    },
+    {
+      "files": ["plugins/**/*.{ts,tsx,mts,cts,js,mjs,cjs}"],
+      "rules": {
+        "bb/forkable-plugin-imports": "error"
+      }
     }
   ]
 }

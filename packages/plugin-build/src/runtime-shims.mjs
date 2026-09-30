@@ -28,6 +28,9 @@ export const LEGACY_PLUGIN_SDK_APP_SPECIFIER = "@bb/plugin-sdk/app";
  */
 export const SHARED_UI_ICON_SPECIFIER = "@bb/shared-ui/icon";
 
+export const SHARED_UI_QUESTION_FORM_HOST_SPECIFIER =
+  "@bb/shared-ui/question-form-host";
+
 /**
  * Runtime slot on `globalThis.__bbPluginRuntime` per shimmed specifier.
  * Shim policy (plugin design §5.5), two admission rules:
@@ -86,7 +89,7 @@ export const RUNTIME_SLOT_BY_SPECIFIER = Object.freeze({
   "tailwind-merge": "tailwindMerge",
   "class-variance-authority": "classVarianceAuthority",
   [SHARED_UI_ICON_SPECIFIER]: "sharedUiIcon",
-  "@bb/shared-ui/question-form-host": "questionFormHost",
+  [SHARED_UI_QUESTION_FORM_HOST_SPECIFIER]: "questionFormHost",
 });
 
 /** The npm package owning a specifier: `react/jsx-runtime` → `react`. */

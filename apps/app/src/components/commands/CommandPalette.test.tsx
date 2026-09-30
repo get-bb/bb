@@ -12,10 +12,9 @@ import {
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { createStore, Provider } from "jotai";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
-import { sidebarThreadLifecyclesAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { MAX_PANES, type SplitLayout } from "@/lib/split-layout";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   defaultAppSettings,
   type AppCommandId,
@@ -43,6 +42,10 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+
+beforeAll(async () => {
+  await import("./ThreadSearchPaletteMode");
+});
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -318,7 +321,7 @@ function makeThread(
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    runtime: { displayStatus: "idle" },
     queuedWork: "none",
     ...overrides,
   };
@@ -1075,9 +1078,7 @@ describe("CommandPalette", () => {
     });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expectText(selectedOption(), "Title selected");
-    act(() =>
-      store.set(paletteThreadLifecyclesAtom, ["archived", "active"]),
-    );
+    act(() => store.set(paletteThreadLifecyclesAtom, ["archived", "active"]));
     expect(
       screen
         .getAllByRole("group")
@@ -1089,7 +1090,6 @@ describe("CommandPalette", () => {
     expect(input.getAttribute("aria-activedescendant")).toBe(
       selectedOption()?.id,
     );
-    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
   });
 
   it("operates the lifecycle filter with the keyboard without selecting a result", async () => {
@@ -1108,7 +1108,10 @@ describe("CommandPalette", () => {
     });
     act(() => archived.focus());
     fireEvent.keyDown(archived, { key: "Enter" });
-    expect(store.get(paletteThreadLifecyclesAtom)).toEqual(["active", "archived"]);
+    expect(store.get(paletteThreadLifecyclesAtom)).toEqual([
+      "active",
+      "archived",
+    ]);
     expectText(trigger, "All");
     expect(trigger.getAttribute("aria-label")).toBe("Filter: All");
     expect(routeNavigateMock).not.toHaveBeenCalled();
@@ -1123,7 +1126,9 @@ describe("CommandPalette", () => {
     "keeps saved messages with Active and budgets two groups for query '%s'",
     async (query) => {
       const active = Array.from({ length: 7 }, (_, index) =>
-        makeThread(`active-${index}`, { status: index === 1 ? "pending" : "idle" }),
+        makeThread(`active-${index}`, {
+          status: index === 1 ? "pending" : "idle",
+        }),
       );
       const archived = Array.from({ length: 4 }, (_, index) =>
         makeThread(`archived-${index}`, { archivedAt: 1 }),
@@ -1131,23 +1136,45 @@ describe("CommandPalette", () => {
       modeState.activeRecents = active;
       modeState.archivedRecents = archived;
       modeState.searchResponse = {
-        active: { total: 7, results: active.map((thread) => ({ thread, matches: [] })) },
-        archived: { total: 4, results: archived.map((thread) => ({ thread, matches: [] })) },
+        active: {
+          total: 7,
+          results: active.map((thread) => ({ thread, matches: [] })),
+        },
+        archived: {
+          total: 4,
+          results: archived.map((thread) => ({ thread, matches: [] })),
+        },
       };
       const { store } = renderPalette({ lifecycles: ["active", "archived"] });
       openThreadSearch();
-      const input = await screen.findByRole("combobox", { name: "Search threads" });
+      const input = await screen.findByRole("combobox", {
+        name: "Search threads",
+      });
       fireEvent.change(input, { target: { value: query } });
       expect(screen.queryByRole("group", { name: "Drafts" })).toBeNull();
       for (const name of ["Active", "Archived"]) {
-        expect(within(screen.getByRole("group", { name })).getAllByRole("option")).toHaveLength(4);
+        expect(
+          within(screen.getByRole("group", { name })).getAllByRole("option"),
+        ).toHaveLength(4);
       }
-      fireEvent.click(screen.getByRole("option", { name: "Show more threads" }));
-      expect(within(screen.getByRole("group", { name: "Active" })).getAllByRole("option")).toHaveLength(7);
-      expect(within(screen.getByRole("group", { name: "Archived" })).getAllByRole("option")).toHaveLength(4);
+      fireEvent.click(
+        screen.getByRole("option", { name: "Show more threads" }),
+      );
+      expect(
+        within(screen.getByRole("group", { name: "Active" })).getAllByRole(
+          "option",
+        ),
+      ).toHaveLength(7);
+      expect(
+        within(screen.getByRole("group", { name: "Archived" })).getAllByRole(
+          "option",
+        ),
+      ).toHaveLength(4);
       expectText(selectedOption(), "Title active-3");
       act(() => store.set(paletteThreadLifecyclesAtom, ["active"]));
-      expect(screen.getByRole("option", { name: "Show more threads" })).toBeTruthy();
+      expect(
+        screen.getByRole("option", { name: "Show more threads" }),
+      ).toBeTruthy();
       expect(document.querySelector("[data-palette-footer]")).toBeNull();
     },
   );
@@ -1202,7 +1229,7 @@ describe("CommandPalette", () => {
     const match = rows[0].querySelector("mark");
     expectText(match, "Matching");
     expectClasses(match, "bg-[var(--sidebar-search-match)]", "text-foreground");
-    expectClasses(match?.parentElement, "text-foreground");
+    expectClasses(match?.closest(".bb-thread-title"), "text-foreground");
     expect(
       within(rows[1]).getByRole("img", { name: "Unread thread succeeded" }),
     ).toBeTruthy();
@@ -1425,7 +1452,6 @@ describe("CommandPalette", () => {
           lastReadAt: Date.now(),
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
         }),
         makeThread("draft", { lastReadAt: Date.now() }),

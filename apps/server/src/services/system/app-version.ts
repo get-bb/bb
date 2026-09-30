@@ -1,12 +1,16 @@
 import semver from "semver";
 import { z } from "zod";
+import { isNightlyAppVersion } from "@bb/config/app-update";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
 
-const NPM_LATEST_URL = "https://registry.npmjs.org/bb-app/latest";
+const NPM_REGISTRY_PACKAGE_URL = "https://registry.npmjs.org/bb-app";
 const NPM_LATEST_TIMEOUT_MS = 5_000;
 const NPM_LATEST_CACHE_TTL_MS = 60 * 60 * 1000;
-const UPGRADE_COMMAND = "npx bb-app@latest";
+
+function resolveDistTag(appVersion: string): "latest" | "nightly" {
+  return isNightlyAppVersion(appVersion) ? "nightly" : "latest";
+}
 
 const npmLatestResponseSchema = z
   .object({
@@ -32,9 +36,15 @@ interface CreateAppVersionServiceArgs {
   now?: () => number;
 }
 
-interface NpmLatestCacheEntry {
+type NpmDistTag = "latest" | "nightly";
+
+interface NpmLatestRelease {
+  distTag: NpmDistTag;
+  version: string;
+}
+
+interface NpmLatestCacheEntry extends NpmLatestRelease {
   cachedAt: number;
-  latestVersion: string;
 }
 
 export function createAppVersionService(
@@ -45,24 +55,26 @@ export function createAppVersionService(
   const now = args.now ?? (() => Date.now());
   const logger = args.logger;
   const config = args.config;
+  const distTag = resolveDistTag(config.appVersion);
 
   let cache: NpmLatestCacheEntry | null = null;
-  let inflight: Promise<string | null> | null = null;
+  let inflight: Promise<NpmLatestRelease | null> | null = null;
 
-  async function fetchNpmLatest(): Promise<string | null> {
+  async function fetchNpmDistTag(tag: NpmDistTag): Promise<string | null> {
+    const npmDistTagUrl = `${NPM_REGISTRY_PACKAGE_URL}/${tag}`;
     const controller = new AbortController();
     const timeoutHandle = setTimeout(
       () => controller.abort(),
       NPM_LATEST_TIMEOUT_MS,
     );
     try {
-      const response = await fetchImpl(NPM_LATEST_URL, {
+      const response = await fetchImpl(npmDistTagUrl, {
         headers: { accept: "application/json" },
         signal: controller.signal,
       });
       if (!response.ok) {
         logger.warn(
-          { status: response.status, url: NPM_LATEST_URL },
+          { status: response.status, url: npmDistTagUrl },
           "Failed to fetch latest bb-app version from npm",
         );
         return null;
@@ -71,7 +83,7 @@ export function createAppVersionService(
       const parsed = npmLatestResponseSchema.safeParse(json);
       if (!parsed.success) {
         logger.warn(
-          { url: NPM_LATEST_URL, issue: parsed.error.message },
+          { url: npmDistTagUrl, issue: parsed.error.message },
           "npm latest response did not match expected shape",
         );
         return null;
@@ -80,7 +92,7 @@ export function createAppVersionService(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn(
-        { url: NPM_LATEST_URL, error: message },
+        { url: npmDistTagUrl, error: message },
         "npm latest lookup failed",
       );
       return null;
@@ -89,16 +101,37 @@ export function createAppVersionService(
     }
   }
 
+  async function fetchNpmLatest(): Promise<NpmLatestRelease | null> {
+    if (distTag === "latest") {
+      const version = await fetchNpmDistTag("latest");
+      return version === null ? null : { distTag: "latest", version };
+    }
+    const [nightly, latest] = await Promise.all([
+      fetchNpmDistTag("nightly"),
+      fetchNpmDistTag("latest"),
+    ]);
+    if (
+      latest !== null &&
+      semver.valid(latest) !== null &&
+      (nightly === null ||
+        semver.valid(nightly) === null ||
+        semver.gt(latest, nightly))
+    ) {
+      return { distTag: "latest", version: latest };
+    }
+    return nightly === null ? null : { distTag: "nightly", version: nightly };
+  }
+
   async function getLatestVersion(args?: {
     forceRefresh?: boolean;
-  }): Promise<string | null> {
+  }): Promise<NpmLatestRelease | null> {
     const currentTime = now();
     if (
       args?.forceRefresh !== true &&
       cache !== null &&
       currentTime - cache.cachedAt < cacheTtlMs
     ) {
-      return cache.latestVersion;
+      return cache;
     }
     if (inflight !== null) {
       return inflight;
@@ -106,7 +139,7 @@ export function createAppVersionService(
     const requestPromise = (async () => {
       const result = await fetchNpmLatest();
       if (result !== null) {
-        cache = { cachedAt: now(), latestVersion: result };
+        cache = { ...result, cachedAt: now() };
       }
       return result;
     })();
@@ -130,19 +163,25 @@ export function createAppVersionService(
         source: "npm",
         updateAvailable: false,
         isDevelopment: config.isDevelopment,
-        upgradeCommand: UPGRADE_COMMAND,
+        upgradeCommand: `npx bb-app@${distTag}`,
       };
 
       if (config.isDevelopment) {
         return baseResponse;
       }
 
-      const latestVersion = await getLatestVersion({
+      const release = await getLatestVersion({
         forceRefresh: args.forceRefresh,
       });
-      if (latestVersion === null) {
+      if (release === null) {
         return baseResponse;
       }
+      const latestVersion = release.version;
+      const releaseResponse: SystemVersionResponse = {
+        ...baseResponse,
+        latestVersion,
+        upgradeCommand: `npx bb-app@${release.distTag}`,
+      };
 
       const parsedCurrent = semver.parse(config.appVersion);
       const parsedLatest = semver.parse(latestVersion);
@@ -154,12 +193,11 @@ export function createAppVersionService(
           },
           "Skipping update check because a version is not valid semver",
         );
-        return { ...baseResponse, latestVersion };
+        return releaseResponse;
       }
 
       return {
-        ...baseResponse,
-        latestVersion,
+        ...releaseResponse,
         updateAvailable: semver.gt(parsedLatest, parsedCurrent),
       };
     },

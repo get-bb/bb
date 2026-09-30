@@ -1,3 +1,4 @@
+import { cleanupEnvironment } from "../services/environments/environment-engine.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import path from "node:path";
 import {
@@ -30,7 +31,10 @@ import {
 } from "../constants.js";
 import { ApiError } from "../errors.js";
 import { requestEnvironmentRemoval } from "../services/environments/environment-engine.js";
-import { toEnvironmentResponse } from "../services/environments/environment-response.js";
+import {
+  toEnvironmentResponse,
+  toEnvironmentResponses,
+} from "../services/environments/environment-response.js";
 import {
   requireEnvironment,
   requireReadyEnvironment,
@@ -281,6 +285,26 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+  post(routes.cleanup, (context) => {
+    const environment = requireEnvironment(deps.db, context.req.param("id"));
+    if (
+      countLiveThreadsInEnvironment(deps.db, {
+        environmentId: environment.id,
+      }) > 0
+    )
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Environment still has live threads",
+      );
+    if (!cleanupEnvironment(deps, environment.id))
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Environment is not provider-managed",
+      );
+    return context.json({ ok: true } as const);
+  });
 
   get(routes.list, async (context, query) => {
     const { limit, offset } = parsePaginationQuery({
@@ -288,18 +312,23 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       offset: query?.offset,
     });
     return context.json(
-      listEnvironments(deps.db, {
-        ...(query?.projectId ? { projectId: query.projectId } : {}),
-        ...(query?.hostId ? { hostId: query.hostId } : {}),
-        ...(query?.environmentProviderId
-          ? { environmentProviderId: query.environmentProviderId }
-          : {}),
-        ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
-        ...(query?.path === undefined ? {} : { path: query.path }),
-        ...(limit === undefined ? {} : { limit }),
-        ...(offset === undefined ? {} : { offset }),
-        statuses: query?.status ? [query.status] : LISTED_ENVIRONMENT_STATUSES,
-      }).map(toEnvironmentResponse),
+      toEnvironmentResponses(
+        deps.db,
+        listEnvironments(deps.db, {
+          ...(query?.projectId ? { projectId: query.projectId } : {}),
+          ...(query?.hostId ? { hostId: query.hostId } : {}),
+          ...(query?.environmentProviderId
+            ? { environmentProviderId: query.environmentProviderId }
+            : {}),
+          ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
+          ...(query?.path === undefined ? {} : { path: query.path }),
+          ...(limit === undefined ? {} : { limit }),
+          ...(offset === undefined ? {} : { offset }),
+          statuses: query?.status
+            ? [query.status]
+            : LISTED_ENVIRONMENT_STATUSES,
+        }),
+      ),
     );
   });
 
@@ -334,6 +363,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   get(routes.get, (context) =>
     context.json(
       toEnvironmentResponse(
+        deps.db,
         requireEnvironment(deps.db, context.req.param("id")),
       ),
     ),
@@ -350,7 +380,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     if (!updated) {
       throw new ApiError(404, "environment_not_found", "Environment not found");
     }
-    return context.json(toEnvironmentResponse(updated));
+    return context.json(toEnvironmentResponse(deps.db, updated));
   });
 
   post(routes.archiveThreads, (context) => {

@@ -16,6 +16,7 @@ export const SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION = null;
 export interface SidebarSortableDragBindings {
   attributes: DraggableAttributes;
   disabled: boolean;
+  isDragging: boolean;
   listeners: DraggableSyntheticListeners;
   setActivatorNodeRef: (element: HTMLElement | null) => void;
 }
@@ -60,8 +61,8 @@ export function useSidebarSortable({
     [displace, isDragging, lifted, transform, transition],
   );
   const dragBindings = useMemo<SidebarSortableDragBindings>(
-    () => ({ attributes, disabled, listeners, setActivatorNodeRef }),
-    [attributes, disabled, listeners, setActivatorNodeRef],
+    () => ({ attributes, disabled, isDragging, listeners, setActivatorNodeRef }),
+    [attributes, disabled, isDragging, listeners, setActivatorNodeRef],
   );
 
   return { dragBindings, isOver, setNodeRef, style };

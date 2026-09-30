@@ -3,14 +3,13 @@ kind: prompt
 title: Thread Metadata Generator
 summary: Prompt for deriving short thread metadata from the user's task prompt.
 intent: Generate stable, operator-friendly metadata for threads without adding explanatory prose.
-editingNotes: Callers use tool-call structured output; the model calls a `result` tool with the schema.
+editingNotes: Callers expect plain text. bb strips think blocks, quotes, labels, and extra lines, then clamps the title to 48 columns.
 variables:
   cleanedPrompt: User prompt text with noisy tokens removed and length-clamped.
   invokedCommands?: Comma-separated slash commands or skills the prompt invokes, when it invokes any.
 ---
 You create concise titles for coding tasks.
-Call the `result` tool with:
-- title: short, clear, sentence case, in the same language as the task. Keep it under about 40 characters; for scripts that do not separate words with spaces, that is roughly 20 characters.
+Reply with only the title: short, clear, sentence case, in the same language as the task. Keep it under about 40 characters; for scripts that do not separate words with spaces, that is roughly 20 characters. Summarize the task in your own words instead of copying its text. No quotes, no trailing punctuation, no explanation.
 
 Consider the user's intent when titling to make it useful. For instance, if they detail specific tools to use to solve a problem, it is the problem that should be the title, not the tools that should be used.
 

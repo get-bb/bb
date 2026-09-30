@@ -63,7 +63,13 @@ function OverviewHeading({
 }) {
   const Tag = minor ? "h4" : "h3";
   return (
-    <Tag className="mb-1.5 mt-5 text-xs font-semibold uppercase tracking-wide text-subtle-foreground first:mt-0">
+    <Tag
+      className={
+        minor
+          ? "mb-1 mt-4 text-xs font-medium text-foreground first:mt-0"
+          : "mb-1 mt-6 text-sm font-medium text-foreground first:mt-0"
+      }
+    >
       {children}
     </Tag>
   );
@@ -77,7 +83,7 @@ const OVERVIEW_COMPONENTS: Components = {
     </blockquote>
   ),
   code: ({ children }) => (
-    <code className="rounded bg-surface-recessed px-1 py-0.5 font-mono text-xs text-foreground">
+    <code className="rounded-sm bg-surface-recessed px-1 font-mono text-xs text-foreground [box-decoration-break:clone]">
       {children}
     </code>
   ),
@@ -88,15 +94,23 @@ const OVERVIEW_COMPONENTS: Components = {
   h5: ({ children }) => <OverviewHeading minor>{children}</OverviewHeading>,
   h6: ({ children }) => <OverviewHeading minor>{children}</OverviewHeading>,
   hr: () => <hr className="my-4 border-t border-border" />,
-  li: ({ children }) => <li className="mb-1">{children}</li>,
-  ol: ({ children }) => <ol className="mb-2 list-decimal pl-5">{children}</ol>,
-  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  li: ({ children }) => <li className="pl-0.5">{children}</li>,
+  ol: ({ children }) => (
+    <ol className="mb-3 list-decimal space-y-1 pl-4 marker:text-subtle-foreground">
+      {children}
+    </ol>
+  ),
+  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
   pre: ({ children }) => (
     <pre className="my-2 overflow-x-auto rounded-md border border-border bg-surface-recessed p-3 font-mono text-xs text-foreground">
       {children}
     </pre>
   ),
-  ul: ({ children }) => <ul className="mb-2 list-disc pl-5">{children}</ul>,
+  ul: ({ children }) => (
+    <ul className="mb-3 list-disc space-y-1 pl-4 marker:text-subtle-foreground">
+      {children}
+    </ul>
+  ),
 };
 
 export function PluginOverviewMarkdown({ markdown }: { markdown: string }) {

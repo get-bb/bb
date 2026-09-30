@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import semver from "semver";
 import { formatServerDataSize } from "@bb/domain";
+import { APP_SURFACE_DESKTOP, type AppSurface } from "@bb/config/app-surface";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import {
   getHost,
@@ -66,6 +67,7 @@ export interface ServerMoveCheckEnvironment {
   inspectTimeoutMs: number;
   readServerDiskFreeBytes(): Promise<number | null>;
   resolveMode(): Promise<ServerMoveModeResolution>;
+  serverAppSurface: AppSurface;
   serverTimeZone: string | null;
   targetServerPort(): number;
 }
@@ -843,6 +845,18 @@ export async function runServerMoveCheck(
         targetVersion,
       });
     }
+  }
+  if (
+    liveSourceServerHost !== null &&
+    environment.serverAppSurface === APP_SURFACE_DESKTOP
+  ) {
+    items.push({
+      id: "desktop-app-machine",
+      severity: "info",
+      title: `${liveSourceServerHost.name} will keep running as a machine in the background`,
+      detail:
+        "This server runs in the bb desktop app. After the move, the app installs a background service that keeps this computer connected to the new server and updates it with the server, even while the app is closed. The service needs Node.js 22.19 or newer on this computer; without it, the computer stays connected only while the app is open.",
+    });
   }
   if (liveSourceServerHost !== null) {
     appendServerDiskSpaceItems({

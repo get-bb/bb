@@ -13,7 +13,7 @@ typechecks and package tests use Turbo with the applicable package filter.
 - `apps/demo-server/package.json`
 - `packages/scripts/src/commands/run-dev.ts`
 - `scripts/bb-cloud-dev.mjs`
-- `packages/plugin-api-map/src/surfaces.ts`
+- `plugins/plugin-api-docs/src/surfaces.ts`
 
 ## Feature recipes
 

@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
-import type { FollowUpSubmitMode } from "@bb/client-core";
+import type { FollowUpSubmitMode, PromptDraftState } from "@bb/client-core";
 import {
   memo,
   useCallback,
@@ -164,9 +164,14 @@ export interface FollowUpPromptBoxProps {
   promptActions?: readonly PromptBoxAction[];
   suppressPluginComposerCustomizations?: boolean;
   pluginComposerHost?: PluginComposerHost | null;
+  voiceDraft?: {
+    getCurrent: () => PromptDraftState;
+    setDraft: (draft: PromptDraftState) => void;
+  };
   pluginComposerScope?: PluginComposerScope | null;
   textEffects?: readonly ComposerTextEffectSource[];
   collapseResetKey: string | number;
+  preferExpanded?: boolean;
   focusEndKey?: string | number;
   isPrimaryComposer?: boolean;
   showScrollToBottomButton?: boolean;
@@ -235,9 +240,11 @@ function FollowUpPromptBoxWithComposer({
   promptActions,
   suppressPluginComposerCustomizations,
   pluginComposerHost,
+  voiceDraft,
   pluginComposerScope,
   textEffects,
   collapseResetKey,
+  preferExpanded = false,
   focusEndKey,
   isPrimaryComposer = true,
   showScrollToBottomButton = true,
@@ -280,7 +287,10 @@ function FollowUpPromptBoxWithComposer({
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   }, []);
-  const voice = usePromptVoice(promptBoxRef);
+  const voice = usePromptVoice(
+    promptBoxRef,
+    voiceDraft ?? pluginComposerHost ?? undefined,
+  );
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const composerInteractionRef = useRef<HTMLDivElement>(null);
@@ -296,8 +306,10 @@ function FollowUpPromptBoxWithComposer({
   >(null);
   const isWidePromptBoxCollapsed =
     widePromptBoxCollapsedFor === collapseResetKey;
+  const isEditorExpanded =
+    isInteractionExpanded || (preferExpanded && !isWidePromptBoxCollapsed);
   const isPromptBoxCompact =
-    isWidePromptBoxCollapsed || (isCompactViewport && !isInteractionExpanded);
+    isWidePromptBoxCollapsed || (isCompactViewport && !isEditorExpanded);
   const compactConfig = useMemo(
     () =>
       isCompactViewport || isWidePromptBoxCollapsed
@@ -685,7 +697,7 @@ function FollowUpPromptBoxWithComposer({
       ref={composerInteractionRef}
       className="relative z-20"
       data-follow-up-composer=""
-      data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
+      data-follow-up-composer-expanded={isEditorExpanded ? "" : undefined}
       hidden={hasPendingInteraction}
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
@@ -709,7 +721,7 @@ function FollowUpPromptBoxWithComposer({
         focusEndKey={focusEndKey}
         placeholder={composer.promptPlaceholder}
         containerCompactPlaceholder={composer.compactPromptPlaceholder}
-        heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
+        heightAnimationKey={isEditorExpanded ? "expanded" : "compact"}
         mentionMenuPlacement="top"
         submission={{
           label: composer.submitLabel,
@@ -720,6 +732,15 @@ function FollowUpPromptBoxWithComposer({
             !canSubmit ||
             composer.isFollowUpSubmitting ||
             (steerOnPrimarySubmit && !composer.canModifierSubmit),
+          disabledReason: composer.isFollowUpSubmitting
+            ? "Submitting..."
+            : isLoadingExecutionOptions
+              ? "Loading models..."
+              : isLoadingPendingInteractions
+                ? "Checking pending interactions..."
+                : isUnavailable
+                  ? "Unavailable"
+                  : undefined,
           onModifierSubmit,
           swapSubmitActions: steerOnPrimarySubmit,
           showModifierSubmitAction: submitMode.kind === "queue",
@@ -804,7 +825,9 @@ function FollowUpPromptBoxWithComposer({
         <DefaultFollowUpComposer
           active={composer.threadRuntimeDisplayStatus === "active"}
           composerElement={composerElement}
-          hasPluginComposerScope={composerScope !== null}
+          hasPluginComposerScope={
+            composerScope !== null && !suppressPluginComposerCustomizations
+          }
           isPrimaryComposer={isPrimaryComposer}
           pendingInteraction={pendingInteraction}
           showScrollToBottomButton={showScrollToBottomButton}

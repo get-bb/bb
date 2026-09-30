@@ -6,6 +6,7 @@ import {
   type PendingInteractionPayload,
   type PermissionEscalation,
   type ReasoningLevel,
+  type ServiceTier,
   type ThreadDelta,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -54,6 +55,7 @@ import {
   type ClaudeCodeSkillRoot,
 } from "../session-params.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
+import { MissingClaudeCliError } from "./missing-cli-error.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
   claudeThreadForkParamsSchema,
@@ -275,7 +277,11 @@ interface SessionConstructionConfig {
   dynamicTools: ThreadResumeParams["dynamicTools"];
   sessionOptions: Omit<
     BuildSessionOptionsArgs,
-    "memoryEnabled" | "model" | "reasoningLevel" | "workflowsEnabled"
+    | "memoryEnabled"
+    | "model"
+    | "reasoningLevel"
+    | "serviceTier"
+    | "workflowsEnabled"
   >;
 }
 
@@ -284,6 +290,7 @@ interface ClaudeLiveSessionSettings {
   model?: string;
   providerSubagentsEnabled: boolean;
   reasoningLevel?: ReasoningLevel;
+  serviceTier: ServiceTier;
   workflowsEnabled: boolean;
 }
 
@@ -427,6 +434,27 @@ function applyChromeSetting(
   if (attachment.residentSession) {
     attachment.residentSession.restartBeforeNextTurn = {
       reason: CLAUDE_CHROME_SETTING_RESTART_REASON,
+      showRuntimeNote: false,
+    };
+  }
+}
+
+function applyContextWindowSetting(
+  attachment: ThreadAttachment,
+  disabled: boolean | undefined,
+): void {
+  const sessionOptions = attachment.sessionConstructionConfig.sessionOptions;
+  if (disabled === undefined || sessionOptions.disable1MContext === disabled) {
+    return;
+  }
+  sessionOptions.disable1MContext = disabled;
+  attachment.sessionOptions.env = {
+    ...attachment.sessionOptions.env,
+    CLAUDE_CODE_DISABLE_1M_CONTEXT: disabled ? "1" : "0",
+  };
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurn = {
+      reason: "Claude Code 1M context setting changed",
       showRuntimeNote: false,
     };
   }
@@ -628,6 +656,7 @@ async function applyLiveSessionSettings(
   if (
     current.memoryEnabled !== next.memoryEnabled ||
     current.reasoningLevel !== next.reasoningLevel ||
+    current.serviceTier !== next.serviceTier ||
     current.workflowsEnabled !== next.workflowsEnabled
   ) {
     await threadSession.session.applyMutableSettings({
@@ -639,6 +668,7 @@ async function applyLiveSessionSettings(
         memoryEnabled: next.memoryEnabled,
         reasoningLevel: next.reasoningLevel,
         workflowsEnabled: next.workflowsEnabled,
+        serviceTier: next.serviceTier,
       }),
     });
   }
@@ -847,6 +877,7 @@ function toSessionConstructionConfig(
       additionalWorkspaceWriteRoots: params.additionalWorkspaceWriteRoots,
       baseInstructions: params.baseInstructions,
       chromeEnabled: params.chromeEnabled,
+      disable1MContext: params.disable1MContext,
       cwd: params.cwd,
       disallowedTools: params.disallowedTools,
       instructionMode: params.instructionMode,
@@ -867,6 +898,7 @@ function toInitialLiveSessionSettings(
     ...(params.reasoningLevel !== undefined
       ? { reasoningLevel: params.reasoningLevel }
       : {}),
+    serviceTier: params.serviceTier,
     workflowsEnabled: params.workflowsEnabled,
   };
 }
@@ -883,6 +915,7 @@ function withTurnLiveSessionSettings(
     providerSubagentsEnabled:
       params.providerSubagentsEnabled ?? current.providerSubagentsEnabled,
     ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
+    serviceTier: params.serviceTier ?? current.serviceTier,
     workflowsEnabled: params.workflowsEnabled ?? current.workflowsEnabled,
   };
 }
@@ -1276,13 +1309,13 @@ async function getWritableThreadSession(
     return undefined;
   }
   const replacement: ClaudeSessionRestart | null = threadSession.streamEnded
-      ? {
-          reason: "Thread session replaced after Claude SDK stream ended",
-          showRuntimeNote: false,
-        }
-      : intent === "new-turn"
-        ? threadSession.restartBeforeNextTurn
-        : null;
+    ? {
+        reason: "Thread session replaced after Claude SDK stream ended",
+        showRuntimeNote: false,
+      }
+    : intent === "new-turn"
+      ? threadSession.restartBeforeNextTurn
+      : null;
   if (replacement === null) {
     return threadSession;
   }
@@ -1517,7 +1550,13 @@ function applyTurnEnvironment(
     ...attachment.sessionConstructionConfig,
     config,
   };
-  attachment.sessionOptions.env = buildSessionEnv(envOverrides);
+  attachment.sessionOptions.env = {
+    ...buildSessionEnv(envOverrides),
+    CLAUDE_CODE_DISABLE_1M_CONTEXT: attachment.sessionConstructionConfig
+      .sessionOptions.disable1MContext
+      ? "1"
+      : "0",
+  };
   if (attachment.residentSession) {
     attachment.residentSession.restartBeforeNextTurn = {
       reason:
@@ -1990,7 +2029,19 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, result);
       break;
     case "model/list":
-      sendResult(request.id, await listModelsMemoized());
+      try {
+        sendResult(request.id, await listModelsMemoized());
+      } catch (error) {
+        if (error instanceof MissingClaudeCliError) {
+          sendError(
+            request.id,
+            BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE,
+            error.message,
+          );
+          break;
+        }
+        throw error;
+      }
       break;
     case "provider/health":
       sendResult(request.id, await getClaudeProviderHealth());
@@ -2243,6 +2294,7 @@ async function runTurnInput(
       applyTurnEnvironment(attachment, params.config);
     }
     applyChromeSetting(attachment, params.chromeEnabled);
+    applyContextWindowSetting(attachment, params.disable1MContext);
   }
 
   const threadSession = await getWritableThreadSession(params.threadId, intent);

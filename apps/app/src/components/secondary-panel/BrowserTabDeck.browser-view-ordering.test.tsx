@@ -15,7 +15,8 @@ import {
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { BrowserTabDeck, BrowserTabLifecycleObserver } from "./BrowserTabDeck";
+import { BrowserTabDeck } from "./BrowserTabDeck";
+import { BrowserTabLifecycleObserver } from "./BrowserTabLifecycleObserver";
 import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 
 type BrowserCall =

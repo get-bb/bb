@@ -6,6 +6,7 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import {
   authApiKeys,
   getHost,
+  getLatestSessionForHost,
   getNonDestroyedHostByLaunchKey,
   type DbConnection,
 } from "@bb/db";
@@ -23,6 +24,8 @@ export interface EnrollmentBootstrap {
   headers?: ServerAccessGrant["headers"];
   credential: string;
   expiresAt: number;
+  reconnect?: true;
+  dataDir?: string;
 }
 
 export type MachineEnrollment =
@@ -44,7 +47,7 @@ export interface MachineEnrollments {
     enrollmentId: string;
     timeoutMs: number;
     signal: AbortSignal;
-  }): Promise<{ hostId: string }>;
+  }): Promise<{ hostId: string; hostName: string }>;
 }
 
 interface EnrollmentServiceDependencies {
@@ -58,6 +61,42 @@ interface EnrollmentServiceDependencies {
     }): Promise<ServerAccessGrant>;
   };
   isConnected(hostId: string): boolean;
+}
+
+export async function findUnusedEnrollmentCredential(
+  db: DbConnection,
+  credential: string,
+): Promise<{
+  hostId: string;
+  enrollSource: string | null;
+  expiresAt: number;
+} | null> {
+  const row = db
+    .select({
+      hostId: sql<string>`json_extract(${authApiKeys.metadata}, '$.hostId')`,
+      enrollSource: sql<
+        string | null
+      >`json_extract(${authApiKeys.metadata}, '$.enrollSource')`,
+      expiresAt: authApiKeys.expiresAt,
+    })
+    .from(authApiKeys)
+    .where(
+      and(
+        eq(authApiKeys.configId, DAEMON_ENROLL_CONFIG_ID),
+        eq(authApiKeys.key, await defaultKeyHasher(credential)),
+        eq(authApiKeys.enabled, true),
+        gt(authApiKeys.remaining, 0),
+        gt(authApiKeys.expiresAt, new Date()),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!row?.expiresAt) return null;
+  return {
+    hostId: row.hostId,
+    enrollSource: row.enrollSource,
+    expiresAt: row.expiresAt.getTime(),
+  };
 }
 
 export function createMachineEnrollmentService(
@@ -89,25 +128,10 @@ export function createMachineEnrollmentService(
   async function hasUnusedEnrollmentCredential(
     hostId: string,
     credential: string,
-    now: number,
   ): Promise<boolean> {
-    const hashedCredential = await defaultKeyHasher(credential);
     return (
-      deps.db
-        .select({ id: authApiKeys.id })
-        .from(authApiKeys)
-        .where(
-          and(
-            eq(authApiKeys.configId, DAEMON_ENROLL_CONFIG_ID),
-            eq(authApiKeys.key, hashedCredential),
-            eq(authApiKeys.enabled, true),
-            gt(authApiKeys.remaining, 0),
-            gt(authApiKeys.expiresAt, new Date(now)),
-            sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
-          ),
-        )
-        .limit(1)
-        .get() !== undefined
+      (await findUnusedEnrollmentCredential(deps.db, credential))?.hostId ===
+      hostId
     );
   }
 
@@ -206,7 +230,12 @@ export function createMachineEnrollmentService(
             throw new Error("Machine enrollment was cancelled");
           if (deps.isConnected(host.id)) {
             pending.delete(host.id);
-            return { hostId: host.id };
+            return {
+              hostId: host.id,
+              hostName:
+                getLatestSessionForHost(deps.db, { hostId: host.id })
+                  ?.hostName ?? host.name,
+            };
           }
           const remaining = deadline - Date.now();
           if (remaining <= 0)
@@ -235,11 +264,7 @@ export function createMachineEnrollmentService(
       return null;
     const bootstrap = entry.bootstrap;
     if (
-      !(await hasUnusedEnrollmentCredential(
-        host.id,
-        bootstrap.credential,
-        Date.now(),
-      ))
+      !(await hasUnusedEnrollmentCredential(host.id, bootstrap.credential))
     )
       return null;
     if (pending.get(request.hostId) !== entry) return null;

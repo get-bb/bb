@@ -109,10 +109,14 @@ export function seedPrimaryHost(
   writeFileSync(join(deps.config.dataDir, HOST_ID_FILE_NAME), hostId);
 }
 
-export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
+export function seedSession(
+  deps: Pick<AppDeps, "db" | "hub">,
+  hostId: string,
+  options: { instanceId?: string } = {},
+) {
   const session = openSession(deps.db, {
     hostId,
-    instanceId: "instance-1",
+    instanceId: options.instanceId ?? "instance-1",
     hostName: "Test Host",
     dataDir: `/tmp/bb-host-data/${hostId}`,
     protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,

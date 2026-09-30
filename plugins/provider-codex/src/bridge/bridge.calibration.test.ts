@@ -2,14 +2,15 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { PromptInput, ThreadEvent } from "@bb/domain";
+import { z } from "zod";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   THREAD_DELTA_NOTIFICATION_METHOD,
-  interactionRequestParamsSchema,
-  type InteractionRequestParams,
-} from "@bb/provider-bridge-protocol";
+  approvalInteractionOutcomeSchema,
+  interactionRequestPayloadSchema,
+  type PromptInput,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
@@ -19,6 +20,7 @@ import {
 import type {
   BridgeDeltaEventCollector,
   BridgeJsonRpcTestHarness,
+  ThreadEvent,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexEvent } from "../generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "../generated/codex-app-server/schema/v2/Turn.js";
@@ -279,6 +281,21 @@ function promptInput(text: string): PromptInput[] {
 const FIRST_REQUEST_ID = "creq_23456789ab";
 const STEER_REQUEST_ID = "creq_23456789ac";
 const SECOND_REQUEST_ID = "creq_23456789ad";
+
+const interactionRequestParamsSchema = z
+  .object({
+    providerThreadId: z.string().min(1),
+    threadId: z.string().min(1).optional(),
+    turnId: z.union([z.string().min(1), z.null()]),
+    payload: z.union([
+      approvalInteractionOutcomeSchema.shape.payload,
+      ...interactionRequestPayloadSchema.options,
+    ]),
+    providerNativeIds: z.boolean().optional(),
+  })
+  .passthrough();
+
+type InteractionRequestParams = z.infer<typeof interactionRequestParamsSchema>;
 
 interface ReplayResult {
   approvals: InteractionRequestParams[];

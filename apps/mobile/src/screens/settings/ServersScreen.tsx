@@ -1,5 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
+import { View } from "react-native";
+import { useTheme } from "@/theme/ThemeProvider";
 import { useProfiles } from "@/app-shell";
 import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
@@ -8,6 +10,7 @@ import {
   ActionSheet,
   confirmDestructive,
   GroupedRow,
+  Icon,
   toast,
   useSheet,
   type ActionSheetAction,
@@ -24,9 +27,11 @@ const IS_IOS = process.env.EXPO_OS === "ios";
 
 export function ServersScreen() {
   const router = useRouter();
+  const { tokens } = useTheme();
   const { profiles, activeProfile, setActiveProfile, removeProfile } =
     useProfiles();
   const menu = useSheet();
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const [target, setTarget] = useState<ServerProfile | null>(null);
 
   const addServer = () => router.push("/settings/servers/add");
@@ -62,13 +67,17 @@ export function ServersScreen() {
     });
 
   const actionsFor = (profile: ServerProfile): ActionSheetAction[] => [
-    {
-      key: "activate",
-      label: "Use this server",
-      icon: "Check",
-      disabled: profile.id === activeProfile?.id,
-      onPress: () => activate(profile),
-    },
+    ...(IS_IOS || profile.id !== activeProfile?.id
+      ? [
+          {
+            key: "activate",
+            label: "Use this server",
+            icon: "Check" as const,
+            disabled: profile.id === activeProfile?.id,
+            onPress: () => activate(profile),
+          },
+        ]
+      : []),
     ...(profile.mode === "connect"
       ? [
           {
@@ -86,7 +95,11 @@ export function ServersScreen() {
       label: "Remove",
       icon: "Trash2",
       destructive: true,
-      onPress: () => confirmRemove(profile),
+      dismissOnPress: IS_IOS,
+      onPress: () => {
+        if (IS_IOS) confirmRemove(profile);
+        else setConfirmingRemoval(true);
+      },
     },
   ];
 
@@ -145,14 +158,40 @@ export function ServersScreen() {
                 key={profile.id}
                 title={profile.label}
                 subtitle={
-                  profile.mode === "connect"
-                    ? `@${profile.handle} · ${profile.serverUrl}`
+                  IS_IOS
+                    ? profile.mode === "connect"
+                      ? `@${profile.handle} · ${profile.serverUrl}`
+                      : profile.serverUrl
                     : profile.serverUrl
+                        .replace(/^https?:\/\//, "")
+                        .replace(/\/$/, "")
                 }
                 leading={profile.mode === "connect" ? "Globe" : "Laptop"}
-                value={profile.mode === "connect" ? "bb connect" : "Direct"}
+                value={
+                  IS_IOS
+                    ? profile.mode === "connect"
+                      ? "bb connect"
+                      : "Direct"
+                    : undefined
+                }
+                selected={profile.id === activeProfile?.id}
+                accessibilityLabel={`${profile.label}, ${profile.mode === "connect" ? "bb connect" : "Direct"}, ${profile.serverUrl}`}
                 trailing={
-                  profile.id === activeProfile?.id ? "checkmark" : undefined
+                  IS_IOS ? (
+                    profile.id === activeProfile?.id ? (
+                      "checkmark"
+                    ) : undefined
+                  ) : (
+                    <View className="h-6 w-6 items-center justify-center">
+                      {profile.id === activeProfile?.id ? (
+                        <Icon
+                          name="CircleCheckFilled"
+                          size={20}
+                          color={tokens.success}
+                        />
+                      ) : null}
+                    </View>
+                  )
                 }
                 onPress={() => activate(profile)}
                 onLongPress={() => openMenu(profile)}
@@ -165,9 +204,37 @@ export function ServersScreen() {
 
       <ActionSheet
         controller={menu}
-        title={target?.label}
-        message={target?.serverUrl}
-        actions={target ? actionsFor(target) : []}
+        cancelLabel={IS_IOS || confirmingRemoval ? "Cancel" : null}
+        status={
+          !IS_IOS && !confirmingRemoval && target?.id === activeProfile?.id
+            ? "Current"
+            : undefined
+        }
+        presentation={confirmingRemoval ? "prompt" : "menu"}
+        title={confirmingRemoval ? `Remove ${target?.label}?` : target?.label}
+        message={
+          confirmingRemoval
+            ? target?.mode === "connect"
+              ? "This removes the server and its device credential from this phone. Revoke the phone separately in getbb.app → Machines."
+              : "This removes the server from this phone. Nothing on the server changes."
+            : target?.serverUrl
+        }
+        actions={
+          target
+            ? confirmingRemoval
+              ? [
+                  {
+                    key: "confirm-remove",
+                    label: "Remove server",
+                    icon: "Trash2",
+                    destructive: true,
+                    onPress: () => remove(target),
+                  },
+                ]
+              : actionsFor(target)
+            : []
+        }
+        onDismiss={() => setConfirmingRemoval(false)}
       />
     </>
   );

@@ -16,6 +16,7 @@ import {
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { HttpError } from "@/lib/api";
 import { BbHttpError } from "@bb/sdk/browser";
 import {
@@ -525,7 +526,7 @@ describe("FilePreview", () => {
           iframe: {
             sandbox: "allow-scripts",
             title: "docs/progress-vis.html",
-            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+            url: "/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html",
           },
           lineRange: null,
         }}
@@ -537,11 +538,75 @@ describe("FilePreview", () => {
     );
 
     expect(openSpy).toHaveBeenCalledWith(
-      `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
+      `${window.location.origin}/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html`,
       "_blank",
       "noopener,noreferrer",
     );
     openSpy.mockRestore();
+  });
+
+  it("keeps compact file actions available without crowding the preview controls", async () => {
+    const onRefresh = vi.fn();
+    const onOpenInEditor = vi.fn();
+    const view = render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <FilePreview
+          path="reports/gallery.html"
+          onRefresh={onRefresh}
+          onOpenInEditor={onOpenInEditor}
+          state={{
+            kind: "html",
+            file: { name: "gallery.html", contents: "<h1>Gallery</h1>" },
+            iframe: {
+              sandbox: "allow-scripts",
+              title: "Gallery",
+              url: "/gallery.html",
+            },
+            lineRange: null,
+          }}
+        />
+      </CompactViewportOverrideProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Copy HTML source" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh file" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    const refresh = await screen.findByRole("menuitem", {
+      name: "Refresh file",
+    });
+    expect(
+      screen.getByRole("menuitem", { name: "Copy HTML source" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Copy file path" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Open in external browser" }),
+    ).toBeTruthy();
+    expect(view.container.closest('[inert], [aria-hidden="true"]')).toBeNull();
+    fireEvent.click(refresh);
+    expect(onRefresh).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Open in editor" }),
+    );
+    expect(onOpenInEditor).toHaveBeenCalledWith("reports/gallery.html");
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    const wrap = await screen.findByRole("menuitemcheckbox", {
+      name: "Wrap lines",
+    });
+    expect(wrap.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(wrap);
+    fireEvent.click(screen.getByRole("button", { name: "File actions" }));
+    expect(
+      (
+        await screen.findByRole("menuitemcheckbox", { name: "Wrap lines" })
+      ).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("enlarges the HTML file actions for narrow coarse pointers", () => {
@@ -555,7 +620,7 @@ describe("FilePreview", () => {
           iframe: {
             sandbox: "allow-scripts",
             title: "docs/progress-vis.html",
-            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+            url: "/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html",
           },
           lineRange: null,
         }}
@@ -593,10 +658,14 @@ describe("FilePreview", () => {
         <FilePreview
           path="docs/progress-vis.html"
           state={{
-            kind: "iframe",
-            sandbox: "allow-scripts",
-            title: "docs/progress-vis.html",
-            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+            kind: "html",
+            file: { name: "progress-vis.html", contents: "<h1>Progress</h1>" },
+            iframe: {
+              sandbox: "allow-scripts",
+              title: "docs/progress-vis.html",
+              url: "/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html",
+            },
+            lineRange: null,
           }}
         />,
       );
@@ -606,7 +675,7 @@ describe("FilePreview", () => {
       );
 
       expect(openExternalUrl).toHaveBeenCalledWith(
-        `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
+        `${window.location.origin}/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html`,
       );
     } finally {
       delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
@@ -947,25 +1016,78 @@ describe("FilePreview", () => {
     expect(screen.getByRole("alert").textContent).toBe("Failed to load file");
   });
 
-  it("does not announce an unsupported preview type as an alert", () => {
-    render(
+  it("renders HTML over the preview render limit as source instead of an iframe", () => {
+    const content = `<html>${"a".repeat(5 * 1024 * 1024)}</html>`;
+    const view = render(
       <SecondaryPanelFilePreview
-        activePath="docs/report.pdf"
+        activePath="reports/large.html"
+        filePreview={{
+          kind: "text",
+          content,
+          mimeType: "text/html",
+          path: "reports/large.html",
+          url: "/api/v1/threads/thread-1/thread-storage/files/reports/large.html",
+        }}
+        htmlPreviewUrl="/api/v1/threads/thread-1/thread-storage/files/reports/large.html"
+        isLoading={false}
+      />,
+    );
+
+    expect(view.container.querySelector("iframe")).toBeNull();
+  });
+
+  it("offers Download instead of rendering HTML too large to preview", () => {
+    const view = render(
+      <SecondaryPanelFilePreview
+        activePath="reports/huge.html"
         filePreview={{
           kind: "unsupported",
-          mimeType: "application/pdf",
-          name: "report.pdf",
-          path: "docs/report.pdf",
-          url: "/api/v1/preview/report",
+          mimeType: "text/html",
+          path: "reports/huge.html",
+          reason: "too-large",
+          sizeBytes: 30 * 1024 * 1024,
+          url: "/api/v1/threads/thread-1/thread-storage/files/reports/huge.html",
+        }}
+        htmlPreviewUrl="/api/v1/threads/thread-1/thread-storage/files/reports/huge.html"
+        isLoading={false}
+      />,
+    );
+
+    expect(view.container.querySelector("iframe")).toBeNull();
+    expect(
+      screen.getByText("This file is too large to preview."),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Download" }).getAttribute("href"),
+    ).toBe("/api/v1/threads/thread-1/thread-storage/files/reports/huge.html");
+  });
+
+  it("links Download to the file's raw URL under its basename", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="qa/report-with-images.zip"
+        filePreview={{
+          kind: "unsupported",
+          mimeType: "application/zip",
+          path: "qa/report-with-images.zip",
+          reason: "binary",
+          sizeBytes: 2048,
+          url: "/api/v1/projects/p1/files/raw?path=qa%2Freport-with-images.zip",
         }}
         isLoading={false}
       />,
     );
 
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("application/zip · 2.0 KB")).not.toBeNull();
     expect(
-      screen.getByText("Preview not available for application/pdf."),
+      screen.getByText("This file type can't be previewed."),
     ).not.toBeNull();
+    const download = screen.getByRole("link", { name: "Download" });
+    expect(download.getAttribute("href")).toBe(
+      "/api/v1/projects/p1/files/raw?path=qa%2Freport-with-images.zip",
+    );
+    expect(download.getAttribute("download")).toBe("report-with-images.zip");
   });
 
   it("does not show the file preview actions menu for non-text previews", () => {
@@ -1017,6 +1139,60 @@ describe("FilePreview", () => {
       expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy();
       expect(pierreMock.state.lastFile?.cacheKey).not.toBe(firstCacheKey);
     });
+  });
+
+  it("tracks preview loading across view changes, document revisions, and URLs", () => {
+    vi.useFakeTimers();
+    const preview = (revision: string, url = "/gallery.html") => (
+      <FilePreview
+        path="gallery.html"
+        state={{
+          kind: "html",
+          file: {
+            name: "gallery.html",
+            contents: "<h1>Gallery</h1>",
+            cacheKey: revision,
+          },
+          iframe: { sandbox: "allow-scripts", title: "Gallery", url },
+          lineRange: null,
+        }}
+      />
+    );
+    const view = render(
+      <FilePreview
+        path="gallery.html"
+        state={{ kind: "loading" }}
+        isRefreshing
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    act(() => vi.advanceTimersByTime(200));
+    const loadingStatus = screen.getByRole("status");
+    expect(loadingStatus.textContent).toBe("Loading preview…");
+    view.rerender(preview("first"));
+    expect(screen.getByRole("status")).toBe(loadingStatus);
+    const frame = screen.getByTitle("Gallery");
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    expect(screen.queryByRole("status")).toBeNull();
+    fireEvent.load(frame);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByTitle("Gallery")).toBe(frame);
+
+    view.rerender(preview("second"));
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.getByRole("status")).toBeTruthy();
+    fireEvent.load(screen.getByTitle("Gallery"));
+    expect(screen.queryByRole("status")).toBeNull();
+
+    view.rerender(preview("second", "/gallery.html?retry=1"));
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.getByRole("status")).toBeTruthy();
+    fireEvent.load(screen.getByTitle("Gallery"));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("reloads an HTML iframe only when the fetched source changes", () => {

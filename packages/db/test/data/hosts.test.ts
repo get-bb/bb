@@ -163,6 +163,26 @@ describe("hosts", () => {
     ).toEqual([visibleHost.id, ephemeralHost.id]);
   });
 
+  it("filters the public inventory by host type", () => {
+    const { db } = setup();
+    const persistentHost = upsertHost(db, noopNotifier, {
+      id: "host-persistent",
+      name: "Persistent Host",
+    });
+    const ephemeralHost = upsertHost(db, noopNotifier, {
+      id: "host-ephemeral",
+      name: "Ephemeral Host",
+      type: "ephemeral",
+    });
+
+    expect(
+      listPublicHosts(db, { type: "persistent" }).map((host) => host.id),
+    ).toEqual([persistentHost.id]);
+    expect(
+      listPublicHosts(db, { type: "ephemeral" }).map((host) => host.id),
+    ).toEqual([ephemeralHost.id]);
+  });
+
   it("filters destroyed hosts from non-destroyed lookups", () => {
     const { db } = setup();
     const visibleHost = upsertHost(db, noopNotifier, {

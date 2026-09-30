@@ -16,6 +16,7 @@ import { clientTurnRequestIdSchema } from "./protocol-ids.js";
 import {
   systemMessageKindSchema,
   systemMessageSubjectSchema,
+  systemThreadInterruptedReasonSchema,
 } from "./system-message.js";
 
 export const systemEventTypeValues = [
@@ -267,18 +268,6 @@ export const systemUserQuestionLifecycleEventDataSchema = z.object({
   statusReason: z.string().nullable().default(null),
   payload: userQuestionPendingInteractionPayloadSchema,
 });
-
-const systemThreadInterruptedReasonValues = [
-  "manual-stop",
-  "host-daemon-restarted",
-  "provider-turn-idle",
-] as const;
-export const systemThreadInterruptedReasonSchema = z.enum(
-  systemThreadInterruptedReasonValues,
-);
-export type SystemThreadInterruptedReason = z.infer<
-  typeof systemThreadInterruptedReasonSchema
->;
 
 export const systemThreadInterruptedEventDataSchema = z.object({
   reason: systemThreadInterruptedReasonSchema,

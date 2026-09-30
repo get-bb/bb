@@ -1887,7 +1887,7 @@ describe("dispatchCommand", () => {
   });
 
   it("expires the remembered probe after the gate TTL", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
     try {
       const runtime = createRuntime();
       const manager = new RuntimeManager({
@@ -1903,12 +1903,11 @@ describe("dispatchCommand", () => {
         providerInstallationStatus,
       });
 
-      const probedAt = Date.now();
       await dispatchCommand(
         createInstallationGatedThreadStart("thread-1"),
         options,
       );
-      vi.setSystemTime(probedAt + 101);
+      now.mockReturnValue(101);
       await dispatchCommand(
         createInstallationGatedThreadStart("thread-2"),
         options,
@@ -1916,7 +1915,7 @@ describe("dispatchCommand", () => {
 
       expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
     } finally {
-      vi.useRealTimers();
+      now.mockRestore();
     }
   });
 

@@ -2,7 +2,7 @@ import {
   createPushRegistrationController,
   type PushRegistrationController,
 } from "@/data/notifications";
-import { describeThisDevice } from "./device-label";
+import { describeThisDevice } from "@/lib/device-label";
 import { getPushNotificationsModule } from "./expo-push-module";
 import { getPushStore, getPushSubscriptionsApi } from "./push-storage";
 

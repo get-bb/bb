@@ -1,3 +1,4 @@
+import { constants, type BigIntStats } from "node:fs";
 import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -436,4 +437,84 @@ export async function readFileMetadataForTransport(
     modifiedAtMs: stat.mtimeMs,
     sizeBytes: stat.size,
   };
+}
+
+function fileRevision(stat: BigIntStats): string {
+  return sha256Hex(
+    Buffer.from(
+      [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":"),
+    ),
+  );
+}
+
+export async function readFileChunkForTransport(
+  args: ReadFileForTransportArgs & {
+    offset: number;
+    length: number;
+    revision: string | null;
+  },
+) {
+  const readablePath = await resolveReadablePath(args);
+  const file = await fs
+    .open(
+      readablePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    )
+    .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
+  try {
+    const stat = await file.stat({ bigint: true });
+    if (!stat.isFile()) {
+      throw new CommandDispatchError(
+        "invalid_path",
+        "Path is not a regular file",
+      );
+    }
+    if (stat.size > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new CommandDispatchError(
+        "file_too_large",
+        "File size exceeds supported byte offsets",
+      );
+    }
+    const revision = fileRevision(stat);
+    if (args.revision !== null && args.revision !== revision) {
+      throw new ExpectedCommandDispatchError(
+        "file_changed",
+        "File changed during read",
+      );
+    }
+    const sizeBytes = Number(stat.size);
+    const length = Math.min(args.length, Math.max(0, sizeBytes - args.offset));
+    const bytes = Buffer.alloc(length);
+    let offset = 0;
+    while (offset < length) {
+      const { bytesRead } = await file.read(
+        bytes,
+        offset,
+        length - offset,
+        args.offset + offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    if (
+      offset !== length ||
+      fileRevision(await file.stat({ bigint: true })) !== revision
+    ) {
+      throw new ExpectedCommandDispatchError(
+        "file_changed",
+        "File changed during read",
+      );
+    }
+    return {
+      path: args.resultPath,
+      sizeBytes,
+      modifiedAtMs: Number(stat.mtimeNs) / 1_000_000,
+      mimeType: mimeTypes.lookup(args.resultPath) || null,
+      revision,
+      offset: args.offset,
+      content: bytes.toString("base64"),
+    };
+  } finally {
+    await file.close();
+  }
 }

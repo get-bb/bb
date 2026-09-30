@@ -6,7 +6,7 @@ import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -124,7 +124,8 @@ describe("dispatch target rail control", () => {
         listBbProjects: () => ({
           bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
         }),
-        updateProject: (input: Record<string, unknown>) => {
+        updateProject: (raw: unknown) => {
+          const input = rpcInput(raw);
           updateCalls.push(input);
           return {
             project: {
@@ -155,7 +156,8 @@ describe("dispatch target rail control", () => {
           listBbProjects: () => ({
             bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
           }),
-          updateProject: (input: Record<string, unknown>) => {
+          updateProject: (raw: unknown) => {
+            const input = rpcInput(raw);
             updateCalls.push(input);
             return {
               project: {

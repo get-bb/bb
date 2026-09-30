@@ -13,9 +13,13 @@ the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
 Composer UI extensions register through `app.composer.customize(...)`. A
 `ComposerCustomization` can contribute React action and banner components,
-host-rendered `ComposerPlusMenuItem` rows, and `ComposerRichTextSpec` rules.
-Mounted components use `useComposer()` for writes, effects, and input locking,
-and `useComposerView()` for the reactive scope, layout, draft, and run state.
+host-rendered `ComposerPlusMenuItem` and `ComposerSendMenuItem` rows, and
+`ComposerRichTextSpec` rules. Mounted components use `useComposer()`: one
+stable handle for the composer's text, mentions, picker selection, scope,
+layout, run and submit state, writes, effects, and input locking. Selection is
+reactive and is `null` for composers without pickers. Panels and pages that
+write into a composer the user picks use `useComposers()`, one handle per
+composer on screen.
 Any mounted plugin component can use
 `useBbNavigate().openThreadPanel(...)` to request one of the
 same plugin's registered thread-panel actions; it returns false when the
@@ -70,7 +74,7 @@ app-wide floating React UI. BB mounts the component once per app window through
 the normal plugin slot boundary, so SDK hooks and plugin CSS work and React
 context survives portals. This app-level boundary includes the sidebar thread
 data and action hooks. Hooks whose contract requires a particular surface,
-including `useComposer` and `useComposerView`, remain limited to that surface.
+including `useComposer`, remain limited to that surface.
 The plugin owns the overlay's chrome, positioning, visibility, focus, and
 responsive behavior; a crashing overlay is hidden without affecting siblings.
 Use a content script for app-wide DOM behavior that does not need React context.
@@ -178,13 +182,15 @@ slot.lifecycle.unmount();
 await scripts.lifecycle.dispose();
 ```
 
-`loadPluginApp` installs the runtime before a thunk import and validates all
-registrations. `mountPluginContentScripts` mirrors the host's ordered mount,
+`loadPluginApp` installs the runtime and validates all registrations; pass the
+imported module or a thunk. `@get-bb/plugin-sdk/app` exports look the runtime
+up when they are called or rendered, so a static import of `app.tsx` or of
+components works too. `mountPluginContentScripts` mirrors the host's ordered mount,
 rollback, independent per-window signal, and exact-once disposal. `renderSlot` supplies
 RPC, realtime, settings, navigation, context, and scoped composer behavior,
 then returns Testing Library queries plus the same behavior/inspection/lifecycle
-split. Use a setup-file `installTestPluginRuntime()` only when a static app
-import is unavoidable.
+split; it installs the runtime too. Call `installTestPluginRuntime()` yourself
+only when a test renders plugin components without `renderSlot`.
 
 ## Fidelity boundaries
 

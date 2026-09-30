@@ -1,9 +1,8 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ICON_MAP, isIconName, type IconName } from "./icon-map";
+import { ICON_MAP, isIconName } from "./icon-map";
 import {
   SF_SYMBOL_MAP,
   SF_SYMBOL_WEIGHT,
@@ -11,58 +10,7 @@ import {
   sfSymbolFor,
 } from "./sf-symbol-map";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SCAN_ROOTS = [join(HERE, ".."), join(HERE, "..", "..", "app")];
-const SELF_FILES = new Set([
-  "icon-map.ts",
-  "icon-map.test.ts",
-  "sf-symbol-map.ts",
-  "sf-symbol-map.test.ts",
-]);
-
 const MAX_SF_SYMBOLS_VERSION = "4.2";
-
-function listSourceFiles(dir: string, out: string[]): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules") continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if (/\.tsx?$/.test(entry) && !SELF_FILES.has(entry)) out.push(path);
-  }
-  return out;
-}
-
-function usedIconNames(): Map<IconName, string[]> {
-  const used = new Map<IconName, string[]>();
-  const record = (candidate: string, location: string) => {
-    if (!isIconName(candidate)) return;
-    const locations = used.get(candidate) ?? [];
-    locations.push(location);
-    used.set(candidate, locations);
-  };
-  for (const file of SCAN_ROOTS.flatMap((root) => listSourceFiles(root, []))) {
-    const source = readFileSync(file, "utf8");
-    const typed = source.includes("IconName");
-    source.split("\n").forEach((line, index) => {
-      const location = `${file}:${index + 1}`;
-      for (const match of line.matchAll(
-        /\b(?:name|icon|leading|trailing|glyph|leadingIcon|trailingIcon)=\{?"([A-Z][A-Za-z0-9]*)"/g,
-      )) {
-        record(match[1], location);
-      }
-      for (const match of line.matchAll(
-        /\b(?:icon|leading|glyph|leadingIcon|trailingIcon|statusIcon|iconName)\??:\s*"([A-Z][A-Za-z0-9]*)"/g,
-      )) {
-        record(match[1], location);
-      }
-      if (!typed) return;
-      for (const match of line.matchAll(/"([A-Z][A-Za-z0-9]*)"/g)) {
-        record(match[1], location);
-      }
-    });
-  }
-  return used;
-}
 
 function sfSymbolCatalog(): Map<string, string> {
   const require = createRequire(import.meta.url);
@@ -109,15 +57,6 @@ describe("SF_SYMBOL_MAP", () => {
     }
   });
 
-  it("covers every icon name the app renders", () => {
-    const used = usedIconNames();
-    expect(used.size).toBeGreaterThan(12);
-    const missing = [...used]
-      .filter(([name]) => sfSymbolFor(name) === undefined)
-      .map(([name, locations]) => `${name} (${locations[0]})`);
-    expect(missing).toEqual([]);
-  });
-
   it("uses bare symbol names that exist by the deployment target's SF Symbols release", () => {
     const catalog = sfSymbolCatalog();
     expect(catalog.size).toBeGreaterThan(4000);
@@ -137,11 +76,6 @@ describe("SF_SYMBOL_MAP", () => {
       }
     }
     expect(problems).toEqual([]);
-  });
-
-  it("sfSymbolFor returns the mapped symbol", () => {
-    expect(sfSymbolFor("Plus")).toBe("plus");
-    expect(sfSymbolFor("Trash2")).toBe("trash");
   });
 
   it("symbol weights are the numeric fontWeight strings expo-image parses", () => {

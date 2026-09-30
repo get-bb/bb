@@ -66,6 +66,19 @@ function mustCreateThreadSection(
 }
 
 describe("threads", () => {
+  it("creates pinned threads in order and retains their section after unpinning", () => {
+    const { db, project } = setup();
+    const section = mustCreateThreadSection(db, "Managers");
+    const first = createThread(db, noopNotifier, { projectId: project.id, providerId: "codex", pinned: true });
+    const second = createThread(db, noopNotifier, { projectId: project.id, providerId: "codex", sectionId: section.id, pinned: true });
+    expect(second.pinnedAt).not.toBeNull();
+    expect(second.pinSortKey).not.toBeNull();
+    expect(second.pinSortKey! < first.pinSortKey!).toBe(true);
+    const unpinned = unpinThread(db, noopNotifier, { threadId: second.id });
+    expect(unpinned).toMatchObject({ sectionId: section.id, pinnedAt: null, pinSortKey: null });
+    db.$client.close();
+  });
+
   it("summarizes favicon attention for active sidebar threads", () => {
     vi.useFakeTimers();
     try {

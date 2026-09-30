@@ -1,3 +1,4 @@
+import { useSplitPreload } from "@/lib/define-split";
 import {
   useCallback,
   useEffect,
@@ -6,7 +7,6 @@ import {
   useRef,
   useState,
   type KeyboardEventHandler,
-  type ReactNode,
 } from "react";
 import type {
   SystemExecutionOptionsModelLoadError,
@@ -20,29 +20,16 @@ import {
 } from "./model-brand-prefix";
 import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger,
-} from "@bb/shared-ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { Switch } from "@bb/shared-ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@bb/shared-ui/toggle-group";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  MENU_ITEM_LAST_HOVERED_CLASS,
-  MenuHoverProvider,
-  useMenuItemHover,
-} from "@bb/shared-ui/menu-item-hover";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   prefetchSystemExecutionOptions,
@@ -57,14 +44,15 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
-import { PickerLoadingRows } from "./PickerLoadingRows";
 import type { ModelPickerOption } from "./model-picker-option";
+import {
+  MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
+  splitModelLabelTag,
+} from "./model-picker-menu";
+import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
-import {
-  formatModelLoadErrorText,
-  ModelLoadErrorMessage,
-} from "./model-load-error-message";
+import { formatModelLoadErrorText } from "./model-load-error-message";
 import {
   useAppCommandContext,
   useAppCommandHandler,
@@ -84,11 +72,6 @@ import {
   nextCycleValue,
   previousCycleValue,
 } from "./modelPickerCycle";
-
-interface ModelLabelParts {
-  base: string;
-  tag: string | null;
-}
 
 interface ResolvedProviderPreview {
   providerId: string;
@@ -128,20 +111,11 @@ const REASONING_CYCLE_COMMANDS = [
 ] as const;
 
 const MODEL_SEARCH_MIN_OPTIONS = 5;
-const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-64 max-w-80";
 
 const HANDOFF_DRAWER_TOP_CLASS_NAME =
   "[&>[data-persistent-drawer-handle]]:w-full [&>[data-persistent-drawer-handle]]:rounded-t-xl [&>[data-persistent-drawer-handle]]:bg-background";
 
-function splitModelLabelTag(label: string): ModelLabelParts {
-  const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
-  if (!match) {
-    return { base: label, tag: null };
-  }
-  return { base: match[1], tag: match[2] };
-}
-
-type ModelNavRow =
+export type ModelNavRow =
   | { kind: "model"; option: ModelPickerOption }
   | { kind: "more-toggle" };
 
@@ -246,6 +220,7 @@ export function ModelReasoningPicker({
   disabled,
   handoff,
 }: ModelReasoningPickerProps) {
+  useSplitPreload(ModelReasoningMenu);
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -466,18 +441,9 @@ export function ModelReasoningPicker({
   const activeProviderLabel = activeProvider?.label ?? activeProviderId;
   const activeModelLoadErrorMatches =
     activeModelLoadError?.providerId === activeProviderId;
-  const activeModelLoadErrorMessage =
-    activeModelLoadErrorMatches && activeModelLoadError
-      ? formatModelLoadErrorText({
-          error: activeModelLoadError,
-          providerLabel: activeProviderLabel,
-        })
-      : null;
   const activeModelLoadFailed = isPreviewing
     ? previewQuery.isError || activeModelLoadErrorMatches
     : modelLoadFailed || activeModelLoadErrorMatches;
-  const activeModelFailureMessage =
-    activeModelLoadErrorMessage ?? "Could not load models.";
   const activeModelOptions = previewModelOptions;
   const activeMoreModelOptions = previewSelectionBlocked
     ? EMPTY_MODEL_OPTIONS
@@ -548,7 +514,6 @@ export function ModelReasoningPicker({
   const effectiveFastModeLabel = isPreviewing
     ? fastServiceTierLabel(previewProvider)
     : (fastModeLabel ?? "Fast");
-  const fastModeText = `${effectiveFastModeLabel} mode`;
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
@@ -576,8 +541,8 @@ export function ModelReasoningPicker({
     [resetBrowseState],
   );
 
-  const openSub = useCallback(() => {
-    setMoreModelsOpen(true);
+  const toggleShowMoreModels = useCallback(() => {
+    setShowMoreModels((current) => !current);
   }, []);
 
   const handleModelSelect = useCallback(
@@ -897,11 +862,11 @@ export function ModelReasoningPicker({
         if (row.kind === "model") {
           handleModelSelect(row.option.value);
         } else {
-          setShowMoreModels((current) => !current);
+          toggleShowMoreModels();
         }
       }
     },
-    [navRows, highlightedIndex, handleModelSelect],
+    [navRows, highlightedIndex, handleModelSelect, toggleShowMoreModels],
   );
 
   useEffect(() => {
@@ -935,6 +900,7 @@ export function ModelReasoningPicker({
       }
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
+      {...ModelReasoningMenu.intentProps}
       onKeyDown={handleReasoningArrowKeyDown}
       className={cn(
         OPTION_BASE_CLASS_NAME,
@@ -1118,191 +1084,46 @@ export function ModelReasoningPicker({
           />
         ) : null}
 
-        <MenuHoverProvider>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div
-              ref={listRef}
-              key={activeProviderId || "no-provider"}
-              role={showSearchInput ? "listbox" : undefined}
-              id={showSearchInput ? listboxId : undefined}
-              aria-label={showSearchInput ? "Models" : undefined}
-              className={cn(
-                "min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0",
-                !isCompactViewport && "max-h-64",
-              )}
-            >
-              {isShowingModelError ? null : (
-                <MenuSectionLabel>Model</MenuSectionLabel>
-              )}
-              {activeModelIsLoading ? (
-                <PickerLoadingRows
-                  label="Loading models"
-                  rowDataAttribute="data-model-loading-row"
-                />
-              ) : hasActiveModelOptions ? (
-                <>
-                  {navRows.map((row, index) => {
-                    const active = highlightedIndex === index;
-                    const domId = optionDomId(index);
-                    if (row.kind === "more-toggle") {
-                      return (
-                        <MoreModelsToggleRow
-                          key="more-toggle"
-                          id={domId}
-                          isActive={active}
-                          expanded={showMoreModels}
-                          onToggle={() =>
-                            setShowMoreModels((current) => !current)
-                          }
-                        />
-                      );
-                    }
-                    const option = row.option;
-                    return (
-                      <MenuRowButton
-                        key={option.value}
-                        id={domId}
-                        role={showSearchInput ? "option" : undefined}
-                        isActive={active}
-                        label={stripModelBrandPrefix(
-                          option.label,
-                          activeBrandPrefix,
-                        )}
-                        qualifier={option.routeProviderId}
-                        selected={!isPreviewing && option.value === modelValue}
-                        disabled={previewSelectionBlocked}
-                        onClick={() => handleModelSelect(option.value)}
-                      />
-                    );
-                  })}
-                  {!isCompactViewport &&
-                  !isSearching &&
-                  filteredMoreModelOptions.length > 0 ? (
-                    <MoreModelsSubmenu
-                      open={moreModelsOpen}
-                      onOpenChange={setMoreModelsOpen}
-                      openSub={openSub}
-                      activeBrandPrefix={activeBrandPrefix}
-                      isPreviewing={isPreviewing}
-                      modelValue={modelValue}
-                      options={filteredMoreModelOptions}
-                      onSelect={handleModelSelect}
-                    />
-                  ) : null}
-                  {isSearching && navRows.length === 0 ? (
-                    <div
-                      className={cn(
-                        "px-2 text-xs text-muted-foreground",
-                        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-                      )}
-                    >
-                      No models match your search
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div
-                  className={cn(
-                    "px-2 text-xs leading-relaxed text-muted-foreground",
-                    isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
-                  )}
-                  title={activeModelLoadErrorMessage ?? undefined}
-                >
-                  {activeModelLoadErrorMatches && activeModelLoadError ? (
-                    <ModelLoadErrorMessage
-                      error={activeModelLoadError}
-                      providerLabel={activeProviderLabel}
-                      {...(activeProvider?.installUrl === undefined
-                        ? {}
-                        : { installUrl: activeProvider.installUrl })}
-                    />
-                  ) : activeModelLoadFailed ? (
-                    activeModelFailureMessage
-                  ) : (
-                    "No models available"
-                  )}
-                </div>
-              )}
-            </div>
-
-            {showReasoningSection ? (
-              <>
-                <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 px-2 py-2.5">
-                  <MenuSectionLabel className="mb-2 px-1 py-0">
-                    Reasoning
-                  </MenuSectionLabel>
-                  <ToggleGroup
-                    type="single"
-                    aria-label="Reasoning"
-                    value={activeReasoningValue}
-                    onValueChange={(value) => {
-                      const option = activeReasoningOptions.find(
-                        (candidate) => candidate.value === value,
-                      );
-                      if (option) handleReasoningSelect(option.value);
-                    }}
-                    disabled={previewSelectionBlocked}
-                    className="flex gap-1"
-                  >
-                    {activeReasoningOptions.map((option) => (
-                      <ToggleGroupItem
-                        key={option.value}
-                        value={option.value}
-                        aria-label={option.label}
-                        className={cn(
-                          "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
-                          isCompactViewport && "h-9 text-sm",
-                          LIST_HOVER_TRANSITION,
-                        )}
-                      >
-                        {option.label}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </div>
-              </>
-            ) : null}
-
-            {effectiveShowFastModeToggle ? (
-              <>
-                <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 p-1">
-                  <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Icon
-                        name="Zap"
-                        className="size-4 fill-current text-muted-foreground"
-                      />
-                      <span>{fastModeText}</span>
-                    </span>
-                    <Switch
-                      checked={fastModeEnabled}
-                      onCheckedChange={onFastModeChange}
-                      aria-label={fastModeText}
-                      className={cn(LIST_HOVER_TRANSITION, "[&>span]:size-3.5")}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : null}
-
-            {handoff !== undefined &&
-            !handoffMode &&
-            providerOptions.length > 0 ? (
-              <>
-                <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 p-1">
-                  <MenuActionButton
-                    label="Handoff to new thread"
-                    iconName="MessageSquarePlus"
-                    onClick={startHandoffMode}
-                  />
-                </div>
-              </>
-            ) : null}
-          </div>
-        </MenuHoverProvider>
+        <ModelReasoningMenu
+          listRef={listRef}
+          providerId={activeProviderId}
+          provider={activeProvider}
+          providerLabel={activeProviderLabel}
+          listboxId={showSearchInput ? listboxId : undefined}
+          optionId={optionDomId}
+          modelIsLoading={activeModelIsLoading}
+          isShowingModelError={isShowingModelError}
+          hasModelOptions={hasActiveModelOptions}
+          modelLoadError={
+            activeModelLoadErrorMatches ? activeModelLoadError : null
+          }
+          modelLoadFailed={activeModelLoadFailed}
+          navRows={navRows}
+          highlightedIndex={highlightedIndex}
+          isSearching={isSearching}
+          showMoreModels={showMoreModels}
+          onToggleMoreModels={toggleShowMoreModels}
+          moreModelOptions={filteredMoreModelOptions}
+          moreModelsOpen={moreModelsOpen}
+          onMoreModelsOpenChange={setMoreModelsOpen}
+          isPreviewing={isPreviewing}
+          modelValue={modelValue}
+          selectionBlocked={previewSelectionBlocked}
+          onModelSelect={handleModelSelect}
+          showReasoningSection={showReasoningSection}
+          reasoningValue={activeReasoningValue}
+          reasoningOptions={activeReasoningOptions}
+          onReasoningSelect={handleReasoningSelect}
+          showFastModeToggle={effectiveShowFastModeToggle}
+          fastModeLabel={effectiveFastModeLabel}
+          fastModeEnabled={fastModeEnabled}
+          onFastModeChange={onFastModeChange}
+          onStartHandoff={
+            handoff !== undefined && !handoffMode && providerOptions.length > 0
+              ? startHandoffMode
+              : null
+          }
+        />
       </PopoverContent>
     </Popover>
   );
@@ -1329,176 +1150,6 @@ function HandoffModeHeader({ onBack }: { onBack: () => void }) {
   );
 }
 
-function MenuSectionLabel({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  const isCompactViewport = useIsCompactViewport();
-
-  return (
-    <div
-      className={cn(
-        "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
-        isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function MoreModelsToggleRow({
-  expanded,
-  onToggle,
-  isActive,
-  id,
-}: {
-  expanded: boolean;
-  onToggle: () => void;
-  isActive?: boolean;
-  id?: string;
-}) {
-  const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
-  return (
-    <button
-      type="button"
-      id={id}
-      onClick={onToggle}
-      aria-expanded={expanded}
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isActive && "bg-state-active",
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-      )}
-      {...hoverProps}
-    >
-      <span>{expanded ? "Fewer models" : "More models"}</span>
-      <Icon
-        name={expanded ? "ChevronUp" : "ChevronDown"}
-        className="size-3.5 shrink-0"
-      />
-    </button>
-  );
-}
-
-function MoreModelsSubmenu({
-  open,
-  onOpenChange,
-  openSub,
-  activeBrandPrefix,
-  isPreviewing,
-  modelValue,
-  options,
-  onSelect,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  openSub: () => void;
-  activeBrandPrefix: string | undefined;
-  isPreviewing: boolean;
-  modelValue: string;
-  options: readonly ModelPickerOption[];
-  onSelect: (value: string) => void;
-}) {
-  const { isLastHovered, hoverProps } = useMenuItemHover();
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const focusFirstSubItem = useCallback(() => {
-    window.setTimeout(() => {
-      contentRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    }, 0);
-  }, []);
-
-  useEffect(() => {
-    if (open && !isLastHovered) {
-      onOpenChange(false);
-    }
-  }, [open, isLastHovered, onOpenChange]);
-
-  return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverAnchor asChild>
-        <button
-          ref={triggerRef}
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={openSub}
-          onPointerEnter={(event) => {
-            hoverProps.onPointerEnter(event);
-            openSub();
-          }}
-          onKeyDown={(event) => {
-            hoverProps.onKeyDown(event);
-
-            if (
-              event.key === "Enter" ||
-              event.key === " " ||
-              event.key === "Spacebar" ||
-              event.key === "ArrowRight"
-            ) {
-              event.preventDefault();
-              openSub();
-              focusFirstSubItem();
-              return;
-            }
-
-            if (event.key === "Escape" || event.key === "ArrowLeft") {
-              event.preventDefault();
-              onOpenChange(false);
-            }
-          }}
-          className={cn(
-            "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 py-[0.3125rem] text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground",
-            LIST_HOVER_TRANSITION,
-            MENU_ITEM_LAST_HOVERED_CLASS,
-          )}
-          data-last-hovered={hoverProps["data-last-hovered"]}
-        >
-          <span>More models</span>
-          <Icon name="ChevronRight" className="size-3.5 shrink-0" />
-        </button>
-      </PopoverAnchor>
-      <PopoverContent
-        ref={contentRef}
-        side="right"
-        align="start"
-        sideOffset={6}
-        className={cn(
-          "max-h-[min(20rem,var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-y-auto overscroll-contain p-1 data-[state=closed]:animate-none",
-          MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
-        )}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" || event.key === "ArrowLeft") {
-            event.preventDefault();
-            onOpenChange(false);
-            triggerRef.current?.focus();
-          }
-        }}
-      >
-        <MenuHoverProvider>
-          {options.map((option) => (
-            <MenuRowButton
-              key={option.value}
-              label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
-              qualifier={option.routeProviderId}
-              selected={!isPreviewing && option.value === modelValue}
-              onClick={() => onSelect(option.value)}
-            />
-          ))}
-        </MenuHoverProvider>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function ResetBrowseStateOnContentUnmount({
   onReset,
 }: {
@@ -1508,100 +1159,6 @@ function ResetBrowseStateOnContentUnmount({
   return null;
 }
 
-function MenuRowButton({
-  label,
-  qualifier,
-  selected,
-  disabled = false,
-  onClick,
-  isActive,
-  id,
-  role,
-}: {
-  label: string;
-  qualifier?: string;
-  selected: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  isActive?: boolean;
-  id?: string;
-  role?: React.AriaRole;
-}) {
-  const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
-  const { base, tag } = splitModelLabelTag(label);
-  return (
-    <button
-      type="button"
-      id={id}
-      role={role}
-      disabled={disabled}
-      aria-selected={role === "option" ? Boolean(isActive) : undefined}
-      onClick={onClick}
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isActive && "bg-state-active",
-        disabled && "cursor-not-allowed opacity-60",
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-      )}
-      {...hoverProps}
-    >
-      <span
-        className="truncate"
-        title={qualifier ? `${label} · ${qualifier}` : label}
-      >
-        {base}
-        {tag ? (
-          <span className="ml-1.5 text-subtle-foreground">{tag}</span>
-        ) : null}
-        {qualifier ? (
-          <span className="ml-1.5 text-subtle-foreground">{qualifier}</span>
-        ) : null}
-      </span>
-      <span className="flex shrink-0 items-center gap-1.5">
-        <Icon
-          name="Check"
-          className={cn(
-            COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-            "text-subtle-foreground",
-            selected ? "opacity-100" : "opacity-0",
-          )}
-        />
-      </span>
-    </button>
-  );
-}
-
-function MenuActionButton({
-  label,
-  iconName,
-  onClick,
-}: {
-  label: string;
-  iconName: IconName;
-  onClick: () => void;
-}) {
-  const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-      )}
-      {...hoverProps}
-    >
-      <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{label}</span>
-    </button>
-  );
-}
 interface ModelSearchInputProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   query: string;

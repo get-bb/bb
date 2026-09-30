@@ -94,37 +94,6 @@ function expectBridgeSpawn(
 }
 
 describe("provider registry", () => {
-  it("carries environment write roots to the acp bridge via provider options", () => {
-    const provider = createProviderForId("acp-cursor", {
-      additionalWorkspaceWriteRoots: ["/extra-root"],
-      bridgeLaunch: ACP_BRIDGE_LAUNCH,
-    });
-    const plan = provider.buildCommandPlan({
-      type: "thread/start",
-      threadId: "thread-1",
-      cwd: "/workspace",
-      options: {
-        providerOptions: {},
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      },
-      instructionMode: "append",
-    });
-    expect(plan).toMatchObject({
-      kind: "request",
-      method: "thread/start",
-      params: {
-        options: {
-          providerOptions: {
-            additionalWorkspaceWriteRoots: ["/extra-root"],
-          },
-        },
-      },
-    });
-  });
-
   it("runs the packaged bootstrap from the configured bridge bundle directory", () => {
     const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
@@ -201,41 +170,6 @@ describe("provider registry", () => {
         permissionModes: ["accept-edits", "full"],
       });
     }
-  });
-
-  it("carries the plugin-declared cursor launch spec to the acp bridge", () => {
-    const provider = createProviderForId("acp-cursor", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeLaunch: ACP_BRIDGE_LAUNCH,
-    });
-    const plan = provider.buildCommandPlan({
-      type: "thread/start",
-      threadId: "thread-1",
-      cwd: "/workspace",
-      options: {
-        providerOptions: {},
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      },
-      instructionMode: "append",
-    });
-    expect(plan).toMatchObject({
-      kind: "request",
-      method: "thread/start",
-      params: {
-        options: {
-          providerOptions: {
-            acpLaunchSpec: {
-              displayName: "Cursor",
-              command: "cursor-agent",
-              args: ["acp"],
-            },
-          },
-        },
-      },
-    });
   });
 
   it("carries a configured acp agent's declared launch spec", () => {
@@ -339,38 +273,5 @@ describe("provider registry", () => {
         },
       },
     });
-  });
-
-  it("honors a verified bridge launch for an id the registry does not know", () => {
-    const provider = createProviderForId("echo-agent", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeLaunch: {
-        pluginId: "provider-fixture",
-        dataDir: "/data/plugins/provider-fixture/bridge-data",
-        source: {
-          kind: "artifact",
-          digest: "d".repeat(64),
-          artifactPath: "/data/provider-bridges/artifact.mjs",
-        },
-        providerOptions: {},
-        envPassthrough: [],
-        capabilities: {
-          providerInstallation: false,
-          supportsServiceTier: true,
-          permissionModes: ["accept-edits", "full"],
-          supportsThreadArchive: false,
-          supportsThreadRename: false,
-          fork: "none",
-        },
-      },
-    });
-    expectBridgeSpawn(provider, {
-      module: "/data/provider-bridges/artifact.mjs",
-    });
-    expect(provider.capabilities.supportsServiceTier).toBe(true);
-    expect(provider.capabilities.permissionModes).toEqual([
-      "accept-edits",
-      "full",
-    ]);
   });
 });

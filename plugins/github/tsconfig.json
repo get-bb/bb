@@ -10,7 +10,10 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@/*": ["./*"]
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
     }
   },
   "include": [

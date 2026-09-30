@@ -1,22 +1,3 @@
-// bb-plugin-scheduled-send frontend — "Send later…" in the composer's + menu.
-//
-// The plugin owns the *time*, and nothing else. `useComposer()`'s
-// `experimental_submit({ sendAt })` runs the composer's own submit pipeline
-// with the draft that is on screen, so the request is byte-for-byte the one
-// Enter would have produced — attachments, @-mentions, and in the new-thread
-// composer the provider, model, reasoning level, service tier, permission mode
-// and environment the user picked. That is why this plugin has no backend: a
-// plugin-side `threads.send`/`threads.spawn` cannot see those selections and
-// would silently schedule a different message than the one being composed.
-//
-// Everything after the schedule — the queued card above the composer, the
-// countdown, Send now, Delete — is core's queue UI, which this plugin never
-// duplicates.
-//
-// The + menu row cannot render a form (rows are host-rendered), so the row
-// opens the same responsive shared-ui dialog the other builtin plugins use. A
-// module-level store connects the two — they are separate components mounted
-// by the host, and both identify the composer they belong to by scope.
 import {
   useCallback,
   useEffect,
@@ -25,29 +6,28 @@ import {
   useSyncExternalStore,
 } from "react";
 import { toast } from "sonner";
-import { Button } from "@bb/shared-ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@bb/shared-ui/dialog";
-import { Input } from "@bb/shared-ui/input";
-import { Label } from "@bb/shared-ui/label";
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@bb/shared-ui/select";
+} from "@/components/ui/select";
 import {
   definePluginApp,
   useComposer,
-  useComposerView,
-  type ComposerView,
-  type PluginComposerScope,
+  type ComposerSendMenuItem,
+  type PluginComposerApi,
 } from "@get-bb/plugin-sdk/app";
 import {
   DEFAULT_SCHEDULE_PRESET_ID,
@@ -64,20 +44,6 @@ import {
   type ScheduleTimeParse,
 } from "./schedule-time.js";
 
-/** Identifies one composer instance, so the picker opens where it was asked for. */
-export function composerScopeKey(scope: PluginComposerScope): string {
-  switch (scope.kind) {
-    case "thread":
-      return `thread:${scope.threadId}`;
-    case "queued-message":
-      return `queued-message:${scope.queuedMessageId}`;
-    case "side-chat":
-      return `side-chat:${scope.tabId}`;
-    case "new-thread":
-      return `new-thread:${scope.projectId ?? ""}`;
-  }
-}
-
 const listeners = new Set<() => void>();
 let openScopeKey: string | null = null;
 
@@ -92,9 +58,9 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-export function openSendLater(view: ComposerView): boolean {
-  if (view.draft.isEmpty) return false;
-  openScopeKey = composerScopeKey(view.scope);
+export function openSendLater(composer: PluginComposerApi): boolean {
+  if (composer.isEmpty) return false;
+  openScopeKey = composer.key;
   notify();
   return true;
 }
@@ -104,7 +70,6 @@ function closeSendLater(): void {
   notify();
 }
 
-/** Test seam: the store outlives a single render, so suites reset it. */
 export function resetSendLaterState(): void {
   openScopeKey = null;
   notify();
@@ -144,9 +109,8 @@ function resolveScheduleOption(
 
 function SendLaterPicker() {
   const composer = useComposer();
-  const view = useComposerView();
-  const scopeKey = composerScopeKey(view.scope);
-  const isOpen = useSendLaterOpen(scopeKey);
+  const isEmpty = composer.isEmpty;
+  const isOpen = useSendLaterOpen(composer.key);
   const whenId = useId();
   const customDateId = useId();
   const customTimeId = useId();
@@ -158,9 +122,6 @@ function SendLaterPicker() {
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Presets and the preview are relative to a clock that has to keep moving: a
-  // picker left open for ten minutes must not schedule "in 1 hour" from when it
-  // was opened.
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -174,18 +135,11 @@ function SendLaterPicker() {
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  // The draft can leave from under the picker — the user sends it normally in
-  // another pane, or clears it. There is nothing left to schedule, so stop
-  // offering to.
   useEffect(() => {
-    if (isOpen && view.draft.isEmpty) closeSendLater();
-  }, [isOpen, view.draft.isEmpty]);
+    if (isOpen && isEmpty) closeSendLater();
+  }, [isEmpty, isOpen]);
 
   async function schedule(at: number): Promise<void> {
-    // The picker's clock ticks every 30s and a preset can be that stale, so
-    // re-check against the real one rather than submitting a time that has
-    // just passed (which the server dispatches inline, no wait taken — an
-    // instant send nobody asked for).
     if (at <= Date.now()) {
       setError("That time has just passed. Pick another.");
       return;
@@ -193,12 +147,10 @@ function SendLaterPicker() {
     setBusy(true);
     setError(null);
     try {
-      await composer.experimental_submit({ sendAt: at });
+      await composer.submit({ sendAt: at });
       closeSendLater();
       toast.success(`Sending ${formatScheduleTime(at, Date.now())}`);
     } catch (scheduleError: unknown) {
-      // The host restores the draft on failure, so the message is never lost;
-      // the reason belongs here, where the user is looking.
       setError(errorMessage(scheduleError));
     } finally {
       setBusy(false);
@@ -229,7 +181,7 @@ function SendLaterPicker() {
         <DialogHeader>
           <DialogTitle>Send later</DialogTitle>
           <DialogDescription>
-            {view.scope.kind === "new-thread"
+            {composer.scope.kind === "new-thread"
               ? "Choose when this thread should start. It will use the model and environment selected in the composer."
               : "Choose when this message should send."}
           </DialogDescription>
@@ -346,34 +298,26 @@ function SendLaterPicker() {
   );
 }
 
+const sendLater: ComposerSendMenuItem = {
+  id: "send-later",
+  label: "Send later…",
+  icon: "Calendar",
+  description: "Schedule the current draft to send at a time you pick.",
+  disabled: (composer) => composer.isSubmittingBlocked,
+  run: ({ composer }) => {
+    if (!openSendLater(composer)) {
+      toast.error("Nothing to schedule", {
+        description: "Type a message first, then choose Send later.",
+      });
+    }
+  },
+};
+
 export default definePluginApp((app) => {
   app.composer.customize({
     id: "send-later",
-    // Both composers that own a dispatchable submission. A queued-message
-    // editor saves an edit rather than dispatching anything, and a side chat's
-    // send belongs to its child thread, so neither can be scheduled — the host
-    // reports that through `experimental_submit`, but there is no point
-    // offering the row there.
     scopes: ["thread", "new-thread"],
-    plusMenu: [
-      {
-        id: "send-later",
-        label: "Send later…",
-        icon: "Calendar",
-        description: "Schedule the current draft to send at a time you pick.",
-        disabled: (view) => view.draft.isEmpty || view.run.isSubmitting,
-        run: ({ view }) => {
-          if (!openSendLater(view)) {
-            toast.error("Nothing to schedule", {
-              description: "Type a message first, then choose Send later.",
-            });
-          }
-        },
-      },
-    ],
-    // A mount point, not a visible banner: the picker itself is the host's
-    // portalled dialog, so `bare` chrome keeps an empty card out of the
-    // composer stack.
+    sendMenu: [sendLater],
     banners: [{ id: "send-later", chrome: "bare", component: SendLaterPicker }],
   });
 });

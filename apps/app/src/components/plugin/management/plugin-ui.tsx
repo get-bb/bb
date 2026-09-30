@@ -1,5 +1,5 @@
 import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
@@ -61,14 +61,6 @@ function neutral(percent: number): string {
   return `color-mix(in oklch, var(--ink) ${percent}%, var(--canvas))`;
 }
 
-function accentTint(token: string, percent: number): string {
-  return `color-mix(in oklab, var(${token}) ${percent}%, var(--canvas))`;
-}
-
-function accentInk(token: string, percent: number): string {
-  return `color-mix(in oklab, var(${token}) ${percent}%, var(--ink))`;
-}
-
 function pluginCatalogCategoryAccentToken(
   categoryId: string | undefined,
 ): string | undefined {
@@ -77,31 +69,51 @@ function pluginCatalogCategoryAccentToken(
     : PLUGIN_CATEGORY_ACCENT_TOKENS[categoryId];
 }
 
-export function pluginCatalogCategoryPillStyle(
+const PLUGIN_CATEGORY_ICONS: Record<string, string> = {
+  "themes-and-appearance": "Palette",
+  "thread-management": "ListView",
+  "thread-content": "MessageSquare",
+  "memory-and-context": "Brain",
+  security: "Lock",
+  "agents-and-providers": "Bot",
+  environments: "Laptop",
+  "token-usage-and-limits": "ChartColumn",
+  notifications: "BellDot",
+  "code-and-reviews": "GitPullRequest",
+  "file-viewers-and-editors": "FileText",
+  "cloud-and-remote": "Cloud",
+  "command-line": "Terminal",
+  utilities: "Toolbox",
+  "plugin-development": "Puzzle",
+  "tasks-and-workflows": "Workflow",
+};
+
+export function pluginCatalogCategoryIconName(
   categoryId: string | undefined,
-): CSSProperties {
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return accentToken === undefined
-    ? {
-        background: neutral(8),
-        borderColor: neutral(16),
-        color: neutral(55),
-      }
-    : {
-        background: accentTint(accentToken, 10),
-        borderColor: accentTint(accentToken, 18),
-        color: accentInk(accentToken, 50),
-      };
+): string | undefined {
+  return categoryId === undefined ? undefined : PLUGIN_CATEGORY_ICONS[categoryId];
 }
 
-export function pluginCatalogCategoryMutedAccentStyle(
-  categoryId: string | undefined,
-): CSSProperties {
+export function PluginCategoryIcon({
+  categoryId,
+  className,
+}: {
+  categoryId: string | undefined;
+  className?: string;
+}) {
+  const iconName = pluginCatalogCategoryIconName(categoryId);
   const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return {
-    background:
-      accentToken === undefined ? neutral(36) : accentTint(accentToken, 55),
-  };
+  if (iconName === undefined || accentToken === undefined) return null;
+  return (
+    <Icon
+      name={iconName}
+      className={cn("shrink-0", className)}
+      style={{
+        color: `color-mix(in oklab, var(${accentToken}) 75%, var(--ink))`,
+      }}
+      aria-hidden
+    />
+  );
 }
 
 export function PluginLogo({
@@ -171,23 +183,6 @@ export function CatalogEntryIcon({
         iconTinted={entry.iconTinted}
         className="size-full"
       />
-    </span>
-  );
-}
-
-export function PluginCategoryLabel({
-  categoryId,
-  label,
-}: {
-  categoryId: string | undefined;
-  label: string;
-}) {
-  return (
-    <span
-      className="inline-block max-w-full rounded border px-1.5 py-1 align-middle text-right text-2xs leading-snug"
-      style={pluginCatalogCategoryPillStyle(categoryId)}
-    >
-      {label}
     </span>
   );
 }

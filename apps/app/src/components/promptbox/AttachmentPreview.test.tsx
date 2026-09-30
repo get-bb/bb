@@ -126,6 +126,43 @@ describe("AttachmentPreview", () => {
     expect(revoked).toEqual(["blob:local-1"]);
   });
 
+  it("keeps composer focus when a touch on remove synthesizes mousedown", () => {
+    const onRemoveAttachment = vi.fn();
+    const { getByRole } = render(
+      <AttachmentPreview
+        attachments={[
+          {
+            type: "localImage",
+            path: "screenshot.png",
+            name: "screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: 3,
+          },
+          {
+            type: "localFile",
+            path: "diff.patch",
+            name: "diff.patch",
+            mimeType: "text/plain",
+            sizeBytes: 3,
+          },
+        ]}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={() => {}}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+
+    for (const name of ["Remove screenshot.png", "Remove diff.patch"]) {
+      const removeButton = getByRole("button", { name });
+      expect(fireEvent.mouseDown(removeButton, { button: 0 })).toBe(false);
+      fireEvent.click(removeButton, { detail: 1 });
+    }
+    expect(onRemoveAttachment.mock.calls).toEqual([
+      ["screenshot.png"],
+      ["diff.patch"],
+    ]);
+  });
+
   it("separates compact touch targets from attachment remove visuals", () => {
     const { getByRole } = render(
       <AttachmentPreview

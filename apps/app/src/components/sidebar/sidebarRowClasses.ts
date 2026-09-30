@@ -6,7 +6,6 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
 import { SIDEBAR_HOVER_ACTIONS_GAP_CLASS } from "@/components/ui/sidebar-hover-actions";
 
 export const SIDEBAR_ROW_BASE_CLASS =
@@ -69,11 +68,6 @@ export function getSidebarThreadGroupLineLeft(depth: number): number {
 }
 
 export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS = `cursor-pointer ${SIDEBAR_ROW_TEXT_CLASS} hover:bg-sidebar-accent hover:text-sidebar-accent-foreground`;
-
-export const SIDEBAR_ROW_SELECTED_STATE_CLASS = `${CONTEXT_SELECTION_SURFACE_CLASS} bb-sidebar-selected-row ${SIDEBAR_ROW_TEXT_CLASS}`;
-
-export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
-  "bb-sidebar-open-in-split-row";
 
 export const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_ROW_HEIGHT_CLASS,

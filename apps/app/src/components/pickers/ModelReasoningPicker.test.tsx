@@ -13,7 +13,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -27,6 +27,7 @@ import {
   ModelReasoningPicker,
   type ModelReasoningPickerHandoff,
 } from "./ModelReasoningPicker";
+import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import type { PickerOption } from "./OptionPicker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
@@ -255,6 +256,8 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
   it.each([
     ["ArrowRight", "medium", "high"],
     ["ArrowLeft", "high", "medium"],
@@ -389,6 +392,7 @@ describe("ModelReasoningPicker", () => {
       modelLoadError: {
         providerId: "codex",
         code: "provider_unavailable",
+        detail: null,
       },
     });
 
@@ -397,9 +401,68 @@ describe("ModelReasoningPicker", () => {
     );
 
     expect(screen.getByTitle("Codex")).not.toBeNull();
+    expect(screen.getByText("Could not load models for Codex.")).not.toBeNull();
+    expect(screen.getByText("Provider plugin failed to load")).not.toBeNull();
+  });
+
+  it("names the missing CLI in one short line and links it to the install page", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      pickerProviderOptions: [
+        {
+          value: "codex",
+          label: "Codex",
+          brandPrefix: "GPT-",
+          installUrl: "https://developers.openai.com/codex/cli",
+        },
+        { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
+      ],
+      modelLoadError: {
+        providerId: "codex",
+        code: "missing_executable",
+        detail:
+          "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("Could not load models for Codex.")).not.toBeNull();
+    const reason = screen.getByText("CLI not found");
+    expect(reason.tagName).toBe("A");
+    expect(reason.getAttribute("href")).toBe(
+      "https://developers.openai.com/codex/cli",
+    );
+    expect(screen.queryByText(/put `codex` on PATH/)).toBeNull();
+  });
+
+  it("shows the underlying failure detail beneath a generic model-load error", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "failed",
+        detail: "bb could not find the Codex CLI on this machine.",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("Could not load models for Codex.")).not.toBeNull();
     expect(
-      screen.getByText(
-        "Codex is unavailable because its provider plugin failed to load.",
+      screen.getByText("bb could not find the Codex CLI on this machine."),
+    ).not.toBeNull();
+    expect(
+      screen.getByTitle(
+        "Could not load models for Codex. bb could not find the Codex CLI on this machine.",
       ),
     ).not.toBeNull();
   });
@@ -1002,8 +1065,8 @@ describe("ModelReasoningPicker", () => {
     });
 
     fireEvent.click(trigger);
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
     const search = screen.getByPlaceholderText(
       "Search models",
     ) as HTMLInputElement;
@@ -1057,8 +1120,8 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
 
     const modelList = screen.getByRole("listbox", { name: "Models" });
     const reasoning = screen.getByRole("radiogroup", { name: "Reasoning" });

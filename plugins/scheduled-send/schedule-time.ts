@@ -1,9 +1,3 @@
-/**
- * Time choices for "Send later…". Presets resolve from the current clock,
- * while custom schedules use explicit local date and time fields so the user
- * can see exactly what will happen before confirming.
- */
-
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
@@ -11,7 +5,6 @@ const DAY_MS = 24 * HOUR_MS;
 const EVENING_HOUR = 18;
 const MORNING_HOUR = 9;
 
-/** Guard against a typo turning a scheduled message into a lost message. */
 export const MAX_SCHEDULE_AHEAD_MS = 365 * DAY_MS;
 
 export type SchedulePresetId =
@@ -26,11 +19,9 @@ export const DEFAULT_SCHEDULE_PRESET_ID: SchedulePresetId = "in-1-hour";
 export interface SchedulePreset {
   id: SchedulePresetId;
   label: string;
-  /** Epoch ms. */
   at: number;
 }
 
-/** Narrows the value emitted by a select control to a known preset. */
 export function isSchedulePresetId(value: string): value is SchedulePresetId {
   switch (value) {
     case "in-30-minutes":
@@ -44,10 +35,6 @@ export function isSchedulePresetId(value: string): value is SchedulePresetId {
   }
 }
 
-/**
- * Quick choices, filtered to those still ahead. At 8pm there is no "this
- * evening" left to offer.
- */
 export function listSchedulePresets(now: number): SchedulePreset[] {
   const candidates: SchedulePreset[] = [
     {
@@ -71,7 +58,6 @@ export function listSchedulePresets(now: number): SchedulePreset[] {
   return candidates.filter((preset) => preset.at > now);
 }
 
-/** Local wall-clock time `dayOffset` days from `now`, as epoch ms. */
 function atLocalTime(
   now: number,
   dayOffset: number,
@@ -93,7 +79,6 @@ export interface CustomScheduleFields {
   time: string;
 }
 
-/** Fresh defaults for the custom branch each time the dialog opens. */
 export function defaultCustomSchedule(now: number): CustomScheduleFields {
   return {
     date: formatDateInputValue(atLocalTime(now, 1, MORNING_HOUR, 0)),
@@ -101,7 +86,6 @@ export function defaultCustomSchedule(now: number): CustomScheduleFields {
   };
 }
 
-/** Formats a local date for an `<input type="date">`. */
 export function formatDateInputValue(at: number): string {
   const date = new Date(at);
   return [
@@ -114,7 +98,6 @@ export function formatDateInputValue(at: number): string {
 const DATE_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_INPUT_PATTERN = /^(\d{2}):(\d{2})$/;
 
-/** Parses the native date/time controls as one local wall-clock timestamp. */
 export function parseCustomScheduleTime(
   fields: CustomScheduleFields,
   now: number,
@@ -150,10 +133,6 @@ export function parseCustomScheduleTime(
   return { ok: true, at };
 }
 
-/**
- * Names the chosen time back to the user. Today and tomorrow are said in words
- * because that is how quick choices are framed; later dates stay explicit.
- */
 export function formatScheduleTime(at: number, now: number): string {
   const time = new Date(at).toLocaleTimeString([], {
     hour: "numeric",
@@ -174,7 +153,6 @@ export function formatScheduleTime(at: number, now: number): string {
   return `${date} at ${time}`;
 }
 
-/** Browser-local timezone read-back for the confirmation summary. */
 export function formatScheduleTimeZone(at: number): string {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timeZoneName = new Intl.DateTimeFormat(undefined, {
@@ -187,7 +165,6 @@ export function formatScheduleTimeZone(at: number): string {
     : `Local time · ${timeZone} (${timeZoneName})`;
 }
 
-/** Whole local calendar days from `now`'s day to `at`'s day. */
 function calendarDaysBetween(now: number, at: number): number {
   const startOfNow = new Date(now);
   startOfNow.setHours(0, 0, 0, 0);

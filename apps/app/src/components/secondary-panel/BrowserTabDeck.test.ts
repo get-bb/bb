@@ -6,7 +6,8 @@ import {
   createBrowserViewVisibilityCoordinator,
   resetBrowserViewPersistence,
 } from "./browserViewVisibilityCoordinator";
-import { buildBrowserTabIdSet, selectActiveBrowserTab } from "./BrowserTabDeck";
+import { selectActiveBrowserTab } from "./BrowserTabDeck";
+import { buildBrowserTabIdSet } from "./BrowserTabLifecycleObserver";
 
 function makeBrowserTab(id: string, url: string): BrowserFixedPanelTab {
   return {

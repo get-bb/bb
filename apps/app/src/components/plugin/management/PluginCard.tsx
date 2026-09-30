@@ -81,27 +81,45 @@ interface PluginCardAuthorProps {
   >;
 }
 
+function pluginCardAuthorName(entry: PluginCardAuthorProps["entry"]): string {
+  return entry.marketplace === "bb-official"
+    ? "BB Official"
+    : (entry.author?.name ?? entry.publisherLabel);
+}
+
+export function PluginCardAuthorAvatar({ entry }: PluginCardAuthorProps) {
+  return (
+    <PluginAuthorAvatar
+      name={pluginCardAuthorName(entry)}
+      github={pluginAuthorGithub(entry.author)}
+      official={entry.marketplace === "bb-official"}
+      size="detail"
+    />
+  );
+}
+
+export function PluginCardAuthorName({ entry }: PluginCardAuthorProps) {
+  const name = pluginCardAuthorName(entry);
+  return entry.author === null ? (
+    name
+  ) : (
+    <PluginAuthorLink
+      entry={entry}
+      className="pointer-events-auto relative z-10 rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      {name}
+    </PluginAuthorLink>
+  );
+}
+
 export function PluginCardAuthor({ entry }: PluginCardAuthorProps) {
-  const name =
-    entry.marketplace === "bb-official"
-      ? "BB Official"
-      : (entry.author?.name ?? entry.publisherLabel);
   return (
     <PluginAuthorByline
-      name={name}
+      name={pluginCardAuthorName(entry)}
       github={pluginAuthorGithub(entry.author)}
       official={entry.marketplace === "bb-official"}
     >
-      {entry.author === null ? (
-        name
-      ) : (
-        <PluginAuthorLink
-          entry={entry}
-          className="pointer-events-auto relative z-10 rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {name}
-        </PluginAuthorLink>
-      )}
+      <PluginCardAuthorName entry={entry} />
     </PluginAuthorByline>
   );
 }

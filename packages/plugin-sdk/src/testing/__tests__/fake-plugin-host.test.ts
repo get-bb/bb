@@ -1666,6 +1666,29 @@ describe("dispose", () => {
     await replacement.harness.dispose();
   });
 
+  it("runs install handlers in order and isolates a throwing one", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const order: string[] = [];
+    bb.onInstall(() => {
+      order.push("first");
+      throw new Error("install exploded");
+    });
+    bb.onInstall(async () => {
+      order.push("second");
+    });
+
+    await harness.lifecycle.install();
+
+    expect(order).toEqual(["first", "second"]);
+    expect(harness.logEntries).toContainEqual(
+      expect.objectContaining({
+        level: "warn",
+        message: "install handler failed: install exploded",
+      }),
+    );
+    await harness.dispose();
+  });
+
   it("aborts services, runs hooks LIFO, closes the database, and poisons the handle", async () => {
     const { bb, harness } = createFakePluginHost();
     const order: string[] = [];
@@ -2043,29 +2066,41 @@ describe("providers.experimental_contributeEnv", () => {
 });
 
 describe("experimental_aiServices.register", () => {
-  const declaration = {
-    id: "acme-ai",
-    displayName: "Acme AI",
-    kinds: ["inference" as const],
-  };
+  const complete = async (prompt: string) => `echo: ${prompt}`;
 
-  it("refuses the ids the server serves directly, like production", () => {
-    const { bb } = createFakePluginHost();
-    for (const id of ["openai", "anthropic"]) {
-      expect(() =>
-        bb.experimental_aiServices.register({ ...declaration, id }),
-      ).toThrow(/is reserved: the server serves it directly/u);
-    }
-    expect(() =>
-      bb.experimental_aiServices.register(declaration),
-    ).not.toThrow();
+  it("records the validated service and removes it on dispose", async () => {
+    const { bb, harness } = createFakePluginHost({
+      experimental_hostEntry: false,
+    });
+    const registration = bb.experimental_aiServices.register({
+      id: "acme-ai",
+      displayName: "  Acme AI  ",
+      complete,
+    });
+    expect(harness.registrations.aiServiceRegistrations).toHaveLength(1);
+    const [service] = harness.registrations.aiServiceRegistrations;
+    expect(service?.displayName).toBe("Acme AI");
+    await expect(
+      service?.complete?.("hi", { signal: new AbortController().signal }),
+    ).resolves.toBe("echo: hi");
+    registration.dispose();
+    expect(harness.registrations.aiServiceRegistrations).toEqual([]);
   });
 
-  it("refuses a plugin that declares no bb.host entry, like production", () => {
-    const { bb } = createFakePluginHost({ experimental_hostEntry: false });
-    expect(() => bb.experimental_aiServices.register(declaration)).toThrow(
-      /needs a bb\.host entry to run on: this plugin declares none/u,
-    );
+  it("refuses a second service with the same id", () => {
+    const { bb } = createFakePluginHost();
+    bb.experimental_aiServices.register({
+      id: "acme-ai",
+      displayName: "Acme AI",
+      complete,
+    });
+    expect(() =>
+      bb.experimental_aiServices.register({
+        id: "acme-ai",
+        displayName: "Acme AI again",
+        complete,
+      }),
+    ).toThrow(/already registered/u);
   });
 });
 

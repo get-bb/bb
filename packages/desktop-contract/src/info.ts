@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
+import type { BbDesktopWindowFindRequest } from "./find.js";
 import { bbDesktopVersionFeedPlatformSchema } from "./version-feed.js";
 import type { AppCommandId } from "@bb/domain";
 
@@ -35,11 +36,17 @@ export type BbDesktopWindowState = z.infer<typeof bbDesktopWindowStateSchema>;
 export const bbDesktopThemeSchema = z.enum(["system", "light", "dark"]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
+export const bbDesktopZoomCommandSchema = z.enum(["in", "out", "reset"]);
+export type BbDesktopZoomCommand = z.infer<typeof bbDesktopZoomCommandSchema>;
+export const BB_DESKTOP_MIN_ZOOM_PERCENT = 50;
+export const BB_DESKTOP_MAX_ZOOM_PERCENT = 300;
+
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
 export type BbDesktopWindowStateChangeHandler = (
   state: BbDesktopWindowState,
 ) => void;
+export type BbDesktopZoomChangeHandler = (zoomFactor: number) => void;
 export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
@@ -54,11 +61,15 @@ export interface BbDesktopApi extends BbDesktopInfo {
   onWindowStateChange?(
     listener: BbDesktopWindowStateChangeHandler,
   ): BbDesktopInfoUnsubscribe;
+  onZoomChange?(listener: BbDesktopZoomChangeHandler): BbDesktopInfoUnsubscribe;
+  zoom?(command: BbDesktopZoomCommand): void;
   onOpenNewTab?(listener: BbDesktopOpenNewTabHandler): BbDesktopInfoUnsubscribe;
   onAppCommand?(listener: BbDesktopAppCommandHandler): BbDesktopInfoUnsubscribe;
   onCloseWindowRequest?(
     listener: BbDesktopCloseWindowRequestHandler,
   ): BbDesktopInfoUnsubscribe;
+  openWindowFind?(request: BbDesktopWindowFindRequest): void;
+  openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
   setSplitNavigationEnabled?(

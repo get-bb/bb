@@ -1,12 +1,17 @@
-import type { ThreadListEntry } from "@bb/domain";
-import { describe, expect, it } from "vitest";
 import {
-  buildPinnedSidebarState,
+  makeSidebarEnvironment,
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { describe, expect, it } from "vitest";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
+import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
-} from "@bb/client-core";
+} from "../model/project-thread-groups.js";
 import {
-  buildPinInsertRequest,
+  buildPinInsertRequests,
   collectSectionThreadDndLookup,
   NEST_BAND_ARMED_FRACTION,
   NEST_BAND_FRACTION,
@@ -18,10 +23,9 @@ import {
   resolveThreadRowNestCollisions,
 } from "./useSectionThreadDnd.js";
 import { getSidebarThreadRowDroppableId } from "../rows/sidebarThreadRowDroppable.js";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
-function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
-  return makeThreadListEntry({
+function createThread(overrides: SidebarThreadOverrides): SidebarThread {
+  return makeSidebarThread({
     id: "thread",
     projectId: "project",
     title: "Thread",
@@ -32,6 +36,28 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     updatedAt: 2,
     ...overrides,
   });
+}
+
+function dropChanges(
+  activeId: string,
+  changes: {
+    threadIds?: string[];
+    unpinThreadIds?: string[];
+    updates?: {
+      threadId: string;
+      parentThreadId?: string | null;
+      sectionId?: string | null;
+    }[];
+    pinThreadIds?: string[];
+  },
+) {
+  return {
+    activeId,
+    threadIds: changes.threadIds ?? [activeId],
+    unpinThreadIds: changes.unpinThreadIds ?? [],
+    updates: changes.updates ?? [],
+    pinThreadIds: changes.pinThreadIds ?? [],
+  };
 }
 
 function createLookup() {
@@ -51,9 +77,7 @@ function createLookup() {
   );
 }
 
-function createLookupWithPinnedThread(
-  overrides: Partial<ThreadListEntry> = {},
-) {
+function createLookupWithPinnedThread(overrides: SidebarThreadOverrides = {}) {
   return collectSectionThreadDndLookup(
     buildSectionThreadList(
       [
@@ -89,9 +113,10 @@ describe("section thread drop targets", () => {
       resolveSectionThreadDropDecision(lookup, "loose", sectionBKey ?? null),
     ).toEqual({
       kind: "move",
-      activeId: "loose",
-      sectionId: "b",
       toParentKey: sectionBKey,
+      ...dropChanges("loose", {
+        updates: [{ threadId: "loose", sectionId: "b" }],
+      }),
     });
   });
 
@@ -103,9 +128,10 @@ describe("section thread drop targets", () => {
       resolveSectionThreadDropDecision(lookup, "loose", "section:b"),
     ).toEqual({
       kind: "move",
-      activeId: "loose",
-      sectionId: "b",
       toParentKey: sectionBKey,
+      ...dropChanges("loose", {
+        updates: [{ threadId: "loose", sectionId: "b" }],
+      }),
     });
   });
 
@@ -115,9 +141,10 @@ describe("section thread drop targets", () => {
     expect(resolveSectionThreadDropDecision(lookup, "in-a", "threads")).toEqual(
       {
         kind: "move",
-        activeId: "in-a",
-        sectionId: null,
         toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+        ...dropChanges("in-a", {
+          updates: [{ threadId: "in-a", sectionId: null }],
+        }),
       },
     );
   });
@@ -136,9 +163,10 @@ describe("section thread drop targets", () => {
       ),
     ).toEqual({
       kind: "move",
-      activeId: "loose",
-      sectionId: "b",
       toParentKey: sectionBKey,
+      ...dropChanges("loose", {
+        updates: [{ threadId: "loose", sectionId: "b" }],
+      }),
     });
   });
 
@@ -204,7 +232,10 @@ describe("section thread pin drop decisions", () => {
         "loose",
         "pinned",
       ),
-    ).toEqual({ kind: "pin", activeId: "loose", detach: false });
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges("loose", { pinThreadIds: ["loose"] }),
+    });
   });
 
   it("preserves a projected Pinned destination through self-collision", () => {
@@ -215,7 +246,10 @@ describe("section thread pin drop decisions", () => {
         "loose",
         PINNED_THREAD_PARENT_KEY,
       ),
-    ).toEqual({ kind: "pin", activeId: "loose", detach: false });
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges("loose", { pinThreadIds: ["loose"] }),
+    });
   });
 
   it("unpins a pinned thread into Threads and clears its section", () => {
@@ -226,11 +260,12 @@ describe("section thread pin drop decisions", () => {
         "threads",
       ),
     ).toEqual({
-      kind: "unpin",
-      activeId: "pinned-1",
-      sectionId: null,
-      move: true,
+      kind: "move",
       toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      ...dropChanges("pinned-1", {
+        unpinThreadIds: ["pinned-1"],
+        updates: [{ threadId: "pinned-1", sectionId: null }],
+      }),
     });
   });
 
@@ -242,14 +277,12 @@ describe("section thread pin drop decisions", () => {
         "section:a",
       ),
     ).toEqual({
-      kind: "unpin",
-      activeId: "pinned-1",
-      sectionId: "a",
-      move: false,
+      kind: "move",
       toParentKey:
         createLookupWithPinnedThread().sectionParentKeyBySectionId.get(
           "section:a",
         ),
+      ...dropChanges("pinned-1", { unpinThreadIds: ["pinned-1"] }),
     });
   });
 
@@ -268,7 +301,7 @@ describe("section thread pin drop decisions", () => {
   });
 });
 
-function createNestedLookup(pinnedThreads: ThreadListEntry[] = []) {
+function createNestedLookup(pinnedThreads: SidebarThread[] = []) {
   return collectSectionThreadDndLookup(
     buildSectionThreadList(
       [
@@ -318,10 +351,12 @@ describe("section thread nest drop decisions", () => {
       ),
     ).toEqual({
       kind: "nest",
-      activeId: "loose",
       parentThreadId: "parent-a",
-      sectionId: "a",
-      unpin: false,
+      ...dropChanges("loose", {
+        updates: [
+          { threadId: "loose", parentThreadId: "parent-a", sectionId: "a" },
+        ],
+      }),
     });
   });
 
@@ -334,10 +369,16 @@ describe("section thread nest drop decisions", () => {
       ),
     ).toEqual({
       kind: "nest",
-      activeId: "other-project",
       parentThreadId: "grandchild-a",
-      sectionId: "a",
-      unpin: false,
+      ...dropChanges("other-project", {
+        updates: [
+          {
+            threadId: "other-project",
+            parentThreadId: "grandchild-a",
+            sectionId: "a",
+          },
+        ],
+      }),
     });
     expect(
       resolveSectionThreadDropDecision(
@@ -347,10 +388,16 @@ describe("section thread nest drop decisions", () => {
       ),
     ).toEqual({
       kind: "nest",
-      activeId: "grandchild-a",
       parentThreadId: "loose",
-      sectionId: null,
-      unpin: false,
+      ...dropChanges("grandchild-a", {
+        updates: [
+          {
+            threadId: "grandchild-a",
+            parentThreadId: "loose",
+            sectionId: null,
+          },
+        ],
+      }),
     });
   });
 
@@ -411,18 +458,24 @@ describe("section thread nest drop decisions", () => {
     expect(
       resolveSectionThreadDropDecision(lookup, "child-a", sectionAKey ?? null),
     ).toEqual({
-      kind: "detach",
-      activeId: "child-a",
-      sectionId: "a",
+      kind: "move",
       toParentKey: sectionAKey,
+      ...dropChanges("child-a", {
+        updates: [
+          { threadId: "child-a", parentThreadId: null, sectionId: "a" },
+        ],
+      }),
     });
     expect(
       resolveSectionThreadDropDecision(lookup, "grandchild-a", "threads"),
     ).toEqual({
-      kind: "detach",
-      activeId: "grandchild-a",
-      sectionId: null,
+      kind: "move",
       toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      ...dropChanges("grandchild-a", {
+        updates: [
+          { threadId: "grandchild-a", parentThreadId: null, sectionId: null },
+        ],
+      }),
     });
   });
 
@@ -433,7 +486,13 @@ describe("section thread nest drop decisions", () => {
         "child-a",
         "pinned",
       ),
-    ).toEqual({ kind: "pin", activeId: "child-a", detach: true });
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges("child-a", {
+        updates: [{ threadId: "child-a", parentThreadId: null }],
+        pinThreadIds: ["child-a"],
+      }),
+    });
   });
 
   it("detaches a child of a pinned thread dropped on the Pinned header", () => {
@@ -454,14 +513,23 @@ describe("section thread nest drop decisions", () => {
     );
     expect(
       resolveSectionThreadDropDecision(lookup, "pinned-child", "pinned"),
-    ).toEqual({ kind: "pin", activeId: "pinned-child", detach: true });
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges("pinned-child", {
+        updates: [{ threadId: "pinned-child", parentThreadId: null }],
+        pinThreadIds: ["pinned-child"],
+      }),
+    });
     expect(
       resolveSectionThreadDropDecision(lookup, "pinned-child", "threads"),
     ).toEqual({
-      kind: "detach",
-      activeId: "pinned-child",
-      sectionId: null,
+      kind: "move",
       toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      ...dropChanges("pinned-child", {
+        updates: [
+          { threadId: "pinned-child", parentThreadId: null, sectionId: null },
+        ],
+      }),
     });
   });
 
@@ -474,19 +542,25 @@ describe("section thread nest drop decisions", () => {
       resolveSectionThreadDropDecision(lookup, "pinned-1", rowId("parent-a")),
     ).toEqual({
       kind: "nest",
-      activeId: "pinned-1",
       parentThreadId: "parent-a",
-      sectionId: "a",
-      unpin: true,
+      ...dropChanges("pinned-1", {
+        unpinThreadIds: ["pinned-1"],
+        updates: [
+          { threadId: "pinned-1", parentThreadId: "parent-a", sectionId: "a" },
+        ],
+      }),
     });
     expect(
       resolveSectionThreadDropDecision(lookup, "pinned-1", rowId("pinned-2")),
     ).toEqual({
       kind: "nest",
-      activeId: "pinned-1",
       parentThreadId: "pinned-2",
-      sectionId: null,
-      unpin: true,
+      ...dropChanges("pinned-1", {
+        unpinThreadIds: ["pinned-1"],
+        updates: [
+          { threadId: "pinned-1", parentThreadId: "pinned-2", sectionId: null },
+        ],
+      }),
     });
     expect(resolvePinnedReorderPlacement(lookup, "pinned-1", "pinned-2")).toBe(
       "after",
@@ -501,10 +575,12 @@ describe("section thread nest drop decisions", () => {
       resolveSectionThreadDropDecision(lookup, "loose", rowId("pinned-2")),
     ).toEqual({
       kind: "nest",
-      activeId: "loose",
       parentThreadId: "pinned-2",
-      sectionId: null,
-      unpin: false,
+      ...dropChanges("loose", {
+        updates: [
+          { threadId: "loose", parentThreadId: "pinned-2", sectionId: null },
+        ],
+      }),
     });
   });
 });
@@ -513,31 +589,76 @@ describe("pin insert requests", () => {
   it("pins before or after the hovered pinned root", () => {
     const lookup = createLookupWithPinnedThread();
     expect(
-      buildPinInsertRequest(lookup, "loose", {
+      buildPinInsertRequests(lookup, ["loose"], {
         threadId: "pinned-2",
         placement: "before",
       }),
-    ).toEqual({
-      itemId: "loose",
-      previousItemId: "pinned-1",
-      nextItemId: "pinned-2",
-    });
+    ).toEqual([
+      {
+        itemId: "loose",
+        previousItemId: "pinned-1",
+        nextItemId: "pinned-2",
+      },
+    ]);
     expect(
-      buildPinInsertRequest(lookup, "loose", {
+      buildPinInsertRequests(lookup, ["loose"], {
         threadId: "pinned-2",
         placement: "after",
       }),
-    ).toEqual({
-      itemId: "loose",
-      previousItemId: "pinned-2",
-      nextItemId: null,
-    });
+    ).toEqual([
+      {
+        itemId: "loose",
+        previousItemId: "pinned-2",
+        nextItemId: null,
+      },
+    ]);
     expect(
-      buildPinInsertRequest(lookup, "loose", {
+      buildPinInsertRequests(lookup, ["loose"], {
         threadId: "in-a",
         placement: "after",
       }),
-    ).toBeNull();
+    ).toEqual([]);
+  });
+
+  it("keeps several pinned threads together in order at the insert point", () => {
+    expect(
+      buildPinInsertRequests(
+        createLookupWithPinnedThread(),
+        ["first", "second"],
+        { threadId: "pinned-2", placement: "before" },
+      ),
+    ).toEqual([
+      { itemId: "first", previousItemId: "pinned-1", nextItemId: "pinned-2" },
+      { itemId: "second", previousItemId: "first", nextItemId: "pinned-2" },
+    ]);
+  });
+
+  it("uses thread neighbours when Pinned shows an environment group", () => {
+    const environment = makeSidebarEnvironment({ id: "env", isWorktree: true });
+    const pinnedThreads = [
+      createThread({ id: "pinned-1", pinnedAt: 10 }),
+      createThread({ id: "grouped-1", environment, pinnedAt: 9 }),
+      createThread({ id: "grouped-2", environment, pinnedAt: 8 }),
+    ];
+    const pinnedState = buildPinnedSidebarState({
+      groupEnvironmentThreads: true,
+      threads: pinnedThreads,
+    });
+    const lookup = collectSectionThreadDndLookup(
+      buildSectionThreadList([createThread({ id: "loose" })], undefined, []),
+      CHRONOLOGICAL_CONTAINER_ID,
+      pinnedThreads,
+      pinnedState.rootNodes,
+      { pinnedRootItems: pinnedState.rootItems },
+    );
+    expect(
+      buildPinInsertRequests(lookup, ["loose"], {
+        threadId: "pinned-1",
+        placement: "after",
+      }),
+    ).toEqual([
+      { itemId: "loose", previousItemId: "pinned-1", nextItemId: "grouped-1" },
+    ]);
   });
 });
 
@@ -553,16 +674,11 @@ describe("thread row nest collisions", () => {
   const rowCollision = { id: rowId("parent-a") };
   const groupCollision = { id: "parent-a" };
   const droppableRects = new Map([[rowId("parent-a"), rect]]);
-  const resolve = (
-    y: number,
-    band: number | null,
-    draggedLeft: number | null = null,
-  ) =>
+  const resolve = (y: number, band: number | null, pointerX = 20) =>
     resolveThreadRowNestCollisions({
       collisions: [rowCollision, groupCollision],
-      draggedLeft,
       droppableRects,
-      pointerCoordinates: { x: 20, y },
+      pointerCoordinates: { x: pointerX, y },
       getBandFraction: () => band,
     });
 
@@ -587,7 +703,6 @@ describe("thread row nest collisions", () => {
     const candidates: unknown[] = [];
     const collisions = resolveThreadRowNestCollisions({
       collisions: [rowCollision, groupCollision],
-      draggedLeft: 48,
       droppableRects,
       pointerCoordinates: { x: 20, y: 114 },
       getBandFraction: () => NEST_BAND_FRACTION,
@@ -604,26 +719,25 @@ describe("thread row nest collisions", () => {
   it("retains an armed parent through its projected child row", () => {
     const resolveRetained = (
       y: number,
-      draggedLeft: number,
+      pointerX: number,
       retainedRect?: typeof rect,
     ) =>
       resolveThreadRowNestCollisions({
         collisions: [groupCollision],
-        draggedLeft,
         droppableRects,
-        pointerCoordinates: { x: 20, y },
+        pointerCoordinates: { x: pointerX, y },
         getBandFraction: () => NEST_BAND_ARMED_FRACTION,
         retainedRect,
         retainedThreadId: "parent-a",
       });
 
-    expect(resolveRetained(140, 48)).toEqual([rowCollision, groupCollision]);
-    expect(resolveRetained(140, -NEST_CANCEL_OFFSET_PX)).toEqual([
+    expect(resolveRetained(140, 20)).toEqual([rowCollision, groupCollision]);
+    expect(resolveRetained(140, -NEST_CANCEL_OFFSET_PX - 1)).toEqual([
       groupCollision,
     ]);
-    expect(resolveRetained(157, 48)).toEqual([groupCollision]);
+    expect(resolveRetained(157, 20)).toEqual([groupCollision]);
     expect(
-      resolveRetained(170, 48, {
+      resolveRetained(170, 20, {
         ...rect,
         top: 158,
         bottom: 186,
@@ -631,9 +745,9 @@ describe("thread row nest collisions", () => {
     ).toEqual([rowCollision, groupCollision]);
   });
 
-  it("cancels parenting after moving twelve pixels left", () => {
+  it("cancels parenting after the pointer moves past the left tolerance", () => {
     expect(
-      resolve(114, NEST_BAND_ARMED_FRACTION, -NEST_CANCEL_OFFSET_PX),
+      resolve(114, NEST_BAND_ARMED_FRACTION, -NEST_CANCEL_OFFSET_PX - 1),
     ).toEqual([groupCollision]);
   });
 
@@ -699,30 +813,86 @@ describe("worktree group section dragging", () => {
         [
           createThread({
             id: "first",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
             createdAt: 10,
           }),
           createThread({
             id: "second",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
             createdAt: 9,
           }),
           createThread({
             id: "child",
             parentThreadId: "first",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "a",
           }),
           createThread({
             id: "other-section",
-            environmentId: "env",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
             sectionId: "b",
+          }),
+          createThread({ id: "outside", createdAt: 11 }),
+        ],
+        undefined,
+        [
+          { id: "a", name: "A" },
+          { id: "b", name: "B" },
+        ],
+        new Set(),
+        true,
+      ),
+      CHRONOLOGICAL_CONTAINER_ID,
+    );
+  }
+
+  function nestedGroupLookup() {
+    return collectSectionThreadDndLookup(
+      buildSectionThreadList(
+        [
+          createThread({ id: "outside", sectionId: "a", createdAt: 11 }),
+          createThread({
+            id: "first",
+            parentThreadId: "outside",
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
+            sectionId: "a",
+            createdAt: 10,
+          }),
+          createThread({
+            id: "second",
+            parentThreadId: "outside",
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
+            sectionId: "a",
+            createdAt: 9,
+          }),
+          createThread({
+            id: "child",
+            parentThreadId: "first",
+            environment: makeSidebarEnvironment({
+              id: "env",
+              isWorktree: true,
+            }),
+            sectionId: "a",
           }),
         ],
         undefined,
@@ -737,18 +907,131 @@ describe("worktree group section dragging", () => {
     );
   }
 
-  it("moves only the represented group, including descendants, to another section", () => {
+  function pinnedGroupLookup() {
+    const environment = makeSidebarEnvironment({
+      id: "env",
+      isWorktree: true,
+    });
+    const pinnedRoots = [
+      createThread({
+        id: "first",
+        environment,
+        pinnedAt: 10,
+        sectionId: "a",
+        createdAt: 10,
+      }),
+      createThread({
+        id: "second",
+        environment,
+        pinnedAt: 9,
+        sectionId: "a",
+        createdAt: 9,
+      }),
+    ];
+    const pinnedState = buildPinnedSidebarState({
+      groupEnvironmentThreads: true,
+      threads: pinnedRoots,
+    });
+    return collectSectionThreadDndLookup(
+      buildSectionThreadList(
+        [createThread({ id: "outside", sectionId: "b", createdAt: 11 })],
+        undefined,
+        [
+          { id: "a", name: "A" },
+          { id: "b", name: "B" },
+        ],
+      ),
+      CHRONOLOGICAL_CONTAINER_ID,
+      pinnedRoots,
+      pinnedState.rootNodes,
+      { pinnedRootItems: pinnedState.rootItems },
+    );
+  }
+
+  it("moves the group's top-level threads to another section and lets descendants follow", () => {
     const lookup = groupLookup();
     const activeId = [...lookup.groupThreadsByItemId.keys()][0];
-    const decision = resolveSectionThreadDropDecision(
-      lookup,
-      activeId,
-      "section:b",
-    );
-    expect(decision).toMatchObject({ kind: "move-group", sectionId: "b" });
     expect(
-      decision?.kind === "move-group" && decision.threadIds.sort(),
-    ).toEqual(["child", "first", "second"]);
+      resolveSectionThreadDropDecision(lookup, activeId, "section:b"),
+    ).toEqual({
+      kind: "move",
+      toParentKey: lookup.sectionParentKeyBySectionId.get("section:b"),
+      ...dropChanges(activeId, {
+        threadIds: ["first", "second"],
+        updates: [
+          { threadId: "first", sectionId: "b" },
+          { threadId: "second", sectionId: "b" },
+        ],
+      }),
+    });
+  });
+
+  it("parents the roots of a worktree group without flattening descendants", () => {
+    const lookup = groupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(
+        lookup,
+        activeId,
+        getSidebarThreadRowDroppableId("outside"),
+      ),
+    ).toEqual({
+      kind: "nest",
+      parentThreadId: "outside",
+      ...dropChanges(activeId, {
+        threadIds: ["first", "second"],
+        updates: [
+          { threadId: "first", parentThreadId: "outside", sectionId: null },
+          { threadId: "second", parentThreadId: "outside", sectionId: null },
+        ],
+      }),
+    });
+  });
+
+  it("rejects nesting a worktree group under one of its own descendants", () => {
+    const lookup = groupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(
+        lookup,
+        activeId,
+        getSidebarThreadRowDroppableId("child"),
+      ),
+    ).toEqual({
+      kind: "rejected",
+      activeId,
+      overThreadId: "child",
+      reason: "own-subtree",
+    });
+  });
+
+  it("unparents worktree roots when the group moves to a section", () => {
+    const lookup = nestedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    for (const sectionId of ["a", "b"]) {
+      expect(
+        resolveSectionThreadDropDecision(
+          lookup,
+          activeId,
+          `section:${sectionId}`,
+        ),
+      ).toEqual({
+        kind: "move",
+        toParentKey: lookup.sectionParentKeyBySectionId.get(
+          `section:${sectionId}`,
+        ),
+        ...dropChanges(activeId, {
+          threadIds: ["first", "second"],
+          updates: [
+            { threadId: "first", parentThreadId: null, sectionId },
+            { threadId: "second", parentThreadId: null, sectionId },
+          ],
+        }),
+      });
+    }
   });
 
   it("moves the first and other group members independently", () => {
@@ -756,11 +1039,18 @@ describe("worktree group section dragging", () => {
     for (const id of ["first", "second"]) {
       expect(
         resolveSectionThreadDropDecision(lookup, id, "section:b"),
-      ).toMatchObject({ kind: "move", activeId: id, sectionId: "b" });
+      ).toMatchObject({
+        kind: "move",
+        threadIds: [id],
+        updates: [{ threadId: id, sectionId: "b" }],
+      });
     }
     expect(
       resolveSectionThreadDropDecision(lookup, "child", "section:b"),
-    ).toMatchObject({ kind: "detach", activeId: "child", sectionId: "b" });
+    ).toMatchObject({
+      kind: "move",
+      updates: [{ threadId: "child", parentThreadId: null, sectionId: "b" }],
+    });
     expect(
       resolveSectionThreadDropDecision(
         lookup,
@@ -777,21 +1067,44 @@ describe("worktree group section dragging", () => {
     ).toMatchObject({ kind: "nest", parentThreadId: "first" });
     expect(
       resolveSectionThreadDropDecision(lookup, "child", "pinned"),
-    ).toMatchObject({ kind: "pin", detach: true });
+    ).toMatchObject({
+      kind: "pin",
+      updates: [{ threadId: "child", parentThreadId: null }],
+      pinThreadIds: ["child"],
+    });
   });
 
-  it("allows moving back to Threads and ignores same-section and pinned drops", () => {
+  it("moves a group back to Threads, pins it, and reports its own section as unchanged", () => {
     const lookup = groupLookup();
     const activeId = [...lookup.groupThreadsByItemId.keys()][0];
     expect(
       resolveSectionThreadDropDecision(lookup, activeId, "threads"),
-    ).toMatchObject({ kind: "move-group", sectionId: null });
+    ).toMatchObject({
+      kind: "move",
+      updates: [
+        { threadId: "first", sectionId: null },
+        { threadId: "second", sectionId: null },
+      ],
+    });
     expect(
       resolveSectionThreadDropDecision(lookup, activeId, "section:a"),
-    ).toBeNull();
+    ).toMatchObject({ kind: "unchanged", activeId });
     expect(
       resolveSectionThreadDropDecision(lookup, activeId, "pinned"),
-    ).toBeNull();
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges(activeId, {
+        threadIds: ["first", "second"],
+        pinThreadIds: ["first", "second"],
+      }),
+    });
+  });
+
+  it("applies the grouped-mode rules to groups like single threads", () => {
+    const lookup = nestedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+    const groups = { groups: true };
+
     expect(
       resolveSectionThreadDropDecision(
         lookup,
@@ -799,8 +1112,100 @@ describe("worktree group section dragging", () => {
         "section:b",
         null,
         null,
-        { groups: true },
+        groups,
       ),
-    ).toBeNull();
+    ).toMatchObject({
+      kind: "move",
+      updates: [
+        { threadId: "first", parentThreadId: null },
+        { threadId: "second", parentThreadId: null },
+      ],
+    });
+    expect(
+      resolveSectionThreadDropDecision(
+        groupLookup(),
+        [...groupLookup().groupThreadsByItemId.keys()][0],
+        "section:b",
+        null,
+        null,
+        groups,
+      ),
+    ).toMatchObject({ kind: "unchanged" });
+  });
+
+  it("unparents and pins the roots of a nested worktree group", () => {
+    const lookup = nestedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(lookup, activeId, "pinned"),
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges(activeId, {
+        threadIds: ["first", "second"],
+        updates: [
+          { threadId: "first", parentThreadId: null },
+          { threadId: "second", parentThreadId: null },
+        ],
+        pinThreadIds: ["first", "second"],
+      }),
+    });
+  });
+
+  it("unpins a pinned environment group when it moves to a section", () => {
+    const lookup = pinnedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(lookup, activeId, "section:b"),
+    ).toEqual({
+      kind: "move",
+      toParentKey: lookup.sectionParentKeyBySectionId.get("section:b"),
+      ...dropChanges(activeId, {
+        threadIds: ["first", "second"],
+        unpinThreadIds: ["first", "second"],
+        updates: [
+          { threadId: "first", sectionId: "b" },
+          { threadId: "second", sectionId: "b" },
+        ],
+      }),
+    });
+  });
+
+  it("unpins a pinned environment group when it nests under a thread", () => {
+    const lookup = pinnedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(
+        lookup,
+        activeId,
+        getSidebarThreadRowDroppableId("outside"),
+      ),
+    ).toEqual({
+      kind: "nest",
+      parentThreadId: "outside",
+      ...dropChanges(activeId, {
+        threadIds: ["first", "second"],
+        unpinThreadIds: ["first", "second"],
+        updates: [
+          { threadId: "first", parentThreadId: "outside", sectionId: "b" },
+          { threadId: "second", parentThreadId: "outside", sectionId: "b" },
+        ],
+      }),
+    });
+  });
+
+  it("reports a pinned environment group dropped back in Pinned as unchanged", () => {
+    const lookup = pinnedGroupLookup();
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+
+    expect(
+      resolveSectionThreadDropDecision(lookup, activeId, "pinned"),
+    ).toEqual({
+      kind: "unchanged",
+      activeId,
+      toParentKey: PINNED_THREAD_PARENT_KEY,
+    });
   });
 });

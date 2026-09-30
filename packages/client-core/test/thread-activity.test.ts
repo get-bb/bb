@@ -30,14 +30,14 @@ function makeChild(
       activePlanModeCount: 0,
       activeGoalCount: 0,
     },
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    runtime: { displayStatus: "idle" },
     ...overrides,
   };
 }
 
 const busyChild = makeChild({
   status: "active",
-  runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+  runtime: { displayStatus: "active" },
 });
 const pendingChild = makeChild({ hasPendingInteraction: true });
 const unreadChild = makeChild({ latestAttentionAt: 20, lastReadAt: 10 });
@@ -84,15 +84,14 @@ describe("thread-activity", () => {
       },
     );
 
-    it("includes plugin work without treating attention-only states as work", () => {
-      const attentionOnly = {
-        ...idleIndicatorState,
-        hasPendingInteraction: true,
-        hasUnreadError: true,
-      };
-
-      expect(hasThreadListWorkingActivity(attentionOnly)).toBe(false);
-      expect(hasThreadListWorkingActivity(attentionOnly, true)).toBe(true);
+    it("does not treat attention-only states as work", () => {
+      expect(
+        hasThreadListWorkingActivity({
+          ...idleIndicatorState,
+          hasPendingInteraction: true,
+          hasUnreadError: true,
+        }),
+      ).toBe(false);
     });
   });
 
@@ -353,7 +352,7 @@ describe("thread-activity", () => {
           activePlanModeCount: 0,
           activeGoalCount: 1,
         },
-        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "active" },
       });
 
       expect(threadListIndicatorStateForThread(thread, false)).toEqual({
@@ -521,7 +520,7 @@ describe("thread-activity", () => {
           activePlanModeCount: 0,
           activeGoalCount: 0,
         },
-        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "active" },
       });
 
       expect(getCollapsedChildActivity([busyUnreadErrorChild])).toEqual({
@@ -543,7 +542,7 @@ describe("thread-activity", () => {
       const busyAndPending = makeChild({
         status: "active",
         hasPendingInteraction: true,
-        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "active" },
       });
       expect(getCollapsedChildActivity([busyAndPending])).toEqual({
         pending: true,
@@ -560,135 +559,50 @@ describe("thread-activity", () => {
       });
     });
 
-    it("distinguishes idle background commands from runtime work", () => {
-      const commandChild = makeChild({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 1,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-      });
+    it.each([
+      [
+        "idle background commands",
+        "activeBackgroundCommandCount",
+        "backgroundCommand",
+      ],
+      [
+        "idle background agent activity",
+        "activeBackgroundAgentCount",
+        "backgroundAgent",
+      ],
+      ["idle workflow activity", "activeWorkflowCount", "workflow"],
+      ["plan-mode banner activity", "activePlanModeCount", "planMode"],
+      ["active-goal banner activity", "activeGoalCount", "goal"],
+    ] as const)(
+      "distinguishes %s from runtime work",
+      (_label, countKey, flag) => {
+        const child = makeChild({
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
+            [countKey]: 1,
+          },
+        });
 
-      expect(getCollapsedChildActivity([commandChild])).toEqual({
-        pending: false,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: false,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: true,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      });
-    });
-
-    it("distinguishes idle background agent activity from runtime work", () => {
-      const agentChild = makeChild({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 1,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-      });
-
-      expect(getCollapsedChildActivity([agentChild])).toEqual({
-        pending: false,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: false,
-        workflow: false,
-        backgroundAgent: true,
-        backgroundCommand: false,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      });
-    });
-
-    it("distinguishes idle workflow activity from runtime work", () => {
-      const workflowChild = makeChild({
-        activity: {
-          activeWorkflowCount: 1,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-      });
-
-      expect(getCollapsedChildActivity([workflowChild])).toEqual({
-        pending: false,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: false,
-        workflow: true,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      });
-    });
-
-    it("distinguishes plan-mode banner activity from runtime work", () => {
-      const planModeChild = makeChild({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 1,
-          activeGoalCount: 0,
-        },
-      });
-
-      expect(getCollapsedChildActivity([planModeChild])).toEqual({
-        pending: false,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: false,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: true,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      });
-    });
-
-    it("distinguishes active-goal banner activity from runtime work", () => {
-      const goalChild = makeChild({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 1,
-        },
-      });
-
-      expect(getCollapsedChildActivity([goalChild])).toEqual({
-        pending: false,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: false,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: false,
-        goal: true,
-        unread: false,
-        unreadError: false,
-      });
-    });
+        expect(getCollapsedChildActivity([child])).toEqual({
+          pending: false,
+          working: true,
+          hasUnsubmittedDraft: false,
+          runtimeWorking: false,
+          workflow: false,
+          backgroundAgent: false,
+          backgroundCommand: false,
+          planMode: false,
+          goal: false,
+          unread: false,
+          unreadError: false,
+          [flag]: true,
+        });
+      },
+    );
 
     it("keeps workflow activity visible when the same child also has runtime work", () => {
       const workflowAndRuntimeChild = makeChild({
@@ -699,7 +613,7 @@ describe("thread-activity", () => {
           activePlanModeCount: 0,
           activeGoalCount: 0,
         },
-        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        runtime: { displayStatus: "active" },
         status: "active",
       });
 

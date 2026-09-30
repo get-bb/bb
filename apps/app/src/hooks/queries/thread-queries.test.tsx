@@ -157,7 +157,7 @@ beforeEach(() => {
   vi.mocked(api.getThreadHostFilePreview).mockResolvedValue({
     kind: "text",
     path: "/tmp/log.txt",
-    url: "/api/v1/threads/thread-1/host-files/content?path=%2Ftmp%2Flog.txt",
+    url: "/api/v1/threads/thread-1/host-files/tmp/log.txt",
     mimeType: "text/plain",
     content: "preview",
   });
@@ -862,7 +862,8 @@ describe("palette lifecycle queries", () => {
     const archived = makeThreadListEntry({ id: "archived", archivedAt: 1 });
     vi.mocked(sdk.threads.list).mockResolvedValue([archived]);
     const { result, rerender } = renderHook(
-      ({ recent, selected }) => usePaletteRecentArchivedThreads({ enabled: recent && selected }),
+      ({ recent, selected }) =>
+        usePaletteRecentArchivedThreads({ enabled: recent && selected }),
       { wrapper, initialProps: { recent: true, selected: false } },
     );
     expect(sdk.threads.list).not.toHaveBeenCalled();
@@ -871,8 +872,9 @@ describe("palette lifecycle queries", () => {
     rerender({ recent: true, selected: true });
     await waitFor(() => expect(result.current.data).toEqual([archived]));
     expect(sdk.threads.list).toHaveBeenCalledExactlyOnceWith({
-      archived: true, limit: 20, signal: expect.any(AbortSignal),
+      archived: true,
+      limit: 20,
+      signal: expect.any(AbortSignal),
     });
   });
-
 });

@@ -7,10 +7,10 @@ import {
   type PointerEventHandler,
   type ReactNode,
 } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { Icon } from "@bb/shared-ui/icon";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { cn } from "@/lib/utils";
+import { Icon } from "@/components/ui/icon";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chrome-style-tokens";
 import {
   SidebarStickyGroup,
   SidebarStickyTier,
@@ -36,14 +36,14 @@ import type { SidebarSortableDragBindings } from "../rows/sortableMotion.js";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
-} from "@bb/client-core";
+} from "../model/thread-activity.js";
 import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
 import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,
 } from "./groupRollups.js";
 import { SplitPaneMiniMap } from "../rows/SplitPaneMiniMap.js";
-import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
@@ -168,7 +168,9 @@ export function TopLevelSidebarSection({
   const stopCollapseControlKeyDown = useCallback<
     KeyboardEventHandler<HTMLButtonElement>
   >((event) => {
-    event.stopPropagation();
+    if (event.key === "Enter" || event.key === " ") {
+      event.stopPropagation();
+    }
   }, []);
 
   return (

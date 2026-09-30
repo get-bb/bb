@@ -476,6 +476,7 @@ describe("collectPluginAppRegistrations", () => {
       });
       app.slots.settingsSection({
         id: "custom-settings",
+        experimental_page: "mobile",
         title: "Custom settings",
         component: Component,
       });
@@ -545,6 +546,7 @@ describe("collectPluginAppRegistrations", () => {
     expect(registrations.settingsSections).toEqual([
       {
         id: "custom-settings",
+        experimental_page: "mobile",
         title: "Custom settings",
         component: Component,
       },
@@ -624,14 +626,17 @@ describe("collectPluginAppRegistrations", () => {
         id: "bad-scope",
         scopes: ["modal" as never],
       });
-      app.composer.customize({ id: "valid-last", scopes: ["side-chat"] });
+      app.composer.customize({
+        id: "valid-last",
+        scopes: ["side-chat" as never, "thread"],
+      });
     });
 
     const registrations = collectPluginAppRegistrations(definition, rejected);
 
     expect(registrations.composerCustomizations).toEqual([
       { id: "valid-first" },
-      { id: "valid-last", scopes: ["side-chat"] },
+      { id: "valid-last", scopes: ["thread"] },
     ]);
     expect(rejected.mock.calls.map(([reason]) => reason)).toEqual([
       expect.stringContaining('"id" must match'),

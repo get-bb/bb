@@ -9,7 +9,6 @@ import type {
   ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
-  ProjectFileContentQuery,
   ProjectFilesQuery,
   ProjectResponse,
   ProjectWithThreadsResponse,
@@ -82,11 +81,11 @@ export type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs &
     signal?: AbortSignal;
   };
 
-export type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs &
-  Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
-    projectId: string;
-    signal?: AbortSignal;
-  };
+export type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs & {
+  path: string;
+  projectId: string;
+  signal?: AbortSignal;
+};
 
 export interface ProjectBranchesArgs extends ProjectBranchesQuery {
   projectId: string;
@@ -322,6 +321,32 @@ function resolveAttachmentFilename(input: ProjectAttachmentUploadArgs): string {
   return filename;
 }
 
+function encodeProjectFilePath(path: string): string {
+  const segments = path.split("/");
+  if (
+    path.includes("\0") ||
+    path.includes("\\") ||
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
+  ) {
+    throw new Error(`Invalid file path: ${path}`);
+  }
+  return segments.map(encodeURIComponent).join("/");
+}
+
+function isUtf8FileContent(bytes: Uint8Array, mimeType: string): boolean {
+  if (mimeType.startsWith("image/") && !mimeType.startsWith("image/svg+xml")) {
+    return false;
+  }
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const BASE64_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -477,31 +502,33 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       );
     },
     async fileContent(input) {
-      const { projectId, signal, ...query } = input;
+      const { projectId, path, signal, environmentId, hostId } = input;
+      const filePath = encodeProjectFilePath(path);
+      const routePath =
+        environmentId !== undefined
+          ? `/environments/${encodeURIComponent(environmentId)}/files/${filePath}`
+          : hostId !== undefined
+            ? `/projects/${encodeURIComponent(projectId)}/hosts/${encodeURIComponent(hostId)}/files/${filePath}`
+            : `/projects/${encodeURIComponent(projectId)}/files/${filePath}`;
       const response = await transport.resolve(
-        transport.api.v1.projects[":id"].files.content.$get(
-          {
-            param: { id: projectId },
-            query,
-          },
-          ...signalRequestArgs(signal),
+        transport.fetch(
+          `${transport.baseUrl.replace(/\/+$/u, "")}/api/v1${routePath}`,
+          signal === undefined ? undefined : { signal },
         ),
       );
       const bytes = new Uint8Array(await response.arrayBuffer());
-      const contentEncoding = response.headers.get("x-bb-content-encoding");
-      if (contentEncoding !== "utf8" && contentEncoding !== "base64") {
-        throw new Error(
-          "Project file response is missing its content encoding",
-        );
-      }
+      const mimeType =
+        response.headers.get("content-type") ?? "application/octet-stream";
+      const contentEncoding = isUtf8FileContent(bytes, mimeType)
+        ? "utf8"
+        : "base64";
       return {
         content:
           contentEncoding === "utf8"
             ? new TextDecoder().decode(bytes)
             : encodeBase64(bytes),
         contentEncoding,
-        mimeType:
-          response.headers.get("content-type") ?? "application/octet-stream",
+        mimeType,
         sizeBytes: bytes.byteLength,
       };
     },

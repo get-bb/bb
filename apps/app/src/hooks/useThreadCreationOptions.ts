@@ -476,8 +476,11 @@ export function useThreadCreationOptions(
   const selectedProviderComposerActions =
     selectedProviderInfo?.composerActions ?? EMPTY_COMPOSER_ACTIONS;
 
+  const allowFastServiceTier =
+    systemConfig.data?.generalSettings?.allowFastServiceTier ?? true;
   const supportsServiceTier =
-    activeProviderCapabilities?.supportsServiceTier ?? false;
+    allowFastServiceTier &&
+    (activeProviderCapabilities?.supportsServiceTier ?? false);
   const permissionModes: readonly PermissionMode[] =
     activeProviderCapabilities?.permissionModes ??
     DEFAULT_SUPPORTED_PERMISSION_MODES;
@@ -531,10 +534,10 @@ export function useThreadCreationOptions(
     const supportByProvider: Record<string, boolean> = {};
     for (const provider of providers) {
       supportByProvider[provider.id] =
-        provider.capabilities.supportsServiceTier;
+        allowFastServiceTier && provider.capabilities.supportsServiceTier;
     }
     return supportByProvider;
-  }, [providers]);
+  }, [allowFastServiceTier, providers]);
   const serviceTierFastLabel = fastServiceTierLabel(selectedProviderInfo);
 
   const {
@@ -567,8 +570,20 @@ export function useThreadCreationOptions(
     ],
   );
   const serviceTier = useMemo(
-    () => (supportsServiceTier ? rawServiceTier : undefined),
-    [rawServiceTier, supportsServiceTier],
+    () =>
+      !allowFastServiceTier
+        ? activeProviderCapabilities?.supportsServiceTier
+          ? "default"
+          : undefined
+        : supportsServiceTier
+          ? rawServiceTier
+          : undefined,
+    [
+      activeProviderCapabilities?.supportsServiceTier,
+      allowFastServiceTier,
+      rawServiceTier,
+      supportsServiceTier,
+    ],
   );
 
   const permissionMode = resolvePermissionModeSelection({

@@ -42,10 +42,10 @@ export const COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS =
   "h-7 rounded-md border-border bg-transparent px-2 text-xs font-medium text-foreground shadow-none hover:bg-state-hover hover:text-foreground max-md:pointer-coarse:h-9";
 
 export const COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS =
-  "h-8 px-2 transition-all max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-2.5";
+  "h-8 px-2 transition-all max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-3";
 
 export const COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS =
-  "size-auto h-8 px-2 transition-all max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-2.5";
+  "size-auto h-8 px-2 transition-all max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-3";
 
 export const COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS =
   "h-8 w-8 rounded-l-none border-l border-l-primary-foreground/20 px-0 transition-all hover:border-l-primary-foreground/30 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
