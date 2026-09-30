@@ -75,6 +75,7 @@ import type {
   BuildEventProjectionMessagesOptions,
   BuildEventProjectionOptions,
   EventProjectionMessage,
+  SettledItemMessage,
   EventProjectionWorkflowMessage,
   EventProjection,
 } from "./event-projection-types.js";
@@ -582,7 +583,18 @@ function buildFlatProjectionData(
     orderedEvents,
     clientRequestById,
   );
+  const toolFlushSequences = [
+    ...(args.options?.settledToolFlushSequences ?? []),
+  ].sort((a, b) => a - b);
+  let toolFlushIndex = 0;
   for (const { event: decoded, meta } of orderedEvents) {
+    while (
+      toolFlushIndex < toolFlushSequences.length &&
+      toolFlushSequences[toolFlushIndex] < meta.seq
+    ) {
+      flushToolActivityBeforeNonToolMessage(state);
+      toolFlushIndex++;
+    }
     const eventType = decoded.type;
     const eventTurnId = getEventTurnId(decoded);
     const eventProviderThreadId = getEventProviderThreadId(decoded);
@@ -979,7 +991,11 @@ function buildFlatProjectionData(
   }
 
   finalizeProjectionState({ state, options: args.options });
-  const messages = sortEventProjectionMessagesBySource(state.messages);
+  const messages = sortEventProjectionMessagesBySource(
+    args.options?.settledItems?.length
+      ? [...state.messages, ...args.options.settledItems]
+      : state.messages,
+  );
   const callMessageById = buildCallMessageById(messages);
   enrichBackgroundAgentModels(messages, callMessageById);
   return {
@@ -1042,7 +1058,7 @@ export function buildEventProjectionEntries(
   events: ThreadEventWithMeta[] | undefined,
   options: BuildEventProjectionOptions,
 ): EventProjection {
-  if (!events || events.length === 0) {
+  if ((!events || events.length === 0) && !options.settledItems?.length) {
     return {
       state: {
         activeThinking: null,
@@ -1053,7 +1069,7 @@ export function buildEventProjectionEntries(
     };
   }
 
-  const orderedEvents = getOrderedThreadEvents(events);
+  const orderedEvents = getOrderedThreadEvents(events ?? []);
   const flatProjection = buildFlatProjectionData({
     acceptedClientRequestContext:
       options.acceptedClientRequestContext ??
@@ -1076,7 +1092,7 @@ export function buildEventProjection(
   events: ThreadEventWithMeta[] | undefined,
   options: BuildEventProjectionOptions,
 ): EventProjection {
-  if (!events || events.length === 0) {
+  if ((!events || events.length === 0) && !options.settledItems?.length) {
     return {
       state: {
         activeThinking: null,
@@ -1087,6 +1103,30 @@ export function buildEventProjection(
     };
   }
 
-  const orderedEvents = getOrderedThreadEvents(events);
+  const orderedEvents = getOrderedThreadEvents(events ?? []);
   return buildFullEventProjection(orderedEvents, options);
+}
+
+export function buildSettledItemMessages(
+  events: ThreadEventWithMeta[],
+  options: Omit<BuildEventProjectionMessagesOptions, "settledItems">,
+): SettledItemMessage[] {
+  return buildFlatProjectionData({
+    acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    events: getOrderedThreadEvents(events),
+    includeActiveThinking: false,
+    options,
+  }).messages.filter(
+    (message): message is SettledItemMessage =>
+      (message.kind === "command" &&
+        message.status !== "pending" &&
+        message.completedAt !== null) ||
+      (message.kind === "assistant-text" &&
+        message.status === "completed" &&
+        !message.isLegacyUserMessage) ||
+      (message.kind === "file-edit" && message.status !== "pending") ||
+      (message.kind === "operation" &&
+        message.opType === "reasoning" &&
+        message.status === "completed"),
+  );
 }
