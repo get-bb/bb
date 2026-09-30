@@ -76,7 +76,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash-logo.png",
-          "imageWidth": 112,
+          "imageWidth": 88,
           "backgroundColor": "#ffffff",
           "dark": {
             "image": "./assets/splash-logo-dark.png",

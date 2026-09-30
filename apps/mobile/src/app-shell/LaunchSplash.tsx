@@ -15,7 +15,7 @@ const LAUNCH_SPLASH_MAX_MS = 8000;
 const LAUNCH_SPLASH_FADE_MS = 250;
 const SPLASH_HOLDING_PATHS = new Set(["/", "/webview"]);
 
-const LOGO_WIDTH = 112;
+const LOGO_WIDTH = 88;
 const LOGO_HEIGHT = (LOGO_WIDTH * 487) / 581;
 
 const launchArt =
