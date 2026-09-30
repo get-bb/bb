@@ -115,7 +115,10 @@ export const server = sqliteTable(
     createdAt: timestampMs("created_at").notNull(),
     revokedAt: timestampMs("revoked_at"),
   },
-  (table) => [uniqueIndex("server_user_name_idx").on(table.userId, table.name)],
+  (table) => [
+    uniqueIndex("server_user_name_idx").on(table.userId, table.name),
+    index("server_credential_hash_idx").on(table.credentialHash),
+  ],
 );
 
 export const connectCode = sqliteTable(
@@ -158,7 +161,10 @@ export const machine = sqliteTable(
     createdAt: timestampMs("created_at").notNull(),
     revokedAt: timestampMs("revoked_at"),
   },
-  (table) => [index("machine_user_id_idx").on(table.userId)],
+  (table) => [
+    index("machine_user_id_idx").on(table.userId),
+    index("machine_credential_hash_idx").on(table.credentialHash),
+  ],
 );
 
 export const auditLog = sqliteTable(
