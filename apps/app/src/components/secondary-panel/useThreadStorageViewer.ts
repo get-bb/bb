@@ -18,7 +18,6 @@ export function useThreadStorageViewer({
     data: threadStorageFiles,
     isLoading: isThreadStorageFilesLoading,
     error: threadStorageFilesError,
-    refetch: refetchThreadStorageFiles,
   } = useThreadStorageFiles(
     threadId ?? "",
     DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -44,8 +43,6 @@ export function useThreadStorageViewer({
     isThreadStorageFilesLoading,
     threadStorageFilesError,
     threadStorageFiles,
-    threadStorageRootPath: threadStorageFiles?.storageRootPath ?? null,
-    refetchThreadStorageFiles,
   };
 }
 

@@ -28,7 +28,7 @@ import {
   type FileOpenerOriginalTab,
 } from "@/components/plugin/file-opener-tabs";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
-import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
+import { useThreadStorageLocation } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
@@ -304,10 +304,12 @@ function RootComposeFilePreviewTabContent({
         ? (tab.threadId ?? rootPanelThreadId)
         : fileOpenerSource.threadId
       : null;
-  const { threadStorageRootPath } = useThreadStorageViewer({
-    fileListEnabled: storageThreadId !== null,
-    threadId: storageThreadId ?? undefined,
-  });
+  const threadStorageLocationQuery = useThreadStorageLocation(
+    storageThreadId ?? "",
+    { enabled: storageThreadId !== null },
+  );
+  const threadStorageRootPath =
+    threadStorageLocationQuery.data?.storageRootPath ?? null;
   const projectPreviewId =
     tab.kind === "workspace-file-preview" && tab.environmentId === null
       ? fileOpenerSource?.kind === "workspace"
