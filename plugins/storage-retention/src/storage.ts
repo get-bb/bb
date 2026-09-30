@@ -70,6 +70,12 @@ export function createStorage(bb: BbPluginApi) {
     if (online && host.status !== "connected")
       throw new Error("The machine must be online");
   }
+  async function storageRoot(hostId: string) {
+    const host = await bb.sdk.hosts.get({ hostId });
+    if (host.threadStorageRootPath === null)
+      throw new Error("The machine has not reported its filesystem locations");
+    return host.threadStorageRootPath;
+  }
   function acquire(hostId: string) {
     if (busy.has(hostId))
       throw new Error("Storage maintenance is already running on this machine");
@@ -200,13 +206,13 @@ export function createStorage(bb: BbPluginApi) {
     changed();
     const job = (async () => {
       try {
-        const [paths, threads] = await Promise.all([
-          bb.sdk.hosts.experimental_paths({ hostId }),
+        const [rootPath, threads] = await Promise.all([
+          storageRoot(hostId),
           readThreads(bb, lifecycle.signal),
         ]);
         const environments = await leftovers(hostId, threads);
         const targets = [
-          { path: paths.threadStorageRootPath, perChild: true },
+          { path: rootPath, perChild: true },
           ...environments.flatMap((env) =>
             env.path === null ? [] : [{ path: env.path, perChild: false }],
           ),
@@ -225,7 +231,7 @@ export function createStorage(bb: BbPluginApi) {
           for (const target of result.targets)
             measured.set(target.path, target);
         }
-        const root = measured.get(paths.threadStorageRootPath);
+        const root = measured.get(rootPath);
         scans.delete(hostId);
         store(hostId, {
           scannedAt: Date.now(),
@@ -273,8 +279,8 @@ export function createStorage(bb: BbPluginApi) {
       const cached = read(hostId);
       if (!cached)
         throw new Error("Scan the machine before removing orphaned storage");
-      const [paths, threads] = await Promise.all([
-        bb.sdk.hosts.experimental_paths({ hostId }),
+      const [rootPath, threads] = await Promise.all([
+        storageRoot(hostId),
         readThreads(bb, lifecycle.signal),
       ]);
       const ids = new Set(threads.map((thread) => thread.id));
@@ -286,7 +292,7 @@ export function createStorage(bb: BbPluginApi) {
         await worker.call(
           "discard",
           {
-            rootPath: paths.threadStorageRootPath,
+            rootPath,
             name: entry.name,
             recreate: false,
           },
@@ -317,13 +323,11 @@ export function createStorage(bb: BbPluginApi) {
     await requireHost(location.hostId, true);
     const release = acquire(location.hostId);
     try {
-      const paths = await bb.sdk.hosts.experimental_paths({
-        hostId: location.hostId,
-      });
+      const rootPath = await storageRoot(location.hostId);
       await worker.call(
         "discard",
         {
-          rootPath: paths.threadStorageRootPath,
+          rootPath,
           name: threadId,
           recreate: true,
         },
@@ -350,7 +354,7 @@ export function createStorage(bb: BbPluginApi) {
     let retriedCount = 0;
     for (const env of environments) {
       lifecycle.signal.throwIfAborted();
-      await bb.sdk.environments.experimental_retryCleanup({
+      await bb.sdk.environments.experimental_cleanup({
         environmentId: env.id,
       });
       retriedCount++;

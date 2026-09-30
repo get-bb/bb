@@ -7,12 +7,14 @@ and the `bb storage` CLI. It uses public SDK thread rows and ordinary lifecycle
 actions. No core storage tables, migrations, scan routes, retention services,
 daemon commands, or new daemon protocol fields remain.
 
-Core changes are limited to two reusable SDK/CLI operations and plugin registration:
+Core APIs landed separately; this branch adds plugin registration and consumes:
 
-- `hosts.experimental_paths` / `bb machine paths`: read the thread-storage root
+- `hosts.get` / `bb machine show`: read the thread-storage root
   from the latest daemon session, including offline machines without live threads.
-- `environments.experimental_retryCleanup` / `bb environment retry-cleanup`:
-  retry pending provider cleanup, rejecting live environments and retaining the
+  The path is null until a session reports it.
+- `environments.experimental_cleanup` / `bb environment cleanup`:
+  request provider cleanup explicitly, overriding retention and backoff, rejecting
+  live environments and unmanaged checkouts, and retaining the
   existing lifecycle machinery for hooks, ownership, retries, and completion.
 
 Both policies default to Never. Enable the plugin to use it. Cross-plugin protection remains a TODO; pin automation targets to keep

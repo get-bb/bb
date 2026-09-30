@@ -58,9 +58,10 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
     },
     sdk: {
       hosts: {
-        get: async () =>
-          makeHostResponse({ id: "host_test", status: "connected" }),
-        experimental_paths: async () => ({ threadStorageRootPath: root }),
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: root,
+        }),
       },
       environments: { list: async () => [] },
       threads: {
@@ -168,6 +169,7 @@ it("rejects traversal and symlinks without deleting their targets", async () => 
 });
 
 it("fails a scan visibly and releases its host lock so it can be retried", async () => {
+  let root: string | null = null;
   let fail = true;
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
@@ -183,9 +185,10 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
     },
     sdk: {
       hosts: {
-        get: async () =>
-          makeHostResponse({ id: "host_test", status: "connected" }),
-        experimental_paths: async () => ({ threadStorageRootPath: "/unused" }),
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: root,
+        }),
       },
       threads: { list: async () => [] },
       environments: { list: async () => [] },
@@ -193,6 +196,19 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
   });
   try {
     plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).scan,
+      )
+      .toMatchObject({
+        state: "failed",
+        message: "The machine has not reported its filesystem locations",
+      });
+    root = "/unused";
     await host.harness.callRpc("scanHost", { hostId: "host_test" });
     await expect(
       host.harness.callRpc("removeOrphans", { hostId: "host_test" }),
