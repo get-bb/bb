@@ -5849,7 +5849,14 @@ describe("sequential pool recovery", () => {
           return attempts.length === 2
             ? Response.json(
                 {},
-                { status: 429, headers: { "retry-after": "0.25" } },
+                {
+                  status: 429,
+                  headers: {
+                    "retry-after": "0.25",
+                    "anthropic-ratelimit-unified-5h-status": "allowed",
+                    "anthropic-ratelimit-unified-overage-status": "rejected",
+                  },
+                },
               )
             : Response.json({});
         },
@@ -6377,13 +6384,9 @@ describe("sequential pool recovery", () => {
           {
             status: rejectOverage ? 429 : 200,
             headers: {
-              ...(rejectOverage
-                ? {}
-                : {
-                    "anthropic-ratelimit-unified-5h-utilization": "1",
-                    "anthropic-ratelimit-unified-5h-status": "rejected",
-                    "anthropic-ratelimit-unified-5h-reset": "4102444800",
-                  }),
+              "anthropic-ratelimit-unified-5h-utilization": "1",
+              "anthropic-ratelimit-unified-5h-status": "rejected",
+              "anthropic-ratelimit-unified-5h-reset": "4102444800",
               "anthropic-ratelimit-unified-overage-status": rejectOverage
                 ? "rejected"
                 : "allowed_warning",

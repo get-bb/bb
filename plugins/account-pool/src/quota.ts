@@ -290,7 +290,6 @@ export function isQuotaRejection(headers: Headers): boolean {
     if (
       normalized === `${PREFIX}5h-status` ||
       normalized === `${PREFIX}7d-status` ||
-      normalized === `${PREFIX}overage-status` ||
       SCOPED_HEADER.test(normalized)
     )
       return true;
