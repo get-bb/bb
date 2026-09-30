@@ -184,7 +184,7 @@ export function ProfileWebViewScreen() {
 
   const previousSession = useRef(session);
   useEffect(() => {
-    if (shouldReloadForSession(previousSession.current, session)) {
+    if (shouldReloadForSession(previousSession.current, session, Date.now())) {
       setReloadKey((value) => value + 1);
       setLoad({ kind: "loading" });
     }

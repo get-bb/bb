@@ -180,31 +180,35 @@ describe("resolveShellLoadPath", () => {
 });
 
 describe("shouldReloadForSession", () => {
-  it("reloads when a fresh cookie replaces the one the page loaded with", () => {
-    expect(
-      shouldReloadForSession(AUTHENTICATED, {
-        status: "authenticated",
-        expiresAt: 2_000,
-      }),
-    ).toBe(true);
+  const RENEWED: SessionState = { status: "authenticated", expiresAt: 2_000 };
+
+  it("reloads when the cookie the page loaded with has expired", () => {
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_000)).toBe(true);
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_500)).toBe(true);
+  });
+
+  it("does not reload when a renewal replaces a cookie that is still valid", () => {
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 999)).toBe(false);
   });
 
   it("does not reload on the first mint, since the page only mounts after it", () => {
     expect(
-      shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED),
+      shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED, 0),
     ).toBe(false);
-    expect(shouldReloadForSession(IDLE, AUTHENTICATED)).toBe(false);
+    expect(shouldReloadForSession(IDLE, AUTHENTICATED, 0)).toBe(false);
   });
 
   it("does not reload on an unchanged session or a failure", () => {
-    expect(shouldReloadForSession(AUTHENTICATED, AUTHENTICATED)).toBe(false);
+    expect(shouldReloadForSession(AUTHENTICATED, AUTHENTICATED, 5_000)).toBe(
+      false,
+    );
     expect(
-      shouldReloadForSession(AUTHENTICATED, {
-        status: "error",
-        detail: "offline",
-        retryAt: 0,
-      }),
+      shouldReloadForSession(
+        AUTHENTICATED,
+        { status: "error", detail: "offline", retryAt: 0 },
+        5_000,
+      ),
     ).toBe(false);
-    expect(shouldReloadForSession(IDLE, IDLE)).toBe(false);
+    expect(shouldReloadForSession(IDLE, IDLE, 5_000)).toBe(false);
   });
 });

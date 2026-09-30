@@ -94,10 +94,12 @@ export function resolveShellLoadPath(input: {
 export function shouldReloadForSession(
   previous: SessionState,
   next: SessionState,
+  now: number,
 ): boolean {
   return (
     previous.status === "authenticated" &&
     next.status === "authenticated" &&
-    previous.expiresAt !== next.expiresAt
+    previous.expiresAt !== next.expiresAt &&
+    previous.expiresAt <= now
   );
 }
