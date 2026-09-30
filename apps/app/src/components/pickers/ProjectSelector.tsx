@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import {
   Command,
@@ -72,6 +72,14 @@ export function ProjectSelector({
   const commandRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  useLayoutEffect(() => {
+    const items =
+      commandRef.current?.querySelectorAll<HTMLElement>("[cmdk-item]");
+    const highlightedItem = Array.from(items ?? []).find(
+      (item) => item.dataset.value === highlightedValue,
+    );
+    highlightedItem?.scrollIntoView({ block: "nearest" });
+  }, [highlightedValue]);
   const disabled = disabledProp || isLoading;
   const showSearch = projects.length > PROJECT_SEARCH_MIN_OPTIONS;
   const filteredProjects = useMemo(
