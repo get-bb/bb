@@ -61,7 +61,7 @@ function resetAt(headers: Headers, prefix: string, now: number): number | null {
   const raw = numberHeader(headers, `${prefix}-reset-at`);
   if (raw !== null && raw > 0) return epochMilliseconds(raw);
   const after = numberHeader(headers, `${prefix}-reset-after-seconds`);
-  return after === null ? null : now + Math.round(after * 1_000);
+  return after === null || after <= 0 ? null : now + Math.round(after * 1_000);
 }
 
 function windowMinutesFromSeconds(

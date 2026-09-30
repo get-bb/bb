@@ -187,24 +187,30 @@ describe("codex header quotas", () => {
     expect(isQuotaExhausted(fromUsage, "other", 0.9, 2_000)).toBe(false);
   });
 
-  it("drops a placeholder secondary window with zero usage and no reset", () => {
-    const quota = adapter.quotaFromHeaders(
-      ACCOUNT_ID,
-      new Headers({
-        "x-codex-primary-used-percent": "47",
-        "x-codex-primary-window-minutes": "10080",
-        "x-codex-primary-reset-at": "4102452000",
-        "x-codex-secondary-used-percent": "0",
-        "x-codex-secondary-reset-at": "0",
-      }),
-      emptyQuota(),
-      "other",
-      5_000,
-    );
-    expect(quota.limitWindows.map((window) => window.slot)).toEqual([
-      "primary",
-    ]);
-  });
+  it.each([
+    ["reset-at", "0"],
+    ["reset-after-seconds", "0"],
+  ])(
+    "drops a placeholder secondary window with zero usage and %s %s",
+    (header, value) => {
+      const quota = adapter.quotaFromHeaders(
+        ACCOUNT_ID,
+        new Headers({
+          "x-codex-primary-used-percent": "47",
+          "x-codex-primary-window-minutes": "10080",
+          "x-codex-primary-reset-at": "4102452000",
+          "x-codex-secondary-used-percent": "0",
+          [`x-codex-secondary-${header}`]: value,
+        }),
+        emptyQuota(),
+        "other",
+        5_000,
+      );
+      expect(quota.limitWindows.map((window) => window.slot)).toEqual([
+        "primary",
+      ]);
+    },
+  );
 
   it("clears a stored placeholder window when the headers repeat it", () => {
     const previous: AccountQuota = {
