@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   defaultAppSettings,
-  type KeyboardPlatform,
   type KeyboardCommandId,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
@@ -70,7 +69,6 @@ function areNullableAppShortcutsEqual(
 }
 
 interface ShortcutRecorderProps {
-  platform: string;
   label: string;
   command: KeyboardCommandId;
   disabled: boolean;
@@ -89,8 +87,8 @@ const ShortcutRecorder = memo(
     onRecordingChange,
     recording,
     shortcut,
-    platform,
   }: ShortcutRecorderProps) {
+    const platform = browserPlatform();
     const [error, setError] = useState<string | null>(null);
     const shortcutPresentation =
       shortcut === null ? null : presentAppShortcut(shortcut, platform);
@@ -168,7 +166,6 @@ const ShortcutRecorder = memo(
   },
   function areShortcutRecorderPropsEqual(left, right) {
     return (
-      left.platform === right.platform &&
       left.label === right.label &&
       left.command === right.command &&
       left.disabled === right.disabled &&
@@ -205,7 +202,6 @@ interface KeyboardCommandRowModel {
 }
 
 interface BuildKeyboardCommandRowModelArgs {
-  scope: KeyboardPlatform | "all";
   label: string;
   description: string;
   labels: ReadonlyMap<KeyboardCommandId, string>;
@@ -227,7 +223,6 @@ function buildKeyboardCommandRowModel({
   isDesktop,
   overrides,
   platform,
-  scope,
 }: BuildKeyboardCommandRowModelArgs): KeyboardCommandRowModel {
   const shortcut = getCommandShortcut(
     defaults,
@@ -236,11 +231,7 @@ function buildKeyboardCommandRowModel({
     isDesktop,
     platform,
   );
-  const customized = overrides.some(
-    (override) =>
-      override.command === command &&
-      override.platform === (scope === "all" ? undefined : scope),
-  );
+  const customized = overrides.some((override) => override.command === command);
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
   );
@@ -421,7 +412,6 @@ const KeyboardCommandRow = memo(
         </div>
         <div className="flex shrink-0 items-start justify-end gap-1">
           <ShortcutRecorder
-            platform={platform}
             label={metadata.label}
             command={command}
             disabled={!availableOnClient}
@@ -477,18 +467,14 @@ export function KeyboardSettingsSection() {
     mutate: mutateKeyboardSettings,
   } = useUpdateKeyboardSettings();
   const isDesktop = getBbDesktopInfo() !== null;
-  const [scope, setScope] = useState<KeyboardPlatform | "all">("all");
-  const platform =
-    scope === "all"
-      ? browserPlatform()
-      : { mac: "MacIntel", windows: "Win32", linux: "Linux" }[scope];
+  const platform = browserPlatform();
   const generalSettings =
     systemConfig.data?.generalSettings ?? defaultAppSettings;
   const {
     defaults,
     commands,
     conflicts: defaultConflicts,
-  } = usePluginCommandBindings(platform);
+  } = usePluginCommandBindings();
   const commandGroups = useMemo(
     () => [
       ...APP_COMMAND_GROUPS,
@@ -549,14 +535,8 @@ export function KeyboardSettingsSection() {
                   defaultConflicts: defaultConflicts.get(command) ?? [],
                   defaults,
                   isDesktop,
-                  overrides: overrides.filter((override) =>
-                    scope === "all"
-                      ? override.platform === undefined
-                      : override.platform === undefined ||
-                        override.platform === scope,
-                  ),
+                  overrides,
                   platform,
-                  scope,
                 }),
               ] as const,
           ),
@@ -570,7 +550,6 @@ export function KeyboardSettingsSection() {
       labels,
       overrides,
       platform,
-      scope,
     ],
   );
 
@@ -618,7 +597,6 @@ export function KeyboardSettingsSection() {
     isDesktop,
     overrides,
     platform,
-    scope,
     serverOverridesKey,
   });
   useLayoutEffect(() => {
@@ -627,10 +605,9 @@ export function KeyboardSettingsSection() {
       isDesktop,
       overrides,
       platform,
-      scope,
       serverOverridesKey,
     };
-  }, [defaults, isDesktop, overrides, platform, scope, serverOverridesKey]);
+  }, [defaults, isDesktop, overrides, platform, serverOverridesKey]);
 
   const applyOverrides = useCallback(
     (
@@ -662,14 +639,10 @@ export function KeyboardSettingsSection() {
         shortcut,
         current.isDesktop,
         current.platform,
-        current.scope === "all" ? undefined : current.scope,
       );
       const conflicts = getShortcutConflicts(
         current.defaults,
-        next.filter(
-          (override) =>
-            current.scope !== "all" || override.platform === undefined,
-        ),
+        next,
         command,
         current.isDesktop,
         current.platform,
@@ -687,7 +660,6 @@ export function KeyboardSettingsSection() {
             null,
             current.isDesktop,
             current.platform,
-            current.scope === "all" ? undefined : current.scope,
           );
         }
       }
@@ -710,11 +682,7 @@ export function KeyboardSettingsSection() {
   const resetCommand = useCallback(
     (command: KeyboardCommandId) => {
       const current = latestSettingsRef.current;
-      const next = resetCommandShortcutOverride(
-        current.overrides,
-        command,
-        current.scope,
-      );
+      const next = resetCommandShortcutOverride(current.overrides, command);
       applyOverrides(
         next,
         command,
@@ -729,9 +697,7 @@ export function KeyboardSettingsSection() {
     ? pendingCommandRef.current
     : null;
   const disabled = systemConfig.data === undefined || isKeyboardSettingsPending;
-  const hasOverrides = overrides.some(
-    (override) => override.platform === (scope === "all" ? undefined : scope),
-  );
+  const hasOverrides = overrides.length > 0;
 
   return (
     <SettingsSection
@@ -739,15 +705,7 @@ export function KeyboardSettingsSection() {
         <Button
           disabled={disabled || !hasOverrides}
           onClick={() =>
-            applyOverrides(
-              overrides.filter(
-                (override) =>
-                  override.platform !== (scope === "all" ? undefined : scope),
-              ),
-              null,
-              overrides,
-              serverOverridesKey,
-            )
+            applyOverrides([], null, overrides, serverOverridesKey)
           }
           size="sm"
           type="button"
@@ -778,39 +736,6 @@ export function KeyboardSettingsSection() {
             }
           />
         </SettingsWithControl>
-        <p className="text-sm text-subtle-foreground">
-          All platforms sets the shared fallback. A platform-specific shortcut
-          takes precedence; resetting it restores the shared fallback or
-          default.
-        </p>
-        <div
-          role="group"
-          aria-label="Shortcut platform"
-          className="flex flex-wrap gap-2"
-        >
-          {(
-            [
-              ["all", "All platforms"],
-              ["mac", "macOS"],
-              ["windows", "Windows"],
-              ["linux", "Linux"],
-            ] as const
-          ).map(([value, label]) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={scope === value ? "secondary" : "outline"}
-              aria-pressed={scope === value}
-              disabled={disabled || recordingCommand !== null}
-              onClick={() => {
-                setScope(value);
-                setPendingAssignment(null);
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
         <Input
           aria-label="Search keyboard shortcuts"
           onChange={(event) => setSearch(event.target.value)}

@@ -4,7 +4,6 @@ import {
   isAppKeybindingAvailableForClient,
   keyboardPlatform,
   findAppKeybindingOverride,
-  type KeyboardPlatform,
   isMacKeyboardPlatform,
   normalizeAppShortcutInputKey,
   type KeyboardCommandId,
@@ -124,8 +123,12 @@ export function setCommandShortcutOverride(
   shortcut: AppShortcut | null,
   isDesktop: boolean,
   platform: string,
-  scope?: KeyboardPlatform,
 ): AppKeybindingOverrides {
+  const scope = findAppKeybindingOverride(
+    overrides,
+    command,
+    keyboardPlatform(platform),
+  )?.platform;
   const defaultShortcut = getCommandShortcut(
     defaults,
     [],
@@ -157,14 +160,8 @@ export function setCommandShortcutOverride(
 export function resetCommandShortcutOverride(
   overrides: AppKeybindingOverrides,
   command: KeyboardCommandId,
-  scope?: KeyboardPlatform | "all",
 ): AppKeybindingOverrides {
-  return overrides.filter(
-    (override) =>
-      override.command !== command ||
-      (scope !== undefined &&
-        override.platform !== (scope === "all" ? undefined : scope)),
-  );
+  return overrides.filter((override) => override.command !== command);
 }
 
 export function getShortcutConflicts(

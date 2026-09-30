@@ -250,7 +250,7 @@ Rebind any of these commands in Settings → Keyboard, via
 Use `bb settings keyboard reset <command>` to adopt the current default.
 Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
 on all platforms. A platform-specific override takes precedence over a general one,
-including when disabled. In Settings → Keyboard, select the platform to edit.
+including when disabled.
 CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
 other platforms. Unscoped `set` updates the general override; unscoped `reset`
 clears all scopes for the selected command (or every command if omitted).

@@ -14,12 +14,13 @@ import { resolvePluginCommandDefaults } from "@/lib/plugin-command-keybindings";
 const EMPTY_DEFAULTS: AppDefaultKeybindings = [];
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 
-export function usePluginCommandBindings(platform = browserPlatform()) {
+export function usePluginCommandBindings() {
   const { data } = useSystemConfig();
   const { commandPaletteActions } = usePluginSlots();
   const builtInDefaults = data?.defaultKeybindings ?? EMPTY_DEFAULTS;
   const overrides = data?.keybindingOverrides ?? EMPTY_OVERRIDES;
   const isDesktop = getBbDesktopInfo() !== null;
+  const platform = browserPlatform();
   return useMemo(() => {
     const pluginDefaults: AppDefaultKeybindings = commandPaletteActions.map(
       (command) => ({

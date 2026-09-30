@@ -269,7 +269,7 @@ it("shows compatibility bindings only on macOS and preserves their scope while e
   ).toBe("n");
 });
 
-it("edits and resets one platform without losing other scopes or general fallback", () => {
+it("edits the effective platform override without losing other scopes and resets the command", () => {
   const shortcut = defaults[0]!.shortcut;
   const overrides: AppKeybindingOverrides = [
     { command: "thread.new", shortcut: { ...shortcut, key: "g" } },
@@ -298,7 +298,6 @@ it("edits and resets one platform without losing other scopes or general fallbac
     shortcut,
     false,
     "Win32",
-    "windows",
   );
   expect(edited.filter((override) => override.platform !== "windows")).toEqual(
     overrides.filter((override) => override.platform !== "windows"),
@@ -306,11 +305,5 @@ it("edits and resets one platform without losing other scopes or general fallbac
   expect(
     getCommandShortcut(defaults, edited, "thread.new", false, "Win32")?.key,
   ).toBe("n");
-  const reset = resetCommandShortcutOverride(edited, "thread.new", "windows");
-  expect(
-    getCommandShortcut(defaults, reset, "thread.new", false, "Win32")?.key,
-  ).toBe("g");
-  expect(
-    getCommandShortcut(defaults, reset, "thread.new", false, "Linux")?.key,
-  ).toBe("l");
+  expect(resetCommandShortcutOverride(edited, "thread.new")).toEqual([]);
 });
