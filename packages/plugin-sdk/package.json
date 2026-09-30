@@ -135,7 +135,7 @@
   },
   "dependencies": {
     "cross-spawn": "^7.0.6",
-    "zod": "^4.3.6"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",

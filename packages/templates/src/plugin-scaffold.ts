@@ -1450,7 +1450,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         },
         dependencies: {
           ...PLUGIN_STARTER_DEPENDENCIES,
-          zod: "^4.3.6",
+          zod: "^4.6.5",
         },
         devDependencies: {
           "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
