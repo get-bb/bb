@@ -89,6 +89,19 @@ family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
+Claude accounts with an exhausted subscription window remain eligible as a
+fallback when Anthropic reports extra usage enabled with remaining allowance,
+or an allowed overage response header. Accounts below the switch threshold
+are preferred, including for conversations pinned to an extra-usage fallback;
+those conversations return to subscription quota when it recovers. Before using
+extra usage, the pool rechecks exhausted OAuth accounts (at most every 30 seconds).
+Disabled, spent, or unobserved extra usage does not override subscription limits.
+This does not enable extra usage or change spending limits on Claude.
+`account list` and `status` show an Extra usage column; JSON and the corresponding
+plugin RPCs expose `extraUsage` with status, observation time, and source.
+This state survives hub restarts. Model entitlement differences between plans
+are not inferred from missing quota buckets.
+
 Drag an account’s handle in Account Pooler settings (or focus the handle and use
 Space, arrow keys, and Space again), or
 `bb pool account reorder <claude|codex> <id>...`, to set the complete order for

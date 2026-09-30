@@ -88,6 +88,17 @@ export function quotaFromHeaders(
   const sevenDayResetAt = parseReset(headers.get(`${PREFIX}7d-reset`));
   const sevenDayStatus = headers.get(`${PREFIX}7d-status`);
   const representativeClaim = headers.get(`${PREFIX}representative-claim`);
+  const overageStatus = headers.get(`${PREFIX}overage-status`);
+  const extraUsage: AccountQuota["extraUsage"] =
+    overageStatus === "allowed" ||
+    overageStatus === "allowed_warning" ||
+    overageStatus === "rejected"
+      ? {
+          status: overageStatus === "rejected" ? "rejected" : "allowed",
+          observedAt: now,
+          source: "header",
+        }
+      : previous.extraUsage;
   const scoped = scopedHeaderValues(headers);
   const priorFamily = previous.familyWeekly[family];
   const familyWeekly: AccountQuota["familyWeekly"] =
@@ -111,9 +122,11 @@ export function quotaFromHeaders(
     sevenDayResetAt !== null ||
     sevenDayStatus !== null ||
     representativeClaim !== null ||
+    extraUsage !== previous.extraUsage ||
     scoped !== null;
   return {
     accountId,
+    extraUsage,
     fiveHourUtilization: fiveHourUtilization ?? previous.fiveHourUtilization,
     fiveHourResetAt: fiveHourResetAt ?? previous.fiveHourResetAt,
     fiveHourStatus: fiveHourStatus ?? previous.fiveHourStatus,
@@ -249,6 +262,10 @@ export function isQuotaExhausted(
   );
 }
 
+export function hasExtraUsage(quota: AccountQuota): boolean {
+  return quota.extraUsage?.status === "allowed";
+}
+
 export function isQuotaRejection(headers: Headers): boolean {
   for (const [name, value] of headers) {
     if (value.toLowerCase() !== "rejected") continue;
@@ -256,6 +273,7 @@ export function isQuotaRejection(headers: Headers): boolean {
     if (
       normalized === `${PREFIX}5h-status` ||
       normalized === `${PREFIX}7d-status` ||
+      normalized === `${PREFIX}overage-status` ||
       SCOPED_HEADER.test(normalized)
     )
       return true;
@@ -284,7 +302,8 @@ export function accountStatus(
   if (!account.enabled) return "disabled";
   if (quota.error !== null) return "error";
   if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
-  if (isSharedQuotaExhausted(quota, threshold, now)) return "exhausted";
+  if (isSharedQuotaExhausted(quota, threshold, now) && !hasExtraUsage(quota))
+    return "exhausted";
   return "ready";
 }
 

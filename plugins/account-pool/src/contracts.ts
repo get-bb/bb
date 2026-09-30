@@ -176,7 +176,16 @@ export const accountSecretSchema = z.discriminatedUnion("kind", [
 
 export type AccountSecret = z.infer<typeof accountSecretSchema>;
 
+export const extraUsageSchema = z
+  .object({
+    status: z.enum(["allowed", "rejected"]),
+    observedAt: z.number().int(),
+    source: z.enum(["header", "usage"]),
+  })
+  .strict();
+
 const quotaFieldsShape = {
+  extraUsage: extraUsageSchema.nullable(),
   fiveHourUtilization: z.number().nullable(),
   fiveHourResetAt: z.number().int().nullable(),
   fiveHourStatus: z.string().nullable(),

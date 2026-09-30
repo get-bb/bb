@@ -23,6 +23,7 @@ function emptyQuota(): AccountQuota {
       other: null,
     },
     limitWindows: [],
+    extraUsage: null,
     observedAt: null,
     heldUntil: null,
     error: null,

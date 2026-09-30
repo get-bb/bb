@@ -24,6 +24,7 @@ import {
   accountStatus,
   blockingResetAt,
   governingWeeklyResetAt,
+  hasExtraUsage,
   isQuotaExhausted,
   isSharedQuotaExhausted,
   retryAfterMilliseconds,
@@ -445,8 +446,16 @@ export class AccountPoolHub {
           routing,
           signal,
         );
-        if (selected === null) {
-          if (usageRefreshed) break;
+        if (
+          !usageRefreshed &&
+          (selected === null ||
+            isQuotaExhausted(
+              selected.quota,
+              family,
+              this.options.getSettings().switchThreshold,
+              this.options.now(),
+            ))
+        ) {
           usageRefreshed = true;
           await abortable(
             this.refreshExhaustedUsage(candidateIds, attempted, family),
@@ -454,6 +463,7 @@ export class AccountPoolHub {
           );
           continue;
         }
+        if (selected === null) break;
         let pacing: PacingFlight | null = null;
         const heldMs = (selected.quota.heldUntil ?? 0) - this.options.now();
         let activePacing = this.pacingByAccount.get(selected.account.id);
@@ -832,10 +842,29 @@ export class AccountPoolHub {
         quota: this.options.quotas.get(account.id),
       }))
       .filter(({ quota }) => quota.error === null)
-      .filter(({ quota }) => !isSharedQuotaExhausted(quota, threshold, now));
-    const eligible = available.filter(
+      .filter(
+        ({ quota }) =>
+          !isSharedQuotaExhausted(quota, threshold, now) ||
+          hasExtraUsage(quota),
+      );
+    let eligible = available.filter(
+      ({ quota }) =>
+        !isQuotaExhausted(quota, family, threshold, now) ||
+        hasExtraUsage(quota),
+    );
+    const included = eligible.filter(
       ({ quota }) => !isQuotaExhausted(quota, family, threshold, now),
     );
+    if (
+      included.some(
+        ({ account, quota }) =>
+          candidateIds.has(account.id) &&
+          !attempted.has(account.id) &&
+          (quota.heldUntil === null || quota.heldUntil <= now),
+      )
+    ) {
+      eligible = included;
+    }
     const unattempted = eligible.filter(
       ({ account }) =>
         candidateIds.has(account.id) && !attempted.has(account.id),
@@ -921,8 +950,12 @@ export class AccountPoolHub {
     routing.binding ??= binding ?? null;
     routing.active ??= active;
     const familyDetour = (accountId: string | null) =>
-      available.some(({ account }) => account.id === accountId) &&
-      !eligible.some(({ account }) => account.id === accountId);
+      available.some(
+        ({ account, quota }) =>
+          account.id === accountId &&
+          !isSharedQuotaExhausted(quota, threshold, now) &&
+          isQuotaExhausted(quota, family, threshold, now),
+      );
     const rebind =
       affinityKey !== null &&
       !familyDetour(boundAccountId) &&
@@ -1219,10 +1252,13 @@ export class AccountPoolHub {
       .flatMap((account) => {
         const quota = this.options.quotas.get(account.id);
         if (quota.error !== null) return [];
-        const quotaResetAt = blockingResetAt(quota, family, threshold, now);
+        const quotaResetAt = hasExtraUsage(quota)
+          ? null
+          : blockingResetAt(quota, family, threshold, now);
         if (
           quotaResetAt === null &&
-          isQuotaExhausted(quota, family, threshold, now)
+          isQuotaExhausted(quota, family, threshold, now) &&
+          !hasExtraUsage(quota)
         )
           return [];
         const resetAt = Math.max(quota.heldUntil ?? 0, quotaResetAt ?? 0);

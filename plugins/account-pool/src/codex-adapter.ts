@@ -145,6 +145,7 @@ function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
     sevenDayResetAt: null,
     sevenDayStatus: null,
     representativeClaim: null,
+    extraUsage: null,
     familyWeekly: EMPTY_FAMILY_WEEKLY,
   };
 }
