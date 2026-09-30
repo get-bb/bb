@@ -3,17 +3,17 @@ Thread titles, commit messages, and voice input from bb cloud, included with you
 ## What you get
 
 - A `bb cloud` AI service for thread titles (branch names follow the title), commit messages, and voice input.
-- Off until you turn it on in Settings → bb cloud AI or with `bb ai on`.
-- Once on, Automatic uses it when Codex is not signed in: Settings → AI services tries Codex first, then bb cloud. Without Codex, the microphone appears once bb cloud is ready.
-- Today's usage against your daily limit in this plugin's settings and with `bb ai usage`.
+- On by default once you sign in. Turn it off with `bb ai off`, or disable this plugin.
+- Automatic uses it when Codex is not signed in: Settings → AI services tries Codex first, then bb cloud. Without Codex, the microphone appears once bb cloud is ready.
+- Today's usage against your daily limit with `bb ai usage`.
 
 ## How it works
 
-Sign in with your bb account and turn bb cloud on. When a task uses bb cloud, bb sends its prompt to getbb.app, which forwards it to OpenRouter model providers with zero data retention: the text of a thread's first prompt for titles, the changed files with a diff excerpt for commit messages, and the recording for voice input. bb stores your daily usage totals and, for 30 days, metadata about each request such as its time, model, token counts, and cost. It never stores prompts, recordings, or replies. Turn bb cloud off with `bb ai off` or the switch in its settings; your bb account stays signed in.
+Sign in with your bb account. When a task uses bb cloud, bb sends its prompt to getbb.app, which forwards it to OpenRouter model providers with zero data retention: the text of a thread's first prompt for titles, the changed files with a diff excerpt for commit messages, and the recording for voice input. bb stores your daily usage totals and, for 30 days, metadata about each request such as its time, model, token counts, and cost. It never stores prompts, recordings, or replies. Turn bb cloud off with `bb ai off`; your bb account stays signed in.
 
 ## For agents
 
-`bb ai status` and `bb ai usage` report readiness and spend. `bb ai on` and `bb ai off` change the opt-in; turn it on only when the user asks. `bb settings ai-services set <task> bb` picks bb cloud for a task.
+`bb ai status` and `bb ai usage` report readiness and spend. `bb ai off` turns bb cloud off and `bb ai on` turns it back on; turn it on only when the user asks. `bb settings ai-services set <task> bb` picks bb cloud for a task, and `bb voice transcribe <file>` tests voice input.
 
 ## Requirements
 

@@ -12,10 +12,10 @@ plugin's `bb-account.v1.fetch` RPC, and readiness comes from
 `bb-account.v1.status`. The copied schemas live in `src/account-contract.ts`;
 any account state other than `signed-in` counts as signed out.
 
-- bb cloud is opt-in. The choice is stored in this plugin's kv under `enabled`
-  and defaults to off, so a signed-in account (including one adopted from a
-  Connect pairing) sends nothing until the user turns it on in Settings → bb
-  cloud AI, with `bb ai on`, or through the `setEnabled` RPC.
+- bb cloud is on by default. The choice is stored in this plugin's kv under
+  `enabled`; with nothing stored it is on, and a stored `false` (from
+  `bb ai off` or the `setEnabled` RPC) keeps it off across reloads. Only a
+  client call may change it; another plugin's `setEnabled` is refused.
 - `complete(prompt)` posts `{ prompt }` with `timeoutMs: 5000` and returns
   `text`. `transcribe(audio, { hint })` posts `{ audio, format, hint }` (base64
   audio, a format derived from the MIME type or file extension) with
@@ -29,9 +29,14 @@ any account state other than `signed-in` counts as signed out.
 - `status()` is not ready while bb cloud is off, when bb-account is not
   running, when the account is signed out, or while the account's daily budget
   is used up. Each message says what to do.
-- The `overview` RPC feeds the settings section; `bb ai status|usage` prints
-  the same data, and `bb ai on|off` changes the opt-in. Every command takes
-  `--json`.
+- The `overview` RPC reports the account, readiness, and usage; `bb ai
+status|usage` prints the same data, and `bb ai on|off` changes the setting.
+  Every command takes `--json`.
+- The gateway picks the models (`AI_TRANSCRIBE_MODELS` in
+  `apps/ai-gateway/wrangler.jsonc`: MAI-Transcribe 2, then Whisper Large V3
+  Turbo) and moves to the next one when a model refuses. Through OpenRouter,
+  MAI refuses WebM and MP4, so Chrome and Safari recordings are transcribed by
+  Whisper.
 
 What leaves the machine while bb cloud is on: the text of a thread's first
 prompt (titles), the changed files with a diff excerpt (commit messages), and
