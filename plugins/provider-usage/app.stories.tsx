@@ -284,6 +284,7 @@ function FooterPreview({ scenario }: { scenario: ScenarioName }) {
   return (
     <div className="w-[303px] overflow-hidden rounded-xl border border-sidebar-border bg-sidebar text-sidebar-foreground">
       <ProviderUsageStatusContent
+        pluginId="bb--provider-usage"
         dismiss={() => {}}
         snapshot={storySnapshot(scenario)}
         threadMachineId={null}
