@@ -55,6 +55,7 @@ export interface FindViewHostContentView {
 export interface FindViewHostWindow {
   contentView: FindViewHostContentView;
   getContentBounds(): FindViewBounds;
+  isDestroyed(): boolean;
   webContents: FindViewHostWebContents;
 }
 
@@ -75,10 +76,12 @@ export interface CreateDesktopFindViewManagerArgs {
 
 interface FindViewEntry {
   activeRequestId: number | null;
+  hostWebContentsId: number;
   hostWindow: FindViewHostWindow;
   query: string;
   topOffset: number;
   view: WebContentsView;
+  viewWebContentsId: number;
   visible: boolean;
 }
 
@@ -145,10 +148,12 @@ export function createDesktopFindViewManager({
     void view.webContents.loadURL(createFindBarViewUrl());
     const entry: FindViewEntry = {
       activeRequestId: null,
+      hostWebContentsId: hostWindow.webContents.id,
       hostWindow,
       query: "",
       topOffset: 0,
       view,
+      viewWebContentsId: view.webContents.id,
       visible: false,
     };
     entriesByHostId.set(hostWindow.webContents.id, entry);
@@ -181,10 +186,12 @@ export function createDesktopFindViewManager({
   }
 
   function destroyEntry(entry: FindViewEntry): void {
-    entriesByHostId.delete(entry.hostWindow.webContents.id);
-    entriesByViewId.delete(entry.view.webContents.id);
-    observedHostIds.delete(entry.hostWindow.webContents.id);
-    entry.hostWindow.contentView.removeChildView(entry.view);
+    entriesByHostId.delete(entry.hostWebContentsId);
+    entriesByViewId.delete(entry.viewWebContentsId);
+    observedHostIds.delete(entry.hostWebContentsId);
+    if (!entry.hostWindow.isDestroyed()) {
+      entry.hostWindow.contentView.removeChildView(entry.view);
+    }
     if (!entry.view.webContents.isDestroyed()) {
       entry.view.webContents.close();
     }
