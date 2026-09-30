@@ -66,6 +66,7 @@ interface SharedWorkflowView {
 }
 
 const ACTIVE_POLL_INTERVAL_MS = 1_000;
+const ACTIVE_POLL_MAX_BACKOFF_MS = 30_000;
 const WORKFLOW_PANEL_ACTION_ID = "workflow-run";
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const WORKFLOW_HEADER_GROUP_CLASS = activityRowClass(
@@ -350,7 +351,7 @@ function activateWorkflowAgent(
 function useWorkflowRun(
   threadId: string,
   runId: string | null,
-): { state: RunLoadState; refresh: () => Promise<void> } {
+): { state: RunLoadState; refresh: () => Promise<boolean> } {
   const rpc = useRpc<typeof workflowUiRpcContract>();
   const [state, setState] = useState<RunLoadState>({ status: "loading" });
   const requestSequence = useRef(0);
@@ -362,6 +363,7 @@ function useWorkflowRun(
       if (sequence === requestSequence.current) {
         setState({ status: "ready", run: result.run, refreshError: null });
       }
+      return true;
     } catch (error) {
       if (sequence === requestSequence.current) {
         const message = error instanceof Error ? error.message : String(error);
@@ -371,6 +373,7 @@ function useWorkflowRun(
             : { status: "error", message },
         );
       }
+      return false;
     }
   }, [rpc, runId, threadId]);
 
@@ -407,8 +410,17 @@ function useDocumentVisible(): boolean {
   );
 }
 
+function activePollDelay(failures: number): number {
+  return failures === 0
+    ? ACTIVE_POLL_INTERVAL_MS
+    : Math.min(
+        ACTIVE_POLL_INTERVAL_MS * 2 ** failures,
+        ACTIVE_POLL_MAX_BACKOFF_MS,
+      );
+}
+
 function useVisibleActivePolling(
-  refresh: () => Promise<void>,
+  refresh: () => Promise<boolean>,
   active: boolean,
 ): void {
   const visible = useDocumentVisible();
@@ -440,13 +452,15 @@ function useVisibleActivePolling(
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    let failures = 0;
     let timeout: number | null = null;
     const schedule = () => {
       timeout = window.setTimeout(() => {
-        void refresh().finally(() => {
+        void refresh().then((succeeded) => {
+          failures = succeeded ? 0 : failures + 1;
           if (!cancelled) schedule();
         });
-      }, ACTIVE_POLL_INTERVAL_MS);
+      }, activePollDelay(failures));
     };
     schedule();
     return () => {
@@ -470,8 +484,10 @@ function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
       if (sequence === requestSequence.current) {
         setState({ status: "ready", runs: result.runs });
       }
+      return true;
     } catch {
       if (sequence === requestSequence.current) setState({ status: "error" });
+      return false;
     }
   }, [rpc, threadId]);
 

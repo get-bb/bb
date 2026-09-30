@@ -215,6 +215,46 @@ describe("workflow composer banner", () => {
     slot.unmount();
   });
 
+  it("backs off while the server can't be reached, then polls every second again", async () => {
+    vi.useFakeTimers();
+    let reachable = false;
+    let polls = 0;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: {
+          workflowActiveRuns: () => {
+            polls += 1;
+            if (!reachable) {
+              throw Object.assign(new Error("HTTP 503: tunnel offline"), {
+                status: 503,
+              });
+            }
+            return { runs: [{ ...run }] };
+          },
+        },
+      },
+    );
+
+    await act(async () => Promise.resolve());
+    expect(polls).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(polls).toBeLessThanOrEqual(6);
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(polls).toBeLessThanOrEqual(8);
+
+    reachable = true;
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    const recovered = polls;
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+    expect(polls).toBe(recovered + 3);
+    slot.unmount();
+  });
+
   it("renders null when the scope thread has no active runs", async () => {
     const slot = renderSlot(
       banner,
@@ -550,6 +590,8 @@ describe("workflow-preview directive", () => {
     );
     expect(slot.getByText("Review the release")).toBeTruthy();
 
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(attempt).toBe(3);
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(slot.getByText("Complete")).toBeTruthy();
     expect(slot.queryByRole("status")).toBeNull();
