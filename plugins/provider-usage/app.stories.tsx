@@ -23,8 +23,12 @@ const claudeCodeLogoUrl = svgDataUrl(
 
 type ScenarioName =
   | "healthy"
+  | "mixedPool"
+  | "live"
   | "emptyPool"
   | "loading"
+  | "loadFailed"
+  | "accountsLoading"
   | "offline"
   | "authentication"
   | "missingProvider"
@@ -106,8 +110,101 @@ const healthyMachine = machine("host-m4", "Michael-M4", [
   provider("local-codex", "codex", measured("local@example.com", 17, "Pro")),
 ]);
 
-const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
+function twoWindows(
+  email: string,
+  fiveHour: number,
+  weekly: number,
+  planLabel: string,
+): ProviderUsage {
+  return {
+    status: "ok",
+    accountEmail: email,
+    planLabel,
+    windows: [
+      {
+        label: "Five-hour limit",
+        usedPercent: fiveHour,
+        resetsAt: futureIso(3),
+        cost: null,
+      },
+      {
+        label: "Weekly limit",
+        usedPercent: weekly,
+        resetsAt: futureIso(83),
+        cost: null,
+      },
+    ],
+  };
+}
+
+const mixedPool = machine("source:account-pool", "Account Pooler", [
+  provider("alex", "codex", twoWindows("alex@example.com", 12, 28, "Pro")),
+  provider("sam", "codex", twoWindows("sam@example.com", 64, 86, "Team")),
+  provider("ops", "codex", { status: "expired" }),
+  provider(
+    "team",
+    "claude-code",
+    twoWindows("team@example.com", 97, 71, "Max (20x)"),
+  ),
+  provider(
+    "research-long-account-name",
+    "claude-code",
+    twoWindows("research@example.com", 5, 41, "Max (5x)"),
+  ),
+  provider("backup", "claude-code", { status: "unauthenticated" }),
+]);
+
+function liveAccount(
+  providerId: string,
+  email: string,
+  planLabel: string,
+  windows: [string, number, string][],
+): UsageProvider {
+  const account = provider(`${providerId}:${email}`, providerId, {
+    status: "ok",
+    accountEmail: email,
+    planLabel,
+    windows: windows.map(([label, usedPercent, resetsAt]) => ({
+      label,
+      usedPercent,
+      resetsAt,
+      cost: null,
+    })),
+  });
+  return { ...account, accountLabel: email };
+}
+
+const livePool = machine("source:account-pool", "Account Pooler", [
+  liveAccount("codex", "work@example.com", "Pro", [
+    ["Weekly limit", 59, "2026-10-05T16:19:38.000Z"],
+    ["secondary", 0, "2026-09-30T16:13:24.323Z"],
+  ]),
+  liveAccount("codex", "personal@example.com", "Pro", [
+    ["Weekly limit", 61, "2026-10-03T17:00:18.000Z"],
+  ]),
+  liveAccount("claude-code", "personal@example.com", "Max (20x)", [
+    ["Five-hour limit", 16, "2026-09-30T18:50:00.000Z"],
+    ["Weekly limit", 58, "2026-09-30T19:00:00.000Z"],
+    ["Weekly · Fable", 1, "2026-09-30T19:00:00.000Z"],
+  ]),
+]);
+
+const scenarios: Record<
+  Exclude<ScenarioName, "loading" | "loadFailed">,
+  UsageSnapshot
+> = {
   healthy: { machines: [healthyMachine, healthyPool] },
+  mixedPool: { machines: [healthyMachine, mixedPool] },
+  live: { machines: [livePool] },
+  accountsLoading: {
+    machines: [
+      machine("source:account-pool", "Account Pooler", [
+        provider("alex", "codex", null),
+        provider("sam", "codex", null),
+        provider("team", "claude-code", null),
+      ]),
+    ],
+  },
   emptyPool: {
     machines: [
       healthyMachine,
@@ -149,23 +246,33 @@ function storySnapshot(name: ScenarioName): UsageStoreSnapshot {
   if (name === "loading") {
     return { data: null, error: null, isRefreshing: true };
   }
+  if (name === "loadFailed") {
+    return {
+      data: null,
+      error: "Couldn’t refresh usage.",
+      isRefreshing: false,
+    };
+  }
   return {
     data: scenarios[name],
     error: name === "failedRefresh" ? "Couldn’t refresh usage." : null,
-    isRefreshing: false,
+    isRefreshing: name === "accountsLoading",
   };
 }
 
 function SettingsPreview({ scenario }: { scenario: ScenarioName }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const machines = scenario === "loading" ? [] : scenarios[scenario].machines;
+  const machines =
+    scenario === "loading" || scenario === "loadFailed"
+      ? []
+      : scenarios[scenario].machines;
   return (
     <div className="min-h-56 w-full max-w-3xl rounded-lg bg-background p-5">
       <UsageSettingsContent
         machines={machines}
         selectedId={selectedId}
         loading={scenario === "loading"}
-        error={scenario === "failedRefresh"}
+        error={scenario === "failedRefresh" || scenario === "loadFailed"}
         onSelect={setSelectedId}
         onRefresh={() => {}}
       />
@@ -188,8 +295,13 @@ function FooterPreview({ scenario }: { scenario: ScenarioName }) {
 
 const descriptions: Record<ScenarioName, string> = {
   healthy: "Multiple pooled accounts with provider grouping and quota badges.",
+  live: "Account Pooler usage captured from a real bb server.",
+  mixedPool:
+    "Six pooled accounts across providers with two windows and sign-in states.",
   emptyPool: "Account Pooler is enabled and selectable but has no accounts.",
   loading: "The initial usage request has not completed.",
+  loadFailed: "The initial usage request failed with no cached data.",
+  accountsLoading: "Accounts are known but their first measurement is pending.",
   offline: "The selected persistent machine is currently disconnected.",
   authentication: "Signed-out and expired accounts remain distinct.",
   missingProvider: "The selected machine does not have the provider installed.",
@@ -199,8 +311,12 @@ const descriptions: Record<ScenarioName, string> = {
 
 const storyRows: readonly { label: string; scenario: ScenarioName }[] = [
   { label: "healthy", scenario: "healthy" },
+  { label: "mixed pool", scenario: "mixedPool" },
+  { label: "live pool", scenario: "live" },
   { label: "empty account pool", scenario: "emptyPool" },
   { label: "loading", scenario: "loading" },
+  { label: "load failed", scenario: "loadFailed" },
+  { label: "accounts loading", scenario: "accountsLoading" },
   { label: "offline machine", scenario: "offline" },
   { label: "authentication", scenario: "authentication" },
   { label: "missing provider", scenario: "missingProvider" },
