@@ -607,21 +607,26 @@ describe("createServerMovedWatcher", () => {
 
   it("logs and skips an invalid lock, then delivers the corrected one", async () => {
     const harness = await createHarness();
-    harness.watcher.start();
-    await harness.timers.flush();
-
     await writeFile(join(harness.dataDir, SERVER_MOVED_FILE_NAME), "{partial");
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.confirmMove).not.toHaveBeenCalled();
-    expect(harness.onMove).not.toHaveBeenCalled();
-    expect(harness.logWarning).toHaveBeenCalledOnce();
+    harness.watcher.start();
 
-    await writeServerMovedFile(harness.dataDir, movedFile());
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+    try {
+      await harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.logWarning).toHaveBeenCalledOnce();
+      });
+      expect(harness.confirmMove).not.toHaveBeenCalled();
+      expect(harness.onMove).not.toHaveBeenCalled();
+
+      await writeServerMovedFile(harness.dataDir, movedFile());
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      await harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("cancels pending checks when stopped", async () => {
