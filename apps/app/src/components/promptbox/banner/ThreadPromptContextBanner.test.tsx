@@ -306,6 +306,8 @@ describe("ThreadPromptContextBanner", () => {
 
   it.each([
     ["checks_pending", false, null],
+    ["checks_failed", false, null],
+    ["checks_failed", true, null],
     ["checks_pending", true, "Auto-merge on"],
     ["ready_to_merge", true, "Auto-merge on"],
     ["queued", true, "Queued to merge"],
@@ -327,7 +329,7 @@ describe("ThreadPromptContextBanner", () => {
               inMergeQueue: attention === "queued",
               review: { state: "approved", reviewRequestCount: 0 },
               checks: {
-                state: "pending",
+                state: attention === "checks_failed" ? "failing" : "pending",
                 totalCount: 1,
                 passedCount: 0,
                 failedCount: 0,
@@ -347,11 +349,16 @@ describe("ThreadPromptContextBanner", () => {
         expect(markup).toContain(`text-attention">· ${label}</span>`);
       } else {
         expect(markup).not.toContain('text-attention">·');
+        expect(markup).not.toContain("· Checks failing</span>");
       }
       expect(markup).toContain('class="size-4 shrink-0 text-success"');
       expect(markup).toContain('data-icon="GitPullRequestArrow"');
       expect(markup).not.toContain('data-icon="GitMerge"');
-      expect(markup).toContain('class="fill-attention"');
+      expect(markup).toContain(
+        attention === "checks_failed"
+          ? 'class="fill-destructive"'
+          : 'class="fill-attention"',
+      );
       expect(markup).not.toContain('alt="Checks pending"');
     },
   );
@@ -559,7 +566,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("animate-shine-icon");
   });
 
-  it("labels standalone actionable pull request attention", () => {
+  it("keeps failed-check detail accessible without a redundant label", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -587,7 +594,8 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain("PR #128");
-    expect(markup).toContain("· Checks failing");
+    expect(markup).not.toContain("· Checks failing");
+    expect(markup).toContain('title="Checks failing"');
     expect(markup).not.toContain("Checks failure");
   });
 

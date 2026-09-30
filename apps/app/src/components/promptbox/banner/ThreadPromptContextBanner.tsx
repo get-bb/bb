@@ -355,10 +355,10 @@ function ParentThreadInlineSegment({
 function shouldShowPullRequestAttentionLabel(
   pullRequest: ThreadPullRequest,
 ): boolean {
+  if (pullRequest.attention === "checks_failed") return false;
   return (
     (pullRequest.state === "open" &&
       (pullRequest.autoMerge || pullRequest.attention === "queued")) ||
-    pullRequest.attention === "checks_failed" ||
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested" ||
     pullRequest.attention === "conflicts" ||
