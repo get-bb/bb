@@ -7,41 +7,24 @@ import {
   Image,
   Platform,
   StyleSheet,
-  type ImageSourcePropType,
 } from "react-native";
-import androidLogo from "../../assets/android-splash-logo.png";
-import androidLogoDark from "../../assets/android-splash-logo-dark.png";
-import iosLogo from "../../assets/splash-icon.png";
-import iosLogoDark from "../../assets/splash-icon-dark.png";
+import splashLogo from "../../assets/splash-logo.png";
+import splashLogoDark from "../../assets/splash-logo-dark.png";
 
 const LAUNCH_SPLASH_MAX_MS = 8000;
 const LAUNCH_SPLASH_FADE_MS = 250;
 const SPLASH_HOLDING_PATHS = new Set(["/", "/webview"]);
 
-interface LaunchSplashArt {
-  background: string;
-  logo: ImageSourcePropType;
-}
+const LOGO_WIDTH = 112;
+const LOGO_HEIGHT = (LOGO_WIDTH * 487) / 581;
 
-const LAUNCH_SPLASH = Platform.select({
-  android: {
-    logoWidth: 112,
-    logoHeight: (112 * 487) / 581,
-    light: { background: "#ffffff", logo: androidLogo },
-    dark: { background: "#151515", logo: androidLogoDark },
-  },
-  default: {
-    logoWidth: 200,
-    logoHeight: 200,
-    light: { background: "#ffffff", logo: iosLogo },
-    dark: { background: "#000000", logo: iosLogoDark },
-  },
-});
-
-const launchArt: LaunchSplashArt =
+const launchArt =
   Appearance.getColorScheme() === "dark"
-    ? LAUNCH_SPLASH.dark
-    : LAUNCH_SPLASH.light;
+    ? {
+        background: Platform.OS === "android" ? "#151515" : "#000000",
+        logo: splashLogoDark,
+      }
+    : { background: "#ffffff", logo: splashLogo };
 
 let revealed = false;
 const listeners = new Set<() => void>();
@@ -68,10 +51,14 @@ export function revealApp(): void {
   for (const listener of listeners) listener();
 }
 
+export function useAppRevealed(): boolean {
+  return useSyncExternalStore(subscribe, () => revealed);
+}
+
 export function LaunchSplash() {
   const pathname = usePathname();
   const holdsSplash = SPLASH_HOLDING_PATHS.has(pathname);
-  const isRevealed = useSyncExternalStore(subscribe, () => revealed);
+  const isRevealed = useAppRevealed();
   const [opacity] = useState(() => new Animated.Value(1));
   const [faded, setFaded] = useState(false);
 
@@ -110,8 +97,8 @@ export function LaunchSplash() {
         onLoadEnd={hideNativeSplash}
         resizeMode="contain"
         style={{
-          width: LAUNCH_SPLASH.logoWidth,
-          height: LAUNCH_SPLASH.logoHeight,
+          width: LOGO_WIDTH,
+          height: LOGO_HEIGHT,
         }}
       />
     </Animated.View>

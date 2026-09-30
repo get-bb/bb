@@ -3,7 +3,11 @@ import { getThreadRoutePath } from "@bb/client-core";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
-import { useProfiles, useRealtimeConnectionState } from "@/app-shell";
+import {
+  useAppRevealed,
+  useProfiles,
+  useRealtimeConnectionState,
+} from "@/app-shell";
 import {
   parsePushNotificationData,
   resolvePushTargetProfile,
@@ -158,7 +162,9 @@ function FirstRunPrompt({
   const store = getPushStore();
   const notifications = getPushNotificationsModule();
   const [presentedFor, setPresentedFor] = useState<string | null>(null);
+  const revealed = useAppRevealed();
   const shouldAsk =
+    revealed &&
     available &&
     !prompted &&
     connected &&
