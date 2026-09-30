@@ -668,11 +668,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Renders your own React component on the plugin's settings page, below the [fields bb generated](declarative-settings). Use it for anything that is not a value in a form. With this, a plugin can:",
         bullets: [
+          "Set experimental_page: mobile to render exclusively on Mobile settings, such as connected phone-pairing controls",
           "Render whatever UI it needs, such as a connect-account button, a test-connection result, or a preview",
           "Run in the browser, so it stores nothing itself. It calls the plugin's own backend to do that",
           "Supply a heading and a one-line description for bb to render above it",
         ],
-        apiSymbols: ["PluginSettingsSectionRegistration"],
+        apiSymbols: [
+          "PluginSettingsSectionRegistration.experimental_page",
+          "PluginSettingsSectionRegistration",
+        ],
         firstParty: [
           "Account Pooler [Experimental]",
           "Keep Awake",

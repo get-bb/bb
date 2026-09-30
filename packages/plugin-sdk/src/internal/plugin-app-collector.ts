@@ -570,7 +570,12 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
+        const page = registration.experimental_page;
+        if (page !== undefined && page !== "mobile") {
+          throw new Error(`${kind}: experimental_page must be "mobile"`);
+        }
         collected.settingsSections.push({
+          ...(page !== undefined ? { experimental_page: page } : {}),
           id,
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),

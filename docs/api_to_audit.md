@@ -1,5 +1,9 @@
 # APIs To Audit
 
+## `settingsSection.experimental_page`
+
+`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile, retaining plugin context, lifecycle, and error boundaries. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard

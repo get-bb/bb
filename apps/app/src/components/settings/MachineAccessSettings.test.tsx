@@ -62,7 +62,7 @@ it("follows access availability through setup, readiness, revocation, and recove
   provider.availability = { status: "available" };
   rendered.rerender(view());
   expect(screen.getByText("Ready")).toBeTruthy();
-  expect(screen.getByText("Ready to add machines.")).toBeTruthy();
+  expect(screen.getByText("Ready to connect devices.")).toBeTruthy();
   state.config.serverAccess.providers = [];
   rendered.rerender(view());
   expect(

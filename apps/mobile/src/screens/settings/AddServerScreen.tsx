@@ -95,7 +95,7 @@ export function AddServerScreen() {
         options={{ title: firstRun ? "Connect to a bb server" : "Add server" }}
       />
       <GroupedScreen testID="add-server-screen">
-        <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → bb connect.">
+        <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → Mobile.">
           <GroupedRow
             title="Connect with bb connect"
             badge={{ icon: "Globe", symbol: "globe", color: colors.blue }}

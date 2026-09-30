@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import {
-  cleanup,
-  render,
-  screen,
-} from "@testing-library/react";
+  setPluginSlotRegistrations,
+  resetPluginSlotStoreForTest,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
@@ -17,6 +19,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
 });
 
@@ -74,4 +77,36 @@ it("keeps both install links available when release metadata cannot be loaded", 
     "https://github.com/get-bb/bb/releases/download/android-testing/bb-android.apk",
   );
   expect(screen.queryByText("Download ready APK")).toBeNull();
+});
+
+it("places mobile plugin sections only on Mobile and removes them when unregistered", async () => {
+  vi.spyOn(sdk.system, "mobileAppReleases").mockResolvedValue({
+    android: null,
+  });
+  setPluginSlotRegistrations(
+    "connection",
+    makePluginRegistrationSet({
+      settingsSections: [
+        {
+          id: "pair",
+          experimental_page: "mobile",
+          component: () => <p>Pair this phone</p>,
+        },
+        { id: "manage", component: () => <p>Manage connection</p> },
+      ],
+    }),
+  );
+  renderSection();
+  const plugin = render(
+    <MemoryRouter>
+      <PluginSettingsSections pluginId="connection" />
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText("Pair this phone")).toBeTruthy();
+  expect(plugin.container.textContent).toContain("Manage connection");
+  expect(plugin.container.textContent).not.toContain("Pair this phone");
+  act(() =>
+    setPluginSlotRegistrations("connection", makePluginRegistrationSet()),
+  );
+  expect(screen.queryByText("Pair this phone")).toBeNull();
 });

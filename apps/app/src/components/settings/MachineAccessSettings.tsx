@@ -135,8 +135,8 @@ export function MachineAccessSettingsContent({
 }) {
   return (
     <SettingsSection
-      title="Machine access"
-      description="Choose how new machines connect to the bb server."
+      title="Server access"
+      description="Choose how your devices connect to this bb server."
       action={<MachineAccessMethodPicker machineAccess={machineAccess} />}
       bodyClassName="space-y-3"
     >
@@ -233,7 +233,7 @@ function MachineAccessDetails({
           label="Server address"
           description={
             error === null ? (
-              "Use your own domain or an address on a shared network. Every machine you add must be able to reach this address; localhost won’t work."
+              "Use your own domain or an address on a shared network. Your devices must be able to reach this address; localhost won’t work."
             ) : (
               <span role="alert" className="text-destructive-text">
                 {error}
@@ -302,7 +302,7 @@ function MachineAccessStatus({
               (effective.availability?.status === "available"
                 ? effective.availability.serverUrl
                 : null) ??
-              "Ready to add machines."}
+              "Ready to connect devices."}
           </p>
         </div>
         {effective.pluginId !== null && (
@@ -324,29 +324,6 @@ function MachineAccessStatus({
           </Button>
         )}
       </div>
-    </div>
-  );
-}
-
-export function MobileAccessBanner() {
-  const machineAccess = useMachineAccess();
-  if (!machineAccess.access) return null;
-  return (
-    <div className="rounded-lg border border-border p-4 space-y-2">
-      <p className="text-sm font-medium">Connect your phone</p>
-      {machineAccess.selected === "direct" ? (
-        <p className="text-xs text-subtle-foreground">
-          {machineAccess.configurationMessage === null
-            ? `Enter this server URL in the app: ${machineAccess.access.effectiveUrl}`
-            : "Enter a server URL your phone can reach, such as a shared-network or Tailscale address."}
-        </p>
-      ) : machineAccess.effective ? (
-        <MachineAccessStatus machineAccess={machineAccess} />
-      ) : (
-        <p className="text-xs text-subtle-foreground">
-          This connection method is not installed.
-        </p>
-      )}
     </div>
   );
 }

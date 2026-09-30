@@ -614,10 +614,42 @@ describe("connect settings section", () => {
     await slot.findByText(/this bb is not connected to getbb.app/);
   });
 
+  it("only offers phone pairing while bb connect is connected", async () => {
+    const slot = renderSlot(
+      app.settingsSections[1]!,
+      {},
+      {
+        rpc: { status: () => status() },
+      },
+    );
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({ method: "status", input: null }),
+    );
+    expect(
+      slot.queryByRole("button", { name: "Add mobile device" }),
+    ).toBeNull();
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, connected());
+    await slot.findByRole("button", { name: "Add mobile device" });
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+      ...connected(),
+      enabled: false,
+    });
+    expect(
+      slot.queryByRole("button", { name: "Add mobile device" }),
+    ).toBeNull();
+    await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, {
+      ...connected(),
+      state: "reconnecting",
+    });
+    expect(
+      slot.queryByRole("button", { name: "Add mobile device" }),
+    ).toBeNull();
+  });
+
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
     const expiresAt = Date.now() + 600_000;
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
         rpc: {
@@ -631,7 +663,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByRole("button", { name: "Add mobile device" });
     expect(slot.queryByText("K7QP-2M4X")).toBeNull();
     fireEvent.click(
       await slot.findByRole("button", { name: "Add mobile device" }),
@@ -656,7 +688,7 @@ describe("connect settings section", () => {
   it("an expired mobile pairing code offers a fresh one", async () => {
     let minted = 0;
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
         rpc: {
@@ -673,7 +705,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByRole("button", { name: "Add mobile device" });
     fireEvent.click(
       await slot.findByRole("button", { name: "Add mobile device" }),
     );
@@ -692,7 +724,7 @@ describe("connect settings section", () => {
 
   it("explains the account machine limit with a dashboard link", async () => {
     const slot = renderSlot(
-      app.settingsSections[0]!,
+      app.settingsSections[1]!,
       {},
       {
         rpc: {
@@ -704,7 +736,7 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByText("Connected");
+    await slot.findByRole("button", { name: "Add mobile device" });
     fireEvent.click(
       await slot.findByRole("button", { name: "Add mobile device" }),
     );

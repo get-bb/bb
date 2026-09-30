@@ -638,11 +638,7 @@ function MobilePairingCard({
   );
 }
 
-function AddMobileDeviceSection({
-  dashboardUrl,
-}: {
-  dashboardUrl: string;
-}) {
+function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
   const rpc = useRpc<typeof connectRpcContract>();
   const [payload, setPayload] = useState<MobilePairingPayload | null>(null);
   const [minting, setMinting] = useState(false);
@@ -1394,8 +1390,6 @@ function ConnectedContent({
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
 
-      <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />
-
       <SharedPortsSection shares={status.shares} dimmed={false} />
 
       <TurnOffControls
@@ -1506,12 +1500,10 @@ function OffContent({
   );
 }
 
-function ConnectSettingsSection() {
+function useConnectStatus() {
   const rpc = useRpc<typeof connectRpcContract>();
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetch = useCallback(() => {
     rpc.call("status").then(
@@ -1540,6 +1532,29 @@ function ConnectSettingsSection() {
     }
   });
 
+  return { status, loadError, refetch };
+}
+
+function MobilePairingSection() {
+  const { status, loadError, refetch } = useConnectStatus();
+  if (loadError !== null)
+    return (
+      <div role="alert" className="space-y-2 text-sm">
+        <p>Could not load phone pairing: {loadError}</p>
+        <Button variant="outline" onClick={refetch}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (!status?.paired || !status.enabled || status.state !== "connected")
+    return null;
+  return <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />;
+}
+
+function ConnectSettingsSection() {
+  const { status, loadError, refetch } = useConnectStatus();
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showTurnedOff = useCallback(() => {
     setFlash("Remote access turned off");
     if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
@@ -1605,5 +1620,10 @@ export default definePluginApp((app) => {
     description:
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
+  });
+  app.slots.settingsSection({
+    id: "mobile-pairing",
+    experimental_page: "mobile",
+    component: MobilePairingSection,
   });
 });
