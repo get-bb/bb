@@ -57,7 +57,7 @@ describe("createSessionScheduler", () => {
     vi.useRealTimers();
   });
 
-  it("mints, installs the cookie in both stores, and renews 5 minutes before expiry", async () => {
+  it("mints, installs the cookie in both stores, and renews 5 minutes before expiry without leaving authenticated", async () => {
     const { cookies, fetchSession, scheduler, states } = setup();
     fetchSession.mockResolvedValueOnce(session(Date.now() + HOUR, "one"));
     const state = await scheduler.start(profile);
@@ -96,7 +96,6 @@ describe("createSessionScheduler", () => {
       "idle",
       "authenticating",
       "authenticated",
-      "authenticating",
       "authenticated",
     ]);
   });

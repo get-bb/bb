@@ -23,7 +23,7 @@ import { AppState, BackHandler, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
-import { useProfiles } from "@/app-shell";
+import { revealApp, useProfiles } from "@/app-shell";
 import {
   buildShellUrl,
   isExternallyOpenable,
@@ -129,6 +129,7 @@ export function ProfileWebViewScreen() {
   const bridge = useShellBridge(webViewRef, {
     onReady: (path) => {
       setLoad({ kind: "ready" });
+      revealApp();
       rememberPath(path);
     },
     onPath: rememberPath,
@@ -214,9 +215,17 @@ export function ProfileWebViewScreen() {
     storeReady: status === "ready",
     hasAnyProfile: profiles.length > 0,
     hasProfile: profile !== null && sourceUrl !== null,
+    requiresSession: profile?.mode === "connect",
     session,
     load,
   });
+
+  const showsFailure =
+    screen.kind === "error" ||
+    (screen.kind === "webview" && screen.serverErrorStatus !== null);
+  useEffect(() => {
+    if (showsFailure) revealApp();
+  }, [showsFailure]);
 
   if (screen.kind === "no-profile") {
     return <Redirect href="/settings/servers/add" />;
