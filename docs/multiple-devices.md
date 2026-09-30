@@ -20,7 +20,7 @@ machine cannot be removed.
 ## Open bb from another browser
 
 The simplest managed route is **bb connect**. Sign the server in to your bb
-account from Settings → Remote access (or `bb account login`, or
+account from Settings → bb connect (or `bb account login`, or
 `bb connect --code ...` with a dashboard code), then open its getbb.app URL.
 The server owns the tunnel and reconnects after restart.
 
@@ -99,7 +99,7 @@ connect machine with its own credential, which the getbb.app dashboard lists
 and can revoke.
 
 1. Sign the bb server in to your bb account first (Settings → bb account, `bb account login`, or `bb connect --code …`).
-2. Mint a pairing code for the phone: Settings → Remote access → **Add mobile device** (QR code plus the code as text, with a countdown), or run
+2. Mint a pairing code for the phone: Settings → bb connect → **Add mobile device** (QR code plus the code as text, with a countdown), or run
    `bb connect machine-code` (`--json` prints
    `{code, serverUrl, apex, expiresAt}`).
 3. In the mobile app, add a server over bb connect and scan the QR code or type

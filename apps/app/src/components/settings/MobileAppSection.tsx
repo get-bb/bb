@@ -1,5 +1,5 @@
 import { MobilePlatformIcon } from "./MobilePlatformIcon";
-import { Link } from "react-router-dom";
+import { MobileAccessBanner } from "./MachineAccessSettings";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -22,13 +22,7 @@ export function MobileAppSection() {
           Use bb from your phone
         </p>
       </div>
-      <p className="text-sm text-subtle-foreground">
-        After installing, pair your phone in{" "}
-        <Link to="/settings/plugins/connect" className="underline underline-offset-2">
-          Remote access
-        </Link>
-        , or enter a server URL in the app.
-      </p>
+      <MobileAccessBanner />
       <div className="space-y-5">
         <SettingsSection
           title={

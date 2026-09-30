@@ -9,10 +9,10 @@
     "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
-    "name": "Remote access",
+    "name": "bb connect",
     "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
     "branding": {
-      "icon": "Smartphone"
+      "icon": "ComputerCloud"
     },
     "server": "./src/server.ts",
     "app": "./app.tsx"

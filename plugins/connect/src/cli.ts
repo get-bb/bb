@@ -140,7 +140,7 @@ function formatMachineCode(payload: MobilePairingPayload): string {
     `Expires:    ${new Date(payload.expiresAt).toISOString()} (in about ${minutes} min)`,
     "",
     "Enter the code in the bb mobile app when it asks to pair over bb connect (or",
-    "scan the QR code from Settings → Remote access → Add mobile device). The phone",
+    "scan the QR code from Settings → bb connect → Add mobile device). The phone",
     "enrolls as a connect machine on this account — it appears in the getbb.app",
     "dashboard's machine list, where you can revoke it. The code works once.",
   ].join("\n");

@@ -187,7 +187,7 @@ so they carry over between navigation plugins.
 ## Mobile app
 
 - Downloads are available in Settings → Mobile without opting in.
-- Pair your phone under Settings → Remote access → **Add mobile device**.
+- Pair your phone under Settings → bb connect → **Add mobile device**.
 
 ## Changelog preview
 
@@ -266,7 +266,7 @@ Mobile app downloads are always available in Settings → Mobile (`/settings/mob
 **Download Android APK** downloads directly from the public `get-bb/bb` GitHub
 `android-testing` release's `bb-android.apk` asset. The APK does not pass through
 the bb server or its remote-access tunnel. No experiment or Android developer tools are needed.
-Pair either app through Settings → Remote access → **Add mobile device**.
+Pair either app through Settings → bb connect → **Add mobile device**.
 
 Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
 both public links. Add `--details --json` or call `system.mobileAppReleases()`

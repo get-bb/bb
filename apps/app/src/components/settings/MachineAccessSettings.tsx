@@ -213,65 +213,15 @@ function MachineAccessDetails({
   machineAccess: MachineAccessState;
   onNavigate?: () => void;
 }) {
-  const {
-    access,
-    configurationMessage,
-    disabled,
-    draft,
-    effective,
-    error,
-    saving,
-    selected,
-    value,
-  } = machineAccess;
-  const ready = configurationMessage === null;
+  const { access, disabled, draft, effective, error, saving, selected, value } =
+    machineAccess;
   return (
     <>
       {selected !== "direct" && effective !== undefined && (
-        <div className="@container">
-          <div className="flex flex-col gap-4 @lg:flex-row @lg:items-center @lg:justify-between @lg:gap-3">
-            <div className="min-w-0 space-y-1 @lg:flex-1">
-              <p className="flex items-center gap-2 text-xs font-medium">
-                {ready ? (
-                  <span
-                    className="size-2 shrink-0 rounded-full bg-success"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                {ready
-                  ? "Ready"
-                  : effective.availability?.status === "unavailable"
-                    ? "Unavailable"
-                    : "Needs configuration"}
-              </p>
-              <p className="text-xs text-subtle-foreground">
-                {configurationMessage ??
-                  (effective.availability?.status === "available"
-                    ? effective.availability.serverUrl
-                    : null) ??
-                  "Ready to add machines."}
-              </p>
-            </div>
-            {effective.pluginId !== null && (
-              <Button
-                variant={ready ? "outline" : "default"}
-                size="sm"
-                className="w-full @lg:w-auto"
-                asChild
-              >
-                <Link
-                  onClick={onNavigate}
-                  to={getPluginConfigurationRoutePath({
-                    pluginId: effective.pluginId,
-                  })}
-                >
-                  {ready ? "Manage" : `Set up ${effective.displayName}`}
-                  <Icon name="ArrowRight" />
-                </Link>
-              </Button>
-            )}
-          </div>
-        </div>
+        <MachineAccessStatus
+          machineAccess={machineAccess}
+          onNavigate={onNavigate}
+        />
       )}
       {selected !== "direct" && effective === undefined && (
         <p className="text-xs text-subtle-foreground">
@@ -317,5 +267,86 @@ function MachineAccessDetails({
         </SettingsWithControl>
       )}
     </>
+  );
+}
+
+function MachineAccessStatus({
+  machineAccess,
+  onNavigate,
+}: {
+  machineAccess: MachineAccessState;
+  onNavigate?: () => void;
+}) {
+  const { effective, configurationMessage } = machineAccess;
+  if (!effective) return null;
+  const ready = configurationMessage === null;
+  return (
+    <div className="@container">
+      <div className="flex flex-col gap-4 @lg:flex-row @lg:items-center @lg:justify-between @lg:gap-3">
+        <div className="min-w-0 space-y-1 @lg:flex-1">
+          <p className="flex items-center gap-2 text-xs font-medium">
+            {ready ? (
+              <span
+                className="size-2 shrink-0 rounded-full bg-success"
+                aria-hidden="true"
+              />
+            ) : null}
+            {ready
+              ? "Ready"
+              : effective.availability?.status === "unavailable"
+                ? "Unavailable"
+                : "Needs configuration"}
+          </p>
+          <p className="text-xs text-subtle-foreground">
+            {configurationMessage ??
+              (effective.availability?.status === "available"
+                ? effective.availability.serverUrl
+                : null) ??
+              "Ready to add machines."}
+          </p>
+        </div>
+        {effective.pluginId !== null && (
+          <Button
+            variant={ready ? "outline" : "default"}
+            size="sm"
+            className="w-full @lg:w-auto"
+            asChild
+          >
+            <Link
+              onClick={onNavigate}
+              to={getPluginConfigurationRoutePath({
+                pluginId: effective.pluginId,
+              })}
+            >
+              {ready ? "Manage" : `Set up ${effective.displayName}`}
+              <Icon name="ArrowRight" />
+            </Link>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function MobileAccessBanner() {
+  const machineAccess = useMachineAccess();
+  if (!machineAccess.access) return null;
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-2">
+      <p className="text-sm font-medium">Connect your phone</p>
+      {machineAccess.selected === "direct" ? (
+        <p className="text-xs text-subtle-foreground">
+          {machineAccess.configurationMessage === null
+            ? `Enter this server URL in the app: ${machineAccess.access.effectiveUrl}`
+            : "Enter a server URL your phone can reach, such as a shared-network or Tailscale address."}
+        </p>
+      ) : machineAccess.effective ? (
+        <MachineAccessStatus machineAccess={machineAccess} />
+      ) : (
+        <p className="text-xs text-subtle-foreground">
+          This connection method is not installed.
+        </p>
+      )}
+    </div>
   );
 }
