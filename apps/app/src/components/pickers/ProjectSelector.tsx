@@ -202,50 +202,52 @@ export function ProjectSelector({
               className="h-8 text-xs"
             />
           ) : null}
-          <CommandList
-            ref={listRef}
-            className="min-h-0 flex-1 overscroll-contain"
-          >
-            {projects.length > 0 ? (
-              <CommandGroup heading="Project">
-                {filteredProjects.map((project) => (
-                  <CommandItem
-                    key={project.id}
-                    value={project.id}
-                    keywords={[project.name]}
-                    aria-current={project.id === value ? "true" : undefined}
-                    onSelect={() => selectProject(project.id)}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                  >
-                    <Icon
-                      name="Folder"
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <span className="min-w-0 flex-1 truncate">
-                      {project.name}
-                    </span>
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto size-4",
-                        project.id === value ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden
-                    />
-                  </CommandItem>
-                ))}
-                {showSearch && filteredProjects.length === 0 ? (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:py-2">
-                    No projects found
-                  </div>
-                ) : null}
-              </CommandGroup>
-            ) : null}
+          <CommandList className="flex min-h-0 flex-1 flex-col overflow-hidden [&>[cmdk-list-sizer]]:flex [&>[cmdk-list-sizer]]:min-h-0 [&>[cmdk-list-sizer]]:flex-col">
+            <div
+              ref={listRef}
+              className="min-h-0 overflow-y-auto overscroll-contain"
+            >
+              {projects.length > 0 ? (
+                <CommandGroup heading="Project">
+                  {filteredProjects.map((project) => (
+                    <CommandItem
+                      key={project.id}
+                      value={project.id}
+                      keywords={[project.name]}
+                      aria-current={project.id === value ? "true" : undefined}
+                      onSelect={() => selectProject(project.id)}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="Folder"
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {project.name}
+                      </span>
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "ml-auto size-4",
+                          project.id === value ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                    </CommandItem>
+                  ))}
+                  {showSearch && filteredProjects.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:py-2">
+                      No projects found
+                    </div>
+                  ) : null}
+                </CommandGroup>
+              ) : null}
+            </div>
             {createProjectAction ||
             allowNoProject ||
             allProjectsValue !== undefined ? (
-              <div className="sticky bottom-0 bg-popover">
+              <div className="shrink-0">
                 {showActionSeparator ? <CommandSeparator /> : null}
                 <CommandGroup
                   heading={projects.length === 0 ? "Project" : undefined}

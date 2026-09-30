@@ -333,7 +333,9 @@ describe("ProjectSelector", () => {
     );
     expect(dialog.className).toContain("overflow-hidden");
 
-    const list = document.querySelector<HTMLElement>("[cmdk-list]");
+    const list = screen
+      .getByRole("group", { name: "Project" })
+      .closest<HTMLElement>(".overflow-y-auto");
     expect(list).not.toBeNull();
     expect(list?.className).toContain("overflow-y-auto");
     expect(list?.className).toContain("overscroll-contain");
