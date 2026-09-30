@@ -95,6 +95,11 @@ function setup(options: SetupOptions = {}) {
     createSessionScheduler: () => {
       const scheduler = createSessionScheduler({
         cookieStore: { set: async () => true },
+        sessionCache: {
+          read: async () => null,
+          write: async () => {},
+          clear: async () => {},
+        },
         fetchSession,
       });
       schedulers.push(scheduler);
@@ -137,7 +142,7 @@ function sessionCookie(value: string): DesktopSession {
 }
 
 async function flush(): Promise<void> {
-  for (let i = 0; i < 4; i += 1) await Promise.resolve();
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
 }
 
 async function settle(): Promise<void> {

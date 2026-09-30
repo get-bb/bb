@@ -7,6 +7,7 @@ import { describeError } from "../describe-error";
 import type { ConnectServerProfile } from "../profiles/profile";
 import { mapAuthError } from "./auth-error";
 import { installSessionCookie, type CookieStoreLike } from "./cookie-store";
+import type { SessionCacheLike } from "./session-cache";
 
 const SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
 const SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
@@ -21,6 +22,7 @@ export type SessionState =
 
 export interface SessionSchedulerDeps {
   cookieStore: CookieStoreLike;
+  sessionCache: SessionCacheLike;
   fetchSession?: (credential: ConnectCredential) => Promise<DesktopSession>;
 }
 
@@ -77,7 +79,11 @@ export function createSessionScheduler(
     mode: "renew" | "verify",
   ): Promise<SessionState> {
     const isCurrent = (): boolean => generation === startedGeneration;
-    if (mode === "renew" && state.status !== "authenticated") {
+    if (
+      mode === "renew" &&
+      state.status !== "authenticated" &&
+      state.status !== "authenticating"
+    ) {
       setState({ status: "authenticating" });
     }
     try {
@@ -90,18 +96,15 @@ export function createSessionScheduler(
       await installSessionCookie(deps.cookieStore, target.serverUrl, session);
       if (!isCurrent()) return state;
       const expiresAt = session.cookie.expiresAt;
-      setState({ status: "authenticated", expiresAt });
-      scheduleAt(
-        Math.max(
-          Date.now() + SESSION_MIN_RENEWAL_DELAY_MS,
-          expiresAt - SESSION_RENEWAL_LEAD_MS,
-        ),
-        startedGeneration,
-      );
+      void deps.sessionCache
+        .write(target.id, { serverUrl: target.serverUrl, session })
+        .catch(() => undefined);
+      authenticate(expiresAt, startedGeneration);
       return state;
     } catch (error) {
       if (!isCurrent()) return state;
       if (mapAuthError(error) === "auth-required") {
+        void deps.sessionCache.clear(target.id).catch(() => undefined);
         clearTimer();
         setState({ status: "auth-required", detail: describeError(error) });
         return state;
@@ -114,21 +117,70 @@ export function createSessionScheduler(
     }
   }
 
+  function authenticate(expiresAt: number, startedGeneration: number): void {
+    setState({ status: "authenticated", expiresAt });
+    scheduleAt(
+      Math.max(
+        Date.now() + SESSION_MIN_RENEWAL_DELAY_MS,
+        expiresAt - SESSION_RENEWAL_LEAD_MS,
+      ),
+      startedGeneration,
+    );
+  }
+
+  async function resumeOrMint(
+    target: ConnectServerProfile,
+    startedGeneration: number,
+  ): Promise<SessionState> {
+    const isCurrent = (): boolean => generation === startedGeneration;
+    const stored = await deps.sessionCache.read(target.id).catch(() => null);
+    if (!isCurrent()) return state;
+    if (
+      stored === null ||
+      stored.serverUrl !== target.serverUrl ||
+      stored.session.cookie.expiresAt - Date.now() <= SESSION_RENEWAL_LEAD_MS
+    ) {
+      return runRenewal(target, startedGeneration, "renew");
+    }
+    try {
+      await installSessionCookie(
+        deps.cookieStore,
+        target.serverUrl,
+        stored.session,
+      );
+    } catch {
+      return isCurrent()
+        ? runRenewal(target, startedGeneration, "renew")
+        : state;
+    }
+    if (!isCurrent()) return state;
+    authenticate(stored.session.cookie.expiresAt, startedGeneration);
+    return state;
+  }
+
+  function track(
+    run: (startedGeneration: number) => Promise<SessionState>,
+  ): Promise<SessionState> {
+    const startedGeneration = generation;
+    const entry = {
+      generation: startedGeneration,
+      promise: run(startedGeneration).finally(() => {
+        if (inFlight === entry) inFlight = null;
+      }),
+    };
+    inFlight = entry;
+    return entry.promise;
+  }
+
   function mint(mode: "renew" | "verify"): Promise<SessionState> {
     const target = profile;
     if (target === null) return Promise.resolve(state);
     if (inFlight !== null && inFlight.generation === generation) {
       return inFlight.promise;
     }
-    const startedGeneration = generation;
-    const entry = {
-      generation: startedGeneration,
-      promise: runRenewal(target, startedGeneration, mode).finally(() => {
-        if (inFlight === entry) inFlight = null;
-      }),
-    };
-    inFlight = entry;
-    return entry.promise;
+    return track((startedGeneration) =>
+      runRenewal(target, startedGeneration, mode),
+    );
   }
 
   function renewNow(): Promise<SessionState> {
@@ -146,7 +198,10 @@ export function createSessionScheduler(
     start(next) {
       stop();
       profile = next;
-      return renewNow();
+      setState({ status: "authenticating" });
+      return track((startedGeneration) =>
+        resumeOrMint(next, startedGeneration),
+      );
     },
     renewNow,
     verifySession() {

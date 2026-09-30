@@ -369,7 +369,11 @@ as the first argument drives a dev client through Metro instead.
 - Session: `src/lib/session` mints `POST <serverUrl>/api/connect/desktop-session`
   with the credential, installs the cookie in both native jars (`Secure`
   follows the server URL's scheme so a plain-http stub gate works), renews
-  five minutes before expiry and on AppState active. The cookie lasts seven
+  five minutes before expiry and on AppState active. It records the cookie's
+  name and expiry per profile (MMKV `bb.connectSession.<profileId>`); a cold
+  start with an unexpired record and the cookie present in both jars resumes
+  that session instead of minting, so the page loads without a round trip to
+  the gate. A refused mint clears the record. The cookie lasts seven
   days; the gate re-issues it once a day on ordinary responses and rejects it
   within about 20 seconds of the machine being revoked. The connector
   (`src/lib/connection`) re-checks the session on any 401/403 (an API call

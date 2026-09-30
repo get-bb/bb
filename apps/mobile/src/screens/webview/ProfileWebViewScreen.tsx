@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
 import { revealApp, useProfiles } from "@/app-shell";
+import { nativeSessionCache } from "@/lib/native";
 import {
   buildShellUrl,
   isExternallyOpenable,
@@ -138,6 +139,7 @@ export function ProfileWebViewScreen() {
     },
   });
 
+  const connectProfileId = profile?.mode === "connect" ? profile.id : null;
   useEffect(
     () =>
       subscribeToShellCommands((command) => {
@@ -145,11 +147,14 @@ export function ProfileWebViewScreen() {
           webViewRef.current?.clearCache(true);
           void CookieManager.clearAll(false);
           void CookieManager.clearAll(true);
+          if (connectProfileId !== null) {
+            void nativeSessionCache.clear(connectProfileId);
+          }
         }
         setLoad({ kind: "loading" });
         setReloadKey((value) => value + 1);
       }),
-    [],
+    [connectProfileId],
   );
 
   const safeArea = useMemo(
