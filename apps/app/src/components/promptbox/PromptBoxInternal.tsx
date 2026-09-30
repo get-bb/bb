@@ -3323,6 +3323,7 @@ export function PromptBoxInternal({
                   <VoiceRecordingBar
                     state={renderedVoiceActionState}
                     stream={voice.stream}
+                    submitIcon={submitIcon ?? "CornerDownLeft"}
                     onConfirm={voice.stop}
                     onSend={voice.send}
                     onCancel={cancelVoiceInput}

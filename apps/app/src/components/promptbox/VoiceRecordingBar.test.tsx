@@ -21,6 +21,7 @@ describe("VoiceRecordingBar", () => {
       <VoiceRecordingBar
         state="recording"
         stream={null}
+        submitIcon="CornerDownLeft"
         onConfirm={onConfirm}
         onSend={onSend}
         onCancel={vi.fn()}
@@ -58,6 +59,7 @@ describe("VoiceRecordingBar", () => {
       <VoiceRecordingBar
         state="transcribing"
         stream={null}
+        submitIcon="CornerDownLeft"
         onConfirm={onConfirm}
         onSend={onSend}
         onCancel={onCancel}
@@ -79,5 +81,31 @@ describe("VoiceRecordingBar", () => {
     const cancel = screen.getByRole("button", { name: "Cancel transcription" });
     fireEvent.click(cancel);
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("shows transcription progress on the action that was pressed", () => {
+    const props = {
+      stream: null,
+      submitIcon: "ArrowUp" as const,
+      onConfirm: vi.fn(),
+      onSend: vi.fn(),
+      onCancel: vi.fn(),
+    };
+    const { rerender } = render(
+      <VoiceRecordingBar state="recording" {...props} />,
+    );
+    const send = screen.getByRole("button", { name: "Send voice input" });
+    expect(send.querySelector('[data-icon-name="ArrowUp"]')).toBeTruthy();
+    fireEvent.click(send);
+    rerender(<VoiceRecordingBar state="transcribing" {...props} />);
+
+    const sending = screen.getByRole("button", {
+      name: "Transcribing and sending",
+    });
+    expect(sending.querySelector('[data-icon-name="Spinner"]')).toBeTruthy();
+    expect(sending.className).toContain("disabled:opacity-100");
+    const stop = screen.getByRole("button", { name: "Stop and add to draft" });
+    expect(stop.querySelector('[data-icon-name="Spinner"]')).toBeNull();
+    expect(stop.className).not.toContain("disabled:opacity-100");
   });
 });

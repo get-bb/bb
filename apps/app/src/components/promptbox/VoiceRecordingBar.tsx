@@ -1,11 +1,19 @@
+import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { WaveformVisualizer } from "./WaveformVisualizer.js";
 
 interface VoiceRecordingBarProps {
   state: "recording" | "transcribing";
   stream: MediaStream | null;
+  submitIcon: IconName;
   onConfirm: () => void;
   onSend: () => void;
   onCancel: () => void;
@@ -19,11 +27,17 @@ const ACTION_BUTTON_CLASS =
 export function VoiceRecordingBar({
   state,
   stream,
+  submitIcon,
   onConfirm,
   onSend,
   onCancel,
 }: VoiceRecordingBarProps) {
+  const [pressedAction, setPressedAction] = useState<"confirm" | "send">(
+    "confirm",
+  );
   const isTranscribing = state === "transcribing";
+  const isConfirming = isTranscribing && pressedAction === "confirm";
+  const isSending = isTranscribing && pressedAction === "send";
 
   return (
     <div className="flex flex-row items-center gap-2 px-2 py-1.5">
@@ -49,37 +63,69 @@ export function VoiceRecordingBar({
           {isTranscribing ? "Transcribing" : "Recording"}
         </span>
       </div>
-      <Button
-        type="button"
-        size="icon"
-        variant="secondary"
-        aria-label={
-          isTranscribing ? "Transcribing voice input" : "Stop and add to draft"
-        }
-        disabled={isTranscribing}
-        onClick={onConfirm}
-        className={ACTION_BUTTON_CLASS}
-      >
-        {isTranscribing ? (
-          <Icon name="Spinner" className="size-4 animate-spin" />
-        ) : (
-          <Icon
-            name="Square"
-            className="size-3.5 fill-current [&_*]:stroke-0"
-          />
-        )}
-      </Button>
-      <Button
-        type="button"
-        size="icon"
-        variant="default"
-        aria-label="Send voice input"
-        disabled={isTranscribing}
-        onClick={onSend}
-        className={ACTION_BUTTON_CLASS}
-      >
-        <Icon name="CornerDownLeft" className="size-4" />
-      </Button>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              aria-label={
+                isConfirming
+                  ? "Transcribing voice input"
+                  : "Stop and add to draft"
+              }
+              disabled={isTranscribing}
+              onClick={() => {
+                setPressedAction("confirm");
+                onConfirm();
+              }}
+              className={cn(
+                ACTION_BUTTON_CLASS,
+                isConfirming && "disabled:opacity-100",
+              )}
+            >
+              {isConfirming ? (
+                <Icon name="Spinner" className="size-4 animate-spin" />
+              ) : (
+                <Icon
+                  name="Square"
+                  className="size-3.5 fill-current [&_*]:stroke-0"
+                />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Add to draft</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="default"
+              aria-label={
+                isSending ? "Transcribing and sending" : "Send voice input"
+              }
+              disabled={isTranscribing}
+              onClick={() => {
+                setPressedAction("send");
+                onSend();
+              }}
+              className={cn(
+                ACTION_BUTTON_CLASS,
+                isSending && "disabled:opacity-100",
+              )}
+            >
+              {isSending ? (
+                <Icon name="Spinner" className="size-4 animate-spin" />
+              ) : (
+                <Icon name={submitIcon} className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Send</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
