@@ -72,7 +72,7 @@ import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
   getPullRequestStateDisplay,
   getPullRequestAttentionDisplay,
-  getPullRequestGithubStatus,
+  getPullRequestGithubCheckStatus,
 } from "@/lib/pull-request-display";
 import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
@@ -444,7 +444,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   if (!pullRequest) return null;
   const stateDisplay = getPullRequestStateDisplay(pullRequest);
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
-  const checkStatus = getPullRequestGithubStatus(pullRequest);
+  const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   const statusDisplay =
     attentionDisplay.label !== stateDisplay.label ? attentionDisplay : null;
   return (

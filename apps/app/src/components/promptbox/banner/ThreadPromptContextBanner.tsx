@@ -44,7 +44,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   getPullRequestAttentionDisplay,
-  getPullRequestGithubStatus,
+  getPullRequestGithubCheckStatus,
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
@@ -610,7 +610,7 @@ function PullRequestBannerLink({
       className={cn(
         "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        getPullRequestGithubStatus(pullRequest) !== null
+        getPullRequestGithubCheckStatus(pullRequest) !== null
           ? "min-w-13"
           : "min-w-8",
         "overflow-hidden",

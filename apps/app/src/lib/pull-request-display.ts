@@ -14,7 +14,7 @@ interface PullRequestDisplay {
   className: string;
 }
 
-export type GithubStatus = "success" | "failure" | "pending";
+export type GithubCheckStatus = "success" | "failure" | "pending";
 
 interface PullRequestStateDisplay extends PullRequestDisplay {
   dotClass: string;
@@ -186,25 +186,21 @@ const ATTENTION_DISPLAY: Record<
   },
 };
 
-export function getPullRequestGithubStatus(
+export function getPullRequestGithubCheckStatus(
   pullRequest: ThreadPullRequest,
-): GithubStatus | null {
+): GithubCheckStatus | null {
   if (pullRequest.state !== "open" && pullRequest.state !== "draft") {
     return null;
   }
-  switch (pullRequest.attention) {
-    case "checks_failed":
-    case "changes_requested":
-    case "conflicts":
+  switch (pullRequest.checks.state) {
+    case "passing":
+      return "success";
+    case "failing":
       return "failure";
-    case "queued":
-    case "review_requested":
-    case "checks_pending":
-    case "blocked":
+    case "pending":
       return "pending";
-    case "ready_to_merge":
-      return pullRequest.autoMerge ? "pending" : "success";
-    default:
+    case "no_checks":
+    case "unknown":
       return null;
   }
 }

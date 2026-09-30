@@ -2,7 +2,7 @@ import type { ThreadPullRequest } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   getPullRequestAttentionDisplay,
-  getPullRequestGithubStatus,
+  getPullRequestGithubCheckStatus,
   getPullRequestStateDisplay,
 } from "./pull-request-display";
 
@@ -39,21 +39,40 @@ function pullRequest(
 
 describe("pull request signals", () => {
   it.each([
-    ["blocked", "pending", "text-attention"],
-    ["review_requested", "pending", "text-attention"],
-    ["checks_pending", "pending", "text-attention"],
-    ["queued", "pending", "text-attention"],
-    ["conflicts", "failure", "text-destructive"],
-    ["changes_requested", "failure", "text-destructive"],
-    ["checks_failed", "failure", "text-destructive"],
+    ["blocked", "success", "text-attention"],
+    ["review_requested", "success", "text-attention"],
+    ["checks_pending", "success", "text-attention"],
+    ["queued", "success", "text-attention"],
+    ["conflicts", "success", "text-destructive"],
+    ["changes_requested", "success", "text-destructive"],
+    ["checks_failed", "success", "text-destructive"],
     ["ready_to_merge", "success", "text-success"],
-    ["none", null, "text-muted-foreground"],
+    ["none", "success", "text-muted-foreground"],
   ] as const)(
-    "shows %s even when the checks are green and the label is hidden",
+    "keeps passing checks separate from %s attention",
     (attention, badge, color) => {
       const pr = pullRequest({ attention });
-      expect(getPullRequestGithubStatus(pr)).toBe(badge);
+      expect(getPullRequestGithubCheckStatus(pr)).toBe(badge);
       expect(getPullRequestAttentionDisplay(pr).className).toBe(color);
+    },
+  );
+
+  it.each([
+    ["passing", "success"],
+    ["failing", "failure"],
+    ["pending", "pending"],
+    ["no_checks", null],
+    ["unknown", null],
+  ] as const)(
+    "uses checks %s for the favicon despite merge automation",
+    (state, status) => {
+      const pr = pullRequest({
+        autoMerge: true,
+        inMergeQueue: true,
+        attention: "queued",
+      });
+      pr.checks.state = state;
+      expect(getPullRequestGithubCheckStatus(pr)).toBe(status);
     },
   );
 
@@ -79,7 +98,7 @@ describe("pull request signals", () => {
     });
     const ready = { ...pr, attention: "ready_to_merge" as const };
     expect(getPullRequestAttentionDisplay(ready).label).toBe("Auto-merge on");
-    expect(getPullRequestGithubStatus(ready)).toBe("pending");
+    expect(getPullRequestGithubCheckStatus(ready)).toBe("pending");
   });
 
   it.each(["checks_failed", "conflicts", "changes_requested"] as const)(
@@ -98,7 +117,7 @@ describe("pull request signals", () => {
         }[attention],
         className: "text-destructive",
       });
-      expect(getPullRequestGithubStatus(pr)).toBe("failure");
+      expect(getPullRequestGithubCheckStatus(pr)).toBe("success");
     },
   );
 
@@ -114,7 +133,9 @@ describe("pull request signals", () => {
       expect(getPullRequestStateDisplay(pr).label).toBe(
         state[0]!.toUpperCase() + state.slice(1),
       );
-      expect(getPullRequestGithubStatus(pr)).toBeNull();
+      expect(getPullRequestGithubCheckStatus(pr)).toBe(
+        state === "draft" ? "success" : null,
+      );
     },
   );
 });

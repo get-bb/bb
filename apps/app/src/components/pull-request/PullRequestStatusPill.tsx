@@ -4,7 +4,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   getPullRequestAttentionDisplay,
   getPullRequestStateDisplay,
-  getPullRequestGithubStatus,
+  getPullRequestGithubCheckStatus,
 } from "@/lib/pull-request-display";
 import { GithubFaviconIcon } from "./GithubFaviconIcon";
 
@@ -35,7 +35,7 @@ export function PullRequestStatusPill({
   pullRequest: ThreadPullRequest;
   className?: string;
 }) {
-  const checkStatus = getPullRequestGithubStatus(pullRequest);
+  const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   return (
     <span
       title={getPullRequestAttentionDisplay(pullRequest).label}
