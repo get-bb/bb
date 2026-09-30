@@ -48,6 +48,7 @@ const idleVoice: PromptVoiceConfig = {
   stream: null,
   start: noop,
   stop: noop,
+  send: noop,
   cancel: noop,
 };
 
@@ -1087,6 +1088,65 @@ export function Overview() {
         hint="voice.state === 'transcribing' → spinner + cancel"
       >
         <RecordingProcessingRow />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+function CompactVoiceComparisonRow({
+  compact = true,
+  initialValue = "",
+  running = false,
+}: {
+  compact?: boolean;
+  initialValue?: string;
+  running?: boolean;
+}) {
+  const { value, mentionRanges, onChange } = useControlledValue(initialValue);
+  const [state, setState] = useState<PromptVoiceConfig["state"]>("idle");
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      placeholder="Ask for a follow-up"
+      compact={
+        compact
+          ? { isCompact: true, placeholder: "Ask for a follow-up" }
+          : undefined
+      }
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission({ isRunning: running, onStop: noop })}
+      voice={{
+        ...idleVoice,
+        state,
+        start: () => setState("recording"),
+        stop: () => setState("transcribing"),
+        cancel: () => setState("idle"),
+      }}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
+export function CompactVoiceComparison() {
+  return (
+    <StoryCard>
+      <StoryRow label="Expanded reference">
+        <CompactVoiceComparisonRow compact={false} />
+      </StoryRow>
+      <StoryRow label="Compact empty input">
+        <CompactVoiceComparisonRow />
+      </StoryRow>
+      <StoryRow label="Compact submit">
+        <CompactVoiceComparisonRow initialValue="Review the changes" />
+      </StoryRow>
+      <StoryRow label="Compact stop">
+        <CompactVoiceComparisonRow running />
       </StoryRow>
     </StoryCard>
   );

@@ -1176,6 +1176,7 @@ describe("PromptBoxInternal controlled value sync", () => {
               stream: null,
               start,
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -2163,6 +2164,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
             stream: null,
             start: vi.fn(),
             stop: vi.fn(),
+            send: vi.fn(),
             cancel: vi.fn(),
           },
         })}
@@ -2509,6 +2511,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start: vi.fn(),
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -2643,6 +2646,7 @@ describe("PromptBoxInternal compact layout", () => {
       stream: null,
       start: vi.fn(),
       stop: vi.fn(),
+      send: vi.fn(),
       cancel: vi.fn(),
     };
 
@@ -2704,6 +2708,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start,
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -2753,6 +2758,7 @@ describe("PromptBoxInternal compact layout", () => {
                 stream: null,
                 start,
                 stop: vi.fn(),
+                send: vi.fn(),
                 cancel: vi.fn(),
               },
             })}
@@ -2804,6 +2810,7 @@ describe("PromptBoxInternal compact layout", () => {
                 stream: null,
                 start,
                 stop: vi.fn(),
+                send: vi.fn(),
                 cancel: vi.fn(),
               },
             })}
@@ -2842,6 +2849,7 @@ describe("PromptBoxInternal compact layout", () => {
         stream: null,
         start,
         stop: vi.fn(),
+        send: vi.fn(),
         cancel: vi.fn(),
       };
       const onSubmit = vi.fn();
@@ -2985,6 +2993,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start,
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -3024,6 +3033,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start,
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -3326,6 +3336,7 @@ describe("PromptBoxInternal compact layout", () => {
             stream: null,
             start: vi.fn(),
             stop: vi.fn(),
+            send: vi.fn(),
             cancel: vi.fn(),
           },
         })}
@@ -3348,6 +3359,7 @@ describe("PromptBoxInternal compact layout", () => {
       stream: null,
       start: vi.fn(),
       stop: vi.fn(),
+      send: vi.fn(),
       cancel: vi.fn(),
     };
     const view = render(
@@ -3398,6 +3410,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start: vi.fn(),
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -3435,8 +3448,149 @@ describe("PromptBoxInternal compact layout", () => {
     },
   );
 
+  it("sends the complete updated draft through the primary submit action once after voice completion", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const onSubmit = vi.fn();
+    function Harness() {
+      const [value, setValue] = useState("Existing prompt");
+      const [state, setState] = useState<"transcribing" | "idle">(
+        "transcribing",
+      );
+      return (
+        <>
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value,
+              onChange: (next) => setValue(next),
+              onSubmit: () => onSubmit(value),
+              voice: {
+                state,
+                isSupported: true,
+                stream: null,
+                start: vi.fn(),
+                stop: vi.fn(),
+                send: vi.fn(),
+                cancel: vi.fn(),
+              },
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+          <button type="button" onClick={() => setState("idle")}>
+            Finish transcription
+          </button>
+        </>
+      );
+    }
+    render(<Harness />);
+    act(() => promptBoxRef.current?.sendVoiceTranscript("more words"));
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Finish transcription" }),
+    );
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
+        "Existing prompt more words",
+      ),
+    );
+  });
+
+  it("keeps the transcribed draft without submitting when primary submission is unavailable", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const onSubmit = vi.fn();
+    function Harness() {
+      const [value, setValue] = useState("Existing prompt");
+      const [state, setState] = useState<"transcribing" | "idle">(
+        "transcribing",
+      );
+      return (
+        <>
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value,
+              onChange: (next) => setValue(next),
+              onSubmit,
+              submission: { disabled: true },
+              voice: {
+                state,
+                isSupported: true,
+                stream: null,
+                start: vi.fn(),
+                stop: vi.fn(),
+                send: vi.fn(),
+                cancel: vi.fn(),
+              },
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+          <button type="button" onClick={() => setState("idle")}>
+            Finish transcription
+          </button>
+        </>
+      );
+    }
+    render(<Harness />);
+    act(() => promptBoxRef.current?.sendVoiceTranscript("more words"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Finish transcription" }),
+    );
+    await waitFor(() =>
+      expect(getPromptEditorElement().textContent).toBe(
+        "Existing prompt more words",
+      ),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each(["recording", "transcribing"] as const)(
+    "keeps empty compact drafts compact while %s and reveals existing draft content",
+    (state) => {
+      const props = createPromptBoxProps({
+        compact: { isCompact: true, placeholder: "Ask a follow-up" },
+        voice: {
+          state,
+          isSupported: true,
+          stream: null,
+          start: vi.fn(),
+          stop: vi.fn(),
+          send: vi.fn(),
+          cancel: vi.fn(),
+        },
+      });
+      const view = render(<PromptBoxInternal {...props} />);
+      const form = document.querySelector("[data-promptbox]");
+      expect(form?.hasAttribute("data-promptbox-compact")).toBe(true);
+      expect(
+        screen.getByRole("button", { name: "Send voice input" }),
+      ).toBeTruthy();
+      expect(screen.queryByRole("textbox")).toBeNull();
+
+      view.rerender(<PromptBoxInternal {...props} value="Existing draft" />);
+      expect(form?.hasAttribute("data-promptbox-compact")).toBe(false);
+      expect(screen.getByRole("textbox").textContent).toBe("Existing draft");
+
+      view.rerender(
+        <PromptBoxInternal
+          {...props}
+          attachments={{
+            items: [
+              {
+                type: "localFile",
+                name: "notes.txt",
+                path: "notes.txt",
+                sizeBytes: 1,
+              },
+            ],
+          }}
+        />,
+      );
+      expect(form?.hasAttribute("data-promptbox-compact")).toBe(false);
+      expect(screen.getByText("notes.txt")).toBeTruthy();
+    },
+  );
+
   it("keeps the prompt editor visible while the waveform occupies the action row", () => {
     const stop = vi.fn();
+    const send = vi.fn();
     const cancel = vi.fn();
     render(
       <PromptBoxInternal
@@ -3448,6 +3602,7 @@ describe("PromptBoxInternal compact layout", () => {
             stream: null,
             start: vi.fn(),
             stop,
+            send,
             cancel,
           },
         })}
@@ -3470,20 +3625,24 @@ describe("PromptBoxInternal compact layout", () => {
     expect(waveform).toBeTruthy();
     expect(actionRow?.contains(waveform)).toBe(true);
     const confirm = screen.getByRole("button", {
-      name: "Stop and transcribe recording",
+      name: "Stop and add to draft",
     });
     const cancelButton = screen.getByRole("button", {
       name: "Cancel recording",
     });
+    const sendButton = screen.getByRole("button", { name: "Send voice input" });
     const voiceControls = document.querySelector(
       "[data-promptbox-voice-controls]",
     );
     expect(voiceControls?.classList.contains("pointer-events-auto")).toBe(true);
     expect(voiceControls?.contains(confirm)).toBe(true);
     expect(voiceControls?.contains(cancelButton)).toBe(true);
+    expect(voiceControls?.contains(sendButton)).toBe(true);
     fireEvent.click(confirm);
+    fireEvent.click(sendButton);
     fireEvent.click(cancelButton);
     expect(stop).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
     expect(cancel).toHaveBeenCalledOnce();
   });
 
@@ -3509,6 +3668,7 @@ describe("PromptBoxInternal compact layout", () => {
         stream: null,
         start: vi.fn(),
         stop: vi.fn(),
+        send: vi.fn(),
         cancel: vi.fn(),
       };
       const view = render(
@@ -3558,6 +3718,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start: vi.fn(),
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -3616,6 +3777,7 @@ describe("PromptBoxInternal compact layout", () => {
         stream: null,
         start: vi.fn(),
         stop: vi.fn(),
+        send: vi.fn(),
         cancel,
       };
       const view = render(
@@ -3686,6 +3848,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start: vi.fn(),
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -3732,6 +3895,7 @@ describe("PromptBoxInternal compact layout", () => {
               stream: null,
               start: vi.fn(),
               stop: vi.fn(),
+              send: vi.fn(),
               cancel: vi.fn(),
             },
           })}
@@ -5232,6 +5396,7 @@ describe("voice recording escape", () => {
       stream: null,
       start: vi.fn(),
       stop: vi.fn(),
+      send: vi.fn(),
       cancel: vi.fn(),
       ...overrides,
     };

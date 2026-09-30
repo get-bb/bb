@@ -79,6 +79,8 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
       other: null,
     },
     limitWindows: [],
+    extraUsage: null,
+    usageRestriction: null,
     observedAt: 1,
     heldUntil: null,
     error: null,

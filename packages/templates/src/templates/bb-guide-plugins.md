@@ -102,6 +102,19 @@ family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
+Claude accounts can fall back to enabled extra usage after subscription windows
+reach the switch threshold. Accounts below the threshold take precedence, even
+for conversations pinned to an extra-usage fallback, and exhausted accounts are
+rechecked before spending extra usage. `bb pool status` and `account list` show
+an Extra usage column; JSON exposes `extraUsage` with status, observation time,
+and source. The pool does not enable extra usage or change Claude spending limits.
+
+Codex accounts use the same fallback policy when credit availability is reported.
+Spending-control and explicit credit-depletion restrictions still block routing;
+account/status JSON exposes them under `usageRestriction`. Both providers show
+an “Extra usage available” pill when allowance is reported available. The pill
+does not indicate current billing activity.
+
 Use the up/down arrows in Account Pooler settings, or
 `bb pool account reorder <claude|codex> <id>...`, to set the complete order for
 one provider. Include disabled accounts too. Reordering changes the next failover

@@ -23,13 +23,15 @@ import { AppState, BackHandler, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
-import { useProfiles } from "@/app-shell";
+import { revealApp, useProfiles } from "@/app-shell";
+import { nativeSessionCache } from "@/lib/native";
 import {
   buildShellUrl,
   isExternallyOpenable,
   isShellNavigation,
   resolveShellLoadPath,
   resolveShellScreenState,
+  revealsShellFailure,
   shellPathFromUrl,
   shouldReloadForSession,
   subscribeToShellCommands,
@@ -129,6 +131,7 @@ export function ProfileWebViewScreen() {
   const bridge = useShellBridge(webViewRef, {
     onReady: (path) => {
       setLoad({ kind: "ready" });
+      revealApp();
       rememberPath(path);
     },
     onPath: rememberPath,
@@ -137,6 +140,7 @@ export function ProfileWebViewScreen() {
     },
   });
 
+  const connectProfileId = profile?.mode === "connect" ? profile.id : null;
   useEffect(
     () =>
       subscribeToShellCommands((command) => {
@@ -144,11 +148,14 @@ export function ProfileWebViewScreen() {
           webViewRef.current?.clearCache(true);
           void CookieManager.clearAll(false);
           void CookieManager.clearAll(true);
+          if (connectProfileId !== null) {
+            void nativeSessionCache.clear(connectProfileId);
+          }
         }
         setLoad({ kind: "loading" });
         setReloadKey((value) => value + 1);
       }),
-    [],
+    [connectProfileId],
   );
 
   const safeArea = useMemo(
@@ -178,12 +185,14 @@ export function ProfileWebViewScreen() {
 
   const previousSession = useRef(session);
   useEffect(() => {
-    if (shouldReloadForSession(previousSession.current, session)) {
+    if (
+      shouldReloadForSession(previousSession.current, session, Date.now(), load)
+    ) {
       setReloadKey((value) => value + 1);
       setLoad({ kind: "loading" });
     }
     previousSession.current = session;
-  }, [session]);
+  }, [load, session]);
 
   const handshake = useMemo<NativeShellHandshake | null>(() => {
     if (profile === null || sourceUrl === null) return null;
@@ -214,9 +223,15 @@ export function ProfileWebViewScreen() {
     storeReady: status === "ready",
     hasAnyProfile: profiles.length > 0,
     hasProfile: profile !== null && sourceUrl !== null,
+    requiresSession: profile?.mode === "connect",
     session,
     load,
   });
+
+  const showsFailure = revealsShellFailure(screen, profile?.mode === "connect");
+  useEffect(() => {
+    if (showsFailure) revealApp();
+  }, [showsFailure]);
 
   if (screen.kind === "no-profile") {
     return <Redirect href="/settings/servers/add" />;

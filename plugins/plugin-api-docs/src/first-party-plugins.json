@@ -90,7 +90,7 @@
     "icon": "Laptop"
   },
   {
-    "id": "provider-usage",
+    "id": "bb--provider-usage",
     "name": "Provider usage",
     "icon": "ChartColumn"
   },

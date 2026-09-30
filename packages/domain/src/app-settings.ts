@@ -62,6 +62,8 @@ export const defaultAppSettings: AppSettings = {
   machineGitCredentialsEnabled: true,
 };
 
+export const disabledProviderIdsSchema = z.array(z.string().min(1));
+
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
     allowFastServiceTier: z.boolean().optional(),

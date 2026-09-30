@@ -89,6 +89,32 @@ family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
+Claude accounts with an exhausted subscription window remain eligible as a
+fallback when Anthropic reports extra usage enabled with remaining allowance,
+or an allowed overage response header. Accounts below the switch threshold
+are preferred, including for conversations pinned to an extra-usage fallback;
+those conversations return to subscription quota when it recovers. Before using
+extra usage, the pool rechecks exhausted OAuth accounts (at most every 30 seconds).
+Disabled, spent, or unobserved extra usage does not override subscription limits.
+This does not enable extra usage or change spending limits on Claude.
+`account list` and `status` show an Extra usage column; JSON and the corresponding
+plugin RPCs expose `extraUsage` with status, observation time, and source.
+This state survives hub restarts. Model entitlement differences between plans
+are not inferred from missing quota buckets.
+
+Codex credits use the same fallback policy and availability pill. The pool reads
+`credits.has_credits` and `credits.unlimited` from usage responses and the
+corresponding `x-codex-credits-*` headers. Credit-only updates are accepted;
+omitted fields preserve prior observations. Workspace hard stops (the
+`workspace_{owner,member}_{credits_depleted,usage_limit_reached}` limit types,
+or a reached spend control) block routing even below the subscription switch
+threshold and survive restarts. Other limit types, including unknown ones, do
+not restrict the account. A refreshed allowance or spending-control observation can
+clear the matching restriction. JSON account/status responses expose
+`usageRestriction` (reason and optional reset time); the pool does not change
+workspace spending controls or purchase credits. Availability is not current
+billing activity.
+
 Drag an account’s handle in Account Pooler settings (or focus the handle and use
 Space, arrow keys, and Space again), or
 `bb pool account reorder <claude|codex> <id>...`, to set the complete order for

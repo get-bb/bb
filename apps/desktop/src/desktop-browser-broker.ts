@@ -91,7 +91,6 @@ export function createDesktopBrowserBroker(args: {
       threadId: tab.threadId,
       url: tab.url,
       title: tab.title ?? "",
-      profile: tab.profile,
       presentation: tab.presentation,
       control: controlFor(instance, tab.tabId)?.metadata ?? null,
     };
@@ -221,16 +220,6 @@ export function createDesktopBrowserBroker(args: {
       async createTab(_scope, url, signal) {
         signal.throwIfAborted();
         ensureLease();
-        const firstId = lease.tabs.keys().next().value;
-        if (firstId === undefined)
-          throw new Error("Browser lease has no pages");
-        const profile = requireTab(
-          lease.instance,
-          lease.threadId,
-          firstId,
-        ).profile;
-        if (profile.kind !== "automation")
-          throw new Error("Create automation pages in a dedicated profile");
         if (lease.tabs.size >= 100)
           throw new Error("Browser lease tab limit reached");
         const tab = args.manager.createTab({
@@ -238,7 +227,6 @@ export function createDesktopBrowserBroker(args: {
           threadId: lease.threadId,
           tabId: `browser:${randomUUID()}:none`,
           url,
-          profile,
           viewport: { width: 1280, height: 720 },
         });
         lease.tabs.set(tab.tabId, tab.generation);
@@ -402,7 +390,7 @@ export function createDesktopBrowserBroker(args: {
             sourceId: command.sourceId,
             sourceProfileDirectory: command.sourceProfileDirectory,
           },
-          args.manager.profileSession(command.profile),
+          args.manager.session(),
         );
       }
       const scope = {

@@ -40,7 +40,12 @@ Never check in `plugins/*/dist` or `plugins/*/.bundled-runtime`; they are genera
 ## Adding a new official plugin
 
 1. Create the plugin under `plugins/<name>` with a `bb` manifest
-   block (`server`, optional `app`, `branding`, optional `skills`).
+   block (`server`, optional `app`, `branding`, optional `skills`). Name the
+   package `bb-plugin-bb--<name>` so its plugin id is `bb--<name>`. BB refuses
+   non-bundled installs of `bb--` ids and the marketplace rejects them, so a
+   new bundled plugin cannot collide with a community plugin. The ids bundled
+   before this rule are frozen in
+   `apps/server/test/services/plugins/builtin-registry.test.ts`.
 2. Add an entry to `OFFICIAL_PLUGINS` in
    `apps/server/src/services/plugins/builtin-registry.ts` with the store
    `name`, the derived `pluginId`, `defaultEnabled`, and a `category` for the

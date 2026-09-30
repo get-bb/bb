@@ -2,10 +2,12 @@ import { ConnectListError, type DesktopSession } from "@bb/connect-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectServerProfile } from "../profiles/profile";
 import type { CookieStoreLike, SessionCookieSpec } from "./cookie-store";
+import type { SessionCacheLike, StoredSession } from "./session-cache";
 import { createSessionScheduler, type SessionState } from "./session-scheduler";
 
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
+const DAY = 24 * HOUR;
 
 const profile: ConnectServerProfile = {
   id: "p1",
@@ -28,7 +30,7 @@ function session(expiresAt: number, value = "sess"): DesktopSession {
   };
 }
 
-function setup() {
+function setup(stored: Map<string, StoredSession> = new Map()) {
   const cookies: {
     url: string;
     cookie: SessionCookieSpec;
@@ -40,12 +42,25 @@ function setup() {
       return true;
     },
   };
+  const sessionCache: SessionCacheLike = {
+    read: async (profileId) => stored.get(profileId) ?? null,
+    write: async (profileId, entry) => {
+      stored.set(profileId, entry);
+    },
+    clear: async (profileId) => {
+      stored.delete(profileId);
+    },
+  };
   const fetchSession =
     vi.fn<(c: { credential: string }) => Promise<DesktopSession>>();
   const states: SessionState["status"][] = [];
-  const scheduler = createSessionScheduler({ cookieStore, fetchSession });
+  const scheduler = createSessionScheduler({
+    cookieStore,
+    sessionCache,
+    fetchSession,
+  });
   scheduler.onStateChange((s) => states.push(s.status));
-  return { cookies, fetchSession, scheduler, states };
+  return { cookies, stored, fetchSession, scheduler, states };
 }
 
 describe("createSessionScheduler", () => {
@@ -57,13 +72,14 @@ describe("createSessionScheduler", () => {
     vi.useRealTimers();
   });
 
-  it("mints, installs the cookie in both stores, and renews 5 minutes before expiry", async () => {
+  it("mints, installs the cookie in both stores, and renews 5 minutes before expiry without leaving authenticated", async () => {
     const { cookies, fetchSession, scheduler, states } = setup();
     fetchSession.mockResolvedValueOnce(session(Date.now() + HOUR, "one"));
     const state = await scheduler.start(profile);
     expect(state).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     expect(fetchSession).toHaveBeenCalledWith({
       serverUrl: profile.serverUrl,
@@ -80,7 +96,7 @@ describe("createSessionScheduler", () => {
         path: "/",
         secure: true,
         httpOnly: true,
-        expires: new Date(Date.now() + HOUR).toISOString(),
+        expires: "2026-08-18T11:00:00.000+00:00",
       },
     });
 
@@ -96,13 +112,12 @@ describe("createSessionScheduler", () => {
       "idle",
       "authenticating",
       "authenticated",
-      "authenticating",
       "authenticated",
     ]);
   });
 
   it("verifySession re-mints on an auth failure: fresh cookie, or auth-required when the gate refuses", async () => {
-    const { cookies, fetchSession, scheduler, states } = setup();
+    const { cookies, stored, fetchSession, scheduler, states } = setup();
     fetchSession.mockResolvedValueOnce(session(Date.now() + HOUR, "one"));
     await scheduler.start(profile);
 
@@ -111,6 +126,7 @@ describe("createSessionScheduler", () => {
     expect(await scheduler.verifySession()).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     expect(cookies.slice(-2).map((c) => c.cookie.value)).toEqual([
       "two",
@@ -127,12 +143,14 @@ describe("createSessionScheduler", () => {
     expect(await scheduler.verifySession()).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     expect(scheduler.getState().status).toBe("authenticated");
     fetchSession.mockResolvedValueOnce(session(Date.now() + 2 * HOUR, "three"));
     await vi.advanceTimersByTimeAsync(55 * MINUTE);
     expect(cookies.at(-1)?.cookie.value).toBe("three");
 
+    expect(stored.has("p1")).toBe(true);
     fetchSession.mockRejectedValueOnce(
       new ConnectListError("unauthorized", "revoked"),
     );
@@ -140,6 +158,7 @@ describe("createSessionScheduler", () => {
       status: "auth-required",
       detail: "revoked",
     });
+    expect(stored.has("p1")).toBe(false);
     const calls = fetchSession.mock.calls.length;
     await vi.advanceTimersByTimeAsync(3 * HOUR);
     expect(fetchSession).toHaveBeenCalledTimes(calls);
@@ -164,6 +183,82 @@ describe("createSessionScheduler", () => {
     resolve(session(Date.now() + HOUR));
     await started;
     expect(fetchSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("reinstalls the stored session on the next launch without minting", async () => {
+    const stored = new Map<string, StoredSession>();
+    const first = setup(stored);
+    first.fetchSession.mockResolvedValueOnce(
+      session(Date.now() + 7 * DAY, "one"),
+    );
+    await first.scheduler.start(profile);
+    first.scheduler.stop();
+
+    vi.setSystemTime(Date.now() + DAY);
+    const relaunch = setup(stored);
+    expect(await relaunch.scheduler.start(profile)).toEqual({
+      status: "authenticated",
+      expiresAt: Date.UTC(2026, 7, 25, 10),
+      restored: true,
+    });
+    expect(relaunch.fetchSession).not.toHaveBeenCalled();
+    expect(relaunch.states).toEqual([
+      "idle",
+      "authenticating",
+      "authenticated",
+    ]);
+    expect(relaunch.cookies.map((c) => [c.cookie.value, c.useWebKit])).toEqual([
+      ["one", false],
+      ["one", true],
+    ]);
+
+    relaunch.fetchSession.mockResolvedValueOnce(
+      session(Date.now() + 7 * DAY, "two"),
+    );
+    await vi.advanceTimersByTimeAsync(6 * DAY - 5 * MINUTE - 1);
+    expect(relaunch.fetchSession).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(relaunch.fetchSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("mints a new session after re-pairing the same profile", async () => {
+    const { cookies, fetchSession, scheduler } = setup();
+    fetchSession.mockResolvedValueOnce(session(Date.now() + DAY, "old"));
+    await scheduler.start(profile);
+    scheduler.stop();
+    cookies.length = 0;
+
+    fetchSession.mockResolvedValueOnce(session(Date.now() + DAY, "new"));
+    await scheduler.start({ ...profile, credential: "bbcm_repaired" });
+
+    expect(fetchSession).toHaveBeenCalledTimes(2);
+    expect(fetchSession).toHaveBeenLastCalledWith({
+      serverUrl: profile.serverUrl,
+      handle: profile.handle,
+      credential: "bbcm_repaired",
+    });
+    expect(cookies.map((c) => c.cookie.value)).toEqual(["new", "new"]);
+  });
+
+  it("mints on launch when the stored session is due or belongs to a moved server", async () => {
+    const stored = (overrides: Partial<StoredSession>): StoredSession => ({
+      serverUrl: profile.serverUrl,
+      credential: profile.credential,
+      session: session(Date.now() + DAY, "old"),
+      ...overrides,
+    });
+    for (const entry of [
+      stored({ session: session(Date.now() + 5 * MINUTE, "old") }),
+      stored({ serverUrl: "https://moved.getbb.app" }),
+    ]) {
+      const { cookies, fetchSession, scheduler } = setup(
+        new Map([["p1", entry]]),
+      );
+      fetchSession.mockResolvedValueOnce(session(Date.now() + 7 * DAY, "new"));
+      await scheduler.start(profile);
+      expect(fetchSession).toHaveBeenCalledTimes(1);
+      expect(cookies.map((c) => c.cookie.value)).toEqual(["new", "new"]);
+    }
   });
 
   it("stops retrying when the credential is revoked (auth-required)", async () => {
@@ -227,6 +322,7 @@ describe("createSessionScheduler", () => {
     const first = scheduler.start(profile);
     const second = scheduler.renewNow();
     expect(second).toBe(first);
+    await vi.advanceTimersByTimeAsync(0);
     expect(fetchSession).toHaveBeenCalledTimes(1);
 
     scheduler.stop();
@@ -245,6 +341,8 @@ describe("createSessionScheduler", () => {
       new Promise<DesktopSession>((r) => (resolveFirst = r)),
     );
     const first = scheduler.start(profile);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSession).toHaveBeenCalledTimes(1);
     const secondProfile = {
       ...profile,
       id: "p2",
@@ -254,6 +352,7 @@ describe("createSessionScheduler", () => {
     fetchSession.mockResolvedValueOnce(session(Date.now() + HOUR, "two"));
     const second = scheduler.start(secondProfile);
     expect(second).not.toBe(first);
+    await vi.advanceTimersByTimeAsync(0);
     expect(fetchSession).toHaveBeenCalledTimes(2);
     expect(fetchSession.mock.calls[1]?.[0]).toMatchObject({
       credential: "bbcm_2",
@@ -261,6 +360,7 @@ describe("createSessionScheduler", () => {
     expect(await second).toEqual({
       status: "authenticated",
       expiresAt: Date.now() + HOUR,
+      restored: false,
     });
     resolveFirst(session(Date.now() + HOUR, "one"));
     await first;

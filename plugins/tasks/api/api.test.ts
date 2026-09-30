@@ -1490,6 +1490,8 @@ function makePullRequest(
     baseRefName: "main",
     headRefName: "bb/fix-the-pill",
     updatedAt: "2026-07-15T10:00:00.000Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "passing" as const,
       totalCount: 1,

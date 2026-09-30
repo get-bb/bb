@@ -5855,7 +5855,14 @@ describe("sequential pool recovery", () => {
           return attempts.length === 2
             ? Response.json(
                 {},
-                { status: 429, headers: { "retry-after": "0.25" } },
+                {
+                  status: 429,
+                  headers: {
+                    "retry-after": "0.25",
+                    "anthropic-ratelimit-unified-5h-status": "allowed",
+                    "anthropic-ratelimit-unified-overage-status": "rejected",
+                  },
+                },
               )
             : Response.json({});
         },
@@ -5996,6 +6003,441 @@ describe("sequential pool recovery", () => {
       status.accounts.find((account) => account.id === fixture.account.id)
         ?.status,
     ).toBe("exhausted");
+  });
+
+  it.each([
+    ["funded", { has_credits: true, unlimited: false }, null, 200],
+    ["unlimited", { has_credits: false, unlimited: true }, null, 200],
+    ["depleted", { has_credits: false, unlimited: false }, null, 429],
+    ["unknown", null, null, 429],
+    [
+      "spending cap",
+      { has_credits: true, unlimited: true },
+      { reached: true },
+      429,
+    ],
+    [
+      "individual cap",
+      { has_credits: true, unlimited: false },
+      {
+        reached: false,
+        individual_limit: { remaining_percent: 0, reset_at: 4102444800 },
+      },
+      429,
+    ],
+  ])(
+    "routes Codex credit fallback with %s allowance",
+    async (_label, credits, spendControl, expected) => {
+      let calls = 0;
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        provider: "codex",
+        source: "import",
+        options: {
+          codexUsageUrl: "https://upstream.example/usage",
+          importCodexCredentials: async () => ({
+            accessToken: "codex-credit",
+            refreshToken: "refresh",
+            expiresAt: Date.now() + 3600000,
+            idToken: null,
+            accountId: "codex-qa",
+            email: null,
+          }),
+          fetch: async (input) => {
+            if (new URL(String(input)).pathname === "/usage")
+              return Response.json({
+                rate_limit: {
+                  primary_window: {
+                    used_percent: spendControl === null ? 100 : 10,
+                    reset_at: 4102444800,
+                  },
+                },
+                credits,
+                spend_control: spendControl,
+              });
+            calls++;
+            return Response.json({ ok: true });
+          },
+        },
+      });
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        { headers: authHeaders(fixture.key), body: "{}" },
+      );
+      expect(response.status).toBe(expected);
+      await response.text();
+      expect(calls).toBe(expected === 200 ? 1 : 0);
+      const report = statusSchema.parse(
+        await fixture.host.harness.behavior.callRpc("status.get", null),
+      );
+      expect(report.accounts[0]?.extraUsage?.status ?? null).toBe(
+        credits === null ? null : expected === 200 ? "allowed" : "rejected",
+      );
+    },
+  );
+
+  it("returns Codex paid pins to recovered subscriptions and persists spending restrictions", async () => {
+    let now = Date.now();
+    let imports = 0;
+    let includedPercent = 10;
+    let spendingBlocked = false;
+    const calls: string[] = [];
+    const options: AccountPoolPluginOptions = {
+      now: () => now,
+      codexUsageUrl: "https://upstream.example/usage",
+      importCodexCredentials: async () => ({
+        accessToken: ++imports === 1 ? "paid" : "included",
+        refreshToken: "refresh",
+        expiresAt: now + 3600000,
+        idToken: null,
+        accountId: "codex-qa",
+        email: null,
+      }),
+      fetch: async (input, init) => {
+        const auth = new Headers(init?.headers).get("authorization") ?? "";
+        if (new URL(String(input)).pathname === "/usage")
+          return Response.json({
+            rate_limit: {
+              primary_window: {
+                used_percent: auth === "Bearer paid" ? 100 : includedPercent,
+                reset_at: 4102444800,
+              },
+            },
+            credits: {
+              has_credits: auth === "Bearer paid",
+              unlimited: false,
+            },
+          });
+        calls.push(auth);
+        return spendingBlocked
+          ? Response.json(
+              {},
+              {
+                status: 429,
+                headers: {
+                  "x-codex-rate-limit-reached-type":
+                    "workspace_member_usage_limit_reached",
+                },
+              },
+            )
+          : Response.json({ ok: true });
+      },
+    };
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      provider: "codex",
+      source: "import",
+      priority: 1,
+      options,
+    });
+    const second = accountSchema.parse(
+      await fixture.host.harness.behavior.callRpc("account.add", {
+        provider: "codex",
+        source: { kind: "import" },
+        label: "Included",
+        priority: 2,
+      }),
+    );
+    let host = fixture.host;
+    const send = async () => {
+      const response = await host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        {
+          headers: {
+            ...authHeaders(fixture.key),
+            "session-id": "credit-session",
+          },
+          body: "{}",
+        },
+      );
+      await response.text();
+      return response.status;
+    };
+    expect(await send()).toBe(200);
+    includedPercent = 100;
+    await host.harness.behavior.callRpc("account.refreshUsage", {
+      accountId: second.id,
+    });
+    expect(await send()).toBe(200);
+    includedPercent = 10;
+    now += 30000;
+    expect(await send()).toBe(200);
+    expect(calls).toEqual([
+      "Bearer included",
+      "Bearer paid",
+      "Bearer included",
+    ]);
+    includedPercent = 100;
+    await host.harness.behavior.callRpc("account.refreshUsage", {
+      accountId: second.id,
+    });
+    spendingBlocked = true;
+    expect(await send()).toBe(429);
+    host = await host.harness.lifecycle.reload(
+      createAccountPoolPlugin(options),
+    );
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+    });
+    await vi.waitFor(async () =>
+      expect(
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
+      ).toBe(true),
+    );
+    expect(await send()).toBe(429);
+    expect(calls).toHaveLength(4);
+    expect(
+      statusSchema
+        .parse(await host.harness.behavior.callRpc("status.get", null))
+        .accounts.find((a) => a.id === fixture.account.id)?.usageRestriction
+        ?.reason,
+    ).toBe("workspace_member_usage_limit_reached");
+  });
+
+  it.each([
+    [
+      "enabled",
+      {
+        is_enabled: true,
+        monthly_limit: 1000,
+        used_credits: 100,
+        utilization: 10,
+      },
+      200,
+    ],
+    [
+      "unlimited",
+      {
+        is_enabled: true,
+        monthly_limit: null,
+        used_credits: 100,
+        utilization: null,
+      },
+      200,
+    ],
+    [
+      "disabled",
+      { is_enabled: false, monthly_limit: 1000, used_credits: 0 },
+      429,
+    ],
+    [
+      "spent",
+      { is_enabled: true, monthly_limit: 1000, used_credits: 1000 },
+      429,
+    ],
+    ["100 percent", { is_enabled: true, utilization: 100 }, 429],
+    ["unobserved", null, 429],
+  ])(
+    "routes exhausted Claude accounts with %s extra usage",
+    async (_name, extraUsage, expectedStatus) => {
+      const calls: string[] = [];
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        source: "import",
+        options: {
+          usageUrl: "https://upstream.example/usage",
+          importCredentials: async () => importedCredentials(),
+          fetch: async (input) => {
+            const pathname = new URL(String(input)).pathname;
+            if (pathname === "/usage")
+              return Response.json({
+                five_hour: { utilization: 100, resets_at: "4102444800" },
+                extra_usage: extraUsage,
+              });
+            calls.push(pathname);
+            return Response.json({ ok: true });
+          },
+        },
+      });
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body,
+        },
+      );
+      expect(response.status).toBe(expectedStatus);
+      await response.text();
+      expect(calls).toEqual(expectedStatus === 200 ? ["/v1/messages"] : []);
+      const status = await fixture.host.harness.behavior.runCli([
+        "status",
+        "--json",
+      ]);
+      expect(
+        statusReportSchema.parse(JSON.parse(status.stdout)).accounts[0],
+      ).toMatchObject({
+        status: expectedStatus === 200 ? "ready" : "exhausted",
+        extraUsage:
+          extraUsage === null
+            ? null
+            : {
+                status: expectedStatus === 200 ? "allowed" : "rejected",
+                source: "usage",
+              },
+      });
+    },
+  );
+
+  it.each(["shared", "family"])(
+    "prefers subscription quota over %s extra usage and leaves paid pins on recovery",
+    async (scope) => {
+      let now = Date.now();
+      let firstPercent = 100;
+      let secondPercent = 10;
+      let importCount = 0;
+      const attempts: string[] = [];
+      const fixture = await createFixture({
+        upstreamUrl: "https://upstream.example",
+        source: "import",
+        priority: 1,
+        options: {
+          now: () => now,
+          usageUrl: "https://upstream.example/usage",
+          importCredentials: async () =>
+            importedCredentials({
+              accessToken: ++importCount === 1 ? "paid" : "included",
+            }),
+          fetch: async (input, init) => {
+            const key = new Headers(init?.headers).get("authorization");
+            if (new URL(String(input)).pathname === "/usage")
+              return Response.json({
+                [scope === "shared" ? "five_hour" : "seven_day_opus"]: {
+                  utilization:
+                    key === "Bearer paid" ? firstPercent : secondPercent,
+                  resets_at: "4102444800",
+                },
+                extra_usage: {
+                  is_enabled: key === "Bearer paid",
+                  monthly_limit: 1000,
+                  used_credits: 0,
+                },
+              });
+            attempts.push(key ?? "missing");
+            return Response.json({ ok: true });
+          },
+        },
+      });
+      const second = accountSchema.parse(
+        await fixture.host.harness.behavior.callRpc("account.add", {
+          provider: "claude",
+          source: { kind: "import" },
+          label: "included",
+          priority: 2,
+        }),
+      );
+      const send = async (id: string) => {
+        const response = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/messages",
+          {
+            headers: authHeaders(fixture.key),
+            body: JSON.stringify({
+              model: "claude-opus-4-1",
+              metadata: { user_id: JSON.stringify({ session_id: id }) },
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+      };
+      await send("pinned");
+      secondPercent = 100;
+      await fixture.host.harness.behavior.callRpc("account.refreshUsage", {
+        accountId: second.id,
+      });
+      await send("pinned");
+      await send("new-paid");
+      secondPercent = 10;
+      now += 30_000;
+      await send("new-paid");
+      await send("new-included");
+      firstPercent = 0;
+      await fixture.host.harness.behavior.callRpc("account.refreshUsage", {
+        accountId: fixture.account.id,
+      });
+      await send("new-included");
+      expect(attempts).toEqual([
+        "Bearer included",
+        "Bearer paid",
+        "Bearer paid",
+        "Bearer included",
+        "Bearer included",
+        "Bearer included",
+      ]);
+    },
+  );
+
+  it("learns extra usage from headers, preserves it across restart, and stops on an overage rejection", async () => {
+    let rejectOverage = false;
+    let upstreamCalls = 0;
+    const options: AccountPoolPluginOptions = {
+      usageUrl: "https://upstream.example/usage",
+      importCredentials: async () => importedCredentials(),
+      fetch: async (input) => {
+        if (new URL(String(input)).pathname === "/usage")
+          return Response.json({});
+        upstreamCalls++;
+        return Response.json(
+          {},
+          {
+            status: rejectOverage ? 429 : 200,
+            headers: {
+              "anthropic-ratelimit-unified-5h-utilization": "1",
+              "anthropic-ratelimit-unified-5h-status": "rejected",
+              "anthropic-ratelimit-unified-5h-reset": "4102444800",
+              "anthropic-ratelimit-unified-overage-status": rejectOverage
+                ? "rejected"
+                : "allowed_warning",
+            },
+          },
+        );
+      },
+    };
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "import",
+      options,
+    });
+    let host = fixture.host;
+    const send = async () => {
+      const response = await host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body },
+      );
+      await response.text();
+      return response.status;
+    };
+    expect(await send()).toBe(200);
+    host = await host.harness.lifecycle.reload(
+      createAccountPoolPlugin(options),
+    );
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+    });
+    await vi.waitFor(async () => {
+      expect(
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
+      ).toBe(true);
+    });
+    expect(await send()).toBe(200);
+    rejectOverage = true;
+    expect(await send()).toBe(429);
+    expect(await send()).toBe(429);
+    expect(upstreamCalls).toBe(3);
   });
 
   it("refreshes exhausted usage before refusing a request, at most every 30 seconds per account", async () => {

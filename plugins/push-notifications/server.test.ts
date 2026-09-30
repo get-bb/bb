@@ -356,7 +356,7 @@ describe("push sender", () => {
           threadId: thread.id,
         },
         sound: "default",
-        channelId: "default",
+        channelId: "threads",
         priority: "high",
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");

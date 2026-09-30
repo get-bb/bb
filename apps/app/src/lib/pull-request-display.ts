@@ -65,7 +65,7 @@ const CHECKS_DISPLAY: Record<ThreadPullRequestChecksState, PullRequestDisplay> =
     pending: {
       label: "Checks pending",
       icon: "Clock",
-      className: "text-warning-text",
+      className: "text-attention",
     },
     no_checks: {
       label: "No checks",
@@ -94,12 +94,12 @@ const REVIEW_DISPLAY: Record<ThreadPullRequestReviewState, PullRequestDisplay> =
     review_required: {
       label: "Review required",
       icon: "Clock",
-      className: "text-destructive",
+      className: "text-attention",
     },
     review_requested: {
       label: "Review requested",
       icon: "Clock",
-      className: "text-destructive",
+      className: "text-attention",
     },
     none: {
       label: "No review",
@@ -125,7 +125,7 @@ const MERGEABILITY_DISPLAY: Record<
   blocked: {
     label: "Blocked",
     icon: "AlertTriangle",
-    className: "text-destructive",
+    className: "text-attention",
   },
   draft: {
     label: "Draft",
@@ -167,6 +167,11 @@ const ATTENTION_DISPLAY: Record<
     ...MERGEABILITY_DISPLAY.blocked,
     icon: "GitPullRequestArrow",
   },
+  queued: {
+    label: "Queued to merge",
+    icon: "GitMerge",
+    className: "text-attention",
+  },
   draft: PULL_REQUEST_STATE_DISPLAY.draft,
   ready_to_merge: {
     label: "Ready to merge",
@@ -175,14 +180,11 @@ const ATTENTION_DISPLAY: Record<
   },
   merged: PULL_REQUEST_STATE_DISPLAY.merged,
   closed: PULL_REQUEST_STATE_DISPLAY.closed,
-  none: PULL_REQUEST_STATE_DISPLAY.open,
+  none: {
+    ...PULL_REQUEST_STATE_DISPLAY.open,
+    className: "text-muted-foreground",
+  },
 };
-
-export function getPullRequestChecksDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return CHECKS_DISPLAY[pullRequest.checks.state];
-}
 
 export function getPullRequestGithubCheckStatus(
   pullRequest: ThreadPullRequest,
@@ -203,20 +205,34 @@ export function getPullRequestGithubCheckStatus(
   }
 }
 
-export function getPullRequestReviewDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return REVIEW_DISPLAY[pullRequest.review.state];
-}
-
-export function getPullRequestMergeabilityDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return MERGEABILITY_DISPLAY[pullRequest.mergeability.state];
-}
-
 export function getPullRequestAttentionDisplay(
   pullRequest: ThreadPullRequest,
 ): PullRequestDisplay {
-  return ATTENTION_DISPLAY[pullRequest.attention];
+  const display =
+    pullRequest.attention === "review_requested" &&
+    pullRequest.review.state === "review_required"
+      ? REVIEW_DISPLAY.review_required
+      : ATTENTION_DISPLAY[pullRequest.attention];
+  const waitingOrReady = [
+    "review_requested",
+    "checks_pending",
+    "blocked",
+    "ready_to_merge",
+  ].includes(pullRequest.attention);
+  if (
+    pullRequest.state === "open" &&
+    pullRequest.autoMerge &&
+    (waitingOrReady || pullRequest.attention === "none")
+  ) {
+    return { ...display, label: "Auto-merge on", className: "text-attention" };
+  }
+  if (!waitingOrReady || pullRequest.review.state !== "approved")
+    return display;
+  return { ...display, label: `Approved · ${display.label}` };
+}
+
+export function getPullRequestStateDisplay(
+  pullRequest: ThreadPullRequest,
+): PullRequestStateDisplay {
+  return PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
 }

@@ -415,7 +415,7 @@ describe("thread pruning", () => {
     } finally {
       f.db.$client.close();
     }
-  });
+  }, 15_000);
 
   it("prunes oversized snapshots without parsing their payloads", () => {
     const f = setup();

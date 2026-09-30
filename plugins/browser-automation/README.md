@@ -124,24 +124,25 @@ browser host. Relative paths use the invoking CLI working directory. Browser
 file reads/writes still occur on the browser's host; scripts are not run in the
 workspace directory.
 
-Desktop sessions create a tab in a dedicated automation profile. Acquiring
-control opens the side panel and selects its browser tab only when the owning
-thread is already focused. New or activated controller pages follow
+Desktop sessions create a tab in the BB browser's profile, so pages load with
+the user's signed-in cookies, including cookies imported from another browser.
+Acquiring control opens the side panel and selects its browser tab only when
+the owning thread is already focused. New or activated controller pages follow
 the same rule. Automation does not switch threads or bring the desktop window
 forward. While controlled, a desktop tab never takes keyboard focus from the
 composer or other apps; press Take over to type into it. Pass
-`--tab <tab-id>` only for an explicit handoff of an existing tab. This grants the
-existing profile's browsing authority, including its authenticated cookies;
-release preserves that tab and login. Plugin-created tabs in its dedicated
-profile are disposed by `close`. `stop` releases control and preserves desktop
-tabs, including plugin-created ones, until close or cleanup.
+`--tab <tab-id>` only to take over an existing tab; `close` preserves that tab.
+The plugin records every tab opened under the session's control lease, and
+`close` disposes the plugin-created tab and those pages. `stop` releases
+control and preserves desktop tabs, including plugin-created ones, until close
+or cleanup.
 
-Local sessions own a Chrome process and a separate profile. Each session owns a
+Local sessions own a Chrome process and a separate, empty profile. Each session owns a
 fresh `DEV_BROWSER_HOME` and socket under the worker's temporary directory.
 Pages and cookies persist between runs in that session. `stop`, timeout, or
 cancellation terminates that local session; open another session to resume.
-`close` disposes its processes and session directory. Desktop handoff tabs
-remain open. Sessions expire after 30 minutes, with five-minute idle cleanup;
+`close` disposes its processes and session directory. Tabs taken over with
+`--tab` remain open. Sessions expire after 30 minutes, with five-minute idle cleanup;
 active scripts do not count as idle. Archiving, deleting, or failing a thread
 closes its sessions; normal idle turns preserve them. Externally invoked CLI
 runs remain subject to the same per-run timeout and absolute session expiry. Run timeouts default to 30 seconds and are
@@ -166,7 +167,7 @@ RPC contract in `contracts.ts` exposes `open`, `list`, `run`, `pages`,
 `screenshot`, `preview`, `stop`, and `close`.
 RPC inputs include `threadId`; session operations also include `sessionId`.
 `open.selection` is `{backend:"local",hostId}` or
-`{backend:"desktop",hostId,instanceId,tabId?}`. A tab ID is an explicit handoff.
+`{backend:"desktop",hostId,instanceId,tabId?}`. A tab ID takes over that existing tab.
 Agents discover the commands through the skill and CLI help.
 
 The host supervises Chrome and the DevBrowser daemon as separate children. Each

@@ -421,6 +421,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         } catch (error) {
           showError(resolveRecordingErrorMessage(error));
         }
+      } else {
+        shouldTranscribeRef.current = false;
+        acceptedRecordingPendingRef.current = false;
+        transcriptionAbortRef.current?.abort();
       }
       return;
     }

@@ -139,6 +139,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read live thread, section, project, and run-status data; select active or archived threads with experimental_lifecycles and load more archived pages through experimental_archived",
           "Use host-owned actions for navigation, pinning, read state, renaming, archiving, and deletion confirmation; opt into per-row pull-request state and drag-to-split support",
           "Open the root new-thread composer with a project, section, existing environment, or machine selected through hostId; an existing environment takes priority over a machine",
+          "Read normalized checks, review, and mergeability states through experimental_checks, experimental_review, and experimental_mergeability. experimental_autoMerge reports auto-merge; experimental_inMergeQueue is null if the queue lookup failed. Attention distinguishes failures, queued PRs, reviews, pending checks, generic blocking, and ready-to-merge PRs without plugin GitHub polling.",
           "Own the whole region: by default bb shows the first installed thread list other than the bundled Thread list plugin, users can pin one in Settings → Appearance → Sidebar, and the sidebar shows a placeholder until the list mounts; the deprecated searchQuery is always empty because the quick palette owns thread search",
           "Pass experimental_placement to openNewThread to select sectionId and pinned explicitly. Omission clears previous composer placement; the legacy sectionId option remains supported.",
           "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
@@ -159,6 +160,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarThreadActions.openNewThread.experimental_placement",
           "experimental_useSidebarThreadPullRequest",
           "PluginSidebarThreadPullRequestState",
+          "PluginSidebarPullRequest.experimental_autoMerge",
+          "PluginSidebarPullRequest.experimental_inMergeQueue",
+          "PluginSidebarPullRequest.experimental_checks",
+          "PluginSidebarPullRequest.experimental_review",
+          "PluginSidebarPullRequest.experimental_mergeability",
           "experimental_useSidebarThreadSplit",
           "PluginSidebarThreadSplit",
           "useSidebarThreadDraft",
@@ -542,6 +548,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds an agent to bb's model picker and runs the threads started with it. With this, a plugin can:",
         bullets: [
           "Appear in the model picker beside bb's built-in providers",
+          'Declare bb.experimental_providers: [{ kind: "agent", id, displayName }] in package.json to keep agent providers discoverable in Settings → Providers before the plugin runs. Runtime registration remains authoritative; metadata does not register an executable provider. Core enable/disable preferences preserve other providers from the same plugin',
           "Declare what the provider supports, then serve its model list at runtime",
           "Supply a small icon that appears next to its name; React icon overrides require providerKind and providerId",
           "Publish context snapshots through contextWindow deltas, with provider-defined category IDs and labels. Each category declares used, free, reserved, or deferred accounting; entries are included in its total and may be partial. Snapshots include capture time, session identity, model, totals, and an optional auto-compaction threshold",
@@ -1215,12 +1222,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Controls a selected desktop window through bb.sdk.experimental_desktopBrowsers. With this, a plugin can:",
         bullets: [
-          "Discover instances on an explicit host and create thread-owned tabs with separate automation profiles",
-          "Acquire expiring control; reveal the first tab and new CDP pages only in the already focused thread, without activating the desktop window. Personal tabs require an explicit handoff",
+          "Discover instances on an explicit host and create thread-owned tabs in the BB browser profile",
+          "Acquire expiring control; reveal the first tab and new CDP pages only in the already focused thread, without activating the desktop window. Controlled tabs carry the BB browser profile's signed-in cookies",
           "Give a worker on that host a private, scoped CDP WebSocket connection for DevBrowser or agent-browser",
           "Capture or reveal a tab and release control while preserving the tab and its login",
           "Observe changed tab and control state with a disposable two-second polling subscription; report disconnect errors",
-          "List known browsers and schema-detected Chromium/Firefox profiles belonging to registered browsers on the desktop host; use the returned source ID to copy a profile's signed-in cookies into the personal BB browser or an automation profile",
+          "List known browsers and schema-detected Chromium/Firefox profiles belonging to registered browsers on the desktop host; use the returned source ID to copy a profile's signed-in cookies into the BB browser profile",
         ],
         apiSymbols: [
           "ExperimentalDesktopBrowsersArea",

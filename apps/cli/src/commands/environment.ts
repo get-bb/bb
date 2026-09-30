@@ -890,6 +890,10 @@ export function registerEnvironmentCommands(
         console.log(`URL: ${pr.url}`);
         console.log(`Branch: ${pr.headRefName} -> ${pr.baseRefName}`);
         console.log(`Attention: ${pr.attention}`);
+        console.log(`Auto-merge: ${pr.autoMerge ? "on" : "off"}`);
+        console.log(
+          `Merge queue: ${pr.inMergeQueue === null ? "unknown" : pr.inMergeQueue ? "queued" : "not queued"}`,
+        );
         console.log(
           `Checks: ${pr.checks.state} (${pr.checks.passedCount} passed, ` +
             `${pr.checks.failedCount} failed, ${pr.checks.pendingCount} pending, ` +

@@ -154,6 +154,8 @@ export function getEnvironmentPullRequestRefetchInterval(
     return false;
   }
   if (
+    pullRequest.autoMerge ||
+    pullRequest.inMergeQueue === true ||
     pullRequest.checks.state === "pending" ||
     pullRequest.mergeability.state === "unknown"
   ) {

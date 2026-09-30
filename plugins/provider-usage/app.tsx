@@ -108,12 +108,14 @@ function rpcErrorMessage(body: unknown): string | null {
 }
 
 function refreshUsage({
+  pluginId,
   force,
   machineIds,
   maxAgeMs,
   providerId = null,
   signal,
 }: {
+  pluginId: string;
   force: boolean;
   machineIds: string[] | null;
   maxAgeMs: number;
@@ -125,7 +127,7 @@ function refreshUsage({
   return (async () => {
     try {
       const response = await fetch(
-        "/api/v1/plugins/provider-usage/rpc/getUsage",
+        `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/getUsage`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -584,12 +586,14 @@ function MachineSelector({
 }
 
 export function ProviderUsageStatusContent({
+  pluginId,
   dismiss,
   snapshot,
   threadMachineId,
   refreshEnabled = true,
   machineSelectionStorageKey = null,
 }: ExperimentalSidebarFooterDisclosureProps & {
+  pluginId: string;
   snapshot: UsageStoreSnapshot;
   threadMachineId: string | null;
   refreshEnabled?: boolean;
@@ -719,6 +723,7 @@ export function ProviderUsageStatusContent({
       if (document.visibilityState === "hidden") return;
       for (const providerId of refreshProviderKey.split("\n")) {
         void refreshUsage({
+          pluginId,
           force: false,
           machineIds: [activeMachineId],
           providerId,
@@ -733,7 +738,7 @@ export function ProviderUsageStatusContent({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [activeMachineId, refreshProviderKey, refreshEnabled]);
+  }, [activeMachineId, pluginId, refreshProviderKey, refreshEnabled]);
 
   const selectMachine = useCallback(
     (machineId: string) => {
@@ -766,6 +771,7 @@ export function ProviderUsageStatusContent({
       ? [null]
       : refreshProviderIds) {
       void refreshUsage({
+        pluginId,
         force: true,
         machineIds: activeMachineId === null ? null : [activeMachineId],
         maxAgeMs: 0,
@@ -1041,6 +1047,7 @@ function ProviderUsageStatus(props: ExperimentalSidebarFooterDisclosureProps) {
   return (
     <ProviderUsageStatusContent
       {...props}
+      pluginId={pluginId}
       snapshot={snapshot}
       threadMachineId={threadMachineId}
       machineSelectionStorageKey={`bb.${pluginId}.selected-machine.v1`}
@@ -1059,7 +1066,7 @@ export default definePluginApp((app) => {
   });
   app.contentScripts.register({
     id: "refresh-usage",
-    mount({ signal }) {
+    mount({ pluginId, signal }) {
       let timer: number | null = null;
       let hiddenAt = document.visibilityState === "hidden" ? Date.now() : null;
       let blurredAt: number | null = null;
@@ -1071,6 +1078,7 @@ export default definePluginApp((app) => {
       };
       const reconcile = (maxAgeMs: number, machineIds: string[] | null) => {
         void refreshUsage({
+          pluginId,
           force: false,
           machineIds,
           maxAgeMs,

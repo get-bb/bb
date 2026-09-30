@@ -8,7 +8,13 @@ import { describe, expect, it, vi } from "vitest";
 import plugin from "./server.js";
 import { rpcContract } from "./contracts.js";
 
+type FakeTab = { tabId: string; control: { leaseId: string } | null };
+type TabChangeListener = (result: { tabs: FakeTab[] }) => void;
+const leased = { leaseId: "lease" };
+
 async function setup() {
+  const desktopTabs: FakeTab[] = [{ tabId: "created", control: null }];
+  const tabChangeListeners: TabChangeListener[] = [];
   const worker = vi.fn(
     async ({ method }: { method: string }): Promise<unknown> =>
       method === "run"
@@ -45,7 +51,6 @@ async function setup() {
       url: "about:blank",
       title: "",
       control: null,
-      profile: { kind: "automation", id: "profile" },
       presentation: "hidden",
     },
   }));
@@ -87,13 +92,15 @@ async function setup() {
       return { ok: true };
     },
   );
-  host.harness.sdk.stub("experimental_desktopBrowsers.subscribe", () => ({
-    dispose() {},
-  }));
+  host.harness.sdk.stub(
+    "experimental_desktopBrowsers.subscribe",
+    (input: { onChange: TabChangeListener }) => {
+      tabChangeListeners.push(input.onChange);
+      return { dispose() {} };
+    },
+  );
   host.harness.sdk.stub("experimental_desktopBrowsers.listTabs", async () => ({
-    tabs: [
-      { tabId: "created", profile: { kind: "automation", id: "profile" } },
-    ],
+    tabs: desktopTabs.map((tab) => ({ ...tab })),
   }));
   host.harness.sdk.stub("hosts.list", async () => [
     makeHostResponse({ id: "local-host", name: "Lab workstation" }),
@@ -112,7 +119,16 @@ async function setup() {
     });
     return rpcContract.open.output.parse(result);
   }
-  return { ...host, worker, open };
+  function setTabs(tabs: FakeTab[]) {
+    desktopTabs.splice(0, desktopTabs.length, ...tabs);
+  }
+  function closedTabIds() {
+    return host.harness.sdk
+      .callsTo("experimental_desktopBrowsers.closeTab")
+      .map(([input]) => (input as { tabId: string }).tabId)
+      .sort();
+  }
+  return { ...host, worker, open, setTabs, closedTabIds, tabChangeListeners };
 }
 
 describe("server session ownership", () => {
@@ -244,7 +260,7 @@ describe("server session ownership", () => {
   it("routes to the desktop host without exposing the connection and preserves a handed-off tab", async () => {
     const h = await setup();
     try {
-      const session = await h.open("personal");
+      const session = await h.open("handed-off");
       expect(JSON.stringify(session)).not.toContain("secret");
       expect(h.worker).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -265,6 +281,79 @@ describe("server session ownership", () => {
       expect(
         h.harness.sdk.callsTo("experimental_desktopBrowsers.releaseControl"),
       ).toHaveLength(1);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+  it("closes pages the agent opened under its lease and keeps the user's tabs", async () => {
+    const h = await setup();
+    try {
+      const session = await h.open();
+      h.setTabs([
+        { tabId: "created", control: leased },
+        { tabId: "popup", control: leased },
+        { tabId: "user", control: null },
+      ]);
+      await h.harness.behavior.callRpc("close", {
+        threadId: "thread-test",
+        sessionId: session.id,
+      });
+      expect(h.closedTabIds()).toEqual(["created", "popup"]);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+  it("closes pages opened during a handoff but keeps the handed-off tab", async () => {
+    const h = await setup();
+    try {
+      const session = await h.open("handed-off");
+      h.setTabs([
+        { tabId: "handed-off", control: leased },
+        { tabId: "popup", control: leased },
+        { tabId: "user", control: null },
+      ]);
+      await h.harness.behavior.callRpc("close", {
+        threadId: "thread-test",
+        sessionId: session.id,
+      });
+      expect(h.closedTabIds()).toEqual(["popup"]);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+  it("remembers leased pages after the lease is lost so close still disposes them", async () => {
+    const h = await setup();
+    try {
+      const session = await h.open();
+      const [onChange] = h.tabChangeListeners;
+      onChange({
+        tabs: [
+          { tabId: "created", control: leased },
+          { tabId: "popup", control: leased },
+        ],
+      });
+      h.setTabs([
+        { tabId: "created", control: null },
+        { tabId: "popup", control: null },
+        { tabId: "user", control: null },
+      ]);
+      onChange({ tabs: [] });
+      await vi.waitFor(async () => {
+        const sessions = rpcContract.list.output.parse(
+          await h.harness.behavior.callRpc("list", {
+            threadId: "thread-test",
+          }),
+        );
+        expect(sessions.find((entry) => entry.id === session.id)?.state).toBe(
+          "stopped",
+        );
+      });
+      expect(h.closedTabIds()).toEqual([]);
+      await h.harness.behavior.callRpc("close", {
+        threadId: "thread-test",
+        sessionId: session.id,
+      });
+      expect(h.closedTabIds()).toEqual(["created", "popup"]);
     } finally {
       await h.harness.lifecycle.dispose();
     }
@@ -298,7 +387,7 @@ describe("server session ownership", () => {
     async (event) => {
       const h = await setup();
       try {
-        const session = await h.open("personal");
+        const session = await h.open("handed-off");
         const other = rpcContract.open.output.parse(
           await h.harness.behavior.callRpc("open", {
             threadId: "other",

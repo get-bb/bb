@@ -89,6 +89,8 @@ function summary(account: CodexDeviceAccount): AccountSummary {
       other: null,
     },
     limitWindows: [],
+    extraUsage: null,
+    usageRestriction: null,
     observedAt: null,
     heldUntil: null,
     error: null,

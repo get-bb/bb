@@ -1593,6 +1593,9 @@ importers:
       bb-plugin-automations:
         specifier: workspace:*
         version: link:../../plugins/automations
+      bb-plugin-bb--provider-usage:
+        specifier: workspace:*
+        version: link:../../plugins/provider-usage
       bb-plugin-bb-account:
         specifier: workspace:*
         version: link:../../plugins/bb-account
@@ -1671,9 +1674,6 @@ importers:
       bb-plugin-provider-retry:
         specifier: workspace:*
         version: link:../../plugins/provider-retry
-      bb-plugin-provider-usage:
-        specifier: workspace:*
-        version: link:../../plugins/provider-usage
       bb-plugin-push-notifications:
         specifier: workspace:*
         version: link:../../plugins/push-notifications

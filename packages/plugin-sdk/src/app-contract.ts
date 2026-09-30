@@ -1193,6 +1193,24 @@ export interface PluginSidebarThread {
  * can colour a badge without reading checks, review, and mergeability itself.
  */
 export interface PluginSidebarPullRequest {
+  /** Whether GitHub auto-merge is enabled. */
+  experimental_autoMerge: boolean;
+  /** Null when the GitHub merge queue lookup is unavailable. */
+  experimental_inMergeQueue: boolean | null;
+  experimental_checks: {
+    state: "passing" | "failing" | "pending" | "no_checks" | "unknown";
+  };
+  experimental_review: {
+    state:
+      | "approved"
+      | "changes_requested"
+      | "review_required"
+      | "review_requested"
+      | "none";
+  };
+  experimental_mergeability: {
+    state: "mergeable" | "conflicts" | "blocked" | "draft" | "unknown";
+  };
   number: number;
   title: string;
   url: string;
@@ -1205,6 +1223,7 @@ export interface PluginSidebarPullRequest {
     | "conflicts"
     | "blocked"
     | "draft"
+    | "queued"
     | "ready_to_merge"
     | "merged"
     | "closed"

@@ -6,6 +6,8 @@ import {
   appSettingsSchema,
   defaultAiServiceSelections,
   defaultAppSettings,
+  disabledProviderIdsSchema,
+  pluginPackageJsonSchema,
   type AiServiceSelection,
   type AiServiceSelections,
   type AiTask,
@@ -21,6 +23,7 @@ const appSettingsKeys = appSettingsKeySchema.options;
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
 const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
+const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 
 function parseStoredValue(text: string): unknown {
@@ -155,4 +158,76 @@ export function getPluginSafeMode(db: DbConnection): boolean {
 
 export function setPluginSafeMode(db: DbConnection, enabled: boolean): void {
   writeValue(db, PLUGIN_SAFE_MODE_KEY, enabled, Date.now());
+}
+
+export function getDisabledProviderIds(db: DbConnection): string[] {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, DISABLED_PROVIDER_IDS_KEY))
+    .get();
+  const parsed = disabledProviderIdsSchema.safeParse(
+    row === undefined ? [] : parseStoredValue(row.value),
+  );
+  return parsed.success ? parsed.data : [];
+}
+
+export function setDisabledProviderIds(
+  db: DbConnection,
+  providerIds: readonly string[],
+): void {
+  writeValue(db, DISABLED_PROVIDER_IDS_KEY, providerIds, Date.now());
+}
+
+const pluginProviderCatalogSchema =
+  pluginPackageJsonSchema.shape.bb.shape.experimental_providers
+    .unwrap()
+    .element.omit({ kind: true })
+    .array();
+
+function pluginProviderCatalogKey(pluginId: string): string {
+  return `pluginProviders:${pluginId}`;
+}
+
+export function getDisabledPluginProviderCatalog(
+  db: DbConnection,
+  pluginId: string,
+): Array<{ id: string; displayName: string }> {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, pluginProviderCatalogKey(pluginId)))
+    .get();
+  const parsed = pluginProviderCatalogSchema.safeParse(
+    row === undefined ? [] : parseStoredValue(row.value),
+  );
+  return parsed.success ? parsed.data : [];
+}
+
+export function setDisabledPluginProviderCatalog(
+  db: DbConnection,
+  pluginId: string,
+  providers: Array<{ id: string; displayName: string }>,
+): void {
+  writeValue(db, pluginProviderCatalogKey(pluginId), providers, Date.now());
+}
+
+export function forgetPluginProviders(
+  db: DbConnection,
+  pluginId: string,
+  providerIds: ReadonlySet<string>,
+): void {
+  const disabledProviderIds = getDisabledProviderIds(db);
+  db.transaction((transaction) => {
+    writeValue(
+      transaction,
+      DISABLED_PROVIDER_IDS_KEY,
+      disabledProviderIds.filter((id) => !providerIds.has(id)),
+      Date.now(),
+    );
+    transaction
+      .delete(appSettingsValues)
+      .where(eq(appSettingsValues.key, pluginProviderCatalogKey(pluginId)))
+      .run();
+  });
 }

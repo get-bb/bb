@@ -102,6 +102,7 @@ interface ControlledClaudeQuery {
   fail(error: Error): void;
   finish(): void;
   initializationResult: ReturnType<typeof vi.fn>;
+  interrupt: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
   setPermissionMode: ReturnType<typeof vi.fn>;
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage>;
@@ -311,6 +312,7 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     },
     getContextUsage: vi.fn().mockResolvedValue(null),
     initializationResult: vi.fn(),
+    interrupt: vi.fn().mockResolvedValue(undefined),
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     [Symbol.asyncIterator]() {

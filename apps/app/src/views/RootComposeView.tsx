@@ -1026,17 +1026,16 @@ function RootComposeSurface({
         : rootPanelHostPathTerminalTarget,
     [rootPanelEnvironmentId, rootPanelHostPathTerminalTarget],
   );
-  const {
-    checkThreadStorageFileExists: checkRootThreadStorageFileExists,
-    threadStorageFiles: rootThreadStorageFiles,
-  } = useThreadStorageViewer({
-    fileListEnabled: shouldLoadThreadStorageFileList({
-      hasThread: rootPanelThreadId !== null,
-      isSecondaryPanelOpen,
-      secondaryTabs: fixedPanelTabsState.secondary.tabs,
-    }),
-    threadId: rootPanelThreadId ?? undefined,
-  });
+  const { threadStorageFiles: rootThreadStorageFiles } = useThreadStorageViewer(
+    {
+      fileListEnabled: shouldLoadThreadStorageFileList({
+        hasThread: rootPanelThreadId !== null,
+        isSecondaryPanelOpen,
+        secondaryTabs: fixedPanelTabsState.secondary.tabs,
+      }),
+      threadId: rootPanelThreadId ?? undefined,
+    },
+  );
   const environmentTerminalsListQuery = useEnvironmentTerminals(
     rootPanelEnvironmentId ?? "",
     {
@@ -1108,7 +1107,6 @@ function RootComposeSurface({
     preserveWorkspaceTabsAcrossContexts: true,
     projectHostId: rootProjectHostId,
     projectId: isProjectless ? null : projectId,
-    storageFileExists: checkRootThreadStorageFileExists,
     storageFiles: rootThreadStorageFiles,
     terminalSessions: loadedTerminalSessions,
   });

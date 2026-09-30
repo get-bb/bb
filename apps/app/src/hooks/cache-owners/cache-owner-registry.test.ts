@@ -219,6 +219,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "serverMoveStatusQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
+    "systemProviderCatalogQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadSearchQueryKeyPrefix",
     "threadsQueryKey",

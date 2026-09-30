@@ -20,6 +20,8 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
+export const BUILTIN_PLUGIN_ID_PREFIX = "bb--";
+
 const ACCOUNT_POOL_PARENT_URL_ENV = "BB_ACCOUNT_POOL_PARENT_URL";
 
 export function accountPoolDefaultEnabled(
@@ -124,7 +126,7 @@ export const BUILTIN_PLUGINS = [
   },
   {
     name: "provider-usage",
-    pluginId: "provider-usage",
+    pluginId: "bb--provider-usage",
     defaultEnabled: true,
   },
   {

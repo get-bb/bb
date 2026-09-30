@@ -565,3 +565,15 @@ contract, explicit preload scopes, bundle-boundary guards, and parallel worker
 handoff requirements. Use an isolated production build with browser request
 interception to review loading and failure states and verify cold-download
 behavior. Keep temporary review stories and fixtures out of the final diff.
+
+## Pull Request Status And Daemon Compatibility
+
+Host-daemon protocol 222 adds required `autoMerge` and nullable `inMergeQueue`
+fields to `workspace.pull_request` results. A null queue value means the
+separate GitHub GraphQL lookup was unavailable; other PR data remains usable.
+The server checks protocol compatibility before parsing session payloads.
+A daemon still on 221 is rejected with `protocol_version_mismatch` and cannot
+serve workspace RPCs until it updates and reconnects. Auto-update-enabled
+older daemons install the server's matching bb-app artifact; disabled or failed
+updates leave the machine disconnected until a manual update succeeds. This
+is an intentional version gate, not backward-compatible field defaulting.

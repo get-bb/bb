@@ -254,7 +254,7 @@ adds a More item while the footer has room, and drag reorders within a zone. Mor
 hides every action, and Show footer shows them again.
 Right-click an action for Hide from footer or Customize footer.
 Settings → Appearance → Sidebar footer edits the same preferences. CLI example:
-`bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'`.
+`bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'`.
 Use `bb settings ui reset sidebar.hiddenFooterItems` to restore the default footer.
 
 Disable anonymous usage telemetry with `bb settings general telemetryEnabled false`
