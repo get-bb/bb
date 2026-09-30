@@ -3,6 +3,7 @@ import {
   QUESTION_SELECT_APP_COMMAND_IDS,
   isAppKeybindingAvailableForClient,
   keyboardPlatform,
+  keyboardPlatformSchema,
   findAppKeybindingOverride,
   isMacKeyboardPlatform,
   normalizeAppShortcutInputKey,
@@ -135,28 +136,30 @@ export function resetCommandShortcutOverride(
   overrides: AppKeybindingOverrides,
   command: KeyboardCommandId,
   platform: string,
-  defaultShortcut: AppShortcut | null,
 ): AppKeybindingOverrides {
   const scope = keyboardPlatform(platform);
   const remaining = overrides.filter(
-    (override) => override.command !== command || override.platform !== scope,
+    (override) =>
+      override.command !== command ||
+      (override.platform !== undefined && override.platform !== scope),
   );
-  const general = remaining.find(
+  const general = overrides.find(
     (override) =>
       override.command === command && override.platform === undefined,
   );
-  if (
-    general === undefined ||
-    (general.shortcut === null
-      ? defaultShortcut === null
-      : defaultShortcut !== null &&
-        areAppShortcutsEqual(general.shortcut, defaultShortcut))
-  ) {
-    return remaining;
-  }
+  if (general === undefined) return remaining;
   return [
     ...remaining,
-    { command, platform: scope, shortcut: defaultShortcut },
+    ...keyboardPlatformSchema.options
+      .filter(
+        (candidate) =>
+          candidate !== scope &&
+          !remaining.some(
+            (override) =>
+              override.command === command && override.platform === candidate,
+          ),
+      )
+      .map((platform) => ({ ...general, platform })),
   ];
 }
 

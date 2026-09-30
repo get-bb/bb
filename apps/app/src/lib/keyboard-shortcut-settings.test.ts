@@ -183,7 +183,7 @@ describe("keyboard shortcut settings", () => {
       ),
     ).toEqual(shortcut);
     expect(
-      resetCommandShortcutOverride(assigned, "thread.rename", "Win32", null),
+      resetCommandShortcutOverride(assigned, "thread.rename", "Win32"),
     ).toEqual([]);
   });
 
@@ -265,12 +265,7 @@ it("shows compatibility bindings only on macOS and preserves their scope while e
   expect(
     getCommandShortcut(
       defaults,
-      resetCommandShortcutOverride(
-        edited,
-        "thread.new",
-        "MacIntel",
-        defaults[0]!.shortcut,
-      ),
+      resetCommandShortcutOverride(edited, "thread.new", "MacIntel"),
       "thread.new",
       false,
       "MacIntel",
@@ -312,7 +307,8 @@ it("edits the effective platform override without losing other scopes and resets
   expect(
     getCommandShortcut(defaults, edited, "thread.new", false, "Win32")?.key,
   ).toBe("n");
-  expect(
-    resetCommandShortcutOverride(edited, "thread.new", "Win32", shortcut),
-  ).toEqual(edited);
+  expect(resetCommandShortcutOverride(edited, "thread.new", "Win32")).toEqual([
+    overrides[1],
+    overrides[3],
+  ]);
 });

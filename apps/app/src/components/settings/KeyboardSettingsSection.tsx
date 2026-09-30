@@ -9,6 +9,8 @@ import {
 } from "react";
 import {
   defaultAppSettings,
+  findAppKeybindingOverride,
+  keyboardPlatform,
   type KeyboardCommandId,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
@@ -231,10 +233,12 @@ function buildKeyboardCommandRowModel({
     isDesktop,
     platform,
   );
-  const customized = !areNullableAppShortcutsEqual(
-    shortcut,
-    getCommandShortcut(defaults, [], command, isDesktop, platform),
-  );
+  const customized =
+    findAppKeybindingOverride(
+      overrides,
+      command,
+      keyboardPlatform(platform),
+    ) !== undefined;
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
   );
@@ -685,13 +689,6 @@ export function KeyboardSettingsSection() {
         current.overrides,
         command,
         current.platform,
-        getCommandShortcut(
-          current.defaults,
-          [],
-          command,
-          current.isDesktop,
-          current.platform,
-        ),
       );
       applyOverrides(
         next,
@@ -721,18 +718,7 @@ export function KeyboardSettingsSection() {
             applyOverrides(
               customizedCommands.reduce(
                 (next, row) =>
-                  resetCommandShortcutOverride(
-                    next,
-                    row.command,
-                    platform,
-                    getCommandShortcut(
-                      defaults,
-                      [],
-                      row.command,
-                      isDesktop,
-                      platform,
-                    ),
-                  ),
+                  resetCommandShortcutOverride(next, row.command, platform),
                 overrides,
               ),
               null,

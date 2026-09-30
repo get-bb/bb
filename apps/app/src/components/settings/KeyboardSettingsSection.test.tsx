@@ -204,6 +204,7 @@ afterEach(() => {
   removePluginSlotRegistrations("test-shortcuts");
   cleanup();
   vi.clearAllMocks();
+  testState.mutate.mockReset();
   vi.restoreAllMocks();
   testState.defaultKeybindings = testState.initialDefaultKeybindings;
   testState.isDesktop = false;
@@ -213,6 +214,121 @@ afterEach(() => {
 });
 
 describe("KeyboardSettingsSection", () => {
+  it.each(["Reset shortcut for Open first plugin", "Reset all"])(
+    "%s removes an explicit plugin default and restores conflict suppression",
+    (resetLabel) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux");
+      setPluginSlotRegistrations(
+        "test-shortcuts",
+        collectPluginAppRegistrations({
+          __bbPluginApp: true,
+          setup(app) {
+            for (const id of ["first", "second"]) {
+              app.commands.register({
+                id,
+                title: `Open ${id} plugin`,
+                defaultShortcut: { key: "i", mod: true, shift: true },
+                run() {},
+              });
+            }
+          },
+        }),
+      );
+      testState.keybindingOverrides = [
+        {
+          command: "plugin:test-shortcuts/first",
+          platform: "linux",
+          shortcut: {
+            key: "i",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+        },
+      ];
+      testState.mutate.mockImplementation((overrides) => {
+        testState.keybindingOverrides = overrides;
+      });
+      const { rerender } = render(<KeyboardSettingsSection />);
+      expect(
+        screen.getByRole("button", {
+          name: "Record shortcut for Open first plugin, current shortcut Ctrl + Shift + I",
+        }),
+      ).toBeTruthy();
+      const reset = screen.getByRole("button", { name: resetLabel });
+      expect(reset.hasAttribute("disabled")).toBe(false);
+      fireEvent.click(reset);
+      expect(testState.keybindingOverrides).toEqual([]);
+      rerender(<KeyboardSettingsSection />);
+      for (const id of ["first", "second"]) {
+        expect(
+          screen.getByRole("button", {
+            name: `Record shortcut for Open ${id} plugin, current shortcut unassigned`,
+          }),
+        ).toBeTruthy();
+      }
+      expect(screen.getAllByText(/Default shortcut left unbound/)).toHaveLength(
+        2,
+      );
+    },
+  );
+
+  it("resets a shared binding to each surface's defaults while preserving other platforms", () => {
+    const platform = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("MacIntel");
+    testState.keybindingOverrides = [
+      {
+        command: "thread.new",
+        shortcut: {
+          key: "g",
+          mod: true,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: false,
+        },
+      },
+      { command: "thread.new", platform: "windows", shortcut: null },
+    ];
+    testState.mutate.mockImplementation((overrides) => {
+      testState.keybindingOverrides = overrides;
+    });
+    const { rerender } = render(<KeyboardSettingsSection />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset shortcut for New thread" }),
+    );
+    rerender(<KeyboardSettingsSection />);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut ⇧ ⌘ O",
+      }),
+    ).toBeTruthy();
+    testState.isDesktop = true;
+    rerender(<KeyboardSettingsSection />);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut ⌘ N",
+      }),
+    ).toBeTruthy();
+    platform.mockReturnValue("Linux");
+    rerender(<KeyboardSettingsSection />);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut Ctrl + G",
+      }),
+    ).toBeTruthy();
+    platform.mockReturnValue("Win32");
+    rerender(<KeyboardSettingsSection />);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut unassigned",
+      }),
+    ).toBeTruthy();
+  });
+
   it("keeps UI edits and both reset actions on the current platform", () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
     const general = {
@@ -270,14 +386,9 @@ describe("KeyboardSettingsSection", () => {
     );
     expect(testState.mutate.mock.lastCall?.[0]).toEqual([
       sharedRename,
-      general,
       mac,
       otherWindows,
-      {
-        command: "thread.new",
-        platform: "windows",
-        shortcut: expect.objectContaining({ key: "o", mod: true, shift: true }),
-      },
+      { ...general, platform: "linux" },
     ]);
     expect(
       screen.getByRole("button", {
@@ -291,15 +402,10 @@ describe("KeyboardSettingsSection", () => {
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
     expect(testState.mutate.mock.lastCall?.[0]).toEqual([
-      sharedRename,
-      general,
       mac,
-      {
-        command: "thread.new",
-        platform: "windows",
-        shortcut: expect.objectContaining({ key: "o", mod: true, shift: true }),
-      },
-      { command: "thread.rename", platform: "windows", shortcut: null },
+      { ...general, platform: "linux" },
+      { ...sharedRename, platform: "mac" },
+      { ...sharedRename, platform: "linux" },
     ]);
     expect(
       screen.getByRole("button", {
