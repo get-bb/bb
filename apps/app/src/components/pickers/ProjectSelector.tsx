@@ -213,10 +213,13 @@ export function ProjectSelector({
           <CommandList className="flex min-h-0 flex-1 flex-col overflow-hidden [&>[cmdk-list-sizer]]:flex [&>[cmdk-list-sizer]]:min-h-0 [&>[cmdk-list-sizer]]:flex-col">
             <div
               ref={listRef}
-              className="min-h-0 overflow-y-auto overscroll-contain"
+              className="min-h-0 scroll-pt-8 overflow-y-auto overscroll-contain"
             >
               {projects.length > 0 ? (
-                <CommandGroup heading="Project">
+                <CommandGroup
+                  heading="Project"
+                  className="overflow-visible [&_[cmdk-group-heading]]:sticky [&_[cmdk-group-heading]]:top-0 [&_[cmdk-group-heading]]:z-10 [&_[cmdk-group-heading]]:bg-popover"
+                >
                   {filteredProjects.map((project) => (
                     <CommandItem
                       key={project.id}
