@@ -529,6 +529,12 @@ behavior. Keep temporary review stories and fixtures out of the final diff.
 
 ## Pull Request Status And Daemon Compatibility
 
+Host-daemon protocol 223 upgrades Zod to 4.6.5. String length constraints now
+count Unicode code points rather than UTF-16 code units. For example, a
+controller label containing 256 emoji passes the 256-character limit; 257
+emoji fails. Daemons on protocol 222 must update before reconnecting so the
+server and daemon enforce the same validation behavior.
+
 Host-daemon protocol 222 adds required `autoMerge` and nullable `inMergeQueue`
 fields to `workspace.pull_request` results. A null queue value means the
 separate GitHub GraphQL lookup was unavailable; other PR data remains usable.
