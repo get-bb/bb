@@ -218,7 +218,7 @@ export function ProjectSelector({
               {projects.length > 0 ? (
                 <CommandGroup
                   heading="Project"
-                  className="overflow-visible [&_[cmdk-group-heading]]:sticky [&_[cmdk-group-heading]]:top-0 [&_[cmdk-group-heading]]:z-10 [&_[cmdk-group-heading]]:bg-popover"
+                  className="overflow-visible pt-0 [&_[cmdk-group-heading]]:sticky [&_[cmdk-group-heading]]:top-0 [&_[cmdk-group-heading]]:z-10 [&_[cmdk-group-heading]]:bg-popover"
                 >
                   {filteredProjects.map((project) => (
                     <CommandItem
