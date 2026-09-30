@@ -114,15 +114,16 @@ export type {
 } from "./threads.js";
 
 export {
+  forgetPluginProviders,
   getAiServiceSelections,
   getAppKeybindingOverrides,
   getAppSettings,
   getDisabledPluginProviderCatalog,
-  setDisabledPluginProviderCatalog,
   getPluginSafeMode,
   setAiServiceSelection,
   setAppKeybindingOverrides,
   setAppSettings,
+  setDisabledPluginProviderCatalog,
   setPluginSafeMode,
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";

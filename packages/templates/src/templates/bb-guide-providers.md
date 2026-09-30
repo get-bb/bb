@@ -21,9 +21,11 @@ in-flight turns can finish. Enable also enables its supplying plugin if needed,
 while preserving other providers' individual opt-outs. list --all shows the global
 catalog including disabled plugins, without machine/environment selectors.
 SDK: providers.catalog() and providers.setEnabled({ providerId, enabled }).
-Explicit enables keep installed-only agents visible while setup is completed.
-Disabling the default clears its selection; new threads use the next enabled
-provider in saved order. Explicit or existing-thread choices never silently switch.
+Enable restores automatic discovery, so installed-only agents again appear only
+where their CLI is installed. Disabling the default clears its selection; new
+threads use the next enabled provider in saved order, including in projects whose
+last-used provider is disabled. Explicit or existing-thread choices never
+silently switch.
 
 Providers are agent backends (e.g., codex, claude-code). Each supports different models.
 

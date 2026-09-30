@@ -11,6 +11,7 @@ export function providerManagementCatalog(
   const installed = new Map(
     plugins.list().map((plugin) => [plugin.id, plugin]),
   );
+  const disabled = deps.providerRegistry.disabledProviderIds();
   const declared = new Map(
     plugins.providerCatalog().map((provider) => [provider.id, provider]),
   );
@@ -30,7 +31,7 @@ export function providerManagementCatalog(
         ...entry,
         pluginName: plugin.name ?? plugin.id,
         pluginEnabled: plugin.enabled,
-        enabled: deps.providerRegistry.isEnabled(entry.id),
+        enabled: !disabled.has(entry.id),
         available: registration?.info.available ?? false,
         logoUrl: registration?.info.logoUrl ?? plugin.iconUrl,
         info: registration?.info ?? null,
@@ -63,12 +64,19 @@ export async function setProviderEnabled(
     }
   }
   const current = getAppSettings(deps.db);
-  const providerEnabled = { ...current.providerEnabled, [id]: enabled };
+  const disabledProviderIds = current.disabledProviderIds.filter(
+    (providerId) => providerId !== id,
+  );
+  if (!enabled) disabledProviderIds.push(id);
   const defaultProviderId =
     !enabled && current.defaultProviderId === id
       ? null
       : current.defaultProviderId;
-  setAppSettings(deps.db, { ...current, providerEnabled, defaultProviderId });
+  setAppSettings(deps.db, {
+    ...current,
+    disabledProviderIds,
+    defaultProviderId,
+  });
   deps.hub.notifySystem(["config-changed"]);
   return providerManagementCatalog(deps, plugins);
 }

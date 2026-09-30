@@ -58,8 +58,7 @@ const PROVIDER_INSTALLED_CACHE_TTL_MS = 5 * 60_000;
 
 export interface ProviderRegistryService {
   list(): ProviderRegistration[];
-  isEnabled(providerId: string): boolean;
-  isExplicitlyEnabled(providerId: string): boolean;
+  disabledProviderIds(): ReadonlySet<string>;
   getUserDefaultProviderId(): string | null;
   get(providerId: string): ProviderRegistration | null;
   getRegistrationRevision(): number;
@@ -97,7 +96,7 @@ interface ProviderRegistryDeps {
   readUserProviderPreferences?: () => {
     providerOrder: readonly string[];
     defaultProviderId: string | null;
-    providerEnabled?: Readonly<Record<string, boolean>>;
+    disabledProviderIds?: readonly string[];
   };
   deferRegistrationsSettled?: boolean;
 }
@@ -194,16 +193,9 @@ export function createProviderRegistryService(
   }
 
   const service: ProviderRegistryService = {
-    isExplicitlyEnabled(providerId) {
-      return (
-        deps.readUserProviderPreferences?.().providerEnabled?.[providerId] ===
-        true
-      );
-    },
-    isEnabled(providerId) {
-      return (
-        deps.readUserProviderPreferences?.().providerEnabled?.[providerId] !==
-        false
+    disabledProviderIds() {
+      return new Set(
+        deps.readUserProviderPreferences?.().disabledProviderIds ?? [],
       );
     },
     list() {
@@ -223,12 +215,12 @@ export function createProviderRegistryService(
     },
 
     getUserDefaultProviderId() {
-      const preferred =
-        deps.readUserProviderPreferences?.().defaultProviderId ?? null;
+      const preferences = deps.readUserProviderPreferences?.();
+      const preferred = preferences?.defaultProviderId ?? null;
       if (
         preferred === null ||
         !pluginRegistrations.has(preferred) ||
-        !service.isEnabled(preferred)
+        preferences?.disabledProviderIds?.includes(preferred) === true
       ) {
         return null;
       }

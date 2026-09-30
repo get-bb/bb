@@ -1,9 +1,4 @@
 import {
-  systemProviderEnabledRequestSchema,
-  type SystemProviderEnabledRequest,
-  type SystemProviderCatalogEntry,
-} from "./api/system.js";
-import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -14,10 +9,13 @@ import {
 import {
   machineEnvironmentReplaceSchema,
   setAiServiceSelectionRequestSchema,
+  systemProviderEnabledRequestSchema,
   testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
   type SetAiServiceSelectionRequest,
   type SystemAiServicesResponse,
+  type SystemProviderCatalogEntry,
+  type SystemProviderEnabledRequest,
   type TestAiServiceRequest,
   type TestAiServiceResponse,
 } from "./api/system.js";

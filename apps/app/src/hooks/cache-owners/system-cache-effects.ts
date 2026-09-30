@@ -1,4 +1,3 @@
-import { invalidatePluginList } from "./plugin-cache-owner";
 import type { QueryKey } from "@tanstack/react-query";
 import type { Environment, Host } from "@bb/domain";
 import type {
@@ -49,6 +48,7 @@ import type { QueryClientArg } from "../cache-effect-types";
 import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import { invalidateAppUpdateStatus } from "./app-update-cache-owner";
+import { invalidatePluginList } from "./plugin-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
 import {
   invalidateQueryKeys,

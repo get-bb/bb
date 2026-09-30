@@ -119,13 +119,13 @@ function listConfiguredSystemProviderInfos(
   deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
   filter: ProviderFilter = {},
 ): ProviderInfo[] {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   return deps.providerRegistry
     .list()
     .filter(
       (entry) =>
-        deps.providerRegistry.isEnabled(entry.info.id) &&
-        (entry.visibility === "always" ||
-          deps.providerRegistry.isExplicitlyEnabled(entry.info.id)) &&
+        !disabled.has(entry.info.id) &&
+        entry.visibility === "always" &&
         providerMatchesFilter(entry.info, filter),
     )
     .map((entry) => entry.info);
@@ -143,7 +143,8 @@ function includeRequestedRegisteredProvider(
     return providers;
   }
   const registration = deps.providerRegistry.get(providerId);
-  return registration === null || !deps.providerRegistry.isEnabled(providerId)
+  return registration === null ||
+    deps.providerRegistry.disabledProviderIds().has(providerId)
     ? providers
     : [...providers, registration.info];
 }
@@ -159,13 +160,13 @@ async function listInstalledPluginProviderInfos(
   hostId: string,
   filter: ProviderFilter,
 ): Promise<ProviderInfo[]> {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   const registrations = deps.providerRegistry
     .list()
     .filter(
       (registration) =>
-        deps.providerRegistry.isEnabled(registration.info.id) &&
+        !disabled.has(registration.info.id) &&
         registration.visibility === "installed" &&
-        !deps.providerRegistry.isExplicitlyEnabled(registration.info.id) &&
         providerMatchesFilter(registration.info, filter),
     );
   const budget = createProviderListingBudget();

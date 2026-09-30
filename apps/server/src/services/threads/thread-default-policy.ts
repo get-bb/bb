@@ -36,11 +36,12 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
 function listDefaultProviderIdCandidates(
   registry: ProviderRegistryService,
 ): string[] {
+  const disabled = registry.disabledProviderIds();
   const available = registry
     .list()
     .filter(
       (registration) =>
-        registration.info.available && registry.isEnabled(registration.info.id),
+        registration.info.available && !disabled.has(registration.info.id),
     )
     .map((registration) => registration.info.id);
   const preferred = registry.getUserDefaultProviderId();
@@ -186,17 +187,22 @@ export function resolveCreateThreadExecutionDefaults(
   registry: ProviderRegistryService,
   args: ResolveCreateThreadExecutionDefaultsArgs,
 ): CreateThreadExecutionDefaultsResolved {
+  const disabled = registry.disabledProviderIds();
+  const storedProviderId =
+    args.storedDefaults !== null &&
+    !disabled.has(args.storedDefaults.providerId)
+      ? args.storedDefaults.providerId
+      : undefined;
   const isProductDefault =
-    args.requestedProviderId === undefined &&
-    args.storedDefaults?.providerId === undefined;
+    args.requestedProviderId === undefined && storedProviderId === undefined;
   const defaultCandidates = isProductDefault
     ? listDefaultProviderIdCandidates(registry)
     : [];
   const providerId =
     args.requestedProviderId ??
-    args.storedDefaults?.providerId ??
+    storedProviderId ??
     requireDefaultProviderId(registry);
-  if (!registry.isEnabled(providerId)) {
+  if (disabled.has(providerId)) {
     throw new ApiError(
       409,
       "provider_disabled",

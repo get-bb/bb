@@ -1,7 +1,3 @@
-import {
-  getDisabledPluginProviderCatalog,
-  setDisabledPluginProviderCatalog,
-} from "@bb/db";
 import type {
   PluginRpcDiscoveryQuery,
   PublishedPluginRpcMethod,
@@ -70,6 +66,8 @@ import {
   deleteAllPluginSettings,
   deleteInstalledPlugin,
   deletePluginSchedules,
+  forgetPluginProviders,
+  getDisabledPluginProviderCatalog,
   getInstalledPlugin,
   getPluginSafeMode,
   getThread,
@@ -82,6 +80,7 @@ import {
   listThreadPluginMetadataRows,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
+  setDisabledPluginProviderCatalog,
   setInstalledPluginEnabled,
   setPluginSafeMode,
   type InstalledPluginRow,
@@ -1221,10 +1220,40 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return { metadataByPluginId, publisherLabels };
   }
 
+  function pluginProviderCatalog(
+    row: InstalledPluginRow,
+  ): Array<{ id: string; displayName: string }> {
+    const manifest =
+      loaded.get(row.id)?.manifest ?? identities.get(row.id)?.manifest;
+    const catalog = new Map(
+      (manifest?.providerCatalog ?? []).map((provider) => [
+        provider.id,
+        provider,
+      ]),
+    );
+    if (!row.enabled) {
+      for (const provider of getDisabledPluginProviderCatalog(deps.db, row.id))
+        catalog.set(provider.id, provider);
+    }
+    return [...catalog.values()];
+  }
+
+  function pluginProviderIds(row: InstalledPluginRow): Set<string> {
+    return new Set([
+      ...pluginProviderCatalog(row).map((provider) => provider.id),
+      ...(loaded
+        .get(row.id)
+        ?.handle.listProviderDeclarations()
+        .map((declaration) => declaration.id) ?? []),
+    ]);
+  }
+
   async function deleteRemovedPluginData(
     row: InstalledPluginRow,
+    providerIds: ReadonlySet<string>,
   ): Promise<void> {
     deps.onPluginUnregistered?.(row.id);
+    forgetPluginProviders(deps.db, row.id, providerIds);
     // The uninstalled tree is no longer reloadable, so stop the module
     // resolve hook from scanning it on every later import.
     forgetMutableRoot(row.rootDir);
@@ -1239,7 +1268,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   async function removeUnbundledBuiltins(): Promise<void> {
     for (const row of listInstalledPlugins(deps.db)) {
       if (!isOrphanedBuiltinRow(row)) continue;
-      await deleteRemovedPluginData(row);
+      await deleteRemovedPluginData(row, pluginProviderIds(row));
       deleteInstalledPlugin(deps.db, row.id);
       logger.info(
         `plugin ${row.id} removed because bb no longer bundles ${row.source}; its settings, secrets, and schedules were deleted`,
@@ -1516,27 +1545,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     list,
     providerCatalog() {
-      return listInstalledPlugins(deps.db).flatMap((row) => {
-        const manifest =
-          loaded.get(row.id)?.manifest ?? identities.get(row.id)?.manifest;
-        const catalog = new Map(
-          (manifest?.providerCatalog ?? []).map((provider) => [
-            provider.id,
-            provider,
-          ]),
-        );
-        if (!row.enabled) {
-          for (const provider of getDisabledPluginProviderCatalog(
-            deps.db,
-            row.id,
-          ))
-            catalog.set(provider.id, provider);
-        }
-        return [...catalog.values()].map((provider) => ({
+      return listInstalledPlugins(deps.db).flatMap((row) =>
+        pluginProviderCatalog(row).map((provider) => ({
           ...provider,
           pluginId: row.id,
-        }));
-      });
+        })),
+      );
     },
 
     async install(source, selection) {
@@ -1628,6 +1642,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     async remove(id) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
+        const providerIds = row ? pluginProviderIds(row) : new Set<string>();
         await withLifecycleLock(id, () => disposeOne(id));
         statuses.delete(id);
         handlerStats.delete(id);
@@ -1641,7 +1656,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : deleteInstalledPlugin(deps.db, id)
           : false;
         if (removed && row) {
-          await deleteRemovedPluginData(row);
+          await deleteRemovedPluginData(row, providerIds);
           logger.info(
             `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
           );

@@ -3588,7 +3588,6 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
-
 ### Provider discovery metadata
 
 `package.json` → `bb.experimental_providers` declares `{ id, displayName }`

@@ -19,7 +19,7 @@ export const appSettingsSchema = z
     steerActiveThreadOnEnter: z.boolean(),
     showDiagnosticEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
-    providerEnabled: z.record(z.string().min(1), z.boolean()),
+    disabledProviderIds: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     providerCompletedTurnDisplay: z.record(
       z.string().min(1),
@@ -52,7 +52,7 @@ export const defaultAppSettings: AppSettings = {
   steerActiveThreadOnEnter: true,
   showDiagnosticEvents: false,
   providerOrder: [],
-  providerEnabled: {},
+  disabledProviderIds: [],
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
   streamerMode: false,
@@ -66,13 +66,13 @@ export const defaultAppSettings: AppSettings = {
 
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
-    providerEnabled: z.record(z.string().min(1), z.boolean()).optional(),
+    disabledProviderIds: z.array(z.string().min(1)).optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
-    providerEnabled: z.record(z.string().min(1), z.boolean()).optional(),
+    disabledProviderIds: z.array(z.string().min(1)).optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),

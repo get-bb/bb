@@ -1,9 +1,5 @@
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
-  providerManagementCatalog,
-  setProviderEnabled,
-} from "../services/system/provider-management.js";
-import {
   setMachineEnvironmentVariable,
   deleteMachineEnvironmentVariable,
 } from "../services/machines/environment-storage.js";
@@ -72,6 +68,10 @@ import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
+import {
+  providerManagementCatalog,
+  setProviderEnabled,
+} from "../services/system/provider-management.js";
 import { getProviderStates } from "../services/system/provider-states.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
@@ -311,7 +311,8 @@ export function registerSystemRoutes(
         : undefined;
     const updatedSettings = appSettingsSchema.parse({
       ...settings,
-      providerEnabled: settings.providerEnabled ?? current.providerEnabled,
+      disabledProviderIds:
+        settings.disabledProviderIds ?? current.disabledProviderIds,
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,

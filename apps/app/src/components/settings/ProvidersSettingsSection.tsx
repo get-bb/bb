@@ -1,12 +1,3 @@
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { ProviderIcon } from "@/components/plugin/ProviderIcon";
-import { useSetProviderEnabled } from "@/hooks/mutations/provider-mutations";
 import { useState } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
 import type {
@@ -16,6 +7,13 @@ import type {
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Switch } from "@bb/shared-ui/switch";
@@ -26,9 +24,11 @@ import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
+import { ProviderIcon } from "@/components/plugin/ProviderIcon";
+import { useSetProviderEnabled } from "@/hooks/mutations/provider-mutations";
 import {
-  useSystemProviders,
   useSystemProviderCatalog,
+  useSystemProviders,
 } from "@/hooks/queries/system-queries";
 import {
   SortableSettingsRowList,

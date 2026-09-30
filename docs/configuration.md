@@ -581,10 +581,13 @@ shows the global management catalog, including providers whose plugins are off;
 it cannot be combined with machine or environment selectors. Enabling a shared
 plugin preserves individual provider opt-outs. Disabling the selected default
 clears that choice, allowing the next enabled provider in saved order to be used.
+A project whose last-used provider is disabled also falls back to that order;
+explicitly requesting a disabled provider is still rejected.
 
-The core `providerEnabled` setting stores explicit choices by provider ID.
-Unspecified providers retain their automatic discovery behavior. Explicitly
-enabling an installed-only provider keeps it visible before its CLI is installed.
+The core `disabledProviderIds` setting lists disabled providers by ID. Enable
+removes the ID, so the provider returns to its automatic discovery behavior:
+agents such as `acp-opencode` again appear only where their CLI is installed.
+Uninstalling a plugin forgets the disabled state of its providers.
 
 The SDK exposes `sdk.providers.catalog()` and
 `sdk.providers.setEnabled({ providerId: "acp-opencode", enabled: false })`.

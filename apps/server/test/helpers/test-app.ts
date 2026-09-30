@@ -174,7 +174,7 @@ export async function createTestAppHarness(
       const settings = getAppSettings(db);
       return {
         providerOrder: settings.providerOrder,
-        providerEnabled: settings.providerEnabled,
+        disabledProviderIds: settings.disabledProviderIds,
         defaultProviderId: settings.defaultProviderId,
       };
     },
