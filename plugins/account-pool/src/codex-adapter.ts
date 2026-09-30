@@ -172,12 +172,19 @@ function booleanHeader(headers: Headers, name: string): boolean | null {
   return null;
 }
 
+const WORKSPACE_HARD_STOP_REASONS = new Set([
+  "workspace_owner_credits_depleted",
+  "workspace_member_credits_depleted",
+  "workspace_owner_usage_limit_reached",
+  "workspace_member_usage_limit_reached",
+]);
+
 function restrictionFromReason(
   reason: string | null,
 ): AccountQuota["usageRestriction"] {
-  return reason === null || reason === "rate_limit_reached"
-    ? null
-    : { reason, resetAt: null };
+  return reason !== null && WORKSPACE_HARD_STOP_REASONS.has(reason)
+    ? { reason, resetAt: null }
+    : null;
 }
 
 function codexQuotaFromHeaders(

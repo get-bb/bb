@@ -157,6 +157,43 @@ describe("Codex credit observations", () => {
     expect(reset?.usageRestriction).toBeNull();
     expect(reset?.extraUsage?.status).toBe("allowed");
   });
+
+  it("restricts only on workspace hard-stop reasons", () => {
+    for (const reason of ["rate_limit_reached", "unknown", "future_reason"]) {
+      expect(
+        adapter.quotaFromHeaders(
+          ACCOUNT_ID,
+          new Headers({ "x-codex-rate-limit-reached-type": reason }),
+          emptyQuota(),
+          "other",
+          1000,
+        ).usageRestriction,
+      ).toBeNull();
+      expect(
+        codexQuotaFromUsage(
+          ACCOUNT_ID,
+          { rate_limit_reached_type: { type: reason } },
+          emptyQuota(),
+          1000,
+        )?.usageRestriction,
+      ).toBeNull();
+    }
+    expect(
+      codexQuotaFromUsage(
+        ACCOUNT_ID,
+        {
+          rate_limit_reached_type: {
+            type: "workspace_member_usage_limit_reached",
+          },
+        },
+        emptyQuota(),
+        1000,
+      )?.usageRestriction,
+    ).toEqual({
+      reason: "workspace_member_usage_limit_reached",
+      resetAt: null,
+    });
+  });
 });
 
 describe("codexQuotaFromUsage", () => {
