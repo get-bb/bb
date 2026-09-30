@@ -369,11 +369,13 @@ as the first argument drives a dev client through Metro instead.
 - Session: `src/lib/session` mints `POST <serverUrl>/api/connect/desktop-session`
   with the credential, installs the cookie in both native jars (`Secure`
   follows the server URL's scheme so a plain-http stub gate works), renews
-  five minutes before expiry and on AppState active. It records the cookie's
-  name and expiry per profile (MMKV `bb.connectSession.<profileId>`); a cold
-  start with an unexpired record and the cookie present in both jars resumes
-  that session instead of minting, so the page loads without a round trip to
-  the gate. A refused mint clears the record. The cookie lasts seven
+  five minutes before expiry and on AppState active. Each minted session
+  (server URL and the full cookie, value included) is kept per profile in
+  SecureStore (`bb.connectSession.<profileId>`); a cold start whose record
+  matches the profile's server URL and is more than five minutes from expiry
+  reinstalls that cookie into both jars instead of minting, so the page loads
+  without a round trip to the gate. A refused mint and Clear website data
+  clear the record. The cookie lasts seven
   days; the gate re-issues it once a day on ordinary responses and rejects it
   within about 20 seconds of the machine being revoked. The connector
   (`src/lib/connection`) re-checks the session on any 401/403 (an API call
@@ -626,6 +628,9 @@ Beta App Review and another build of the same version usually does not.
 
 - Server profiles: `expo-secure-store`, one key per profile
   (`bb.profile.<id>`) plus `bb.profiles.index`.
+- Connect sessions: `expo-secure-store`, one key per profile
+  (`bb.connectSession.<profileId>`) holding the last minted desktop-session
+  cookie and its server URL.
 - Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`): MMKV
   store `bb.preferences`, one shared instance from
   `src/lib/native/preferences-storage.ts`. Push state shares it:
