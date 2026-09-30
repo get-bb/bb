@@ -68,6 +68,10 @@ import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
+import {
+  providerManagementCatalog,
+  setProviderEnabled,
+} from "../services/system/provider-management.js";
 import { getProviderStates } from "../services/system/provider-states.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
@@ -583,6 +587,21 @@ export function registerSystemRoutes(
 
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),
+  );
+
+  get(routes.providerCatalog, async (context) => {
+    await deps.providerRegistry.whenRegistrationsSettled();
+    return context.json(providerManagementCatalog(deps, pluginService));
+  });
+  put(routes.providerEnabled, async (context, payload) =>
+    context.json(
+      await setProviderEnabled(
+        deps,
+        pluginService,
+        context.req.param("id"),
+        payload.enabled,
+      ),
+    ),
   );
 
   get(routes.providerLogo, async (context) => {

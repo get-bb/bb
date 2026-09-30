@@ -1801,6 +1801,52 @@ describe("TunnelDO machine presence", () => {
     expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
     expect(run).toHaveBeenCalledTimes(1);
   });
+
+  it("schedules the next presence alarm before a slow D1 write settles", async () => {
+    const run = vi.fn(() => new Promise<void>(() => {}));
+    const update = vi.fn(() => ({
+      set: () => ({ where: () => ({ run }) }),
+    }));
+    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
+    const setAlarm = vi.fn(async (_at: number) => {});
+    state.api.storage.setAlarm = setAlarm;
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+
+    const before = Date.now();
+    void dob.alarm();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    expect(setAlarm).toHaveBeenCalledTimes(1);
+    const at = setAlarm.mock.calls[0]![0];
+    expect(at - before).toBeGreaterThanOrEqual(40_000);
+    expect(at - Date.now()).toBeLessThan(60_000);
+  });
+
+  it("spreads presence alarms across the interval instead of a fixed period", async () => {
+    vi.mocked(drizzle).mockReturnValue({
+      update: () => ({
+        set: () => ({ where: () => ({ run: async () => {} }) }),
+      }),
+    } as never);
+    const offsets: number[] = [];
+    for (const roll of [0, 0.5, 0.999]) {
+      const random = vi.spyOn(Math, "random").mockReturnValue(roll);
+      const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
+      const setAlarm = vi.fn(async (_at: number) => {});
+      state.api.storage.setAlarm = setAlarm;
+      const dob = new TunnelDO(state.api, makeDoEnv());
+      await state.restore;
+      state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+      const before = Date.now();
+      await dob.alarm();
+      offsets.push(Math.round((setAlarm.mock.calls[0]![0] - before) / 1000));
+      random.mockRestore();
+    }
+    expect(offsets).toEqual([40, 50, 60]);
+  });
 });
 
 describe("TunnelDO targeted request with old client", () => {

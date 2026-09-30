@@ -61,6 +61,8 @@ This index lists every command path that the core CLI registers, including alias
 
 - `bb provider`
 - `bb provider list`
+- `bb provider enable`
+- `bb provider disable`
 - `bb provider models`
 
 ## manager

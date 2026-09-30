@@ -16,7 +16,14 @@
     },
     "server": "./server.ts",
     "host": "./src/host.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "experimental_providers": [
+      {
+        "kind": "agent",
+        "id": "pi",
+        "displayName": "Pi"
+      }
+    ]
   },
   "keywords": [
     "bb-plugin"
