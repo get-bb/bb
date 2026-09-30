@@ -872,11 +872,12 @@ export function createAutomationService(args: {
       });
       if (!deduped) {
         publishAutomationChange(bb, input.projectId, "automation-runs-changed");
-        const closeFailedRun = (error: unknown): void => {
+        const closeFailedRun = (error: unknown, transient = false): void => {
           closeAutomationRun(db, {
             runId: run.id,
             status: "failed",
             error: errorMessage(error),
+            transient,
             now: Date.now(),
           });
         };

@@ -10,7 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
-import { AutomationOverviewView } from "../overview-view.js";
+import { AutomationOverviewView, OverviewRow } from "../overview-view.js";
 import type {
   AutomationResponse,
   AutomationsOverviewResponse,
@@ -54,6 +54,7 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
       origin: "human",
       createdByThreadId: null,
       nextRunAt: 1_800_000_000_000,
+      retryAt: null,
       lastRunAt: null,
       runCount: 0,
       lastRunStatus: null,
@@ -69,6 +70,69 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
 afterEach(cleanup);
 
 describe("AutomationOverviewView", () => {
+  it("keeps failure and retry state visible on the automation row", () => {
+    const entry = INSTALLED_AUTOMATIONS[0]!;
+    if ("problem" in entry.automation) throw new Error("invalid fixture");
+    const props = {
+      project: entry.project,
+      onNavigate: () => undefined,
+      onEnabledChange: async () => undefined,
+      onRunNow: async () => undefined,
+      onDelete: () => undefined,
+    };
+    const view = render(
+      <OverviewRow
+        {...props}
+        automation={{
+          ...entry.automation,
+          lastRunStatus: "failed",
+          lastError: "Provider connection failed",
+          retryAt: entry.automation.nextRunAt,
+        }}
+      />,
+    );
+    expect(
+      screen.getByText("Retrying: Provider connection failed"),
+    ).toBeTruthy();
+    expect(screen.getByText(/^Retry /u)).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Retrying after failure" }),
+    ).toBeTruthy();
+
+    view.rerender(
+      <OverviewRow
+        {...props}
+        automation={{
+          ...entry.automation,
+          lastRunStatus: "failed",
+          lastError: "manual run failed",
+          retryAt: null,
+        }}
+      />,
+    );
+    expect(screen.getByText("Last run failed: manual run failed")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Next run" })).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Next retry" })).toBeNull();
+
+    view.rerender(
+      <OverviewRow
+        {...props}
+        automation={{
+          ...entry.automation,
+          enabled: false,
+          nextRunAt: null,
+          lastRunStatus: "failed",
+          lastError: "invalid model",
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Paused: invalid model. Resume after resolving the error.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("keeps lifecycle groups stable around the selected sort", () => {
     const baseEntry = INSTALLED_AUTOMATIONS[0]!;
     if ("problem" in baseEntry.automation) {

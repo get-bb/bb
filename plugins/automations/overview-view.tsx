@@ -218,6 +218,10 @@ function AutomationRowMetadata({
           runCount: automation.runCount,
           lastRunStatus: automation.lastRunStatus,
         });
+  const isRetry =
+    automation !== null &&
+    automation.retryAt !== null &&
+    automation.retryAt === automation.nextRunAt;
   return (
     <ResourceMeta
       items={[
@@ -236,9 +240,36 @@ function AutomationRowMetadata({
         automation !== null && scheduleMetadata !== null ? (
           <AutomationMetadataItem
             icon={scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined}
-            iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
+            iconLabel={
+              scheduleMetadata.isNextRun
+                ? isRetry
+                  ? "Next retry"
+                  : "Next run"
+                : undefined
+            }
           >
-            {scheduleMetadata.text}
+            {scheduleMetadata.isNextRun && isRetry
+              ? `Retry ${scheduleMetadata.text}`
+              : scheduleMetadata.text}
+          </AutomationMetadataItem>
+        ) : null,
+        automation !== null && automation.lastError !== null ? (
+          <AutomationMetadataItem
+            icon="AlertCircle"
+            iconLabel={
+              automation.enabled
+                ? isRetry
+                  ? "Retrying after failure"
+                  : "Last run failed"
+                : "Paused after failure"
+            }
+            title={automation.lastError}
+          >
+            {automation.enabled
+              ? isRetry
+                ? `Retrying: ${automation.lastError}`
+                : `Last run failed: ${automation.lastError}`
+              : `Paused: ${automation.lastError}. Resume after resolving the error.`}
           </AutomationMetadataItem>
         ) : null,
         automation === null ? "The stored configuration cannot be read." : null,

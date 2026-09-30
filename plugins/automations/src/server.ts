@@ -7,6 +7,7 @@ import {
   closeAutomationRunForSettledThread,
   disableAutomationsForDeletedThreadEvent,
   errorMessage,
+  isTransientTurnFailure,
   reconcileRunningAutomationRuns,
 } from "./run.js";
 import { registerAutomationCli } from "./cli.js";
@@ -39,11 +40,27 @@ export default async function plugin(bb: BbPluginApi) {
       status: "idle",
     });
   });
+  const pendingThreadFailures = new Map<string, string | null>();
   bb.events.on("thread.failed", ({ thread, error }) => {
+    pendingThreadFailures.set(thread.id, error);
+    setImmediate(() => {
+      if (!pendingThreadFailures.has(thread.id)) return;
+      pendingThreadFailures.delete(thread.id);
+      closeAutomationRunForSettledThread(bb, db, {
+        threadId: thread.id,
+        status: "failed",
+        error,
+      });
+    });
+  });
+  bb.events.on("turn.failed", (failure) => {
+    const error = pendingThreadFailures.get(failure.threadId);
+    pendingThreadFailures.delete(failure.threadId);
     closeAutomationRunForSettledThread(bb, db, {
-      threadId: thread.id,
+      threadId: failure.threadId,
       status: "failed",
-      error,
+      error: error ?? "Provider turn failed",
+      transient: isTransientTurnFailure(failure),
     });
   });
 

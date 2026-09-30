@@ -94,6 +94,7 @@ const automation: AutomationDetailResponse = {
   origin: "human",
   createdByThreadId: null,
   nextRunAt: Date.now() + 60_000,
+  retryAt: null,
   lastRunAt: null,
   runCount: 0,
   lastRunStatus: null,

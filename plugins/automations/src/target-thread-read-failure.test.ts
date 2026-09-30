@@ -7,7 +7,7 @@ const PROJECT_ID = "proj_test";
 const THREAD_ID = "thr_target";
 
 async function createHost(
-  threadReadError = new Error("temporary thread read failure"),
+  threadReadError: Error | null = new Error("temporary thread read failure"),
 ) {
   const host = createFakePluginHost({
     pluginId: "automations",
@@ -55,6 +55,14 @@ async function createHost(
       },
       threads: {
         async get() {
+          if (threadReadError === null) {
+            return {
+              id: THREAD_ID,
+              status: "error" as const,
+              deletedAt: null,
+              archivedAt: null,
+            } as never;
+          }
           throw threadReadError;
         },
         async send() {
@@ -121,6 +129,75 @@ async function waitForFailedRun(
 }
 
 describe("target thread read failures", () => {
+  it("starts fresh native runs in an error thread after transient provider failures", async () => {
+    const host = await createHost(null);
+    const service = createService(host);
+    const automation = await createTargetAutomation(
+      service,
+      "Recovering target",
+    );
+
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const started = await service.run({
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+      await vi.waitFor(() =>
+        expect(
+          service.runs({
+            projectId: PROJECT_ID,
+            automationId: automation.id,
+            limit: 10,
+          }).runs[0]?.threadId,
+        ).toBe(THREAD_ID),
+      );
+      await host.harness.emitThreadEvent("thread.failed", {
+        thread: { id: THREAD_ID } as never,
+        error: "Provider connection failed",
+      });
+      await host.harness.emitThreadEvent("turn.failed", {
+        threadId: THREAD_ID,
+        requestId: `req_${attempt}`,
+        turnId: `turn_${attempt}`,
+        errorInfo: {
+          category: "connection-failed",
+          providerCode: null,
+          httpStatusCode: null,
+        },
+        inputAccepted: true,
+        rateLimits: null,
+        attemptNumber: 1,
+      });
+      await waitForFailedRun(service, automation.id);
+      expect(
+        service.runs({
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+          limit: 10,
+        }).runs[0]?.id,
+      ).toBe(started.run.id);
+      const current = await service.get({
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+      if ("problem" in current) throw new Error("automation became unreadable");
+      expect(current.enabled).toBe(true);
+    }
+
+    expect(
+      new Set(
+        service
+          .runs({
+            projectId: PROJECT_ID,
+            automationId: automation.id,
+            limit: 10,
+          })
+          .runs.map((run) => run.id),
+      ).size,
+    ).toBe(4);
+    await host.harness.dispose();
+  });
+
   it("keeps all target automations enabled after a temporary read failure", async () => {
     const host = await createHost();
     const service = createService(host);
@@ -176,7 +253,7 @@ describe("target thread read failures", () => {
       },
       {
         enabled: false,
-        lastError: "target thread deleted",
+        lastError: "target thread missing",
       },
     ]);
 

@@ -40,12 +40,13 @@ function buildScheduleFailureHandler(
   args: {
     run: AutomationRunRow;
   },
-): (error: unknown) => void {
-  return (error) => {
+): (error: unknown, transient: boolean) => void {
+  return (error, transient) => {
     closeAutomationRun(db, {
       runId: args.run.id,
       status: "failed",
       error: errorMessage(error),
+      transient,
       now: Date.now(),
     });
   };
