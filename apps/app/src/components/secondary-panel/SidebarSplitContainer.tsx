@@ -373,9 +373,7 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () =>
-    navigateNewTabItem(-1),
-  );
+  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(

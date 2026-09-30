@@ -104,12 +104,7 @@ export function useSecondaryPanelResize({
       secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
     const size = Number.parseFloat(panel?.style.flexGrow ?? "");
     if (Number.isFinite(size)) handleSecondaryPanelResize(size);
-  }, [
-    handleSecondaryPanelResize,
-    isSecondaryPanelOpen,
-    panelId,
-    renderAsDrawer,
-  ]);
+  }, [handleSecondaryPanelResize, isSecondaryPanelOpen, panelId, renderAsDrawer]);
 
   return {
     handleSecondaryPanelResize,
