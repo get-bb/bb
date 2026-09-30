@@ -12,9 +12,7 @@ export function useSecondaryPanelSizing(dividerWidth = 0) {
   const { ref, width } = useElementWidth();
   const minimum = useMemo(
     () =>
-      width > 0
-        ? splitWidthLimits(width - dividerWidth)
-        : { min: 0, max: 1 },
+      width > 0 ? splitWidthLimits(width - dividerWidth) : { min: 0, max: 1 },
     [width, dividerWidth],
   );
   return { ref, minimum };

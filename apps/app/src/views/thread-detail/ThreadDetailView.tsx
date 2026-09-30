@@ -667,7 +667,6 @@ function ThreadDetailViewInternal(
     secondaryTabs: fixedPanelTabsState.secondary.tabs,
   });
   const {
-    checkThreadStorageFileExists,
     isThreadStorageFilesLoading,
     threadStorageFiles,
     threadStorageFilesError,
@@ -705,7 +704,6 @@ function ThreadDetailViewInternal(
     syncThreadId: threadId,
     environmentId: thread?.environmentId,
     onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
-    storageFileExists: checkThreadStorageFileExists,
     storageFiles: threadStorageFiles,
     terminalSessions: terminalsListQuery.data?.sessions,
   });

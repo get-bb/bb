@@ -927,17 +927,19 @@ const sidebarSplitStateSchema = z
       }
     }
   })
-  .transform((storedState): SidebarSplitState => ({
-    version: storedState.version,
-    groups: storedState.groups,
-    layout: storedState.layout,
-    maximizedPaneId:
-      storedState.maximizedPaneId !== undefined &&
-      storedState.maximizedPaneId !== null &&
-      findPane(storedState.layout.root, storedState.maximizedPaneId) !== null
-        ? storedState.maximizedPaneId
-        : null,
-  }));
+  .transform(
+    (storedState): SidebarSplitState => ({
+      version: storedState.version,
+      groups: storedState.groups,
+      layout: storedState.layout,
+      maximizedPaneId:
+        storedState.maximizedPaneId !== undefined &&
+        storedState.maximizedPaneId !== null &&
+        findPane(storedState.layout.root, storedState.maximizedPaneId) !== null
+          ? storedState.maximizedPaneId
+          : null,
+    }),
+  );
 
 export function sidebarSplitStorageKey(panelStateId: string): string {
   return `${SIDEBAR_SPLIT_LAYOUT_STORAGE_PREFIX}.${panelStateId}`;
