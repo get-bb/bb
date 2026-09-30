@@ -1303,7 +1303,7 @@ function NotPairedContent({
         . Your code and data stay on this machine.
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <AccountSignInCard onSignedIn={onPaired} />
         <Button
           type="button"
