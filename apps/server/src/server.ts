@@ -1,4 +1,3 @@
-import { androidApkResponse } from "./services/install/android-app-artifact.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import { enrolledInstallerScript } from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
@@ -573,9 +572,6 @@ export function createApp(
         },
       },
     );
-  });
-  app.get("/install/bb-android.apk", (context) => {
-    return androidApkResponse(deps.config.dataDir, context.req.raw);
   });
   app.get("/install/version", async (context) => {
     return context.json({

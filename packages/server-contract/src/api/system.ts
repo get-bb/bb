@@ -547,21 +547,8 @@ export const androidAppArtifactSchema = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
 });
 export type AndroidAppArtifact = z.infer<typeof androidAppArtifactSchema>;
-export type SystemAndroidAppResponse = AndroidAppArtifact | null;
 
 export interface SystemMobileAppReleasesResponse {
   android: (AndroidAppArtifact & { updatedAt: string }) | null;
 }
 
-export const androidAppPrepareRequestSchema = z.object({
-  source: z.enum(["github", "local"]),
-});
-export type AndroidAppPrepareRequest = z.infer<
-  typeof androidAppPrepareRequestSchema
->;
-export interface AndroidAppPreparation {
-  status: "idle" | "preparing" | "ready" | "failed";
-  source: "github" | "local" | null;
-  message: string;
-  artifact: AndroidAppArtifact | null;
-}

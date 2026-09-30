@@ -672,11 +672,5 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 (GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
-usable during metadata failures. iOS version and release date are shown in TestFlight. Advanced server caching and local builds remain available via
-`bb settings android-app-prepare github --json` (or `local`), followed by
-`bb settings android-app --json`. SDK equivalents are
-`system.prepareAndroidApp({ source })`, `system.androidAppPreparation()`, and
-`system.androidApp()`. Cached/local downloads use `/install/bb-android.apk` and
-still travel through the server; use the public link for remote release downloads.
-Local builds require `BB_ANDROID_SOURCE_DIR`, pnpm, Java 17+, and an Android SDK.
+usable during metadata failures. iOS version and release date are shown in TestFlight.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.

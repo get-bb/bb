@@ -1,6 +1,4 @@
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
-import { createAndroidAppPreparationService } from "../services/install/android-app-preparation.js";
-import { readAndroidAppArtifact } from "../services/install/android-app-artifact.js";
 import {
   setMachineEnvironmentVariable,
   deleteMachineEnvironmentVariable,
@@ -159,24 +157,6 @@ export function registerSystemRoutes(
   get(routes.mobileAppReleases, async (context) => {
     context.header("cache-control", "no-store");
     return context.json(await mobileAppReleases());
-  });
-
-  const androidAppPreparation = createAndroidAppPreparationService({
-    dataDir: deps.config.dataDir,
-  });
-  get(routes.androidAppPreparation, async (context) => {
-    context.header("cache-control", "no-store");
-    return context.json(await androidAppPreparation.status());
-  });
-  post(routes.prepareAndroidApp, (context, input) => {
-    context.header("cache-control", "no-store");
-    return context.json(androidAppPreparation.start(input.source));
-  });
-
-  get(routes.androidApp, async (context) => {
-    context.header("cache-control", "no-store");
-    const artifact = await readAndroidAppArtifact(deps.config.dataDir);
-    return context.json(artifact?.manifest ?? null);
   });
 
   get(routes.attention, (context) =>

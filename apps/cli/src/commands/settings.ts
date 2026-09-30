@@ -1,4 +1,3 @@
-import { androidAppPrepareRequestSchema } from "@bb/server-contract";
 import { Command } from "commander";
 import {
   AI_TASKS,
@@ -643,57 +642,6 @@ export function registerSettingsCommands(
         if (outputJson(opts, links)) return;
         console.log(
           `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
-        );
-      }),
-    );
-
-  settings
-    .command("android-app-prepare <source>")
-    .description(
-      "Prepare an Android APK from github or explicitly build locally",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (source: string, opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        let result = await sdk.system.prepareAndroidApp(
-          androidAppPrepareRequestSchema.parse({ source }),
-        );
-        let message = "";
-        while (result.status === "preparing") {
-          if (!opts.json && result.message !== message)
-            console.error(result.message);
-          message = result.message;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          result = await sdk.system.androidAppPreparation();
-        }
-        if (result.status === "failed") process.exitCode = 1;
-        if (outputJson(opts, result)) return;
-        console.log(result.message);
-        if (result.status === "ready")
-          console.log(new URL("/install/bb-android.apk", getUrl()).href);
-      }),
-    );
-
-  settings
-    .command("android-app")
-    .description("Show the available Android test APK and download URL")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const artifact = await createCliBbSdk(getUrl()).system.androidApp();
-        const result =
-          artifact === null
-            ? null
-            : {
-                ...artifact,
-                downloadUrl: new URL("/install/bb-android.apk", getUrl()).href,
-              };
-        if (outputJson(opts, result)) return;
-        console.log(
-          result === null
-            ? "No cached Android build is available. Run bb settings mobile-app for public downloads, or bb settings android-app-prepare to prepare a server copy."
-            : `${result.version} (build ${result.versionCode})\n${result.downloadUrl}`,
         );
       }),
     );
