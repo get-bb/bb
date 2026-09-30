@@ -70,6 +70,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import {
+  DefaultPaneContextProvider,
   PaneContext,
   createPaneSecondaryPanelRegistry,
   useOptionalPaneContext,
@@ -103,6 +104,7 @@ import {
   focusedPaneRoute,
   paneContentRoute,
   reconcileLayoutForContent,
+  replaceOriginPaneContent,
   threadPaneContent,
 } from "./splitThreadNavigation";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
@@ -178,7 +180,11 @@ type BeginPaneDrag = (
 
 const EMPTY_PATH: SplitPath = [];
 
-type NavigateInPane = (paneId: string, thread: ThreadRoutePathArgs) => void;
+type NavigateInPane = (
+  paneId: string,
+  originContent: PaneContent,
+  thread: ThreadRoutePathArgs,
+) => void;
 
 interface SplitThreadAreaProps {
   routeContent?: PaneContent;
@@ -382,16 +388,31 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     }
   }, [layout, maximizedPane, maximizedPaneId, setMaximizedPaneId]);
 
+  const workspaceMountedRef = useRef(false);
+  useEffect(() => {
+    workspaceMountedRef.current = true;
+    return () => {
+      workspaceMountedRef.current = false;
+    };
+  }, []);
+
   const navigateInPane = useCallback<NavigateInPane>(
-    (paneId, thread) => {
-      setLayout((previous) =>
-        previous === null
-          ? previous
-          : replacePaneContent(previous, paneId, threadPaneContent(thread)),
+    (paneId, originContent, thread) => {
+      const current = store.get(splitLayoutAtom);
+      if (current === null) return;
+      const next = replaceOriginPaneContent(
+        current,
+        paneId,
+        originContent,
+        threadPaneContent(thread),
       );
-      navigate(getThreadRoutePath(thread));
+      if (next === null) return;
+      store.set(splitLayoutAtom, next);
+      if (workspaceMountedRef.current && next.focusedPaneId === paneId) {
+        navigate(getThreadRoutePath(thread));
+      }
     },
-    [navigate, setLayout],
+    [navigate, store],
   );
 
   const [keyboardFocusRequest, setKeyboardFocusRequest] = useState<{
@@ -674,18 +695,20 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     [navigate, setMaximizedPaneId, store],
   );
 
-  if (!splitWorkspaceActive || layout === null || currentContent === null) {
-    return currentContent ? (
+  if (layout === null || currentContent === null) return null;
+  if (!splitWorkspaceActive) {
+    return (
       <StandalonePaneContent
         content={currentContent}
-        paneId={layout?.focusedPaneId}
+        paneId={layout.focusedPaneId}
         onRequestClose={
-          currentContent.kind === "new-thread" || layout === null
+          currentContent.kind === "new-thread"
             ? null
             : () => closePane(layout.focusedPaneId)
         }
+        onNavigateInPane={navigateInPane}
       />
-    ) : null;
+    );
   }
 
   const commandHandlers = (
@@ -1029,8 +1052,8 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
     [onMovePaneToSide, paneId],
   );
   const navigateInPane = useCallback(
-    (thread: ThreadRoutePathArgs) => onNavigateInPane(paneId, thread),
-    [onNavigateInPane, paneId],
+    (thread: ThreadRoutePathArgs) => onNavigateInPane(paneId, content, thread),
+    [content, onNavigateInPane, paneId],
   );
   const beginPaneDrag = useMemo(
     () =>
@@ -1116,17 +1139,31 @@ function StandalonePaneContent({
   content,
   paneId,
   onRequestClose,
+  onNavigateInPane,
 }: {
   content: PaneContent;
-  paneId?: string;
+  paneId: string;
   onRequestClose: (() => void) | null;
+  onNavigateInPane: NavigateInPane;
 }) {
   const navPanelChrome = usePluginNavPanelChrome();
-  if (content.kind === "thread") {
-    return <ThreadDetailView surface="page" onRequestClose={onRequestClose} />;
-  }
-  if (content.kind === "new-thread") {
-    return <RootComposeView />;
+  const navigateInPane = useCallback(
+    (thread: ThreadRoutePathArgs) => onNavigateInPane(paneId, content, thread),
+    [content, onNavigateInPane, paneId],
+  );
+  if (content.kind === "thread" || content.kind === "new-thread") {
+    return (
+      <DefaultPaneContextProvider
+        onRequestClose={onRequestClose}
+        navigateInPane={navigateInPane}
+      >
+        {content.kind === "thread" ? (
+          <ThreadDetailView surface="page" />
+        ) : (
+          <RootComposeView />
+        )}
+      </DefaultPaneContextProvider>
+    );
   }
   if (content.kind === "plugin-detail") {
     return <PluginDetailPaneView pluginId={content.pluginId} />;

@@ -192,7 +192,10 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import {
+  useOptionalPaneContext,
+  usePaneContext,
+} from "./thread-detail/PaneContext";
 import {
   PluginDetailPanelContext,
   usePluginDetailPanelState,
@@ -536,10 +539,10 @@ export function LegacyProjectComposeRedirect({
 }
 
 export function RootComposeView() {
+  const { navigateInPane } = usePaneContext();
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
   const [placement, setPlacement] = useRootComposePlacement();
@@ -592,19 +595,14 @@ export function RootComposeView() {
       setForkSeed(null);
       setPlacement(DEFAULT_THREAD_CREATION_PLACEMENT);
       if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
+        navigateInPane({ projectId: thread.projectId, threadId: thread.id });
       }
     },
     [
       createThread,
       forkSeed,
       queryClient,
-      navigate,
+      navigateInPane,
       navigateToThreadAfterCreate,
       placement,
       setForkSeed,

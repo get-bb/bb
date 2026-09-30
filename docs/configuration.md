@@ -1864,27 +1864,8 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 (GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
-usable during metadata failures. iOS version and release date are shown in TestFlight. Advanced server caching and local builds remain available via
-`bb settings android-app-prepare github --json` (or `local`), followed by
-`bb settings android-app --json`. SDK equivalents are
-`system.prepareAndroidApp({ source })`, `system.androidAppPreparation()`, and
-`system.androidApp()`. Cached/local downloads use `/install/bb-android.apk` and
-still travel through the server; use the public link for remote release downloads.
-Local builds require `BB_ANDROID_SOURCE_DIR`, pnpm, Java 17+, and an Android SDK.
+usable during metadata failures. iOS version and release date are shown in TestFlight.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
-
-Local builds never start automatically. Configure `BB_ANDROID_SOURCE_DIR` with
-an absolute path to a dedicated bb source checkout on the server host. Install
-its dependencies with pnpm, install JDK 17 or newer, and set `ANDROID_HOME` or
-`ANDROID_SDK_ROOT` to an Android SDK with build-tools. These tools must be on the
-server process's PATH; restart the server after changing its environment.
-The fallback supports macOS/Linux and builds an arm64 APK using the checkout's
-local build script and debug signing key. Builds modify generated files in that
-checkout and can take several minutes. Local and release signing keys can differ;
-Android cannot update an installed app with an APK signed by a different key.
-Failures point to missing tools or `android-testing/build.log` in the server data
-directory. Local builds time out after 30 minutes. In-flight status is held in
-memory; completed APKs survive restarts.
 
 The publishing workflow verifies the signed APK and publishes both the checksum-named
 asset and the stable `bb-android.apk` alias, then `latest.json`.
