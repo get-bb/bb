@@ -183,7 +183,7 @@ export type ExperimentalSidebarNavigationAction =
 /**
  * Semantic icon identity for one sidebar navigation item. Render it with
  * {@link PluginSdkApp.experimental_SidebarNavigationIcon} to match bb's
- * artwork, including plugin branding.
+ * artwork, including panel icons with plugin branding as their fallback.
  */
 export type ExperimentalSidebarNavigationIcon =
   | { kind: "host"; name: "new-thread" | "search" | "extensions" | "skills" }
@@ -758,6 +758,7 @@ export type ExperimentalPluginFixedTabReference<
 export type PluginFixedTabRegistration<Target extends JsonValue = never> =
   ExperimentalPluginFixedTabReference<Target> & {
     title: string;
+    /** Resolved names take precedence over plugin branding; unknown names fall back to branding. */
     icon: BbIconName;
     component: ComponentType<PluginNavPanelProps>;
     /** `flush` lets the component own padding and scrolling. */
@@ -773,6 +774,7 @@ export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   title: string;
+  /** Resolved names take precedence over plugin branding in navigation and the header; unknown names fall back to branding. */
   icon: BbIconName;
   /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
   path: string;
@@ -859,8 +861,8 @@ export interface PluginThreadPanelActionRegistration {
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
   /**
-   * Drawn only when the manifest declares no `bb.branding.icon`; the launcher
-   * row and opened tabs prefer that over this hint.
+   * Resolved names take precedence over plugin branding in the launcher and
+   * opened tabs. Omitted or unknown names fall back to plugin branding.
    */
   icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
@@ -901,7 +903,7 @@ export interface PluginNewThreadPanelActionRegistration {
   id: string;
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
-  /** Drawn only when the manifest declares no `bb.branding.icon`. */
+  /** Resolved names take precedence over plugin branding; omitted or unknown names fall back to branding. */
   icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginNewThreadPanelProps>;
@@ -949,7 +951,7 @@ export interface PluginSidebarFooterActionRegistration {
   id: string;
   /** Tooltip and accessible label for the icon button. */
   title: string;
-  /** Drawn only when the manifest declares no `bb.branding.icon`. */
+  /** Resolved names take precedence over plugin branding; omitted or unknown names fall back to branding. */
   icon: BbIconName;
   /**
    * Runs when the user activates the action (e.g. call `openSettings()`,
@@ -1771,7 +1773,8 @@ export interface PluginMessageActionContext {
  * An action on chat messages: an icon button in the per-message action bar
  * (user and assistant messages) and an entry in the assistant-message
  * text-selection menu. Host-rendered chrome — the plugin supplies title,
- * icon hint, and `run` behavior only.
+ * icon, and `run` behavior only. Resolved icon names take precedence over
+ * plugin branding; omitted or unknown names fall back to branding.
  */
 export interface PluginMessageActionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -3438,7 +3441,7 @@ export interface PluginSdkApp {
   ): ExperimentalSidebarNavigationSplit;
   /**
    * bb's artwork for a navigation item's icon: bb's glyphs for its own items,
-   * and the contributing plugin's branding for plugin panels. Experimental:
+   * and the panel's explicit icon, falling back to plugin branding, for plugin panels. Experimental:
    * see docs/api_to_audit.md.
    */
   experimental_SidebarNavigationIcon: ComponentType<ExperimentalSidebarNavigationIconProps>;

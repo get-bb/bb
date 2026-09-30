@@ -119,7 +119,6 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   );
   const sequenceRef = useRef(0);
   const attemptedEventsRef = useRef(new WeakSet<KeyboardEvent>());
-  const clearShortcutHintHoldRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!showKeyboardHints) return;
@@ -134,13 +133,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       shortcutHintModifierHeldRef.current = false;
       setIsShortcutHintModifierHeld(false);
     };
-    clearShortcutHintHoldRef.current = clearModifierHold;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isShortcutHintModifier(event.key)) {
-        if (
-          modifierHoldTimerRef.current !== null ||
-          shortcutHintModifierHeldRef.current
-        ) {
+        if (!shortcutHintModifierHeldRef.current) {
           clearModifierHold();
         }
         return;
@@ -166,18 +161,17 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       }, SHORTCUT_HINT_HOLD_DELAY_MS);
     };
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (isShortcutHintModifier(event.key)) clearModifierHold();
+      if (!event.ctrlKey && !(isMac && event.metaKey)) clearModifierHold();
     };
     const handleBlur = () => clearModifierHold();
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("blur", handleBlur);
     return () => {
       clearModifierHold();
-      clearShortcutHintHoldRef.current = () => {};
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("blur", handleBlur);
     };
   }, [showKeyboardHints]);
@@ -344,7 +338,6 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         context ??= currentContext(event.target);
         if (!matchesAppCommandContext(binding, context)) continue;
         if (!dispatch(binding.command, event.target)) return false;
-        clearShortcutHintHoldRef.current();
         event.preventDefault();
         event.stopPropagation();
         return true;

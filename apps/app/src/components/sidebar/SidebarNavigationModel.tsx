@@ -21,7 +21,7 @@ import {
   useAppCommandShortcut,
   useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { openPluginDetailsInWorkspace } from "@/components/plugin/plugin-detail-opener";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
@@ -98,7 +98,7 @@ export function SidebarNavigationIcon({
     );
   }
   return (
-    <PluginIcon
+    <PluginItemIcon
       pluginId={icon.pluginId}
       icon={icon.icon}
       className={className}

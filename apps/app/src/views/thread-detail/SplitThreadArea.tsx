@@ -633,6 +633,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           paneId={firstPane.paneId}
           isFocused
           isSplitPane={false}
+          timelineEnabled
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
           onClosePane={
@@ -818,6 +819,7 @@ function SplitTree(props: SplitTreeProps) {
           paneId={node.paneId}
           isFocused={isFocused}
           isSplitPane
+          timelineEnabled={!isHiddenByMaximize}
           secondaryPanelRegistry={props.secondaryPanelRegistry}
           reservesWindowPanelToggle={isMaximized || (isTopRow && isRightEdge)}
           onClosePane={props.onClosePane}
@@ -894,6 +896,7 @@ interface WorkspacePaneContentProps {
   paneId: string;
   isFocused: boolean;
   isSplitPane: boolean;
+  timelineEnabled: boolean;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry | null;
   reservesWindowPanelToggle: boolean;
   onClosePane: ((paneId: string) => void) | null;
@@ -912,6 +915,7 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
   paneId,
   isFocused,
   isSplitPane,
+  timelineEnabled,
   secondaryPanelRegistry,
   reservesWindowPanelToggle,
   onClosePane,
@@ -1018,6 +1022,7 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
         surface="pane"
         projectId={content.projectId}
         threadId={content.threadId}
+        timelineEnabled={timelineEnabled}
       />
     </PaneContext.Provider>
   );

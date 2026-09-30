@@ -198,7 +198,7 @@ import {
 } from "@/lib/side-chat-plugin";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import {
   PluginPanelTabContent,
   usePluginPanelActions,
@@ -383,6 +383,7 @@ interface ThreadDetailViewPageProps {
 
 interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
   surface: "pane";
+  timelineEnabled: boolean;
 }
 
 type ThreadDetailViewProps =
@@ -501,7 +502,11 @@ function RoutedThreadDetailView({
 
   return (
     <DefaultPaneContextProvider onRequestClose={onRequestClose}>
-      <ThreadDetailViewInternal projectId={projectId} threadId={threadId} />
+      <ThreadDetailViewInternal
+        projectId={projectId}
+        threadId={threadId}
+        timelineEnabled
+      />
     </DefaultPaneContextProvider>
   );
 }
@@ -513,8 +518,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   return <RoutedThreadDetailView onRequestClose={props.onRequestClose} />;
 }
 
-function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
-  const { projectId, threadId } = props;
+function ThreadDetailViewInternal(
+  props: ThreadRoutePathArgs & { timelineEnabled: boolean },
+) {
+  const { projectId, threadId, timelineEnabled } = props;
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useImmediateRouteNavigate();
@@ -866,6 +873,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     timelineRows,
   } = useThreadTimelineController({
     threadId,
+    enabled: timelineEnabled,
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();
@@ -2854,7 +2862,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             ...shared,
             label: tab.title,
             leadingVisual: (
-              <PluginIcon
+              <PluginItemIcon
                 pluginId={tab.pluginId}
                 icon={pluginAction?.icon ?? null}
                 className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}

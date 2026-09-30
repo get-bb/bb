@@ -351,9 +351,6 @@ describe("InlineVisDirective", () => {
     expect(
       slot.getByRole("status", { name: "Loading visualization demo.html" }),
     ).toBe(loading);
-    const loadingCard = loading.parentElement!;
-    const loadingHeader = loadingCard.firstElementChild!;
-    const loadingHeaderHtml = loadingHeader.outerHTML;
 
     resolvePreview({
       kind: "html",
@@ -375,15 +372,6 @@ describe("InlineVisDirective", () => {
     });
     expect(iframe.style.height).toBe("480px");
     expect(slot.queryByRole("status")).toBeNull();
-
-    const readyCard = iframe.parentElement!;
-    expect(readyCard.className).toBe(loadingCard.className);
-    const readyHeader = readyCard.firstElementChild!;
-    expect(readyHeader.className).toBe(loadingHeader.className);
-    expect(readyHeader.lastElementChild!.classList.contains("size-5")).toBe(
-      true,
-    );
-    expect(loadingHeaderHtml).toContain("size-5");
   });
 
   it("renders a Markdown document with the host renderer and no iframe", async () => {

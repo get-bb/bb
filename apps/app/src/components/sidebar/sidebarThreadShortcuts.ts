@@ -55,7 +55,10 @@ function collectSidebarThreadTargets(
   const targets: SidebarThreadShortcutTarget[] = [];
 
   for (const element of elements) {
-    if (element.closest("[data-sidebar-overflow='true']")) {
+    if (
+      element.closest("[data-sidebar-overflow='true']") ||
+      !element.checkVisibility({ visibilityProperty: true })
+    ) {
       continue;
     }
     if (element instanceof HTMLAnchorElement) {

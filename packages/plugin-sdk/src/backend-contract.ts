@@ -1765,8 +1765,9 @@ export interface PluginMentionItem {
   subtitle?: string;
   /**
    * BB icon name: a built-in name, or a name the plugin's app bundle
-   * registered with `app.experimental_icons.register()`. The row prefers the
-   * plugin's own branding icon when it ships one; unknown names fall back to
+   * registered with `app.experimental_icons.register()`. Resolved names take
+   * precedence over plugin branding in menu rows, composer pills, and sent
+   * messages. Omitted or unknown names fall back to plugin branding, then
    * the generic plugin icon.
    */
   icon?: string;

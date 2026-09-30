@@ -17,6 +17,51 @@ const PROJECTS = [
 afterEach(cleanup);
 
 describe("ProjectSelector", () => {
+  it("selects a searched project and returns to all projects without falling back to the first project", () => {
+    function Picker() {
+      const [value, setValue] = useState<string | null>("all");
+      return (
+        <ProjectSelector
+          projects={PROJECTS}
+          value={value}
+          onChange={setValue}
+          allProjectsValue="all"
+          variant="outline"
+          defaultOpen
+          modal={false}
+        />
+      );
+    }
+    render(<Picker />);
+    expect(
+      screen.getByRole("button", { name: "Project: All projects" }),
+    ).toBeTruthy();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search projects" }),
+      {
+        target: { value: "Charlie" },
+      },
+    );
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Search projects" }),
+      {
+        key: "Enter",
+      },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Project: Charlie Docs" }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "All projects" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Project: All projects" }),
+    );
+    expect(
+      screen
+        .getByRole("option", { name: "All projects" })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+  });
+
   it("reflects choosing no project in both trigger labels and its accessible name", () => {
     function Picker() {
       const [value, setValue] = useState<string | null>("proj_alpha");
@@ -288,7 +333,9 @@ describe("ProjectSelector", () => {
     );
     expect(dialog.className).toContain("overflow-hidden");
 
-    const list = document.querySelector<HTMLElement>("[cmdk-list]");
+    const list = screen
+      .getByRole("group", { name: "Project" })
+      .querySelector<HTMLElement>(".overflow-y-auto");
     expect(list).not.toBeNull();
     expect(list?.className).toContain("overflow-y-auto");
     expect(list?.className).toContain("overscroll-contain");

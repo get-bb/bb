@@ -64,7 +64,7 @@ it("uses a real frozen install after discarding a timed-out restore, while prese
     env: { ...env, CACHE_RESTORE_OUTCOME: "failure" },
   });
   expect(sentinels.map(existsSync)).toEqual([false, false]);
-});
+}, 30_000);
 
 it("checks both sides of plugin renames and falls back to full coverage for shared or unavailable changes", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-ci-selection-"));

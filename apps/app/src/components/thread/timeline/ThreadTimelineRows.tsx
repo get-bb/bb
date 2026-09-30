@@ -43,7 +43,6 @@ import {
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   collectTimelineAutoExpansionRowIds,
   isNonExpandableSummary,
@@ -1765,7 +1764,6 @@ function TimelineRowsList({
   unreadDividerPlacement,
 }: TimelineRowsListProps) {
   const { threadId } = useTimelineRendererStaticContext();
-  const isCompactViewport = useIsCompactViewport();
   const bottomAnchor = useBottomAnchoredScroll();
   const scrollRestoreRowId = useContext(TimelineScrollRestoreRowIdContext);
   const detailScrollRoot = useContext(TimelineWindowingScrollRootContext);
@@ -1862,9 +1860,6 @@ function TimelineRowsList({
             getScrollElement={getWindowingScrollElement}
             itemKeys={itemKeys}
             measurements={measurements}
-            minItemCount={
-              spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
-            }
             renderItem={(index, windowedState) => {
               const item = items[index];
               if (item === undefined) {
