@@ -19,6 +19,7 @@
     "app": "./app.tsx",
     "experimental_providers": [
       {
+        "kind": "agent",
         "id": "pi",
         "displayName": "Pi"
       }

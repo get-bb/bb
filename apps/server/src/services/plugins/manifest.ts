@@ -236,7 +236,9 @@ export async function readPluginManifest(
     },
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
-    providerCatalog: bb.experimental_providers ?? [],
+    providerCatalog: (bb.experimental_providers ?? []).map(
+      ({ id, displayName }) => ({ id, displayName }),
+    ),
     serverEntry,
     appEntry: bb.app ? resolveManifestPath(rootDir, bb.app, "bb.app") : undefined,
     hostEntry,

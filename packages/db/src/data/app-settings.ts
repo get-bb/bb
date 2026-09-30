@@ -159,7 +159,10 @@ export function setPluginSafeMode(db: DbConnection, enabled: boolean): void {
 }
 
 const pluginProviderCatalogSchema =
-  pluginPackageJsonSchema.shape.bb.shape.experimental_providers.unwrap();
+  pluginPackageJsonSchema.shape.bb.shape.experimental_providers
+    .unwrap()
+    .element.omit({ kind: true })
+    .array();
 
 function pluginProviderCatalogKey(pluginId: string): string {
   return `pluginProviders:${pluginId}`;

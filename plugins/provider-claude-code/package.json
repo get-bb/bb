@@ -18,6 +18,7 @@
     "host": "./src/host.ts",
     "experimental_providers": [
       {
+        "kind": "agent",
         "id": "claude-code",
         "displayName": "Claude Code"
       }

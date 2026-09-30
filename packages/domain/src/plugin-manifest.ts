@@ -85,6 +85,7 @@ const pluginBbManifestSchema = z
       .array(
         z
           .object({
+            kind: z.enum(["agent"]),
             id: requiredManifestString,
             displayName: requiredManifestString,
           })
