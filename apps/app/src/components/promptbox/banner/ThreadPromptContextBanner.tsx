@@ -40,7 +40,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   getPullRequestAttentionDisplay,
-  getPullRequestGithubCheckStatus,
+  getPullRequestGithubStatus,
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
@@ -122,12 +122,7 @@ export interface ThreadPromptEnvironmentGoneSection {
 }
 
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
-  new Set([
-    "active",
-    "provisioning",
-    "starting",
-    "waiting-for-host",
-  ]);
+  new Set(["active", "provisioning", "starting", "waiting-for-host"]);
 
 export function isThreadDisplayStatusBannerActive(
   status: ThreadRuntimeDisplayStatus,
@@ -361,6 +356,9 @@ function shouldShowPullRequestAttentionLabel(
   pullRequest: ThreadPullRequest,
 ): boolean {
   return (
+    pullRequest.attention === "queued" ||
+    pullRequest.attention === "checks_pending" ||
+    pullRequest.attention === "ready_to_merge" ||
     pullRequest.attention === "checks_failed" ||
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested" ||
@@ -613,7 +611,7 @@ function PullRequestBannerLink({
       className={cn(
         "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        getPullRequestGithubCheckStatus(pullRequest) !== null
+        getPullRequestGithubStatus(pullRequest) !== null
           ? "min-w-13"
           : "min-w-8",
         "overflow-hidden",

@@ -2765,8 +2765,13 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a PR lookup hits the git host and therefore cannot sit on the payload every
    sidebar loads. It reuses the host's environment-keyed query, so threads
    sharing a worktree share one lookup and the host keeps its own staleness and
-   refetch rules. Before stabilizing, confirm: the narrowed DTO (number, title,
-   url, state, attention) is enough without leaking checks/review/mergeability;
+   refetch rules. `PluginSidebarPullRequest` also exposes
+   `experimental_autoMerge`, nullable `experimental_inMergeQueue` (null means
+   the queue lookup failed), and `experimental_checks`, `experimental_review`,
+   and `experimental_mergeability` with normalized `state` fields. Attention
+   includes `queued`; failures precede waiting states and generic blocking is
+   a fallback after checks and reviews. Before stabilizing, confirm the state
+   summaries and unknown-queue semantics meet sidebar needs;
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
@@ -3549,4 +3554,3 @@ the legacy section or the general thread list, unpinned. The composer sends
 this placement with normal and scheduled creation. Audit pinned groups, custom sections, project/machine groups,
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
-

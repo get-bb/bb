@@ -28,6 +28,7 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "state",
   "url",
   "isDraft",
+  "autoMergeRequest",
   "baseRefName",
   "headRefName",
   "updatedAt",
@@ -272,6 +273,8 @@ function normalizeGitHubPullRequestView(
     state: normalizeUppercase(object.state),
     url: getString(object, "url"),
     isDraft: getBoolean(object, "isDraft"),
+    autoMerge: asObject(object.autoMergeRequest) !== null,
+    inMergeQueue: null,
     baseRefName: getString(object, "baseRefName"),
     headRefName: getString(object, "headRefName"),
     updatedAt: getString(object, "updatedAt"),
@@ -608,6 +611,45 @@ export async function getPullRequestForCurrentBranch(
       outcome: "unavailable",
       message: "gh pr view returned unparseable output",
     };
+  }
+  if (pullRequest.state === "OPEN" && !pullRequest.isDraft) {
+    try {
+      const { stdout: queueOutput } = await execFileAsync(
+        "gh",
+        [
+          "api",
+          "graphql",
+          "--hostname",
+          new URL(pullRequest.url).hostname,
+          "-f",
+          "query=query($url: URI!) { resource(url: $url) { ... on PullRequest { isInMergeQueue } } }",
+          "-f",
+          `url=${pullRequest.url}`,
+        ],
+        {
+          cwd: args.cwd,
+          encoding: "utf8",
+          env: sanitizeInheritedChildProcessEnv({
+            env: process.env,
+            ...(args.shellPath !== undefined
+              ? { shellPath: args.shellPath }
+              : {}),
+          }),
+          timeout: GH_PR_VIEW_TIMEOUT_MS,
+          maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
+        },
+      );
+      const response = asObject(JSON.parse(queueOutput));
+      const data = asObject(response?.data);
+      const resource = asObject(data?.resource);
+      pullRequest.inMergeQueue = resource
+        ? getBoolean(resource, "isInMergeQueue")
+        : null;
+    } catch {
+      pullRequest.inMergeQueue = null;
+    }
+  } else {
+    pullRequest.inMergeQueue = false;
   }
   return { outcome: "found", pullRequest };
 }

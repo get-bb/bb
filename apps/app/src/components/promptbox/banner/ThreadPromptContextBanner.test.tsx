@@ -28,6 +28,8 @@ const pullRequestFixture: ThreadPullRequest = {
   baseRefName: "main",
   headRefName: "bb/pr-context-banner",
   updatedAt: "2026-06-16T12:30:00Z",
+  autoMerge: false,
+  inMergeQueue: false,
   checks: {
     state: "passing",
     totalCount: 1,
@@ -257,7 +259,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("disabled");
   });
 
-  it("labels a standalone pull request without non-actionable attention text", () => {
+  it("labels a standalone pull request ready for manual merge", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -274,7 +276,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("PR #128");
     expect(markup).not.toContain("PR #128 · Open");
-    expect(markup).not.toContain("· Ready to merge");
+    expect(markup).toContain("· Ready to merge");
     expect(markup).not.toContain('alt="Checks success"');
   });
 
@@ -302,7 +304,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Squash merge");
   });
 
-  it("does not label standalone pending checks", () => {
+  it("labels standalone auto-merge waiting on pending checks", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -314,6 +316,8 @@ describe("ThreadPromptContextBanner", () => {
         pullRequestSection={{
           pullRequest: {
             ...pullRequestFixture,
+            autoMerge: true,
+            review: { state: "approved", reviewRequestCount: 0 },
             checks: {
               state: "pending",
               totalCount: 1,
@@ -331,7 +335,9 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("PR #128");
     expect(markup).not.toContain("PR #128 · Open");
-    expect(markup).not.toContain("· Checks pending");
+    expect(markup).toContain(
+      'text-attention">· Auto-merge on · Approved · Checks pending</span>',
+    );
     expect(markup).not.toContain('alt="Checks pending"');
   });
 
@@ -587,7 +593,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("PR #128");
     expect(markup).not.toContain("Open PR #128");
-    expect(markup).not.toContain("· Ready to merge");
+    expect(markup).toContain("· Ready to merge");
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
   });

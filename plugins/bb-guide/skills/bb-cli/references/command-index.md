@@ -238,7 +238,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb environment commit`
 - `bb environment archive-threads`
 - `bb environment pull-request`
-- `bb environment pull-request show`
+- `bb environment pull-request show` — checks, reviews, mergeability, attention, auto-merge, and merge queue; `--json` includes `autoMerge` and nullable `inMergeQueue` (null means queue lookup unavailable). Waiting reviews/checks take precedence over generic blocking; `queued` means waiting in GitHub’s merge queue.
 - `bb environment pull-request ready`
 - `bb environment pull-request draft`
 - `bb environment pull-request merge`

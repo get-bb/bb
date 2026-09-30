@@ -14,7 +14,7 @@ interface PullRequestDisplay {
   className: string;
 }
 
-export type GithubCheckStatus = "success" | "failure" | "pending";
+export type GithubStatus = "success" | "failure" | "pending";
 
 interface PullRequestStateDisplay extends PullRequestDisplay {
   dotClass: string;
@@ -65,7 +65,7 @@ const CHECKS_DISPLAY: Record<ThreadPullRequestChecksState, PullRequestDisplay> =
     pending: {
       label: "Checks pending",
       icon: "Clock",
-      className: "text-warning-text",
+      className: "text-attention",
     },
     no_checks: {
       label: "No checks",
@@ -94,12 +94,12 @@ const REVIEW_DISPLAY: Record<ThreadPullRequestReviewState, PullRequestDisplay> =
     review_required: {
       label: "Review required",
       icon: "Clock",
-      className: "text-destructive",
+      className: "text-attention",
     },
     review_requested: {
       label: "Review requested",
       icon: "Clock",
-      className: "text-destructive",
+      className: "text-attention",
     },
     none: {
       label: "No review",
@@ -125,7 +125,7 @@ const MERGEABILITY_DISPLAY: Record<
   blocked: {
     label: "Blocked",
     icon: "AlertTriangle",
-    className: "text-destructive",
+    className: "text-attention",
   },
   draft: {
     label: "Draft",
@@ -167,6 +167,11 @@ const ATTENTION_DISPLAY: Record<
     ...MERGEABILITY_DISPLAY.blocked,
     icon: "GitPullRequestArrow",
   },
+  queued: {
+    label: "Queued to merge",
+    icon: "GitMerge",
+    className: "text-attention",
+  },
   draft: PULL_REQUEST_STATE_DISPLAY.draft,
   ready_to_merge: {
     label: "Ready to merge",
@@ -175,48 +180,78 @@ const ATTENTION_DISPLAY: Record<
   },
   merged: PULL_REQUEST_STATE_DISPLAY.merged,
   closed: PULL_REQUEST_STATE_DISPLAY.closed,
-  none: PULL_REQUEST_STATE_DISPLAY.open,
+  none: {
+    ...PULL_REQUEST_STATE_DISPLAY.open,
+    className: "text-muted-foreground",
+  },
 };
 
-export function getPullRequestChecksDisplay(
+export function getPullRequestGithubStatus(
   pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return CHECKS_DISPLAY[pullRequest.checks.state];
-}
-
-export function getPullRequestGithubCheckStatus(
-  pullRequest: ThreadPullRequest,
-): GithubCheckStatus | null {
+): GithubStatus | null {
   if (pullRequest.state !== "open" && pullRequest.state !== "draft") {
     return null;
   }
-  switch (pullRequest.checks.state) {
-    case "passing":
-      return "success";
-    case "failing":
+  switch (pullRequest.attention) {
+    case "checks_failed":
+    case "changes_requested":
+    case "conflicts":
       return "failure";
-    case "pending":
+    case "queued":
+    case "review_requested":
+    case "checks_pending":
+    case "blocked":
       return "pending";
-    case "no_checks":
-    case "unknown":
+    case "ready_to_merge":
+      return pullRequest.autoMerge ? "pending" : "success";
+    default:
       return null;
   }
-}
-
-export function getPullRequestReviewDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return REVIEW_DISPLAY[pullRequest.review.state];
-}
-
-export function getPullRequestMergeabilityDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return MERGEABILITY_DISPLAY[pullRequest.mergeability.state];
 }
 
 export function getPullRequestAttentionDisplay(
   pullRequest: ThreadPullRequest,
 ): PullRequestDisplay {
-  return ATTENTION_DISPLAY[pullRequest.attention];
+  const display =
+    pullRequest.attention === "review_requested" &&
+    pullRequest.review.state === "review_required"
+      ? REVIEW_DISPLAY.review_required
+      : ATTENTION_DISPLAY[pullRequest.attention];
+  const waitingOrReady = [
+    "review_requested",
+    "checks_pending",
+    "blocked",
+    "ready_to_merge",
+  ].includes(pullRequest.attention);
+  if (!waitingOrReady) return display;
+  const labels: string[] = [];
+  if (pullRequest.autoMerge) labels.push("Auto-merge on");
+  if (pullRequest.review.state === "approved") labels.push("Approved");
+  labels.push(
+    pullRequest.autoMerge && pullRequest.attention === "ready_to_merge"
+      ? "Waiting to merge"
+      : display.label,
+  );
+  return {
+    ...display,
+    label: labels.join(" · "),
+    className: pullRequest.autoMerge ? "text-attention" : display.className,
+  };
+}
+
+export function getPullRequestStateDisplay(
+  pullRequest: ThreadPullRequest,
+): PullRequestStateDisplay {
+  if (
+    pullRequest.state === "open" &&
+    (pullRequest.autoMerge || pullRequest.inMergeQueue)
+  ) {
+    return {
+      label: pullRequest.inMergeQueue ? "Queued to merge" : "Auto-merge on",
+      icon: "GitMerge",
+      className: "text-attention",
+      dotClass: "bg-attention",
+    };
+  }
+  return PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
 }
