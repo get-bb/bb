@@ -171,14 +171,6 @@ Making your repo work with bb:
   bb environment pull-request merge <id>  Merge a pull request
     --method <method>                     merge, squash, or rebase
 
-Pull-request inspection includes normalized checks, reviews, mergeability,
-attention, auto-merge, and merge-queue status. Failed checks, conflicts, and
-requested changes take priority; pending reviews/checks take priority over
-generic branch protection. `queued` means GitHub has placed the PR in its
-merge queue. JSON includes `autoMerge` and `inMergeQueue`; the latter is null
-when the queue lookup is unavailable. Queue inspection uses a separate GitHub
-GraphQL request because `gh pr view` does not expose queue membership.
-
 Every inspection command accepts an arbitrary environment ID and supports
 `--json`. Non-git status/diff responses are reported explicitly. `diff-file`
 prints UTF-8 content directly and labels base64 binary content; diff and patch
