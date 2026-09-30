@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast";
 import {
   closePanesForThreadsAtom,
+  restoreClosedPanesAtom,
   type ClosePanesForThreadsResult,
 } from "@/lib/split-layout/atoms";
 import type { Thread } from "@bb/domain";
@@ -126,6 +127,7 @@ export function ThreadActionsProvider({
     viewedThreadIdRef.current = viewedThreadId;
   }, [viewedThreadId]);
   const closePanesForThreads = useSetAtom(closePanesForThreadsAtom);
+  const restoreClosedPanes = useSetAtom(restoreClosedPanesAtom);
   const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
   const unarchiveThreadMutation = useUnarchiveThread();
   const markThreadRead = useMarkThreadRead();
@@ -298,6 +300,7 @@ export function ThreadActionsProvider({
           });
         },
         () => {
+          restoreClosedPanes(closeResult);
           if (
             deleteDestination !== null &&
             viewedRouteRef.current === deleteDestination
@@ -317,6 +320,7 @@ export function ThreadActionsProvider({
       deleteMutateAsync,
       navigate,
       navigateAwayIfViewing,
+      restoreClosedPanes,
       syncNavigationAfterClose,
     ],
   );
@@ -419,6 +423,13 @@ export function ThreadActionsProvider({
       };
       const archiveDisplacedThread = viewedThreadIdRef.current === thread.id;
       const closeResult = closePanesForThreads(outcome.archivedThreadIds);
+      let additionalCloseResult: ClosePanesForThreadsResult | null = null;
+      const restoreArchivedPanes = () => {
+        if (additionalCloseResult !== null) {
+          restoreClosedPanes(additionalCloseResult);
+        }
+        restoreClosedPanes(closeResult);
+      };
       const archiveDestination =
         archiveDisplacedThread &&
         closeResult.removedAny &&
@@ -472,6 +483,7 @@ export function ThreadActionsProvider({
               } else {
                 outcome.undoRequested = true;
               }
+              restoreArchivedPanes();
               if (shouldReturnToThread) {
                 navigate(threadRoutePath);
               }
@@ -498,9 +510,9 @@ export function ThreadActionsProvider({
             (threadId) => !optimisticThreadIds.includes(threadId),
           );
           if (unexpectedThreadIds.length > 0) {
-            syncNavigationAfterClose(
-              closePanesForThreads(unexpectedThreadIds),
-              () => navigateAwayIfArchived(unexpectedThreadIds),
+            additionalCloseResult = closePanesForThreads(unexpectedThreadIds);
+            syncNavigationAfterClose(additionalCloseResult, () =>
+              navigateAwayIfArchived(unexpectedThreadIds),
             );
           }
           if (response.archivedThreadIds.length !== optimisticThreadIds.length) {
@@ -511,6 +523,7 @@ export function ThreadActionsProvider({
           outcome.archivedThreadIds = [];
           outcome.settled = true;
           appToast.dismiss(toastId);
+          restoreArchivedPanes();
           if (
             archiveDestination !== null &&
             viewedRouteRef.current === archiveDestination
@@ -538,6 +551,7 @@ export function ThreadActionsProvider({
       closePanesForThreads,
       navigate,
       queryClient,
+      restoreClosedPanes,
       syncNavigationAfterClose,
       unarchiveMutate,
     ],

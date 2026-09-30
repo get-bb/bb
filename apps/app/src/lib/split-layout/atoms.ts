@@ -54,6 +54,12 @@ export const dimInactiveSplitsAtom = createBooleanPreferenceAtom(
 export interface ClosePanesForThreadsResult {
   removedAny: boolean;
   focusedRoute: ThreadRoutePathArgs | null;
+  restoration?: {
+    previousLayout: SplitLayout;
+    closedLayout: SplitLayout | null;
+    previousMaximizedPaneId: string | null;
+    closedMaximizedPaneId: string | null;
+  };
 }
 
 export const closePanesForThreadsAtom = atom(
@@ -86,13 +92,12 @@ export const closePanesForThreadsAtom = atom(
       return { removedAny: false, focusedRoute: null };
     }
     const maximizedPaneId = get(maximizedPaneIdAtom);
-    if (
+    const closedMaximizedPaneId =
       maximizedPaneId !== null &&
       (listPanes(layout.root).length < 2 ||
         findPane(layout.root, maximizedPaneId) === null)
-    ) {
-      set(maximizedPaneIdAtom, null);
-    }
+        ? null
+        : maximizedPaneId;
     const focused = findPane(layout.root, layout.focusedPaneId);
     const survivorRoute =
       focused !== null &&
@@ -103,12 +108,39 @@ export const closePanesForThreadsAtom = atom(
             threadId: focused.content.threadId,
           }
         : null;
-    if (survivorRoute === null) {
-      set(splitLayoutAtom, null);
-      set(maximizedPaneIdAtom, null);
-      return { removedAny: true, focusedRoute: null };
+    const closedLayout = survivorRoute === null ? null : layout;
+    const closedMaximizedId =
+      closedLayout === null ? null : closedMaximizedPaneId;
+    set(splitLayoutAtom, closedLayout);
+    if (closedMaximizedId !== maximizedPaneId) {
+      set(maximizedPaneIdAtom, closedMaximizedId);
     }
-    set(splitLayoutAtom, layout);
-    return { removedAny: true, focusedRoute: survivorRoute };
+    return {
+      removedAny: true,
+      focusedRoute: survivorRoute,
+      restoration: {
+        previousLayout: current,
+        closedLayout,
+        previousMaximizedPaneId: maximizedPaneId,
+        closedMaximizedPaneId: closedMaximizedId,
+      },
+    };
+  },
+);
+
+export const restoreClosedPanesAtom = atom(
+  null,
+  (get, set, result: ClosePanesForThreadsResult): boolean => {
+    const restoration = result.restoration;
+    if (
+      restoration === undefined ||
+      get(splitLayoutAtom) !== restoration.closedLayout ||
+      get(maximizedPaneIdAtom) !== restoration.closedMaximizedPaneId
+    ) {
+      return false;
+    }
+    set(splitLayoutAtom, restoration.previousLayout);
+    set(maximizedPaneIdAtom, restoration.previousMaximizedPaneId);
+    return true;
   },
 );

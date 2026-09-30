@@ -16,6 +16,7 @@ import {
   threadListQueryKey,
 } from "@/hooks/queries/query-keys";
 import { getCachedSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
+import { restoreClosedPanesAtom } from "@/lib/split-layout/atoms";
 import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
 import {
@@ -25,6 +26,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   closePanesForThreads: vi.fn(),
+  restoreClosedPanes: vi.fn(),
   mutation: vi.fn(),
   navigate: vi.fn(),
   pathname: "/",
@@ -48,7 +50,10 @@ vi.mock("jotai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("jotai")>();
   return {
     ...actual,
-    useSetAtom: () => mocks.closePanesForThreads,
+    useSetAtom: (atom: unknown) =>
+      atom === restoreClosedPanesAtom
+        ? mocks.restoreClosedPanes
+        : mocks.closePanesForThreads,
   };
 });
 
@@ -375,6 +380,24 @@ describe("ThreadActionsProvider archive confirmation", () => {
 });
 
 describe("ThreadActionsProvider archive feedback", () => {
+  beforeEach(() => {
+    const parent = makeThreadListEntry(makeThread());
+    const child = makeThreadListEntry(
+      makeThread({ id: "thr_child", parentThreadId: parent.id }),
+    );
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarBootstrapResponse({
+        projects: [
+          makeProjectWithThreadsResponse({
+            id: parent.projectId,
+            threads: [parent, child],
+          }),
+        ],
+      }),
+    );
+  });
+
   it("shows one archive toast whose Undo restores the parent and children", async () => {
     renderProvider(<ArchiveButton thread={makeThread()} />);
 

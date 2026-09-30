@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import { restoreClosedPanesAtom } from "@/lib/split-layout/atoms";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
@@ -28,6 +29,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   closePanesForThreads: vi.fn(),
+  restoreClosedPanes: vi.fn(),
   navigate: vi.fn(),
   pathname: "/",
   viewedThreadId: undefined as string | undefined,
@@ -49,7 +51,10 @@ vi.mock("jotai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("jotai")>();
   return {
     ...actual,
-    useSetAtom: () => mocks.closePanesForThreads,
+    useSetAtom: (atom: unknown) =>
+      atom === restoreClosedPanesAtom
+        ? mocks.restoreClosedPanes
+        : mocks.closePanesForThreads,
   };
 });
 
@@ -205,6 +210,10 @@ beforeEach(() => {
   mocks.pathname = threadRoute;
   mocks.viewedThreadId = "thr_parent";
   queryClient = createQueryClientTestHarness().queryClient;
+  vi.mocked(sdk.threads.childSummary).mockResolvedValue({
+    nonDeletedChildCount: 0,
+    unarchivedDescendantCount: 0,
+  });
   vi.mocked(sdk.threads.unarchive).mockResolvedValue({ ok: true });
   mocks.closePanesForThreads.mockReturnValue({
     focusedRoute: null,
@@ -268,8 +277,8 @@ describe("ThreadActionsProvider optimistic archive", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
-    expect(sdk.threads.childSummary).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => {
+      expect(sdk.threads.childSummary).toHaveBeenCalledTimes(1);
       expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
         threadId: "thr_parent",
       });
@@ -296,6 +305,10 @@ describe("ThreadActionsProvider optimistic archive", () => {
       );
     });
     expect(mocks.navigate).toHaveBeenLastCalledWith(threadRoute);
+    expect(mocks.restoreClosedPanes).toHaveBeenCalledWith({
+      focusedRoute: null,
+      removedAny: false,
+    });
     expect(
       queryClient
         .getQueryData<{ projects: { threads: ThreadListEntry[] }[] }>(
@@ -349,6 +362,7 @@ describe("ThreadActionsProvider optimistic archive", () => {
     runUndo();
 
     expect(mocks.navigate).toHaveBeenLastCalledWith(threadRoute);
+    expect(mocks.restoreClosedPanes).toHaveBeenCalledTimes(1);
     expect(sdk.threads.unarchive).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -423,6 +437,7 @@ describe("ThreadActionsProvider optimistic delete", () => {
     await vi.waitFor(() => {
       expect(mocks.navigate).toHaveBeenLastCalledWith(threadRoute);
     });
+    expect(mocks.restoreClosedPanes).toHaveBeenCalledTimes(1);
   });
 
   it("closes a pending dialog when another thread action aborts its child check", async () => {

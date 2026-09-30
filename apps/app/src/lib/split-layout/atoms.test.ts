@@ -6,6 +6,7 @@ import {
   closePanesForThreadsAtom,
   maximizedPaneIdAtom,
   MAXIMIZED_PANE_STORAGE_KEY,
+  restoreClosedPanesAtom,
   splitLayoutAtom,
 } from "./atoms";
 import { countPanes, findPaneByThread, splitPane } from "./ops";
@@ -188,5 +189,29 @@ describe("closePanesForThreadsAtom", () => {
       focusedRoute: null,
     });
     expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
+  });
+
+  it("restores the pane layout and maximized pane after an archive fails", () => {
+    const store = createStore();
+    const original = twoPanes();
+    store.set(splitLayoutAtom, original);
+    store.set(maximizedPaneIdAtom, "pane-2");
+
+    const closed = store.set(closePanesForThreadsAtom, ["thread-2"]);
+    expect(store.get(maximizedPaneIdAtom)).toBeNull();
+    expect(store.set(restoreClosedPanesAtom, closed)).toBe(true);
+    expect(store.get(splitLayoutAtom)).toBe(original);
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-2");
+  });
+
+  it("does not overwrite a layout changed after the optimistic close", () => {
+    const store = createStore();
+    store.set(splitLayoutAtom, twoPanes());
+    const closed = store.set(closePanesForThreadsAtom, ["thread-2"]);
+    const replacement = singlePane("thread-3");
+    store.set(splitLayoutAtom, replacement);
+
+    expect(store.set(restoreClosedPanesAtom, closed)).toBe(false);
+    expect(store.get(splitLayoutAtom)).toBe(replacement);
   });
 });
