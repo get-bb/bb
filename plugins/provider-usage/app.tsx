@@ -866,19 +866,22 @@ export function ProviderUsageStatusContent({
                     "relative flex h-6 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring w-7",
                     isActive
                       ? "bg-sidebar-accent text-sidebar-foreground"
-                      : "group/tab text-muted-foreground",
+                      : "group/tab text-muted-foreground hover:text-sidebar-foreground",
                   )}
                   onClick={() => selectProvider(provider.id)}
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >
                   <ProviderIcon
                     providerKind="agent"
-                    provider={provider}
+                    provider={
+                      isActive
+                        ? provider
+                        : { ...provider, strings: { iconTint: null } }
+                    }
                     fallback="Bot"
                     className={cn(
                       "size-3.5",
-                      !isActive &&
-                        "opacity-60 grayscale group-hover/tab:opacity-100 group-hover/tab:grayscale-0",
+                      !isActive && "opacity-60 group-hover/tab:opacity-100",
                     )}
                   />
                   {tone === null || isActive || isAllTab ? null : (
