@@ -213,6 +213,82 @@ afterEach(() => {
 });
 
 describe("KeyboardSettingsSection", () => {
+  it("keeps UI edits and both reset actions on the current platform", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    const general = {
+      command: "thread.new",
+      shortcut: {
+        key: "g",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+    } as const;
+    const mac = {
+      command: "thread.new",
+      platform: "mac",
+      shortcut: null,
+    } as const;
+    const otherWindows = {
+      command: "thread.rename",
+      platform: "windows",
+      shortcut: null,
+    } as const;
+    testState.keybindingOverrides = [general, mac, otherWindows];
+    render(<KeyboardSettingsSection />);
+    const recorder = screen.getByRole("button", {
+      name: "Record shortcut for New thread, current shortcut Ctrl + G",
+    });
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, { key: "u", ctrlKey: true, shiftKey: true });
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      general,
+      mac,
+      otherWindows,
+      {
+        command: "thread.new",
+        platform: "windows",
+        shortcut: expect.objectContaining({ key: "u", mod: true, shift: true }),
+      },
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear shortcut for New thread" }),
+    );
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      general,
+      mac,
+      otherWindows,
+      { command: "thread.new", platform: "windows", shortcut: null },
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset shortcut for New thread" }),
+    );
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      general,
+      mac,
+      otherWindows,
+    ]);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut Ctrl + G",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Reset shortcut for New thread" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([general, mac]);
+    expect(
+      screen
+        .getByRole("button", { name: "Reset all" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("ranks visible label matches ahead of description matches across groups", () => {
     render(<KeyboardSettingsSection />);
 
@@ -309,6 +385,7 @@ describe("KeyboardSettingsSection", () => {
       testState.keybindingOverrides = [
         {
           command: "thread.new",
+          platform: "linux",
           shortcut: {
             key,
             mod: true,
@@ -408,6 +485,7 @@ describe("KeyboardSettingsSection", () => {
     expect(testState.mutate.mock.lastCall?.[0]).toEqual([
       {
         command: "plugin:test-shortcuts/open",
+        platform: "linux",
         shortcut: expect.objectContaining({ key: "i", mod: true, shift: true }),
       },
     ]);
@@ -487,6 +565,7 @@ describe("KeyboardSettingsSection", () => {
       [
         {
           command: "thread.new",
+          platform: "linux",
           shortcut: {
             key: "u",
             mod: true,
@@ -506,7 +585,7 @@ describe("KeyboardSettingsSection", () => {
       }),
     );
     expect(testState.mutate).toHaveBeenLastCalledWith(
-      [{ command: "thread.new", shortcut: null }],
+      [{ command: "thread.new", shortcut: null, platform: "linux" }],
       expect.objectContaining({ onError: expect.any(Function) }),
     );
 
@@ -540,6 +619,7 @@ describe("KeyboardSettingsSection", () => {
       [
         {
           command: "thread.rename",
+          platform: "linux",
           shortcut: {
             key: "r",
             mod: true,
@@ -617,9 +697,10 @@ describe("KeyboardSettingsSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Replace binding" }));
     expect(testState.mutate.mock.lastCall?.[0]).toEqual(
       expect.arrayContaining([
-        { command: "thread.new", shortcut: null },
+        { command: "thread.new", shortcut: null, platform: "linux" },
         {
           command: "thread.jump.1",
+          platform: "linux",
           shortcut: expect.objectContaining({ key: "u" }),
         },
       ]),
