@@ -201,7 +201,7 @@ export function ProjectSelector({
           ) : null}
           <CommandList
             ref={listRef}
-            className="min-h-0 max-h-none flex-1 overscroll-contain"
+            className="min-h-0 flex-1 overscroll-contain"
           >
             {allProjectsValue !== undefined &&
             "all projects".includes(searchQuery.trim().toLocaleLowerCase()) ? (
