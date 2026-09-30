@@ -232,11 +232,12 @@ describe("KeyboardSettingsSection", () => {
       shortcut: null,
     } as const;
     const otherWindows = {
-      command: "thread.rename",
+      command: "app.back",
       platform: "windows",
       shortcut: null,
     } as const;
-    testState.keybindingOverrides = [general, mac, otherWindows];
+    const sharedRename = { ...general, command: "thread.rename" } as const;
+    testState.keybindingOverrides = [sharedRename, general, mac, otherWindows];
     render(<KeyboardSettingsSection />);
     const recorder = screen.getByRole("button", {
       name: "Record shortcut for New thread, current shortcut Ctrl + G",
@@ -244,6 +245,7 @@ describe("KeyboardSettingsSection", () => {
     fireEvent.click(recorder);
     fireEvent.keyDown(recorder, { key: "u", ctrlKey: true, shiftKey: true });
     expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      sharedRename,
       general,
       mac,
       otherWindows,
@@ -257,6 +259,7 @@ describe("KeyboardSettingsSection", () => {
       screen.getByRole("button", { name: "Clear shortcut for New thread" }),
     );
     expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      sharedRename,
       general,
       mac,
       otherWindows,
@@ -266,13 +269,19 @@ describe("KeyboardSettingsSection", () => {
       screen.getByRole("button", { name: "Reset shortcut for New thread" }),
     );
     expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      sharedRename,
       general,
       mac,
       otherWindows,
+      {
+        command: "thread.new",
+        platform: "windows",
+        shortcut: expect.objectContaining({ key: "o", mod: true, shift: true }),
+      },
     ]);
     expect(
       screen.getByRole("button", {
-        name: "Record shortcut for New thread, current shortcut Ctrl + G",
+        name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
       }),
     ).toBeTruthy();
     expect(
@@ -281,7 +290,22 @@ describe("KeyboardSettingsSection", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
-    expect(testState.mutate.mock.lastCall?.[0]).toEqual([general, mac]);
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([
+      sharedRename,
+      general,
+      mac,
+      {
+        command: "thread.new",
+        platform: "windows",
+        shortcut: expect.objectContaining({ key: "o", mod: true, shift: true }),
+      },
+      { command: "thread.rename", platform: "windows", shortcut: null },
+    ]);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for Rename thread, current shortcut unassigned",
+      }),
+    ).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "Reset all" })

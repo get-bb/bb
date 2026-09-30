@@ -195,7 +195,7 @@ Use `bb settings keyboard reset <command>` to adopt the current default.
 Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
 on all platforms. A platform-specific override takes precedence over a general one,
 including when disabled. UI edits and clears apply only to the current platform;
-UI resets remove that platform’s overrides, revealing a general override or default.
+UI resets restore the displayed defaults for the current platform, preserving other platforms’ bindings.
 CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
 other platforms. Unscoped `set` updates the general override; unscoped `reset`
 clears all scopes for the selected command (or every command if omitted).

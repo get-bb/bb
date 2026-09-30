@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   defaultAppSettings,
-  keyboardPlatform,
   type KeyboardCommandId,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
@@ -232,10 +231,9 @@ function buildKeyboardCommandRowModel({
     isDesktop,
     platform,
   );
-  const customized = overrides.some(
-    (override) =>
-      override.command === command &&
-      override.platform === keyboardPlatform(platform),
+  const customized = !areNullableAppShortcutsEqual(
+    shortcut,
+    getCommandShortcut(defaults, [], command, isDesktop, platform),
   );
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
@@ -687,6 +685,13 @@ export function KeyboardSettingsSection() {
         current.overrides,
         command,
         current.platform,
+        getCommandShortcut(
+          current.defaults,
+          [],
+          command,
+          current.isDesktop,
+          current.platform,
+        ),
       );
       applyOverrides(
         next,
@@ -702,9 +707,10 @@ export function KeyboardSettingsSection() {
     ? pendingCommandRef.current
     : null;
   const disabled = systemConfig.data === undefined || isKeyboardSettingsPending;
-  const hasOverrides = overrides.some(
-    (override) => override.platform === keyboardPlatform(platform),
+  const customizedCommands = [...commandRowModels.values()].filter(
+    (row) => row.availableOnClient && row.customized,
   );
+  const hasOverrides = customizedCommands.length > 0;
 
   return (
     <SettingsSection
@@ -713,8 +719,21 @@ export function KeyboardSettingsSection() {
           disabled={disabled || !hasOverrides}
           onClick={() =>
             applyOverrides(
-              overrides.filter(
-                (override) => override.platform !== keyboardPlatform(platform),
+              customizedCommands.reduce(
+                (next, row) =>
+                  resetCommandShortcutOverride(
+                    next,
+                    row.command,
+                    platform,
+                    getCommandShortcut(
+                      defaults,
+                      [],
+                      row.command,
+                      isDesktop,
+                      platform,
+                    ),
+                  ),
+                overrides,
               ),
               null,
               overrides,

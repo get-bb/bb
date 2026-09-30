@@ -135,11 +135,29 @@ export function resetCommandShortcutOverride(
   overrides: AppKeybindingOverrides,
   command: KeyboardCommandId,
   platform: string,
+  defaultShortcut: AppShortcut | null,
 ): AppKeybindingOverrides {
   const scope = keyboardPlatform(platform);
-  return overrides.filter(
+  const remaining = overrides.filter(
     (override) => override.command !== command || override.platform !== scope,
   );
+  const general = remaining.find(
+    (override) =>
+      override.command === command && override.platform === undefined,
+  );
+  if (
+    general === undefined ||
+    (general.shortcut === null
+      ? defaultShortcut === null
+      : defaultShortcut !== null &&
+        areAppShortcutsEqual(general.shortcut, defaultShortcut))
+  ) {
+    return remaining;
+  }
+  return [
+    ...remaining,
+    { command, platform: scope, shortcut: defaultShortcut },
+  ];
 }
 
 export function getShortcutConflicts(
