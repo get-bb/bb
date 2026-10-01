@@ -236,24 +236,24 @@ export function SkillDetailView({
   const selectedDisplayPath = formatHomePathForDisplay(selectedPath);
   const selectedFileIsMarkdown = selectedPath.toLowerCase().endsWith(".md");
   const titleMeta =
-    titleBadge === undefined ? undefined : (
-      <ProvenancePill
-        label={titleBadge.label}
-        tooltip={titleBadge.tooltip}
-        accessibleLabel={titleBadge.accessibleLabel}
-      />
-    );
+    titleBadge || providerChips ? (
+      <span className="flex flex-wrap items-center gap-1.5">
+        {titleBadge ? (
+          <ProvenancePill
+            label={titleBadge.label}
+            tooltip={titleBadge.tooltip}
+            accessibleLabel={titleBadge.accessibleLabel}
+          />
+        ) : null}
+        {providerChips}
+      </span>
+    ) : undefined;
   return (
     <ResourceDetailPage
       leading={leading}
       title={title}
       titleMeta={titleMeta}
-      metadata={
-        <div className="space-y-2">
-          {providerChips}
-          <SkillPath path={directoryPath} href={pathHref} />
-        </div>
-      }
+      metadata={<SkillPath path={directoryPath} href={pathHref} />}
       overflowMenu={overflowMenu}
       actions={headerActions}
     >

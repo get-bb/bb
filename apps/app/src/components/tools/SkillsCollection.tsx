@@ -203,7 +203,7 @@ function SkillProviderChips({
       role="group"
       aria-label={label}
       data-skill-providers={providers.join(" ")}
-      className="mt-2 flex flex-wrap items-center gap-1.5"
+      className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5"
     >
       {providers.map((provider) => (
         <Pill
@@ -329,37 +329,36 @@ function SkillRow({
     >
       <ResourceRow
         title={skill.name}
+        openLabel={skill.name}
         titleMeta={
-          skill.scope === "bb-builtin" ? (
-            <ProvenancePill label="BB Official" />
-          ) : skill.scope === "plugin" ? (
-            <ProvenancePill
-              label="Included"
-              tooltip={
-                <SkillProvenanceTooltip
-                  prefix="Included with"
-                  providerId={skill.provider}
-                  provider={
-                    skill.provider === null
-                      ? undefined
-                      : providerRoster.get(skill.provider)
-                  }
-                  name={`${providerPluginDisplayName(skill)} plugin.`}
-                />
-              }
-              accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill, providerRoster)}`}
-            />
-          ) : undefined
-        }
-        description={
-          <>
-            <span className="block truncate">{description}</span>
+          <span className="flex flex-wrap items-center gap-1.5">
+            {skill.scope === "bb-builtin" ? (
+              <ProvenancePill label="BB Official" />
+            ) : skill.scope === "plugin" ? (
+              <ProvenancePill
+                label="Included"
+                tooltip={
+                  <SkillProvenanceTooltip
+                    prefix="Included with"
+                    providerId={skill.provider}
+                    provider={
+                      skill.provider === null
+                        ? undefined
+                        : providerRoster.get(skill.provider)
+                    }
+                    name={`${providerPluginDisplayName(skill)} plugin.`}
+                  />
+                }
+                accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill, providerRoster)}`}
+              />
+            ) : null}
             <SkillProviderChips
               providers={groupProviderFilterIds(group)}
               providerRoster={providerRoster}
             />
-          </>
+          </span>
         }
+        description={description}
         onOpen={onSelect}
         trailingVisual={<ResourceRowDetailChevron />}
       />
