@@ -48,6 +48,10 @@ import {
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
 import {
+  catalogEntryInstallBlocker,
+  conflictingInstallLocation,
+} from "@/components/plugin/management/installed-plugin-catalog";
+import {
   PluginHealthBanner,
   PluginIncludes,
   PluginSchedules,
@@ -189,6 +193,7 @@ export function CatalogPluginDetail({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
+  const installBlocker = catalogEntryInstallBlocker(entry);
   const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   return (
     <ResourceDetailPage
@@ -203,8 +208,8 @@ export function CatalogPluginDetail({
           displayName={entry.displayName}
           installed={false}
           showLabel
-          disabled={!entry.compatible}
-          unavailableReason={entry.incompatibleReason}
+          disabled={installBlocker !== null}
+          unavailableReason={installBlocker}
           count={count}
           onInstall={() => onInstall(entry)}
         />
@@ -235,13 +240,23 @@ export function CatalogPluginDetailBanner({
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
-  if (entry.incompatibleReason === null) return null;
+  if (entry.incompatibleReason !== null) {
+    return (
+      <PluginBannerBar
+        tone="warning"
+        icon="AlertTriangle"
+        title="Update bb to install this plugin"
+        detail={entry.incompatibleReason}
+      />
+    );
+  }
+  if (entry.conflictingInstallSource === null) return null;
   return (
     <PluginBannerBar
       tone="warning"
       icon="AlertTriangle"
-      title="Update bb to install this plugin"
-      detail={entry.incompatibleReason}
+      title="Another plugin uses this ID"
+      detail={`“${entry.pluginId}” is installed from ${conflictingInstallLocation(entry.conflictingInstallSource)}. Remove it to install this one.`}
     />
   );
 }

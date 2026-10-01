@@ -54,6 +54,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
     url: "https://github.com/get-bb",
   },
   installed: false,
+  conflictingInstallSource: null,
   installs: 4_210,
   compatible: true,
   incompatibleReason: null,

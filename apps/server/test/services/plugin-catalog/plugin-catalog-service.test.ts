@@ -1224,6 +1224,34 @@ describe("plugin catalog service", () => {
         true,
       );
     });
+
+    it("reports a local plugin with the same id as a conflict, not an install", async () => {
+      const catalog = service();
+      upsertInstalledPlugin(db, {
+        id: "thread-hover-cards",
+        source: "path:/Users/me/git/thread-hover-cards",
+        provenance: { kind: "direct" },
+        sourceIntent: {
+          kind: "path",
+          canonicalPath: "/Users/me/git/thread-hover-cards",
+        },
+        exactResolution: { kind: "path" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: "/Users/me/git/thread-hover-cards",
+        version: "0.1.0",
+        enabled: true,
+      });
+      expect((await catalog.search("thread-hover-cards"))[0]).toMatchObject({
+        installed: false,
+        conflictingInstallSource: "path:/Users/me/git/thread-hover-cards",
+      });
+    });
   });
 
   describe("catalog limits and trust", () => {

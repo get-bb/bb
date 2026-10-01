@@ -177,6 +177,7 @@ describe("plugin catalog queries", () => {
             url: "https://acme.dev",
           },
           installed: false,
+          conflictingInstallSource: null,
           installs: null,
           compatible: false,
           incompatibleReason: "requires bb >= 0.15",

@@ -15,6 +15,7 @@ import {
   setInstalledPluginDirectProvenance,
   upsertPluginMarketplace,
   type DbConnection,
+  type InstalledPluginRow,
   type PluginMarketplaceRow,
 } from "@bb/db";
 import {
@@ -480,6 +481,12 @@ export function createPluginCatalogService(deps: {
       base: marketplaceRowIconBase(row),
     });
     const overview = entryOverview(entry, deps.warn);
+    const source = entrySourceDisplay(entry);
+    const installedPlugin = getInstalledPlugin(deps.db, pluginId);
+    const installed =
+      args.installedEntryIds.has(catalogEntryKey(row.name, entryId)) ||
+      (installedPlugin !== undefined &&
+        installedPluginMayComeFromEntry(installedPlugin, source));
     return {
       entryId,
       pluginId,
@@ -490,7 +497,7 @@ export function createPluginCatalogService(deps: {
       ...metadata,
       ...(overview === undefined ? {} : { overview }),
       collections: [...args.collections],
-      source: entrySourceDisplay(entry),
+      source,
       repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,
       marketplaceDisplayName: catalog.displayName,
@@ -501,9 +508,11 @@ export function createPluginCatalogService(deps: {
       }),
       official,
       author: entryAuthor(entry),
-      installed:
-        args.installedEntryIds.has(catalogEntryKey(row.name, entryId)) ||
-        getInstalledPlugin(deps.db, pluginId) !== undefined,
+      installed,
+      conflictingInstallSource:
+        installed || installedPlugin === undefined
+          ? null
+          : installedPlugin.source,
       installs: args.installs,
       compatible: compatibility === null,
       incompatibleReason: compatibility,
@@ -1272,6 +1281,20 @@ function npmSourceView(
     ...(npm.tag === undefined ? {} : { tag: npm.tag }),
     ...(npm.registry === undefined ? {} : { registry: npm.registry }),
   };
+}
+
+function installedPluginMayComeFromEntry(
+  plugin: InstalledPluginRow,
+  entrySource: string,
+): boolean {
+  switch (plugin.provenance) {
+    case "builtin":
+      return plugin.source === entrySource;
+    case "catalog":
+      return false;
+    case "direct":
+      return plugin.sourceKind !== "path";
+  }
 }
 
 function catalogEntryKey(marketplace: string, entryId: string): string {

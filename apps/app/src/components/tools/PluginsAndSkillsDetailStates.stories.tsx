@@ -517,6 +517,7 @@ Sign in once with \`gh auth login\`. The plugin reuses your GitHub CLI session a
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
   installs: null,
   compatible: true,
   incompatibleReason: null,

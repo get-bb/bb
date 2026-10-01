@@ -101,6 +101,7 @@ const GITHUB_CATALOG_ENTRY = {
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
   installs: null,
   compatible: true,
   incompatibleReason: null,
@@ -912,6 +913,88 @@ describe("BB Official plugin detail routing", () => {
       ).toBeNull();
     },
   );
+
+  it("opens a marketplace entry instead of a local plugin that shares its id", async () => {
+    const marketplaceCanvas = {
+      ...GITHUB_CATALOG_ENTRY,
+      entryId: "canvas",
+      pluginId: "canvas",
+      displayName: "Canvas",
+      description: "Draw diagrams on a shared tldraw canvas.",
+      source: "git:https://github.com/example/canvas.git@main",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community",
+      publisherLabel: "BB Community",
+      official: false,
+      conflictingInstallSource: "path:/Users/you/git/canvas",
+    } satisfies PluginCatalogSearchEntry;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({
+              enabled: true,
+              plugins: [
+                makeInstalledPlugin({
+                  id: "canvas",
+                  name: "Canvas",
+                  description: "Edit .mdx files beside the chat.",
+                  source: "path:/Users/you/git/canvas",
+                  rootDir: "/Users/you/git/canvas",
+                  provenance: "direct",
+                }),
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({ results: [marketplaceCanvas], collections: [] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?q=canvas"]}>
+        <Routes>
+          <Route path="/plugins/*" element={<RoutedPluginsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open Canvas details" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/plugins/bb-community%2Fcanvas",
+      );
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-plugin-summary]")?.textContent,
+      ).toBe("Draw diagrams on a shared tldraw canvas.");
+    });
+    expect(screen.getByText("Another plugin uses this ID")).toBeTruthy();
+    const installButtons = screen.getAllByRole("button", { name: /Install/u });
+    expect(installButtons).toHaveLength(2);
+    for (const button of installButtons) {
+      expect(button.getAttribute("aria-disabled")).toBe("true");
+    }
+  });
 
   it("uses the installed catalog identity when plugin ids collide", async () => {
     const firstCatalogEntry = {
@@ -2453,7 +2536,9 @@ describe("plugin detail source and settings", () => {
       { wrapper },
     );
 
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
@@ -2464,10 +2549,10 @@ describe("plugin detail source and settings", () => {
       "?view=installed&configure=github",
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Plugin details" }),
-    );
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
     expect(screen.getByTestId("route-search").textContent).toBe(
       "?view=installed",
     );
@@ -2597,21 +2682,21 @@ describe("plugin detail source and settings", () => {
       { wrapper },
     );
 
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
       "get-bb/bb",
     );
     expect(screen.getByTestId("route-path").textContent).toBe("/threads/thr_1");
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?panel=files",
-    );
+    expect(screen.getByTestId("route-search").textContent).toBe("?panel=files");
 
     fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?panel=files",
-    );
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("route-search").textContent).toBe("?panel=files");
   });
 });
