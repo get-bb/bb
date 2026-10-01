@@ -3,6 +3,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
+import { replaceNewTabWithSecondaryPanelTabInState } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBrowserFixedPanelTab,
@@ -473,6 +474,105 @@ describe("fixed panel tab server sync", () => {
       expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(conflicts + 1);
     },
   );
+
+  it("consumes New tab when native Browser registration races the replacement write", async () => {
+    const threadId = "sync-stale-write";
+    const originalTab = createThreadInfoFixedPanelTab();
+    const placeholder = createNewTabFixedPanelTab();
+    const existingTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://existing.example.com",
+    });
+    const localTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "",
+    });
+    const registeredTab = {
+      ...localTab,
+      desktopTarget: {
+        hostId: "host-local",
+        instanceId: "desktop-local",
+        generation: "generation-local",
+      },
+    };
+    const concurrentTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://concurrent.example.com",
+    });
+    apiMocks.getThreadTabs
+      .mockResolvedValueOnce({
+        revision: 1,
+        tabs: [originalTab, placeholder, existingTab],
+      })
+      .mockResolvedValueOnce({
+        revision: 2,
+        tabs: [
+          originalTab,
+          placeholder,
+          existingTab,
+          registeredTab,
+          concurrentTab,
+        ],
+      });
+    apiMocks.updateThreadTabs
+      .mockRejectedValueOnce(
+        new BbHttpError({
+          body: null,
+          code: "thread_tabs_conflict",
+          message: "changed",
+          status: 409,
+        }),
+      )
+      .mockResolvedValueOnce({
+        revision: 3,
+        tabs: [originalTab, registeredTab, existingTab, concurrentTab],
+      });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        state: useFixedPanelTabsState(threadId, threadId),
+        update: useUpdateFixedPanelTabsState(threadId, threadId),
+      }),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+    await waitFor(() => {
+      expect(result.current.state.secondary.tabs).toEqual([
+        originalTab,
+        placeholder,
+        existingTab,
+      ]);
+    });
+
+    act(() => {
+      result.current.update((state) =>
+        replaceNewTabWithSecondaryPanelTabInState({ state, tab: localTab }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.updateThreadTabs).toHaveBeenNthCalledWith(1, {
+        expectedRevision: 1,
+        tabs: [originalTab, localTab, existingTab],
+        threadId,
+      });
+    });
+    await waitFor(() => {
+      expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(2);
+      expect(apiMocks.updateThreadTabs).toHaveBeenNthCalledWith(2, {
+        expectedRevision: 2,
+        tabs: [originalTab, registeredTab, existingTab, concurrentTab],
+        threadId,
+      });
+      expect(result.current.state.secondary.tabs).toEqual([
+        originalTab,
+        registeredTab,
+        existingTab,
+        concurrentTab,
+      ]);
+    });
+    expect(result.current.state.secondary.activeTabId).toBe(localTab.id);
+    expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("fixed panel tab storage churn", () => {
