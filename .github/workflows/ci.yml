@@ -49,7 +49,7 @@ jobs:
   windows-app-smoke:
     name: Windows app smoke (Node 22.x)
     runs-on: blacksmith-4vcpu-windows-2025
-    timeout-minutes: 25
+    timeout-minutes: 40
     permissions:
       contents: read
 
@@ -71,6 +71,14 @@ jobs:
 
       - name: Build bb-app and boot it
         run: pnpm exec turbo run smoke:boot --filter=bb-app --output-logs=new-only
+
+      - name: Package the desktop app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec turbo run package:win --filter=@bb/desktop --output-logs=new-only
+
+      - name: Smoke test the packaged desktop app
+        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
 
   checks:
     name: Checks (ubuntu-latest, Node 22.x)

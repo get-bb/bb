@@ -473,6 +473,7 @@ describe("electron-builder signing config", () => {
         resolve(nodeModules, "better-sqlite3"),
         { recursive: true },
       );
+      await mkdir(resolve(nodeModules, "@parcel/watcher"), { recursive: true });
       const result = await runNativePrepScript(appOutDir, [
         "--electron-version=44.3.0",
       ]);
