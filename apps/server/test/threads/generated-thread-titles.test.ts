@@ -332,13 +332,15 @@ describe("generated thread titles", () => {
   });
 
   it("falls through to the next Automatic service for provider-path titles", async () => {
-    completeTitle.mockRejectedValueOnce(new Error("Codex is overloaded"));
+    completeTitle.mockResolvedValueOnce("Recovered Managed Metadata");
     await withTestHarness(async (harness) => {
       const cloud = registerFakeAiService(harness.deps.aiServices, {
         id: "bb",
         pluginId: "bb-ai",
         builtin: true,
-        complete: async () => "Recovered Managed Metadata",
+        complete: async () => {
+          throw new Error("bb cloud is overloaded");
+        },
       });
       const provider = installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
