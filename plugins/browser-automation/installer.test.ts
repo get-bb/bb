@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import {
   access,
   mkdir,
@@ -20,6 +21,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import { unlink, utimes } from "node:fs/promises";
 import {
@@ -34,6 +36,11 @@ import {
   type RuntimeRelease,
 } from "./installer.js";
 import { resolveRuntime } from "./runtime-pin.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof fsPromises>();
+  return { ...actual, unlink: vi.fn(actual.unlink) };
+});
 
 const platform = currentPlatform() as RuntimePlatform;
 const version = "1.0.0-test";
@@ -333,19 +340,42 @@ describe("runtime installer", () => {
   it("serves concurrent installs from one npm run and tolerates a stale lock", async () => {
     const dir = await dataDir();
     await mkdir(installRoot(dir), { recursive: true });
-    await writeFile(
-      join(installRoot(dir), `dev-browser@${version}.lock`),
-      "999999999",
-    );
+    const lock = join(installRoot(dir), `dev-browser@${version}.lock`);
+    await writeFile(lock, "999999999");
     const foreign = join(installRoot(dir), ".staging-dev-browser@9.9.9-other");
     const ours = join(installRoot(dir), `.staging-dev-browser@${version}-old`);
     await mkdir(foreign);
     await mkdir(ours);
-    const [a, b, c] = await Promise.all([
-      install(dir),
-      install(dir),
-      install(dir),
-    ]);
+    const { unlink: originalUnlink } =
+      await vi.importActual<typeof fsPromises>("node:fs/promises");
+    let publishInstalling: () => void = () => {};
+    const installing = new Promise<void>((resolve) => {
+      publishInstalling = resolve;
+    });
+    let delayed = false;
+    const unlinkSpy = vi
+      .spyOn(fsPromises, "unlink")
+      .mockImplementation(async (path) => {
+        if (path === lock && !delayed) {
+          delayed = true;
+          await installing;
+        }
+        await originalUnlink(path);
+      });
+    let installed;
+    const onProgress = (detail: string) => {
+      if (detail.startsWith("installing ")) publishInstalling();
+    };
+    try {
+      installed = await Promise.all([
+        install(dir, { onProgress }),
+        install(dir, { onProgress }),
+        install(dir, { onProgress }),
+      ]);
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+    const [a, b, c] = installed;
     expect(b.binary).toBe(a.binary);
     expect(c.binary).toBe(a.binary);
     expect(

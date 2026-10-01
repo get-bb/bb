@@ -649,9 +649,11 @@ describe("createServerMovedWatcher", () => {
     await writeServerMovedFile(harness.dataDir, movedFile());
     harness.watcher.start();
     await harness.timers.flush();
-    expect(cancellationChecks.map((isCancelled) => isCancelled())).toEqual([
-      false,
-    ]);
+    await vi.waitFor(() => {
+      expect(cancellationChecks.map((isCancelled) => isCancelled())).toEqual([
+        false,
+      ]);
+    });
 
     harness.watcher.stop();
     expect(cancellationChecks[0]?.()).toBe(true);

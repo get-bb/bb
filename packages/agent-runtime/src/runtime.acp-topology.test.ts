@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentRuntime } from "./runtime.js";
 import {
   createScriptedEchoLaunch,
@@ -36,6 +36,9 @@ describe("acp process topology", () => {
   });
 
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
+    const setTimeoutReal = setTimeout;
+    const sleepReal = (ms: number) =>
+      new Promise<void>((resolve) => setTimeoutReal(resolve, ms));
     const readyFile = join(workspaceDir, "agent-ready");
     const signalFile = join(workspaceDir, "agent-signal");
     const runtime = withBridgeLaunch(
@@ -58,7 +61,7 @@ describe("acp process topology", () => {
             command: process.execPath,
             args: [fakeAgentPath],
             env: {
-              FAKE_ACP_SESSION_NEW_DELAY_MS: "1500",
+              FAKE_ACP_SESSION_NEW_DELAY_MS: "60000",
               FAKE_ACP_READY_FILE: readyFile,
               FAKE_ACP_SIGNAL_FILE: signalFile,
             },
@@ -68,15 +71,33 @@ describe("acp process topology", () => {
     );
     runtimes.push(runtime);
 
-    await expect(
-      runtime.startThread({
-        environmentId: "env-1",
-        projectId: "p1",
-        providerId: "acp",
-        threadId: "t1",
-        options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(/timed out/i);
+    await runtime.ensureProvider({ providerId: "acp" });
+    vi.useFakeTimers();
+    try {
+      const outcome = runtime
+        .startThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "acp",
+          threadId: "t1",
+          options: fullRuntimeOptions,
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      for (let attempt = 0; !existsSync(readyFile); attempt += 1) {
+        if (attempt >= 1_000)
+          throw new Error("The fake ACP child never started");
+        await sleepReal(10);
+      }
+      await vi.advanceTimersByTimeAsync(301);
+      const error = await outcome;
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).toMatch(/timed out/i);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(runtime.hasThread("t1")).toBe(false);
     await waitForRuntimeState({
       label: "the agent spawned for the construction",
