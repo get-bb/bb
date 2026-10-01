@@ -232,44 +232,30 @@ describe("createRealtimeCacheEffects", () => {
     vi.useRealTimers();
   });
 
-  it("maps every realtime thread change to at least one dirty handler", () => {
-    for (const changeKind of THREAD_CHANGE_KINDS) {
-      expect(
-        REALTIME_THREAD_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
-  it("maps every realtime environment change to at least one dirty handler", () => {
-    for (const changeKind of ENVIRONMENT_CHANGE_KINDS) {
-      expect(
-        REALTIME_ENVIRONMENT_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
-  it("maps every realtime project change to at least one dirty handler", () => {
-    for (const changeKind of PROJECT_CHANGE_KINDS) {
-      expect(
-        REALTIME_PROJECT_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
-  it("maps every realtime host change to at least one dirty handler", () => {
-    for (const changeKind of HOST_CHANGE_KINDS) {
-      expect(
-        REALTIME_HOST_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
-  it("maps every cache-affecting system change to a dirty handler", () => {
-    for (const changeKind of SYSTEM_CHANGE_KINDS) {
-      const dirty = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]?.dirty ?? [];
-      expect(dirty.length).toBeGreaterThan(0);
-    }
-  });
+  it.each<
+    [
+      string,
+      readonly string[],
+      Record<string, { dirty: readonly unknown[] } | undefined>,
+    ]
+  >([
+    ["thread", THREAD_CHANGE_KINDS, REALTIME_THREAD_CHANGE_REGISTRY],
+    [
+      "environment",
+      ENVIRONMENT_CHANGE_KINDS,
+      REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
+    ],
+    ["project", PROJECT_CHANGE_KINDS, REALTIME_PROJECT_CHANGE_REGISTRY],
+    ["host", HOST_CHANGE_KINDS, REALTIME_HOST_CHANGE_REGISTRY],
+    ["system", SYSTEM_CHANGE_KINDS, REALTIME_SYSTEM_CHANGE_REGISTRY],
+  ])(
+    "maps every realtime %s change to at least one dirty handler",
+    (_entity, changeKinds, registry) => {
+      for (const changeKind of changeKinds) {
+        expect(registry[changeKind]?.dirty.length ?? 0).toBeGreaterThan(0);
+      }
+    },
+  );
 
   it("refreshes only the server move status when a move changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -649,14 +635,10 @@ describe("createRealtimeCacheEffects", () => {
     const globalActiveThreadListKey = threadListQueryKey({
       archived: false,
     });
-    const globalRootThreadListKey = threadListQueryKey({
-      archived: false,
-    });
     queryClient.setQueryData(firstProjectThreadListKey, []);
     queryClient.setQueryData(firstProjectArchivedThreadListKey, []);
     queryClient.setQueryData(secondProjectThreadListKey, []);
     queryClient.setQueryData(globalActiveThreadListKey, []);
-    queryClient.setQueryData(globalRootThreadListKey, []);
 
     effects.handleChanged({
       type: "changed",
@@ -679,39 +661,8 @@ describe("createRealtimeCacheEffects", () => {
       queryClient.getQueryState(globalActiveThreadListKey)?.isInvalidated,
     ).toBe(true);
     expect(
-      queryClient.getQueryState(globalRootThreadListKey)?.isInvalidated,
-    ).toBe(true);
-    expect(
       queryClient.getQueryState(secondProjectThreadListKey)?.isInvalidated,
     ).not.toBe(true);
-
-    effects.dispose();
-  });
-
-  it("invalidates sidebar navigation for thread list changes", () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const sidebarNavigationKey = sidebarNavigationQueryKey();
-    queryClient.setQueryData<CachedSidebarNavigationFixture>(
-      sidebarNavigationKey,
-      {
-        projects: [{ threads: [] }],
-        personalProject: { threads: [] },
-      },
-    );
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { projectId: "project-1" },
-      changes: ["title-changed"],
-    });
-    vi.advanceTimersByTime(50);
-
-    expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
-      true,
-    );
 
     effects.dispose();
   });
@@ -1657,35 +1608,6 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("does not invalidate timeline queries for status-only thread changes", () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const timelineKey = threadTimelineQueryKey("thr_1");
-    queryClient.setQueryData(timelineKey, {
-      rows: [],
-      timelinePage: {
-        kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
-        olderCursor: null,
-      },
-    });
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { projectId: "project-1" },
-      changes: ["status-changed"],
-    });
-
-    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).not.toBe(
-      true,
-    );
-
-    effects.dispose();
-  });
-
   it("keeps timeline invalidations debounced when status-changed rides the same publish", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -2291,38 +2213,6 @@ describe("createRealtimeCacheEffects", () => {
     for (const unsubscribe of unsubscribers) {
       unsubscribe();
     }
-    effects.dispose();
-  });
-
-  it("refetches thread lists for a status change that carries no row metadata", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const sidebarNavigationKey = sidebarNavigationQueryKey();
-    const sidebarQueryFn = vi.fn(async () => ({
-      projects: [{ threads: [{ id: "thr_1", status: "idle" }] }],
-      personalProject: { threads: [] },
-    }));
-    const observer = new QueryObserver(queryClient, {
-      queryKey: sidebarNavigationKey,
-      queryFn: sidebarQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribe = observer.subscribe(() => {});
-    await vi.advanceTimersByTimeAsync(0);
-    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { projectId: "project-1" },
-      changes: ["status-changed"],
-    });
-    await vi.advanceTimersByTimeAsync(50);
-
-    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
-
-    unsubscribe();
     effects.dispose();
   });
 

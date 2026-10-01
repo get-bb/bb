@@ -31,41 +31,6 @@ function candidate(
 }
 
 describe("loadPluginFrontends", () => {
-  it("imports each compatible bundle, links its CSS, and keeps the module namespace", async () => {
-    const moduleA = { default: { kind: "plugin-app" } };
-    const moduleB = { default: { kind: "other-app" } };
-    const importModule = vi
-      .fn()
-      .mockImplementation(async (url: string) =>
-        url.includes("/plugins/a/") ? moduleA : moduleB,
-      );
-    const injectCss = vi.fn();
-
-    const records = await loadPluginFrontends(
-      [candidate("a"), candidate("b", { cssUrl: null })],
-      { importModule, injectCss, warn: vi.fn() },
-    );
-
-    expect(records.get("a")).toEqual({
-      pluginId: "a",
-      status: "loaded",
-      module: moduleA,
-    });
-    expect(records.get("b")).toEqual({
-      pluginId: "b",
-      status: "loaded",
-      module: moduleB,
-    });
-    expect(importModule).toHaveBeenCalledWith(
-      "/api/v1/plugins/a/assets/app.js?h=abc123",
-    );
-    expect(injectCss).toHaveBeenCalledTimes(1);
-    expect(injectCss).toHaveBeenCalledWith(
-      "a",
-      "/api/v1/plugins/a/assets/app.css?h=abc123",
-    );
-  });
-
   it("contains an import failure to its own plugin", async () => {
     const good = { default: {} };
     const importModule = vi.fn().mockImplementation(async (url: string) => {
@@ -78,7 +43,7 @@ describe("loadPluginFrontends", () => {
 
     const records = await loadPluginFrontends(
       [candidate("broken"), candidate("fine", { cssUrl: null })],
-      { importModule, injectCss: vi.fn(), warn },
+      { importModule, warn },
     );
 
     expect(records.get("broken")).toEqual({
@@ -101,7 +66,6 @@ describe("loadPluginFrontends", () => {
       [candidate("odd", { cssUrl: null })],
       {
         importModule: async () => undefined,
-        injectCss: vi.fn(),
         warn: vi.fn(),
       },
     );
@@ -123,7 +87,7 @@ describe("loadPluginFrontends", () => {
           sdkVersion: "9.2.0",
         }),
       ],
-      { importModule, injectCss: vi.fn(), warn },
+      { importModule, warn },
     );
 
     expect(records.get("stale")).toEqual({

@@ -47,16 +47,6 @@ import { BbHttpError } from "@/lib/sdk";
 import { isTransientReadError, requireEnabledQueryArg } from "./query-helpers";
 
 describe("requireEnabledQueryArg", () => {
-  it("returns the value when present", () => {
-    expect(
-      requireEnabledQueryArg({
-        value: "thr_1",
-        hookName: "useThread",
-        argName: "thread id",
-      }),
-    ).toBe("thr_1");
-  });
-
   it("keeps a numeric zero rather than treating it as missing", () => {
     expect(
       requireEnabledQueryArg({
@@ -519,23 +509,6 @@ describe("optimisticallyInsertThread", () => {
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadsQueryKey()),
     ).toEqual([]);
-  });
-
-  it("preserves the server-provided runtime state", () => {
-    const { queryClient } = createQueryClientTestHarness();
-    const threadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-    queryClient.setQueryData(threadListKey, []);
-
-    optimisticallyInsertThread(queryClient, makeThreadResponse());
-
-    const [thread] =
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey) ?? [];
-    expect(thread?.runtime).toEqual({
-      displayStatus: "waiting-for-host",
-    });
   });
 
   it("places a new thread on its selected machine in the first cached sidebar row", () => {

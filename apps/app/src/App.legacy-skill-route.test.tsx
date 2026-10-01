@@ -119,6 +119,24 @@ describe("legacy resource redirects", () => {
       "/skills/library/skill_abc123?source=local#details",
     ],
     ["/tools/automations", "/plugins/automations/automations"],
+    [
+      "/tools/automations?view=browse",
+      "/plugins/automations/automations/browse",
+    ],
+    ["/tools/automations/browse", "/plugins/automations/automations/browse"],
+    ["/automations", "/plugins/automations/automations"],
+    [
+      "/tools/automations/proj_1/auto_1",
+      "/plugins/automations/automations/proj_1/auto_1",
+    ],
+    [
+      "/tools/automations/proj_1/auto_1/edit",
+      "/plugins/automations/automations/proj_1/auto_1/edit",
+    ],
+    [
+      "/automations/proj_1/auto_1",
+      "/plugins/automations/automations/proj_1/auto_1",
+    ],
   ])("redirects %s to %s", async (entry, expected) => {
     render(
       <MemoryRouter initialEntries={[entry]}>

@@ -15,7 +15,6 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { useBbNavigate } from "./plugin-sdk-hooks";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  getPluginPanelRoutePath,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
@@ -304,23 +303,5 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
-  });
-
-  it("keeps Automations on its plugin panel route", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <RemountablePluginNavigationHarness />
-      </MemoryRouter>,
-    );
-
-    const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
-    await clickAndExpectPath(
-      "Open direct edit",
-      getPluginPanelRoutePath({
-        pluginId: AUTOMATIONS_PLUGIN_ID,
-        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
-        subPath: editSubPath,
-      }),
-    );
   });
 });

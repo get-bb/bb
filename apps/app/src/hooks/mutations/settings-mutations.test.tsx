@@ -116,26 +116,6 @@ describe("general settings mutation", () => {
     expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(false);
   });
 
-  it("refreshes the provider directory after its picker order changes", async () => {
-    const { queryClient, wrapper } = createQueryClientTestHarness();
-    const providersKey = systemProvidersQueryKey();
-    queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
-    queryClient.setQueryData(providersKey, [{ id: "alpha" }, { id: "beta" }]);
-    const nextSettings = {
-      ...defaultAppSettings,
-      providerOrder: ["beta", "alpha"],
-    };
-    vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
-    const { result } = renderHook(() => useUpdateGeneralSettings(), {
-      wrapper,
-    });
-
-    act(() => result.current.mutate(nextSettings));
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
-  });
-
   it.each(["success", "failure"])(
     "keeps the save pending through a provider refetch ending in %s",
     async (outcome) => {

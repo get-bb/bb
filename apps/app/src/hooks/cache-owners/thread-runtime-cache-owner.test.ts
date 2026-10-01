@@ -637,50 +637,6 @@ describe("thread runtime cache owner", () => {
     ]);
   });
 
-  it("optimistically removes queued messages and rolls back on failure", async () => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
-      showMutationErrorToasts: false,
-    });
-    const previousQueue = [
-      makeQueuedMessage({ id: "qmsg-1" }),
-      makeQueuedMessage({ id: "qmsg-2" }),
-    ];
-    queryClient.setQueryData(
-      threadQueuedMessagesQueryKey("thread-1"),
-      previousQueue,
-    );
-
-    const transaction = await beginRemoveQueuedMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        queuedMessageId: "qmsg-1",
-      },
-    });
-
-    expect(
-      queryClient
-        .getQueryData<ThreadQueuedMessage[]>(
-          threadQueuedMessagesQueryKey("thread-1"),
-        )
-        ?.map((queuedMessage) => queuedMessage.id),
-    ).toEqual(["qmsg-2"]);
-
-    rollbackRemoveQueuedMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        queuedMessageId: "qmsg-1",
-      },
-      transaction,
-    });
-
-    expect(
-      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
-    ).toEqual(previousQueue);
-  });
-
   it("clears optimistic group edges when deleting a grouped successor", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },

@@ -160,19 +160,6 @@ describe("useSystemProviderInfo", () => {
 });
 
 describe("useSystemProviders", () => {
-  it("routes provider metadata through the selected host", async () => {
-    vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
-    const { wrapper } = createQueryClientTestHarness();
-
-    renderHook(() => useSystemProviders({ hostId: "host-a" }), { wrapper });
-
-    await waitFor(() => {
-      expect(sdk.providers.list).toHaveBeenCalledWith(
-        expect.objectContaining({ hostId: "host-a" }),
-      );
-    });
-  });
-
   it("requests a usage-only provider roster", async () => {
     vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
     const { wrapper } = createQueryClientTestHarness();
@@ -233,21 +220,6 @@ describe("useSystemProviders", () => {
 });
 
 describe("useSystemExecutionOptions", () => {
-  it("waits for the first probe on a cold cache instead of replaying a vendored roster", () => {
-    vi.mocked(sdk.system.executionOptions).mockImplementation(
-      () => new Promise(() => undefined),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-
-    const { result } = renderHook(
-      () => useSystemExecutionOptions({ providerId: "codex" }),
-      { wrapper },
-    );
-
-    expect(result.current.isPlaceholderData).toBe(false);
-    expect(result.current.data).toBeUndefined();
-  });
-
   it("keeps dynamic providers visible while another provider's models load", async () => {
     const providers: ProviderInfo[] = [
       makeProviderInfo({

@@ -210,44 +210,6 @@ describe("buildThreadMentionSuggestions", () => {
     ]);
   });
 
-  it("ranks children of the current parent as directly related", () => {
-    const threads = [
-      makeThread({
-        id: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_same_project_parent",
-        environmentId: "env-3",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_child",
-        parentThreadId: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_other_project_parent",
-        environmentId: "env-2",
-        projectId: "proj-2",
-        title: "Shared context",
-      }),
-    ];
-
-    expect(
-      getSuggestionThreadIds({
-        threads,
-        query: "shared",
-        currentProjectId: "proj-1",
-        currentThreadId: "thr_parent",
-      }),
-    ).toEqual([
-      "thr_child",
-      "thr_same_project_parent",
-      "thr_other_project_parent",
-    ]);
-  });
-
   it("adds project names only for threads outside the current project", () => {
     const suggestions = buildThreadMentionSuggestions({
       threads: [

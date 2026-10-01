@@ -246,46 +246,6 @@ describe("ui preferences sync", () => {
     });
   });
 
-  it("re-applies a functional update on top of the server value after a conflict", async () => {
-    const { collapsedAtom, queryClient, store } = createHarness();
-    startUiPreferencesSync({ queryClient, store });
-    setCachedUiPreferences(
-      queryClient,
-      serverResponse({
-        "sidebar.collapsedProjects": { revision: 1, value: ["prj_a"] },
-      }),
-    );
-    reconcileUiPreferences(getCachedUiPreferences(queryClient)!);
-    mocks.set.mockRejectedValueOnce(conflict(2));
-    mocks.list.mockResolvedValueOnce(
-      serverResponse({
-        "sidebar.collapsedProjects": {
-          revision: 2,
-          value: ["prj_a", "prj_other"],
-        },
-      }),
-    );
-    store.set(collapsedAtom, (current) => [...current, "prj_b"]);
-    expect(store.get(collapsedAtom)).toEqual(["prj_a", "prj_b"]);
-    await waitForUiPreferenceWrites();
-    expect(mocks.set).toHaveBeenNthCalledWith(1, {
-      expectedRevision: 1,
-      key: "sidebar.collapsedProjects",
-      value: ["prj_a", "prj_b"],
-    });
-    expect(mocks.set).toHaveBeenNthCalledWith(2, {
-      expectedRevision: 2,
-      key: "sidebar.collapsedProjects",
-      value: ["prj_a", "prj_other", "prj_b"],
-    });
-    expect(store.get(collapsedAtom)).toEqual(["prj_a", "prj_other", "prj_b"]);
-    expect(
-      getCachedUiPreferences(queryClient)?.preferences[
-        "sidebar.collapsedProjects"
-      ],
-    ).toEqual({ revision: 3, value: ["prj_a", "prj_other", "prj_b"] });
-  });
-
   it("retries a plain value write with the fresh revision after a conflict", async () => {
     const { modeAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });

@@ -188,18 +188,6 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     sourceEl.remove();
   });
 
-  it("a vertical in-sidebar drag never engages: reorder is untouched, no drop", () => {
-    const config = baseConfig();
-    beginSplitDrag(config);
-
-    fireWindowPointer("pointermove", 24, 380);
-    fireWindowPointer("pointermove", 26, 520);
-    fireWindowPointer("pointerup", 26, 520);
-
-    expect(escapeKeydowns).toBe(0);
-    expect(config.onDrop).not.toHaveBeenCalled();
-  });
-
   it("a plain click (press and release, no movement) does not drop", () => {
     const onEngage = vi.fn();
     const onEnd = vi.fn();

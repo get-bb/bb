@@ -20,7 +20,7 @@ interface OpenUrlByPreferenceArgs extends ResolveUrlOpenTargetArgs {
 
 const HTTP_URL_SCHEME_PATTERN = /^https?:\/\//iu;
 
-export function isHttpOrHttpsUrl(url: string): boolean {
+function isHttpOrHttpsUrl(url: string): boolean {
   return HTTP_URL_SCHEME_PATTERN.test(url);
 }
 

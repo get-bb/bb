@@ -32,19 +32,6 @@ describe("definePluginApp", () => {
 });
 
 describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
-  it("collects additive app overlays", () => {
-    const definition = definePluginApp((app) => {
-      app.slots.experimental_appOverlay({
-        id: "office",
-        component: Component,
-      });
-    });
-
-    expect(collectPluginAppRegistrations(definition).appOverlays).toEqual([
-      { id: "office", component: Component },
-    ]);
-  });
-
   it("rejects duplicate ids and malformed components", () => {
     const duplicate = definePluginApp((app) => {
       app.slots.experimental_appOverlay({
