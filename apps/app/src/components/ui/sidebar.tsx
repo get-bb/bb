@@ -381,10 +381,6 @@ const SidebarShowingContext = React.createContext<boolean | null>(null);
 const SidebarContentElementContext =
   React.createContext<React.RefObject<HTMLDivElement | null> | null>(null);
 
-function useSidebarContentElementRef() {
-  return React.useContext(SidebarContentElementContext);
-}
-
 function useSidebar() {
   const context = React.useContext(SidebarContext);
   if (!context) {
@@ -1622,8 +1618,6 @@ const SidebarFooter = React.forwardRef<
 });
 SidebarFooter.displayName = "SidebarFooter";
 
-const SIDEBAR_CONTENT_SELECTOR = '[data-sidebar="content"]';
-
 const SidebarContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
@@ -1850,7 +1844,6 @@ const SidebarMenuSkeleton = React.forwardRef<
 SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton";
 
 export {
-  SIDEBAR_CONTENT_SELECTOR,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -1869,6 +1862,4 @@ export {
   useIsSidebarShowing,
   useOptionalIsSidebarShowing,
   useSidebar,
-  useSidebarContentElementRef,
-  SidebarContentElementContext,
 };

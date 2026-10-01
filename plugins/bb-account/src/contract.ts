@@ -9,14 +9,11 @@ import {
 
 export {
   ACCOUNT_REALTIME_CHANNEL,
-  type Account,
   type AccountStatus,
   type LoginState,
   type LoginView,
   type SignOutResult,
 } from "./schemas.js";
-
-export const ACCOUNT_PLUGIN_ID = "bb-account";
 export const CONNECT_PLUGIN_ID = "connect";
 
 export const STATUS_METHOD = "bb-account.v1.status";

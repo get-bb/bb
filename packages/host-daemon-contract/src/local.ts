@@ -241,9 +241,6 @@ const providerCliInstallCompletedEventSchema = z.object({
   signal: z.string().min(1).nullable(),
   success: z.boolean(),
 });
-export type ProviderCliInstallCompletedEvent = z.infer<
-  typeof providerCliInstallCompletedEventSchema
->;
 
 const providerCliInstallErrorEventSchema = z.object({
   type: z.literal("error"),

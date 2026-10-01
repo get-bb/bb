@@ -1,8 +1,6 @@
 import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  COARSE_POINTER_DOT_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
@@ -18,8 +16,6 @@ export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
 export const SIDEBAR_STATUS_ICON_CLASS = "size-4";
 
 export const SIDEBAR_STATUS_GLYPH_BOX_CLASS = "h-4 w-4";
-
-export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`;
 
 export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
 
@@ -74,15 +70,6 @@ export const SIDEBAR_ROW_SELECTED_STATE_CLASS = `${CONTEXT_SELECTION_SURFACE_CLA
 
 export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
   "bb-sidebar-open-in-split-row";
-
-export const SIDEBAR_FOOTER_ACTION_CLASS = cn(
-  COARSE_POINTER_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>[data-icon-root]]:opacity-80",
-);
-
-export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
-  "relative m-1 h-5 w-5 after:absolute after:left-1/2 after:top-1/2 after:h-7 after:w-7 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] max-md:pointer-coarse:m-0 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:after:hidden";
 
 export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
   "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-70 before:content-[''] max-md:pointer-coarse:before:left-5";

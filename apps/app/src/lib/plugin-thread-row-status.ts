@@ -53,16 +53,6 @@ export function getPluginThreadRowStatus(
   return statuses.values().next().value?.status ?? null;
 }
 
-function getPluginThreadRowStatusForThreads(
-  threads: readonly { id: string }[],
-): PluginComposerThreadRowStatus | null {
-  for (const thread of threads) {
-    const status = getPluginThreadRowStatus(thread.id);
-    if (status) return status;
-  }
-  return null;
-}
-
 export function setPluginThreadRowStatus(
   threadId: string | null,
   pluginId: string,
@@ -140,20 +130,6 @@ export function usePluginThreadRowStatus(
     [threadId],
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function usePluginThreadRowStatusForThreads(
-  threads: readonly { id: string }[],
-): PluginComposerThreadRowStatus | null {
-  const getSnapshot = useCallback(
-    () => getPluginThreadRowStatusForThreads(threads),
-    [threads],
-  );
-  return useSyncExternalStore(
-    subscribePluginThreadRowStatusGroup,
-    getSnapshot,
-    getSnapshot,
-  );
 }
 
 export function usePluginThreadRowStatuses(): ReadonlyMap<

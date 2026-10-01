@@ -1,8 +1,4 @@
-import { atom } from "jotai";
-import type {
-  SidebarChronologicalSort,
-  SidebarOrganizationMode,
-} from "@bb/domain";
+import type { SidebarOrganizationMode } from "@bb/domain";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
 export type {
@@ -10,7 +6,7 @@ export type {
   SidebarSectionId,
 } from "@bb/client-core";
 
-export type { SidebarChronologicalSort, SidebarOrganizationMode };
+export type { SidebarOrganizationMode };
 
 export const collapsedProjectIdsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedProjects",
@@ -46,26 +42,6 @@ export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(
 
 export const sidebarOrganizationModeAtom = createSyncedPreferenceAtom(
   "sidebar.organizationMode",
-);
-
-export const sidebarEnvironmentGroupingAtom = createSyncedPreferenceAtom(
-  "sidebar.threadGrouping.environment",
-);
-
-export const sidebarGroupThreadsByEnvironmentAtom = atom((get) => {
-  const grouping = get(sidebarEnvironmentGroupingAtom);
-  if (grouping !== "auto") {
-    return grouping;
-  }
-  return get(sidebarOrganizationModeAtom) !== "chronological";
-});
-
-export const sidebarChronologicalSortAtom = createSyncedPreferenceAtom(
-  "sidebar.chronologicalSort",
-);
-
-export const sidebarSortDirectionAtom = createSyncedPreferenceAtom(
-  "sidebar.sortDirection",
 );
 
 export const sidebarCollapsedThreadSectionsAtom = createSyncedPreferenceAtom(

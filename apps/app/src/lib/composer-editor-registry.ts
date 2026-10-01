@@ -81,18 +81,3 @@ export function useComposerEditorBridge(
   const getSnapshot = useCallback(() => getComposerEditorBridge(key), [key]);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
-
-export function areComposerEditorStatesEqual(
-  left: ComposerEditorState,
-  right: ComposerEditorState,
-): boolean {
-  return (
-    left.layout === right.layout &&
-    left.isRunning === right.isRunning &&
-    left.isSubmitting === right.isSubmitting &&
-    left.isSubmittingBlocked === right.isSubmittingBlocked &&
-    left.submittingBlockedReason === right.submittingBlockedReason &&
-    left.isAttaching === right.isAttaching &&
-    left.attachmentError === right.attachmentError
-  );
-}

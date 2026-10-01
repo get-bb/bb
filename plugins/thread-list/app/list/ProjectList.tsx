@@ -138,8 +138,6 @@ interface ProjectListNavigationLoadingRowProps {
   textWidthClassName: string;
 }
 
-export { PROJECT_LIST_ACTION_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
-
 type ThreadListStatus = "loading" | "ready" | "unavailable";
 
 interface ProjectThreadListStateArgs {

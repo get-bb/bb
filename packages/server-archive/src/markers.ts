@@ -35,7 +35,6 @@ export const serverMovedFileSchema = z
 export type ServerMovedFile = z.infer<typeof serverMovedFileSchema>;
 
 export const serverImportKindSchema = z.enum(["move", "manual"]);
-export type ServerImportKind = z.infer<typeof serverImportKindSchema>;
 
 export const serverImportFileSchema = z
   .object({

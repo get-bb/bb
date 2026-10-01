@@ -18,14 +18,6 @@ export interface AiServiceRegistration extends NormalizedPluginAiService {
   builtin: boolean;
 }
 
-export interface AiServiceInfo {
-  id: string;
-  displayName: string;
-  pluginId: string;
-  builtin: boolean;
-  tasks: AiTask[];
-}
-
 export interface AiServiceKey {
   pluginId: string;
   serviceId: string;
@@ -73,16 +65,6 @@ export function aiServiceKey(service: AiServiceRegistration): AiServiceKey {
 
 function mapKey(key: AiServiceKey): string {
   return `${key.pluginId}/${key.serviceId}`;
-}
-
-export function toAiServiceInfo(service: AiServiceRegistration): AiServiceInfo {
-  return {
-    id: service.id,
-    displayName: service.displayName,
-    pluginId: service.pluginId,
-    builtin: service.builtin,
-    tasks: aiServiceTasks(service),
-  };
 }
 
 async function readStatus(

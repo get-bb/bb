@@ -11,17 +11,10 @@ import { Button } from "@bb/shared-ui/button";
 
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuTrigger,
-} from "@bb/shared-ui/context-menu";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -36,12 +29,6 @@ interface ProjectActionsMenuBaseProps {
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
   triggerClassName?: string;
-}
-
-interface ProjectActionsContextMenuProps extends ProjectActionsMenuBaseProps {
-  disabled?: boolean;
-  children: ReactNode;
-  onOpenChange?: (open: boolean) => void;
 }
 
 type ProjectActionsMenuSurface = "context" | "dropdown";
@@ -159,72 +146,5 @@ export function ProjectActionsMenu({
         />
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-export function ProjectActionsContextMenu(
-  props: ProjectActionsContextMenuProps,
-) {
-  const isCompactViewport = useIsCompactViewport();
-  if (isCompactViewport) {
-    return <ProjectActionsCompactLongPressMenu {...props} />;
-  }
-  return <ProjectActionsDesktopContextMenu {...props} />;
-}
-
-function ProjectActionsCompactLongPressMenu({
-  children,
-  disabled,
-  project,
-  onOpenChange,
-  onRename,
-  extraActions,
-}: ProjectActionsContextMenuProps) {
-  return (
-    <CompactLongPressMenu
-      label={`${project.name} actions`}
-      onOpenChange={onOpenChange}
-      disabled={disabled}
-      items={
-        <ProjectActionsMenuItems
-          project={project}
-          surface="dropdown"
-          onRename={onRename}
-          extraActions={extraActions}
-        />
-      }
-    >
-      {children}
-    </CompactLongPressMenu>
-  );
-}
-
-function ProjectActionsDesktopContextMenu({
-  children,
-  disabled,
-  project,
-  onOpenChange,
-  onRename,
-  onCloseAutoFocus,
-  extraActions,
-}: ProjectActionsContextMenuProps) {
-  return (
-    <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger asChild disabled={disabled}>
-        {children}
-      </ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={`${project.name} actions`}
-        onCloseAutoFocus={onCloseAutoFocus}
-        onClick={stopProjectActionsMenuClickPropagation}
-      >
-        <ProjectActionsMenuItems
-          project={project}
-          surface="context"
-          onRename={onRename}
-          extraActions={extraActions}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
   );
 }

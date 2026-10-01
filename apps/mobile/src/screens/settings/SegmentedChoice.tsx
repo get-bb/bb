@@ -25,7 +25,4 @@ export function SegmentedChoice<T extends string>({
   );
 }
 
-export type {
-  SegmentedChoiceOption,
-  SegmentedChoiceProps,
-} from "./segmented-choice-types";
+export type { SegmentedChoiceProps } from "./segmented-choice-types";

@@ -1,7 +1,6 @@
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { sql } from "drizzle-orm";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
-import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
+import type { DbQueryConnection } from "../connection.js";
 
 export function pruneRateLimitSnapshotWindow(
   db: DbQueryConnection,
@@ -37,16 +36,4 @@ export function pruneRateLimitSnapshotWindow(
     complete: rows.length < (args.limit ?? 64),
     nextSequence: rows.at(-1)?.sequence ?? args.afterSequence,
   };
-}
-
-export function pruneRateLimitSnapshots(
-  db: DbConnection,
-  args: { threadId: string; afterSequence: number; throughSequence: number },
-): number {
-  const result = db.transaction(
-    (tx) => pruneRateLimitSnapshotWindow(tx, args),
-    { behavior: "immediate" },
-  );
-  if (result.removed > 0) bumpThreadEventRewriteGeneration(args.threadId);
-  return result.removed;
 }

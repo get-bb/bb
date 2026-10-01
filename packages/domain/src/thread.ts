@@ -18,10 +18,7 @@ import { threadOriginKindSchema } from "./thread-origin-kind.js";
 import { threadVisibilitySchema } from "./thread-visibility.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
-export {
-  threadOriginKindSchema,
-  threadOriginKindValues,
-} from "./thread-origin-kind.js";
+export { threadOriginKindSchema } from "./thread-origin-kind.js";
 export type { ThreadOriginKind } from "./thread-origin-kind.js";
 
 /**

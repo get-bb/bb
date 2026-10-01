@@ -35,7 +35,6 @@ export type ServerMoveHealth = z.infer<typeof serverMoveHealthSchema>;
 export const serverHealthResponseSchema = z.object({
   serverMove: serverMoveHealthSchema.optional(),
 });
-export type ServerHealthResponse = z.infer<typeof serverHealthResponseSchema>;
 
 export const serverMoveCommandSchemas = {
   "server_move.inspect": z

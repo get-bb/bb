@@ -61,15 +61,11 @@ export {
 } from "./protocol.js";
 export {
   workspaceResolutionFailureCodeSchema,
-  workspaceResolutionFailureSchema,
   type WorkspaceResolutionFailure,
   type WorkspaceResolutionFailureCode,
 } from "./workspace.js";
 
 export {
-  BRANCH_LIST_LIMIT_MAX,
-  BRANCH_LIST_QUERY_MAX_LENGTH,
-  FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
   FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,

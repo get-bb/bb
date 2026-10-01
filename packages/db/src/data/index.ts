@@ -12,7 +12,7 @@ export {
   updateProject,
   deleteProject,
 } from "./projects.js";
-export type { ProjectRow, ReorderProjectResult } from "./projects.js";
+export type { ReorderProjectResult } from "./projects.js";
 
 export {
   getThreadConversationOutlineRecord,
@@ -293,9 +293,6 @@ export {
   wouldRemoveSharedProviderSessionClaim,
   getLastStoredProviderThreadId,
   getStoredProviderSession,
-  resolveStoredProviderSessions,
-  type StoredProviderSession,
-  type StoredProviderThreadClaimClass,
   getLastStoredTurnRequestEvent,
   getStoredTurnRequestEventForTurn,
   getLatestThreadOutputEventRow,
@@ -350,9 +347,7 @@ export {
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   MissingStoredTurnStartedError,
-  pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEvents,
-  pruneTokenUsageEvents,
   pruneResolvedItemDeltas,
 } from "./events.js";
 export {
@@ -436,7 +431,6 @@ export {
   getQueuedThreadMessage,
   hasQueuedRetryOfTurnRequest,
   hasClaimedQueuedThreadMessages,
-  hasQueuedThreadMessages,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
@@ -500,16 +494,11 @@ export {
   getNextThreadPruningPolicy,
   THREAD_PRUNING_POLICIES,
 } from "./thread-pruning.js";
-export type { ThreadPruningPolicy } from "./thread-pruning.js";
-export { pruneRateLimitSnapshots } from "./rate-limit-pruning.js";
 export {
   listPathInstalledPluginSources,
   rerootServerOwnedPluginPaths,
   swapServerHostRoles,
-  type PathInstalledPluginSource,
-  type RerootServerOwnedPathsArgs,
   type RerootServerOwnedPathsResult,
-  type SwapServerHostRolesArgs,
   type SwapServerHostRolesResult,
 } from "./server-move.js";
 

@@ -166,7 +166,6 @@ export const branchListQuerySchema = z.object({
 });
 
 export const serverMessageSchema = changedMessageSchema;
-export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 export const serverMessageLenientSchema = changedMessageLenientSchema;
 

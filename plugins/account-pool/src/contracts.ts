@@ -22,7 +22,6 @@ const switchThresholdSchema = z
   .max(1, "Must be at most 1.");
 
 export const parentModeSchema = z.enum(["proxy", "isolate"]);
-export type ParentMode = z.infer<typeof parentModeSchema>;
 
 export const accountPoolConfigSchema = z
   .object({

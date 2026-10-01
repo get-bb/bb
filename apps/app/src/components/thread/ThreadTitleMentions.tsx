@@ -722,15 +722,6 @@ export function useThreadTitleDisplayText(title: string): string {
   );
 }
 
-export function useSidebarProjectName(
-  projectId: string | null,
-): string | undefined {
-  const resources = useContext(ThreadTitleMentionResourcesContext);
-  return projectId === null
-    ? undefined
-    : resources.projectNamesById.get(projectId);
-}
-
 export function useSidebarThreadMentionResource(
   threadId: string,
 ): PromptMentionResource | null {
