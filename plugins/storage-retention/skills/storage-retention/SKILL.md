@@ -30,6 +30,7 @@ members. Archiving can remove worktrees including uncommitted changes. Deleting
 removes history and thread storage. Preview first and save only when authorized.
 
 Scans run in the background; rerun usage to read completion, progress, or failure.
+A completed report includes `disk` (total and free bytes of the volume holding thread storage).
 Reads never start scans. Remove-orphans requires a completed scan and only removes
 storage the plugin identifies as orphaned from current SDK thread rows. Clear-thread requires a stopped thread and
 an online machine. The plugin serializes its scans and cleanup per machine. Reports are cached

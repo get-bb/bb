@@ -29,6 +29,9 @@ export type HostStorageLeftoverWorktree = z.infer<
 export const hostStorageReportSchema = z.object({
   hostId: z.string(),
   scannedAt: z.number(),
+  disk: z
+    .object({ totalBytes: byteCountSchema, freeBytes: byteCountSchema })
+    .nullable(),
   activeThreadBytes: byteCountSchema,
   archivedThreadBytes: byteCountSchema,
   orphanBytes: byteCountSchema,

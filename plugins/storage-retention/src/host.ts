@@ -11,6 +11,21 @@ export default experimental_defineHostEntry({
   handlers: {
     measure: (input, context) =>
       measureDiskUsage(input, undefined, context.signal),
+    async capacity({ path: target }) {
+      if (!path.isAbsolute(target)) throw new Error("Invalid storage path");
+      for (let current = target; ; current = path.dirname(current)) {
+        try {
+          const stats = await fs.statfs(current);
+          return {
+            totalBytes: stats.blocks * stats.bsize,
+            freeBytes: stats.bavail * stats.bsize,
+          };
+        } catch (error) {
+          if (!isFsErrorWithCode(error, "ENOENT") || current === path.dirname(current))
+            throw error;
+        }
+      }
+    },
     async discard({ rootPath, name, recreate }, context) {
       if (
         !path.isAbsolute(rootPath) ||

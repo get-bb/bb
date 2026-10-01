@@ -49,6 +49,11 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
           "measure",
           hostStorageContract.measure.input.parse(call.input),
         );
+      if (call.method === "capacity")
+        return worker.experimental_call(
+          "capacity",
+          hostStorageContract.capacity.input.parse(call.input),
+        );
       if (call.method === "discard")
         return worker.experimental_call(
           "discard",
@@ -108,6 +113,9 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
       orphanCount: 1,
     });
     expect(scanned.report!.orphanBytes).toBeGreaterThanOrEqual(32768);
+    expect(scanned.report!.disk!.totalBytes).toBeGreaterThan(
+      scanned.report!.disk!.freeBytes,
+    );
     await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
     await expect
       .poll(async () =>
@@ -178,10 +186,12 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
-    experimental_callHostRpc: async () => {
+    experimental_callHostRpc: async (call) => {
       await blocked;
       if (fail) throw new Error("machine disconnected");
-      return { targets: [] };
+      return call.method === "capacity"
+        ? { totalBytes: 2048, freeBytes: 1024 }
+        : { targets: [] };
     },
     sdk: {
       hosts: {

@@ -44,8 +44,16 @@ const storageEntrySchema = z
     recreate: z.boolean(),
   })
   .strict();
+export const diskCapacitySchema = z.object({
+  totalBytes: z.number().int().nonnegative(),
+  freeBytes: z.number().int().nonnegative(),
+});
 export const hostStorageContract = defineRpcContract({
   measure: { input: diskUsageInputSchema, output: diskUsageOutputSchema },
+  capacity: {
+    input: z.object({ path: z.string().min(1) }).strict(),
+    output: diskCapacitySchema,
+  },
   discard: {
     input: storageEntrySchema,
     output: z.object({ removed: z.boolean() }),

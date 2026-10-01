@@ -1,6 +1,10 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { hostStorageContract, type MeasuredTarget } from "./host-contract.js";
+import {
+  diskCapacitySchema,
+  hostStorageContract,
+  type MeasuredTarget,
+} from "./host-contract.js";
 import { readThreads } from "./sdk-data.js";
 import type {
   HostStorageReport,
@@ -14,6 +18,7 @@ type Environment = Awaited<
 >[number];
 const cachedScanSchema = z.object({
   scannedAt: z.number(),
+  disk: diskCapacitySchema.nullable().default(null),
   entries: z.array(
     z.object({ name: z.string(), sizeBytes: z.number().int().nonnegative() }),
   ),
@@ -150,6 +155,7 @@ export function createStorage(bb: BbPluginApi) {
     return {
       hostId,
       scannedAt: scan.scannedAt,
+      disk: scan.disk,
       activeThreadBytes: sum(
         owned.filter((entry) => entry.thread.archivedAt === null),
       ),
@@ -217,6 +223,11 @@ export function createStorage(bb: BbPluginApi) {
             env.path === null ? [] : [{ path: env.path, perChild: false }],
           ),
         ];
+        const disk = await worker.call(
+          "capacity",
+          { path: rootPath },
+          { hostId, signal: lifecycle.signal },
+        );
         const measured = new Map<string, MeasuredTarget>();
         for (let offset = 0; offset < targets.length; offset += 500) {
           const result = await worker.call(
@@ -235,6 +246,7 @@ export function createStorage(bb: BbPluginApi) {
         scans.delete(hostId);
         store(hostId, {
           scannedAt: Date.now(),
+          disk,
           entries:
             root?.outcome === "measured"
               ? (root.children ?? []).filter((entry) =>
