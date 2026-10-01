@@ -592,7 +592,11 @@ function Plugin({
     <div className="flex min-w-0 flex-col">
       {plugin === null ? null : (
         <div className="-mx-4 md:-mx-5">
-          <PluginDetailBanners plugin={plugin} />
+          <PluginDetailBanners
+            plugin={plugin}
+            catalogEntries={[]}
+            onOpenPlugin={noop}
+          />
         </div>
       )}
       <div className="pt-3 md:pt-4">
@@ -622,7 +626,7 @@ function CatalogPlugin({
   return (
     <>
       <div className="-mx-4 md:-mx-5">
-        <CatalogPluginDetailBanner entry={entry} />
+        <CatalogPluginDetailBanner entry={entry} onOpenPlugin={noop} />
       </div>
       <div className="pt-3 md:pt-4">
         <CatalogPluginDetail

@@ -1,4 +1,5 @@
 import type { AriaRole, ReactNode } from "react";
+import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -57,5 +58,26 @@ export function PluginBannerBar({
         ) : null}
       </div>
     </div>
+  );
+}
+
+export function PluginBannerOpenButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-7 gap-0.5 px-2.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+      onClick={onClick}
+    >
+      {label}
+      <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+    </Button>
   );
 }

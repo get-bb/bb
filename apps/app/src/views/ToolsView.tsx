@@ -404,9 +404,14 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         <PluginDetailBanners
           plugin={selectedPlugin}
           configurationPath={configurationPath}
+          catalogEntries={catalogQuery.data?.entries ?? []}
+          onOpenPlugin={handleOpenCatalogPlugin}
         />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
-        <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
+        <CatalogPluginDetailBanner
+          entry={selectedCatalogEntry}
+          onOpenPlugin={handleOpenCatalogPlugin}
+        />
       ) : null}
       <div className="min-h-0 flex-1">
         <ResourceScrollPage>

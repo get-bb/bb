@@ -260,7 +260,10 @@ describe("PluginDetail official catalog lifecycle", () => {
     };
     render(
       <>
-        <CatalogPluginDetailBanner entry={incompatibleEntry} />
+        <CatalogPluginDetailBanner
+          entry={incompatibleEntry}
+          onOpenPlugin={vi.fn()}
+        />
         <CatalogPluginDetail
           entry={incompatibleEntry}
           onInstall={() => {}}
@@ -994,6 +997,28 @@ describe("BB Official plugin detail routing", () => {
     for (const button of installButtons) {
       expect(button.getAttribute("aria-disabled")).toBe("true");
     }
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "View installed plugin" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/plugins/canvas",
+      );
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-plugin-summary]")?.textContent,
+      ).toBe("Edit .mdx files beside the chat.");
+    });
+    expect(screen.getByText("Also published in BB Community")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "View listing" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path").textContent).toBe(
+        "/plugins/bb-community%2Fcanvas",
+      );
+    });
   });
 
   it("uses the installed catalog identity when plugin ids collide", async () => {
@@ -1717,7 +1742,14 @@ describe("PluginDetail banner precedence", () => {
 
   it("renders only current health and keeps diagnostics out of user copy", () => {
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginDetailBanners plugin={collision} />, { wrapper });
+    render(
+      <PluginDetailBanners
+        plugin={collision}
+        catalogEntries={[]}
+        onOpenPlugin={vi.fn()}
+      />,
+      { wrapper },
+    );
 
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
@@ -1738,6 +1770,8 @@ describe("PluginDetail banner precedence", () => {
           ...managedPlugin,
           handlerStats: { ...managedPlugin.handlerStats, errorCount: 3 },
         }}
+        catalogEntries={[]}
+        onOpenPlugin={vi.fn()}
       />,
       { wrapper },
     );
@@ -1806,7 +1840,11 @@ describe("PluginDetail runtime health", () => {
     const result = render(
       <MemoryRouter>
         <QueryClientWrapper>
-          <PluginDetailBanners plugin={plugin} />
+          <PluginDetailBanners
+            plugin={plugin}
+            catalogEntries={[]}
+            onOpenPlugin={vi.fn()}
+          />
           <PluginDetail
             isLoading={false}
             plugin={plugin}
