@@ -38,7 +38,6 @@ describe("acp process topology", () => {
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
     const setTimeoutReal = setTimeout;
     const readyFile = join(workspaceDir, "agent-ready");
-    const signalFile = join(workspaceDir, "agent-signal");
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath: workspaceDir,
@@ -61,7 +60,6 @@ describe("acp process topology", () => {
             env: {
               FAKE_ACP_SESSION_NEW_DELAY_MS: "60000",
               FAKE_ACP_READY_FILE: readyFile,
-              FAKE_ACP_SIGNAL_FILE: signalFile,
             },
           },
         },

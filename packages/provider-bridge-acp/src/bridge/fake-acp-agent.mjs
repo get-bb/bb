@@ -59,7 +59,6 @@
  *                              session/fork responses
  * - FAKE_ACP_IGNORE_CANCEL=1 → never answer a prompt after session/cancel
  * - FAKE_ACP_READY_FILE      → written once the agent process is up
- * - FAKE_ACP_SIGNAL_FILE     → written with "SIGTERM" when the agent is reaped
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -72,7 +71,7 @@
  */
 
 import { createInterface } from "node:readline";
-import { appendFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
@@ -150,14 +149,6 @@ for (let i = fakeModels.length; i < modelCount; i += 1) {
 }
 
 process.on("SIGTERM", () => {
-  if (process.env.FAKE_ACP_SIGNAL_FILE) {
-    const signalFile = process.env.FAKE_ACP_SIGNAL_FILE;
-    const stagedSignalFile = `${signalFile}.${process.pid}.tmp`;
-    // The final path is the test's completion boundary: publish it only after
-    // the marker bytes are complete.
-    writeFileSync(stagedSignalFile, "SIGTERM\n");
-    renameSync(stagedSignalFile, signalFile);
-  }
   process.exit(0);
 });
 

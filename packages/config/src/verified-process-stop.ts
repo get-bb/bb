@@ -105,8 +105,7 @@ async function readWindowsProcess(pid: number) {
     const value: unknown = JSON.parse(stdout);
     const result = windowsProcessSchema.safeParse(value);
     return result.success ? result.data : null;
-  } catch (error) {
-    console.error("Windows process identity probe failed", error);
+  } catch {
     return null;
   }
 }
