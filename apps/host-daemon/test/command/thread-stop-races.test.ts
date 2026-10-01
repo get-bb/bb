@@ -25,7 +25,6 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import {
-  noopEventSink,
   resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
   type CommandOf,
@@ -37,6 +36,7 @@ import {
   createFakeWorkspace,
   makeDispatchOptions,
   makeTempDir,
+  noopEventSink,
   unexpectedProjectAttachmentFetch,
   unexpectedProviderMaintenance,
   fetchDispatchTestArtifact,

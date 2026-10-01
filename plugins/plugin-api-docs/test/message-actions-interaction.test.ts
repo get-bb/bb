@@ -11,7 +11,6 @@ import {
   it,
 } from "vitest";
 
-import { SURFACE_NUMBERS } from "../src/product-map";
 import { AppShellWireframe, SurfaceMapContext } from "../src/wireframes";
 
 function InteractiveAppShell() {
@@ -25,7 +24,7 @@ function InteractiveAppShell() {
         activeId,
         setActiveId,
         expandedId,
-        numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
+        numberOf: () => 1,
         onSelect: setExpandedId,
       },
     },

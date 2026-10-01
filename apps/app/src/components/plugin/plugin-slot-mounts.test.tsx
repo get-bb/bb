@@ -34,7 +34,6 @@ import {
 import {
   AUTOMATIONS_PLUGIN_ID,
   PLUGIN_PANEL_ROUTE_PATH,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
 import {
   markPluginFrontendsSettled,
@@ -85,6 +84,8 @@ import { NewTabActions } from "@/components/secondary-panel/NewTabActions";
 import { buildFileOpenerPanelTab } from "./file-opener-tabs";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@bb/client-core";
+
+const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
 function composerTextEffectValues(storageKey: string | null) {
   return getComposerTextEffects(storageKey).map(({ effect }) => effect);

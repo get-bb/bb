@@ -89,7 +89,6 @@ function ThreadRowHarness({
 }: HarnessProps) {
   const row = (
     <ThreadRow
-      projectId={thread.projectId}
       thread={thread}
       crossProjectId={crossProjectId}
       isActive={isActive}

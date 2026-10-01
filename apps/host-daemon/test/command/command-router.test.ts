@@ -15,11 +15,11 @@ import {
   CommandRouter,
   type CommandRouterOptions,
 } from "../../src/command-router.js";
-import { noopEventSink } from "../../src/command-dispatch-support.js";
 import {
   createHarness,
   createFakeRuntime,
   createFakeWorkspace,
+  noopEventSink,
   unexpectedProjectAttachmentFetch,
   unexpectedProviderMaintenance,
   DISPATCH_TEST_BRIDGE_LAUNCH,

@@ -136,7 +136,6 @@ async function stopThreadRuntime(
 }
 
 export {
-  CommandDispatchError,
   getErrorCode,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";

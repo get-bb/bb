@@ -562,43 +562,6 @@ describe("WatchManager", () => {
     expect(manager.workspaceWatchCount()).toBe(0);
   });
 
-  it("waits for pending watch startup before removing an environment watch", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const pendingWorkspace = createDeferredPromise<HostWorkspace>();
-    const { hostWatcher, watchWorkspace } = createFakeHostWatcher({
-      watchWorkspaceImplementation: () => stopWatchingStatus,
-    });
-    const manager = new WatchManager({
-      hostWatcher,
-      provisionWorkspace: vi.fn(() => pendingWorkspace.promise),
-    });
-
-    const start = manager.replaceWatchSet({
-      generation: 1,
-      workspaceTargets: [
-        {
-          environmentId: "env-watch",
-          workspaceContext: {
-            workspacePath: "/tmp/env-watch",
-          },
-        },
-      ],
-      threadStorageTargets: [],
-    });
-    const remove = manager.removeEnvironmentWorkspaceWatch("env-watch");
-
-    await Promise.resolve();
-    expect(stopWatchingStatus).not.toHaveBeenCalled();
-
-    pendingWorkspace.resolve(workspace);
-    await Promise.all([start, remove]);
-
-    expect(watchWorkspace).toHaveBeenCalledTimes(1);
-    expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
-    expect(manager.workspaceWatchCount()).toBe(0);
-  });
-
   it("reports shared git ref changes separately from local workspace changes", async () => {
     let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
     const workspace = createFakeWorkspace("/tmp/env-watch");

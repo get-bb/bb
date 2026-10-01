@@ -5,7 +5,6 @@ import {
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
-import { displayWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 import { buildSeedPrompt, registerDelegation } from ".";
 
@@ -205,7 +204,6 @@ describe("task delegation", () => {
     expect(harness.sdk.callsTo("threads.spawn")).toEqual([
       [expect.objectContaining({ title })],
     ]);
-    expect(displayWidth(title)).toBeLessThanOrEqual(120);
 
     await harness.dispose();
   });

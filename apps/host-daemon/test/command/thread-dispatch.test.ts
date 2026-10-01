@@ -16,10 +16,10 @@ import {
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  CommandDispatchError,
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "../../src/command-dispatch.js";
+import { CommandDispatchError } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import {

@@ -40,7 +40,6 @@ export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
-export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 export const AUTOMATIONS_ROUTE_PATH = "/plugins/automations/automations";
 export const AUTOMATIONS_BROWSE_ROUTE_PATH =
   "/plugins/automations/automations/browse";

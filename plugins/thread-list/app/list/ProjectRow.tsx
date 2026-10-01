@@ -1655,7 +1655,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     });
   const row = (
     <ThreadRow
-      projectId={rowProjectId}
       thread={node.thread}
       crossProjectId={crossProjectId}
       isActive={selectedThreadId === node.thread.id}

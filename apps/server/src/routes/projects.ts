@@ -337,11 +337,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     await deleteMachineEnvironmentVariable(deps.db, payload.name, project.id);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
@@ -361,11 +357,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
@@ -385,22 +377,14 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
   get(routes.machineEnvironment, async (context) => {
     const project = requirePublicProject(deps.db, context.req.param("id"));
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 

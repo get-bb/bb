@@ -48,12 +48,6 @@ import {
   useSurfaceMap,
 } from "./wireframes";
 
-export const SURFACE_NUMBERS: ReadonlyMap<string, number> = new Map(
-  SURFACE_GROUPS.filter((group) => group.id !== "headless").flatMap((group) =>
-    group.surfaces.map((surface, index) => [surface.id, index + 1] as const),
-  ),
-);
-
 type GuideSlide = Omit<SurfaceGroup, "id"> & {
   id: string;
   groupId: SurfaceGroup["id"];

@@ -12,7 +12,6 @@ import {
   vi,
 } from "vitest";
 
-import { SURFACE_NUMBERS } from "../src/product-map";
 import anatomy from "../src/anatomy-manifest.json";
 import { CommandPaletteWireframe, SurfaceMapContext } from "../src/wireframes";
 
@@ -27,7 +26,7 @@ function InteractiveCommandPalette() {
         activeId,
         setActiveId,
         expandedId,
-        numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
+        numberOf: () => 1,
         onSelect: setExpandedId,
       },
     },

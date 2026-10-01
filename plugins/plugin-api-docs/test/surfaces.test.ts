@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import anatomy from "../src/anatomy-manifest.json";
-import { SURFACE_NUMBERS } from "../src/product-map";
 import {
   fixtureResponsiveStrategy,
   SURFACE_GROUPS,
@@ -63,19 +62,6 @@ describe("product-map surfaces", () => {
     );
     expect(new Set(all).size).toBe(all.length);
     expect(SURFACES_BY_ID.size).toBe(all.length);
-  });
-
-  it("numbers the surfaces a fixture draws, and only those", () => {
-    for (const group of SURFACE_GROUPS) {
-      const numbers = group.surfaces.map((surface) =>
-        SURFACE_NUMBERS.get(surface.id),
-      );
-      if (group.id === "headless") {
-        expect(numbers.every((number) => number === undefined)).toBe(true);
-        continue;
-      }
-      expect(numbers).toEqual(group.surfaces.map((_, index) => index + 1));
-    }
   });
 
   it("derives one responsive strategy from each group's fixture kind", () => {

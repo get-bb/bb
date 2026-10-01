@@ -15,7 +15,6 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { useBbNavigate } from "./plugin-sdk-hooks";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
   getPluginPanelRoutePath,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
@@ -97,6 +96,8 @@ function SidebarControlsHarness() {
     </div>
   );
 }
+
+const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
 const AUTOMATION_ROUTE = {
   projectId: "proj_standard",

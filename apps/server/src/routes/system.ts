@@ -264,9 +264,7 @@ export function registerSystemRoutes(
     );
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(
-      await machineEnvironmentView(deps.db, deps.config.dataDir),
-    );
+    return context.json(await machineEnvironmentView(deps.db));
   });
 
   del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
@@ -279,13 +277,11 @@ export function registerSystemRoutes(
     await deleteMachineEnvironmentVariable(deps.db, payload.name, null);
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(
-      await machineEnvironmentView(deps.db, deps.config.dataDir),
-    );
+    return context.json(await machineEnvironmentView(deps.db));
   });
 
   get(routes.machineEnvironment, async (context) =>
-    context.json(await machineEnvironmentView(deps.db, deps.config.dataDir)),
+    context.json(await machineEnvironmentView(deps.db)),
   );
   put(routes.replaceMachineEnvironment, async (context, payload) => {
     if (getGateAuthKind(context) === "machine")
@@ -297,9 +293,7 @@ export function registerSystemRoutes(
     await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(
-      await machineEnvironmentView(deps.db, deps.config.dataDir),
-    );
+    return context.json(await machineEnvironmentView(deps.db));
   });
 
   put(routes.generalSettings, (context, payload) => {

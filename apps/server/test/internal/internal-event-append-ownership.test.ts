@@ -37,8 +37,6 @@ import {
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
-interface SeedEventRouteArgs {}
-
 interface PostEventBatchArgs {
   harness: TestAppHarness;
   sessionId: string;
@@ -56,7 +54,7 @@ async function postEventBatch(args: PostEventBatchArgs): Promise<Response> {
   });
 }
 
-function setupEventRoute(args: SeedEventRouteArgs = {}) {
+function setupEventRoute() {
   return createTestAppHarness().then((harness) => {
     const { host, session } = seedHostSession(harness.deps);
     const { project } = seedProjectWithSource(harness.deps, {

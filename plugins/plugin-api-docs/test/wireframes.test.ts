@@ -6,7 +6,6 @@ import {
   MAX_FIXTURE_SCALE,
   ProductMap,
   spatialFixtureScale,
-  SURFACE_NUMBERS,
 } from "../src/product-map";
 import {
   annotationChipCounterScale,
@@ -30,7 +29,7 @@ const mapState: SurfaceMapState = {
   activeId: null,
   setActiveId: vi.fn(),
   expandedId: null,
-  numberOf: (id) => SURFACE_NUMBERS.get(id) ?? null,
+  numberOf: () => 1,
 };
 
 function renderWireframe(

@@ -1426,7 +1426,6 @@ function AccountPoolSettings() {
           <AccountDialog
             account={selectedAccount}
             threshold={threshold}
-            close={closeDialog}
             act={(action) => void accountAction(selectedAccount, action)}
           />
         ) : null}
@@ -1597,12 +1596,10 @@ function AccountPoolSettings() {
 function AccountDialog({
   account,
   threshold,
-  close,
   act,
 }: {
   account: AccountSummary;
   threshold: number;
-  close: () => void;
   act: (action: "toggle" | "refresh" | "remove") => void;
 }) {
   const shared = (
