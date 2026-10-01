@@ -1,3 +1,4 @@
+import { isClosedProcessStdinError } from "@bb/process-utils";
 import type { ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 import { z } from "zod";
@@ -132,11 +133,6 @@ interface SettleJsonRpcResponseArgs {
   response: JsonRpcObject;
 }
 
-const closedJsonRpcStdinErrorCodes = new Set([
-  "EPIPE",
-  "EOF",
-  "ERR_STREAM_DESTROYED",
-]);
 const jsonRpcStdinErrorHandledStreams = new WeakSet<Writable>();
 
 function isJsonRpcObject(value: unknown): value is JsonRpcObject {
@@ -177,16 +173,8 @@ function decodeRecoveryHint(data: unknown): ProviderRecoveryHint | null {
   return parsed.success ? (parsed.data.recovery ?? null) : null;
 }
 
-function isClosedJsonRpcStdinError(error: Error): boolean {
-  return (
-    "code" in error &&
-    typeof error.code === "string" &&
-    closedJsonRpcStdinErrorCodes.has(error.code)
-  );
-}
-
 function handleJsonRpcStdinError(error: Error): void {
-  if (isClosedJsonRpcStdinError(error)) {
+  if (isClosedProcessStdinError(error)) {
     return;
   }
   throw error;

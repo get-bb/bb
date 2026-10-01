@@ -1,4 +1,4 @@
-import { execFile, spawn, type ExecFileException } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,10 +10,9 @@ import type {
 } from "@bb/domain";
 import {
   execPortableFile,
-  killProcessGroup,
+  spawnManagedProcess,
   pathExists,
   sanitizeInheritedChildProcessEnv,
-  supportsProcessGroups,
 } from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
@@ -353,14 +352,17 @@ export async function runGitWithNullRecordLimit(
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    const managed = spawnManagedProcess({
+      command: "git",
+      args,
       cwd: options.cwd,
       env: resolveGitProcessEnv({
         env: options.env,
         shellPath: options.shellPath,
       }),
-      stdio: ["ignore", "pipe", "pipe"],
     });
+    const { child } = managed;
+    child.stdin.end();
     const stdoutRecords: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let pending = Buffer.alloc(0);
@@ -373,9 +375,10 @@ export async function runGitWithNullRecordLimit(
     let spawnError: Error | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
+    let stopping: Promise<void> | undefined;
     const stopChild = (): void => {
-      child.stdout.pause();
-      child.kill();
+      stopping = managed.stop({ timeoutMs: 0 });
+      child.stdout.destroy();
     };
     const onAbort = (): void => {
       if (recordLimitReached) return;
@@ -438,7 +441,13 @@ export async function runGitWithNullRecordLimit(
     child.once("error", (error) => {
       spawnError = error;
     });
-    child.once("close", (code) => {
+    child.once("close", async (code) => {
+      try {
+        await stopping;
+      } catch (error) {
+        reject(error);
+        return;
+      }
       if (timeout !== undefined) clearTimeout(timeout);
       options.signal?.removeEventListener("abort", onAbort);
 
@@ -1262,12 +1271,11 @@ async function fetchRemoteBranchesNonInteractively(
   cwd: string,
   options: GitTimeoutOptions,
 ): Promise<FetchRemoteBranchesResult> {
-  return new Promise((resolve) => {
-    const child = spawn("git", ["fetch", "--all", "--prune", "--quiet"], {
+  try {
+    await execPortableFile("git", ["fetch", "--all", "--prune", "--quiet"], {
       cwd,
-      detached: supportsProcessGroups(),
-      windowsHide: true,
-      stdio: "ignore",
+      timeout: options.timeoutMs,
+      maxBuffer: DEFAULT_BUFFER_BYTES,
       env: resolveGitProcessEnv({
         shellPath: options.shellPath,
         env: {
@@ -1279,21 +1287,10 @@ async function fetchRemoteBranchesNonInteractively(
         },
       }),
     });
-    const timeout =
-      options.timeoutMs === undefined
-        ? undefined
-        : setTimeout(() => {
-            killProcessGroup({ child, signal: "SIGKILL" });
-          }, options.timeoutMs);
-    child.once("error", () => {
-      clearTimeout(timeout);
-      resolve({ status: "failed" });
-    });
-    child.once("close", (code) => {
-      clearTimeout(timeout);
-      resolve({ status: code === 0 ? "fetched" : "failed" });
-    });
-  });
+    return { status: "fetched" };
+  } catch {
+    return { status: "failed" };
+  }
 }
 
 export async function fetchRemoteBranches(

@@ -18,6 +18,7 @@
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "generate:test-bridges": "node ./scripts/build-test-bridges.mjs",
+    "lint": "oxlint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts"

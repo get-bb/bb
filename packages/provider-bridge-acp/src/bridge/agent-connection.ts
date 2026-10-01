@@ -1,7 +1,6 @@
 import {
-  spawnPortablePipedProcess,
-  stopProcessGroupLeaderFirst,
-  supportsProcessGroups,
+  spawnManagedProcess,
+  isClosedProcessStdinError,
 } from "@bb/process-utils";
 import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -9,12 +8,6 @@ import type { z } from "zod";
 import { ACP_PROTOCOL_VERSION, acpInitializeResultSchema } from "../wire.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
-const CLOSED_STDIN_ERROR_CODES = new Set([
-  "EPIPE",
-  "EOF",
-  "ERR_STREAM_DESTROYED",
-]);
-
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
   error(code: number, message: string): void;
@@ -90,14 +83,6 @@ interface AgentErrorObject {
   data?: unknown;
 }
 
-function isClosedAgentStdinError(error: Error): boolean {
-  return (
-    "code" in error &&
-    typeof error.code === "string" &&
-    CLOSED_STDIN_ERROR_CODES.has(error.code)
-  );
-}
-
 export function formatAgentError(error: AgentErrorObject): string {
   const message =
     error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`;
@@ -147,13 +132,13 @@ function parseAgentLine(line: string): ParsedAgentMessage | null {
 export function createAcpAgentConnection(
   options: CreateAcpAgentConnectionOptions,
 ): AcpAgentConnection {
-  const child = spawnPortablePipedProcess({
+  const managed = spawnManagedProcess({
     command: options.command,
     args: options.args,
     cwd: options.cwd,
     env: options.env,
-    detached: supportsProcessGroups(),
   });
+  const { child } = managed;
   experimental_recordProviderChildIo(child, {
     threadId: options.recordThreadId,
   });
@@ -163,7 +148,6 @@ export function createAcpAgentConnection(
   let nextRequestId = 1;
   let exited = false;
   let stopping = false;
-  let stopPromise: Promise<void> | undefined;
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -185,13 +169,9 @@ export function createAcpAgentConnection(
     rejectAllPending(
       new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
     );
-    stopPromise = stopProcessGroupLeaderFirst({
-      child,
-      timeoutMs: 0,
-      killGraceMs: 0,
-    });
+    const stopped = managed.stop({ timeoutMs: 0 });
     const stderrTail = [...stderrChunks, detail].join("\n");
-    void stopPromise.then(() =>
+    void stopped.then(() =>
       options.onExit({ code: null, signal: null, stderrTail }),
     );
   }
@@ -209,11 +189,10 @@ export function createAcpAgentConnection(
   }
 
   child.stdin?.on("error", (error) => {
-    if (!isClosedAgentStdinError(error)) {
+    if (!isClosedProcessStdinError(error)) {
       throw error;
     }
     if (stopping) {
-      child.kill("SIGKILL");
       return;
     }
     closeForAgentStdin(error);
@@ -371,20 +350,14 @@ export function createAcpAgentConnection(
     },
 
     kill() {
-      if (stopPromise) return stopPromise;
-      if (exited) return Promise.resolve();
+      if (stopping || exited) return managed.stop();
       stopping = true;
       rejectAllPending(
         new AcpAgentExitedError(
           `ACP agent "${options.command}" is not running`,
         ),
       );
-      stopPromise = stopProcessGroupLeaderFirst({
-        child,
-        timeoutMs: 1_000,
-        killGraceMs: 0,
-      });
-      return stopPromise;
+      return managed.stop();
     },
   };
 }

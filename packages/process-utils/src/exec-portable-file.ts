@@ -1,6 +1,8 @@
 import type { ExecFileException } from "node:child_process";
-import { stopWindowsProcessTree } from "./windows-process-tree.js";
-import crossSpawn from "cross-spawn";
+import {
+  isClosedProcessStdinError,
+  spawnManagedProcess,
+} from "./managed-process.js";
 
 interface ExecPortableFileOptions {
   cwd: string;
@@ -22,20 +24,18 @@ export function execPortableFile(
       reject(options.signal.reason);
       return;
     }
-    const child = crossSpawn(command, args, {
+    const managed = spawnManagedProcess({
+      command,
+      args,
       cwd: options.cwd,
       env: options.env,
-      stdio: "pipe",
     });
+    const { child } = managed;
     const {
       stdin: childInput,
       stdout: childOutput,
       stderr: childError,
     } = child;
-    if (!childInput || !childOutput || !childError) {
-      child.kill();
-      throw new Error("Portable command did not attach piped stdio");
-    }
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let stdoutBytes = 0;
@@ -46,11 +46,7 @@ export function execPortableFile(
     const stop = (error: ExecFileException) => {
       if (failure) return;
       failure = error;
-      if (process.platform === "win32" && child.pid !== undefined) {
-        stopping = stopWindowsProcessTree(child);
-      } else {
-        child.kill();
-      }
+      stopping = managed.stop({ timeoutMs: 0 });
       childInput.destroy();
       childOutput.destroy();
       childError.destroy();
@@ -69,7 +65,7 @@ export function execPortableFile(
       failure ??= error;
     });
     childInput.on("error", (error: NodeJS.ErrnoException) => {
-      if (error.code !== "EPIPE" && error.code !== "EOF") stop(error);
+      if (!isClosedProcessStdinError(error)) stop(error);
     });
     const collect = (stream: "stdout" | "stderr", chunk: Buffer) => {
       const length = stream === "stdout" ? stdoutBytes : stderrBytes;

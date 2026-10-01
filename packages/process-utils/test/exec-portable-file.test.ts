@@ -55,28 +55,54 @@ it("streams split UTF-8 stderr and closes stdin after writing the input", async 
   expect(chunks.join("")).toBe("é日本語");
 });
 
-it("cancels a running command and retains the output received before cancellation", async () => {
+it("cancels a command with its descendants and retains prior output", async () => {
   const controller = new AbortController();
-  await expect(
-    execPortableFile(
-      process.execPath,
-      [
-        "-e",
-        `
-    process.stderr.write("ready");
+  let output = "";
+  let pids: number[] = [];
+  const isAlive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    await expect(
+      execPortableFile(
+        process.execPath,
+        [
+          "-e",
+          `
+    const { spawn } = require("node:child_process");
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    child.once("spawn", () => process.stderr.write(JSON.stringify([process.pid, child.pid]) + "\\n"));
     setInterval(() => {}, 1000);
   `,
-      ],
-      {
-        ...options,
-        signal: controller.signal,
-        onStderr: () => controller.abort("cancelled by caller"),
-      },
-    ),
-  ).rejects.toMatchObject({
-    name: "AbortError",
-    code: "ABORT_ERR",
-    cause: "cancelled by caller",
-    stderr: "ready",
-  });
+        ],
+        {
+          ...options,
+          signal: controller.signal,
+          onStderr: (chunk) => {
+            output += chunk;
+            if (output.endsWith("\n")) {
+              pids = JSON.parse(output);
+              controller.abort("cancelled by caller");
+            }
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      name: "AbortError",
+      code: "ABORT_ERR",
+      cause: "cancelled by caller",
+      stderr: expect.stringContaining("["),
+    });
+    expect(pids).toHaveLength(2);
+    await expect.poll(() => pids.some(isAlive), { timeout: 1000 }).toBe(false);
+  } finally {
+    for (const pid of pids) {
+      if (isAlive(pid)) process.kill(pid, "SIGKILL");
+    }
+  }
 });
