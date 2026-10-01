@@ -291,7 +291,7 @@ export function SearchMessageLocationProvider({
   const value = useMemo<SearchMessageLocation>(
     () => ({
       target:
-        targetLocationKey === null || targetSeq === null
+        targetLocationKey === null || targetMatch === null || targetSeq === null
           ? null
           : {
               locationKey: targetLocationKey,
