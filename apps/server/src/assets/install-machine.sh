@@ -419,6 +419,36 @@ if [ -n "$lifecycle_action" ]; then
   exit 0
 fi
 
+systemd_host=no
+if [ "$platform" = linux ] &&
+   [ "$(ps -p 1 -o comm= 2>/dev/null | tr -d '[:space:]')" = systemd ] &&
+   ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
+  systemd_host=yes
+fi
+systemd_scope=--user
+if [ "$systemd_host" = yes ] && [ "$(id -u)" = 0 ]; then
+  systemd_scope=--system
+fi
+if [ "${BB_INSTALL_SKIP_SERVICE:-0}" != 1 ] && [ "$platform" = linux ] &&
+   [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+  user_runtime_dir=$(loginctl show-user "$(id -u)" --property=RuntimePath --value 2>/dev/null || true)
+  case "$user_runtime_dir" in
+    /*)
+      XDG_RUNTIME_DIR=$user_runtime_dir
+      export XDG_RUNTIME_DIR
+      unset DBUS_SESSION_BUS_ADDRESS
+      ;;
+  esac
+  if ! systemctl --user show-environment >/dev/null 2>&1; then
+    if [ "$systemd_host" = yes ]; then
+      fail_step "The systemd user bus is unavailable; the bb host-daemon service was not installed."
+      detail "Run the installer from a systemd user session, then retry. To run without a persistent service, set BB_INSTALL_SKIP_SERVICE=1; the daemon will not start after a reboot." >&2
+      exit 1
+    fi
+    BB_INSTALL_SKIP_SERVICE=1
+  fi
+fi
+
 if [ "$adopt" = yes ]; then
   if ! adopted_identity=$(node -e '
     const fs = require("node:fs");
@@ -917,34 +947,6 @@ if [ "$already_joined" = no ]; then
     exit 1
   fi
   complete_step "Joined successfully"
-fi
-
-systemd_scope=--user
-if [ "$platform" = linux ] && [ "$(id -u)" = 0 ] &&
-   [ "$(ps -p 1 -o comm= | tr -d '[:space:]')" = systemd ] &&
-   ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
-  systemd_scope=--system
-fi
-if [ "${BB_INSTALL_SKIP_SERVICE:-0}" != 1 ] && [ "$platform" = linux ] &&
-   [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
-  user_runtime_dir=$(loginctl show-user "$(id -u)" --property=RuntimePath --value 2>/dev/null || true)
-  case "$user_runtime_dir" in
-    /*)
-      XDG_RUNTIME_DIR=$user_runtime_dir
-      export XDG_RUNTIME_DIR
-      unset DBUS_SESSION_BUS_ADDRESS
-      ;;
-  esac
-  if ! systemctl --user show-environment >/dev/null 2>&1; then
-    if [ -n "$join_pid" ]; then
-      kill "$join_pid" 2>/dev/null || true
-      wait "$join_pid" 2>/dev/null || true
-      rm -f "$data_dir/install-daemon.pid"
-    fi
-    fail_step "The systemd user bus is unavailable; the bb host-daemon service was not installed."
-    detail "Run the installer from a systemd user session, then retry. To run without a persistent service, set BB_INSTALL_SKIP_SERVICE=1; the daemon will not start after a reboot." >&2
-    exit 1
-  fi
 fi
 
 stop_recorded_daemon() {

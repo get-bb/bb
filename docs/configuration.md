@@ -37,7 +37,9 @@ contracts.
 
 The machine installer normally installs a persistent systemd user service. If
 the current user's bus is unavailable, it retries using the runtime path from
-`loginctl` and fails if the bus still cannot be reached. Set
+`loginctl`. On a systemd host it then fails before enrolling if the bus still
+cannot be reached. In containers and on machines without systemd as init, it
+runs a detached daemon instead. Set
 `BB_INSTALL_SKIP_SERVICE=1` on the installer command only when running without
 a service is intentional. No service starts the daemon after a reboot. The
 temporary daemon used for a first join is not supervised; a previously joined

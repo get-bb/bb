@@ -204,10 +204,12 @@ bb versions on one machine remain isolated.
 On Linux, the installer uses the current user's systemd manager (or a system
 unit when run as root on a non-container systemd host). If the user bus is not
 reachable from the installer's environment, it retries using the current
-user's runtime path reported by `loginctl`. If the bus remains unavailable,
-installation fails before creating or enabling a unit; rerun it from a systemd
-user session. Set `BB_INSTALL_SKIP_SERVICE=1` only when a detached daemon is
-acceptable: no service starts it after a reboot. The temporary daemon used
+user's runtime path reported by `loginctl`. If the bus remains unavailable on
+a systemd host, installation fails before enrolling or creating a unit; rerun
+it from a systemd user session. In containers and on machines without systemd
+as init, the installer runs a detached daemon instead. Set
+`BB_INSTALL_SKIP_SERVICE=1` only when a detached daemon is acceptable: no
+service starts it after a reboot. The temporary daemon used
 for a first join is not supervised. When the installer starts a previously
 joined daemon without a service, its launcher restarts it after crashes and
 self-updates while the launcher remains running.

@@ -292,6 +292,18 @@ printf '%s' '${artifactStatus}'
   );
 }
 
+function writeUnreachableUserBus(fixture: Fixture, init: string): void {
+  writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+  writeExecutable(join(fixture.binDir, "id"), "#!/bin/sh\necho 1000\n");
+  writeExecutable(join(fixture.binDir, "ps"), `#!/bin/sh\necho ${init}\n`);
+  writeExecutable(
+    join(fixture.binDir, "systemd-detect-virt"),
+    "#!/bin/sh\nexit 1\n",
+  );
+  writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
+  writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
+}
+
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
     try {
@@ -702,7 +714,7 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
         );
       }
       const result = runScript(["--bootstrap-env", "TEST_BUNDLE"], fixture, {
-        BB_INSTALL_SKIP_SERVICE: "1",
+        BB_INSTALL_SKIP_SERVICE: container ? "0" : "1",
         TEST_BUNDLE: JSON.stringify({
           hostId: "host-test",
           serverUrl: "https://machine.getbb.app",
@@ -1704,13 +1716,11 @@ fi
     );
   });
 
-  it("fails visibly when the systemd user bus cannot be reached", () => {
+  it("fails visibly when the systemd user bus cannot be reached on a systemd host", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeServerInstallTools(fixture, 200);
-    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
-    writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
-    writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
+    writeUnreachableUserBus(fixture, "systemd");
 
     const result = runScript(BOOTSTRAP_ARGS, fixture, {
       XDG_RUNTIME_DIR: undefined,
@@ -1729,17 +1739,12 @@ fi
     expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
   });
 
-  it("stops a temporary join daemon when the systemd user bus is unavailable", () => {
+  it("fails before joining when the systemd user bus is unavailable on a systemd host", () => {
     const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
     writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, join(fixture.dataDir, "invocation"));
-    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
-    writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
-    writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
-    writeExecutable(
-      join(fixture.binDir, "nohup"),
-      `#!/bin/sh\nprintf '%s\\n' "$$" >"${join(fixture.dataDir, "join.pid")}"\nexec "$@"\n`,
-    );
+    writeEnrollingBbApp(fixture, invocationPath);
+    writeUnreachableUserBus(fixture, "systemd");
 
     const result = runScript(BOOTSTRAP_ARGS, fixture, {
       XDG_RUNTIME_DIR: undefined,
@@ -1748,13 +1753,38 @@ fi
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("systemd user bus is unavailable");
-    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
-    expect(() =>
-      process.kill(
-        Number(readFileSync(join(fixture.dataDir, "join.pid"), "utf8")),
-        0,
-      ),
-    ).toThrow();
+    expect(result.stdout).not.toContain("Joining");
+    expect(existsSync(join(fixture.dataDir, "enrollment-argv"))).toBe(false);
+    expect(existsSync(join(fixture.dataDir, "auth.json"))).toBe(false);
+    expect(existsSync(invocationPath)).toBe(false);
+  });
+
+  it("runs a detached daemon on Linux without systemd as init", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(fixture, invocationPath);
+    writeUnreachableUserBus(fixture, "tini");
+
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      XDG_RUNTIME_DIR: undefined,
+      DBUS_SESSION_BUS_ADDRESS: undefined,
+    });
+
+    try {
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout + result.stderr).toContain(
+        "Service installation skipped",
+      );
+      expect(existsSync(join(fixture.homeDir, ".config/systemd/user"))).toBe(
+        false,
+      );
+    } finally {
+      const pidPath = join(fixture.dataDir, "install-daemon.pid");
+      if (existsSync(pidPath)) {
+        process.kill(Number(readFileSync(pidPath, "utf8")), "SIGTERM");
+      }
+    }
   });
 
   it.each([false, true])(
