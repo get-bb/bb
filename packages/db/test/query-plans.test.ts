@@ -871,7 +871,12 @@ describe("slow query index plans", () => {
   it("skips removed environments in the provider lifecycle sweep", () => {
     const { db } = setup();
     const captured = captureStatements(db, () => {
-      expect(listProviderLifecycleEnvironments(db, "git-worktree")).toEqual([]);
+      expect(
+        listProviderLifecycleEnvironments(db, "git-worktree", {
+          pluginId: "environment-git-worktree",
+          teardownMessage: "blocked",
+        }),
+      ).toEqual([]);
     });
     expect(captured).toHaveLength(1);
     const details = queryPlanDetails({

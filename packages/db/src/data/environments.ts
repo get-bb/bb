@@ -543,8 +543,8 @@ export function updatePreparingEnvironment(db: EnvironmentWriteConnection, row: 
   return db.update(environments).set({ ...row, updatedAt: Date.now() }).where(and(eq(environments.id, row.id), row.ownerThreadId === null ? isNull(environments.ownerThreadId) : eq(environments.ownerThreadId, row.ownerThreadId), eq(environments.attempt, row.attempt))).run().changes > 0;
 }
 
-export function listProviderLifecycleEnvironments(db: EnvironmentWriteConnection, providerId: string) {
-  return db.select().from(environments).where(and(eq(environments.environmentProviderId, providerId), or(isNull(environments.ownerThreadId), sql`${environments.teardownStatus} is not null`), sql`(${environments.retireAt} is not null or ${environments.teardownStatus} is not null or not exists (select 1 from ${threads} where ${threads.environmentId} = ${environments.id} and ${threads.archivedAt} is null and ${threads.deletedAt} is null))`, sql`(${environments.status} <> 'destroyed' OR ${environments.teardownStatus} IS NOT 'removed')`)).all();
+export function listProviderLifecycleEnvironments(db: EnvironmentWriteConnection, providerId: string, blocked: { pluginId: string; teardownMessage: string }) {
+  return db.select().from(environments).where(and(eq(environments.environmentProviderId, providerId), sql`not (${environments.ownerThreadId} is null and ${environments.teardownStatus} is 'failed' and ${environments.teardownMessage} is ${blocked.teardownMessage} and ${environments.environmentProviderPluginId} is not ${blocked.pluginId})`, or(isNull(environments.ownerThreadId), sql`${environments.teardownStatus} is not null`), sql`(${environments.retireAt} is not null or ${environments.teardownStatus} is not null or not exists (select 1 from ${threads} where ${threads.environmentId} = ${environments.id} and ${threads.archivedAt} is null and ${threads.deletedAt} is null))`, sql`(${environments.status} <> 'destroyed' OR ${environments.teardownStatus} IS NOT 'removed')`)).all();
 }
 
 export function environmentHasLiveThreads(db: EnvironmentWriteConnection, environmentId: string): boolean {

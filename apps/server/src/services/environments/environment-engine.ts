@@ -904,18 +904,6 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   return true;
 }
 
-function isBlockedOnProviderOwnerMismatch(
-  row: EnvironmentRow,
-  record: PluginEnvironmentProviderRecord,
-): boolean {
-  return (
-    row.ownerThreadId === null &&
-    row.teardownStatus === "failed" &&
-    row.teardownMessage === PROVIDER_OWNER_MISMATCH_MESSAGE &&
-    row.environmentProviderPluginId !== record.pluginId
-  );
-}
-
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
@@ -926,8 +914,11 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
     for (const row of listProviderLifecycleEnvironments(
       deps.db,
       record.provider.id,
+      {
+        pluginId: record.pluginId,
+        teardownMessage: PROVIDER_OWNER_MISMATCH_MESSAGE,
+      },
     )) {
-      if (isBlockedOnProviderOwnerMismatch(row, record)) continue;
       pending.push(
         sweepProviderEnvironment(deps, row.id).catch((error) => {
           deps.logger.warn(
