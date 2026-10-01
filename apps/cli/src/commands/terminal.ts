@@ -184,7 +184,7 @@ export function registerTerminalCommands(
     .description("Send input to a terminal session")
     .option("--text <text>", "Text to send")
     .option("--stdin", "Read bytes from stdin")
-    .option("--enter", "Append a newline")
+    .option("--enter", "Press Enter after the text")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (terminalId: string, opts: TerminalSendOptions) => {
@@ -496,7 +496,7 @@ export async function resolveSendData(
           stdin.on("end", () => resolve(Buffer.concat(chunks)));
         });
   return opts.enter
-    ? Buffer.concat([baseData, Buffer.from("\n", "utf8")])
+    ? Buffer.concat([baseData, Buffer.from("\r", "utf8")])
     : baseData;
 }
 

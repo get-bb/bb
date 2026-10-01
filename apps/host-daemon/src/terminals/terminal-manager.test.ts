@@ -1542,54 +1542,6 @@ describe("TerminalManager", () => {
     ]);
   });
 
-  it("rejects native Windows opens", async () => {
-    const harness = createHarness();
-    const manager = new TerminalManager({
-      logger: {
-        debug: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-      },
-      platform: "win32",
-      ptyAdapter: harness.adapter,
-      runtimeManager: harness.runtimeManager,
-      sendMessage: (message) => {
-        harness.messages.push(message);
-        return true;
-      },
-    });
-
-    await manager.handleMessage({
-      type: "terminal.open",
-      contributedEnv: [],
-      requestId: "open-1",
-      terminalId: "term-1",
-      threadId: "thr-1",
-      target: {
-        kind: "workspace",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/terminal-workspace",
-        },
-      },
-      cols: 100,
-      rows: 30,
-      start: DEFAULT_TERMINAL_START,
-    });
-
-    expect(harness.adapter.spawned).toHaveLength(0);
-    expect(harness.messages).toEqual([
-      {
-        type: "terminal.error",
-        requestId: "open-1",
-        terminalId: "term-1",
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
-      },
-    ]);
-  });
-
   it("runs commands in one persistent shell from the workspace cwd", async () => {
     if (process.platform === "win32") {
       return;

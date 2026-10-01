@@ -30,6 +30,11 @@ List and create require exactly one explicit scope:
 Machine names are resolved to an explicit machine ID. No scope defaults to the
 server machine, and --cwd is valid only with --machine or --host.
 
+A terminal runs the machine's own shell: $SHELL (then zsh, bash, sh) on macOS
+and Linux; on Windows, PowerShell 7 when `pwsh` is on PATH, otherwise Windows
+PowerShell, otherwise cmd. Write --command in that shell's syntax. `send --enter`
+presses Enter (a carriage return), which every one of those shells accepts.
+
 All other operations need only the terminal ID. They also accept the scope
 flags above and ignore them, so a command built for `list` or `create` still
 runs:

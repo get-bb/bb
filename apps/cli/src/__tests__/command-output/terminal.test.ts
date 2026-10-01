@@ -281,7 +281,7 @@ describe("bb terminal command output", () => {
     expect(send).toHaveBeenCalledWith({
       param: { terminalId: "term-1" },
       json: {
-        dataBase64: Buffer.from("echo hi\n", "utf8").toString("base64"),
+        dataBase64: Buffer.from("echo hi\r", "utf8").toString("base64"),
       },
     });
     expect(resize).toHaveBeenCalledWith({
@@ -294,7 +294,7 @@ describe("bb terminal command output", () => {
     });
   });
 
-  it("preserves arbitrary stdin bytes and appends enter as one byte", async () => {
+  it("preserves arbitrary stdin bytes and presses Enter with a carriage return", async () => {
     const input = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
 
     const result = await resolveSendData(
@@ -302,7 +302,7 @@ describe("bb terminal command output", () => {
       Readable.from([input]),
     );
 
-    expect(result).toEqual(Buffer.concat([input, Buffer.from("\n")]));
+    expect(result).toEqual(Buffer.concat([input, Buffer.from("\r")]));
   });
 
   it("splits large input into sequential requests at the wire byte limit", async () => {
