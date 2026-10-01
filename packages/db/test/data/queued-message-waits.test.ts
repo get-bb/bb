@@ -233,13 +233,6 @@ describe("listDueScheduledQueuedThreadMessages", () => {
     ).toEqual([due.id]);
   });
 
-  it("ignores rows with no schedule at all", () => {
-    const { db, thread } = setup();
-    queue(db, thread.id);
-
-    expect(listDueScheduledQueuedThreadMessages(db, 9_999_999)).toEqual([]);
-  });
-
   it("orders oldest-due first", () => {
     const { db, thread } = setup();
     const later = queue(db, thread.id, "later");

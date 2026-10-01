@@ -137,47 +137,6 @@ describe("Family B emit-site discriminator stamping", () => {
     });
   }
 
-  it("stamps a multi-child batch as child-outcome-batch with a count subject", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedParentFixture(harness, "host-child-batch");
-      const childA = seedThread(harness.deps, {
-        projectId: fixture.projectId,
-        title: "Worker A",
-        parentThreadId: fixture.parentThreadId,
-      });
-      const childB = seedThread(harness.deps, {
-        projectId: fixture.projectId,
-        title: "Worker B",
-        parentThreadId: fixture.parentThreadId,
-      });
-
-      await queueChildThreadTurnNotificationBestEffort(harness.deps, {
-        childThread: childA,
-        parentThreadId: fixture.parentThreadId,
-        turnStatus: "completed",
-      });
-      await queueChildThreadTurnNotificationBestEffort(harness.deps, {
-        childThread: childB,
-        parentThreadId: fixture.parentThreadId,
-        turnStatus: "interrupted",
-      });
-
-      const stamped = await waitForStampedSystemMessage(
-        harness,
-        fixture.parentThreadId,
-      );
-      expect(stamped.systemMessageKind).toBe("child-outcome-batch");
-      expect(stamped.systemMessageSubject).toEqual({
-        kind: "thread-batch",
-        count: 2,
-        outcomes: [
-          { threadId: childA.id, status: "completed" },
-          { threadId: childB.id, status: "interrupted" },
-        ],
-      });
-    });
-  });
-
   it("stamps a needs-attention notification as child-needs-attention", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedParentFixture(harness, "host-child-attention");

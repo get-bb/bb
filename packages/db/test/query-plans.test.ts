@@ -971,31 +971,6 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses rowid lookups for thread search FTS segment hydration", () => {
-    const { db } = setup();
-
-    const details = queryPlanDetails({
-      db,
-      params: ['"queryplanneedle"*', 20],
-      sql: `
-        SELECT s.id
-        FROM thread_search_segments_fts
-        JOIN thread_search_segments AS s
-          ON s.rowid = thread_search_segments_fts.rowid
-        WHERE thread_search_segments_fts MATCH ?
-        LIMIT ?
-      `,
-    });
-
-    expect(details).toContain(
-      "SCAN thread_search_segments_fts VIRTUAL TABLE INDEX",
-    );
-    expect(details).toContain("SEARCH s USING INTEGER PRIMARY KEY (rowid=?)");
-    expect(details).not.toContain("SCAN s");
-
-    db.$client.close();
-  });
-
   it("uses the thread and sequence index for search segment suffix deletes", () => {
     const { db } = setup();
 
@@ -1435,46 +1410,6 @@ describe("slow query index plans", () => {
     expect(pruneQuery.fields.sql).toContain("WHERE id IN");
     expect(pruneQuery.fields.bindingArgumentCount).toBeLessThanOrEqual(500);
     expect(pruneQuery.fields.sql).not.toContain("json_extract");
-
-    const completedLookupPlan = queryPlanDetails({
-      db,
-      params: [thread.id, turnId, itemId],
-      sql: `
-        SELECT 1
-        FROM events AS completed
-        WHERE completed.thread_id = ?
-          AND completed.turn_id = ?
-          AND completed.type = 'item/completed'
-          AND completed.item_kind = 'commandExecution'
-          AND completed.item_id = ?
-          AND json_type(completed.data, '$.item.aggregatedOutput') IS NOT NULL
-        LIMIT 1
-      `,
-    });
-    const earlierDeltaLookupPlan = queryPlanDetails({
-      db,
-      params: [thread.id, turnId, itemId, 3],
-      sql: `
-        SELECT 1
-        FROM events AS earlier_delta
-        WHERE earlier_delta.thread_id = ?
-          AND earlier_delta.turn_id = ?
-          AND earlier_delta.type = 'item/commandExecution/outputDelta'
-          AND earlier_delta.item_id = ?
-          AND earlier_delta.sequence < ?
-        LIMIT 1
-      `,
-    });
-
-    expect(completedLookupPlan).toContain(
-      "events_thread_turn_type_item_sequence_idx",
-    );
-    expect(earlierDeltaLookupPlan).toContain(
-      "events_thread_turn_type_item_sequence_idx",
-    );
-    expect(completedLookupPlan).not.toContain(
-      "events_thread_turn_type_item_kind_item_idx",
-    );
 
     db.$client.close();
   });

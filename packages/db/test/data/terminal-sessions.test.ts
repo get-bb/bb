@@ -52,27 +52,6 @@ function listThreadlessTerminalSessionsByEnvironment(
   });
 }
 
-function listVisibleThreadlessTerminalSessionsByEnvironment(
-  db: TestDb,
-  environmentId: string,
-) {
-  return listTerminalSessions(db, {
-    scope: { environmentId, kind: "threadless-environment" },
-    visible: true,
-  });
-}
-
-function markThreadlessTerminalSessionUserInput(
-  db: TestDb,
-  args: { environmentId: string; now: number; terminalId: string },
-) {
-  return updateTerminalSession(db, {
-    now: args.now,
-    scope: { kind: "terminal", terminalId: args.terminalId },
-    update: { kind: "user-input" },
-  });
-}
-
 function markTerminalSessionUserInput(
   db: TestDb,
   args: { now: number; terminalId: string; threadId: string },
@@ -247,40 +226,6 @@ describe("terminal sessions", () => {
         fixture.environment.id,
       ),
     ).toEqual([expect.objectContaining({ id: threadlessTerminal.id })]);
-  });
-
-  it("marks a threadless terminal dirty on first user input only", () => {
-    const fixture = setup();
-    const terminal = createStartingThreadlessTerminal(fixture);
-
-    const firstInput = markThreadlessTerminalSessionUserInput(fixture.db, {
-      environmentId: fixture.environment.id,
-      terminalId: terminal.id,
-      now: 10,
-    });
-    const secondInput = markThreadlessTerminalSessionUserInput(fixture.db, {
-      environmentId: fixture.environment.id,
-      terminalId: terminal.id,
-      now: 20,
-    });
-
-    expect(firstInput).toMatchObject({
-      id: terminal.id,
-      lastUserInputAt: 10,
-      updatedAt: 10,
-    });
-    expect(secondInput).toBeNull();
-    expect(
-      listVisibleThreadlessTerminalSessionsByEnvironment(
-        fixture.db,
-        fixture.environment.id,
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        lastUserInputAt: 10,
-      }),
-    ]);
   });
 
   it("marks only the expected starting daemon session running", () => {

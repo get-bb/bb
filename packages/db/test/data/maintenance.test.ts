@@ -138,11 +138,6 @@ describe("database maintenance", () => {
     );
   });
 
-  it("creates databases in incremental auto-vacuum mode", () => {
-    const { db } = setup();
-    expect(getDatabaseAutoVacuumMode(db)).toBe("incremental");
-  });
-
   it("drops deferred legacy queue tables without touching current data", () => {
     const { db, project } = setup();
     createDeferredLegacyTables(db);

@@ -711,25 +711,27 @@ describe("thread pruning", () => {
           itemKind: "commandExecution",
           data: '{"item":{"aggregatedOutput":"x"}}',
         });
-        seed(f, 1202, {
-          type: "item/commandExecution/outputDelta",
-          itemId: "cmd",
-          turnId: "other",
-          data: '{"delta":"keep"}',
-        });
-        seed(f, 1203, {
-          type: "item/commandExecution/outputDelta",
-          itemId: "cmd",
-          parentToolCallId: "nested",
-          data: '{"delta":"keep"}',
-        });
+        for (let i = 1202; i <= 1203; i++)
+          seed(f, i, {
+            type: "item/commandExecution/outputDelta",
+            itemId: "cmd",
+            turnId: "other",
+            data: '{"delta":"keep"}',
+          });
         for (let i = 1204; i <= 1205; i++)
+          seed(f, i, {
+            type: "item/commandExecution/outputDelta",
+            itemId: "cmd",
+            parentToolCallId: "nested",
+            data: '{"delta":"keep"}',
+          });
+        for (let i = 1206; i <= 1207; i++)
           seed(f, i, {
             type: "item/commandExecution/outputDelta",
             itemId: "no-output",
             data: '{"delta":"keep"}',
           });
-        seed(f, 1206, {
+        seed(f, 1208, {
           type: "item/completed",
           itemId: "no-output",
           itemKind: "commandExecution",
@@ -737,7 +739,9 @@ describe("thread pruning", () => {
         });
       });
       cycle(f, "resolved-items");
-      expect(sequences(f)).toEqual([1, 1201, 1202, 1203, 1204, 1205, 1206]);
+      expect(sequences(f)).toEqual([
+        1, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208,
+      ]);
     } finally {
       f.db.$client.close();
     }

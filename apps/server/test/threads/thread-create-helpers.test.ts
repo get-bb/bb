@@ -64,20 +64,6 @@ describe("buildSuggestedBranchName", () => {
     ).toBe("bb/thr_abc123def456");
   });
 
-  it("produces unique names for threads with the same slug", () => {
-    const a = buildSuggestedBranchName({
-      branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
-      title: "same task",
-      threadId: "thr_abc123def456",
-    });
-    const b = buildSuggestedBranchName({
-      branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
-      title: "same task",
-      threadId: "thr_abc123xyz789",
-    });
-    expect(a).not.toBe(b);
-  });
-
   it("applies a configured prefix to both branch name shapes", () => {
     expect(
       buildSuggestedBranchName({

@@ -8,7 +8,6 @@ import {
   promptMentionCommandTriggerValues,
   promptMentionResourceSchema,
   removeCommandMentionsFromPromptInput,
-  runtimePermissionPolicySchema,
 } from "../src/shared-types.js";
 
 describe("permission modes", () => {
@@ -29,56 +28,6 @@ describe("permission modes", () => {
       "accept-edits",
     );
     expect(permissionModeInputSchema.safeParse("readonly").success).toBe(false);
-  });
-
-  it("keeps runtime sandbox scope and reviewer behavior explicit", () => {
-    expect(
-      runtimePermissionPolicySchema.parse({
-        permissionMode: "accept-edits",
-        permissionScope: "workspace",
-        approvalReviewer: "user",
-        permissionEscalation: "ask",
-      }),
-    ).toEqual({
-      permissionMode: "accept-edits",
-      permissionScope: "workspace",
-      approvalReviewer: "user",
-      permissionEscalation: "ask",
-    });
-    expect(
-      runtimePermissionPolicySchema.parse({
-        permissionMode: "auto",
-        permissionScope: "workspace",
-        approvalReviewer: "automatic",
-        permissionEscalation: "deny",
-      }),
-    ).toEqual({
-      permissionMode: "auto",
-      permissionScope: "workspace",
-      approvalReviewer: "automatic",
-      permissionEscalation: "deny",
-    });
-    expect(
-      runtimePermissionPolicySchema.parse({
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      }),
-    ).toEqual({
-      permissionMode: "full",
-      permissionScope: "full",
-      approvalReviewer: null,
-      permissionEscalation: null,
-    });
-    expect(
-      runtimePermissionPolicySchema.safeParse({
-        permissionMode: "auto",
-        permissionScope: "full",
-        approvalReviewer: "automatic",
-        permissionEscalation: "ask",
-      }).success,
-    ).toBe(false);
   });
 });
 

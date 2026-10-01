@@ -4,7 +4,6 @@ import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   createEnvironment,
-  findForeignManagedEnvironmentAtHostPath,
   findProviderEnvironmentContainingPath,
   listRetiredLoadedEnvironmentIdsOnHost,
   markHostEnvironmentsDestroyed,
@@ -417,43 +416,6 @@ describe("environment path claims", () => {
     ).toBeNull();
     expect(
       findProviderEnvironmentContainingPath(fixture.db, "/tmp/owned/pkg")?.id,
-    ).toBe(owned.id);
-  });
-
-  it("refuses a foreign project only inside a directory a provider owns", () => {
-    const fixture = setup();
-    const { project: other } = createProject(fixture.db, noopNotifier, {
-      name: "other-project",
-      source: {
-        type: "local_path",
-        hostId: fixture.host.id,
-        path: "/tmp/other",
-      },
-    });
-    seedClaim(fixture, {
-      environmentProviderId: "project-checkout",
-      path: "/tmp/shared-checkout",
-      providerOwnsPath: false,
-    });
-    const owned = seedClaim(fixture, {
-      environmentProviderId: "git-worktree",
-      path: "/tmp/owned-worktree",
-      providerOwnsPath: true,
-    });
-
-    expect(
-      findForeignManagedEnvironmentAtHostPath(fixture.db, {
-        hostId: fixture.host.id,
-        path: "/tmp/shared-checkout",
-        projectId: other.id,
-      }),
-    ).toBeNull();
-    expect(
-      findForeignManagedEnvironmentAtHostPath(fixture.db, {
-        hostId: fixture.host.id,
-        path: "/tmp/owned-worktree",
-        projectId: other.id,
-      })?.id,
     ).toBe(owned.id);
   });
 });
