@@ -134,7 +134,7 @@ describe("InlineVisDirective", () => {
     expect(iframe.getAttribute("srcdoc")).toBeNull();
     expect(iframe.style.height).toBe("224px");
     fireEvent.click(
-      slot.getByRole("button", {
+      slot.getByRole("link", {
         name: "Open charts/demo file.html in sidebar",
       }),
     );
@@ -210,7 +210,7 @@ describe("InlineVisDirective", () => {
     );
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
     fireEvent.click(
-      slot.getByRole("button", {
+      slot.getByRole("link", {
         name: "Open reports/result file.html in sidebar",
       }),
     );
@@ -222,6 +222,59 @@ describe("InlineVisDirective", () => {
             kind: "thread-storage",
             threadId: "thr_1",
             path: "reports/result file.html",
+          },
+          location: null,
+        },
+      },
+    ]);
+  });
+
+  it("leaves modified clicks on the open action to the browser so they open the page itself", async () => {
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { file: "demo.html" },
+        source: '::inline-vis{file="demo.html"}',
+        message,
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          preparePreview: () => ({
+            kind: "html",
+            file: "demo.html",
+            source: "workspace",
+            target: {
+              kind: "workspace",
+              environmentId: "env_1",
+              path: "demo.html",
+            },
+            url: "/api/v1/environments/env_1/files/demo.html",
+          }),
+        },
+      },
+    );
+
+    const open = await slot.findByRole("link", {
+      name: "Open demo.html in sidebar",
+    });
+    expect(open.getAttribute("href")).toBe(
+      "/api/v1/environments/env_1/files/demo.html",
+    );
+    expect(fireEvent.click(open, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(open, { ctrlKey: true })).toBe(true);
+    expect(fireEvent.click(open, { shiftKey: true })).toBe(true);
+    expect(slot.navigateCalls).toEqual([]);
+
+    expect(fireEvent.click(open)).toBe(false);
+    expect(slot.navigateCalls).toEqual([
+      {
+        method: "experimental_openFilePreview",
+        options: {
+          target: {
+            kind: "workspace",
+            environmentId: "env_1",
+            path: "demo.html",
           },
           location: null,
         },

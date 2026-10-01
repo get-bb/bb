@@ -1,4 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { Icon } from "@/components/ui/icon";
 import {
   CONTEXT_CARD_CLASS,
@@ -139,6 +144,69 @@ function PreviewCard({
   );
 }
 
+const OPEN_ACTION_CLASS = cn(
+  "flex cursor-pointer items-center text-xs",
+  CONTEXT_CARD_SEGMENT_CLASS,
+  "shrink-0 justify-center text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+);
+
+function isModifiedClick(event: ReactMouseEvent<HTMLAnchorElement>): boolean {
+  return (
+    event.button !== 0 ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  );
+}
+
+function newPageClickHint(): string {
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  return /Mac|iPhone|iPad/.test(platform) ? "⌘-click" : "Ctrl-click";
+}
+
+function OpenPreviewAction({
+  file,
+  pageUrl,
+  onOpenPreview,
+}: {
+  file: string;
+  pageUrl: string | null;
+  onOpenPreview: () => void;
+}) {
+  const icon = <Icon name="ExternalLink" aria-hidden className="size-3" />;
+  if (pageUrl === null) {
+    return (
+      <button
+        type="button"
+        aria-label={`Open ${file} in sidebar`}
+        title="Open in sidebar"
+        className={OPEN_ACTION_CLASS}
+        onClick={onOpenPreview}
+      >
+        {icon}
+      </button>
+    );
+  }
+  return (
+    <a
+      href={pageUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Open ${file} in sidebar`}
+      title={`Open in sidebar\n${newPageClickHint()} to open in a browser tab`}
+      className={OPEN_ACTION_CLASS}
+      onClick={(event) => {
+        if (event.defaultPrevented || isModifiedClick(event)) return;
+        event.preventDefault();
+        onOpenPreview();
+      }}
+    >
+      {icon}
+    </a>
+  );
+}
+
 function InlineVisDirective({
   attributes,
   source,
@@ -268,24 +336,16 @@ function InlineVisDirective({
       collapsed={collapsed}
       onCollapsedChange={handleCollapsedChange}
       action={
-        <button
-          type="button"
-          aria-label={`Open ${state.file} in sidebar`}
-          title="Open in sidebar"
-          className={cn(
-            "flex cursor-pointer items-center text-xs",
-            CONTEXT_CARD_SEGMENT_CLASS,
-            "shrink-0 justify-center text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          )}
-          onClick={() => {
+        <OpenPreviewAction
+          file={state.file}
+          pageUrl={state.kind === "html" ? state.url : null}
+          onOpenPreview={() => {
             navigate.experimental_openFilePreview({
               target: state.target,
               location: null,
             });
           }}
-        >
-          <Icon name="ExternalLink" aria-hidden className="size-3" />
-        </button>
+        />
       }
     >
       {state.kind === "markdown" ? (
