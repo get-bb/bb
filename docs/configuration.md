@@ -954,7 +954,10 @@ value. A change on one device reaches every other connected window through the
 `ui-preferences-changed` broadcast without a reload.
 
 Sidebar width and open state stay in the browser because they depend on the
-window size.
+window size, and each browser tab or desktop window keeps its own. Collapsing or
+resizing the sidebar in one tab leaves every other open tab alone; a newly
+opened tab or window starts from the most recent choice made anywhere in this
+browser.
 
 ### Thread-list visibility
 

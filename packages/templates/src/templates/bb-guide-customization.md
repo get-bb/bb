@@ -416,7 +416,10 @@ are visible by default. Example:
 Client-local UI preferences
 
 Some Settings values live only in the current browser/client. Sidebar width
-and open state stay local because they depend on the window size. The Voice Input
+and open state stay local because they depend on the window size, and each tab
+or desktop window keeps its own: collapsing or resizing the sidebar in one tab
+leaves the others alone, and a newly opened tab starts from the most recent
+choice made anywhere in that browser. The Voice Input
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
 command and does not change the server-side transcription model. When the preferred
