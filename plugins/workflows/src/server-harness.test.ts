@@ -1071,7 +1071,6 @@ describe("workflow resume cache integration", () => {
       expect(getRunRequired(test.db, original.id)).toMatchObject({
         status: "succeeded",
         replaySafetyVersion: 1,
-        replayBarrierIndex: null,
       }),
     );
 
@@ -1079,7 +1078,6 @@ describe("workflow resume cache integration", () => {
     await eventually(() =>
       expect(getRunRequired(test.db, resumed.id)).toMatchObject({
         status: "succeeded",
-        replayBarrierIndex: null,
         resultJson:
           '["prefix-value",["left-value","right-value"],"after-value"]',
       }),
@@ -1142,7 +1140,6 @@ describe("workflow resume cache integration", () => {
     await eventually(() =>
       expect(getRunRequired(test.db, original.id)).toMatchObject({
         status: "succeeded",
-        replayBarrierIndex: null,
       }),
     );
 
@@ -1159,7 +1156,6 @@ describe("workflow resume cache integration", () => {
     await eventually(() =>
       expect(getRunRequired(test.db, resumed.id)).toMatchObject({
         status: "succeeded",
-        replayBarrierIndex: null,
         resultJson: '["prefix-old",["left-old","right-old"]]',
       }),
     );
@@ -1204,7 +1200,6 @@ describe("workflow resume cache integration", () => {
     await eventually(() =>
       expect(getRunRequired(test.db, original.id)).toMatchObject({
         status: "succeeded",
-        replayBarrierIndex: null,
         resultJson: '["prefix",["zero-final","one-final"]]',
       }),
     );
@@ -1253,8 +1248,7 @@ describe("workflow resume cache integration", () => {
     );
     test.db
       .prepare(
-        `UPDATE workflow_runs SET replay_safety_version = 0,
-         replay_barrier_index = NULL WHERE id = ?`,
+        "UPDATE workflow_runs SET replay_safety_version = 0 WHERE id = ?",
       )
       .run(original.id);
 
@@ -1457,7 +1451,6 @@ describe("workflow resume cache integration", () => {
     await eventually(() => expect(test.childCount()).toBe(1));
     await test.finish("cache-child-1", "prefix");
     await eventually(() => expect(test.childCount()).toBe(3));
-    expect(getRunRequired(test.db, run.id).replayBarrierIndex).toBeNull();
     firstController.abort();
     await firstWorker;
 

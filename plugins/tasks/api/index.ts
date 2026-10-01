@@ -307,7 +307,6 @@ function writeSystemComments(
       kind: "system",
       authorName,
       body,
-      notifiedCount: 0,
     });
   }
 }
@@ -425,7 +424,6 @@ export async function createComment(
       presetName: input.presetName,
       threadId: input.threadId,
       body: input.body,
-      notifiedCount: 0,
     }),
   );
 

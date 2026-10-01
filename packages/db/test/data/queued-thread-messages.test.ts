@@ -604,6 +604,7 @@ describe("queued thread messages", () => {
         db,
         noopNotifier,
         thread.id,
+        () => true,
       )?.[0];
       expect(claimedQueuedMessage?.id).toBe(firstQueuedMessage.id);
       expect(
@@ -805,6 +806,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thread.id,
+      () => true,
     );
 
     expect(
@@ -879,9 +881,12 @@ describe("queued thread messages", () => {
       }),
     ).toBeNull();
     expect(
-      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
-        (row) => row.id,
-      ),
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      )?.map((row) => row.id),
     ).toEqual([notice.id]);
     expect(
       listQueuedThreadMessages(db, thread.id).map((row) => row.id),
@@ -943,9 +948,12 @@ describe("queued thread messages", () => {
       }),
     ).toBeNull();
     expect(
-      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
-        (row) => row.id,
-      ),
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      )?.map((row) => row.id),
     ).toEqual([askedForDuringStop.id]);
     expect(
       listQueuedThreadMessages(db, thread.id).map((row) => row.id),
@@ -1026,6 +1034,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thread.id,
+      () => true,
     );
     expect(claimed?.map((queuedMessage) => queuedMessage.id)).toEqual([
       lead.id,
@@ -1041,7 +1050,12 @@ describe("queued thread messages", () => {
     // The requeue wrote the wait on the lead only; the tail must not be
     // claimable alone, or the drain would dispatch half a composed prompt.
     expect(
-      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id),
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      ),
     ).toBeNull();
 
     // An independent row behind the blocked group still drains past it.
@@ -1058,9 +1072,12 @@ describe("queued thread messages", () => {
       systemNotice: null,
     });
     expect(
-      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
-        (queuedMessage) => queuedMessage.id,
-      ),
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      )?.map((queuedMessage) => queuedMessage.id),
     ).toEqual([independent.id]);
   });
 
@@ -1101,6 +1118,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thread.id,
+      () => true,
     );
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
       claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
@@ -1251,9 +1269,12 @@ describe("queued thread messages", () => {
       { id: thirdQueuedMessage.id, groupWithNext: false },
     ]);
     expect(
-      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
-        (queuedMessage) => queuedMessage.id,
-      ),
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      )?.map((queuedMessage) => queuedMessage.id),
     ).toEqual([firstQueuedMessage.id]);
   });
 
@@ -1543,6 +1564,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thread.id,
+      () => true,
     );
     if (!claimedQueuedMessages) {
       throw new Error("Expected grouped claim");
@@ -1701,6 +1723,7 @@ describe("queued thread messages", () => {
       db,
       noopNotifier,
       thread.id,
+      () => true,
     )?.[0];
     expect(claimedQueuedMessage?.id).toBe(secondQueuedMessage.id);
     expect(
@@ -1843,9 +1866,12 @@ describe("queued thread messages", () => {
       { id: secondQueuedMessage.id, groupWithNext: false },
     ]);
     expect(
-      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
-        (queuedMessage) => queuedMessage.id,
-      ),
+      claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      )?.map((queuedMessage) => queuedMessage.id),
     ).toEqual([firstQueuedMessage.id]);
   });
 

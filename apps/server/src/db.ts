@@ -37,10 +37,7 @@ export function initDb(
       "Cannot migrate legacy automations without dataDir and logger; refusing to drop kernel automation rows before exporting them for the automations plugin",
     );
   }
-  migrate(db, {
-    deferDestructiveLegacyCleanup: true,
-    logger: options.logger,
-  });
+  migrate(db, { logger: options.logger });
   ensurePersonalProject(db);
   return db;
 }

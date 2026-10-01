@@ -71,7 +71,10 @@ function getTerminalSessionForThread(
   db: TestDb,
   args: { terminalId: string; threadId: string },
 ) {
-  return getTerminalSession(db, { ...args, kind: "thread" });
+  return getTerminalSession(db, {
+    kind: "terminal",
+    terminalId: args.terminalId,
+  });
 }
 
 function getThreadlessTerminalSessionForEnvironment(
@@ -79,8 +82,8 @@ function getThreadlessTerminalSessionForEnvironment(
   args: { environmentId: string; terminalId: string },
 ) {
   return getTerminalSession(db, {
-    ...args,
-    kind: "threadless-environment",
+    kind: "terminal",
+    terminalId: args.terminalId,
   });
 }
 
@@ -138,11 +141,7 @@ function markTerminalSessionUserInput(
 ) {
   return updateTerminalSession(db, {
     now: args.now,
-    scope: {
-      kind: "thread",
-      terminalId: args.terminalId,
-      threadId: args.threadId,
-    },
+    scope: { kind: "terminal", terminalId: args.terminalId },
     update: { kind: "user-input" },
   });
 }

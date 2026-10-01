@@ -55,13 +55,13 @@ import {
   listLatestBackgroundTaskStateRowsByItemIds,
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
-  pruneBackgroundTaskProgressEvents,
-  pruneContextWindowUsageEvents,
-  pruneTokenUsageEvents,
-  pruneResolvedItemDeltas,
   listLatestOpenBackgroundTaskStateRowsForThread,
 } from "../../src/data/events.js";
 import type { ListStoredEventRowsArgs } from "../../src/data/events.js";
+import {
+  advanceThreadPruning,
+  type ThreadPruningPolicy,
+} from "../../src/data/thread-pruning.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import {
@@ -90,6 +90,19 @@ function setup() {
     providerId: "codex",
   });
   return { db, project, thread };
+}
+
+function pruneThreadEvents(
+  db: DbConnection,
+  policy: ThreadPruningPolicy,
+): number {
+  let removed = 0;
+  for (let pass = 0; pass < 100; pass += 1) {
+    const result = advanceThreadPruning(db, policy);
+    removed += result.removed;
+    if (result.action === "cycle-complete") return removed;
+  }
+  throw new Error("Pruning did not finish a cycle");
 }
 
 const emptyItemFields = {
@@ -3410,42 +3423,6 @@ describe("events", () => {
     ]);
   });
 
-  it("returns high-water marks per thread", () => {
-    const { db, project, thread } = setup();
-    const thread2 = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/error",
-        ...threadEventFields,
-        data: "{}",
-      },
-      {
-        threadId: thread.id,
-        sequence: 5,
-        type: "system/error",
-        ...threadEventFields,
-        data: "{}",
-      },
-      {
-        threadId: thread2.id,
-        sequence: 3,
-        type: "system/error",
-        ...threadEventFields,
-        data: "{}",
-      },
-    ]);
-
-    const hwm = getHighWaterMarks(db);
-    expect(hwm[thread.id]).toBe(5);
-    expect(hwm[thread2.id]).toBe(3);
-  });
-
   it("returns high-water marks for specific threads", () => {
     const { db, project, thread } = setup();
     const thread2 = createThread(db, noopNotifier, {
@@ -3490,7 +3467,7 @@ describe("events", () => {
     expect(getHighWaterMarks(db, [thread.id, ...missing, thread.id])).toEqual({
       [thread.id]: 10,
     });
-    expect(getHighWaterMarks(db, [])).toEqual(getHighWaterMarks(db));
+    expect(getHighWaterMarks(db, [])).toEqual({});
   });
 
   it("lists events after a given sequence", () => {
@@ -3594,9 +3571,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneTokenUsageEvents(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "usage");
 
     expect(removed).toBe(3);
     expect(
@@ -3655,9 +3630,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneTokenUsageEvents(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "usage");
 
     expect(removed).toBe(2);
     expect(
@@ -3711,9 +3684,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneContextWindowUsageEvents(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "usage");
 
     expect(removed).toBe(2);
     expect(
@@ -3773,9 +3744,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(2);
     expect(
@@ -3818,12 +3787,10 @@ describe("events", () => {
       },
     ]);
 
-    let removed = pruneResolvedItemDeltas(db, { threadId: thread.id });
-    expect(removed).toBeGreaterThan(0);
-    expect(removed).toBeLessThanOrEqual(500);
-    for (let i = 0; i < 4; i++)
-      removed += pruneResolvedItemDeltas(db, { threadId: thread.id });
-    expect(removed).toBe(501);
+    const firstPass = advanceThreadPruning(db, "resolved-items").removed;
+    expect(firstPass).toBeGreaterThan(0);
+    expect(firstPass).toBeLessThanOrEqual(500);
+    expect(firstPass + pruneThreadEvents(db, "resolved-items")).toBe(501);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([1, 503]);
@@ -3855,9 +3822,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(0);
     expect(
@@ -3927,9 +3892,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(1);
     expect(
@@ -4016,9 +3979,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(1);
     expect(
@@ -4073,9 +4034,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(1);
     expect(
@@ -4129,9 +4088,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(0);
     expect(
@@ -4206,9 +4163,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(1);
     expect(
@@ -4300,9 +4255,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(1);
     expect(
@@ -4373,9 +4326,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(2);
     expect(
@@ -4409,9 +4360,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneResolvedItemDeltas(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(0);
     expect(
@@ -4478,9 +4427,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneBackgroundTaskProgressEvents(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(2);
     expect(
@@ -4547,9 +4494,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneBackgroundTaskProgressEvents(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(2);
     expect(
@@ -4606,9 +4551,7 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneBackgroundTaskProgressEvents(db, {
-      threadId: thread.id,
-    });
+    const removed = pruneThreadEvents(db, "resolved-items");
 
     expect(removed).toBe(1);
     expect(

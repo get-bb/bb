@@ -6,14 +6,15 @@ import {
   appendDaemonEventsInTransaction,
   deleteThreadEventSuffixInTransaction,
   insertEvents,
-  pruneBackgroundTaskProgressEvents,
-  pruneResolvedItemDeltas,
-  pruneTokenUsageEvents,
   type InsertEventInput,
 } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { migrateNextCompletedEventItemOutput } from "../../src/data/sweeps.js";
+import {
+  advanceThreadPruning,
+  type ThreadPruningPolicy,
+} from "../../src/data/thread-pruning.js";
 import { createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../../src/retained-event-output.js";
@@ -45,6 +46,19 @@ function setup() {
     otherThreadId: createCodexThread(),
     threadId: createCodexThread(),
   };
+}
+
+function pruneThreadEvents(
+  db: DbConnection,
+  policy: ThreadPruningPolicy,
+): number {
+  let removed = 0;
+  for (let pass = 0; pass < 100; pass += 1) {
+    const result = advanceThreadPruning(db, policy);
+    removed += result.removed;
+    if (result.action === "cycle-complete") return removed;
+  }
+  throw new Error("Pruning did not finish a cycle");
 }
 
 function expectGenerationBump(
@@ -177,17 +191,11 @@ describe("thread event rewrite generation", () => {
     },
     {
       name: "a usage prune",
-      seed: (threadId) =>
-        [1, 2, 3, 4].map((sequence) => tokenUsage(threadId, sequence)),
-      noop: (db, threadId) =>
-        pruneTokenUsageEvents(db, {
-          afterSequence: 4,
-          threadId,
-        }),
-      rewrite: (db, threadId) =>
-        pruneTokenUsageEvents(db, {
-          threadId,
-        }),
+      seed: (threadId) => [tokenUsage(threadId, 1)],
+      noop: (db) => pruneThreadEvents(db, "usage"),
+      between: (threadId) =>
+        [2, 3, 4].map((sequence) => tokenUsage(threadId, sequence)),
+      rewrite: (db) => pruneThreadEvents(db, "usage"),
     },
     {
       name: "a resolved delta prune",
@@ -201,7 +209,7 @@ describe("thread event rewrite generation", () => {
             { itemId: "msg-1" },
           ),
         ),
-      noop: (db, threadId) => pruneResolvedItemDeltas(db, { threadId }),
+      noop: (db) => pruneThreadEvents(db, "resolved-items"),
       between: (threadId) => [
         row(
           threadId,
@@ -217,16 +225,14 @@ describe("thread event rewrite generation", () => {
           { itemId: "msg-1", itemKind: "agentMessage" },
         ),
       ],
-      rewrite: (db, threadId) => pruneResolvedItemDeltas(db, { threadId }),
+      rewrite: (db) => pruneThreadEvents(db, "resolved-items"),
     },
     {
       name: "a background task progress prune",
       seed: (threadId) => [taskProgress(threadId, 1)],
-      noop: (db, threadId) =>
-        pruneBackgroundTaskProgressEvents(db, { threadId }),
+      noop: (db) => pruneThreadEvents(db, "resolved-items"),
       between: (threadId) => [taskProgress(threadId, 2)],
-      rewrite: (db, threadId) =>
-        pruneBackgroundTaskProgressEvents(db, { threadId }),
+      rewrite: (db) => pruneThreadEvents(db, "resolved-items"),
     },
   ])("changes only when $name removes rows", (testCase) => {
     const { db, otherThreadId, threadId } = setup();

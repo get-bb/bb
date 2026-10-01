@@ -846,8 +846,6 @@ export default async function plugin(bb: BbPluginApi) {
     );
     await bb.storage.kv.set("sync-cursor", {
       lastSyncedAt: new Date().toISOString(),
-      repos: repos.length,
-      items: total,
     });
     if (before !== after) {
       bb.realtime.publish("data-changed", { items: total });
@@ -1060,8 +1058,6 @@ export default async function plugin(bb: BbPluginApi) {
       }
       const cursor = await bb.storage.kv.get<{
         lastSyncedAt: string;
-        repos: number;
-        items: number;
       }>("sync-cursor");
       const repos = await discoverRepos();
       return {

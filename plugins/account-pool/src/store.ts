@@ -264,7 +264,6 @@ export class HubTokenStore {
   private async load(): Promise<void> {
     await fs.mkdir(this.secretsDir, { recursive: true, mode: 0o700 });
     await fs.chmod(this.secretsDir, 0o700);
-    await fs.rm(path.join(this.secretsDir, "hub-key"), { force: true });
     const names = await fs.readdir(this.secretsDir);
     for (const name of names) {
       if (!name.startsWith(HUB_TOKEN_PREFIX) || !name.endsWith(".json"))

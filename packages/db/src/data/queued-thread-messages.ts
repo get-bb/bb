@@ -1036,7 +1036,7 @@ export function claimNextQueuedThreadMessageGroup(
   db: DbConnection,
   notifier: DbNotifier,
   threadId: string,
-  isGroupEligible?: QueuedThreadMessageGroupEligibility,
+  isGroupEligible: QueuedThreadMessageGroupEligibility,
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
@@ -1049,9 +1049,8 @@ export function claimNextQueuedThreadMessageGroup(
       const pauseOrdinaryMessages = isThreadQueueAutoSendPaused(tx, threadId);
       const group =
         partitionQueuedMessageGroups(queuedMessages).find((rows) => {
-          const eligible = isGroupEligible
-            ? rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows)
-            : rows.every(isIdleDrainableQueuedMessage);
+          const eligible =
+            rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows);
           return (
             eligible &&
             isAutomaticQueuedThreadMessageGroupClaimAllowed(

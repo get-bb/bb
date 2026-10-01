@@ -269,7 +269,6 @@ export function createSystemComment(
     presetName: input.presetName,
     threadId: input.threadId,
     body: input.body,
-    notifiedCount: 0,
   });
 }
 

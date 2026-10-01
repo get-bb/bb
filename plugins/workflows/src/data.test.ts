@@ -269,11 +269,10 @@ describe("workflow durable data", () => {
     expectRetired("unknown-worker", false);
   });
 
-  it("records replay safety without a concurrency barrier", () => {
+  it("records replay safety", () => {
     const run = newRun();
     expect(getRunRequired(db, run.id)).toMatchObject({
       replaySafetyVersion: 1,
-      replayBarrierIndex: null,
     });
 
     markRunning(run.id);
@@ -281,16 +280,13 @@ describe("workflow durable data", () => {
     expect(getRunRequired(db, run.id)).toMatchObject({
       status: "queued",
       replaySafetyVersion: 1,
-      replayBarrierIndex: null,
     });
 
     db.prepare(
-      `UPDATE workflow_runs SET replay_safety_version = 0,
-       replay_barrier_index = NULL WHERE id = ?`,
+      "UPDATE workflow_runs SET replay_safety_version = 0 WHERE id = ?",
     ).run(run.id);
     expect(getRunRequired(db, run.id)).toMatchObject({
       replaySafetyVersion: 0,
-      replayBarrierIndex: null,
     });
   });
 
@@ -764,7 +760,6 @@ describe("workflow durable data", () => {
 
     expect(sweepExpired(Date.now(), 100)).toBe(1);
     expect(getRunRequired(db, parent.id).id).toBe(parent.id);
-    expect(getRunRequired(db, parent.id).replayBarrierIndex).toBeNull();
     expect(getRunRequired(db, retainedChild.id).status).toBe("queued");
     expect(() => getRunRequired(db, expired.id)).toThrow(
       "Unknown workflow run",

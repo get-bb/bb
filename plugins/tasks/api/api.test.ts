@@ -203,7 +203,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_titled)",
       threadId: "thr_titled",
       body: "Titled",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -211,7 +210,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_fallback_only)",
       threadId: "thr_fallback_only",
       body: "Fallback title",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -219,7 +217,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_blank_title)",
       threadId: "thr_blank_title",
       body: "Blank title",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -227,7 +224,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_side_chat)",
       threadId: "thr_side_chat",
       body: "Side chat",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -235,7 +231,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_missing)",
       threadId: "thr_missing",
       body: "Missing thread",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -243,7 +238,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (legacy)",
       threadId: null,
       body: "Legacy",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -251,7 +245,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "You",
       threadId: null,
       body: "Human note",
-      notifiedCount: 0,
     });
 
     const result = tasksRpcContract.listComments.output.parse(
@@ -342,7 +335,6 @@ describe("Tasks RPC domain API", () => {
         authorName: `agent (${threadId ?? "legacy"})`,
         threadId,
         body,
-        notifiedCount: 0,
       });
     };
     agentComment("Codex", "thr_codex");
@@ -357,7 +349,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "You",
       threadId: null,
       body: "Human note",
-      notifiedCount: 0,
     });
 
     const result = tasksRpcContract.listComments.output.parse(

@@ -3,7 +3,6 @@ import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
-  getTerminalSession,
   listTerminalSessions,
   updateTerminalSession,
   updateTerminalSessions,
@@ -63,27 +62,13 @@ function listVisibleThreadlessTerminalSessionsByEnvironment(
   });
 }
 
-function getThreadlessTerminalSessionForEnvironment(
-  db: TestDb,
-  args: { environmentId: string; terminalId: string },
-) {
-  return getTerminalSession(db, {
-    ...args,
-    kind: "threadless-environment",
-  });
-}
-
 function markThreadlessTerminalSessionUserInput(
   db: TestDb,
   args: { environmentId: string; now: number; terminalId: string },
 ) {
   return updateTerminalSession(db, {
     now: args.now,
-    scope: {
-      environmentId: args.environmentId,
-      kind: "threadless-environment",
-      terminalId: args.terminalId,
-    },
+    scope: { kind: "terminal", terminalId: args.terminalId },
     update: { kind: "user-input" },
   });
 }
@@ -94,11 +79,7 @@ function markTerminalSessionUserInput(
 ) {
   return updateTerminalSession(db, {
     now: args.now,
-    scope: {
-      kind: "thread",
-      terminalId: args.terminalId,
-      threadId: args.threadId,
-    },
+    scope: { kind: "terminal", terminalId: args.terminalId },
     update: { kind: "user-input" },
   });
 }
@@ -266,12 +247,6 @@ describe("terminal sessions", () => {
         fixture.environment.id,
       ),
     ).toEqual([expect.objectContaining({ id: threadlessTerminal.id })]);
-    expect(
-      getThreadlessTerminalSessionForEnvironment(fixture.db, {
-        environmentId: fixture.environment.id,
-        terminalId: threadTerminal.id,
-      }),
-    ).toBeNull();
   });
 
   it("marks a threadless terminal dirty on first user input only", () => {

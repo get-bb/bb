@@ -347,8 +347,6 @@ export {
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   MissingStoredTurnStartedError,
-  pruneContextWindowUsageEvents,
-  pruneResolvedItemDeltas,
 } from "./events.js";
 export {
   getDatabaseDataVersion,

@@ -11,7 +11,7 @@ export interface ResolvedItemPruningProbe {
   probeWitnessId: string | null;
 }
 
-export interface ResolvedItemPruningCandidate {
+interface ResolvedItemPruningCandidate {
   id: string;
   sequence: number;
   type: ThreadEventType;
@@ -45,20 +45,20 @@ const deltaKinds: Partial<Record<ThreadEventType, string>> = {
   "item/reasoning/textDelta": "reasoning",
 };
 
-export function pruneResolvedItemCandidates(
+function pruneResolvedItemCandidates(
   db: DbQueryConnection,
   args: {
     threadId: string;
     candidates: readonly ResolvedItemPruningCandidate[];
     kind: "deltas" | "background";
     probe: ResolvedItemPruningProbe;
-    limit?: number;
+    limit: number;
   },
 ) {
   const rows = args.candidates;
   const probe = args.probe;
   const discarded: string[] = [];
-  let remaining = args.limit ?? 500;
+  let remaining = args.limit;
   let sequence = 0;
   let processed = 0;
   const reset = () => Object.assign(probe, emptyResolvedItemPruningProbe());
@@ -176,7 +176,7 @@ export function pruneResolvedItemCandidates(
 
 export function advanceLiveEventPruning(
   db: DbQueryConnection,
-  args: { threadId: string; kind: "deltas" | "background"; limit?: number },
+  args: { threadId: string; kind: "deltas" | "background"; limit: number },
 ) {
   const key = and(
     eq(threadPruningCursors.scope, args.threadId),
@@ -214,12 +214,12 @@ export function advanceLiveEventPruning(
           SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx
           WHERE thread_id = ${args.threadId} AND type = ${type}
             AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
-          ORDER BY sequence LIMIT ${args.limit ?? 500}
+          ORDER BY sequence LIMIT ${args.limit}
         )`,
         ),
         sql` UNION ALL `,
       )})
-      ORDER BY sequence LIMIT ${args.limit ?? 500}
+      ORDER BY sequence LIMIT ${args.limit}
     )
     SELECT events.id, events.sequence, events.type, events.turn_id AS turnId,
       events.item_id AS itemId, events.parent_tool_call_id AS parentToolCallId
@@ -234,8 +234,7 @@ export function advanceLiveEventPruning(
   if (result.sequence > 0) cursor.sequence = result.sequence;
   const complete =
     result.complete &&
-    (candidates.length < (args.limit ?? 500) ||
-      cursor.sequence >= cursor.upperSequence);
+    (candidates.length < args.limit || cursor.sequence >= cursor.upperSequence);
   cursor.updatedAt = Date.now();
   if (complete) {
     db.delete(threadPruningCursors).where(key).run();

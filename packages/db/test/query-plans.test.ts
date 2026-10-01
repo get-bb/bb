@@ -35,8 +35,6 @@ import {
   listStoredEventRowsByParentToolCallIds,
   listStoredTurnCompletedKeys,
   listTodoSnapshotEventRowsForThread,
-  pruneContextWindowUsageEvents,
-  pruneResolvedItemDeltas,
 } from "../src/data/events.js";
 import {
   MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
@@ -881,7 +879,9 @@ describe("slow query index plans", () => {
       params: captured[0]!.params,
       sql: captured[0]!.sql,
     });
-    expect(details).toContain("USING INDEX environments_provider_lifecycle_idx");
+    expect(details).toContain(
+      "USING INDEX environments_provider_lifecycle_idx",
+    );
     expect(details).not.toContain("SCAN environments");
     db.$client.close();
   });
@@ -942,89 +942,6 @@ describe("slow query index plans", () => {
         "codex",
         "provider-thread-query-plan",
         "request-query-plan",
-      ],
-    });
-
-    db.$client.close();
-  });
-
-  it("uses the thread/type/sequence index for emitted context-window prune SQL", () => {
-    const { db, logger, thread } = setup();
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({
-          contextWindowUsage: {
-            modelContextWindow: 200_000,
-            usedTokens: 10,
-          },
-        }),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: turnScope("turn_query_plan"),
-        sequence: 1,
-        threadId: thread.id,
-        type: "thread/contextWindowUsage/updated",
-      },
-      {
-        data: JSON.stringify({
-          contextWindowUsage: {
-            modelContextWindow: null,
-            usedTokens: 20,
-          },
-        }),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: turnScope("turn_query_plan"),
-        sequence: 2,
-        threadId: thread.id,
-        type: "thread/contextWindowUsage/updated",
-      },
-      {
-        data: "{}",
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: threadScope(),
-        sequence: 3,
-        threadId: thread.id,
-        type: "system/error",
-      },
-    ]);
-    const eventId = db.$client
-      .prepare<[string, number], { id: string }>(
-        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
-      )
-      .get(thread.id, 1)?.id;
-    if (!eventId) {
-      throw new Error("Expected completed output migration event");
-    }
-    logger.clear();
-
-    pruneContextWindowUsageEvents(db, {
-      threadId: thread.id,
-    });
-
-    const debugLog = findOnlyDebugLog({
-      logger,
-      predicate: (fields) =>
-        fields.operation === "run" &&
-        fields.sql.startsWith("DELETE FROM events"),
-    });
-    assertEmittedQueryPlanUsesIndex({
-      db,
-      debugLog,
-      indexName: "events_thread_type_sequence_idx",
-      params: [
-        thread.id,
-        "thread/contextWindowUsage/updated",
-        500,
-        thread.id,
-        "thread/contextWindowUsage/updated",
-        thread.id,
-        2,
-        1,
       ],
     });
 
@@ -1485,7 +1402,7 @@ describe("slow query index plans", () => {
     logger.clear();
 
     const statements = captureStatements(db, () => {
-      expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+      expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
     });
     const discovery = statements.find((statement) =>
       statement.sql.includes("WITH candidate_ids AS MATERIALIZED"),

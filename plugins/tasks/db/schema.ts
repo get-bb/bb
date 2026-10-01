@@ -119,19 +119,7 @@ const MIGRATIONS = [
     CREATE INDEX IF NOT EXISTS idx_task_threads_task_status ON task_threads(task_id, live_status);
     CREATE INDEX IF NOT EXISTS idx_task_threads_thread ON task_threads(thread_id);
   `,
-  `
-    UPDATE attachments
-    SET is_image = CASE
-      WHEN lower(mime) IN (
-        'image/png',
-        'image/jpeg',
-        'image/gif',
-        'image/webp',
-        'image/avif'
-      ) THEN 1
-      ELSE 0
-    END;
-  `,
+  "",
   `
     ALTER TABLE presets
       ADD COLUMN environment_kind TEXT NOT NULL DEFAULT 'project-default'
