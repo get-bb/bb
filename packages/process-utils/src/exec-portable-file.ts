@@ -1,4 +1,6 @@
 import { execa } from "execa";
+import { extname } from "node:path";
+import { whichCommandSync } from "which-command";
 import { createProcessStop } from "./managed-process.js";
 import {
   supportsProcessGroups,
@@ -21,6 +23,31 @@ export async function execPortableFile(
   options: ExecPortableFileOptions,
 ): Promise<{ stdout: string; stderr: string }> {
   if (options.signal?.aborted) throw options.signal.reason;
+  if (process.platform === "win32") {
+    const envKeys = Object.keys(options.env).sort();
+    const pathKey = envKeys.find((key) => key.toUpperCase() === "PATH");
+    const pathExtKey = envKeys.find((key) => key.toUpperCase() === "PATHEXT");
+    const commandExtension = extname(command);
+    const pathExt = options.env[pathExtKey ?? "PATHEXT"];
+    if (
+      whichCommandSync(command, {
+        cwd: options.cwd,
+        path: options.env[pathKey ?? "PATH"],
+        pathExt: commandExtension
+          ? `${commandExtension};${pathExt ?? ".EXE;.COM;.CMD;.BAT"}`
+          : pathExt,
+      }) === undefined
+    ) {
+      throw Object.assign(new Error(`spawn ${command} ENOENT`), {
+        code: "ENOENT",
+        syscall: `spawn ${command}`,
+        stdout: "",
+        stderr: "",
+        signal: null,
+        killed: false,
+      });
+    }
+  }
   const subprocess = execa(command, args, {
     cwd: options.cwd,
     env: options.env,

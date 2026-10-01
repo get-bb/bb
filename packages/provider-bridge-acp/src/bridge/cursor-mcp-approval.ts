@@ -133,11 +133,17 @@ async function acquireApprovalLock(path: string): Promise<() => Promise<void>> {
   const deadline = Date.now() + CURSOR_APPROVAL_LOCK_TIMEOUT_MS;
   await mkdir(dirname(path), { recursive: true });
   for (;;) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out updating Cursor MCP approvals: ${path}`);
+    }
     try {
       await mkdir(lockPath, { mode: 0o700 });
       return () => rm(lockPath, { recursive: true, force: true });
     } catch (error) {
-      if (errorCode(error) !== "EEXIST") {
+      if (
+        errorCode(error) !== "EEXIST" &&
+        !(process.platform === "win32" && errorCode(error) === "EPERM")
+      ) {
         throw error;
       }
     }
@@ -150,14 +156,12 @@ async function acquireApprovalLock(path: string): Promise<() => Promise<void>> {
       }
     } catch (error) {
       if (errorCode(error) === "ENOENT") {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
         continue;
       }
       throw error;
     }
 
-    if (Date.now() >= deadline) {
-      throw new Error(`Timed out updating Cursor MCP approvals: ${path}`);
-    }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
   }
 }

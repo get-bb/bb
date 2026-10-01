@@ -85,6 +85,8 @@ interfaces rather than selecting a process library or OS-specific flags.
   streaming UTF-8 stderr, and existing command error fields. Early output closure
   stops the command, including Execa's output-limit closure; the adapter retains
   no output buffers of its own.
+  Windows missing-command classification uses `which-command` before launch,
+  because Execa 9 does not retain cross-spawn's ENOENT verification.
 - `process-group.ts` and `windows-process-tree.ts` contain termination mechanics.
   Managed POSIX stop gives the leader the requested grace period, then kills
   surviving group members; group disappearance is polled for up to one additional
