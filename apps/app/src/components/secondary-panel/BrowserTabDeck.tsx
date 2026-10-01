@@ -58,7 +58,7 @@ type BrowserTabPlacement =
   | "pending"
   | "unavailable";
 
-export function resolveBrowserTabPlacement(
+function resolveBrowserTabPlacement(
   saved: BbDesktopBrowserTarget | undefined,
   windowTarget: WindowTargetCheck,
 ): BrowserTabPlacement {
