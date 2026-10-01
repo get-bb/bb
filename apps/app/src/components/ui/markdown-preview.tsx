@@ -46,6 +46,7 @@ import {
 } from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import { RouteAnchor } from "./app-route-anchor.js";
 import {
   getMarkdownCodeLanguage,
@@ -64,6 +65,7 @@ import {
 } from "./markdown-local-file-link.js";
 import {
   MarkdownLocalFileContextMenuContext,
+  MarkdownLocalFileOpenTargetsContext,
   type MarkdownLinkRouting,
   type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
@@ -576,14 +578,18 @@ const markdownLinkGraphemes = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
 
-function appendMarkdownLinkIcon(children: ReactNode): ReactNode {
-  const icon = (
-    <Icon
-      name="ExternalLink"
-      aria-hidden
-      className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
-    />
-  );
+const MARKDOWN_LOCAL_FILE_LINK_ICON = (
+  <Icon
+    name="ExternalLink"
+    aria-hidden
+    className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
+  />
+);
+
+function appendMarkdownLinkIcon(
+  children: ReactNode,
+  icon: ReactNode,
+): ReactNode {
   let appended = false;
   const append = (node: ReactNode): ReactNode => {
     if (typeof node === "string" || typeof node === "number") {
@@ -649,6 +655,7 @@ function MarkdownAnchor({
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
+  const openTargets = useContext(MarkdownLocalFileOpenTargetsContext);
   if (!anchorHref) {
     return <span>{children}</span>;
   }
@@ -656,6 +663,10 @@ function MarkdownAnchor({
     localFileLink !== null && getContextMenuItems !== null
       ? getContextMenuItems(localFileLink)
       : null;
+  const openTarget =
+    localFileLink === null || localFileLink.openTargetId === null
+      ? undefined
+      : openTargets.find((target) => target.id === localFileLink.openTargetId);
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
@@ -681,6 +692,10 @@ function MarkdownAnchor({
   const anchor = (
     <RouteAnchor
       {...anchorProps}
+      title={
+        anchorProps.title ??
+        (openTarget === undefined ? undefined : `Open in ${openTarget.label}`)
+      }
       href={anchorHref}
       className={cn(
         "break-words [overflow-wrap:anywhere] underline underline-offset-2",
@@ -689,7 +704,19 @@ function MarkdownAnchor({
       rel="noopener noreferrer"
       onClick={handleAnchorClick}
     >
-      {localFileLink ? appendMarkdownLinkIcon(children) : children}
+      {localFileLink
+        ? appendMarkdownLinkIcon(
+            children,
+            openTarget === undefined ? (
+              MARKDOWN_LOCAL_FILE_LINK_ICON
+            ) : (
+              <WorkspaceOpenTargetIcon
+                target={openTarget}
+                className="ml-1 inline-block size-3.5 align-[-0.2em]"
+              />
+            ),
+          )
+        : children}
     </RouteAnchor>
   );
   if (contextMenuItems === null || contextMenuItems.length === 0) {

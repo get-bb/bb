@@ -275,6 +275,7 @@ import {
 } from "@/lib/thread-local-file-links";
 import {
   MarkdownLocalFileContextMenuContext,
+  MarkdownLocalFileOpenTargetsContext,
   type MarkdownLinkRouting,
   type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
@@ -2878,13 +2879,17 @@ function ThreadDetailViewInternal(
               <MarkdownLocalFileContextMenuContext.Provider
                 value={getLocalFileContextMenuItems}
               >
-                <UrlOpenRoutingProvider
-                  openInAppBrowser={
-                    canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
-                  }
+                <MarkdownLocalFileOpenTargetsContext.Provider
+                  value={fileOpenTargets}
                 >
-                  {panel}
-                </UrlOpenRoutingProvider>
+                  <UrlOpenRoutingProvider
+                    openInAppBrowser={
+                      canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
+                    }
+                  >
+                    {panel}
+                  </UrlOpenRoutingProvider>
+                </MarkdownLocalFileOpenTargetsContext.Provider>
               </MarkdownLocalFileContextMenuContext.Provider>
             )}
             metadata={{
@@ -3022,7 +3027,11 @@ function ThreadDetailViewInternal(
           openThreadPanel={handleOpenTimelinePluginPanel}
         >
           <PluginDetailPanelContext.Provider value={pluginDetails}>
-            {threadDetailContent}
+            <MarkdownLocalFileOpenTargetsContext.Provider
+              value={fileOpenTargets}
+            >
+              {threadDetailContent}
+            </MarkdownLocalFileOpenTargetsContext.Provider>
           </PluginDetailPanelContext.Provider>
         </PluginThreadPanelNavigationProvider>
       </ThreadProviderContext.Provider>

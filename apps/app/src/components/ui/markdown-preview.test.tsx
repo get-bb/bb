@@ -15,6 +15,7 @@ import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   MarkdownLocalFileContextMenuContext,
+  MarkdownLocalFileOpenTargetsContext,
   type MarkdownLinkRouting,
 } from "./markdown-link-routing";
 
@@ -621,6 +622,46 @@ describe("MarkdownPreview", () => {
       ],
     ]);
     expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  it("shows the editor logo only on links whose editor can open them", () => {
+    const { container } = render(
+      <MarkdownLocalFileOpenTargetsContext.Provider
+        value={[
+          {
+            capabilities: {
+              openDirectory: true,
+              openFile: true,
+              openFileAtLine: true,
+            },
+            icon: { kind: "builtin", name: "devin-desktop" },
+            id: "devin-desktop",
+            label: "Devin Desktop",
+          },
+        ]}
+      >
+        <MarkdownPreview
+          content="[review](devin://file/tmp/review.diff:3) [app](vscode://file/tmp/app.ts) [plain](/tmp/notes.md)"
+          linkRouting={{
+            localFile: {
+              absoluteLinks: { kind: "trusted-host" },
+              onOpenLink: () => true,
+            },
+          }}
+        />
+      </MarkdownLocalFileOpenTargetsContext.Provider>,
+    );
+
+    const review = screen.getByRole("link", { name: "review" });
+    expect(review.getAttribute("title")).toBe("Open in Devin Desktop");
+    expect(review.querySelector("img")).not.toBeNull();
+    for (const name of ["app", "plain"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link.getAttribute("title")).toBeNull();
+      expect(link.querySelector("img")).toBeNull();
+      expect(link.querySelector("svg")).not.toBeNull();
+    }
+    expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 
   it("keeps editor file links through the sanitized HTML path", () => {
