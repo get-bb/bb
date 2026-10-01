@@ -454,7 +454,7 @@ function UserConversationMessage({
           </div>
         ) : null}
         <div className="flex w-fit max-w-full flex-col items-end">
-          <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
+          <div className="bb-message-highlight max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
             {messageText ? (
               <CollapsibleMessageText
                 mentions={mentions}
@@ -597,7 +597,10 @@ function AssistantConversationMessage({
       )}
       data-message-column=""
     >
-      <SelectableMessageProse onSelect={onSelectProse}>
+      <SelectableMessageProse
+        className="bb-message-highlight rounded-lg"
+        onSelect={onSelectProse}
+      >
         <MarkdownPreview
           allowHtml
           className={

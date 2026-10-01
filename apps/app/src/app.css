@@ -829,24 +829,35 @@
   }
 }
 
-/* Briefly highlight a conversation message that a thread-search result
- * deep-links to, then fade back to transparent. */
 @keyframes bb-search-flash {
   from {
-    background-color: color-mix(in oklch, var(--ring) 22%, transparent);
+    opacity: 1;
   }
   to {
-    background-color: transparent;
+    opacity: 0;
   }
 }
 
-.bb-search-flash {
-  border-radius: var(--radius-lg, 0.5rem);
+.bb-message-highlight,
+.bb-search-flash:not(:has(.bb-message-highlight)) {
+  position: relative;
+}
+
+.bb-search-flash .bb-message-highlight::after,
+.bb-search-flash:not(:has(.bb-message-highlight))::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  pointer-events: none;
+  background-color: color-mix(in oklab, var(--attention) 12%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--attention) 35%, transparent);
   animation: bb-search-flash 1.6s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bb-search-flash {
+  .bb-search-flash .bb-message-highlight::after,
+  .bb-search-flash:not(:has(.bb-message-highlight))::after {
     animation: none;
   }
 }
