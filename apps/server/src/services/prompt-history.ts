@@ -1,9 +1,11 @@
 import {
   createPromptHistoryEntry,
+  listPromptHistoryPage,
   listQueuedThreadMessages,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
   type DbQueryConnection,
+  type PromptHistoryPosition,
   type QueuedThreadMessageRow,
   type StoredPromptHistoryEntryRow,
 } from "@bb/db";
@@ -11,6 +13,7 @@ import {
   promptInputSchema,
   takeVisiblePromptHistoryEntries,
   type PromptHistoryEntry,
+  type PromptHistoryListEntry,
   type PromptHistoryScope,
   type Thread,
   type ThreadTurnInitiator,
@@ -212,6 +215,60 @@ export function listThreadPromptHistory(
     acceptedEntries,
     args.limit,
   );
+}
+
+const promptHistoryCursorSchema = z.tuple([
+  z.number().int(),
+  z.number().int(),
+  z.string().min(1),
+]);
+
+function encodePromptHistoryCursor(position: PromptHistoryPosition): string {
+  return Buffer.from(
+    JSON.stringify([position.createdAt, position.requestSequence, position.id]),
+  ).toString("base64url");
+}
+
+export function decodePromptHistoryCursor(
+  cursor: string,
+): PromptHistoryPosition | null {
+  try {
+    const [createdAt, requestSequence, id] = promptHistoryCursorSchema.parse(
+      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
+    );
+    return { createdAt, requestSequence, id };
+  } catch {
+    return null;
+  }
+}
+
+export function listPromptHistory(
+  deps: PromptHistoryServiceDeps,
+  args: { before: PromptHistoryPosition | null; limit: number },
+): { entries: PromptHistoryListEntry[]; nextCursor: string | null } {
+  const rows = listPromptHistoryPage(deps.db, args);
+  const entries: PromptHistoryListEntry[] = [];
+  for (const row of rows) {
+    try {
+      entries.push({
+        id: row.id,
+        createdAt: row.createdAt,
+        input: parseStoredPromptHistoryInput(row),
+        projectId: row.projectId,
+        threadId: row.threadId,
+      });
+    } catch {
+      continue;
+    }
+  }
+  const last = rows.at(-1);
+  return {
+    entries,
+    nextCursor:
+      rows.length === args.limit && last !== undefined
+        ? encodePromptHistoryCursor(last)
+        : null,
+  };
 }
 
 export function recordAcceptedPromptHistoryEntry(

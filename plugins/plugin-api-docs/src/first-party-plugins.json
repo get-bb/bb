@@ -158,5 +158,10 @@
     "id": "provider-pi",
     "name": "Pi provider",
     "icon": null
+  },
+  {
+    "id": "bb--prompt-library",
+    "name": "Prompt Library",
+    "icon": "Clock"
   }
 ]

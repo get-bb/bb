@@ -17,6 +17,10 @@ import {
 import { createProjectsArea, type ProjectsArea } from "./areas/projects.js";
 import { createProvidersArea, type ProvidersArea } from "./areas/providers.js";
 import { createPluginsArea, type PluginsArea } from "./areas/plugins.js";
+import {
+  createPromptHistoryArea,
+  type PromptHistoryArea,
+} from "./areas/prompt-history.js";
 import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea, type StatusArea } from "./areas/status.js";
@@ -50,6 +54,7 @@ export interface BbSdkAreas extends BbRealtime {
   hosts: HostsArea;
   projects: ProjectsArea;
   plugins: PluginsArea;
+  promptHistory: PromptHistoryArea;
   providers: ProvidersArea;
   skills: SkillsArea;
   status: StatusArea;
@@ -84,6 +89,7 @@ export function createBbSdk(
     },
     projects: createProjectsArea(sdkContext),
     plugins: createPluginsArea(sdkContext),
+    promptHistory: createPromptHistoryArea(sdkContext),
     providers: createProvidersArea(sdkContext),
     skills: createSkillsArea(sdkContext),
     status: createStatusArea(sdkContext),

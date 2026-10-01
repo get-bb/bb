@@ -190,6 +190,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "prompt-library",
+    pluginId: "bb--prompt-library",
+    defaultEnabled: true,
+  },
+  {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,

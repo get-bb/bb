@@ -181,6 +181,8 @@ import type {
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
+  PromptHistoryListQuery,
+  PromptHistoryListResponse,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
@@ -345,6 +347,7 @@ import {
   projectSkillFilesQuerySchema,
   updateSkillRequestSchema,
   promptHistoryQuerySchema,
+  promptHistoryListQuerySchema,
   reorderPinnedThreadRequestSchema,
   reorderProjectRequestSchema,
   reorderQueuedMessageRequestSchema,
@@ -410,6 +413,16 @@ type PathThreadInteractionId = {
 };
 
 export const publicApiRoutes = {
+  promptHistory: {
+    list: defineRoute({
+      path: "/prompt-history",
+      method: "get",
+      request: queryRequest<EmptyInput, PromptHistoryListQuery>(
+        promptHistoryListQuerySchema,
+      ),
+      response: jsonResponse<PromptHistoryListResponse>(),
+    }),
+  },
   projects: {
     machineEnvironment: defineRoute({
       path: "/projects/:id/machine-environment",

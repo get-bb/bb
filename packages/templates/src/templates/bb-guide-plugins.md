@@ -23,6 +23,12 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
+The builtin Prompt Library plugin is enabled on fresh installations. Ctrl+R or
+**+ → Prompts…** opens fuzzy search with Thread, Project, and All scopes and a full
+prompt preview. Star reusable prompts with Cmd/Ctrl+S. `bb prompts search`,
+`bb prompts list`, `bb prompts star <text...>`, and `bb prompts unstar <id>` expose
+the same library, with `--json` supported. Starred prompts are shared across projects.
+
 The builtin Account Pooler plugin is disabled on fresh installations. It stores
 Claude and Codex account tokens in per-account 0600 secret files and proxies
 provider API requests through the bb server. Enable it and add an account:

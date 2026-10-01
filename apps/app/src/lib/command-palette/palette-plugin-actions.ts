@@ -1,11 +1,18 @@
+import { pluginCommandId, type PluginCommandId } from "@bb/domain";
 import type { PluginCommandContext } from "@get-bb/plugin-sdk";
 import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import { getPluginDisplayName } from "@/lib/plugin-logos";
 import type { PaletteAction } from "./palette-action";
 
+type AppCommandSlot = Extract<PluginCommandPaletteActionSlot, { target: "app" }>;
+type ComposerCommandSlot = Extract<
+  PluginCommandPaletteActionSlot,
+  { target: "composer" }
+>;
+
 export interface BuildPluginPaletteActionsArgs {
-  slots: readonly PluginCommandPaletteActionSlot[];
+  slots: readonly AppCommandSlot[];
   threadId: string | null;
   projectId: string | null;
   openThreadPanel: PluginThreadPanelOpenHandler | null;
@@ -16,7 +23,7 @@ function describeError(error: unknown): string {
 }
 
 function actionContext(
-  slot: PluginCommandPaletteActionSlot,
+  slot: AppCommandSlot,
   args: BuildPluginPaletteActionsArgs,
 ): PluginCommandContext {
   return {
@@ -74,4 +81,33 @@ export function buildPluginPaletteActions(
     });
   }
   return actions;
+}
+
+export interface BuildPluginComposerCommandActionsArgs {
+  slots: readonly ComposerCommandSlot[];
+  target: EventTarget | null;
+  isCommandAvailable: (
+    command: PluginCommandId,
+    target: EventTarget | null,
+  ) => boolean;
+  dispatch: (command: PluginCommandId, target: EventTarget | null) => void;
+}
+
+export function buildPluginComposerCommandActions(
+  args: BuildPluginComposerCommandActionsArgs,
+): PaletteAction[] {
+  return args.slots.flatMap((slot) => {
+    const command = pluginCommandId(slot.pluginId, slot.id);
+    if (!args.isCommandAvailable(command, args.target)) return [];
+    return [
+      {
+        id: command,
+        bucket: "Plugins",
+        group: getPluginDisplayName(slot.pluginId),
+        title: slot.title,
+        shortcut: null,
+        run: () => args.dispatch(command, args.target),
+      },
+    ];
+  });
 }

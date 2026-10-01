@@ -63,6 +63,10 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
+  APP_COMPOSER_SELECTOR,
+  resolveComposerCommandScope,
+} from "@/lib/composer-command-ownership";
+import {
   ownsModelPickerCycleChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
@@ -661,31 +665,19 @@ export function ModelReasoningPicker({
   const isSplitPane = paneContext?.isSplitPane ?? false;
   const resolveCommandScope = useCallback(
     (target: EventTarget | null): ModelPickerScope => {
-      const pickerComposer =
-        triggerRef.current?.closest("[data-app-composer]") ?? null;
-      const caretComposer =
-        target instanceof HTMLElement
-          ? target.closest("[data-app-composer]")
-          : null;
-      const pickerPane =
-        triggerRef.current?.closest("[data-split-pane-id]") ?? null;
-      const caretPane = caretComposer?.closest("[data-split-pane-id]") ?? null;
-      return {
-        disabled: disabled ?? false,
+      const scope = resolveComposerCommandScope({
+        composer: triggerRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
+        target,
         isFocusedPane,
+      });
+      return {
+        ...scope,
+        disabled: disabled ?? false,
         isSplitPane,
-        isPrimaryComposer:
-          pickerComposer?.getAttribute("data-app-composer-role") !==
-          "secondary",
-        caretInThisComposer:
-          caretComposer !== null && caretComposer === pickerComposer,
-        caretInOtherComposerOfPane:
-          caretComposer !== null &&
-          caretComposer !== pickerComposer &&
-          pickerPane !== null &&
-          caretPane === pickerPane,
         editableOutsideComposer:
-          caretComposer === null && isEditableKeyboardTarget(target),
+          !scope.caretInThisComposer &&
+          !scope.caretInOtherComposer &&
+          isEditableKeyboardTarget(target),
       };
     },
     [disabled, isFocusedPane, isSplitPane],

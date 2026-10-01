@@ -1305,6 +1305,9 @@ describe("useComposer", () => {
     }
 
     const readyEditor: ComposerEditorBridge = {
+      openPopup: () => false,
+      closePopup: () => false,
+      isPopupOpen: () => false,
       host: {
         scope: { kind: "thread", threadId: "thr_submit" },
         textEffectKey: "thread:thr_submit",
@@ -1463,6 +1466,9 @@ describe("useComposer().experimental_setSelection", () => {
       },
     };
     const editor: ComposerEditorBridge = {
+      openPopup: () => false,
+      closePopup: () => false,
+      isPopupOpen: () => false,
       host,
       pluginCustomizable: true,
       state: {

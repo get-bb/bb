@@ -649,7 +649,9 @@ export type AppShellRightPanelTab =
   | "code-renderers";
 
 function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
-  const clipTo = mobile ? '[data-guide-fixture="right-panel-tab-strip"]' : undefined;
+  const clipTo = mobile
+    ? '[data-guide-fixture="right-panel-tab-strip"]'
+    : undefined;
   return (
     <>
       <MeasuredBadge
@@ -993,10 +995,7 @@ export function AppShellWireframe({
         </>
       ) : null}
       {scene === "desktop" || scene === "panel" ? (
-        <RightPanelTabLaneBadges
-          key={rightPanelTab}
-          mobile={mobile}
-        />
+        <RightPanelTabLaneBadges key={rightPanelTab} mobile={mobile} />
       ) : null}
       <AppShellWireframeBody
         scene={scene}
@@ -1021,7 +1020,9 @@ function AppShellWireframeBody({
   const contentScripts = useEngagement("content-scripts");
   const messageActionsSelected = expandedId === "message-actions";
   const messageActionRowVisible =
-    scene === "conversation" || assistantMessageHovered || messageActionsSelected;
+    scene === "conversation" ||
+    assistantMessageHovered ||
+    messageActionsSelected;
 
   if (scene === "navigation") {
     return (
@@ -1092,9 +1093,7 @@ function AppShellWireframeBody({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
-            {mobile ? (
-              <MiniIcon icon="PanelLeft" className="size-5" />
-            ) : null}
+            {mobile ? <MiniIcon icon="PanelLeft" className="size-5" /> : null}
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
@@ -1108,9 +1107,7 @@ function AppShellWireframeBody({
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
-            {mobile ? (
-              <MiniIcon icon="PanelRight" className="size-5" />
-            ) : null}
+            {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
 
           <div
@@ -1650,7 +1647,26 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-36")}>
+      <div
+        className={cn(
+          "relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift",
+          mobile ? "min-h-48 gap-7" : "h-36",
+        )}
+      >
+        {actions.outlined ? (
+          <div
+            aria-hidden
+            data-guide-transient-for="composer-actions"
+            className="pointer-events-none absolute bottom-full left-2 right-2 z-20 mb-2 rounded-md border border-border bg-popover p-2 shadow-md"
+          >
+            <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
+              Search saved prompts
+            </span>
+            <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
+              Review this change
+            </span>
+          </div>
+        ) : null}
         {plus.outlined ? (
           <div
             aria-hidden

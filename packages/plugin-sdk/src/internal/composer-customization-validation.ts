@@ -243,7 +243,12 @@ function parseRegions(
   onRejected: RejectionReporter,
 ): Pick<
   ComposerCustomization,
-  "actions" | "banners" | "plusMenu" | "sendMenu" | "richText"
+  | "actions"
+  | "banners"
+  | "plusMenu"
+  | "sendMenu"
+  | "richText"
+  | "experimental_popup"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -283,6 +288,29 @@ function parseRegions(
     onRejected,
     parseMenuItem,
   );
+
+  let popup: ComposerCustomization["experimental_popup"];
+  if (registration.experimental_popup !== undefined) {
+    try {
+      const raw = registration.experimental_popup as Record<
+        string,
+        unknown
+      > | null;
+      popup = {
+        label: requireNonEmptyString(
+          `${kind}.experimental_popup`,
+          "label",
+          raw?.label,
+        ),
+        component: requireComponent(
+          `${kind}.experimental_popup`,
+          raw?.component,
+        ),
+      };
+    } catch (error) {
+      onRejected(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   let richText: ComposerCustomization["richText"];
   if (registration.richText !== undefined) {
@@ -340,6 +368,7 @@ function parseRegions(
     ...(plusMenu !== undefined ? { plusMenu } : {}),
     ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),
+    ...(popup !== undefined ? { experimental_popup: popup } : {}),
   };
 }
 

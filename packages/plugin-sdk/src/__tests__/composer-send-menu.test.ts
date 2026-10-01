@@ -23,3 +23,24 @@ describe("composer plus-menu upgrade from SDK 0.4.108", () => {
     expect(onRejected).not.toHaveBeenCalled();
   });
 });
+
+describe("composer popup registration", () => {
+  it("isolates malformed popup content while retaining other composer contributions", () => {
+    const run = vi.fn();
+    const rejected = vi.fn();
+    const registration = collectComposerCustomization(
+      {
+        id: "library",
+        experimental_popup: { label: "Saved prompts", component: "invalid" },
+        plusMenu: [{ id: "open", label: "Saved prompts", run }],
+      },
+      new Set(),
+      rejected,
+    );
+    expect(registration?.experimental_popup).toBeUndefined();
+    expect(registration?.plusMenu?.[0]?.run).toBe(run);
+    expect(rejected).toHaveBeenCalledWith(
+      expect.stringContaining("must be a React component function"),
+    );
+  });
+});

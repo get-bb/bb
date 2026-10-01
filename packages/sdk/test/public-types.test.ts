@@ -228,6 +228,7 @@ type ExpectedBbSdkKey =
   | "guide"
   | "hosts"
   | "plugins"
+  | "promptHistory"
   | "projects"
   | "providers"
   | "skills"
@@ -321,6 +322,8 @@ type ExpectedPluginsKey =
 type ExpectedPluginCatalogKey = "install" | "installPlan" | "search" | "status";
 
 type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
+
+type ExpectedPromptHistoryKey = "list";
 
 type ExpectedProjectsKey =
   | "machineEnvironment"
@@ -569,6 +572,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["projects"]["sources"]
     >().toEqualTypeOf<ExpectedProjectSourcesKey>();
+    expectTypeOf<
+      keyof RootBbSdk["promptHistory"]
+    >().toEqualTypeOf<ExpectedPromptHistoryKey>();
     expectTypeOf<
       keyof RootBbSdk["providers"]
     >().toEqualTypeOf<ExpectedProvidersKey>();

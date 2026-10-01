@@ -1840,6 +1840,28 @@ export interface PluginCommandRegistration {
   run(context: PluginCommandContext): void | Promise<void>;
 }
 
+/**
+ * A command handled by a composer through the same path as bb's own "Focus
+ * composer" command. Listed, rebindable and namespaced like any other plugin
+ * command. The composer holding the caret runs it; with the caret outside every
+ * composer, the focused pane's primary composer does. Like bb's composer
+ * commands, its shortcut is inactive while a terminal, browser tab or modal has
+ * focus, and the palette lists it only when some composer would run it.
+ */
+export interface ExperimentalComposerCommandRegistration {
+  /** Initial keyboard binding. Users can rebind every command, including ones without a default. Conflicting defaults remain unbound. */
+  defaultShortcut?: PluginCommandShortcut;
+  /** Unique within the plugin across every command; letters, digits, `-`, `_`. */
+  id: string;
+  /** The palette row's and keyboard settings' label. */
+  title: string;
+  /**
+   * Runs with the handling composer, bound to this plugin like `useComposer()`.
+   * Errors (sync or async) are contained and logged.
+   */
+  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+}
+
 /** Registers commands for bb's command palette. */
 export interface PluginAppCommands {
   /** Register a command. IDs are unique within this plugin, including legacy slot registrations. */
@@ -2150,6 +2172,10 @@ export interface PluginAppSlots {
 
 export interface PluginAppComposer {
   customize(registration: ComposerCustomization): void;
+  /** Register a command that the composer holding the caret runs. IDs share the `app.commands` namespace. */
+  experimental_registerCommand(
+    registration: ExperimentalComposerCommandRegistration,
+  ): void;
 }
 
 /** Stable lifecycle values for one content-script instance in one bb client. */
@@ -2351,6 +2377,16 @@ export interface ComposerCustomization {
   /** Host-rendered rows in the menu next to the composer's send button. */
   sendMenu?: readonly ComposerSendMenuItem[];
   richText?: ComposerRichTextSpec;
+  /** Host-managed popup sharing the mention menu's above/below placement, with a responsive drawer on compact screens. Open by this customization's id. */
+  experimental_popup?: ExperimentalComposerPopupRegistration;
+}
+
+/** Content for one composer's popup. The host owns placement, dismissal and focus restoration; the component owns its content and keyboard navigation. */
+export interface ExperimentalComposerPopupRegistration {
+  /** Accessible name of the popup and compact drawer. */
+  label: string;
+  /** Inside this component, useComposer() is bound to the composer that opened it. */
+  component: ComponentType;
 }
 
 /** Host-rendered menu row in the composer's `+` menu. */
@@ -2558,6 +2594,10 @@ export interface PluginComposerMention {
  * text methods log a warning and do nothing.
  */
 export interface PluginComposerApi {
+  /** Open this plugin's registered composer popup by customization id in this mounted composer. Returns false for an unavailable, suppressed or out-of-scope popup. */
+  experimental_openPopup(customizationId: string): boolean;
+  /** Close this plugin's open popup in this composer and restore editor focus. Returns false if this plugin has no open popup. */
+  experimental_closePopup(): boolean;
   scope: PluginComposerScope;
   /**
    * Stable identity for this composer's draft: the same across remounts and

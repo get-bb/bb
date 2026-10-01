@@ -14,7 +14,9 @@ import {
 } from "@bb/db";
 import type { PromptHistoryScope, PromptInput } from "@bb/domain";
 import {
+  decodePromptHistoryCursor,
   listProjectPromptHistory,
+  listPromptHistory,
   listThreadPromptHistory,
   recordAcceptedPromptHistoryEntry,
 } from "../../src/services/prompt-history.js";
@@ -61,6 +63,57 @@ function insertPromptHistoryEntry(args: InsertPromptHistoryEntryArgs) {
 }
 
 describe("prompt history service", () => {
+  it("lists every stored prompt, including repeats, and continues from its cursor", () => {
+    const { db, firstProject, secondProject } = setup();
+    const firstThread = createThread(db, noopNotifier, {
+      projectId: firstProject.id,
+      providerId: "codex",
+    });
+    const secondThread = createThread(db, noopNotifier, {
+      projectId: secondProject.id,
+      providerId: "codex",
+    });
+    const repeated = textInput("Investigate auth flow");
+    const older = insertPromptHistoryEntry({
+      db,
+      projectId: firstProject.id,
+      threadId: firstThread.id,
+      scope: "project",
+      requestSequence: 1,
+      createdAt: 10,
+      input: repeated,
+    });
+    const newer = insertPromptHistoryEntry({
+      db,
+      projectId: secondProject.id,
+      threadId: secondThread.id,
+      scope: "thread",
+      requestSequence: 1,
+      createdAt: 20,
+      input: repeated,
+    });
+
+    const firstPage = listPromptHistory({ db }, { before: null, limit: 1 });
+    expect(firstPage.entries).toEqual([
+      {
+        id: newer.id,
+        createdAt: 20,
+        input: repeated,
+        projectId: secondProject.id,
+        threadId: secondThread.id,
+      },
+    ]);
+    if (firstPage.nextCursor === null) throw new Error("expected a cursor");
+    const before = decodePromptHistoryCursor(firstPage.nextCursor);
+
+    const secondPage = listPromptHistory({ db }, { before, limit: 1 });
+    expect(secondPage.entries.map((entry) => entry.id)).toEqual([older.id]);
+    expect(
+      listPromptHistory({ db }, { before: null, limit: 5 }).nextCursor,
+    ).toBeNull();
+    expect(decodePromptHistoryCursor("not-a-cursor")).toBeNull();
+  });
+
   it("returns project create history scoped to one project", () => {
     const { db, firstProject, secondProject } = setup();
     const firstThread = createThread(db, noopNotifier, {

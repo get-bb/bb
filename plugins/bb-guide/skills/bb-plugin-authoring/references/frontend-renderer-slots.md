@@ -109,6 +109,9 @@ openWorkspaceFile }` — register a leaf
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  A command that acts on the composer the user is typing in registers through
+  `app.composer.experimental_registerCommand` instead; see the composer
+  section of frontend-hooks-and-ui.
 - `experimental_timelineRenderer` → the expanded body of the timeline rows a
   provider plugin owns. Registration: `{ kind, component }`, where `kind` is
   one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as

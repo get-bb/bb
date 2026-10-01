@@ -46,6 +46,7 @@
     "bb-plugin-tasks": "workspace:*",
     "bb-plugin-theme-preview": "workspace:*",
     "bb-plugin-thread-list": "workspace:*",
-    "bb-plugin-workflows": "workspace:*"
+    "bb-plugin-workflows": "workspace:*",
+    "bb-plugin-bb--prompt-library": "workspace:*"
   }
 }

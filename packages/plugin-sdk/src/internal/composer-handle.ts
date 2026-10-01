@@ -45,6 +45,8 @@ export interface ComposerHandleTarget {
   insertAtCursor(value: ComposerDraft, block: boolean): boolean;
   isAvailable(): boolean;
   focus(): void;
+  openPopup?(pluginId: string, customizationId: string): boolean;
+  closePopup?(pluginId: string): boolean;
   submit?(
     options: ComposerSubmitOptions,
     pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
@@ -439,6 +441,10 @@ export function createComposerHandleBinding(
     removeMention,
     onSubmitted,
     focus: () => target().focus(),
+    experimental_openPopup: (id) =>
+      target().openPopup?.(controller.pluginId, id) ?? false,
+    experimental_closePopup: () =>
+      target().closePopup?.(controller.pluginId) ?? false,
     submit,
     setSelection,
     experimental_removeMention: (mention) => {
