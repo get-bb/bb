@@ -61,6 +61,8 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   const [state, setState] = useState<State | null>(null);
   const [hosts, setHosts] = useState<Hosts>([]);
   const [machines, setMachines] = useState<Record<string, Machine>>({});
+  const [threadCounts, setThreadCounts] = useState<Record<string, number>>({});
+  const [primaryHostId, setPrimaryHostId] = useState<string | null>(null);
   const [detail, setDetail] = useState<HostReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,15 +80,26 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   const hostId = subPath || null;
   const refresh = useCallback(async () => {
     try {
-      const [next, reports, machines, machine] = await Promise.all([
-        rpc.call("state", null),
-        rpc.call("hosts", null),
-        sdk.hosts.list({ type: "persistent" }),
-        hostId ? rpc.call("host", { hostId }) : Promise.resolve(null),
-      ]);
+      const [next, reports, machines, machine, counts, config] =
+        await Promise.all([
+          rpc.call("state", null),
+          rpc.call("hosts", null),
+          sdk.hosts.list({ type: "persistent" }),
+          hostId ? rpc.call("host", { hostId }) : Promise.resolve(null),
+          sdk.threads.count({ groupBy: "host" }),
+          sdk.system.config(),
+        ]);
       setState(next);
       setHosts(reports.hosts);
       setMachines(Object.fromEntries(machines.map((host) => [host.id, host])));
+      setThreadCounts(
+        Object.fromEntries(
+          (counts.groups ?? []).flatMap((group) =>
+            group.key === null ? [] : [[group.key, group.count]],
+          ),
+        ),
+      );
+      setPrimaryHostId(config.primaryHostId);
       setDetail(machine);
     } catch (error) {
       setError(message(error));
@@ -134,6 +147,10 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
       setConfirmation({ policy, preview: await rpc.call("preview", policy) });
     });
   }
+  const retentionOn =
+    state !== null &&
+    (state.policy.archiveAfterDays !== null ||
+      state.policy.deleteAfterDays !== null);
   const report = detail?.report;
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
@@ -186,7 +203,7 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   );
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-5">
+      <div className="mx-auto w-full max-w-3xl space-y-10 px-4 pb-10 pt-4 md:px-5 md:pt-5">
         {hostId && (
           <header className="space-y-3">
             <button
@@ -202,6 +219,7 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
                   <h1 className="break-words text-base font-semibold">
                     {machine?.name ?? "Machine storage"}
                   </h1>
+                  {hostId === primaryHostId && <Pill>server</Pill>}
                   {machine && <MachineStatus machine={machine} />}
                 </div>
                 <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
@@ -417,29 +435,29 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
                       </p>
                     )}
                     {report.largestThreads.map((thread) => (
-                      <div key={thread.threadId} className="space-y-3 px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
+                      <div key={thread.threadId} className="space-y-3 px-4 py-1.5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
                             <button
-                              className="block max-w-full truncate text-left text-sm font-normal hover:underline"
+                              className="min-w-0 truncate text-left text-sm font-normal hover:underline"
+                              title={thread.title}
                               onClick={() => navigate.toThread(thread.threadId)}
                             >
                               {thread.title}
                             </button>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {thread.running
-                                ? "Running · stop the thread to clear files"
-                                : thread.archivedAt === null
-                                  ? "Active thread"
-                                  : "Archived thread"}
-                            </p>
+                            {thread.running ? (
+                              <Pill>running</Pill>
+                            ) : thread.archivedAt !== null ? (
+                              <Pill>archived</Pill>
+                            ) : null}
                           </div>
-                          <span className="text-sm tabular-nums text-muted-foreground">
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                             {bytes(thread.sizeBytes)}
                           </span>
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="shrink-0"
                             disabled={
                               locked || thread.running || cleanup !== null
                             }
@@ -450,7 +468,7 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
                               })
                             }
                           >
-                            Clear storage
+                            Clear
                           </Button>
                         </div>
                         {cleanup?.threadId === thread.threadId &&
@@ -465,10 +483,7 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
         ) : (
           <>
             <section className="space-y-3">
-              <SectionHeading
-                title="Machine storage"
-                description="Thread files and leftover worktrees on each machine. Open one to scan it or free up space."
-              />
+              <SectionHeading title="Machine storage" />
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
                 {hosts.length === 0 && (
                   <div className="space-y-2 p-6 text-center">
@@ -486,6 +501,8 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
                     key={host.hostId}
                     host={host}
                     machine={machines[host.hostId]}
+                    server={host.hostId === primaryHostId}
+                    threadCount={threadCounts[host.hostId] ?? 0}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
@@ -497,12 +514,7 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
               <SectionHeading
                 title="Automatic retention"
                 description="Archive or delete inactive threads across all projects. You’ll see what changes before anything is saved."
-                badge={
-                  state.policy.archiveAfterDays === null &&
-                  state.policy.deleteAfterDays === null
-                    ? "Off"
-                    : "Checks hourly"
-                }
+                badge={retentionOn ? "Checks hourly" : "Off"}
               />
               <div
                 role="note"
@@ -541,37 +553,36 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
                       setNotice(null);
                     }}
                   />
-                  <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-                    <p className="text-xs text-muted-foreground">
-                      {changed
-                        ? "Unsaved changes"
-                        : state.lastRun
-                          ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
-                          : state.policy.archiveAfterDays === null &&
-                              state.policy.deleteAfterDays === null
-                            ? "Threads are kept until you archive or delete them."
-                            : "First check runs within the hour."}
-                    </p>
-                    {changed && (
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy || confirmation !== null}
-                          onClick={() => setDraft(null)}
-                        >
-                          Discard
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={busy || confirmation !== null}
-                          onClick={() => void preview(policy)}
-                        >
-                          {busy ? "Working…" : "Preview changes"}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+                  {(changed || state.lastRun || retentionOn) && (
+                    <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                      <p className="text-xs text-muted-foreground">
+                        {changed
+                          ? "Unsaved changes"
+                          : state.lastRun
+                            ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
+                            : "The first check runs within the hour."}
+                      </p>
+                      {changed && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy || confirmation !== null}
+                            onClick={() => setDraft(null)}
+                          >
+                            Discard
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={busy || confirmation !== null}
+                            onClick={() => void preview(policy)}
+                          >
+                            {busy ? "Working…" : "Preview changes"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {confirmation && (
@@ -645,28 +656,34 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   );
 }
 
+function Pill({ children }: { children: string }) {
+  return (
+    <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
+      {children}
+    </span>
+  );
+}
+
 function SectionHeading({
   title,
   description,
   badge,
 }: {
   title: string;
-  description: string;
+  description?: string;
   badge?: string;
 }) {
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 items-center gap-2">
         <h2 className="text-sm font-semibold">{title}</h2>
-        {badge && (
-          <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
-            {badge}
-          </span>
-        )}
+        {badge && <Pill>{badge}</Pill>}
       </div>
-      <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-        {description}
-      </p>
+      {description && (
+        <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+          {description}
+        </p>
+      )}
     </div>
   );
 }
@@ -674,7 +691,7 @@ function SectionHeading({
 function MachineStatus({ machine }: { machine: Machine }) {
   const online = machine.status === "connected";
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-subtle-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-subtle-foreground/75">
       <span
         aria-hidden
         className={cn(
@@ -685,7 +702,7 @@ function MachineStatus({ machine }: { machine: Machine }) {
       {online
         ? "Online"
         : machine.lastSeenAt
-          ? `Offline · seen ${ago(machine.lastSeenAt)}`
+          ? `Offline · last seen ${ago(machine.lastSeenAt)}`
           : "Offline"}
     </span>
   );
@@ -694,62 +711,65 @@ function MachineStatus({ machine }: { machine: Machine }) {
 function MachineRow({
   host,
   machine,
+  server,
+  threadCount,
   onOpen,
 }: {
   host: Hosts[number];
   machine: Machine | undefined;
+  server: boolean;
+  threadCount: number;
   onOpen: () => void;
 }) {
   const report = host.report;
+  const details = [
+    `${threadCount} ${threadCount === 1 ? "thread" : "threads"}`,
+    host.scan.state === "scanning"
+      ? "scanning…"
+      : host.scan.state === "failed"
+        ? "scan failed"
+        : report
+          ? `scanned ${ago(report.scannedAt)}`
+          : "not scanned",
+  ];
   return (
     <button
-      className="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       onClick={onOpen}
     >
-      <Icon name="Laptop" className="size-4 shrink-0 self-start mt-0.5 text-subtle-foreground" />
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-          <span className="truncate text-sm font-normal">
+      <span className="min-w-0 flex-1 space-y-1">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Icon
+            name="Laptop"
+            className="size-3.5 shrink-0 text-subtle-foreground"
+          />
+          <span className="min-w-0 truncate text-sm font-medium">
             {machine?.name ?? host.hostId}
           </span>
+          {server && <Pill>server</Pill>}
+        </span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
           {machine && <MachineStatus machine={machine} />}
-        </span>
-        <span className="mt-0.5 block text-xs leading-snug text-subtle-foreground/75">
-          {host.scan.state === "scanning"
-            ? "Scanning in the background…"
-            : host.scan.state === "failed"
-              ? "Scan failed · open to retry"
-              : report
-                ? [
-                    `${report.threadsWithStorageCount} ${report.threadsWithStorageCount === 1 ? "thread" : "threads"}`,
-                    report.orphanCount > 0 &&
-                      `${bytes(report.orphanBytes)} orphaned`,
-                    report.leftoverWorktrees.length > 0 &&
-                      `${bytes(report.leftoverWorktreeBytes)} in leftover worktrees`,
-                    `scanned ${ago(report.scannedAt)}`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")
-                : "Not scanned yet"}
-        </span>
-        {report && <UsageBar report={report} className="mt-2.5" />}
-      </span>
-      <span className="shrink-0 text-right">
-        {report ? (
-          <>
-            <span className="block text-sm font-normal tabular-nums">
-              {bytes(totalBytes(report))}
+          {details.map((detail) => (
+            <span key={detail} className="shrink-0">
+              {detail}
             </span>
-            {report.disk && (
-              <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
-                {bytes(report.disk.freeBytes)} free
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-xs text-muted-foreground">Scan</span>
-        )}
+          ))}
+        </span>
+        {report && <UsageBar report={report} className="mt-2" />}
       </span>
+      {report && (
+        <span className="shrink-0 text-right">
+          <span className="block text-sm font-normal tabular-nums">
+            {bytes(totalBytes(report))}
+          </span>
+          {report.disk && (
+            <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
+              {bytes(report.disk.freeBytes)} free
+            </span>
+          )}
+        </span>
+      )}
       <Icon
         name="ChevronRight"
         className="size-4 shrink-0 text-muted-foreground"
