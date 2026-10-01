@@ -39,7 +39,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         changelogPreview: false,
         legacyJitiPluginLoader: false,
         serverMove: false,
-        sidebarProgressiveDisclosure: false,
       },
     },
   }),

@@ -227,16 +227,6 @@
         "cli-command: apps/cli/src/commands/machine.ts: status <id-or-name>"
       ]
     },
-    "cli:manager": {
-      "recipes": [
-        "features/compatibility-api.md"
-      ],
-      "sourceFiles": 1,
-      "sourceDigest": "8082d6e2acdca67e2d6427990b0061c8d5eb5ce7555be59772da6ce33c3914ea",
-      "declarations": [
-        "cli-command: apps/cli/src/commands/manager.ts: manager"
-      ]
-    },
     "cli:marketplace": {
       "recipes": [
         "features/extensions.md"
@@ -1188,8 +1178,7 @@
         "setting-or-key: packages/domain/src/app-settings.ts: showUnhandledProviderEvents",
         "setting-or-key: packages/domain/src/app-settings.ts: steerActiveThreadOnEnter",
         "setting-or-key: packages/domain/src/app-settings.ts: streamerMode",
-        "setting-or-key: packages/domain/src/experiments.ts: changelogPreview",
-        "setting-or-key: packages/domain/src/experiments.ts: sidebarProgressiveDisclosure"
+        "setting-or-key: packages/domain/src/experiments.ts: changelogPreview"
       ]
     }
   }

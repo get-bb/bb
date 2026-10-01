@@ -85,7 +85,6 @@ function createHarness() {
 
 describe("ui preferences sync", () => {
   beforeEach(() => {
-    window.localStorage.clear();
     mocks.list.mockReset();
     mocks.set.mockReset();
     mocks.toastError.mockReset();
@@ -187,57 +186,6 @@ describe("ui preferences sync", () => {
       }),
     );
     expect(store.get(modeAtom)).toBe("machine");
-    expect(mocks.set).not.toHaveBeenCalled();
-  });
-
-  it.each(["project", "chronological", "machine"] as const)(
-    "persists legacy %s organization even when it matches the default",
-    async (value) => {
-      window.localStorage.setItem(
-        "bb.sidebar.organizationMode",
-        JSON.stringify(value),
-      );
-      const { modeAtom, queryClient, store } = createHarness();
-      startUiPreferencesSync({ queryClient, store });
-      const response = serverResponse({
-        "sidebar.organizationMode": { revision: 0, value: "project" },
-      });
-      setCachedUiPreferences(queryClient, response);
-      reconcileUiPreferences(response);
-      await waitForUiPreferenceWrites();
-      expect(mocks.set).toHaveBeenCalledTimes(1);
-      expect(mocks.set).toHaveBeenCalledWith({
-        expectedRevision: 0,
-        key: "sidebar.organizationMode",
-        value,
-      });
-      expect(
-        getCachedUiPreferences(queryClient)?.preferences[
-          "sidebar.organizationMode"
-        ],
-      ).toEqual({ revision: 1, value });
-      expect(store.get(modeAtom)).toBe(value);
-      expect(
-        window.localStorage.getItem("bb.sidebar.organizationMode"),
-      ).toBeNull();
-
-      reconcileUiPreferences(serverResponse());
-      await waitForUiPreferenceWrites();
-      expect(mocks.set).toHaveBeenCalledTimes(1);
-      expect(store.get(modeAtom)).toBe(value);
-    },
-  );
-
-  it("recovers the project view when an earlier migration discarded the default choice", async () => {
-    const { modeAtom, queryClient, store } = createHarness();
-    startUiPreferencesSync({ queryClient, store });
-    reconcileUiPreferences(
-      serverResponse({
-        "sidebar.organizationMode": { revision: 0, value: "project" },
-      }),
-    );
-    await waitForUiPreferenceWrites();
-    expect(store.get(modeAtom)).toBe("project");
     expect(mocks.set).not.toHaveBeenCalled();
   });
 
@@ -498,29 +446,6 @@ describe("ui preferences sync", () => {
     expect(mocks.toastError).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledTimes(2);
     expect(store.get(modeAtom)).toBe("chronological");
-  });
-
-  it("never retries a migration against a newer revision", async () => {
-    window.localStorage.setItem("bb.sidebar.organizationMode", '"project"');
-    const { modeAtom, queryClient, store } = createHarness();
-    startUiPreferencesSync({ queryClient, store });
-    const response = serverResponse();
-    setCachedUiPreferences(queryClient, response);
-    mocks.set.mockRejectedValueOnce(conflict(1));
-    mocks.list.mockResolvedValueOnce(
-      serverResponse({
-        "sidebar.organizationMode": { revision: 1, value: "machine" },
-      }),
-    );
-    reconcileUiPreferences(response);
-    await waitForUiPreferenceWrites();
-    expect(mocks.set).toHaveBeenCalledTimes(1);
-    expect(mocks.set).toHaveBeenCalledWith({
-      expectedRevision: 0,
-      key: "sidebar.organizationMode",
-      value: "project",
-    });
-    expect(store.get(modeAtom)).toBe("machine");
   });
 
   it("does not let a delayed write response roll back a newer cached revision", async () => {

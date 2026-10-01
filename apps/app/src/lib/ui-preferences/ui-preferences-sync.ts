@@ -14,10 +14,6 @@ import {
   setCachedUiPreferences,
 } from "@/hooks/cache-owners/ui-preferences-cache-owner";
 import { BbHttpError, sdk } from "../sdk";
-import {
-  clearLegacyLocalUiPreference,
-  readLegacyLocalUiPreference,
-} from "./legacy-local-preferences";
 
 type JotaiStore = ReturnType<typeof getDefaultStore>;
 
@@ -31,15 +27,9 @@ interface RegisteredPreference<Key extends UiPreferenceKey> {
   valueAtom: ValueAtom<Key>;
 }
 
-interface PreferenceOperation<Key extends UiPreferenceKey> {
-  source: "migration" | "user";
-  update: SetStateAction<UiPreferenceValue<Key>>;
-}
-
 interface PreferenceSyncState<Key extends UiPreferenceKey> {
   inFlight: Promise<void> | null;
-  migrationAttempted: boolean;
-  pending: PreferenceOperation<Key>[] | null;
+  pending: SetStateAction<UiPreferenceValue<Key>>[] | null;
 }
 
 interface UiPreferencesSyncContext {
@@ -65,7 +55,7 @@ function getSyncState<Key extends UiPreferenceKey>(
 ): PreferenceSyncState<Key> {
   let state = syncStates.get(key);
   if (state === undefined) {
-    state = { inFlight: null, migrationAttempted: false, pending: null };
+    state = { inFlight: null, pending: null };
     syncStates.set(key, state);
   }
   return state as PreferenceSyncState<Key>;
@@ -76,21 +66,20 @@ function areUiPreferenceValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 function applyOperations<Key extends UiPreferenceKey>(
-  operations: readonly PreferenceOperation<Key>[],
+  operations: readonly SetStateAction<UiPreferenceValue<Key>>[],
   base: UiPreferenceValue<Key>,
 ): UiPreferenceValue<Key> {
-  return operations.reduce(
-    (value, { update }) =>
-      typeof update === "function" ? update(value) : update,
+  return operations.reduce<UiPreferenceValue<Key>>(
+    (value, update) => (typeof update === "function" ? update(value) : update),
     base,
   );
 }
 
 function composeOperation<Key extends UiPreferenceKey>(
-  operations: readonly PreferenceOperation<Key>[],
-  operation: PreferenceOperation<Key>,
-): PreferenceOperation<Key>[] {
-  return typeof operation.update === "function"
+  operations: readonly SetStateAction<UiPreferenceValue<Key>>[],
+  operation: SetStateAction<UiPreferenceValue<Key>>,
+): SetStateAction<UiPreferenceValue<Key>>[] {
+  return typeof operation === "function"
     ? [...operations, operation]
     : [operation];
 }
@@ -141,18 +130,6 @@ function reconcileUiPreference<Key extends UiPreferenceKey>(
     ?.preferences[key];
   if (cachedEntry !== undefined && cachedEntry.revision > entry.revision)
     return;
-  if (entry.revision === 0 && !state.migrationAttempted) {
-    state.migrationAttempted = true;
-    const legacy = readLegacyLocalUiPreference(key);
-    clearLegacyLocalUiPreference(key);
-    if (legacy !== undefined) {
-      activeContext.store.set(valueAtom, legacy);
-      state.pending = [{ source: "migration", update: legacy }];
-      void flushUiPreference(key);
-      return;
-    }
-  }
-  clearLegacyLocalUiPreference(key);
   if (
     areUiPreferenceValuesEqual(activeContext.store.get(valueAtom), entry.value)
   ) {
@@ -167,10 +144,7 @@ export function scheduleUiPreferenceWrite<Key extends UiPreferenceKey>(
 ): void {
   if (context === null) return;
   const state = getSyncState(key);
-  state.pending = composeOperation(state.pending ?? [], {
-    source: "user",
-    update,
-  });
+  state.pending = composeOperation(state.pending ?? [], update);
   if (state.inFlight === null) void flushUiPreference(key);
 }
 
@@ -214,20 +188,13 @@ function recordServerEntry<Key extends UiPreferenceKey>(
 async function writeUiPreference<Key extends UiPreferenceKey>(
   queryClient: QueryClient,
   key: Key,
-  operations: readonly PreferenceOperation<Key>[],
+  operations: readonly SetStateAction<UiPreferenceValue<Key>>[],
 ): Promise<void> {
   let base = (await readCurrentUiPreferences(queryClient)).preferences[key];
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
     if (base === undefined) return;
-    const applicable =
-      base.revision === 0
-        ? operations
-        : operations.filter((operation) => operation.source === "user");
-    const value = applyOperations(applicable, base.value);
-    if (
-      applicable.length === 0 ||
-      (base.revision > 0 && areUiPreferenceValuesEqual(value, base.value))
-    ) {
+    const value = applyOperations(operations, base.value);
+    if (base.revision > 0 && areUiPreferenceValuesEqual(value, base.value)) {
       return;
     }
     try {

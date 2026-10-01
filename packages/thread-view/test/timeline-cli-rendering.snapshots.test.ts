@@ -2993,13 +2993,16 @@ describe("timeline CLI rendering snapshots", () => {
   it("shows reconnect errors compactly", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderActiveTimeline([
-      event.systemError({
-        code: "provider_reconnect",
-        message: "Reconnecting... 1/3",
+      event.turnStarted(),
+      event.providerError({
+        message: "Provider error",
+        detail: "Reconnecting... 1/3\nstream disconnected",
+        willRetry: true,
       }),
-      event.systemError({
-        code: "provider_reconnect",
-        message: "Reconnecting... 2/3",
+      event.providerError({
+        message: "Provider error",
+        detail: "Reconnecting... 2/3\nstream disconnected",
+        willRetry: true,
       }),
       event.systemError({
         code: "provider_runtime_error",

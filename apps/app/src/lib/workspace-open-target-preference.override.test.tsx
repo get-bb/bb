@@ -70,39 +70,15 @@ describe("workspace open target preference override", () => {
     );
   });
 
-  it("migrates Windsurf preferences to Devin Desktop", async () => {
-    const store = createStore();
-    store.set(workspaceOpenTargetPreferenceAtom, "windsurf");
-    store.set(fileOpenTargetPreferenceAtom, "windsurf");
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <Provider store={store}>{children}</Provider>
-    );
-
-    renderHook(
-      () => {
-        useWorkspaceOpenTargetPreference(targets);
-        useFileOpenTargetPreference(targets);
-      },
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(store.get(workspaceOpenTargetPreferenceAtom)).toBe(
-        "devin-desktop",
-      );
-      expect(store.get(fileOpenTargetPreferenceAtom)).toBe("devin-desktop");
-    });
-  });
-
   it("does not override preferences before available targets load", () => {
     const store = createStore();
-    store.set(workspaceOpenTargetPreferenceAtom, "windsurf");
+    store.set(workspaceOpenTargetPreferenceAtom, "removed-editor");
     const wrapper = ({ children }: { children: ReactNode }) => (
       <Provider store={store}>{children}</Provider>
     );
 
     renderHook(() => useWorkspaceOpenTargetPreference([]), { wrapper });
 
-    expect(store.get(workspaceOpenTargetPreferenceAtom)).toBe("windsurf");
+    expect(store.get(workspaceOpenTargetPreferenceAtom)).toBe("removed-editor");
   });
 });

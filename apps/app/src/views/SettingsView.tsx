@@ -1062,11 +1062,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
-  sidebarProgressiveDisclosure: {
-    label: "Sidebar progressive disclosure",
-    description:
-      "In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged.",
-  },
 };
 export function ExperimentsSettingsSection({
   disabled,

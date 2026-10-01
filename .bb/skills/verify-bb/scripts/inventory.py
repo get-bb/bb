@@ -15,7 +15,7 @@ CLI_OWNERS = {
     'settings': 'settings', 'theme': 'settings', 'voice': 'composer',
     'skill': 'extensions', 'plugin': 'extensions', 'marketplace': 'extensions',
     'provider': 'composer', 'guide': 'compatibility-api',
-    'status': 'compatibility-api', 'manager': 'compatibility-api',
+    'status': 'compatibility-api',
     'helpers': 'compatibility-api', 'environment-helpers': 'projects-environments',
     'thread': 'execution-controls',
 }

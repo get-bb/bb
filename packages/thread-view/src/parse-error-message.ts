@@ -1,4 +1,3 @@
-import { resolveSystemErrorReconnectProgress } from "@bb/domain";
 import type { ThreadEvent } from "@bb/domain";
 import type { EventMeta } from "./event-decode.js";
 import { messageId } from "./format-helpers.js";
@@ -12,10 +11,6 @@ export function parseErrorMessage(
     return null;
 
   const { message, detail } = decoded;
-  const reconnectState =
-    decoded.type === "system/error"
-      ? resolveSystemErrorReconnectProgress(decoded)
-      : null;
   return {
     kind: "error",
     id: messageId(decoded.threadId, "error", `${meta.seq}`),
@@ -32,12 +27,6 @@ export function parseErrorMessage(
       : {}),
     ...(decoded.type === "provider/error" && decoded.willRetry !== undefined
       ? { willRetry: decoded.willRetry }
-      : {}),
-    ...(reconnectState
-      ? {
-          reconnectAttempt: reconnectState.attempt,
-          reconnectTotal: reconnectState.total,
-        }
       : {}),
   };
 }

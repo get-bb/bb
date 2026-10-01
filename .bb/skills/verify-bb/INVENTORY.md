@@ -166,12 +166,6 @@ has been exercised or that every behavior has been understood.
 - `cli-command: apps/cli/src/commands/machine.ts: show <id-or-name>`
 - `cli-command: apps/cli/src/commands/machine.ts: status <id-or-name>`
 
-## cli:manager
-
-1 source files. Recipes: [compatibility-api](features/compatibility-api.md).
-
-- `cli-command: apps/cli/src/commands/manager.ts: manager`
-
 ## cli:marketplace
 
 1 source files. Recipes: [extensions](features/extensions.md).
@@ -890,4 +884,3 @@ has been exercised or that every behavior has been understood.
 - `setting-or-key: packages/domain/src/app-settings.ts: steerActiveThreadOnEnter`
 - `setting-or-key: packages/domain/src/app-settings.ts: streamerMode`
 - `setting-or-key: packages/domain/src/experiments.ts: changelogPreview`
-- `setting-or-key: packages/domain/src/experiments.ts: sidebarProgressiveDisclosure`

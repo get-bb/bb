@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -136,34 +136,5 @@ describe("window state helpers", () => {
     await expect(
       readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
     ).resolves.toEqual(persistedStates);
-  });
-
-  it("reads legacy single-window state as the main window entry", async () => {
-    const tempDir = await createTempDir();
-    const legacyState: PersistedWindowState = {
-      bounds: {
-        height: 720,
-        width: 1100,
-        x: 40,
-        y: 60,
-      },
-      isFullScreen: false,
-      isMaximized: true,
-    };
-
-    await writeFile(
-      join(tempDir.path, "window-state.json"),
-      `${JSON.stringify(legacyState, null, 2)}\n`,
-      "utf8",
-    );
-
-    await expect(
-      readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
-    ).resolves.toEqual([
-      {
-        ...legacyState,
-        stateKey: "main",
-      },
-    ]);
   });
 });

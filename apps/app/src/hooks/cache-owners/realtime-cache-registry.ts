@@ -13,7 +13,6 @@ import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
   getCachedGlobalThreadListInvalidationQueryKeys,
   getCachedProjectThreadListInvalidationQueryKeys,
-  getCachedRootOrderThreadListInvalidationQueryKeys,
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
   getCachedThreadListQueryKeys,
@@ -420,10 +419,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     flush: "debounced",
     dirty: [markThreadDetailQueryStale, markThreadListQueriesStale],
   },
-  "order-changed": {
-    flush: "debounced",
-    dirty: [dirtyRootOrderThreadListQueries],
-  },
   "tabs-changed": {
     flush: "immediate",
     dirty: [dirtyThreadTabsQueries],
@@ -803,25 +798,6 @@ function dirtyThreadDetailQueriesForBackgroundActivity(
     return [];
   }
   return dirtyThreadDetailQueries(context);
-}
-
-function dirtyRootOrderThreadListQueries({
-  projectId,
-  queryClient,
-}: ThreadRealtimeDirtyContext): void {
-  queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
-  for (const queryKey of getCachedRootOrderThreadListInvalidationQueryKeys({
-    projectId,
-    queryClient,
-  })) {
-    queryClient.invalidateQueries({ exact: true, queryKey });
-  }
-  if (!projectId) return;
-  for (const queryKey of getCachedRootOrderThreadListInvalidationQueryKeys({
-    queryClient,
-  })) {
-    queryClient.invalidateQueries({ exact: true, queryKey });
-  }
 }
 
 function dirtyThreadDetailQueries({

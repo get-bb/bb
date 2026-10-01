@@ -39,7 +39,6 @@ describe("experiments", () => {
         "futureExperiment",
         "legacyJitiPluginLoader",
         "serverMove",
-        "sidebarProgressiveDisclosure",
       ]);
     } finally {
       db.$client.close();

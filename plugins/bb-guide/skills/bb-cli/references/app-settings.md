@@ -203,15 +203,6 @@ so they carry over between navigation plugins.
   the next time a plugin is installed, reloaded, enabled, updated, or loaded
   after a server restart.
 
-## Sidebar progressive disclosure
-
-- The `sidebarProgressiveDisclosure` experiment defaults to false.
-- Enable it with `bb settings experiment sidebarProgressiveDisclosure true`.
-- In **By project** and **By machine**, it shows the first five groups in the
-  current sort order, keeps attention groups visible, and reveals ten more per
-  **Show more** click. Revealed groups stay visible through activity and
-  sort-order changes. **Manually** is unchanged.
-
 ## Timeline windowing
 
 - Long timelines keep stable row wrappers while mounting only rows near the

@@ -4,7 +4,6 @@ import { screen } from "electron";
 import { z } from "zod";
 import {
   DEFAULT_WINDOW_STATE,
-  PRIMARY_WINDOW_STATE_KEY,
   type DisplayWorkArea,
   type PersistedWindowStateEntry,
   type PersistedWindowStateFile,
@@ -113,23 +112,7 @@ function parsePersistedWindowStateFile(
 ): PersistedWindowStateFile | null {
   const parsedJson = JSON.parse(rawState);
   const parsedFile = persistedWindowStateFileSchema.safeParse(parsedJson);
-  if (parsedFile.success) {
-    return parsedFile.data;
-  }
-
-  const parsedLegacyState = persistedWindowStateSchema.safeParse(parsedJson);
-  if (!parsedLegacyState.success) {
-    return null;
-  }
-
-  return {
-    windows: [
-      {
-        ...parsedLegacyState.data,
-        stateKey: PRIMARY_WINDOW_STATE_KEY,
-      },
-    ],
-  };
+  return parsedFile.success ? parsedFile.data : null;
 }
 
 function intersectionArea(args: IntersectingAreaArgs): number {

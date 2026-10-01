@@ -15,7 +15,6 @@ describe("experiments settings", () => {
         changelogPreview: false,
         legacyJitiPluginLoader: false,
         serverMove: false,
-        sidebarProgressiveDisclosure: false,
       });
     });
   });
@@ -29,7 +28,6 @@ describe("experiments settings", () => {
           changelogPreview: true,
           legacyJitiPluginLoader: true,
           serverMove: true,
-          sidebarProgressiveDisclosure: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -37,13 +35,11 @@ describe("experiments settings", () => {
         changelogPreview: true,
         legacyJitiPluginLoader: true,
         serverMove: true,
-        sidebarProgressiveDisclosure: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         legacyJitiPluginLoader: true,
         serverMove: true,
-        sidebarProgressiveDisclosure: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -53,7 +49,6 @@ describe("experiments settings", () => {
         changelogPreview: true,
         legacyJitiPluginLoader: true,
         serverMove: true,
-        sidebarProgressiveDisclosure: true,
       });
     });
   });

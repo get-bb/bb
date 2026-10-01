@@ -500,7 +500,6 @@ export function useProjectThreadSubset({
   const enabled = (enabledOption ?? true) && Boolean(projectId);
   useThreadListRealtimeSubscription({ enabled });
   const { hasParent, parentThreadId } = filters;
-  const canDeriveFromActiveProjectThreads = true;
   const activeProjectThreadListQueryKey =
     enabled && projectId
       ? threadListQueryKey({ archived: false, projectId })
@@ -508,7 +507,6 @@ export function useProjectThreadSubset({
           projectId ? { archived: false, projectId } : { archived: false },
         );
   const activeProjectThreadListIsCached =
-    canDeriveFromActiveProjectThreads &&
     enabled &&
     projectId !== undefined &&
     queryClient.getQueryData<ThreadListResponse>(

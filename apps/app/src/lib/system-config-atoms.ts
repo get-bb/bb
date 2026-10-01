@@ -31,7 +31,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     changelogPreview: false,
     legacyJitiPluginLoader: false,
     serverMove: false,
-    sidebarProgressiveDisclosure: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
