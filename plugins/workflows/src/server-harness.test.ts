@@ -295,13 +295,13 @@ describe("workflows plugin", () => {
           { threadId: "child-1", projectId: "project-test" },
         ),
       ).resolves.toBe(JSON.stringify({ accepted: true }, null, 2));
-      expect(
+      const childStops = () =>
         harness.sdk
           .callsTo("threads.stop")
-          .some(
+          .filter(
             ([input]) => (input as { threadId: string }).threadId === "child-1",
-          ),
-      ).toBe(true);
+          ).length;
+      expect(childStops()).toBe(1);
       await expect(
         harness.callAgentTool(
           "bb_workflow_result",
@@ -309,6 +309,7 @@ describe("workflows plugin", () => {
           { threadId: "child-1", projectId: "project-test" },
         ),
       ).resolves.toBe(JSON.stringify({ accepted: true }, null, 2));
+      expect(childStops()).toBe(2);
       await expect(
         harness.callAgentTool(
           "bb_workflow_result",
@@ -858,6 +859,13 @@ describe("workflow resume cache integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
+    function stoppedThreadIds(): string[] {
+      return harness.sdk
+        .callsTo("threads.stop")
+        .map(([args]) => (args as { threadId?: string }).threadId)
+        .filter((threadId): threadId is string => threadId !== undefined);
+    }
+
     return {
       bb,
       db,
@@ -866,6 +874,7 @@ describe("workflow resume cache integration", () => {
       execution,
       start,
       finish,
+      stoppedThreadIds,
       childCount: () => childCount,
       setCatalog(models: string[], selectedOnly: string[]) {
         activeModels = models.map(availableModel);
@@ -950,16 +959,446 @@ describe("workflow resume cache integration", () => {
     });
 
     await eventually(() => expect(test.childCount()).toBe(2));
-    await test.finish(
-      "cache-child-2",
-      JSON.stringify(JSON.stringify({ answer: 7 })),
-    );
+    const encodedOutput = JSON.stringify(JSON.stringify({ answer: 7 }));
+    test.service.onThreadIdle("cache-child-2", encodedOutput);
+    expect(getCall(test.db, run.id, 1)).toMatchObject({
+      status: "succeeded",
+      resultJson: '{"answer":7}',
+    });
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    expect(
+      test
+        .stoppedThreadIds()
+        .filter((threadId) => threadId === "cache-child-2"),
+    ).toEqual(["cache-child-2"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(
+      test.service.submitStructuredResult("cache-child-2", { answer: 7 }),
+    ).resolves.toEqual({ ok: true });
+    expect(
+      test
+        .stoppedThreadIds()
+        .filter((threadId) => threadId === "cache-child-2"),
+    ).toEqual(["cache-child-2", "cache-child-2"]);
+
+    test.db
+      .prepare(
+        `UPDATE workflow_calls SET finished_at = 1
+         WHERE run_id = ? AND call_index = 1`,
+      )
+      .run(run.id);
+    test.service.onThreadIdle("cache-child-2", encodedOutput);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getCall(test.db, run.id, 1)).toMatchObject({
+      status: "succeeded",
+      resultJson: '{"answer":7}',
+      finishedAt: 1,
+    });
+    expect(
+      test
+        .stoppedThreadIds()
+        .filter((threadId) => threadId === "cache-child-2"),
+    ).toEqual(["cache-child-2", "cache-child-2"]);
+
     await eventually(() => {
       expect(getRunRequired(test.db, run.id)).toMatchObject({
         status: "succeeded",
         resultJson: '[{"answer":42},{"answer":7}]',
       });
     });
+
+    controller.abort();
+    await worker;
+  });
+
+  it("stops an unstructured worker on idle while another child is still active", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    const run = await test.start(
+      workflowSource(`return await Promise.all([
+        agent("text-worker"),
+        agent("null-worker"),
+      ]);`),
+      null,
+    );
+    await eventually(() => {
+      expect(getCall(test.db, run.id, 0)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+      expect(getCall(test.db, run.id, 1)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+    });
+    const textThreadId = getCall(test.db, run.id, 0)?.childThreadId;
+    const nullThreadId = getCall(test.db, run.id, 1)?.childThreadId;
+    if (textThreadId == null || nullThreadId == null) {
+      throw new Error("expected both workflow workers to be attached");
+    }
+
+    test.service.onThreadIdle(textThreadId, "text-result");
+    test.service.onThreadIdle(textThreadId, "duplicate-while-in-flight");
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '"text-result"',
+    });
+    expect(getCall(test.db, run.id, 1)).toMatchObject({
+      status: "running",
+      resultJson: null,
+    });
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    expect(test.stoppedThreadIds()).toEqual([textThreadId]);
+    expect(test.stoppedThreadIds()).not.toContain("origin");
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    test.db
+      .prepare(
+        `UPDATE workflow_calls SET finished_at = 1
+         WHERE run_id = ? AND call_index = 0`,
+      )
+      .run(run.id);
+    test.service.onThreadIdle(textThreadId, null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '"text-result"',
+      finishedAt: 1,
+    });
+    expect(test.stoppedThreadIds()).toEqual([textThreadId]);
+
+    test.service.onThreadIdle(nullThreadId, null);
+    expect(getCall(test.db, run.id, 1)).toMatchObject({
+      status: "succeeded",
+      resultJson: '""',
+    });
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    expect(test.stoppedThreadIds()).toEqual([textThreadId, nullThreadId]);
+    expect(test.stoppedThreadIds()).not.toContain("origin");
+
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "succeeded",
+        resultJson: '["text-result",""]',
+      });
+    });
+
+    controller.abort();
+    await worker;
+  });
+
+  it("stops a structured idle fallback while another child is still active", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    const schema = `{ type: "object", required: ["answer"], properties: { answer: { type: "number" } } }`;
+    const run = await test.start(
+      workflowSource(`return await Promise.all([
+        agent("structured", { outputSchema: ${schema} }),
+        agent("keeper"),
+      ]);`),
+      null,
+    );
+    await eventually(() => {
+      expect(getCall(test.db, run.id, 0)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+      expect(getCall(test.db, run.id, 1)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+    });
+    const structuredThreadId = getCall(test.db, run.id, 0)?.childThreadId;
+    const keeperThreadId = getCall(test.db, run.id, 1)?.childThreadId;
+    if (structuredThreadId == null || keeperThreadId == null) {
+      throw new Error("expected both workflow workers to be attached");
+    }
+
+    test.service.onThreadIdle(structuredThreadId, "still not JSON");
+    await eventually(() => {
+      expect(
+        test.harness.sdk
+          .callsTo("threads.send")
+          .filter(
+            ([args]) =>
+              (args as { threadId?: string }).threadId === structuredThreadId,
+          ),
+      ).toHaveLength(1);
+    });
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "running",
+      repairAttempts: 1,
+      resultJson: null,
+    });
+    expect(getCall(test.db, run.id, 1)?.status).toBe("running");
+    expect(test.stoppedThreadIds()).toEqual([]);
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const encodedOutput = JSON.stringify(JSON.stringify({ answer: 7 }));
+    test.service.onThreadIdle(structuredThreadId, encodedOutput);
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '{"answer":7}',
+      error: null,
+    });
+    expect(getCall(test.db, run.id, 1)).toMatchObject({
+      status: "running",
+      resultJson: null,
+    });
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    expect(test.stoppedThreadIds()).toEqual([structuredThreadId]);
+    expect(test.stoppedThreadIds()).not.toContain(keeperThreadId);
+    expect(test.stoppedThreadIds()).not.toContain("origin");
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(
+      test.service.submitStructuredResult(structuredThreadId, { answer: 7 }),
+    ).resolves.toEqual({ ok: true });
+    expect(test.stoppedThreadIds()).toEqual([
+      structuredThreadId,
+      structuredThreadId,
+    ]);
+
+    test.db
+      .prepare(
+        `UPDATE workflow_calls SET finished_at = 1
+         WHERE run_id = ? AND call_index = 0`,
+      )
+      .run(run.id);
+    test.service.onThreadIdle(structuredThreadId, '{"answer":99}');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '{"answer":7}',
+      finishedAt: 1,
+    });
+    expect(test.stoppedThreadIds()).toEqual([
+      structuredThreadId,
+      structuredThreadId,
+    ]);
+
+    test.service.onThreadIdle(keeperThreadId, "kept");
+    expect(getCall(test.db, run.id, 1)).toMatchObject({
+      status: "succeeded",
+      resultJson: '"kept"',
+    });
+    expect(test.stoppedThreadIds()).toEqual([
+      structuredThreadId,
+      structuredThreadId,
+      keeperThreadId,
+    ]);
+
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "succeeded",
+        resultJson: '[{"answer":7},"kept"]',
+      });
+    });
+
+    controller.abort();
+    await worker;
+  });
+
+  it("stops a structured worker only after repair turns are exhausted", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    const schema = `{ type: "object", required: ["answer"], properties: { answer: { type: "number" } } }`;
+    const run = await test.start(
+      workflowSource(`return await Promise.all([
+        agent("structured", { outputSchema: ${schema} }),
+        agent("keeper"),
+      ]);`),
+      null,
+    );
+    await eventually(() => {
+      expect(getCall(test.db, run.id, 0)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+      expect(getCall(test.db, run.id, 1)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+    });
+    const structuredThreadId = getCall(test.db, run.id, 0)?.childThreadId;
+    const keeperThreadId = getCall(test.db, run.id, 1)?.childThreadId;
+    if (structuredThreadId == null || keeperThreadId == null) {
+      throw new Error("expected both workflow workers to be attached");
+    }
+
+    for (let failure = 1; failure <= 2; failure += 1) {
+      test.service.onThreadIdle(structuredThreadId, "still not JSON");
+      await eventually(() => {
+        expect(
+          test.harness.sdk
+            .callsTo("threads.send")
+            .filter(
+              ([args]) =>
+                (args as { threadId?: string }).threadId === structuredThreadId,
+            ),
+        ).toHaveLength(failure);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "running",
+        repairAttempts: failure,
+        resultJson: null,
+      });
+      expect(test.stoppedThreadIds()).toEqual([]);
+    }
+
+    test.service.onThreadIdle(structuredThreadId, "still not JSON");
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "failed",
+      resultJson: null,
+    });
+    expect(getCall(test.db, run.id, 0)?.error).toContain(
+      "Structured output failed after 2 corrective turns",
+    );
+    expect(getCall(test.db, run.id, 1)?.status).toBe("running");
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    expect(test.stoppedThreadIds()).toEqual([structuredThreadId]);
+    expect(test.stoppedThreadIds()).not.toContain(keeperThreadId);
+    expect(test.stoppedThreadIds()).not.toContain("origin");
+
+    controller.abort();
+    await worker;
+  });
+
+  it("stops a structured worker when the corrective send fails", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    const schema = `{ type: "object", required: ["answer"], properties: { answer: { type: "number" } } }`;
+    const run = await test.start(
+      workflowSource(
+        `return await agent("structured", { outputSchema: ${schema} });`,
+      ),
+      null,
+    );
+    await eventually(() => expect(test.childCount()).toBe(1));
+    test.harness.sdk.stub("threads.send", async () => {
+      throw new Error("send failed");
+    });
+    test.service.onThreadIdle("cache-child-1", "not json");
+    await eventually(() => {
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "failed",
+        resultJson: null,
+      });
+      expect(getCall(test.db, run.id, 0)?.error).toContain(
+        "Could not request structured-output correction: send failed",
+      );
+      expect(test.stoppedThreadIds()).toEqual(["cache-child-1"]);
+    });
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "failed",
+      });
+    });
+    expect(getRunRequired(test.db, run.id).error).toContain(
+      "Could not request structured-output correction: send failed",
+    );
+    expect(test.stoppedThreadIds()).not.toContain("origin");
+
+    controller.abort();
+    await worker;
+  });
+
+  it("keeps a successful result when stopping the completed worker is rejected", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    test.harness.sdk.stub("threads.stop", async () => {
+      throw new Error("provider refused stop");
+    });
+    const run = await test.start(
+      workflowSource(`return await Promise.all([
+        agent("completed"),
+        agent("still-active"),
+      ]);`),
+      null,
+    );
+    await eventually(() => {
+      expect(getCall(test.db, run.id, 0)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+      expect(getCall(test.db, run.id, 1)?.childThreadId).toEqual(
+        expect.any(String),
+      );
+    });
+    const completedThreadId = getCall(test.db, run.id, 0)?.childThreadId;
+    const activeThreadId = getCall(test.db, run.id, 1)?.childThreadId;
+    if (completedThreadId == null || activeThreadId == null) {
+      throw new Error("expected both workflow workers to be attached");
+    }
+
+    test.service.onThreadIdle(completedThreadId, "done");
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '"done"',
+    });
+    expect(getCall(test.db, run.id, 1)?.status).toBe("running");
+    expect(getRunRequired(test.db, run.id).status).toBe("running");
+    expect(test.stoppedThreadIds()).toEqual([completedThreadId]);
+    await eventually(() => {
+      expect(test.harness.logEntries).toContainEqual({
+        level: "warn",
+        message: `Could not stop workflow worker ${completedThreadId}: provider refused stop`,
+      });
+    });
+
+    test.service.onThreadIdle(activeThreadId, "after-warning");
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "succeeded",
+        resultJson: '["done","after-warning"]',
+      });
+    });
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '"done"',
+      error: null,
+    });
+
+    controller.abort();
+    await worker;
+  });
+
+  it("does not warn when stopping a completed worker hits a missing thread", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    test.harness.sdk.stub("threads.stop", async () => {
+      throw Object.assign(new Error("Thread not found"), {
+        status: 404,
+        code: "thread_not_found",
+      });
+    });
+    const run = await test.start(
+      workflowSource(`return await agent("missing-thread");`),
+      null,
+    );
+    await eventually(() => expect(test.childCount()).toBe(1));
+    test.service.onThreadIdle("cache-child-1", "released");
+    expect(test.stoppedThreadIds()).toEqual(["cache-child-1"]);
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "succeeded",
+        resultJson: '"released"',
+      });
+    });
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "succeeded",
+      resultJson: '"released"',
+      error: null,
+    });
+    expect(
+      test.harness.logEntries.filter(
+        (entry) =>
+          entry.level === "warn" &&
+          entry.message.includes("Could not stop workflow worker"),
+      ),
+    ).toEqual([]);
 
     controller.abort();
     await worker;

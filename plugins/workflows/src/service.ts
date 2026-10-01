@@ -1086,6 +1086,7 @@ export function createWorkflowService(
             error: null,
           });
           wakeCall(call);
+          await stopChild(threadId);
           return;
         }
       }
@@ -1140,6 +1141,9 @@ export function createWorkflowService(
         result: output ?? "",
         error: null,
       });
+      wakeCall(call);
+      await stopChild(threadId);
+      return;
     }
     wakeCall(call);
   }
