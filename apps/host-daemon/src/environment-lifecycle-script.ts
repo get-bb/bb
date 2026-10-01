@@ -6,9 +6,11 @@ import {
 import { operationEnvironment } from "./operation-environment.js";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
+  execPortableFile,
   isProcessGroupAlive,
   killProcessGroup,
   spawnPortableOutputProcess,
+  stopProcessGroupLeaderFirst,
   supportsProcessGroups,
 } from "@bb/process-utils";
 import fs from "node:fs/promises";
@@ -40,6 +42,7 @@ interface LifecycleScriptCommand {
   command: string;
   args: string[];
   text: string;
+  pathPrefix: string[];
 }
 
 interface BuildLifecycleScriptCommandArgs {
@@ -47,6 +50,7 @@ interface BuildLifecycleScriptCommandArgs {
   scriptName: string;
   platform: NodeJS.Platform;
   scriptPath: string;
+  windowsBashPath: string | null;
 }
 
 interface RunLifecycleScriptArgs extends RunSetupScriptArgs {
@@ -58,17 +62,58 @@ export function buildLifecycleScriptCommand(
   args: BuildLifecycleScriptCommandArgs,
 ): LifecycleScriptCommand {
   if (args.platform === "win32") {
-    throw new WorkspaceError(
-      "setup_script_failed",
-      `POSIX shell ${args.kind} scripts are not supported on Windows: ${args.scriptName}`,
-    );
+    if (args.windowsBashPath === null) {
+      throw new WorkspaceError(
+        "setup_script_failed",
+        `${args.scriptName} needs Git for Windows: bb runs ${args.kind} scripts with the bash that Git installs, and it could not find one.`,
+      );
+    }
+    return {
+      command: args.windowsBashPath,
+      args: [args.scriptPath],
+      text: `bash ${args.scriptName}`,
+      pathPrefix: [path.win32.dirname(args.windowsBashPath)],
+    };
   }
 
   return {
     command: "env",
     args: ["bash", args.scriptPath],
     text: `env bash ${args.scriptName}`,
+    pathPrefix: [],
   };
+}
+
+const GIT_SHELL_LOOKUP_TIMEOUT_MS = 10_000;
+
+export async function resolveWindowsBashPath(
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
+  let gitShellPath: string;
+  try {
+    const result = await execPortableFile("git", ["var", "GIT_SHELL_PATH"], {
+      cwd: process.cwd(),
+      env,
+      maxBuffer: 64 * 1024,
+      timeout: GIT_SHELL_LOOKUP_TIMEOUT_MS,
+    });
+    gitShellPath = path.win32.normalize(result.stdout.trim());
+  } catch {
+    return null;
+  }
+  if (gitShellPath.length === 0) {
+    return null;
+  }
+  const bashPath = path.win32.join(
+    path.win32.dirname(gitShellPath),
+    "bash.exe",
+  );
+  try {
+    await fs.access(bashPath);
+    return bashPath;
+  } catch {
+    return gitShellPath;
+  }
 }
 
 async function resolveLifecycleScriptPath(
@@ -97,11 +142,22 @@ async function runLifecycleScript(
   }
 
   throwIfProvisionAborted(args.signal);
+  const { timeoutMs } = args;
+  const env = operationEnvironment(
+    args.contributedEnv ?? [],
+    {
+      ...(args.env ?? process.env),
+      ...(args.shellPath !== undefined ? { PATH: args.shellPath } : {}),
+    },
+    true,
+  );
   const command = buildLifecycleScriptCommand({
     kind: args.kind,
     scriptName: args.scriptName,
     platform: process.platform,
     scriptPath,
+    windowsBashPath:
+      process.platform === "win32" ? await resolveWindowsBashPath(env) : null,
   });
   const startedAt = Date.now();
   emitStep({
@@ -112,21 +168,18 @@ async function runLifecycleScript(
     startedAt,
   });
 
-  const { timeoutMs } = args;
-  const env = operationEnvironment(
-    args.contributedEnv ?? [],
-    {
-      ...(args.env ?? process.env),
-      ...(args.shellPath !== undefined ? { PATH: args.shellPath } : {}),
-    },
-    true,
-  );
   const child = spawnPortableOutputProcess({
     command: command.command,
     args: command.args,
     cwd: args.workspacePath,
     detached: supportsProcessGroups(),
-    env,
+    env:
+      command.pathPrefix.length === 0
+        ? env
+        : {
+            ...env,
+            PATH: [...command.pathPrefix, env.PATH ?? ""].join(path.delimiter),
+          },
   });
 
   const outputLineReader = createTerminalOutputLineReader();
@@ -150,16 +203,27 @@ async function runLifecycleScript(
     return () => emit(decoder.end());
   });
 
+  const killScriptProcesses = (): void => {
+    if (process.platform === "win32") {
+      void stopProcessGroupLeaderFirst({
+        child,
+        timeoutMs: 0,
+        killGraceMs: 0,
+      }).catch(() => undefined);
+      return;
+    }
+    killProcessGroup({ child, signal: "SIGKILL" });
+  };
   const timeout = setTimeout(() => {
     timedOut = true;
-    killProcessGroup({ child, signal: "SIGKILL" });
+    killScriptProcesses();
   }, timeoutMs);
   const abortLifecycleScript = () => {
     if (abortRequested) {
       return;
     }
     abortRequested = true;
-    killProcessGroup({ child, signal: "SIGKILL" });
+    killScriptProcesses();
   };
   args.signal?.addEventListener("abort", abortLifecycleScript, {
     once: true,

@@ -175,6 +175,10 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The supported setup hook is POSIX `.bb-env-setup.sh`.
 - The supported teardown hook is POSIX `.bb-env-teardown.sh`.
 - The same shell-based hook contract is used across macOS, Linux, and WSL2.
+- On native Windows bb runs the same scripts with the bash that Git for Windows
+  installs, found through `git var GIT_SHELL_PATH`, with that directory first on
+  `PATH` so the script's standard tools resolve. Without Git for Windows the
+  hook fails with a message naming it.
 - No parallel `.bb-env-setup.ts` product-path mechanism is supported.
 - The `.worktreeinclude` copy step runs no shell. It works on every platform,
   including native Windows.

@@ -144,28 +144,33 @@ describe("core environment scripts", () => {
     ).rejects.toThrow("cancelled");
   });
 
-  it("reports unsupported POSIX scripts on Windows for each hook", async () => {
-    expect(() =>
+  it("runs hooks on Windows with the bash that Git installs", () => {
+    expect(
       buildLifecycleScriptCommand({
         kind: "setup",
         scriptName: ".bb-env-setup.sh",
         platform: "win32",
-        scriptPath: ".bb-env-setup.sh",
+        scriptPath: "C:\\src\\repo\\.bb-env-setup.sh",
+        windowsBashPath: "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
       }),
-    ).toThrow("POSIX shell setup scripts are not supported on Windows");
-    const workspacePath = await workspace("teardown", "exit 0\n");
-    vi.stubGlobal("process", { ...process, platform: "win32" });
-    const output: string[] = [];
-    await expect(
-      runTeardownScript({
-        workspacePath,
-        timeoutMs: 5000,
-        onProgress: (entry) => output.push(entry.text),
+    ).toEqual({
+      command: "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+      args: ["C:\\src\\repo\\.bb-env-setup.sh"],
+      text: "bash .bb-env-setup.sh",
+      pathPrefix: ["C:\\Program Files\\Git\\usr\\bin"],
+    });
+  });
+
+  it("names Git for Windows when no bash is available", () => {
+    expect(() =>
+      buildLifecycleScriptCommand({
+        kind: "teardown",
+        scriptName: ".bb-env-teardown.sh",
+        platform: "win32",
+        scriptPath: "C:\\src\\repo\\.bb-env-teardown.sh",
+        windowsBashPath: null,
       }),
-    ).resolves.toEqual({ ran: true });
-    expect(output.join("\n")).toContain(
-      "POSIX shell teardown scripts are not supported on Windows",
-    );
+    ).toThrow(".bb-env-teardown.sh needs Git for Windows");
   });
 
   it("skips absent scripts", async () => {
