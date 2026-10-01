@@ -1388,7 +1388,11 @@ The canonical release summary.
       failuresByJobKey: new Map([
         [
           "host_1:claude-code",
-          { issueFingerprint: issue.fingerprint, logDialogState },
+          {
+            issueFingerprint: issue.fingerprint,
+            kind: "interrupted",
+            logDialogState,
+          },
         ],
       ]),
       queuedJobKeys: new Set(),
@@ -1398,10 +1402,10 @@ The canonical release summary.
 
     renderSection();
 
-    expect(screen.getByText("Failed")).toBeDefined();
     expect(screen.getByRole("alert").textContent).toBe(
-      "Command exited with code 1",
+      "Connection lost before the update finished.",
     );
+    expect(screen.queryByText("Command exited with code 1")).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Failed · Retry Claude Code on workstation",

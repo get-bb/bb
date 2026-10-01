@@ -29,8 +29,11 @@ interface ProviderCliInstallJob {
   issue: ProviderCliActionableIssue;
 }
 
+export type ProviderCliInstallFailureKind = "command" | "interrupted";
+
 export interface ProviderCliInstallFailure {
   issueFingerprint: string;
+  kind: ProviderCliInstallFailureKind;
   logDialogState: ProviderCliInstallLogDialogState;
 }
 
@@ -186,6 +189,7 @@ function setProviderCliInstallFailure(args: {
 function showProviderCliInstallFailureToast(args: {
   jobKey: string;
   issue: ProviderCliActionableIssue;
+  kind: ProviderCliInstallFailureKind;
   log: string;
   message: string;
   toastId: string;
@@ -200,6 +204,7 @@ function showProviderCliInstallFailureToast(args: {
     jobKey: args.jobKey,
     failure: {
       issueFingerprint: args.issue.fingerprint,
+      kind: args.kind,
       logDialogState,
     },
   });
@@ -269,6 +274,7 @@ function runInstall(job: ProviderCliInstallJob): void {
       showProviderCliInstallFailureToast({
         jobKey,
         issue,
+        kind: "command",
         log: installLogChunks.join(""),
         message: failureMessage,
         toastId: failureToastId,
@@ -280,6 +286,7 @@ function runInstall(job: ProviderCliInstallJob): void {
       showProviderCliInstallFailureToast({
         jobKey,
         issue,
+        kind: "interrupted",
         log: installLogChunks.join(""),
         message,
         toastId: failureToastId,

@@ -7,6 +7,7 @@ import {
   type ProviderCliKey,
 } from "@bb/host-daemon-contract";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
+import type { ProviderCliInstallFailure } from "@/components/provider-cli/provider-cli-install-store";
 import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
 import { SettingsStoryChrome } from "../../../.ladle/story-settings-chrome";
 import {
@@ -162,14 +163,49 @@ export function ChangelogPreviewExperiment() {
   );
 }
 
+function failedProviderMachine(hostId: string): UpdateInventoryMachine {
+  return machineOf({
+    host: makeHost({ id: hostId, name: "Old Air" }),
+    issues: [
+      updateIssue("codex", "0.157.0", "0.159.3"),
+      updateIssue("claude-code", "2.1.282", "2.1.287"),
+    ],
+  });
+}
+
+function failedProviderFailures(
+  machine: UpdateInventoryMachine,
+): ReadonlyMap<string, ProviderCliInstallFailure> {
+  return new Map(
+    machine.issues.map((issue, index) => [
+      `${machine.host.id}:${issue.provider}`,
+      {
+        issueFingerprint: issue.fingerprint,
+        kind: index === 0 ? "command" : "interrupted",
+        logDialogState: {
+          displayName: issue.status.displayName,
+          log: `$ ${issue.status.executableName} update\n`,
+          message:
+            index === 0
+              ? "Command exited with code 1"
+              : "HTTP 504: bb connect: timed out waiting for the tunnel client",
+          title: `${issue.status.displayName} update log`,
+        },
+      },
+    ]),
+  );
+}
+
 function StoryMachineSection({
   machine,
   app = false,
   appUpdate = false,
+  failuresByJobKey,
 }: {
   machine: UpdateInventoryMachine;
   app?: boolean;
   appUpdate?: boolean;
+  failuresByJobKey?: ReadonlyMap<string, ProviderCliInstallFailure>;
 }) {
   const showDaemon =
     machine.canRetryDaemonUpdate || machine.host.status !== "connected";
@@ -208,6 +244,7 @@ function StoryMachineSection({
         machine={machine}
         runningJobKey={null}
         queuedJobKeys={NO_JOBS}
+        failuresByJobKey={failuresByJobKey}
         onStartInstall={noop}
         onOpenProvider={noop}
       />
@@ -300,6 +337,7 @@ export function UpdateStates() {
     host: makeHost({ id: "state-provider-installing", name: "studio-mac" }),
     issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
   });
+  const providerFailed = failedProviderMachine("state-provider-failed");
   const providerManual = machineOf({
     host: makeHost({ id: "state-provider-manual", name: "homelab" }),
     issues: [manualUpdateIssue("codex", "0.145.0", "0.146.0")],
@@ -626,6 +664,26 @@ export function UpdateStates() {
         </State>
 
         <State
+          name="Update failed"
+          note="The red line states the failure in plain words; the log keeps the raw output and Retry is the recovery."
+        >
+          <MachineUpdatesSection
+            machine={providerFailed}
+            isThisMachine={false}
+            showServerBadge={false}
+          >
+            <MachineUpdatesRows
+              machine={providerFailed}
+              runningJobKey={null}
+              queuedJobKeys={NO_JOBS}
+              failuresByJobKey={failedProviderFailures(providerFailed)}
+              onStartInstall={noop}
+              onOpenProvider={noop}
+            />
+          </MachineUpdatesSection>
+        </State>
+
+        <State
           name="Update in terminal"
           note="The CLI was installed outside bb, so the update must run in its own package manager."
         >
@@ -680,6 +738,7 @@ export function MultiMachine() {
     }),
     canRetryDaemonUpdate: true,
   });
+  const oldAir = failedProviderMachine("host-old-air");
 
   return (
     <StoryPage>
@@ -699,6 +758,10 @@ export function MultiMachine() {
       >
         <StoryMachineSection machine={workstation} app appUpdate />
         <StoryMachineSection machine={studioMac} />
+        <StoryMachineSection
+          machine={oldAir}
+          failuresByJobKey={failedProviderFailures(oldAir)}
+        />
         <StoryMachineSection machine={ciRunner} />
       </MachineUpdatesFleetSection>
     </StoryPage>

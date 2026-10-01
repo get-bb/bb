@@ -221,6 +221,14 @@ const ROW_GRID =
 
 const ROW_SPACING = "py-2 first:pt-0 last:pb-0";
 
+const PROVIDER_CLI_FAILURE_DESCRIPTIONS: Record<
+  ProviderCliInstallFailure["kind"],
+  string
+> = {
+  command: "Update failed.",
+  interrupted: "Connection lost before the update finished.",
+};
+
 function UpdatesRow({
   leading,
   children,
@@ -1226,23 +1234,29 @@ export function MachineUpdatesRows({
         }
         title={status.displayName}
         titleMeta={
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            <RowVersions
-              current={status.currentVersion}
-              latest={issue !== null ? status.latestVersion : null}
-            />
-            {failure === null ? null : (
-              <>
-                <RowStateCaption state="failed">Failed</RowStateCaption>
-                <code
-                  role="alert"
-                  className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-destructive"
-                >
-                  {failure.logDialogState.message}
-                </code>
-              </>
-            )}
-          </span>
+          <RowVersions
+            current={status.currentVersion}
+            latest={issue !== null ? status.latestVersion : null}
+          />
+        }
+        description={
+          failure === null ? null : (
+            <span className="flex min-w-0 items-baseline gap-1.5">
+              <span role="alert" className="truncate text-destructive">
+                {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
+              </span>
+              <button
+                type="button"
+                aria-label={`View ${status.displayName} update log`}
+                className="shrink-0 cursor-pointer rounded-sm text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={() =>
+                  openProviderCliInstallLog(failure.logDialogState)
+                }
+              >
+                View log
+              </button>
+            </span>
+          )
         }
         trailingMeta={null}
         actions={
@@ -1251,24 +1265,15 @@ export function MachineUpdatesRows({
           ) : queued ? (
             <RowStateControl live state="in-progress" />
           ) : failure !== null ? (
-            <span className="flex items-center gap-1">
-              <UpdateActionButton
-                label={`View ${status.displayName} update log`}
-                tooltipLabel="View log"
-                icon="File"
-                onClick={() =>
-                  openProviderCliInstallLog(failure.logDialogState)
-                }
+            actionable ? (
+              <RowStateControl
+                state="failed"
+                actionIcon={RETRY_ACTION_ICON as IconName}
+                actionLabel={`Retry ${status.displayName} on ${host.name}`}
+                actionTooltip="Retry"
+                onClick={() => onStartInstall(host.id, issue)}
               />
-              {actionable ? (
-                <RowStateControl
-                  state="failed"
-                  actionLabel={`Retry ${status.displayName} on ${host.name}`}
-                  actionTooltip="Retry"
-                  onClick={() => onStartInstall(host.id, issue)}
-                />
-              ) : null}
-            </span>
+            ) : null
           ) : state === null ? null : (
             <RowStateControl
               state={state}

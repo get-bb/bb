@@ -334,6 +334,7 @@ describe("useProviderCliInstallRunner", () => {
     );
     expect(result.current.failuresByJobKey.get("host_1:codex")).toMatchObject({
       issueFingerprint: issue.fingerprint,
+      kind: "command",
       logDialogState: {
         message: "Command exited with code 1",
         log: "$ codex update\npermission denied\n",
