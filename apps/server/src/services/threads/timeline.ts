@@ -38,6 +38,8 @@ import type {
   ThreadConversationOutlineResponse,
   TimelineConversationAttachments,
   ThreadConversationOutlineAttachmentSummary,
+  ThreadMessageResponse,
+  TimelineConversationRow,
   TimelineRow,
   TimelineOutputPreview,
   ThreadTimelineResponse,
@@ -1599,6 +1601,78 @@ function toConversationOutlineAttachmentSummary(
   return { imageCount, fileCount };
 }
 
+interface BuildThreadConversationRowsOptions extends BuildThreadConversationOutlineOptions {
+  includeNestedRows: boolean;
+}
+
+function collectConversationRows(
+  rows: readonly TimelineRow[],
+  conversationRows: TimelineConversationRow[],
+): void {
+  for (const row of rows) {
+    if (row.kind === "conversation") {
+      conversationRows.push(row);
+    } else if (row.kind === "turn" && row.children !== null) {
+      collectConversationRows(row.children, conversationRows);
+    }
+  }
+}
+
+function buildThreadConversationRows(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadConversationRowsOptions,
+): TimelineConversationRow[] {
+  return runEventLoopWorkSync(`conversation-rows ${thread.id}`, () => {
+    const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(
+      db,
+      {
+        atOrBeforeSequence: options.maxSeq,
+        threadId: thread.id,
+      },
+    );
+    const rawEventRows = listStoredConversationOutlineEventRows(db, {
+      sequenceStart: contextBoundarySeq ?? 0,
+      threadId: thread.id,
+    });
+    const decodedRawEvents = rawEventRows.map((row) =>
+      toThreadEventWithMeta(row),
+    );
+    const decodedEvents = compactThreadTimelineSummaryEvents(decodedRawEvents);
+    const clientRequestContextRows = selectClientRequestContextRows(db, {
+      rows: rawEventRows,
+      threadId: thread.id,
+    });
+    const acceptedClientRequestContext: AcceptedClientRequestContext = {
+      acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
+        (row) => toThreadEventWithMeta(row),
+      ),
+      rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
+        (row) => toThreadEventWithMeta(row),
+      ),
+    };
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext,
+      contextWindowEvents: [],
+      events: decodedEvents,
+      options: {
+        completedTurnDisplay: options.completedTurnDisplay,
+        includeNestedRows: options.includeNestedRows,
+        includeDiagnosticOperations: false,
+        isLatestPage: true,
+        providerDisplayName: options.providerDisplayName,
+        providerId: thread.providerId,
+        threadName: thread.title ?? thread.titleFallback ?? "",
+        threadStatus: thread.status,
+        workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+      },
+    });
+    const conversationRows: TimelineConversationRow[] = [];
+    collectConversationRows(timeline.rows, conversationRows);
+    return conversationRows;
+  });
+}
+
 function selectThreadConversationOutline(
   db: DbConnection,
   thread: Thread,
@@ -1704,6 +1778,37 @@ export function buildThreadConversationOutline(
       maxSeq: options.maxSeq,
     };
   });
+}
+
+interface GetThreadMessageOptions extends BuildThreadConversationOutlineOptions {
+  seq: number;
+  before: number;
+  after: number;
+}
+
+export function getThreadMessage(
+  db: DbConnection,
+  thread: Thread,
+  options: GetThreadMessageOptions,
+): ThreadMessageResponse {
+  const rows = buildThreadConversationRows(db, thread, {
+    ...options,
+    includeNestedRows: true,
+  });
+  const index = rows.findIndex((row) => row.messageSeq === options.seq);
+  const message = rows[index];
+  if (message === undefined) {
+    throw new ApiError(
+      404,
+      "message_not_found",
+      `Thread ${thread.id} has no message ${options.seq}; an edit may have removed it or a context clear hidden it`,
+    );
+  }
+  return {
+    message,
+    before: rows.slice(Math.max(0, index - options.before), index),
+    after: rows.slice(index + 1, index + 1 + options.after),
+  };
 }
 
 export function buildThreadConversationOutlineProjectionKey(

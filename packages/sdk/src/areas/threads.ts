@@ -34,6 +34,7 @@ import type {
   ThreadCountQuery,
   ThreadCountResponse,
   ThreadListResponse,
+  ThreadMessageResponse,
   ThreadRunningResponse,
   ThreadOpenResponse,
   ThreadPaneAction,
@@ -162,6 +163,7 @@ export type ThreadCountResult = ThreadCountResponse;
 export type ThreadRunningResult = ThreadRunningResponse;
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
+export type ThreadMessageResult = ThreadMessageResponse;
 export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
 export interface ThreadOutputResponse {
   output: string | null;
@@ -405,6 +407,14 @@ export interface ThreadOutputArgs {
   threadId: string;
 }
 
+export interface ThreadMessageArgs {
+  signal?: AbortSignal;
+  threadId: string;
+  seq: number;
+  before?: number;
+  after?: number;
+}
+
 export interface ThreadInteractionListArgs {
   signal?: AbortSignal;
   threadId: string;
@@ -580,6 +590,14 @@ export interface ThreadsArea {
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
+  /**
+   * Read one conversation message by its message seq, the `msg` value of a
+   * message link or `@thread:<id>?msg=<seq>` mention, with up to
+   * `before`/`after` neighbouring messages (max 20 each). Rejects with
+   * `message_not_found` when no visible message has that seq, for example
+   * after an edit removed it or a context clear hid it.
+   */
+  message(args: ThreadMessageArgs): Promise<ThreadMessageResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
   promptHistory(
@@ -1221,6 +1239,24 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].unread.$post(
           {
             param: { id: input.threadId },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async message(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].messages[":seq"].$get(
+          {
+            param: { id: input.threadId, seq: String(input.seq) },
+            query: {
+              ...(input.before === undefined
+                ? {}
+                : { before: String(input.before) }),
+              ...(input.after === undefined
+                ? {}
+                : { after: String(input.after) }),
+            },
           },
           ...signalRequestArgs(input.signal),
         ),

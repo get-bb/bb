@@ -21,11 +21,11 @@ describe("message links", () => {
   it("rejects links that do not address one message of a thread", () => {
     for (const href of [
       "/projects/proj_abc/threads/thr_abc",
-      "/projects/proj_abc/threads/thr_abc?message=",
-      "/projects/proj_abc/threads/thr_abc?message=4a",
-      "/projects/proj_abc/threads/thr_abc?message=-1",
-      "/projects/proj_abc/threads/thr_abc?message=007",
-      "/projects/proj_abc/archived?message=4",
+      "/projects/proj_abc/threads/thr_abc?msg=",
+      "/projects/proj_abc/threads/thr_abc?msg=4a",
+      "/projects/proj_abc/threads/thr_abc?msg=-1",
+      "/projects/proj_abc/threads/thr_abc?msg=007",
+      "/projects/proj_abc/archived?msg=4",
       "thr_abc",
     ]) {
       expect(parseMessageLink(href)).toBeNull();

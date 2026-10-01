@@ -202,7 +202,7 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
-const MESSAGE_LINK_SEARCH_PARAM = "message";
+const MESSAGE_LINK_SEARCH_PARAM = "msg";
 
 export interface MessageLinkPathArgs extends ThreadRoutePathArgs {
   seq: number;
