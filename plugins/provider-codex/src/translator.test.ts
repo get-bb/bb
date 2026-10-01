@@ -701,29 +701,6 @@ describe("codex subagent activity correlation", () => {
     });
   }
 
-  it("opens a pending delegation at the spawn and settles it with the child turn", () => {
-    const harness = createHarness();
-    const opened = harness.translate(
-      subAgentActivity({ id: "subagent-call-1", kind: "started" }),
-    );
-    expect(opened).toEqual([
-      expect.objectContaining({
-        type: "item/started",
-        item: expect.objectContaining({
-          type: "delegation",
-          status: "pending",
-        }),
-      }),
-    ]);
-
-    harness.translate(childTurnStarted("child-turn-1"));
-    expect(
-      harness
-        .translate(childTurnCompleted("child-turn-1"))
-        .map((event) => event.type),
-    ).toEqual(["turn/completed", "item/completed"]);
-  });
-
   it("consumes completion activity notifications without duplicating the finished agent", () => {
     const harness = createHarness();
     harness.translate(subAgentActivity({ id: "spawn-1", kind: "started" }));

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
-  experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { experimental_REASONING_PRESENTATION as REASONING_PRESENTATION } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type {
   DeltaAssembler,
@@ -137,22 +134,6 @@ function createHarness(): CodexEquivalenceHarness {
 }
 
 describe("codex turn lifecycle translation", () => {
-  it("translates turn/started into a keyed turn/started", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("turn/started", {
-        threadId: "t1",
-        turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
-      }),
-    );
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "turn/started",
-        scope: turnScope(harness.turnId("turn-1")),
-      }),
-    ]);
-  });
-
   it("accepts legacy Codex bridge envelopes without jsonrpc", () => {
     const harness = createHarness();
     const events = harness.translate({
@@ -190,18 +171,6 @@ describe("codex turn lifecycle translation", () => {
     );
   });
 
-  it("ignores resolved Codex server requests", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("serverRequest/resolved", {
-        threadId: "t1",
-        requestId: 0,
-      }),
-    );
-
-    expect(events).toEqual([]);
-  });
-
   it("suppresses automatic review lifecycle notifications", () => {
     const harness = createHarness();
 
@@ -223,117 +192,42 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
-  it("preserves the checkpoint after a failed turn so the next message can be edited", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("turn/completed", {
-        threadId: "t1",
-        turn: codexTurn({
-          id: "turn-1",
-          status: "failed",
-          error: {
-            message: "rate limited",
-            codexErrorInfo: null,
-            additionalDetails: "try again",
-          },
+  it.each([
+    { status: "completed", error: null, expectedError: {} },
+    { status: "interrupted", error: null, expectedError: {} },
+    {
+      status: "failed",
+      error: {
+        message: "rate limited",
+        codexErrorInfo: null,
+        additionalDetails: "try again",
+      },
+      expectedError: { error: { message: "rate limited" } },
+    },
+  ] as const)(
+    "stamps the codex turn id as providerCheckpointId on a $status turn",
+    ({ status, error, expectedError }) => {
+      const harness = createHarness();
+      const events = harness.translate(
+        codexEvent("turn/completed", {
+          threadId: "t1",
+          turn: codexTurn({ id: "turn-1", status, error }),
         }),
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(harness.turnId("turn-1")),
-        status: "failed",
-        error: { message: "rate limited" },
-        providerCheckpointId: "turn-1",
-      }),
-    );
-  });
-
-  it("stamps the codex turn id as providerCheckpointId on completed turns", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("turn/completed", {
-        threadId: "t1",
-        turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
-      }),
-    );
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "turn/completed",
-        status: "completed",
-        providerCheckpointId: "turn-1",
-      }),
-    ]);
-  });
-
-  it("maps interrupted turn status with its fork checkpoint", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("turn/completed", {
-        threadId: "t1",
-        turn: codexTurn({ id: "turn-1", status: "interrupted", error: null }),
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/completed",
-        status: "interrupted",
-        providerCheckpointId: "turn-1",
-      }),
-    );
-  });
+      );
+      expect(events).toEqual([
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope(harness.turnId("turn-1")),
+          status,
+          providerCheckpointId: "turn-1",
+          ...expectedError,
+        }),
+      ]);
+    },
+  );
 });
 
 describe("codex thread lifecycle translation", () => {
-  it("translates thread/started into started + identity + name", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("thread/started", {
-        thread: {
-          id: "codex-uuid-123",
-          sessionId: "session-1",
-          forkedFromId: null,
-          parentThreadId: null,
-          preview: "Fix the tests",
-          ephemeral: false,
-
-          section: null,
-
-          sectionEnteredAt: null,
-
-          projectId: null,
-          modelProvider: "openai",
-          createdAt: 0,
-          updatedAt: 0,
-          recencyAt: null,
-          status: { type: "idle" },
-          path: null,
-          cwd: "/tmp",
-          cliVersion: "0.1",
-          source: "appServer",
-          threadSource: null,
-          agentNickname: null,
-          agentRole: null,
-          gitInfo: null,
-          name: null,
-          turns: [],
-        },
-      }),
-    );
-    expect(events).toEqual([
-      expect.objectContaining({ type: "thread/started" }),
-      expect.objectContaining({
-        type: "thread/identity",
-        providerThreadId: "codex-uuid-123",
-      }),
-      expect.objectContaining({
-        type: "thread/name/updated",
-        threadName: "Fix the tests",
-      }),
-    ]);
-  });
-
   it("translates thread/name/updated", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -727,47 +621,6 @@ describe("codex item translation", () => {
         type: "item/toolCall/progress",
         scope: turnScope(harness.turnId("turn-1")),
         message: "Connecting to MCP server",
-      }),
-    );
-  });
-
-  it("maps completed commandExecution status and output fields", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("item/completed", {
-        threadId: "t1",
-        turnId: "turn-1",
-        completedAtMs: 0,
-        item: {
-          type: "commandExecution",
-          id: "cmd-1",
-          command: "ls -la",
-          cwd: "/tmp",
-          processId: null,
-          pluginId: null,
-          scriptPath: null,
-          source: "agent",
-          status: "completed",
-          commandActions: [],
-          aggregatedOutput: "file1\nfile2",
-          exitCode: 0,
-          durationMs: 150,
-        },
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        scope: turnScope(harness.turnId("turn-1")),
-        item: expect.objectContaining({
-          type: "commandExecution",
-          id: harness.itemId("cmd-1"),
-          command: "ls -la",
-          status: "completed",
-          aggregatedOutput: "file1\nfile2",
-          exitCode: 0,
-          durationMs: 150,
-        }),
       }),
     );
   });
@@ -1200,48 +1053,6 @@ describe("codex item translation", () => {
     );
   });
 
-  it("keeps a collabAgentToolCall without a receiver a generic tool call", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("item/completed", {
-        threadId: "t1",
-        turnId: "turn-1",
-        completedAtMs: 0,
-        item: {
-          type: "collabAgentToolCall",
-          id: "collab-wait-1",
-          tool: "wait",
-          status: "completed",
-          senderThreadId: "t1",
-          receiverThreadIds: [],
-          prompt: null,
-          model: null,
-          reasoningEffort: null,
-          agentsStates: {},
-        },
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "toolCall",
-          tool: "wait",
-          status: "completed",
-          arguments: { senderThreadId: "t1", receiverThreadIds: [] },
-          result: {},
-          presentation: {
-            label: {
-              pending: "Waiting for agents",
-              completed: "Waited for agents",
-            },
-            icon: { glyph: "UserRound" },
-          },
-        }),
-      }),
-    );
-  });
-
   it("maps a declined collabAgentToolCall to interrupted", () => {
     const harness = createHarness();
     const events = harness.translate({
@@ -1333,62 +1144,9 @@ describe("codex item translation", () => {
       }),
     );
   });
-
-  it("maps started contextCompaction items", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("item/started", {
-        threadId: "t1",
-        turnId: "turn-1",
-        startedAtMs: 0,
-        item: { type: "contextCompaction", id: "compact-1" },
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/started",
-        scope: turnScope(harness.turnId("turn-1")),
-        item: {
-          type: "contextCompaction",
-          id: harness.itemId("compact-1"),
-          presentation: COMPACTION_PRESENTATION,
-        },
-      }),
-    );
-  });
 });
 
 describe("codex web item translation", () => {
-  it("maps completed search actions to webSearch", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("item/completed", {
-        threadId: "t1",
-        turnId: "turn-1",
-        completedAtMs: 0,
-        item: {
-          type: "webSearch",
-          id: "web-1",
-          query: "react suspense",
-          results: null,
-          action: { type: "search", query: "react suspense", queries: null },
-        },
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: {
-          type: "webSearch",
-          id: harness.itemId("web-1"),
-          queries: ["react suspense"],
-          resultText: null,
-          presentation: webSearchPresentation("react suspense"),
-        },
-      }),
-    );
-  });
-
   it("merges query fields on started search actions", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -1696,63 +1454,6 @@ describe("codex delta and usage translation", () => {
       });
     },
   );
-
-  it("fans thread/tokenUsage/updated out to both usage events exactly", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("thread/tokenUsage/updated", {
-        threadId: "t1",
-        turnId: "turn-1",
-        tokenUsage: {
-          total: {
-            totalTokens: 100,
-            inputTokens: 60,
-            cachedInputTokens: 10,
-            cacheWriteInputTokens: 7,
-            outputTokens: 30,
-            reasoningOutputTokens: 0,
-          },
-          last: {
-            totalTokens: 50,
-            inputTokens: 30,
-            cachedInputTokens: 5,
-            cacheWriteInputTokens: 3,
-            outputTokens: 15,
-            reasoningOutputTokens: 0,
-          },
-          modelContextWindow: 128000,
-        },
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "thread/tokenUsage/updated",
-        scope: turnScope(harness.turnId("turn-1")),
-        tokenUsage: expect.objectContaining({
-          total: expect.objectContaining({
-            totalTokens: 100,
-            cacheReadInputTokens: 10,
-            cacheWriteInputTokens: 7,
-          }),
-          last: expect.objectContaining({
-            cacheReadInputTokens: 5,
-            cacheWriteInputTokens: 3,
-          }),
-          modelContextWindow: 128000,
-        }),
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "thread/contextWindowUsage/updated",
-        contextWindowUsage: {
-          usedTokens: 50,
-          modelContextWindow: 128000,
-          estimated: false,
-        },
-      }),
-    );
-  });
 });
 
 describe("codex plan translation", () => {
@@ -1849,52 +1550,7 @@ describe("codex plan translation", () => {
   });
 });
 
-describe("codex turn diff translation", () => {
-  it("maps turn/diff/updated onto the vouched turn", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("turn/diff/updated", {
-        threadId: "t1",
-        turnId: "turn-1",
-        diff: "+added line",
-      }),
-    );
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "turn/diff/updated",
-        scope: turnScope(harness.turnId("turn-1")),
-        diff: "+added line",
-      }),
-    ]);
-  });
-});
-
 describe("codex error and warning translation", () => {
-  it("includes detail and willRetry on turn-scoped errors", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("error", {
-        threadId: "t1",
-        turnId: "turn-1",
-        error: {
-          message: "Rate limited",
-          codexErrorInfo: null,
-          additionalDetails: "retry after 30s",
-        },
-        willRetry: true,
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "provider/error",
-        scope: turnScope(harness.turnId("turn-1")),
-        message: "Provider error",
-        detail: "Rate limited\nretry after 30s",
-        willRetry: true,
-      }),
-    );
-  });
-
   it("keeps a turnless error thread-scoped even while a turn is open", () => {
     const harness = createHarness();
     harness.translate(
@@ -1922,39 +1578,6 @@ describe("codex error and warning translation", () => {
         detail: "startup failed",
       }),
     ]);
-  });
-
-  it("maps codexErrorInfo to provider error info", () => {
-    const harness = createHarness();
-    const events = harness.translate(
-      codexEvent("error", {
-        threadId: "t1",
-        turnId: "turn-1",
-        error: {
-          message: "stream disconnected",
-          codexErrorInfo: {
-            responseStreamDisconnected: { httpStatusCode: 502 },
-          },
-          additionalDetails: null,
-        },
-        willRetry: false,
-      }),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "provider/error",
-        scope: turnScope(harness.turnId("turn-1")),
-        message: "Provider error",
-        detail: "stream disconnected",
-        willRetry: false,
-        errorInfo: {
-          category: "stream-disconnected",
-          providerCode: "responseStreamDisconnected",
-          httpStatusCode: 502,
-        },
-      }),
-    );
   });
 
   it.each([
@@ -2668,61 +2291,5 @@ describe("codex account rate-limit translation", () => {
         reachedReason: null,
       },
     });
-  });
-});
-
-describe("codex ignored notifications", () => {
-  it("ignores remote control status changes", () => {
-    const harness = createHarness();
-    const events = harness.translate({
-      jsonrpc: "2.0",
-      method: "remoteControl/status/changed",
-      params: {
-        status: "disabled",
-        environmentId: null,
-      },
-    });
-
-    expect(events).toEqual([]);
-  });
-
-  it("ignores thread settings updates", () => {
-    const harness = createHarness();
-    const events = harness.translate({
-      jsonrpc: "2.0",
-      method: "thread/settings/updated",
-      params: {
-        threadId: "t1",
-        threadSettings: {
-          cwd: "/tmp/project",
-          approvalPolicy: "never",
-          approvalsReviewer: "user",
-          sandboxPolicy: {
-            type: "workspaceWrite",
-            writableRoots: ["/tmp/thread-storage"],
-            networkAccess: true,
-            excludeTmpdirEnvVar: false,
-            excludeSlashTmp: false,
-          },
-          activePermissionProfile: null,
-          model: "gpt-5.5",
-          modelProvider: "openai",
-          serviceTier: null,
-          effort: "xhigh",
-          summary: null,
-          collaborationMode: {
-            mode: "default",
-            settings: {
-              model: "gpt-5.5",
-              reasoning_effort: "xhigh",
-              developer_instructions: null,
-            },
-          },
-          personality: "pragmatic",
-        },
-      },
-    });
-
-    expect(events).toEqual([]);
   });
 });

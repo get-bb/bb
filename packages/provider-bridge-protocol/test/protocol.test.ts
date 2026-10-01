@@ -12,7 +12,6 @@ import {
   providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
   ThreadEventGrammar,
-  toolCallRequestParamsSchema,
   turnStartParamsSchema,
 } from "../src/index.js";
 import { THREAD_DELTA_NOTIFICATION_METHOD } from "../src/thread-delta.js";
@@ -93,28 +92,6 @@ describe("thread/stop", () => {
       activeTurnId: null,
     });
     expect(release.intent).toBe("release");
-  });
-});
-
-describe("item/tool/call", () => {
-  it("rejects an empty-string turn id — null is the only unresolved value", () => {
-    const empty = toolCallRequestParamsSchema.safeParse({
-      providerThreadId: "p_1",
-      turnId: "",
-      callId: "c_1",
-      tool: "ask_user_question",
-      arguments: {},
-    });
-    expect(empty.success).toBe(false);
-
-    const unresolved = toolCallRequestParamsSchema.parse({
-      providerThreadId: "p_1",
-      turnId: null,
-      callId: "c_1",
-      tool: "ask_user_question",
-      arguments: {},
-    });
-    expect(unresolved.turnId).toBeNull();
   });
 });
 

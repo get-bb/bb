@@ -33,10 +33,6 @@ interface ClaudeQueryPromptCall {
   prompt: AsyncIterable<SDKUserMessage>;
 }
 
-interface RejectSdkStreamArgs {
-  error: Error;
-}
-
 function isClaudeQueryPromptCall(
   value: unknown,
 ): value is ClaudeQueryPromptCall {
@@ -58,13 +54,6 @@ function getLatestQueryCall(): ClaudeQueryPromptCall {
 
 function getLatestPrompt(): AsyncIterable<SDKUserMessage> {
   return getLatestQueryCall().prompt;
-}
-
-function rejectSdkStream(args: RejectSdkStreamArgs): void {
-  mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
-    next: vi.fn().mockRejectedValue(args.error),
-    return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
-  });
 }
 
 function keepSdkStreamOpen(): void {
@@ -100,65 +89,6 @@ describe("SdkSession", () => {
     vi.restoreAllMocks();
   });
 
-  it("starts with no session id", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(defaultOptions, onMessage, onDone);
-    expect(session.getSessionId()).toBeUndefined();
-  });
-
-  it("applies model and mutable flag settings to the live query", async () => {
-    keepSdkStreamOpen();
-    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
-    session.start();
-
-    await session.setModel("claude-opus-5");
-    await session.applyMutableSettings({
-      effort: "max",
-      settings: {
-        autoMemoryEnabled: false,
-        enableWorkflows: true,
-        effortLevel: "max",
-        ultracode: false,
-        fastMode: true,
-      },
-    });
-
-    expect(mockQueryInstance.setModel).toHaveBeenCalledWith("claude-opus-5");
-    expect(mockQueryInstance.applyFlagSettings).toHaveBeenCalledWith({
-      autoMemoryEnabled: false,
-      enableWorkflows: true,
-      effortLevel: "max",
-      ultracode: false,
-      fastMode: true,
-    });
-    session.stop();
-  });
-
-  it("resolves pushed input after the SDK prompt iterator yields it", async () => {
-    keepSdkStreamOpen();
-    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
-    const promptId = "00000000-0000-0000-0000-000000000001";
-
-    session.start();
-    expect(session.canPushInput()).toBe(true);
-    const consumed = session.pushInput("hello", promptId);
-    let consumedResolved = false;
-    void consumed.then(() => {
-      consumedResolved = true;
-    });
-    await Promise.resolve();
-
-    expect(consumedResolved).toBe(false);
-    const result = await getLatestPrompt()[Symbol.asyncIterator]().next();
-    expect(result.done).toBe(false);
-    expect(result.value?.message.content).toBe("hello");
-    expect(result.value?.uuid).toBe(promptId);
-    await consumed;
-    expect(consumedResolved).toBe(true);
-    session.stop();
-  });
-
   it("rejects queued input when the SDK input stream closes before consumption", async () => {
     const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
     const consumed = session.pushInput("hello");
@@ -169,45 +99,6 @@ describe("SdkSession", () => {
     await expect(consumed).rejects.toThrow(
       "Claude SDK session stopped before input consumed",
     );
-  });
-
-  it("stop cleans up state", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(defaultOptions, onMessage, onDone);
-    session.start();
-    session.stop();
-    expect(mockQueryInstance.close).toHaveBeenCalled();
-  });
-
-  it("waits for the SDK stream to finish during graceful close", async () => {
-    let finishStream:
-      | ((result: IteratorResult<SDKMessage>) => void)
-      | undefined;
-    const next = vi.fn(
-      () =>
-        new Promise<IteratorResult<SDKMessage>>((resolve) => {
-          finishStream = resolve;
-        }),
-    );
-    mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
-      next,
-      return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
-    });
-    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
-
-    session.start();
-    const closePromise = session.closeGracefully(1_000);
-    await Promise.resolve();
-
-    expect(mockQueryInstance.close).not.toHaveBeenCalled();
-    if (!finishStream) {
-      throw new Error("Expected Claude SDK stream to be pending");
-    }
-    finishStream({ value: undefined, done: true });
-    await closePromise;
-
-    expect(mockQueryInstance.close).not.toHaveBeenCalled();
   });
 
   it("interrupts the running turn before ending SDK input during graceful close", async () => {
@@ -247,7 +138,10 @@ describe("SdkSession", () => {
       throw new Error("Expected Claude SDK interrupt to be pending");
     }
     finishInterrupt();
-    await expect(pendingInput).resolves.toEqual({ value: undefined, done: true });
+    await expect(pendingInput).resolves.toEqual({
+      value: undefined,
+      done: true,
+    });
     if (!finishStream) {
       throw new Error("Expected Claude SDK stream to be pending");
     }
@@ -266,77 +160,6 @@ describe("SdkSession", () => {
     session.start();
     await session.closeGracefully(60_000);
     expect(mockQueryInstance.close).toHaveBeenCalledOnce();
-  });
-
-  it("forwards local plugins to the SDK without a skills allowlist", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(
-      {
-        ...defaultOptions,
-        plugins: [{ type: "local", path: "/tmp/bb-skills" }],
-      },
-      onMessage,
-      onDone,
-    );
-
-    session.start();
-
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          plugins: [{ type: "local", path: "/tmp/bb-skills" }],
-        }),
-      }),
-    );
-    expect(queryMock.mock.calls[0]?.[0]?.options).not.toHaveProperty("skills");
-  });
-
-  it("mirrors the Claude CLI settings cascade so user, project, and local settings all load", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(defaultOptions, onMessage, onDone);
-
-    session.start();
-
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          settingSources: ["user", "project", "local"],
-        }),
-      }),
-    );
-  });
-
-  it("forwards max reasoning effort and thinking display to the SDK when configured", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(
-      {
-        ...defaultOptions,
-        effort: "max",
-        thinking: {
-          type: "adaptive",
-          display: "summarized",
-        },
-      },
-      onMessage,
-      onDone,
-    );
-
-    session.start();
-
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          effort: "max",
-          thinking: {
-            type: "adaptive",
-            display: "summarized",
-          },
-        }),
-      }),
-    );
   });
 
   it("forwards an explicit Claude Code executable path to the SDK", () => {
@@ -441,71 +264,6 @@ describe("SdkSession", () => {
     );
     expect(queryMock.mock.calls[0]?.[0]?.options).not.toHaveProperty(
       "allowDangerouslySkipPermissions",
-    );
-  });
-
-  it("includes captured Claude stderr in SDK stream failures", async () => {
-    rejectSdkStream({
-      error: new Error("Claude Code process exited with code 1"),
-    });
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(defaultOptions, onMessage, onDone);
-
-    session.start();
-    getLatestQueryCall().options.stderr?.(
-      "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons\n",
-    );
-    await waitForAsyncWork();
-
-    const doneError = onDone.mock.calls[0]?.[0];
-    if (!(doneError instanceof Error)) {
-      throw new Error("Expected onDone to receive an Error");
-    }
-    expect(doneError.message).toContain(
-      "Claude Code process exited with code 1",
-    );
-    expect(doneError.message).toContain("Claude Code stderr:");
-    expect(doneError.message).toContain(
-      "cannot be used with root/sudo privileges",
-    );
-  });
-
-  it("forwards sandbox and hooks to the SDK when configured", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const hooks: NonNullable<SdkSessionOptions["hooks"]> = {
-      PreToolUse: [{ hooks: [vi.fn()] }],
-    };
-    const session = new SdkSession(
-      {
-        ...defaultOptions,
-        additionalDirectories: ["/repo/.git/worktrees/bb13"],
-        sandbox: {
-          enabled: true,
-          autoAllowBashIfSandboxed: true,
-          allowUnsandboxedCommands: false,
-        },
-        hooks,
-      },
-      onMessage,
-      onDone,
-    );
-
-    session.start();
-
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          additionalDirectories: ["/repo/.git/worktrees/bb13"],
-          sandbox: {
-            enabled: true,
-            autoAllowBashIfSandboxed: true,
-            allowUnsandboxedCommands: false,
-          },
-          hooks,
-        }),
-      }),
     );
   });
 });

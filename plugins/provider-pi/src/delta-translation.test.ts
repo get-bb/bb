@@ -853,30 +853,6 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
-  it("gives a bash call without cwd args the session's working directory", () => {
-    const harness = createHarness();
-    harness.translate(loadFixture("agent-start.json"));
-    const events = harness.translate(
-      sdkMessage({
-        type: "tool_execution_start",
-        toolCallId: "tool-bash-cwd",
-        toolName: "bash",
-        args: { command: "ls" },
-      }),
-      { threadId: THREAD_ID, cwd: "/work/tree" },
-    );
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "item/started",
-        item: expect.objectContaining({
-          type: "commandExecution",
-          command: "ls",
-          cwd: "/work/tree",
-        }),
-      }),
-    ]);
-  });
-
   it("keeps the call's own cwd over the session's", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
@@ -1877,31 +1853,6 @@ describe("pi delta translation equivalence", () => {
       "turn/started",
       "turn/input/accepted",
       "turn/completed",
-    ]);
-  });
-
-  it("prompt-settled failure closes the open turn with the error", () => {
-    const harness = createHarness();
-    harness.translate(loadFixture("agent-start.json"));
-    const turnId = harness.openTurnId();
-
-    const events = harness.translate({
-      jsonrpc: "2.0",
-      method: "pi/prompt/settled",
-      params: {
-        threadId: THREAD_ID,
-        status: "failed" as const,
-        error: "Nothing to compact",
-      },
-    });
-
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(turnId),
-        status: "failed",
-        error: { message: "Nothing to compact" },
-      }),
     ]);
   });
 

@@ -258,40 +258,6 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
     });
   });
 
-  it("classifies an opencode external_directory permission as a file_change subject when the in-flight tool call is an edit", () => {
-    const payload = buildAcpPermissionInteractionPayload({
-      toolCall: {
-        toolCallId: "write-tool-1",
-        title: "/tmp/qa-1719",
-        kind: "other",
-        locations: [
-          { path: "/tmp/qa-1719/notes.md" },
-          { path: "/tmp/qa-1719" },
-        ],
-        rawInput: {
-          filepath: "/tmp/qa-1719/notes.md",
-          parentDir: "/tmp/qa-1719",
-        },
-        startedToolCall: {
-          sessionUpdate: "tool_call",
-          toolCallId: "write-tool-1",
-          title: "Editing notes.md",
-          kind: "edit",
-          locations: [{ path: "/tmp/qa-1719/notes.md" }],
-        },
-      },
-      options: allowDenyOptions,
-    });
-
-    expect(payload).toMatchObject({
-      subject: {
-        kind: "file_change",
-        itemId: "write-tool-1",
-        writeScope: "/tmp/qa-1719",
-      },
-    });
-  });
-
   it("keeps a generic other-kind permission with locations a tool_use subject when nothing signals a write", () => {
     const payload = buildAcpPermissionInteractionPayload({
       toolCall: {

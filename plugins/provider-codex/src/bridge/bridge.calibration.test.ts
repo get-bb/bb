@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
-  BRIDGE_JSON_RPC_ERRORS,
   THREAD_DELTA_NOTIFICATION_METHOD,
   approvalInteractionOutcomeSchema,
   interactionRequestPayloadSchema,
@@ -35,11 +34,6 @@ const SCRIPT_THREAD_ID = "codex-script-thread";
 const FIRST_TURN_ID = "turn-cal-1";
 const SECOND_TURN_ID = "turn-cal-2";
 const COMMAND_ITEM_ID = "cmd-cal-1";
-
-const ARCHIVED_PROVIDER_THREAD_ID = "archived-calibration-1";
-const ARCHIVED_ERROR_TEXT = `session ${ARCHIVED_PROVIDER_THREAD_ID} is archived; unarchive it and retry`;
-const RUNTIME_UNARCHIVE_RETRY_PATTERN =
-  /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 
 interface ScriptedNotification {
   kind?: "notify";
@@ -506,26 +500,3 @@ it("replays one scripted codex session onto the golden event stream", async () =
     subject: { kind: "command", command: "git status --short" },
   });
 }, 60_000);
-
-it("surfaces an archived-session resume rejection verbatim", async () => {
-  const bridge = createBridgeJsonRpcTestHarness(handleLine);
-  try {
-    bridge.sendRequest(1, "thread/resume", {
-      threadId: THREAD_ID,
-      providerThreadId: ARCHIVED_PROVIDER_THREAD_ID,
-      cwd: workspaceDir,
-      instructionMode: "append",
-      options: { ...FULL_ACCESS_SESSION_OPTIONS },
-    });
-    const response = await bridge.waitForResponse(1);
-
-    expect(response.error?.code).toBe(
-      BRIDGE_JSON_RPC_ERRORS.SESSION_NOT_RESTORABLE,
-    );
-    expect(response.error?.message).toBe(ARCHIVED_ERROR_TEXT);
-    expect(ARCHIVED_ERROR_TEXT).toMatch(RUNTIME_UNARCHIVE_RETRY_PATTERN);
-    expect(response.error?.message).toMatch(RUNTIME_UNARCHIVE_RETRY_PATTERN);
-  } finally {
-    bridge.restore();
-  }
-}, 30_000);

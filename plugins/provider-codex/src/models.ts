@@ -17,9 +17,7 @@ const codexModelIdentitySchema = z
   })
   .passthrough();
 
-export function mapCodexReasoningLevelToBb(
-  value: unknown,
-): ReasoningLevel | null {
+function mapCodexReasoningLevelToBb(value: unknown): ReasoningLevel | null {
   if (typeof value !== "string") {
     return null;
   }

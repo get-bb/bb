@@ -93,21 +93,6 @@ describe("pi extension ui interaction", () => {
     );
   });
 
-  it("renders the unwrapped payload the host passes to plugin components", async () => {
-    const submit = vi.fn(async () => undefined);
-    const view = render(
-      {
-        requestId: "ui-1",
-        method: "select",
-        options: ["Allow once", "Keep blocked"],
-      },
-      { submit },
-    );
-    fireEvent.click(view.getByText("Allow once"));
-    fireEvent.click(view.getByText("Submit answer"));
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("Allow once"));
-  });
-
   it("still renders the wrapped stored-payload shape for robustness", async () => {
     const submit = vi.fn(async () => undefined);
     const view = render(

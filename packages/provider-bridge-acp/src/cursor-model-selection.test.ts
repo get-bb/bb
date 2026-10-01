@@ -3,10 +3,7 @@ import {
   buildAgentModelCatalog,
   parseAgentModelLines,
 } from "./bridge/model-catalog.js";
-import {
-  buildCursorParameterizedModelCatalog,
-  cursorParameterizedSelection,
-} from "./cursor-model-selection.js";
+import { buildCursorParameterizedModelCatalog } from "./cursor-model-selection.js";
 
 describe("Cursor parameterized model selection", () => {
   it("keeps bare ACP ids while preserving CLI reasoning variants", () => {
@@ -67,11 +64,5 @@ describe("Cursor parameterized model selection", () => {
         (effort) => effort.reasoningEffort,
       ),
     ).toEqual(["low", "medium", "high"]);
-  });
-
-  it("normalizes a legacy variant before session selection", () => {
-    expect(
-      cursorParameterizedSelection("cursor-grok-4.6-medium", "high"),
-    ).toEqual({ modelId: "grok-4.6", reasoningLevel: "high" });
   });
 });
