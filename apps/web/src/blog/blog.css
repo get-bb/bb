@@ -123,7 +123,7 @@
   font-size: 16.5px;
 }
 
-.article .post-body h2 {
+.article .post-body h2:not(.post-embed *) {
   margin-top: 40px;
   font-size: 18px;
   font-weight: 650;
@@ -131,24 +131,24 @@
   color: var(--heading-sub);
 }
 
-.article .post-body h3 {
+.article .post-body h3:not(.post-embed *) {
   margin-top: 30px;
   font-size: 16px;
   font-weight: 650;
   color: var(--heading-sub);
 }
 
-.post-body p,
-.post-body li {
+.post-body p:not(.post-embed *),
+.post-body li:not(.post-embed *) {
   color: var(--dim);
   font-size: 16px;
 }
 
-.post-body p {
+.post-body p:not(.post-embed *) {
   margin-top: 18px;
 }
 
-.post-body ul {
+.post-body ul:not(.post-embed *) {
   margin-top: 12px;
   list-style: none;
   display: flex;
@@ -156,13 +156,13 @@
   gap: 9px;
 }
 
-.post-body li {
+.post-body li:not(.post-embed *) {
   position: relative;
   padding-left: 20px;
   font-size: 15.5px;
 }
 
-.post-body li::before {
+.post-body li:not(.post-embed *)::before {
   content: "";
   position: absolute;
   left: 2px;
@@ -203,12 +203,12 @@
   text-decoration-color: var(--ink);
 }
 
-.post-body strong {
+.post-body strong:not(.post-embed *) {
   color: var(--ink);
   font-weight: 600;
 }
 
-.post-body code {
+.post-body code:not(.post-embed *) {
   font-family: var(--font-mono);
   font-size: 13.5px;
   background: var(--surface-recessed);

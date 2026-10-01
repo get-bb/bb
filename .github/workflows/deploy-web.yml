@@ -8,6 +8,8 @@ on:
       - "apps/web/**"
       - "packages/connect-db/**"
       - "packages/domain/src/plugin-install-badge.ts"
+      - "packages/shared-ui/src/**"
+      - "plugins/plugin-api-docs/src/**"
       - "changelog-parser.ts"
   workflow_dispatch:
 

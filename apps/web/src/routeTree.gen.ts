@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from "./routes/__root";
 import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
 import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
+import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
 import { Route as LinkRouteImport } from "./routes/link";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
@@ -52,6 +53,11 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: "/privacy",
   path: "/privacy",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const PluginGuideRoute = PluginGuideRouteImport.update({
+  id: "/plugin-guide",
+  path: "/plugin-guide",
   getParentRoute: () => rootRouteImport,
 } as any);
 const MarketplaceRoute = MarketplaceRouteImport.update({
@@ -195,6 +201,7 @@ export interface FileRoutesByFullPath {
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
+  "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
@@ -226,6 +233,7 @@ export interface FileRoutesByTo {
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
+  "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
@@ -258,6 +266,7 @@ export interface FileRoutesById {
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace_": typeof MarketplaceRouteWithChildren;
+  "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
@@ -291,6 +300,7 @@ export interface FileRouteTypes {
     | "/dashboard"
     | "/link"
     | "/marketplace"
+    | "/plugin-guide"
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
@@ -322,6 +332,7 @@ export interface FileRouteTypes {
     | "/dashboard"
     | "/link"
     | "/marketplace"
+    | "/plugin-guide"
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
@@ -353,6 +364,7 @@ export interface FileRouteTypes {
     | "/dashboard"
     | "/link"
     | "/marketplace_"
+    | "/plugin-guide"
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
@@ -385,6 +397,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute;
   LinkRoute: typeof LinkRoute;
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
+  PluginGuideRoute: typeof PluginGuideRoute;
   PrivacyRoute: typeof PrivacyRoute;
   RobotsDottxtRoute: typeof RobotsDottxtRoute;
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute;
@@ -429,6 +442,13 @@ declare module "@tanstack/react-router" {
       path: "/privacy";
       fullPath: "/privacy";
       preLoaderRoute: typeof PrivacyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/plugin-guide": {
+      id: "/plugin-guide";
+      path: "/plugin-guide";
+      fullPath: "/plugin-guide";
+      preLoaderRoute: typeof PluginGuideRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/marketplace_": {
@@ -637,6 +657,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   LinkRoute: LinkRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,
+  PluginGuideRoute: PluginGuideRoute,
   PrivacyRoute: PrivacyRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
