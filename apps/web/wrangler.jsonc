@@ -25,8 +25,6 @@
     // Resend audience that /api/subscribe adds emails to ("bb users").
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
-    // Staging only: ask each tunnel object whether it is connected instead
-    // of reading last_seen_at, matching bb-connect-staging's PRESENCE_WRITES.
     "PRESENCE_WRITES": "on-change",
   },
   "secrets": {
@@ -96,6 +94,7 @@
       "vars": {
         "BASE_DOMAIN": "getbb.app",
         "APP_URL": "https://getbb.app",
+        "PRESENCE_WRITES": "on-change",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
       "d1_databases": [
