@@ -1,3 +1,4 @@
+import { PROVIDERS } from "../src/fixtures/providers.js";
 import { pluginPackageJsonSchema } from "@bb/domain";
 import {
   pluginListResponseSchema,
@@ -13,6 +14,18 @@ await cp(new URL("../../app/dist/", import.meta.url), destination, {
   recursive: true,
   filter: (source) => !source.endsWith(".gz") && !source.endsWith(".br"),
 });
+
+const providerAssets = new URL("demo-providers/", destination);
+await mkdir(providerAssets, { recursive: true });
+for (const provider of PROVIDERS) {
+  await cp(
+    new URL(
+      `../../../plugins/provider-${provider.id}/icons/${provider.id}.svg`,
+      import.meta.url,
+    ),
+    new URL(`${provider.id}.svg`, providerAssets),
+  );
+}
 
 const plugins: InstalledPlugin[] = [];
 const artifactMetaSchema = z.object({

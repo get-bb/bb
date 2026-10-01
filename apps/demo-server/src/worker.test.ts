@@ -9,6 +9,7 @@ import {
   systemAppUpdateStatusSchema,
   threadTimelineResponseSchema,
 } from "@bb/server-contract";
+import { PROVIDERS } from "./fixtures/providers.js";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
 let worker: ChildProcess;
@@ -113,6 +114,14 @@ it("serves the sidebar plugin frontends and sample conversation in current contr
       expect(asset.status).toBe(200);
       expect(asset.headers.get("content-type")).not.toContain("text/html");
     }
+  }
+  for (const provider of PROVIDERS) {
+    if (provider.logoUrl === null)
+      throw new Error("Missing demo provider logo URL");
+    const logo = await fetch(new URL(provider.logoUrl, origin));
+    expect(logo.status).toBe(200);
+    expect(logo.headers.get("content-type")).toContain("image/svg+xml");
+    expect(await logo.text()).toContain("<svg");
   }
   const bootstrap = sidebarBootstrapResponseSchema.parse(
     await (await fetch(`${origin}/api/v1/sidebar-bootstrap`)).json(),

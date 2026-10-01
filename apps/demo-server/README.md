@@ -13,6 +13,7 @@ client addresses would collapse the isolated fixture worlds.
 The build copies the web app and only the Navigation and Thread list plugins'
 browser JavaScript and CSS. The existing plugin preparation tasks compile their
 artifacts; no plugin server or host code is shipped or executed by this Worker.
+Static SVG logos for the fixture providers are served at their advertised API URLs.
 The generated plugin catalog advertises those frontends, and fixture RPC supplies
 the thread list's default preferences. Automatic web sidebar preference writes
 are validated and kept inside each client's fixture world. Precompressed `.br` and `.gz` copies are

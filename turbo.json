@@ -63,6 +63,12 @@
         "bb-plugin-navigation#prepare:bundled",
         "bb-plugin-thread-list#prepare:bundled"
       ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-codex/icons/codex.svg",
+        "$TURBO_ROOT$/plugins/provider-claude-code/icons/claude-code.svg",
+        "$TURBO_ROOT$/plugins/provider-pi/icons/pi.svg"
+      ],
       "outputs": ["dist/**"]
     },
     "@bb/app#build": {
