@@ -13,6 +13,7 @@ import {
   execPortableFile,
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
+  spawnManagedProcess,
 } from "../src/index.js";
 
 for (const shim of [false, true]) {
@@ -109,12 +110,15 @@ for (const shim of [false, true]) {
   );
 }
 
-it("reports ENOENT when a command cannot be resolved", async () => {
-  const child = spawnPortablePipedProcess({
+it("reports ENOENT and finishes cleanup when a command cannot be resolved", async () => {
+  const managed = spawnManagedProcess({
     command: "bb-process-utils-command-that-does-not-exist",
     args: [],
   });
-  await expect(once(child, "close")).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(once(managed.child, "close")).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await managed.stop();
 });
 
 it.runIf(process.platform === "win32")(

@@ -249,8 +249,10 @@ async function createPackageRoot(root: string): Promise<string> {
 
 export const launcherProcessOps: ServerMoveServiceOptions["processOps"] = {
   isRunning: (pid) => pid === process.pid,
-  readCommand: async (pid) =>
-    pid === process.pid ? `node ${LAUNCHER_ENTRY_PATH} start` : null,
+  readIdentity: async (pid) =>
+    pid === process.pid
+      ? { command: `node ${LAUNCHER_ENTRY_PATH} start`, startedAt: null }
+      : null,
 };
 
 export async function writeLauncherMovedMode(args: {

@@ -25,9 +25,7 @@ export function spawnManagedProcess(
   });
   const exited = new Promise<void>((resolve) => {
     child.once("exit", () => resolve());
-    child.once("error", () => {
-      if (child.pid === undefined) resolve();
-    });
+    child.once("close", () => resolve());
   });
   let stopping: Promise<void> | undefined;
   return {
