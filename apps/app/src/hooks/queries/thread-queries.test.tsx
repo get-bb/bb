@@ -45,6 +45,7 @@ import {
   THREAD_OPEN_CACHE_GC_MS,
   THREAD_OPEN_CACHE_MAX_THREADS,
 } from "../cache-owners/thread-open-cache-owner";
+import { removeThreadScopedQueries } from "../cache-owners/mutation-cache-effects";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
@@ -1031,6 +1032,36 @@ describe("thread open cache retention", () => {
     expect(hasTimeline(queryClient, "thread-0")).toBe(false);
     expect(hasBootstrap(queryClient, "thread-0")).toBe(false);
     for (const threadId of threadIds.slice(1)) {
+      expect(hasTimeline(queryClient, threadId)).toBe(true);
+      expect(hasBootstrap(queryClient, threadId)).toBe(true);
+    }
+  });
+
+  it("frees a deleted thread's slot instead of evicting a retained thread", async () => {
+    mockMatchMedia([]);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const threadIds = Array.from(
+      { length: THREAD_OPEN_CACHE_MAX_THREADS + 1 },
+      (_, index) => `thread-${index}`,
+    );
+    for (const threadId of threadIds) {
+      seedThreadOpenCache(queryClient, threadId);
+    }
+    const deletedThreadId = threadIds[THREAD_OPEN_CACHE_MAX_THREADS - 1];
+    if (deletedThreadId === undefined) {
+      throw new Error("Expected a thread to delete");
+    }
+
+    await openTimelines(threadIds.slice(0, -1), wrapper);
+    removeThreadScopedQueries({ queryClient, threadId: deletedThreadId });
+    await openTimelines(threadIds.slice(-1), wrapper);
+
+    expect(hasTimeline(queryClient, deletedThreadId)).toBe(false);
+    expect(hasBootstrap(queryClient, deletedThreadId)).toBe(false);
+    for (const threadId of threadIds) {
+      if (threadId === deletedThreadId) {
+        continue;
+      }
       expect(hasTimeline(queryClient, threadId)).toBe(true);
       expect(hasBootstrap(queryClient, threadId)).toBe(true);
     }

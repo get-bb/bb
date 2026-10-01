@@ -72,3 +72,14 @@ export function touchThreadOpenCache(
   touched.add(threadId);
   evictThreadOpenCache(queryClient, touched);
 }
+
+export function forgetThreadOpenCache(
+  queryClient: QueryClient,
+  threadId: string,
+): void {
+  threadOpenCacheTouchesByClient.get(queryClient)?.delete(threadId);
+  queryClient.removeQueries({
+    queryKey: threadDetailBootstrapQueryKey(threadId),
+    exact: true,
+  });
+}
