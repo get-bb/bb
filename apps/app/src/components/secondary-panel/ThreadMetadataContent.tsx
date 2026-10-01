@@ -1,3 +1,4 @@
+import { EnvironmentProviderIcon } from "@/components/plugin/EnvironmentProviderIcon";
 import {
   useCallback,
   useEffect,
@@ -285,7 +286,20 @@ export function EnvironmentRow({
     <>
       <DetailRow
         label={
-          <DetailRowIconLabel icon="Layers">Environment</DetailRowIconLabel>
+          providerLookup.status === "loaded" &&
+          providerLookup.provider !== null ? (
+            <span className="flex items-center gap-1.5">
+              <EnvironmentProviderIcon
+                provider={providerLookup.provider}
+                className={DETAIL_ROW_ICON_CLASS}
+              />
+              <span className="min-w-0 truncate">Environment</span>
+            </span>
+          ) : (
+            <DetailRowIconLabel icon={infoDisplay.icon}>
+              Environment
+            </DetailRowIconLabel>
+          )
         }
         valueClassName="min-w-0"
       >
