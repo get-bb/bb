@@ -266,14 +266,13 @@ describe("provider usage footer disclosure", () => {
     ).toBe("true");
     expect(
       slot
-        .getAllByRole("listitem")
+        .getAllByRole("region")
         .map((row) => row.getAttribute("aria-label")),
     ).toEqual([
       "Codex team@example.com",
       "Codex personal@example.com",
       "Claude Code claude-team@example.com",
     ]);
-    expect(slot.queryByRole("heading")).toBeNull();
     for (const providerId of ["codex", "claude-code"]) {
       await waitFor(() =>
         expect(fetchMock).toHaveBeenCalledWith(
@@ -297,8 +296,9 @@ describe("provider usage footer disclosure", () => {
     const machinePicker = slot.getByRole("button", {
       name: "Usage machine: M5",
     });
-    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
-    expect(slot.getByText("codex@example.com")).toBeTruthy();
+    expect(
+      slot.getByRole("heading", { name: "codex@example.com" }),
+    ).toBeTruthy();
     expect(slot.getByText("97%")).toBeTruthy();
     expect(
       localStorage.getItem("bb.bb--provider-usage.selected-machine.v1"),
@@ -322,13 +322,15 @@ describe("provider usage footer disclosure", () => {
     expect(
       codexTab.querySelector("[data-provider-logo*='/codex/']"),
     ).not.toBeNull();
-    expect(slot.getByRole("heading", { name: "Claude Code" })).toBeTruthy();
-    expect(slot.getByText("claude@example.com")).toBeTruthy();
+    expect(
+      slot.getByRole("heading", { name: "claude@example.com" }),
+    ).toBeTruthy();
     expect(slot.getByText("82%")).toBeTruthy();
 
     fireEvent.click(codexTab);
-    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
-    expect(slot.getByText("codex@example.com")).toBeTruthy();
+    expect(
+      slot.getByRole("heading", { name: "codex@example.com" }),
+    ).toBeTruthy();
     expect(slot.getByText("37%")).toBeTruthy();
     fireEvent.keyDown(codexTab, { key: "ArrowLeft" });
     expect(claudeTab.getAttribute("aria-selected")).toBe("true");
