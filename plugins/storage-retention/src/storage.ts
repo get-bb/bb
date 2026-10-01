@@ -246,30 +246,34 @@ export function createStorage(bb: BbPluginApi) {
             env.path === null ? [] : [{ path: env.path, perChild: false }],
           ),
         ];
-        const disk = await worker.call(
-          "capacity",
-          { path: rootPath },
-          { hostId, signal: lifecycle.signal },
-        );
-        const largeFiles = await worker.call(
-          "largeFiles",
-          { rootPath, minBytes: LARGE_FILE_MIN_BYTES },
-          { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
-        );
         const measured = new Map<string, MeasuredTarget>();
-        for (let offset = 0; offset < targets.length; offset += 500) {
-          const result = await worker.call(
-            "measure",
-            {
-              targets: targets.slice(offset, offset + 500),
-              timeoutMs: 29 * 60_000,
-            },
+        const [disk, largeFiles] = await Promise.all([
+          worker.call(
+            "capacity",
+            { path: rootPath },
+            { hostId, signal: lifecycle.signal },
+          ),
+          worker.call(
+            "largeFiles",
+            { rootPath, minBytes: LARGE_FILE_MIN_BYTES },
             { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
-          );
-          lifecycle.signal.throwIfAborted();
-          for (const target of result.targets)
-            measured.set(target.path, target);
-        }
+          ),
+          (async () => {
+            for (let offset = 0; offset < targets.length; offset += 500) {
+              const result = await worker.call(
+                "measure",
+                {
+                  targets: targets.slice(offset, offset + 500),
+                  timeoutMs: 29 * 60_000,
+                },
+                { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
+              );
+              lifecycle.signal.throwIfAborted();
+              for (const target of result.targets)
+                measured.set(target.path, target);
+            }
+          })(),
+        ]);
         const root = measured.get(rootPath);
         scans.delete(hostId);
         store(hostId, {
