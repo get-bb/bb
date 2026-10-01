@@ -899,9 +899,11 @@ export function registerPluginCommands(
             : []),
           result.installed
             ? "✓ installed"
-            : result.compatible
-              ? "compatible"
-              : `requires newer bb${result.incompatibleReason ? `: ${result.incompatibleReason}` : ""}`,
+            : !result.compatible
+              ? `requires newer bb${result.incompatibleReason ? `: ${result.incompatibleReason}` : ""}`
+              : result.conflictingInstallSource !== null
+                ? `id in use by ${result.conflictingInstallSource}`
+                : "compatible",
         ]);
         console.log(
           renderBorderlessTable(

@@ -231,6 +231,9 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           open={open}
           onOpenChange={onOpenChange}
           onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+          onEscapeKeyDown={props.onEscapeKeyDown}
+          onPointerDownOutside={props.onPointerDownOutside}
+          onInteractOutside={props.onInteractOutside}
           labelledBy={titleId}
           describedBy={descriptionId}
         >

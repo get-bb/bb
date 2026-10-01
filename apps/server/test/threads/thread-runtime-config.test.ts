@@ -910,6 +910,7 @@ describe("thread runtime config", () => {
         disable1MContext: false,
         memoryEnabled: true,
         providerSubagentsEnabled: true,
+        sandboxEnabled: true,
         workflowsEnabled: true,
       });
 

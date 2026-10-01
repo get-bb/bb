@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import {
@@ -26,7 +26,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const signedOut: AccountStatus = {
   state: "signed-out",
@@ -217,16 +220,22 @@ describe("bb account settings section", () => {
         },
       },
     );
-    fireEvent.click(await slot.findByRole("button", { name: "Sign in" }));
+    const signIn = await slot.findByRole("button", { name: "Sign in" });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(signIn));
     await slot.emitRealtime(ACCOUNT_REALTIME_CHANNEL, {
       status: signedOut,
       login: pendingLogin(),
     });
-    await slot.findByText("K7QP-2M4X");
-    await waitFor(() => expect(polls).toBe(1), { timeout: 4_000 });
-
-    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(1_999));
+    expect(polls).toBe(0);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(polls).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(3_999));
+    expect(polls).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(polls).toBe(2);
   });
 
   it("explains a denied sign-in and offers a new code", async () => {

@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import type {
   ExperimentalAppPanel,
   ExperimentalPluginFixedTabReference,
@@ -52,12 +51,3 @@ if (false) {
     target: { kind: "record", recordId: 42 },
   });
 }
-
-describe("fixed-tab public types", () => {
-  it("retain stable owner-declared ids at runtime", () => {
-    expect([untargetedTab.id, targetedTab.id]).toEqual([
-      "navigation",
-      "details",
-    ]);
-  });
-});

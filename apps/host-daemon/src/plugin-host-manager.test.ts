@@ -677,7 +677,18 @@ describe("PluginHostManager", () => {
     const first = await manager.call(callCommand());
     const firstPid = Reflect.get(Object(first.output), "pid");
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.waitFor(
+      () =>
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pluginId: "fixture",
+            reason: "host plugin worker became idle",
+            forceKilled: false,
+          }),
+          "Host plugin worker stopped",
+        ),
+      { timeout: 5_000 },
+    );
     const restarted = await manager.call(callCommand());
 
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
@@ -686,18 +697,15 @@ describe("PluginHostManager", () => {
       expect.objectContaining({ digest: expect.any(String) }),
       "Using cached host artifact",
     );
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pluginId: "fixture",
-        reason: "host plugin worker became idle",
-        forceKilled: false,
-      }),
-      "Host plugin worker stopped",
-    );
   });
 
   it("retains a worker with a lease until the lease is released", async () => {
-    const manager = await createManager({ workerIdleTimeoutMs: 20 });
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({ logger, workerIdleTimeoutMs: 20 });
     const retained = await manager.call(
       callCommand({ method: "retain", input: { enabled: true } }),
     );
@@ -710,7 +718,18 @@ describe("PluginHostManager", () => {
     await manager.call(
       callCommand({ method: "retain", input: { enabled: false } }),
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.waitFor(
+      () =>
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pluginId: "fixture",
+            reason: "host plugin worker became idle",
+            forceKilled: false,
+          }),
+          "Host plugin worker stopped",
+        ),
+      { timeout: 5_000 },
+    );
     const restarted = await manager.call(callCommand());
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(retainedPid);
   });

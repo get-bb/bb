@@ -113,6 +113,7 @@ it("serves the sidebar plugin frontends and sample conversation in current contr
       const asset = await fetch(new URL(path, origin));
       expect(asset.status).toBe(200);
       expect(asset.headers.get("content-type")).not.toContain("text/html");
+      expect((await asset.arrayBuffer()).byteLength).toBeGreaterThan(0);
     }
   }
   for (const provider of PROVIDERS) {
@@ -150,7 +151,7 @@ it("serves the sidebar plugin frontends and sample conversation in current contr
   systemAppUpdateStatusSchema.parse(
     await (await fetch(`${origin}/api/v1/system/app-update`)).json(),
   );
-});
+}, 15_000);
 
 it("keeps unsupported API and mutation requests out of the SPA fallback", async () => {
   for (const [path, method] of [

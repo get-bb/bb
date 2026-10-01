@@ -63,6 +63,7 @@ interface SessionState {
 }
 
 const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
+const INTERACTIVE_INTERRUPT_MAX_RETRY_DELAY_MS = 60_000;
 const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
@@ -232,6 +233,7 @@ export async function createHostDaemonApp(
   let flushPendingInteractiveInterruptsPromise: Promise<void> | null = null;
   let interactiveInterruptRetryTimeout: ReturnType<typeof setTimeout> | null =
     null;
+  let interactiveInterruptRetryDelayMs = INTERACTIVE_INTERRUPT_RETRY_DELAY_MS;
   let eventSink: EventSink;
   let handleServerSessionInvalidated = (
     _args: HandleServerSessionInvalidatedArgs,
@@ -316,10 +318,23 @@ export async function createHostDaemonApp(
       return;
     }
 
+    const delayMs = interactiveInterruptRetryDelayMs;
+    interactiveInterruptRetryDelayMs = Math.min(
+      delayMs * 2,
+      INTERACTIVE_INTERRUPT_MAX_RETRY_DELAY_MS,
+    );
     interactiveInterruptRetryTimeout = setTimeout(() => {
       interactiveInterruptRetryTimeout = null;
       void flushPendingInteractiveInterrupts();
-    }, INTERACTIVE_INTERRUPT_RETRY_DELAY_MS);
+    }, delayMs);
+  }
+
+  function isRejectedInteractiveInterrupt(error: unknown): boolean {
+    return (
+      error instanceof ServerResponseError &&
+      !error.retryable &&
+      error.code !== "inactive_session"
+    );
   }
 
   async function flushPendingInteractiveInterrupts(): Promise<void> {
@@ -344,13 +359,24 @@ export async function createHostDaemonApp(
             request: () => serverClient.interruptInteractiveRequests(request),
           });
           pendingInteractiveInterrupts.delete(key);
+          interactiveInterruptRetryDelayMs =
+            INTERACTIVE_INTERRUPT_RETRY_DELAY_MS;
         } catch (error) {
+          const logFields = {
+            providerId: request.providerId,
+            threadIds: request.threadIds,
+            ...runtimeErrorLogFields(error),
+          };
+          if (isRejectedInteractiveInterrupt(error)) {
+            pendingInteractiveInterrupts.delete(key);
+            options.logger.warn(
+              logFields,
+              "Dropped pending interactive interrupt request the server rejected",
+            );
+            continue;
+          }
           options.logger.warn(
-            {
-              providerId: request.providerId,
-              threadIds: request.threadIds,
-              ...runtimeErrorLogFields(error),
-            },
+            logFields,
             "Failed to flush pending interactive interrupt request",
           );
           scheduleInteractiveInterruptRetry();
@@ -373,7 +399,9 @@ export async function createHostDaemonApp(
       buildInteractiveInterruptKey(request),
       request,
     );
-    void flushPendingInteractiveInterrupts();
+    if (interactiveInterruptRetryTimeout === null) {
+      void flushPendingInteractiveInterrupts();
+    }
   }
 
   eventSink = createEventSink({
@@ -852,6 +880,7 @@ export async function createHostDaemonApp(
       desktopBrowserBroker.setConnected(session !== null);
       if (session === null) {
         clearInteractiveInterruptRetry();
+        interactiveInterruptRetryDelayMs = INTERACTIVE_INTERRUPT_RETRY_DELAY_MS;
       }
     },
   });

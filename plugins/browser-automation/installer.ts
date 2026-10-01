@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { constants, createReadStream, createWriteStream } from "node:fs";
+import {
+  constants,
+  createReadStream,
+  createWriteStream,
+  readFileSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
 import {
   access,
   chmod,
@@ -433,8 +440,10 @@ async function fetchText(url: string, signal: AbortSignal): Promise<string> {
 
 const lockInitGraceMs = 10_000;
 
-async function lockOwner(path: string): Promise<number | null> {
-  const match = (await readFile(path, "utf8")).trim().match(/^([0-9]+)(?: |$)/);
+function lockOwner(path: string): number | null {
+  const match = readFileSync(path, "utf8")
+    .trim()
+    .match(/^([0-9]+)(?: |$)/);
   return match ? Number(match[1]) : null;
 }
 
@@ -455,10 +464,10 @@ export async function acquireLock(
       return async () => {
         try {
           if (
-            (await stat(path, { bigint: true })).ino === acquired &&
-            (await readFile(path, "utf8")) === content
+            statSync(path, { bigint: true }).ino === acquired &&
+            readFileSync(path, "utf8") === content
           )
-            await unlink(path);
+            unlinkSync(path);
         } catch {}
       };
     } catch (error) {
@@ -472,10 +481,10 @@ export async function acquireLock(
     let holder: number | null = null;
     let seen: { ino: bigint; mtimeMs: number } | null = null;
     try {
-      const info = await stat(path, { bigint: true });
+      const info = statSync(path, { bigint: true });
       seen = { ino: info.ino, mtimeMs: Number(info.mtimeMs) };
       const age = Date.now() - seen.mtimeMs;
-      holder = await lockOwner(path);
+      holder = lockOwner(path);
       if (age > lockStaleMs) stale = true;
       else if (holder === null) stale = age > lockInitGraceMs;
       else if (holder !== process.pid) {
@@ -495,13 +504,13 @@ export async function acquireLock(
     }
     if (stale && seen) {
       try {
-        const current = await stat(path, { bigint: true });
+        const current = statSync(path, { bigint: true });
         if (
           current.ino === seen.ino &&
           Number(current.mtimeMs) === seen.mtimeMs &&
-          (await lockOwner(path)) === holder
+          lockOwner(path) === holder
         )
-          await unlink(path);
+          unlinkSync(path);
       } catch {}
     } else await delay(250, undefined, { signal });
   }

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentRuntime } from "./runtime.js";
 import {
   createScriptedEchoLaunch,
@@ -36,6 +36,7 @@ describe("acp process topology", () => {
   });
 
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
+    const setTimeoutReal = setTimeout;
     const readyFile = join(workspaceDir, "agent-ready");
     const signalFile = join(workspaceDir, "agent-signal");
     const runtime = withBridgeLaunch(
@@ -58,7 +59,7 @@ describe("acp process topology", () => {
             command: process.execPath,
             args: [fakeAgentPath],
             env: {
-              FAKE_ACP_SESSION_NEW_DELAY_MS: "1500",
+              FAKE_ACP_SESSION_NEW_DELAY_MS: "60000",
               FAKE_ACP_READY_FILE: readyFile,
               FAKE_ACP_SIGNAL_FILE: signalFile,
             },
@@ -68,15 +69,50 @@ describe("acp process topology", () => {
     );
     runtimes.push(runtime);
 
-    await expect(
-      runtime.startThread({
-        environmentId: "env-1",
-        projectId: "p1",
-        providerId: "acp",
-        threadId: "t1",
-        options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(/timed out/i);
+    await runtime.ensureProvider({ providerId: "acp" });
+    const constructionDeadlines: Array<() => void> = [];
+    const constructionTimeout = vi
+      .fn<typeof setTimeout>()
+      .mockImplementation((callback, delay, ...args) => {
+        if (delay !== 300) return setTimeoutReal(callback, delay, ...args);
+        const timer = setTimeoutReal(callback, 60_000, ...args);
+        constructionDeadlines.push(() => {
+          clearTimeout(timer);
+          callback(...args);
+        });
+        return timer;
+      });
+    vi.stubGlobal("setTimeout", constructionTimeout);
+    try {
+      const outcome = runtime
+        .startThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "acp",
+          threadId: "t1",
+          options: fullRuntimeOptions,
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      await waitForRuntimeState({
+        label: "the agent and its construction deadline are ready",
+        predicate: () =>
+          existsSync(readyFile) && constructionDeadlines.length === 1,
+        timeoutMs: 10_000,
+      });
+      vi.unstubAllGlobals();
+      const expire = constructionDeadlines[0];
+      if (expire === undefined)
+        throw new Error("No construction deadline was armed");
+      expire();
+      const error = await outcome;
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).toMatch(/timed out/i);
+    } finally {
+      vi.unstubAllGlobals();
+    }
     expect(runtime.hasThread("t1")).toBe(false);
     await waitForRuntimeState({
       label: "the agent spawned for the construction",

@@ -123,6 +123,12 @@ reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
 software-keyboard Return path inserts a newline. iPadOS WebKit preserves these
 Enter shortcuts for a connected Magic Keyboard.
 
+Settings → General includes `confirmThreadArchive`, which defaults to true.
+Set `bb settings general confirmThreadArchive false` to archive parent and
+child threads without the confirmation popup. The toast still offers Undo.
+The setting applies to all connected app clients; CLI and SDK archive calls
+remain non-interactive.
+
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
@@ -416,7 +422,10 @@ are visible by default. Example:
 Client-local UI preferences
 
 Some Settings values live only in the current browser/client. Sidebar width
-and open state stay local because they depend on the window size. The Voice Input
+and open state stay local because they depend on the window size, and each tab
+or desktop window keeps its own: collapsing or resizing the sidebar in one tab
+leaves the others alone, and a newly opened tab starts from the most recent
+choice made anywhere in that browser. The Voice Input
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
 command and does not change the server-side transcription model. When the preferred

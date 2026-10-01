@@ -15,6 +15,7 @@ import {
   setInstalledPluginDirectProvenance,
   upsertPluginMarketplace,
   type DbConnection,
+  type InstalledPluginRow,
   type PluginMarketplaceRow,
 } from "@bb/db";
 import {
@@ -480,6 +481,11 @@ export function createPluginCatalogService(deps: {
       base: marketplaceRowIconBase(row),
     });
     const overview = entryOverview(entry, deps.warn);
+    const installedPlugin = getInstalledPlugin(deps.db, pluginId);
+    const installed =
+      args.installedEntryIds.has(catalogEntryKey(row.name, entryId)) ||
+      (installedPlugin !== undefined &&
+        installedPluginMayComeFromEntry(installedPlugin, entry));
     return {
       entryId,
       pluginId,
@@ -501,9 +507,11 @@ export function createPluginCatalogService(deps: {
       }),
       official,
       author: entryAuthor(entry),
-      installed:
-        args.installedEntryIds.has(catalogEntryKey(row.name, entryId)) ||
-        getInstalledPlugin(deps.db, pluginId) !== undefined,
+      installed,
+      conflictingInstallSource:
+        installed || installedPlugin === undefined
+          ? null
+          : installedPlugin.source,
       installs: args.installs,
       compatible: compatibility === null,
       incompatibleReason: compatibility,
@@ -1272,6 +1280,38 @@ function npmSourceView(
     ...(npm.tag === undefined ? {} : { tag: npm.tag }),
     ...(npm.registry === undefined ? {} : { registry: npm.registry }),
   };
+}
+
+function installedPluginMayComeFromEntry(
+  plugin: InstalledPluginRow,
+  entry: MarketplaceEntry,
+): boolean {
+  switch (plugin.provenance) {
+    case "builtin":
+      return (
+        "bundled" in entry.source &&
+        plugin.sourceBuiltinName === entry.source.bundled.plugin
+      );
+    case "catalog":
+      return false;
+    case "direct":
+      if ("npm" in entry.source) {
+        return plugin.sourceNpmPackage === entry.source.npm.package;
+      }
+      if ("git" in entry.source) {
+        return (
+          plugin.sourceGitUrl !== null &&
+          gitRepositoryKey(plugin.sourceGitUrl) ===
+            gitRepositoryKey(entry.source.git.url) &&
+          plugin.sourceGitSubdirectory === (entry.source.git.subdir ?? null)
+        );
+      }
+      return false;
+  }
+}
+
+function gitRepositoryKey(url: string): string {
+  return url.replace(/\/+$/u, "").replace(/\.git$/u, "").toLowerCase();
 }
 
 function catalogEntryKey(marketplace: string, entryId: string): string {

@@ -756,6 +756,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   threadStore.clear();
   resetPluginSlotStoreForTest();
   delete window.bbDesktop;
@@ -977,7 +978,27 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(hiddenScroller.scrollTop).toBe(0));
   });
 
-  it("stops the restore loop once positions settle instead of burning 30 frames", async () => {
+  it("stops the restore loop once positions settle instead of burning 30 frames", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = ++frameId;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    const flushFrames = () => {
+      for (let round = 0; frames.size > 0 && round < 30; round += 1) {
+        const callbacks = [...frames.values()];
+        frames.clear();
+        act(() => {
+          for (const callback of callbacks) callback(performance.now());
+        });
+      }
+      expect(frames.size).toBe(0);
+    };
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
@@ -998,7 +1019,7 @@ describe("SplitThreadArea", () => {
     });
 
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    flushFrames();
     expect(writes).toHaveLength(0);
 
     Object.defineProperty(hiddenScroller, "scrollTop", {
@@ -1009,7 +1030,7 @@ describe("SplitThreadArea", () => {
       },
     });
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    flushFrames();
     expect(writes.length).toBeGreaterThan(0);
     expect(writes.length).toBeLessThanOrEqual(6);
   });

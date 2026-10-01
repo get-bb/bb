@@ -189,7 +189,7 @@ function PluginComposerActionGroupMount({
         <div
           key={`${key}/${scopeKey}`}
           data-plugin-composer-action=""
-          className="flex h-9 max-h-9 shrink-0 items-center overflow-hidden"
+          className="flex h-9 max-h-9 min-w-0 max-w-full shrink-0 items-center overflow-hidden"
         >
           <PluginSlotMount
             pluginId={pluginId}

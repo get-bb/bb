@@ -20,6 +20,12 @@ describe("app settings data", () => {
     db.$client.close();
   });
 
+  it("defaults archive confirmation to enabled and persists opting out", () => {
+    expect(getAppSettings(db).confirmThreadArchive).toBe(true);
+    setAppSettings(db, { ...defaultAppSettings, confirmThreadArchive: false });
+    expect(getAppSettings(db).confirmThreadArchive).toBe(false);
+  });
+
   it("preserves the legacy diagnostic preference and lets the new preference override it", () => {
     db.$client.exec(
       "INSERT INTO app_settings_values (key, value, updated_at) VALUES ('showUnhandledProviderEvents', 'true', 1)",

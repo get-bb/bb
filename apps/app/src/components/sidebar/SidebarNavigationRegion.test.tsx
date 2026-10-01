@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import {
   act,
   cleanup,
@@ -200,7 +206,9 @@ function renderHarness(
   );
 }
 
-function registerFixture() {
+function registerFixture(
+  component: ComponentType<ExperimentalSidebarNavigationProps> = Replacement,
+) {
   setPluginSlotRegistrations(
     "garden",
     registrationSet({
@@ -217,7 +225,7 @@ function registerFixture() {
         {
           id: "navbar",
           title: "Garden Navbar",
-          component: Replacement,
+          component,
         },
       ],
     }),
@@ -421,6 +429,29 @@ describe("SidebarNavigationRegion", () => {
       "New thread",
       "Plugins",
     ]);
+  });
+
+  it("accepts visibility changes as soon as the navigation provider commits", () => {
+    function HideOnCommit() {
+      const { actions, items } = useSidebarNavigation();
+      useLayoutEffect(() => {
+        actions.setVisible("garden/docs", false);
+      }, [actions]);
+      const docs = items.find((item) => item.id === "garden/docs");
+      return (
+        <output>
+          {docs
+            ? docs.isVisible
+              ? "Docs visible"
+              : "Docs hidden"
+            : "Docs missing"}
+        </output>
+      );
+    }
+    registerFixture(HideOnCommit);
+    renderHarness();
+
+    expect(screen.getByText("Docs hidden")).toBeDefined();
   });
 
   it("opens in split only when the provider asks for it", () => {

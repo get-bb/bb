@@ -168,6 +168,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  confirmThreadArchive: boolean;
+  onConfirmThreadArchiveChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
   generalSettingsDisabled: boolean;
   managedBranchPrefix: string;
@@ -849,6 +851,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  confirmThreadArchive,
+  onConfirmThreadArchiveChange,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
@@ -940,6 +944,18 @@ export function GeneralSettingsSection({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Thread archive confirmation"
+            description="Ask before archiving a thread with unarchived children."
+          >
+            <Switch
+              checked={confirmThreadArchive}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onConfirmThreadArchiveChange}
+              aria-label="Thread archive confirmation"
+            />
           </SettingsWithControl>
         </div>
       </SettingsSection>
@@ -1272,6 +1288,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          confirmThreadArchive={generalSettings.confirmThreadArchive}
+          onConfirmThreadArchiveChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              confirmThreadArchive: enabled,
+            })
+          }
           desktopBrowserAvailable={desktopBrowserAvailable}
           generalSettingsDisabled={
             systemConfigQuery.data === undefined ||

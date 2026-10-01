@@ -28,8 +28,17 @@ export interface BuildSessionOptionsArgs {
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
   disable1MContext: boolean;
+  sandboxEnabled: boolean;
   memoryEnabled?: boolean;
 }
+
+type WorkspaceWriteSandboxArgs = Pick<
+  BuildSessionOptionsArgs,
+  | "additionalWorkspaceWriteRoots"
+  | "permissionMode"
+  | "permissionScope"
+  | "sandboxEnabled"
+>;
 
 export interface PermissionEscalationWorkContext {
   agentId?: string;
@@ -101,7 +110,7 @@ export function buildWorkspaceWriteDenialMessage(): string {
   return "bb's workspace sandbox allows work inside the current workspace only. Stay inside the workspace or explain why extra access is needed.";
 }
 
-function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
+function isWorkspaceWriteSession(params: WorkspaceWriteSandboxArgs): boolean {
   return (
     params.permissionScope === "workspace" &&
     (params.permissionMode === "acceptEdits" ||
@@ -109,10 +118,10 @@ function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
   );
 }
 
-function buildWorkspaceWriteSandbox(
-  params: BuildSessionOptionsArgs,
+export function buildWorkspaceWriteSandbox(
+  params: WorkspaceWriteSandboxArgs,
 ): Options["sandbox"] | undefined {
-  if (!usesWorkspaceSandbox(params)) {
+  if (!params.sandboxEnabled || !isWorkspaceWriteSession(params)) {
     return undefined;
   }
 
@@ -223,7 +232,7 @@ export function buildSessionOptions(
         };
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
-  const additionalDirectories = usesWorkspaceSandbox(params)
+  const additionalDirectories = isWorkspaceWriteSession(params)
     ? (params.additionalWorkspaceWriteRoots ?? [])
     : [];
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });

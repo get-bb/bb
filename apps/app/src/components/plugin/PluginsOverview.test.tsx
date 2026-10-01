@@ -95,6 +95,7 @@ const GITHUB_CATALOG_ENTRY = {
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
   compatible: true,
   incompatibleReason: null,
 };
