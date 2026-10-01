@@ -61,53 +61,49 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       }}
     >
       <SidebarFooterCustomizeHeader onDone={onDone} />
-      <div className="bg-sidebar-accent px-3">
-        <div
-          ref={footerRowRef}
-          className="flex items-center gap-1 overflow-hidden py-2"
+      <div
+        ref={footerRowRef}
+        className="relative flex items-center gap-1 overflow-hidden bg-sidebar-accent px-3 py-2"
+      >
+        <ul
+          aria-label="Footer icons"
+          className="flex min-w-0 items-center gap-1"
+          onClickCapture={footerDnd.onClickCapture}
         >
-          <ul
-            aria-label="Footer icons"
-            className="flex min-w-0 items-center gap-1"
-            onClickCapture={footerDnd.onClickCapture}
-          >
-            <DndContext {...footerDnd.dndContextProps}>
-              <SortableContext
-                items={preferences.footer.map((item) => item.key)}
-                strategy={horizontalListSortingStrategy}
-              >
-                {preferences.footer.map((item) => (
-                  <FooterIconTile
-                    key={item.key}
-                    item={item}
-                    reorderDisabled={preferences.footer.length < 2}
-                    onRemove={() => preferences.removeFromFooter(item.key)}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-            {Array.from({ length: emptySlots }, (_, index) => (
-              <li
-                key={index}
-                aria-hidden="true"
-                className={cn(
-                  SIDEBAR_FOOTER_ACTION_CLASS,
-                  "shrink-0 rounded-md border border-dashed border-sidebar-foreground/20",
-                )}
-              />
-            ))}
-          </ul>
-          <span
-            ref={moreGlyphRef}
-            aria-hidden="true"
-            className={cn(
-              SIDEBAR_FOOTER_ACTION_CLASS,
-              "flex shrink-0 items-center justify-center text-muted-foreground",
-            )}
-          >
-            <Icon name="MoreHorizontal" />
-          </span>
-        </div>
+          <DndContext {...footerDnd.dndContextProps}>
+            <SortableContext
+              items={preferences.footer.map((item) => item.key)}
+              strategy={horizontalListSortingStrategy}
+            >
+              {preferences.footer.map((item) => (
+                <FooterIconTile
+                  key={item.key}
+                  item={item}
+                  reorderDisabled={preferences.footer.length < 2}
+                  onRemove={() => preferences.removeFromFooter(item.key)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+          {Array.from({ length: emptySlots }, (_, index) => (
+            <li
+              key={index}
+              aria-hidden="true"
+              className={cn(
+                SIDEBAR_FOOTER_ACTION_CLASS,
+                "shrink-0 rounded-md border border-dashed border-sidebar-foreground/20",
+              )}
+            />
+          ))}
+        </ul>
+        <span
+          ref={moreGlyphRef}
+          aria-hidden="true"
+          className={cn(
+            SIDEBAR_FOOTER_ACTION_CLASS,
+            "invisible absolute pointer-events-none",
+          )}
+        />
       </div>
       {preferences.more.length > 0 && (
         <>
