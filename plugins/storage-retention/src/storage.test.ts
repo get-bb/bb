@@ -54,11 +54,6 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
         );
-      if (call.method === "largeFiles")
-        return worker.experimental_call(
-          "largeFiles",
-          hostStorageContract.largeFiles.input.parse(call.input),
-        );
       if (call.method === "discardLargeFiles")
         return worker.experimental_call(
           "discardLargeFiles",
@@ -191,11 +186,6 @@ it("deletes only large files from archived threads on scanned online machines, k
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
         );
-      if (call.method === "largeFiles")
-        return worker.experimental_call(
-          "largeFiles",
-          hostStorageContract.largeFiles.input.parse(call.input),
-        );
       if (call.method === "discardLargeFiles")
         return worker.experimental_call(
           "discardLargeFiles",
@@ -311,8 +301,7 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
       await blocked;
       if (fail) throw new Error("machine disconnected");
       if (call.method === "capacity") return { totalBytes: 2048, freeBytes: 1024 };
-      if (call.method === "largeFiles") return { entries: [] };
-      return { targets: [] };
+      return { targets: [], largeFiles: [] };
     },
     sdk: {
       hosts: {

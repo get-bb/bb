@@ -5,7 +5,6 @@ import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
 import { measureDiskUsage } from "./disk-usage.js";
 import { isFsErrorWithCode } from "./fs-errors.js";
-import { findLargeFiles } from "./large-files.js";
 
 const STORAGE_ENTRY = /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/;
 
@@ -26,25 +25,6 @@ export default experimental_defineHostEntry({
   handlers: {
     measure: (input, context) =>
       measureDiskUsage(input, undefined, context.signal),
-    async largeFiles({ rootPath, minBytes }, context) {
-      if (!path.isAbsolute(rootPath)) throw new Error("Invalid storage path");
-      const totals = new Map<string, { sizeBytes: number; count: number }>();
-      for (const file of await findLargeFiles(
-        rootPath,
-        minBytes,
-        context.signal,
-      )) {
-        const [name] = path.relative(rootPath, file.path).split(path.sep);
-        if (name === undefined || !STORAGE_ENTRY.test(name)) continue;
-        const total = totals.get(name) ?? { sizeBytes: 0, count: 0 };
-        total.sizeBytes += file.sizeBytes;
-        total.count++;
-        totals.set(name, total);
-      }
-      return {
-        entries: [...totals].map(([name, total]) => ({ name, ...total })),
-      };
-    },
     async discardLargeFiles({ rootPath, names, minBytes }, context) {
       for (const name of names) assertStorageEntry(rootPath, name);
       let root: string;
@@ -68,11 +48,16 @@ export default experimental_defineHostEntry({
           );
         let sizeBytes = 0;
         let count = 0;
-        for (const file of await findLargeFiles(
-          directory,
-          minBytes,
+        const { largeFiles } = await measureDiskUsage(
+          {
+            targets: [{ path: directory, perChild: false }],
+            timeoutMs: 29 * 60_000,
+            largeFileMinBytes: minBytes,
+          },
+          undefined,
           context.signal,
-        )) {
+        );
+        for (const file of largeFiles) {
           context.signal.throwIfAborted();
           await fs.rm(file.path, { force: true });
           sizeBytes += file.sizeBytes;

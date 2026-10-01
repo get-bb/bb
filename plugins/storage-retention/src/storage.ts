@@ -240,46 +240,65 @@ export function createStorage(bb: BbPluginApi) {
           readThreads(bb, lifecycle.signal),
         ]);
         const environments = await leftovers(hostId, threads);
-        const targets = [
-          { path: rootPath, perChild: true },
-          ...environments.flatMap((env) =>
-            env.path === null ? [] : [{ path: env.path, perChild: false }],
-          ),
-        ];
+        const disk = await worker.call(
+          "capacity",
+          { path: rootPath },
+          { hostId, signal: lifecycle.signal },
+        );
         const measured = new Map<string, MeasuredTarget>();
-        const [disk, largeFiles] = await Promise.all([
-          worker.call(
-            "capacity",
-            { path: rootPath },
-            { hostId, signal: lifecycle.signal },
-          ),
-          worker.call(
-            "largeFiles",
-            { rootPath, minBytes: LARGE_FILE_MIN_BYTES },
+        const largeFiles = new Map<
+          string,
+          { sizeBytes: number; count: number }
+        >();
+        const batches: {
+          targets: { path: string; perChild: boolean }[];
+          largeFileMinBytes: number | null;
+        }[] = [
+          {
+            targets: [{ path: rootPath, perChild: true }],
+            largeFileMinBytes: LARGE_FILE_MIN_BYTES,
+          },
+        ];
+        const worktreeTargets = environments.flatMap((env) =>
+          env.path === null ? [] : [{ path: env.path, perChild: false }],
+        );
+        for (let offset = 0; offset < worktreeTargets.length; offset += 500)
+          batches.push({
+            targets: worktreeTargets.slice(offset, offset + 500),
+            largeFileMinBytes: null,
+          });
+        for (const batch of batches) {
+          const result = await worker.call(
+            "measure",
+            { ...batch, timeoutMs: 29 * 60_000 },
             { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
-          ),
-          (async () => {
-            for (let offset = 0; offset < targets.length; offset += 500) {
-              const result = await worker.call(
-                "measure",
-                {
-                  targets: targets.slice(offset, offset + 500),
-                  timeoutMs: 29 * 60_000,
-                },
-                { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
-              );
-              lifecycle.signal.throwIfAborted();
-              for (const target of result.targets)
-                measured.set(target.path, target);
-            }
-          })(),
-        ]);
+          );
+          lifecycle.signal.throwIfAborted();
+          for (const target of result.targets)
+            measured.set(target.path, target);
+          for (const file of result.largeFiles) {
+            const [name] = file.path.slice(rootPath.length + 1).split(/[\\/]/);
+            if (
+              !file.path.startsWith(rootPath) ||
+              name === undefined ||
+              !isStorageEntry(name)
+            )
+              continue;
+            const total = largeFiles.get(name) ?? { sizeBytes: 0, count: 0 };
+            total.sizeBytes += file.sizeBytes;
+            total.count++;
+            largeFiles.set(name, total);
+          }
+        }
         const root = measured.get(rootPath);
         scans.delete(hostId);
         store(hostId, {
           scannedAt: Date.now(),
           disk,
-          largeFiles: largeFiles.entries,
+          largeFiles: [...largeFiles].map(([name, total]) => ({
+            name,
+            ...total,
+          })),
           entries:
             root?.outcome === "measured"
               ? (root.children ?? []).filter((entry) =>

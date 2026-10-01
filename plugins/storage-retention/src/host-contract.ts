@@ -14,6 +14,7 @@ export const diskUsageInputSchema = z
       .int()
       .min(1)
       .max(30 * 60_000),
+    largeFileMinBytes: z.number().int().min(1).nullable(),
   })
   .strict();
 export type DiskUsageInput = z.infer<typeof diskUsageInputSchema>;
@@ -36,7 +37,14 @@ export const measuredTargetSchema = z.discriminatedUnion("outcome", [
 export type MeasuredTarget = z.infer<typeof measuredTargetSchema>;
 export const diskUsageOutputSchema = z.object({
   targets: z.array(measuredTargetSchema),
+  largeFiles: z.array(
+    z.object({
+      path: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+    }),
+  ),
 });
+export type DiskUsageOutput = z.infer<typeof diskUsageOutputSchema>;
 const storageEntriesSchema = z
   .object({
     rootPath: z.string().min(1),
@@ -56,12 +64,6 @@ const largeFileTotalsSchema = z.object({
 export type LargeFileTotals = z.infer<typeof largeFileTotalsSchema>;
 const minBytesSchema = z.number().int().min(1);
 export const hostStorageContract = defineRpcContract({
-  largeFiles: {
-    input: z
-      .object({ rootPath: z.string().min(1), minBytes: minBytesSchema })
-      .strict(),
-    output: z.object({ entries: z.array(largeFileTotalsSchema) }),
-  },
   discardLargeFiles: {
     input: z
       .object({

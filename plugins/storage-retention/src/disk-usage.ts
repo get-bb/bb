@@ -3,7 +3,11 @@ import type { Dirent, Stats } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { DiskUsageInput, MeasuredTarget } from "./host-contract.js";
+import type {
+  DiskUsageInput,
+  DiskUsageOutput,
+  MeasuredTarget,
+} from "./host-contract.js";
 import { DiskUsageError, isFsErrorWithCode } from "./fs-errors.js";
 
 type MeasureDiskUsageTarget = DiskUsageInput["targets"][number];
@@ -74,6 +78,8 @@ async function withScanSlot<T>(
 
 interface Measurement {
   signal: AbortSignal;
+  largeFileMinBytes: number | null;
+  largeFiles: LargeFile[];
   duCommand: string | null;
   duConcurrency: number;
   duBatchMaxEntries: number;
@@ -90,7 +96,6 @@ interface MeasuredChild extends SizeBucket {
 
 interface DuRun {
   exitCode: number | null;
-  stdout: string;
   stderr: string;
 }
 
@@ -99,12 +104,15 @@ interface DuLine {
   sizeBytes: number;
 }
 
+type LargeFile = DiskUsageOutput["largeFiles"][number];
+
 interface WalkEntry {
   path: string;
   bucket: SizeBucket;
 }
 
 interface Walk {
+  measurement: Measurement;
   signal: AbortSignal;
   pending: WalkEntry[];
   multiplyLinkedInodes: Set<string>;
@@ -170,7 +178,7 @@ async function mapWithConcurrency<TItem, TResult>(
   return results;
 }
 
-export function lowerPriority(pid: number): void {
+function lowerPriority(pid: number): void {
   try {
     os.setPriority(pid, DU_NICENESS);
   } catch {
@@ -182,9 +190,10 @@ async function runDu(
   measurement: Measurement,
   duCommand: string,
   args: string[],
+  onLine: (line: DuLine) => void,
 ): Promise<DuRun> {
   return withScanSlot(duSlots, measurement.signal, () =>
-    spawnDu(measurement, duCommand, args),
+    spawnDu(measurement, duCommand, args, onLine),
   );
 }
 
@@ -192,21 +201,31 @@ function spawnDu(
   measurement: Measurement,
   duCommand: string,
   args: string[],
+  onLine: (line: DuLine) => void,
 ): Promise<DuRun> {
   return new Promise((resolve, reject) => {
     measurement.signal.throwIfAborted();
     const child = spawn(duCommand, args, {
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const stdout: Buffer[] = [];
+    let partial = "";
     let stderr = "";
+    const emit = (text: string) => {
+      const match = DU_LINE_PATTERN.exec(text);
+      const [, kib, linePath] = match ?? [];
+      if (kib !== undefined && linePath !== undefined)
+        onLine({ path: linePath, sizeBytes: Number(kib) * 1024 });
+    };
     const kill = (): void => {
       child.kill("SIGKILL");
     };
     measurement.signal.addEventListener("abort", kill, { once: true });
     if (child.pid !== undefined) lowerPriority(child.pid);
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout.push(chunk);
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      const lines = (partial + chunk).split("\n");
+      partial = lines.pop() ?? "";
+      for (const line of lines) emit(line);
     });
     child.stderr.on("data", (chunk: Buffer) => {
       stderr = (stderr + chunk.toString("utf8")).slice(-DU_STDERR_TAIL_CHARS);
@@ -219,22 +238,18 @@ function spawnDu(
     });
     child.once("close", (exitCode) => {
       measurement.signal.removeEventListener("abort", kill);
-      resolve({
-        exitCode,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: stderr.trim(),
-      });
+      if (partial !== "") emit(partial);
+      resolve({ exitCode, stderr: stderr.trim() });
     });
   });
 }
 
-function parseDuLines(stdout: string): DuLine[] {
-  return stdout.split("\n").flatMap((line) => {
-    const match = DU_LINE_PATTERN.exec(line);
-    const [, kib, linePath] = match ?? [];
-    if (kib === undefined || linePath === undefined) return [];
-    return [{ path: linePath, sizeBytes: Number(kib) * 1024 }];
-  });
+function noteFile(measurement: Measurement, filePath: string, sizeBytes: number) {
+  if (
+    measurement.largeFileMinBytes !== null &&
+    sizeBytes >= measurement.largeFileMinBytes
+  )
+    measurement.largeFiles.push({ path: filePath, sizeBytes });
 }
 
 function duFailure(targetPath: string, run: DuRun): DiskUsageError {
@@ -276,19 +291,27 @@ async function measureOperandsWithDu(
   targetPath: string,
   operands: readonly string[],
 ): Promise<Map<string, number>> {
-  const run = await runDu(measurement, duCommand, [
-    "-k",
-    "-s",
-    "--",
-    ...operands,
-  ]);
-  if (run.exitCode !== 0 && run.exitCode !== 1) {
-    throw duFailure(targetPath, run);
-  }
   const requested = new Set(operands);
   const sizes = new Map<string, number>();
-  for (const line of parseDuLines(run.stdout)) {
-    if (requested.has(line.path)) sizes.set(line.path, line.sizeBytes);
+  let previous: string | null = null;
+  const run = await runDu(
+    measurement,
+    duCommand,
+    [
+      "-k",
+      measurement.largeFileMinBytes === null ? "-s" : "-a",
+      "--",
+      ...operands,
+    ],
+    (line) => {
+      if (requested.has(line.path)) sizes.set(line.path, line.sizeBytes);
+      else if (previous === null || !previous.startsWith(`${line.path}/`))
+        noteFile(measurement, line.path, line.sizeBytes);
+      previous = line.path;
+    },
+  );
+  if (run.exitCode !== 0 && run.exitCode !== 1) {
+    throw duFailure(targetPath, run);
   }
   return sizes;
 }
@@ -297,12 +320,16 @@ async function classifyChildren(
   measurement: Measurement,
   targetPath: string,
   entries: readonly Dirent[],
-): Promise<{ directories: string[]; nonDirectories: MeasuredChild[] }> {
+): Promise<{
+  directories: string[];
+  nonDirectories: MeasuredChild[];
+  files: LargeFile[];
+}> {
   const classified = await mapWithConcurrency(
     entries,
     measurement.walkerConcurrency,
     measurement.signal,
-    async (entry): Promise<MeasuredChild | string | null> => {
+    async (entry): Promise<Stats | string | null> => {
       if (entry.isDirectory()) return entry.name;
       const stats = await lstatEntry(
         measurement.signal,
@@ -310,16 +337,25 @@ async function classifyChildren(
       );
       if (stats === null) return null;
       if (stats.isDirectory()) return entry.name;
-      return { name: entry.name, sizeBytes: allocatedBytes(stats) };
+      return stats;
     },
   );
   const directories: string[] = [];
   const nonDirectories: MeasuredChild[] = [];
-  for (const child of classified) {
+  const files: LargeFile[] = [];
+  classified.forEach((child, index) => {
+    const entry = entries[index];
     if (typeof child === "string") directories.push(child);
-    else if (child !== null) nonDirectories.push(child);
-  }
-  return { directories, nonDirectories };
+    else if (child !== null && entry !== undefined) {
+      nonDirectories.push({ name: entry.name, sizeBytes: allocatedBytes(child) });
+      if (child.isFile())
+        files.push({
+          path: path.join(targetPath, entry.name),
+          sizeBytes: allocatedBytes(child),
+        });
+    }
+  });
+  return { directories, nonDirectories, files };
 }
 
 async function measureChildDirectoriesWithDu(
@@ -385,7 +421,7 @@ async function measureDirectoryWithDu(
     };
   }
 
-  const { directories, nonDirectories } = await classifyChildren(
+  const { directories, nonDirectories, files } = await classifyChildren(
     measurement,
     targetPath,
     await readDirectoryEntries(measurement.signal, targetPath),
@@ -399,6 +435,7 @@ async function measureDirectoryWithDu(
     )),
     ...nonDirectories,
   ];
+  for (const file of files) noteFile(measurement, file.path, file.sizeBytes);
   return {
     outcome: "measured",
     path: target.path,
@@ -422,7 +459,9 @@ function countedBytes(walk: Walk, stats: Stats): number {
 async function visitEntry(walk: Walk, entry: WalkEntry): Promise<void> {
   const stats = await lstatEntry(walk.signal, entry.path);
   if (stats === null) return;
-  entry.bucket.sizeBytes += countedBytes(walk, stats);
+  const sizeBytes = countedBytes(walk, stats);
+  entry.bucket.sizeBytes += sizeBytes;
+  if (stats.isFile()) noteFile(walk.measurement, entry.path, sizeBytes);
   if (!stats.isDirectory()) return;
   for (const child of await readDirectoryEntries(walk.signal, entry.path)) {
     walk.pending.push({
@@ -459,6 +498,7 @@ async function walkPending(walk: Walk, concurrency: number): Promise<void> {
 
 function startWalk(measurement: Measurement): Walk {
   return {
+    measurement,
     signal: measurement.signal,
     pending: [],
     multiplyLinkedInodes: new Set(),
@@ -533,6 +573,7 @@ async function measureTarget(
   const stats = await lstatEntry(measurement.signal, targetPath);
   if (stats === null) return { outcome: "missing", path: target.path };
   if (!stats.isDirectory()) {
+    if (stats.isFile()) noteFile(measurement, targetPath, allocatedBytes(stats));
     return {
       outcome: "measured",
       path: target.path,
@@ -563,7 +604,7 @@ export async function measureDiskUsage(
   command: DiskUsageInput,
   options: DiskUsageOptions = DEFAULT_DISK_USAGE_OPTIONS,
   signal?: AbortSignal,
-): Promise<{ targets: MeasuredTarget[] }> {
+): Promise<DiskUsageOutput> {
   for (const target of command.targets) {
     if (!path.isAbsolute(target.path)) {
       throw new DiskUsageError("invalid_path", "Path must be absolute");
@@ -581,6 +622,8 @@ export async function measureDiskUsage(
       signal === undefined
         ? controller.signal
         : AbortSignal.any([controller.signal, signal]),
+    largeFileMinBytes: command.largeFileMinBytes,
+    largeFiles: [],
     duCommand: options.duCommand,
     duConcurrency: options.duConcurrency,
     duBatchMaxEntries: options.duBatchMaxEntries,
@@ -593,7 +636,7 @@ export async function measureDiskUsage(
       measurement.signal,
       (target) => measureTarget(measurement, target),
     );
-    return { targets };
+    return { targets, largeFiles: measurement.largeFiles };
   } catch (error) {
     if (timedOut) {
       throw new DiskUsageError(

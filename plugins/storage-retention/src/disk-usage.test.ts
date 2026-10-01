@@ -61,8 +61,9 @@ function measure(
   targets: MeasureTargets,
   options: DiskUsageOptions,
   timeoutMs = 60_000,
+  largeFileMinBytes: number | null = null,
 ) {
-  return measureDiskUsage({ targets, timeoutMs }, options);
+  return measureDiskUsage({ targets, timeoutMs, largeFileMinBytes }, options);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -111,6 +112,43 @@ describe.each([
   "measureDiskUsage with $strategy",
   ({ options, enabled, hardLinksSpanChildren }) => {
     it.runIf(enabled)(
+      "reports large files in the same pass without mistaking large directories for files",
+      async () => {
+        const root = await makeTempDir();
+        const big = [
+          path.join(root, "thread-a", "dump.db"),
+          path.join(root, "thread-b", "deep", "build.bin"),
+          path.join(root, "stray.bin"),
+        ];
+        for (const file of big) await writeFile(file, 300_000);
+        await writeFile(path.join(root, "thread-a", "notes.md"), 150_000);
+        await writeFile(path.join(root, "thread-c", "notes.md"), 150_000);
+        await writeFile(path.join(root, "thread-c", "more.md"), 150_000);
+        await fs.mkdir(path.join(root, "empty"));
+
+        const result = await measure(
+          [{ path: root, perChild: true }],
+          options,
+          60_000,
+          200_000,
+        );
+
+        expect(
+          [...result.largeFiles].sort((a, b) => a.path.localeCompare(b.path)),
+        ).toEqual(
+          await Promise.all(
+            [...big]
+              .sort((a, b) => a.localeCompare(b))
+              .map(async (file) => ({
+                path: file,
+                sizeBytes: await allocatedBytes(file),
+              })),
+          ),
+        );
+      },
+    );
+
+    it.runIf(enabled)(
       "sums nested directories and breaks a target down per child, including top-level files",
       async () => {
         const root = await makeTempDir();
@@ -147,6 +185,7 @@ describe.each([
 
         expect(threadA).toBeGreaterThanOrEqual(60_000);
         expect(result).toEqual({
+          largeFiles: [],
           targets: [
             {
               outcome: "measured",
@@ -187,6 +226,8 @@ describe.each([
         );
 
         expect(result).toEqual({
+
+          largeFiles: [],
           targets: [
             { outcome: "missing", path: path.join(root, "missing") },
             { outcome: "missing", path: path.join(filePath, "under-a-file") },
@@ -309,6 +350,8 @@ describe.each([
       const result = await measure([{ path: root, perChild: false }], options);
 
       expect(result).toEqual({
+
+        largeFiles: [],
         targets: [
           {
             outcome: "measured",
@@ -490,6 +533,7 @@ describe("measureDiskUsage", () => {
       const top = await allocatedBytes(path.join(target, "top.txt"));
       const own = await allocatedBytes(target);
       expect(result).toEqual({
+        largeFiles: [],
         targets: [
           {
             outcome: "measured",
