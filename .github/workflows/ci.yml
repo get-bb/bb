@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   windows-foundation:
-    name: Windows foundation (process-utils, Node 22.x)
+    name: Windows host packages (Node 22.x)
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 15
     permissions:
@@ -41,10 +41,10 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Install foundation dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..."
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..."
 
       - name: Typecheck and test foundation packages
-        run: pnpm exec turbo run typecheck test --filter=@bb/process-utils --force --output-logs=full
+        run: pnpm exec turbo run typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --force --continue --output-logs=full
 
   checks:
     name: Checks (ubuntu-latest, Node 22.x)

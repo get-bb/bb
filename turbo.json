@@ -599,6 +599,22 @@
         "$TURBO_ROOT$/vitest.global-tmpdir.ts"
       ]
     },
+    "@bb/host-workspace#test": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/vitest.global-tmpdir.ts"
+      ]
+    },
+    "@bb/host-watcher#test": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/vitest.global-tmpdir.ts"
+      ]
+    },
     "test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
