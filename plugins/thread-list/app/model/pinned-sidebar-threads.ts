@@ -14,7 +14,6 @@ interface PinnedSidebarState {
 }
 
 interface BuildPinnedSidebarStateArgs {
-  draftThreadIds?: ReadonlySet<string>;
   groupEnvironmentThreads?: boolean;
   threads: readonly SidebarThread[];
 }
@@ -101,7 +100,6 @@ function getPinnedItemThread(item: ProjectThreadItem): SidebarThread {
 }
 
 export function buildPinnedSidebarState({
-  draftThreadIds = new Set(),
   groupEnvironmentThreads = false,
   threads,
 }: BuildPinnedSidebarStateArgs): PinnedSidebarState {
@@ -139,7 +137,6 @@ export function buildPinnedSidebarState({
   const rootItems = buildProjectThreadGroups(
     effectivePinnedThreads,
     compareStandardThreads,
-    draftThreadIds,
     groupEnvironmentThreads,
   );
   for (const item of rootItems) {

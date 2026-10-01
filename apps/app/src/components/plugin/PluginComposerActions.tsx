@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import type {
   ComposerPlusMenuItem,
   ComposerView,
@@ -25,7 +25,7 @@ import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   composerScopeIdentity,
-  useOptionalPluginComposerView,
+  useOptionalPluginComposerStaticView,
 } from "./plugin-composer-host";
 
 const PLUGIN_COMPOSER_INLINE_PLUGIN_LIMIT = 3;
@@ -54,7 +54,7 @@ export function ComposerActionsSlot({
   children?: ReactNode;
   includePluginContributions?: boolean;
 }) {
-  const providedView = useOptionalPluginComposerView();
+  const providedView = useOptionalPluginComposerStaticView();
   const composerView = view ?? providedView;
   const actions = useResolvedComposerActions(
     includePluginContributions ? (composerView?.scope.kind ?? null) : null,
@@ -74,7 +74,7 @@ export function ComposerActionsSlot({
   );
 }
 
-function PluginComposerActionList({
+const PluginComposerActionList = memo(function PluginComposerActionList({
   actions,
   scopeKey,
 }: {
@@ -163,7 +163,7 @@ function PluginComposerActionList({
       ) : null}
     </>
   );
-}
+});
 
 function PluginComposerActionGroupMount({
   group,

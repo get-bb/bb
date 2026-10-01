@@ -55,12 +55,10 @@ vi.mock("../model/machine-thread-groups.js", async (importOriginal) => {
 });
 
 installTestPluginRuntime();
-const { ActiveSidebarModeSections, MachineModeSections } = await import(
-  "./ProjectList.js"
-);
-const { useSidebarModeSectionOrder } = await import(
-  "./useSidebarModeSectionOrder.js"
-);
+const { ActiveSidebarModeSections, MachineModeSections } =
+  await import("./ProjectList.js");
+const { useSidebarModeSectionOrder } =
+  await import("./useSidebarModeSectionOrder.js");
 
 const mockBuildMachineThreadGroups = vi.mocked(buildMachineThreadGroups);
 
@@ -169,7 +167,6 @@ function MachineModeProbe({
     <TooltipProvider>
       <MachineModeSections
         threads={threads}
-        draftThreadIds={new Set()}
         effectivePinnedThreadIds={new Set()}
         status="ready"
         showPinnedSection={false}

@@ -13,7 +13,6 @@ import { getSidebarItemKey } from "../rows/sidebarItemKeys.js";
 interface ResolveNestPreviewBeforeKeyArgs {
   activeThread: SidebarThread;
   compareThreads: ThreadComparator | undefined;
-  draftThreadIds: ReadonlySet<string>;
   groupThreadsByEnvironment: boolean;
   parentThreadId: string;
   pinnedRootNodes: readonly ProjectThreadNode[];
@@ -79,7 +78,6 @@ function nodesToItems(
 export function resolveSidebarNestPreviewBeforeKey({
   activeThread,
   compareThreads,
-  draftThreadIds,
   groupThreadsByEnvironment,
   parentThreadId,
   pinnedRootNodes,
@@ -89,7 +87,6 @@ export function resolveSidebarNestPreviewBeforeKey({
   const pinnedItems = nodesToItems(pinnedRootNodes);
   if (findThreadNode(pinnedItems, parentThreadId)) {
     const projected = buildPinnedSidebarState({
-      draftThreadIds,
       threads: withPatchedThread(getProjectThreadItemDescendants(pinnedItems), {
         ...activeThread,
         parentThreadId,
@@ -108,7 +105,6 @@ export function resolveSidebarNestPreviewBeforeKey({
     withPatchedThread(threads, { ...activeThread, parentThreadId }),
     compareThreads,
     sections,
-    draftThreadIds,
     groupThreadsByEnvironment,
   );
   const parentNode = findThreadNode(projected, parentThreadId);

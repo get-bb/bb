@@ -737,6 +737,51 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   }
 
+  it("re-renders only the prompt box, not the composer surface, while typing", () => {
+    const surfaceStates: NewThreadComposerState[] = [];
+    render(
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId="proj_1"
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            onSubmit={() => undefined}
+          >
+            {(composer) => {
+              surfaceStates.push(composer);
+              return composer.renderPromptBox({
+                mentionMenuPlacement: "bottom",
+              });
+            }}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>,
+    );
+    act(() => {
+      latestPromptBoxProps().onChange("h", []);
+    });
+    const surfaceRendersAfterFirstKey = surfaceStates.length;
+    const promptBoxRendersAfterFirstKey = mocks.promptBoxProps.length;
+
+    const text = "hello world";
+    for (let length = 2; length <= text.length; length += 1) {
+      act(() => {
+        latestPromptBoxProps().onChange(text.slice(0, length), []);
+      });
+    }
+
+    expect(surfaceStates.length).toBe(surfaceRendersAfterFirstKey);
+    expect(mocks.promptBoxProps.length - promptBoxRendersAfterFirstKey).toBe(
+      text.length - 1,
+    );
+    expect(latestPromptBoxProps().value).toBe("hello world");
+    expect(new Set(surfaceStates.map((state) => state.promptDraft)).size).toBe(
+      1,
+    );
+  });
+
   it("forwards a requested mention menu placement to the prompt box", () => {
     render(
       <Provider>

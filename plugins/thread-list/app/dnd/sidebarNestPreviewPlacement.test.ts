@@ -34,7 +34,6 @@ function resolve(dragged: SidebarThread, threads: SidebarThread[]) {
   return resolveSidebarNestPreviewBeforeKey({
     activeThread: dragged,
     compareThreads: undefined,
-    draftThreadIds: new Set(),
     groupThreadsByEnvironment: false,
     parentThreadId: "thr_parent",
     pinnedRootNodes: [],
@@ -81,7 +80,6 @@ describe("resolveSidebarNestPreviewBeforeKey", () => {
       resolveSidebarNestPreviewBeforeKey({
         activeThread: dragged,
         compareThreads: undefined,
-        draftThreadIds: new Set(),
         groupThreadsByEnvironment: false,
         parentThreadId: "thr_parent",
         pinnedRootNodes,

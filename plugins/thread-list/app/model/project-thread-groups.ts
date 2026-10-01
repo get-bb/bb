@@ -71,7 +71,6 @@ interface BuildThreadNodeArgs {
   childrenByParentId: ReadonlyMap<string, readonly SidebarThread[]>;
   compareThreads: ThreadComparator;
   depth: number;
-  draftThreadIds: ReadonlySet<string>;
   groupEnvironmentThreads: boolean;
   thread: SidebarThread;
   visitedThreadIds: Set<string>;
@@ -168,11 +167,10 @@ export function getProjectThreadItemDescendants(
 
 function buildStatsForHiddenThreads(
   threads: readonly SidebarThread[],
-  draftThreadIds: ReadonlySet<string>,
 ): ProjectThreadNodeStats {
   return {
     childCount: threads.length,
-    childActivity: getCollapsedChildActivity(threads, draftThreadIds),
+    childActivity: getCollapsedChildActivity(threads),
   };
 }
 
@@ -180,14 +178,13 @@ function buildEnvironmentThreadGroup(
   environmentId: string,
   environmentProviderId: string | null,
   nodes: EnvironmentThreadGroupNodes,
-  draftThreadIds: ReadonlySet<string>,
 ): EnvironmentThreadGroup {
   const hiddenThreads = nodes.flatMap(getNodeAndDescendantThreads);
   return {
     environmentId,
     environmentProviderId,
     nodes,
-    stats: buildStatsForHiddenThreads(hiddenThreads, draftThreadIds),
+    stats: buildStatsForHiddenThreads(hiddenThreads),
   };
 }
 
@@ -205,7 +202,6 @@ function buildSortedItems(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
-  draftThreadIds: ReadonlySet<string>,
   respectSections = false,
 ): ProjectThreadItem[] {
   if (groupEnvironmentThreads && respectSections) {
@@ -220,7 +216,7 @@ function buildSortedItems(
       }
     }
     return [...nodesBySectionId.values()].flatMap((sectionNodes) =>
-      buildSortedItems(sectionNodes, compareThreads, true, draftThreadIds),
+      buildSortedItems(sectionNodes, compareThreads, true),
     );
   }
 
@@ -232,7 +228,6 @@ function buildSortedItems(
   const { environmentThreadGroups, looseNodes } = bucketEnvironmentThreadGroups(
     nodes,
     compareThreads,
-    draftThreadIds,
   );
   const items = [
     ...looseNodes.map(buildThreadItem),
@@ -249,7 +244,6 @@ function buildThreadNode({
   childrenByParentId,
   compareThreads,
   depth,
-  draftThreadIds,
   groupEnvironmentThreads,
   thread,
   visitedThreadIds,
@@ -269,7 +263,6 @@ function buildThreadNode({
         childrenByParentId,
         compareThreads,
         depth: depth + 1,
-        draftThreadIds,
         groupEnvironmentThreads,
         thread: childThread,
         visitedThreadIds,
@@ -281,7 +274,6 @@ function buildThreadNode({
     childNodes,
     compareThreads,
     groupEnvironmentThreads,
-    draftThreadIds,
   );
   return {
     thread,
@@ -289,7 +281,6 @@ function buildThreadNode({
     depth,
     stats: buildStatsForHiddenThreads(
       getProjectThreadItemDescendants(children),
-      draftThreadIds,
     ),
   };
 }
@@ -349,14 +340,12 @@ export function resolveSidebarProjectId(
 export function buildProjectThreadGroups(
   allProjectThreads: readonly SidebarThread[],
   compareThreads: ThreadComparator = compareStandardThreads,
-  draftThreadIds: ReadonlySet<string> = new Set(),
   groupEnvironmentThreads = true,
 ): ProjectThreadItem[] {
   return buildThreadTreeItems(
     allProjectThreads,
     compareThreads,
     groupEnvironmentThreads,
-    draftThreadIds,
   );
 }
 
@@ -364,7 +353,6 @@ function buildThreadTreeItems(
   allThreads: readonly SidebarThread[],
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
-  draftThreadIds: ReadonlySet<string>,
   respectSections = false,
 ): ProjectThreadItem[] {
   const projectThreads = allThreads.filter(isSidebarProjectThread);
@@ -396,7 +384,6 @@ function buildThreadTreeItems(
         childrenByParentId,
         compareThreads,
         depth: 0,
-        draftThreadIds,
         groupEnvironmentThreads,
         thread,
         visitedThreadIds,
@@ -413,7 +400,6 @@ function buildThreadTreeItems(
         childrenByParentId,
         compareThreads,
         depth: 0,
-        draftThreadIds,
         groupEnvironmentThreads,
         thread,
         visitedThreadIds,
@@ -425,7 +411,6 @@ function buildThreadTreeItems(
     rootNodes,
     compareThreads,
     groupEnvironmentThreads,
-    draftThreadIds,
     respectSections,
   );
 }
@@ -434,7 +419,6 @@ export function buildSectionThreadList(
   allThreads: readonly SidebarThread[],
   compareThreads: ThreadComparator = compareStandardThreads,
   sections: readonly SidebarSectionDefinition[] = [],
-  draftThreadIds: ReadonlySet<string> = new Set(),
   groupEnvironmentThreads = false,
 ): ProjectThreadItem[] {
   return bucketIntoSections(
@@ -442,13 +426,11 @@ export function buildSectionThreadList(
       allThreads,
       compareThreads,
       groupEnvironmentThreads,
-      draftThreadIds,
       true,
     ),
     CHRONOLOGICAL_CONTAINER_ID,
     compareThreads,
     sections,
-    draftThreadIds,
   );
 }
 
@@ -461,7 +443,6 @@ export function isSidebarProjectThread(
 function bucketEnvironmentThreadGroups(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
-  draftThreadIds: ReadonlySet<string>,
 ): BucketEnvironmentThreadGroupsResult {
   const nodesByEnvironmentId = new Map<string, ProjectThreadNode[]>();
   const providerIdByEnvironmentId = new Map<string, string | null>();
@@ -487,12 +468,7 @@ function bucketEnvironmentThreadGroups(
     bucket.sort((left, right) => compareThreads(left.thread, right.thread));
     groupedEnvironmentIds.add(environmentId);
     environmentThreadGroups.push(
-      buildEnvironmentThreadGroup(
-        environmentId,
-        environmentProviderId,
-        bucket,
-        draftThreadIds,
-      ),
+      buildEnvironmentThreadGroup(environmentId, environmentProviderId, bucket),
     );
   }
 
@@ -598,7 +574,6 @@ function buildSectionGroup(
   containerId: string,
   section: SidebarSectionDefinition,
   items: ProjectThreadItem[],
-  draftThreadIds: ReadonlySet<string>,
 ): SidebarSectionGroup {
   const descendantThreads = getProjectThreadItemDescendants(items);
   return {
@@ -607,7 +582,7 @@ function buildSectionGroup(
     name: section.name,
     items,
     threadCount: descendantThreads.length,
-    activity: getCollapsedChildActivity(descendantThreads, draftThreadIds),
+    activity: getCollapsedChildActivity(descendantThreads),
   };
 }
 
@@ -616,7 +591,6 @@ function bucketIntoSections(
   containerId: string,
   compareThreads: ThreadComparator = compareStandardThreads,
   sections: readonly SidebarSectionDefinition[] = [],
-  draftThreadIds: ReadonlySet<string> = new Set(),
 ): ProjectThreadItem[] {
   const sectionDefinitionsById = new Map<string, SidebarSectionDefinition>();
   const orderedSections: SidebarSectionDefinition[] = [];
@@ -661,12 +635,7 @@ function bucketIntoSections(
       );
       return {
         kind: "section",
-        group: buildSectionGroup(
-          containerId,
-          section,
-          children,
-          draftThreadIds,
-        ),
+        group: buildSectionGroup(containerId, section, children),
       };
     },
   );
